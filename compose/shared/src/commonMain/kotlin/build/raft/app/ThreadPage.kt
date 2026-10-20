@@ -315,6 +315,7 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListLayoutInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -1234,6 +1235,24 @@ internal fun RaftThreadScreenPayload.shouldRenderThreadLoadingShell(
     ) ||
         shouldRenderThreadEarlyLoadingShell(timelineSlice)
 
+/**
+ * Hands e0a5248d: whether this thread open still holds its first content frame behind the loading
+ * shell. A memory or durable candidate frame is often ready a few frames before the local Home
+ * access lookup answers; revealing it then shows the timeline without its composer, which mounts
+ * one emission later and pushes the bottom-anchored list up by the composer height. The hold lasts
+ * only until that bounded, offline-safe local lookup has answered (or access settled another way),
+ * so timeline and composer appear in the same frame. Once revealed, a later refresh that re-runs
+ * the lookup never puts the shell back over the content.
+ */
+internal fun threadHoldsFirstContentReveal(
+    contentRevealed: Boolean,
+    accessResolution: ThreadAccessResolution,
+    initialHomeAccessLookupComplete: Boolean
+): Boolean =
+    !contentRevealed &&
+        accessResolution == ThreadAccessResolution.Loading &&
+        !initialHomeAccessLookupComplete
+
 internal enum class ThreadRouteMountPlan {
     LoadingShell,
     FeatureSurfaces
@@ -1295,9 +1314,11 @@ internal fun threadFeatureOwnerMountPlan(
 
 internal fun RaftThreadScreenPayload.threadRouteMountPlan(
     timelineSlice: ThreadTimelineSlice,
-    accessResolution: ThreadAccessResolution
+    accessResolution: ThreadAccessResolution,
+    holdFirstContentReveal: Boolean = false
 ): ThreadRouteMountPlan {
-    val showLoadingShell = shouldRenderThreadLoadingShell(timelineSlice, accessResolution)
+    val showLoadingShell =
+        holdFirstContentReveal || shouldRenderThreadLoadingShell(timelineSlice, accessResolution)
     return if (showLoadingShell) {
         ThreadRouteMountPlan.LoadingShell
     } else {
@@ -6623,10 +6644,21 @@ private fun SharedThreadRouteContentContent(
         remember(payload, stableHeaderProjection, sidebarOrder) {
             payload.threadConversationPinTarget(stableHeaderProjection)?.toUiState(sidebarOrder)
         }
+    var threadFirstContentRevealed by remember(threadInstanceKey) { mutableStateOf(false) }
+    val holdFirstContentReveal =
+        threadHoldsFirstContentReveal(
+            contentRevealed = threadFirstContentRevealed,
+            accessResolution = renderSlice.accessResolution,
+            initialHomeAccessLookupComplete = renderSlice.initialHomeAccessLookupComplete
+        )
+    if (!holdFirstContentReveal && !threadFirstContentRevealed) {
+        SideEffect { threadFirstContentRevealed = true }
+    }
     val routeMountPlan =
         payload.threadRouteMountPlan(
             timelineSlice = timelineSlice,
-            accessResolution = renderSlice.accessResolution
+            accessResolution = renderSlice.accessResolution,
+            holdFirstContentReveal = holdFirstContentReveal
         )
     val realtimeRoomLeaseRegistry =
         remember(sharedStores, storeScope) { sharedStores.realtimeRoomLeaseRegistry(storeScope) }
@@ -17701,7 +17733,8 @@ private fun ThreadChatTabContent(
                     threadOfflineLastKnownChrome(
                         durableLastKnown = timelineSlice.durableLastKnown,
                         status = timelineSlice.status,
-                        backgroundRefreshing = renderConfig.backgroundRefreshing
+                        backgroundRefreshing = renderConfig.backgroundRefreshing,
+                        mainLoadFailed = timelineSlice.mainLoadFailed
                     )
                 Box(modifier = Modifier.fillMaxSize()) {
                     ThreadStateMessage(
@@ -18453,7 +18486,8 @@ private fun ThreadMessagesListContent(
         threadOfflineLastKnownChrome(
             durableLastKnown = renderPayload.durableLastKnown,
             status = renderPayload.status,
-            backgroundRefreshing = renderConfig.backgroundRefreshing
+            backgroundRefreshing = renderConfig.backgroundRefreshing,
+            mainLoadFailed = renderPayload.mainLoadFailed
         )
     val showReplyLoadingSkeleton = renderPayload.status == "loading" && renderPayload.messages.isEmpty()
     val showReplyEmptyState =
@@ -22478,18 +22512,25 @@ internal data class ThreadOfflineLastKnownChrome(
 internal fun threadOfflineLastKnownChrome(
     durableLastKnown: Boolean,
     status: String,
-    backgroundRefreshing: Boolean
+    backgroundRefreshing: Boolean,
+    mainLoadFailed: Boolean
 ): ThreadOfflineLastKnownChrome {
     // Task #1137: a channel that was empty when last seen is a stand-in too.
     val standIn = durableLastKnown && (status == "content" || status == "empty")
-    return ThreadOfflineLastKnownChrome(insetActive = standIn, tipVisible = standIn && !backgroundRefreshing)
+    // Hands e0a5248d: the stand-in also opens online, before its refresh has even started; the
+    // tip says "offline" only once the network load actually failed and nothing is retrying.
+    return ThreadOfflineLastKnownChrome(
+        insetActive = standIn,
+        tipVisible = standIn && mainLoadFailed && !backgroundRefreshing
+    )
 }
 
 internal fun threadOfflineLastKnownChrome(payload: RaftThreadScreenPayload): ThreadOfflineLastKnownChrome =
     threadOfflineLastKnownChrome(
         durableLastKnown = payload.durableLastKnown,
         status = payload.status,
-        backgroundRefreshing = payload.backgroundRefreshing
+        backgroundRefreshing = payload.backgroundRefreshing,
+        mainLoadFailed = payload.mainLoadFailed
     )
 
 /** Fixed so the list's top inset equals the overlay's height exactly (two caption lines + padding). */
@@ -23666,20 +23707,12 @@ private suspend fun ThreadListViewport.scrollLatestItemToRenderedBottom(
     if (layoutInfo.totalItemsCount <= latestItemIndex) {
         return false
     }
-    val latestItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == latestItemIndex }
-    val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
     val offset =
-        latestItem
-            ?.let {
-                threadLatestItemBottomAnchorScrollOffset(
-                    itemSize = it.size,
-                    viewportHeight = viewportHeight,
-                    visibleItemCount = layoutInfo.visibleItemsInfo.size,
-                    totalItemCount = layoutInfo.totalItemsCount,
-                    trailingPaddingSize = trailingPaddingSize
-                )
-            }
-            ?: 0
+        threadRenderedBottomScrollOffset(
+            info = layoutInfo,
+            itemIndex = latestItemIndex,
+            trailingPaddingSize = trailingPaddingSize
+        ) ?: 0
     if (!commandStillCurrent()) return false
     scrollToItem(latestItemIndex, offset)
     return commandStillCurrent()
@@ -23727,23 +23760,19 @@ private suspend fun ThreadListViewport.scrollThreadItemToRenderedBottom(
     var didScroll = false
     repeat(ThreadFocusedMessageCenterAttempts) {
         if (!commandStillCurrent()) return false
-        val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == itemIndex }
-        if (item == null) {
+        val offset =
+            threadRenderedBottomScrollOffset(
+                info = layoutInfo,
+                itemIndex = itemIndex,
+                trailingPaddingSize = trailingPaddingSize
+            )
+        if (offset == null) {
             scrollToItem(itemIndex)
             if (!commandStillCurrent()) return false
             delay(ThreadLayoutStabilityFrameDelayMs)
             if (!commandStillCurrent()) return false
             return@repeat
         }
-        val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
-        val offset =
-            threadLatestItemBottomAnchorScrollOffset(
-                itemSize = item.size,
-                viewportHeight = viewportHeight,
-                visibleItemCount = layoutInfo.visibleItemsInfo.size,
-                totalItemCount = layoutInfo.totalItemsCount,
-                trailingPaddingSize = trailingPaddingSize
-            )
         scrollToItem(itemIndex, offset)
         if (!commandStillCurrent()) return false
         didScroll = true
@@ -23897,12 +23926,48 @@ private fun ThreadListViewport.shouldShowThreadBackToBottom(latestItemIndex: Int
 private fun ThreadListViewport.isLatestItemAtRenderedBottom(
     latestItemIndex: Int,
     trailingPaddingSize: Int = 0
+): Boolean = threadItemAtRenderedBottom(layoutInfo, latestItemIndex, trailingPaddingSize)
+
+/**
+ * Whether row [itemIndex] (plus [trailingPaddingSize]) ends at the rendered bottom: the forward
+ * [LazyListLayoutInfo.viewportEndOffset], the edge every bottom-anchor owner aims at.
+ */
+internal fun threadItemAtRenderedBottom(
+    info: LazyListLayoutInfo,
+    itemIndex: Int,
+    trailingPaddingSize: Int = 0
 ): Boolean {
-    val layoutInfo = layoutInfo
-    if (layoutInfo.totalItemsCount <= latestItemIndex) return false
-    val latestItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == latestItemIndex } ?: return false
-    val latestBottom = latestItem.offset + latestItem.size + trailingPaddingSize.coerceAtLeast(0)
-    return kotlin.math.abs(latestBottom - layoutInfo.viewportEndOffset) <= ThreadBackToBottomTolerancePx
+    if (info.totalItemsCount <= itemIndex) return false
+    val item = info.visibleItemsInfo.firstOrNull { it.index == itemIndex } ?: return false
+    val bottom = item.offset + item.size + trailingPaddingSize.coerceAtLeast(0)
+    return kotlin.math.abs(bottom - info.viewportEndOffset) <= ThreadBackToBottomTolerancePx
+}
+
+/**
+ * The forward `scrollToItem` offset that puts row [itemIndex] (plus [trailingPaddingSize]) at the
+ * rendered bottom, or null while the row is not laid out.
+ *
+ * Forward offsets are measured from the content start, after the top content padding, so the
+ * rendered bottom is [LazyListLayoutInfo.viewportEndOffset] - the same edge
+ * [threadItemAtRenderedBottom] checks - not the full viewport height (`end - start`), which counts
+ * the top padding again. Hands e0a5248d: with the offline stand-in's 40dp top inset on a reversed
+ * list, the old full-height target parked the newest row 40dp below the composer, the anchored
+ * check rejected that, and the initial-anchor retry and the composer-inset relayout moved the list
+ * back and forth by the inset on every command until the network answer removed it.
+ */
+internal fun threadRenderedBottomScrollOffset(
+    info: LazyListLayoutInfo,
+    itemIndex: Int,
+    trailingPaddingSize: Int = 0
+): Int? {
+    val item = info.visibleItemsInfo.firstOrNull { it.index == itemIndex } ?: return null
+    return threadLatestItemBottomAnchorScrollOffset(
+        itemSize = item.size,
+        viewportHeight = info.viewportEndOffset,
+        visibleItemCount = info.visibleItemsInfo.size,
+        totalItemCount = info.totalItemsCount,
+        trailingPaddingSize = trailingPaddingSize
+    )
 }
 
 @Composable

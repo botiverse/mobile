@@ -45,6 +45,8 @@ internal data class ThreadTimelineSlice(
     val gapRefillMessageIds: Set<String> = emptySet(),
     /** Task #1125: the frame is the offline durable stand-in (see [RaftThreadScreenPayload.durableLastKnown]). */
     val durableLastKnown: Boolean = false,
+    /** The main load failed (see [RaftThreadScreenPayload.mainLoadFailed]); gates the offline tip. */
+    val mainLoadFailed: Boolean = false,
     /** Task #168: the stand-in reaches the conversation's start (see [RaftThreadScreenPayload.durableReachedOldest]). */
     val durableReachedOldest: Boolean = false,
     /**
@@ -88,6 +90,7 @@ internal fun RaftThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSlic
         sourceThreadId = sourceThreadId,
         gapRefillMessageIds = gapRefillMessageIds,
         durableLastKnown = durableLastKnown,
+        mainLoadFailed = mainLoadFailed,
         durableReachedOldest = durableReachedOldest,
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
