@@ -40,7 +40,7 @@ kotlin {
             implementation(libs.cmp.runtime)
             implementation(libs.cmp.foundation)
             implementation(libs.cmp.ui)
-            // TooltipBox / PlainTooltip only (the icon button's long-press / hover label);
+            // TooltipBox / PlainTooltip only (the icon button's hover label);
             // everything else is drawn from raft-ui tokens, not Material.
             implementation(libs.cmp.material3)
             implementation(libs.cmp.components.resources)

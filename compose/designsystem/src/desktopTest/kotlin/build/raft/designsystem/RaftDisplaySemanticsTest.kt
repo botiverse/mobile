@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -40,7 +39,6 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.use
 import build.raft.designsystem.components.LocalRaftPulseClock
-import build.raft.designsystem.components.LocalRaftTooltipTouchTimer
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
@@ -63,7 +61,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import kotlinx.coroutines.CompletableDeferred
 import org.jetbrains.skia.Bitmap
 
 /** What screen readers and keyboards get from the display components. */
@@ -177,17 +174,18 @@ class RaftDisplaySemanticsTest {
             assertEquals(1, clicks)
         }
 
-    /** A long press opens the tooltip bubble and does not also click. */
+    /**
+     * Touch never opens a tooltip: on a touch screen a long press belongs to the element's
+     * menu (raft-design Touch / Tooltip), and the label lives in the accessible name.
+     */
     @Test
-    fun aLongPressOnAnIconButtonShowsItsTooltipWithoutClicking() =
+    fun aLongPressOnAnIconButtonDoesNotOpenItsTooltip() =
         runComposeUiTest {
-            var clicks = 0
-            setContent(themed { RaftIconButton(onClick = { clicks++ }, tooltip = "Add Reaction", variant = RaftButtonVariant.Ghost) {} })
+            setContent(themed { RaftIconButton(onClick = {}, tooltip = "Add Reaction", variant = RaftButtonVariant.Ghost) {} })
             mainClock.autoAdvance = false
             onNodeWithContentDescription("Add Reaction").performTouchInput { longClick() }
-            mainClock.advanceTimeBy(300)
-            onNode(hasText("Add Reaction")).assertExists()
-            assertEquals(0, clicks)
+            mainClock.advanceTimeBy(2_000)
+            onNode(hasText("Add Reaction")).assertDoesNotExist()
         }
 
     /**
@@ -210,24 +208,14 @@ class RaftDisplaySemanticsTest {
             assertTrue(SemanticsProperties.Focused in stop, "the button itself is focusable")
         }
 
-    /**
-     * A mouse keeps the tooltip open while it hovers (no 1.5s timer, unlike Material) and
-     * closes it on leaving; a long press's tooltip asks for the 1.5s timer and closes when
-     * it runs out. The timer is a gate the test releases, so no wall-clock waits.
-     */
+    /** A mouse keeps the tooltip open while it hovers (no 1.5s timer, unlike Material) and closes it on leaving. */
     @Test
     fun aHoveredTooltipStaysOpenUntilThePointerLeaves() =
         runComposeUiTest {
-            val timers = mutableListOf<Long>()
-            val timeUp = CompletableDeferred<Unit>()
             setContent(
                 themed {
-                    CompositionLocalProvider(
-                        LocalRaftTooltipTouchTimer provides { millis -> timers += millis; timeUp.await() },
-                    ) {
-                        Box(Modifier.size(200.dp)) {
-                            RaftIconButton(onClick = {}, tooltip = "Add Reaction", variant = RaftButtonVariant.Ghost, modifier = Modifier.align(Alignment.Center)) {}
-                        }
+                    Box(Modifier.size(200.dp)) {
+                        RaftIconButton(onClick = {}, tooltip = "Add Reaction", variant = RaftButtonVariant.Ghost, modifier = Modifier.align(Alignment.Center)) {}
                     }
                 },
             )
@@ -236,17 +224,8 @@ class RaftDisplaySemanticsTest {
             button.performMouseInput { moveTo(center) }
             mainClock.advanceTimeBy(3_000)
             onNode(hasText("Add Reaction")).assertExists()
-            assertEquals(emptyList(), timers, "a hovered tooltip must not start the long-press timer")
             // Off the button, below it (the bubble is above).
             button.performMouseInput { moveTo(bottomRight + Offset(30f, 30f)) }
-            mainClock.advanceTimeBy(1_000)
-            onNode(hasText("Add Reaction")).assertDoesNotExist()
-
-            button.performTouchInput { longClick() }
-            mainClock.advanceTimeBy(300)
-            onNode(hasText("Add Reaction")).assertExists()
-            assertEquals(listOf(1_500L), timers, "a long press starts the 1.5s timer")
-            timeUp.complete(Unit)
             mainClock.advanceTimeBy(1_000)
             onNode(hasText("Add Reaction")).assertDoesNotExist()
         }
