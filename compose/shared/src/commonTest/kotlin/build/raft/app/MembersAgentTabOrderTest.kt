@@ -4,6 +4,7 @@ import build.raft.app.model.MemberKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 
 class MembersAgentTabOrderTest {
@@ -206,6 +207,54 @@ class MembersAgentTabOrderTest {
                 isScrollInProgress = false,
                 isAtBottom = true
             )
+        )
+    }
+
+    @Test
+    fun tabOrderForRenderWaitsOnlyWhenNoOrderIsKnown() {
+        data class Case(
+            val name: String,
+            val serverId: String?,
+            val known: List<String>?,
+            val payload: List<String>,
+            val expected: MembersAgentTabOrderRender
+        )
+        listOf(
+            Case("profile-only detail", null, null, emptyList(), MembersAgentTabOrderRender(emptyList(), known = true)),
+            Case("store or device order", "s", listOf("activity"), listOf("chat"), MembersAgentTabOrderRender(listOf("activity"), known = true)),
+            Case("known default order", "s", emptyList(), emptyList(), MembersAgentTabOrderRender(emptyList(), known = true)),
+            Case("launch payload order", "s", null, listOf("chat"), MembersAgentTabOrderRender(listOf("chat"), known = true)),
+            Case("cold start, nothing known", "s", null, emptyList(), MembersAgentTabOrderRender(emptyList(), known = false))
+        ).forEach { case ->
+            assertEquals(
+                case.expected,
+                membersAgentTabOrderForRender(case.serverId, case.known, case.payload),
+                case.name
+            )
+        }
+    }
+
+    @Test
+    fun selectionStaysOnTheShownTabWhenTheOrderChanges() {
+        val defaultOrder = membersVisibleAgentTabs(canViewPrivateSurfaces = true, deleted = false)
+        val webOrder = membersOrderedAgentTabs(defaultOrder, listOf("activity", "profile"))
+
+        // Hidden strip: nothing is pinned, so the order that arrives picks the default tab.
+        assertNull(membersAgentDetailPinnedSelection(override = null, shownTab = MembersAgentDetailTab.Profile, stripShown = false))
+        assertEquals(MembersAgentDetailTab.Activity, membersAgentDetailSelectedTab(null, webOrder))
+
+        // Shown strip: the visible tab is pinned and survives a reorder.
+        val pinned = membersAgentDetailPinnedSelection(
+            override = null,
+            shownTab = membersAgentDetailSelectedTab(null, defaultOrder),
+            stripShown = true
+        )
+        assertEquals(MembersAgentDetailTab.Profile, pinned)
+        assertEquals(MembersAgentDetailTab.Profile, membersAgentDetailSelectedTab(pinned, webOrder))
+        assertEquals(1, membersAgentDetailPagerIndex(webOrder, MembersAgentDetailTab.Profile))
+        assertEquals(
+            MembersAgentDetailTab.Chat,
+            membersAgentDetailPinnedSelection(MembersAgentDetailTab.Chat, MembersAgentDetailTab.Profile, stripShown = true)
         )
     }
 }

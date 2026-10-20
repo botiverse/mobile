@@ -2488,7 +2488,10 @@ internal class RaftSharedStoreProvider private constructor(
                 agentDetailStore = SharedAgentDetailStore(
                     logger = sharedInfoLogger("SlockAgentDetail", "shared_agent_detail_store")
                 ),
-                agentPanelTabOrderStore = SharedAgentPanelTabOrderStore(),
+                agentPanelTabOrderStore =
+                    SharedAgentPanelTabOrderStore(
+                        cache = KeyValueAgentPanelTabOrderPreferenceRepository(sharedPreferenceStore)
+                    ),
                 tasksDataStore = tasksDataStore,
                 serverMembersStore = serverMembersStore,
                 processServerMembersCore = processServerMembersCore,

@@ -2286,6 +2286,7 @@
     <string name="thread_followers_removed">已将 %1$s 移出此消息列的关注者。</string>
     <string name="thread_followers_restored">已恢复 %1$s 的关注。</string>
     <string name="thread_followers_peer_remove_unavailable">请切换到 %1$s 移除此关注者。</string>
+    <string name="thread_followers_remove">将 %1$s 移出关注者</string>
     <string name="joint_over_limit_grace_title">联合频道已超出成员上限</string>
     <string name="joint_over_limit_grace_detail">该联合频道在 %1$s 之前处于宽限期且超出成员上限。需要其中一个服务器的管理员升级，或让一个免费服务器退出。</string>
     <string name="joint_billing_locked_title">联合频道只读</string>
