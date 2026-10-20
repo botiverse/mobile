@@ -361,6 +361,30 @@ tasks.matching { task ->
     dependsOn("generateMRandroidMain")
 }
 
+// Xcode runs Gradle twice per iOS build: the CocoaPods "Build shared" phase
+// (:shared:syncFramework) or a CI step links the framework, then the app's
+// "[CP-User] Copy kmmresource MR bundle to app" phase runs
+// :shared:copyFrameworkResourcesToApp, which depends on the same link task.
+// When that second invocation sees the link as out of date (cold ~/.konan
+// snapshot, see visual-testing.yml), it relinks the whole release framework a
+// second time: ~24 of the ~51 min of the iOS release archive (run 39403554694).
+// With RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES (set as an xcodebuild build setting,
+// which Xcode exports to script phases) a link task whose framework binary
+// already exists is skipped; the resource tasks still run against it. Unset
+// (local Xcode / IDE builds) nothing changes.
+val raftReuseLinkedIosFramework =
+    providers.environmentVariable("RAFT_IOS_REUSE_LINKED_FRAMEWORK")
+        .map { it.trim().uppercase() in setOf("YES", "TRUE", "1") }
+        .orElse(false)
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinNativeLink::class.java).configureEach {
+    val framework = outputFile
+    val reuse = raftReuseLinkedIosFramework
+    onlyIf("RAFT_IOS_REUSE_LINKED_FRAMEWORK is set and the framework is already linked") {
+        val dir = framework.get()
+        !(reuse.get() && File(dir, dir.nameWithoutExtension).isFile)
+    }
+}
+
 gradle.taskGraph.whenReady {
     tasks.matching { it.name.startsWith("compileKotlinIos") }.configureEach {
         // The bundled TMM resource plugin attaches PackResourcesToKLibAction after task
