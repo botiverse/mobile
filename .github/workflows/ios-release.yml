@@ -52,6 +52,16 @@ on:
           - ad-hoc
           - enterprise
           - development
+      testflight_internal:
+        description: "After the Hands draft, upload to TestFlight and distribute to the internal group (Botiverse) only; never external, App Store, or Hands activation"
+        required: false
+        type: boolean
+        default: false
+      testflight_what_to_test:
+        description: "What to Test text (zh-Hans) for the internal TestFlight build; empty uses the commit subject"
+        required: false
+        type: string
+        default: ""
       release_mode:
         description: "CI always creates a draft Hands release; publish separately after review"
         required: true
@@ -563,4 +573,87 @@ jobs:
             echo "| **Release id** | \`${{ steps.publish-hands-release.outputs.release_id || '(none)' }}\` |"
             echo "| **IPA sha256** | \`${{ needs.build_ios_release.outputs.ipa_sha256 }}\` |"
             echo "| **dSYM sha256** | \`${{ needs.build_ios_release.outputs.dsym_sha256 }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  testflight_internal:
+    name: TestFlight internal (Botiverse)
+    if: ${{ inputs.testflight_internal && needs.resolve.outputs.export_method == 'app-store-connect' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2204
+    timeout-minutes: 75
+    needs: [resolve, build_ios_release, create_hands_draft]
+    environment:
+      name: production
+    env:
+      HANDS_AUTH_TOKEN: ${{ secrets.QUIVER_IOS_BEARER_TOKEN }}
+      HANDS_API: https://hands.build
+      RAFT_IOS_VERSION_CODE: ${{ needs.resolve.outputs.version_code }}
+      WHAT_TO_TEST: ${{ inputs.testflight_what_to_test }}
+    steps:
+      - name: Install Hands CLI (npm)
+        shell: bash
+        run: |
+          npm install -g @botiverse/hands-cli@0.5.30
+          hands --version
+
+      - name: Resolve the Hands build this run published
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Match version code AND source commit: a stale build with the same
+          # code (e.g. an earlier dispatch) must never be distributed.
+          hands --json builds list raft-ios > builds.json
+          BUILD_ID="$(python3 - <<'PY'
+          import json, os
+          d = json.load(open("builds.json"))
+          vc = os.environ["RAFT_IOS_VERSION_CODE"]
+          sha = os.environ["GITHUB_SHA"]
+          for b in d.get("builds", []):
+              m = json.loads(b.get("build_metadata_json") or "{}")
+              if str(b.get("version_code")) == vc and m.get("source_commit") == sha:
+                  print(b["id"]); break
+          PY
+          )"
+          if [ -z "${BUILD_ID}" ]; then
+            echo "No Hands build with version_code=${RAFT_IOS_VERSION_CODE} source_commit=${GITHUB_SHA}" >&2
+            exit 1
+          fi
+          APP_ID="$(python3 -c "import json;d=json.load(open('builds.json'));print(next(b['app_id'] for b in d['builds'] if b['id']=='${BUILD_ID}'))")"
+          echo "build_id=${BUILD_ID}" >> "$GITHUB_OUTPUT"
+          echo "app_id=${APP_ID}" >> "$GITHUB_OUTPUT"
+          echo "Hands build ${BUILD_ID}"
+
+      - name: Upload to App Store Connect
+        id: upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          hands --json api POST "/api/apps/${{ steps.build.outputs.app_id }}/builds/${{ steps.build.outputs.build_id }}/testflight-upload" | tee upload.json
+          python3 -c "import json,sys;d=json.load(open('upload.json'));sys.exit(0 if d.get('ok') else 1)"
+          echo "upload_id=$(python3 -c "import json;print(json.load(open('upload.json')).get('build_upload_id',''))")" >> "$GITHUB_OUTPUT"
+
+      - name: Distribute to the internal group and wait
+        shell: bash
+        run: |
+          set -euo pipefail
+          GROUP_ID="$(hands --json builds testflight-groups raft-ios "${{ steps.build.outputs.build_id }}" \
+            | python3 -c "import json,sys;d=json.load(sys.stdin);print(next(g['id'] for g in d['groups'] if g['is_internal'] and g['name']=='Botiverse'))")"
+          if [ -z "${WHAT_TO_TEST}" ]; then
+            WHAT_TO_TEST="$(git log -1 --pretty=%s 2>/dev/null || echo "Internal build ${RAFT_IOS_VERSION_CODE}")"
+          fi
+          printf '%s\n' "${WHAT_TO_TEST}" > wtt.txt
+          hands builds testflight-publish raft-ios "${{ steps.build.outputs.build_id }}" \
+            --distribution internal \
+            --group-id "${GROUP_ID}" \
+            --what-to-test-file zh-Hans=wtt.txt \
+            --bundle-id build.raft.app \
+            --wait | tee publish.log
+          {
+            echo "### TestFlight internal"
+            echo
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| **Hands build** | \`${{ steps.build.outputs.build_id }}\` |"
+            echo "| **ASC build upload** | \`${{ steps.upload.outputs.upload_id }}\` |"
+            echo "| **Group** | Botiverse (internal) |"
           } >> "$GITHUB_STEP_SUMMARY"
