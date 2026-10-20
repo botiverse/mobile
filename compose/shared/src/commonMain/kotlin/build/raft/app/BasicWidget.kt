@@ -320,7 +320,8 @@ internal fun RaftAspectFitImagePreviewSurface(
     Box(
         modifier = modifier
             .background(backgroundColor)
-            .border(borderWidth, RaftColor.BorderBlack),
+            // 0.dp is Dp.Hairline to Modifier.border (a 1px line), so a frameless surface skips it.
+            .then(if (borderWidth > 0.dp) Modifier.border(borderWidth, RaftColor.BorderBlack) else Modifier),
         contentAlignment = Alignment.Center
     ) {
         if (activeSource != null) {

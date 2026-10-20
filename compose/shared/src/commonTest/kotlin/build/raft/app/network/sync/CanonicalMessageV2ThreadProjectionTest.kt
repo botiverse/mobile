@@ -25,7 +25,7 @@ class CanonicalMessageV2ThreadProjectionTest {
                         ReactionFact("👀", 0),
                     ),
                     attachments = listOf(
-                        CanonicalAttachmentV2("a1", "image.png", "image/png", 1536, width = 640, thumbnailUrl = "thumb"),
+                        CanonicalAttachmentV2("a1", "image.png", "image/png", 1536, width = 640, height = 480, thumbnailUrl = "thumb"),
                         CanonicalAttachmentV2("a2", "", "application/octet-stream", 7),
                     ),
                 ),
@@ -70,6 +70,9 @@ class CanonicalMessageV2ThreadProjectionTest {
         assertEquals("thumb", item.attachments[0].thumbnailUrl)
         assertEquals("Attachment 2", item.attachments[1].name)
         assertEquals(0, item.attachments[0].commentCount)
+        // The inline image reserves its box from these before it loads.
+        assertEquals(640 to 480, item.attachments[0].width to item.attachments[0].height)
+        assertEquals(null, item.attachments[1].width)
     }
 
     @Test

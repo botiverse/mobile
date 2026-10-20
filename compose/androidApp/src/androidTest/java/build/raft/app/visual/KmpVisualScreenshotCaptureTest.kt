@@ -1737,6 +1737,20 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    /** Task #12: inline image attachment frame (raft-ui MessageImageGallery, lone tall image). */
+    @Test
+    fun captureThreadMessageRowInlineImage() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.inline-image",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-inline-image")
+                    .put("visualFixture", "inline_image"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
     @Test
     fun captureThreadMessageMenuDefault() {
         captureKmpComponentCase(
