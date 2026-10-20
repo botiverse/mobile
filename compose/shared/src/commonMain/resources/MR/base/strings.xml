@@ -971,13 +971,13 @@
     <string name="member_section_info">Info</string>
     <string name="member_section_actions">Actions</string>
     <string name="member_section_created_agents">Created Agents</string>
-    <string name="member_section_runtime_config">Runtime Config</string>
+    <string name="member_section_runtime_config">Runtime config</string>
     <string name="member_section_skills_count">Skills (%1$s)</string>
     <string name="member_section_agent_channels_dms">Agent Channels and DMs</string>
     <string name="member_section_channels">Channels</string>
     <string name="member_section_private_chats">Agent Private Chats</string>
     <string name="member_section_workspace">Workspace</string>
-    <string name="member_section_connected_apps">Connected Apps</string>
+    <string name="member_section_connected_apps">Applications</string>
     <string name="member_section_activity_diagnostics">Activity Diagnostics</string>
     <string name="member_state_no_description">No description</string>
     <string name="member_state_no_created_agents">No agents created yet</string>
@@ -986,6 +986,13 @@
     <string name="member_label_you_suffix">(you)</string>
     <string name="member_title_human_roles">Human roles</string>
     <string name="member_action_edit_role">Edit role</string>
+    <string name="member_action_change_avatar">Change avatar</string>
+    <string name="member_action_edit_display_name">Edit display name</string>
+    <string name="member_action_upload_image">Upload image</string>
+    <string name="member_label_computer_status">Computer status</string>
+    <string name="member_label_computer_version">Computer Version</string>
+    <string name="member_action_edit_description">Edit description</string>
+    <string name="member_action_edit_runtime_config">Edit runtime config</string>
     <string name="member_roles_help_owner_summary">Full server control.</string>
     <string name="member_roles_help_owner_details">Billing and ownership. Server settings. Admins and members. Channels, machines, and agents.</string>
     <string name="member_roles_help_human_admin_details">Server profile. Channels and channel members. Agents and machines. Invites, join links, and admin promotion.</string>
@@ -1000,7 +1007,7 @@
     <string name="member_state_no_files">No files yet.</string>
     <string name="member_state_no_environment_variables">No environment variables configured</string>
     <string name="member_state_runtime_config_unavailable">Runtime configuration unavailable</string>
-    <string name="member_state_no_connected_apps">No connected apps yet.</string>
+    <string name="member_state_no_connected_apps">No connected apps yet</string>
     <string name="member_state_agent_error">Agent encountered an error</string>
     <string name="member_state_profile_loading">Loading agent profile...</string>
     <string name="member_state_profile_unavailable">Agent profile metadata is unavailable.</string>
@@ -1117,7 +1124,7 @@
     <string name="member_hint_runtime_restart">Changing runtime config may restart the agent so the next launch uses the new settings.</string>
     <string name="member_hint_chat_audit_only">Visible here as an activity/audit trail. These rows are intentionally not direct conversation links.</string>
     <string name="member_hint_no_scheduled_reminders">This agent hasn\'t scheduled anything. Reminders appear here in real time as soon as the agent schedules them.</string>
-    <string name="member_hint_connected_apps">Apps this agent has logged into with Raft Agent Login</string>
+    <string name="member_hint_connected_apps">Connected apps this agent can use.</string>
     <string name="member_error_profile_open">Unable to open profile</string>
     <string name="member_notice_member_id_copied">Copied member ID</string>
     <string name="member_notice_diagnostics_copied">Copied agent diagnostics</string>

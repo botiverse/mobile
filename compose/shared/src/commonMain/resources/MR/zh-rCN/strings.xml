@@ -975,7 +975,7 @@
     <string name="member_section_channels">频道</string>
     <string name="member_section_private_chats">Agent 私信</string>
     <string name="member_section_workspace">工作区</string>
-    <string name="member_section_connected_apps">已连接应用</string>
+    <string name="member_section_connected_apps">应用</string>
     <string name="member_section_activity_diagnostics">动态诊断</string>
     <string name="member_state_no_description">没有描述</string>
     <string name="member_state_no_created_agents">还没有创建过 Agent</string>
@@ -984,6 +984,13 @@
     <string name="member_label_you_suffix">（你）</string>
     <string name="member_title_human_roles">人类角色</string>
     <string name="member_action_edit_role">编辑角色</string>
+    <string name="member_action_change_avatar">更换头像</string>
+    <string name="member_action_edit_display_name">编辑显示名称</string>
+    <string name="member_action_upload_image">上传图片</string>
+    <string name="member_label_computer_status">Computer 状态</string>
+    <string name="member_label_computer_version">Computer 版本</string>
+    <string name="member_action_edit_description">编辑描述</string>
+    <string name="member_action_edit_runtime_config">编辑运行时配置</string>
     <string name="member_roles_help_owner_summary">服务器完全控制权。</string>
     <string name="member_roles_help_owner_details">计费与所有权。服务器设置。管理员与成员。频道、计算机与 Agent。</string>
     <string name="member_roles_help_human_admin_details">服务器资料。频道与频道成员。Agent 与计算机。邀请、加入链接与管理员提升。</string>
@@ -998,7 +1005,7 @@
     <string name="member_state_no_files">暂无文件。</string>
     <string name="member_state_no_environment_variables">未配置环境变量</string>
     <string name="member_state_runtime_config_unavailable">运行时配置不可用</string>
-    <string name="member_state_no_connected_apps">暂无已连接应用。</string>
+    <string name="member_state_no_connected_apps">还没有已连接的应用</string>
     <string name="member_state_agent_error">Agent 遇到错误</string>
     <string name="member_state_profile_loading">正在加载 Agent 资料…</string>
     <string name="member_state_profile_unavailable">Agent 资料元数据不可用。</string>
@@ -1115,7 +1122,7 @@
     <string name="member_hint_runtime_restart">修改运行时配置可能会重启 Agent，使下次启动使用新设置。</string>
     <string name="member_hint_chat_audit_only">此处仅作为活动/审计记录展示，这些条目不会直接打开对话。</string>
     <string name="member_hint_no_scheduled_reminders">该 Agent 尚未安排任何提醒。Agent 创建提醒后会实时显示在这里。</string>
-    <string name="member_hint_connected_apps">该 Agent 通过 Raft Agent Login 登录过的应用</string>
+    <string name="member_hint_connected_apps">该 Agent 可使用的已连接应用。</string>
     <string name="member_error_profile_open">无法打开资料</string>
     <string name="member_notice_member_id_copied">成员 ID 已复制</string>
     <string name="member_notice_diagnostics_copied">Agent 诊断信息已复制</string>
