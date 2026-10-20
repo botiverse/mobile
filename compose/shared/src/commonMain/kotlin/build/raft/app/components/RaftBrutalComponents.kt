@@ -79,6 +79,33 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.compat.ui.KeyboardParams
 
+/*
+ * Legacy `RaftBrutal*` API -> compose/designsystem (raft-ui) map. Call counts are call
+ * sites in compose/shared at the start of the migration (origin/main 91cadf12e).
+ *
+ * | Legacy API (calls)                          | Design-system component                                   |
+ * | ------------------------------------------- | --------------------------------------------------------- |
+ * | RaftBrutalActionButton (143)                 | RaftButton (variant from the fill, size from minHeight)    |
+ * | RaftBrutalIconButton (22)                    | RaftIconButton (Md / Lg)                                   |
+ * | RaftBrutalTextField (45)                     | RaftField + RaftTextField                                  |
+ * | RaftBrutalInputField (20)                    | RaftTextField (single line, default chrome)                |
+ * | RaftBrutalSearchField (5)                    | RaftTextField with a leading search addon                  |
+ * | RaftBrutalSelectField (16)                   | RaftSelectTrigger + RaftDropdownMenu / RaftMenuItem        |
+ * | RaftBrutalSectionLabel (21)                  | RaftFieldLabel                                             |
+ * | RaftBrutalReadOnlyField (5) / ...ValueField (2) | RaftField + RaftReadOnlyField                           |
+ * | RaftBrutalCard (12)                          | RaftCard                                                   |
+ * | RaftBrutalListRow (2)                        | RaftListRowGroup + RaftListRow                             |
+ * | RaftBrutalBadge (3) / RaftBrutalBadgeButton (0) | RaftBadge (soft)                                        |
+ * | RaftBrutalDropdownMenuSurface (3) / Row (2)  | RaftMenuSurface + RaftMenuItem                             |
+ * | RaftBrutalDropdownMenu (2)                   | app popover positioning around RaftMenuSurface             |
+ * | RaftBrutalModalLayer (2) / Header (2)        | dialog header from RaftText headline + ghost RaftIconButton |
+ * | RaftBrutalTextarea (2)                       | RaftTextarea (no TextFieldValue / focus-hook overload yet) |
+ * | RaftBrutalPanel (1) / PanelShell (1) / ListShell (1) | no generic popover / card surface slot yet         |
+ * | RaftBrutalListSectionHeader (1)              | RaftMenuLabel-like group heading                           |
+ * | RaftBrutalActionSheetRow (1)                 | RaftListRow + RaftIconTile (no danger tone yet)            |
+ * | RaftShadow.Brutal* (48 refs, all 0dp)        | none: raft-ui controls cast no shadow                      |
+ */
+
 internal data class RaftModalShellModel(
     val title: String,
     val subtitle: String = "",
