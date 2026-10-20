@@ -12061,8 +12061,7 @@ private fun MembersAgentSkillCard(skill: AgentSkillSummary) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.3f))
-            .background(RaftColor.SurfaceWhite)
+            .membersRaftCard()
             .padding(horizontal = RaftAppSpacing.Md, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
     ) {
@@ -12167,8 +12166,7 @@ private fun MembersAgentCreatedAgentRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.3f))
-            .background(RaftColor.SurfaceWhite)
+            .membersRaftCard()
             .padding(horizontal = 12.dp, vertical = RaftAppSpacing.Sm),
         horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically
@@ -13809,6 +13807,14 @@ private fun MembersDetailSectionTitle(
 ) {
     // raft-ui profile section title (SectionEyebrow): footnote bold `foreground-hint`, sentence case.
     RaftSectionEyebrow(text = title, modifier = modifier)
+}
+
+/** raft-ui Card (default) frame: container radius, a `line-hairline` edge on `layer-card`. */
+@Composable
+private fun Modifier.membersRaftCard(): Modifier {
+    val shape = RoundedCornerShape(RaftRadius.Container)
+    val colors = RaftTheme.colors
+    return clip(shape).background(colors.layerCard, shape).border(RaftStroke.Hairline, colors.lineHairline, shape)
 }
 
 @Composable
