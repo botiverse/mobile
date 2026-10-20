@@ -7,6 +7,7 @@ import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -75,11 +76,27 @@ internal val LocalRaftPressedPreview = staticCompositionLocalOf { false }
 /** Renders every focus ring in the subtree as focused (screenshot fixtures only). */
 internal val LocalRaftFocusedPreview = staticCompositionLocalOf { false }
 
+/**
+ * Renders every hover fill in the subtree as hovered (screenshot fixtures only): a real
+ * hover is a mouse or trackpad pointer over the component.
+ */
+internal val LocalRaftHoveredPreview = staticCompositionLocalOf { false }
+
 /** Pressed from [interactionSource], or forced by [LocalRaftPressedPreview]. */
 @Composable
 internal fun raftIsPressed(interactionSource: InteractionSource): Boolean {
     val pressed = interactionSource.collectIsPressedAsState().value
     return pressed || LocalRaftPressedPreview.current
+}
+
+/**
+ * Hovered from [interactionSource] (a mouse or trackpad pointer; `clickable` emits the
+ * hover interactions itself), or forced by [LocalRaftHoveredPreview]. Touch never hovers.
+ */
+@Composable
+internal fun raftIsHovered(interactionSource: InteractionSource): Boolean {
+    val hovered = interactionSource.collectIsHoveredAsState().value
+    return hovered || LocalRaftHoveredPreview.current
 }
 
 /**

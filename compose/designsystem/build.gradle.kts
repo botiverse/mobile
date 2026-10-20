@@ -34,6 +34,9 @@ kotlin {
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.ui)
+            // TooltipBox / PlainTooltip only (the icon button's long-press / hover label);
+            // everything else is drawn from raft-ui tokens, not Material.
+            implementation(compose.material3)
             implementation(compose.components.resources)
         }
         commonTest.dependencies {

@@ -11,11 +11,15 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.use
+import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCheckboxRow
+import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
@@ -72,6 +76,33 @@ class RaftInteractionTest {
             tap(scene, Offset(200f, 22f))
             scene.render(200_000_000L)
             assertEquals(false, checked)
+        }
+    }
+
+    /**
+     * A mouse over an icon button lays the press fill (`hover:bg-fill-pressed`) inside its
+     * radius; leaving takes it away. No ripple, so nothing else changes.
+     */
+    @Test
+    fun aMouseOverAnIconButtonDrawsThePressFill() {
+        val pressedFill = RaftUiThemeColors.RaftLight.fillPressed.compositeOver(canvas)
+        ImageComposeScene(width = 200, height = 120, density = Density(1f)) {
+            RaftTheme(appearance = RaftAppearance.Light, systemDark = false) {
+                Box(Modifier.background(RaftTheme.colors.layerCanvas).padding(20.dp)) {
+                    RaftIconButton(onClick = {}, tooltip = "Add Reaction", variant = RaftButtonVariant.Ghost) {}
+                }
+            }
+        }.use { scene ->
+            // The button spans 20..52; (36, 22) is inside its top edge, clear of the corners.
+            assertTrue(pixelIs(scene.render(), 36, 22, canvas), "no fill at rest")
+            scene.sendPointerEvent(PointerEventType.Move, Offset(36f, 36f), type = PointerType.Mouse)
+            val hovered = scene.render(100_000_000L)
+            assertTrue(pixelIs(hovered, 36, 22, pressedFill), "press fill while hovered")
+            assertTrue(pixelIs(hovered, 21, 21, canvas), "the fill keeps the control radius")
+            // Off the button and clear of its tooltip, which hover opens under it (room
+            // for it is left below, so it doesn't cover the button).
+            scene.sendPointerEvent(PointerEventType.Move, Offset(2f, 2f), type = PointerType.Mouse)
+            assertTrue(pixelIs(scene.render(200_000_000L), 36, 22, canvas), "no fill after the pointer leaves")
         }
     }
 
