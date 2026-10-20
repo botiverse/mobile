@@ -187,6 +187,21 @@ jobs:
           # parsing ambiguity when harvesting the simulator's CrashReporter later.
           touch "$GITHUB_WORKSPACE/qa-ips-marker"
 
+      # Link the Debug simulator framework once, as its own visible step; the
+      # build below skips the CocoaPods "Build shared" phase and lets the
+      # "Copy kmmresource MR bundle to app" phase reuse this link instead of
+      # relinking (see ios-simulator-app.yml / compose/shared/build.gradle.kts).
+      - name: Sync shared framework (simulator arm64, Debug)
+        working-directory: compose
+        run: |
+          ./gradlew :shared:syncFramework \
+            -Pkotlin.native.cocoapods.platform=iphonesimulator \
+            -Pkotlin.native.cocoapods.archs=arm64 \
+            -Pkotlin.native.cocoapods.configuration=Debug \
+            --no-daemon \
+            --console=plain \
+            --stacktrace
+
       # One build produces BOTH the app and the UITest runner (the test target
       # depends on the app), pinned to the booted udid.
       - name: Build for testing (app + loop harness)
@@ -200,7 +215,10 @@ jobs:
             -configuration Debug \
             -destination "platform=iOS Simulator,id=${UDID}" \
             -derivedDataPath build/DerivedData \
+            ARCHS=arm64 \
             CODE_SIGNING_ALLOWED=NO \
+            OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
+            RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES \
             build-for-testing > "$log" 2>&1
           status=$?
           tail -100 "$log"

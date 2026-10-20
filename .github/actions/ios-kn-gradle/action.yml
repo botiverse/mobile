@@ -3,13 +3,22 @@ description: >
   Shared Gradle settings for every hosted-macOS job that builds the shared iOS
   framework. Writes the user-home gradle.properties (which overrides
   compose/gradle.properties) so the framework sync step and the Gradle runs
-  Xcode's script phases start all use the same heap. Run it after
+  Xcode's script phases start all use the same heap, and restores/saves
+  ~/.konan (Kotlin/Native distribution + LLVM deps + debug stdlib/platform
+  caches), which setup-gradle does not cover. Run it after
   gradle/actions/setup-gradle and before the first ./gradlew call.
 inputs:
   heap:
     description: Gradle daemon -Xmx for the Kotlin/Native compile + link.
     required: false
     default: 6g
+  konan-cache-flavor:
+    description: >
+      Suffix of the ~/.konan cache key. Simulator Debug jobs share "sim-debug"
+      (their ~/.konan also holds the debug static caches); ios-release.yml keys
+      its release-only ~/.konan separately.
+    required: false
+    default: sim-debug
 runs:
   using: composite
   steps:
@@ -27,3 +36,23 @@ runs:
         mkdir -p "$(dirname "$props")"
         echo "org.gradle.jvmargs=-Xmx${KN_HEAP} -Xss4m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8" >> "$props"
         echo "== $props"; cat "$props"
+
+    # Without this every macOS job re-downloads the K/N LLVM/libffi deps and
+    # rebuilds the debug stdlib/platform caches, and a cold ~/.konan makes the
+    # first link's input snapshot differ from Xcode's MR-bundle phase, which
+    # then relinks (visual-testing.yml, ios-simulator-app run 39422105488).
+    - name: Resolve Kotlin version for the ~/.konan cache key
+      id: kotlin
+      shell: bash
+      run: |
+        set -euo pipefail
+        v="$(sed -n 's/^kotlin[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$GITHUB_WORKSPACE/compose/gradle/libs.versions.toml" | head -n 1)"
+        [ -n "$v" ] || { echo "::error::kotlin version not found in compose/gradle/libs.versions.toml"; exit 1; }
+        echo "version=$v" >> "$GITHUB_OUTPUT"
+        echo "Kotlin $v"
+
+    - name: Cache Kotlin/Native (~/.konan)
+      uses: actions/cache@v5
+      with:
+        path: ~/.konan
+        key: konan-v1-${{ runner.os }}-${{ runner.arch }}-kotlin-${{ steps.kotlin.outputs.version }}-${{ inputs.konan-cache-flavor }}

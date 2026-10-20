@@ -965,6 +965,9 @@ jobs:
       # [CP-User] Build shared script phase (which is also where tail-truncated
       # logs used to swallow the real linker error). xcodebuild then skips the
       # podspec script via OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES.
+      # Every xcodebuild below also passes RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES so
+      # the app's "Copy kmmresource MR bundle" phase reuses this link instead of
+      # relinking if Gradle sees it out of date (compose/shared/build.gradle.kts).
       - name: Sync shared framework (simulator arm64)
         working-directory: compose
         run: |
@@ -990,6 +993,7 @@ jobs:
             ARCHS=arm64 \
             CODE_SIGNING_ALLOWED=NO \
             OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
+            RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES \
             build > "$log" 2>&1
           status=$?
           tail -200 "$log"
@@ -1016,6 +1020,7 @@ jobs:
             -parallel-testing-enabled NO \
             ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
             OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
+            RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES \
             test > "$log" 2>&1 || { tail -200 "$log"; exit 1; }
           tail -60 "$log"
 
@@ -1037,6 +1042,7 @@ jobs:
             -parallel-testing-enabled NO \
             ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
             OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
+            RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES \
             test > "$log" 2>&1 || { tail -200 "$log"; exit 1; }
           tail -60 "$log"
 
@@ -1059,6 +1065,8 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/ios-build" \
             ARCHS=arm64 \
             CODE_SIGNING_ALLOWED=NO \
+            OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
+            RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES \
             build-for-testing > "$log" 2>&1
           status=$?
           tail -200 "$log"
