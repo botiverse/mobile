@@ -22848,6 +22848,14 @@ internal fun homeSearchHighlightedAnnotatedString(
     query: String
 ): AnnotatedString = raftSearchHitAnnotatedString(text, homeSearchHighlightRanges(text, query))
 
+/**
+ * The search hit spans of [query]'s whitespace-separated terms in [text], case-insensitive,
+ * longest term first, never overlapping, in text order. Ranges are indices into [text]
+ * itself: matching compares char by char (`regionMatches(ignoreCase = true)`) rather than
+ * searching `text.lowercase()`, whose length can differ from [text] ("İ" lowercases to two
+ * chars). Hits that touch ("foo" + "bar" in "foobar") merge into one span, so they draw as
+ * one sticker.
+ */
 internal fun homeSearchHighlightRanges(
     text: String,
     query: String
@@ -22863,24 +22871,41 @@ internal fun homeSearchHighlightRanges(
             .sortedByDescending { it.length }
     if (terms.isEmpty()) return emptyList()
 
-    val lowerText = text.lowercase()
     val occupied = BooleanArray(text.length)
     val ranges = mutableListOf<IntRange>()
     terms.forEach { term ->
-        val lowerTerm = term.lowercase()
-        var start = lowerText.indexOf(lowerTerm)
-        while (start >= 0) {
-            val endExclusive = start + lowerTerm.length
-            if (start < endExclusive && (start until endExclusive).none { occupied[it] }) {
+        var start = 0
+        while (start + term.length <= text.length) {
+            if (!text.regionMatches(start, term, 0, term.length, ignoreCase = true)) {
+                start++
+                continue
+            }
+            val endExclusive = start + term.length
+            if ((start until endExclusive).none { occupied[it] }) {
                 ranges += start until endExclusive
                 for (index in start until endExclusive) {
                     occupied[index] = true
                 }
             }
-            start = lowerText.indexOf(lowerTerm, startIndex = start + lowerTerm.length)
+            start = endExclusive
         }
     }
-    return ranges.sortedBy { it.first }
+    return mergeAbuttingHighlightRanges(ranges.sortedBy { it.first })
+}
+
+/** Joins sorted, non-overlapping ranges that touch (`a.last + 1 == b.first`). */
+private fun mergeAbuttingHighlightRanges(sorted: List<IntRange>): List<IntRange> {
+    if (sorted.size < 2) return sorted
+    val merged = mutableListOf(sorted.first())
+    for (range in sorted.drop(1)) {
+        val last = merged.last()
+        if (range.first <= last.last + 1) {
+            merged[merged.lastIndex] = last.first..maxOf(last.last, range.last)
+        } else {
+            merged += range
+        }
+    }
+    return merged
 }
 
 @Composable

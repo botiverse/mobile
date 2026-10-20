@@ -28,6 +28,33 @@ class SettingsHomeSearchHighlightTest {
     }
 
     @Test
+    fun highlightRangesIndexTheOriginalTextWhenLowercaseChangesLength() {
+        // "İ".lowercase() is two chars ("i" + combining dot), so ranges found in the lowercased
+        // copy would drift past the original text (and overrun it at the end).
+        val text = "İstanbul İzmir"
+        val ranges = homeSearchHighlightRanges(text = text, query = "izmir")
+
+        assertEquals(listOf(9 until 14), ranges)
+        assertEquals("İzmir", text.substring(ranges.single().first, ranges.single().last + 1))
+        assertEquals(listOf(0 until 1), homeSearchHighlightRanges(text = "İ", query = "i"))
+    }
+
+    @Test
+    fun highlightRangesMergeTouchingHitsIntoOneSticker() {
+        data class Case(val text: String, val query: String, val expected: List<IntRange>)
+        listOf(
+            // Two terms back to back inside one word: one sticker, not two overlapping ones.
+            Case("foobar baz", "foo bar", listOf(0 until 6)),
+            // Repeats of one term abut each other.
+            Case("abab", "ab", listOf(0 until 4)),
+            // A space between hits keeps them apart.
+            Case("foo bar", "foo bar", listOf(0 until 3, 4 until 7)),
+        ).forEach { case ->
+            assertEquals(case.expected, homeSearchHighlightRanges(case.text, case.query), "${case.text} / ${case.query}")
+        }
+    }
+
+    @Test
     fun highlightedAnnotatedStringKeepsOneTextNodeWithSearchHitRanges() {
         val annotated = homeSearchHighlightedAnnotatedString(
             text = "Find keyword here",
