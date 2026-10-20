@@ -1,0 +1,200 @@
+{
+  "version": 1,
+  "name": "Raft Visual Testing",
+  "generatedAt": "2026-10-20T07:39:09.321Z",
+  "latestRunId": "e09cd8139",
+  "latest": {
+    "runId": "e09cd8139",
+    "commit": "e09cd8139",
+    "commitSubject": "fix(ui): tab switch flicker, first-frame insets, Raft press treatment, switcher target, avatar tile (#3216)",
+    "generatedAt": "2026-10-20T07:39:09.321Z",
+    "baseline": "react",
+    "current": "android",
+    "summary": {
+      "total": 99,
+      "same": 0,
+      "pass": 0,
+      "basic-pass": 2,
+      "different": 83,
+      "missing": 14
+    },
+    "analysisSummary": {
+      "total": 99,
+      "ready": 0,
+      "pending": 99
+    },
+    "comparisons": [
+      "react__android"
+    ],
+    "componentMatrixSummary": {
+      "total": 128,
+      "active": 108,
+      "pending": 17,
+      "skipped": 3,
+      "captureTypes": {
+        "component-fixture": {
+          "total": 95,
+          "active": 90,
+          "pending": 3,
+          "skipped": 2
+        },
+        "real-screen": {
+          "total": 33,
+          "active": 18,
+          "pending": 14,
+          "skipped": 1
+        }
+      },
+      "providers": {
+        "react": {
+          "active": 97,
+          "pending": 13,
+          "unsupported": 0,
+          "total": 110
+        },
+        "android": {
+          "active": 89,
+          "pending": 19,
+          "unsupported": 0,
+          "total": 108
+        },
+        "harmony": {
+          "active": 0,
+          "pending": 82,
+          "unsupported": 0,
+          "total": 82
+        },
+        "ios": {
+          "active": 0,
+          "pending": 1,
+          "unsupported": 0,
+          "total": 1
+        }
+      }
+    },
+    "href": "runs/e09cd8139/",
+    "componentMatrix": "runs/e09cd8139/component-matrix.json",
+    "llms": "runs/e09cd8139/metadata.json"
+  },
+  "componentMatrixSummary": {
+    "total": 128,
+    "active": 108,
+    "pending": 17,
+    "skipped": 3,
+    "captureTypes": {
+      "component-fixture": {
+        "total": 95,
+        "active": 90,
+        "pending": 3,
+        "skipped": 2
+      },
+      "real-screen": {
+        "total": 33,
+        "active": 18,
+        "pending": 14,
+        "skipped": 1
+      }
+    },
+    "providers": {
+      "react": {
+        "active": 97,
+        "pending": 13,
+        "unsupported": 0,
+        "total": 110
+      },
+      "android": {
+        "active": 89,
+        "pending": 19,
+        "unsupported": 0,
+        "total": 108
+      },
+      "harmony": {
+        "active": 0,
+        "pending": 82,
+        "unsupported": 0,
+        "total": 82
+      },
+      "ios": {
+        "active": 0,
+        "pending": 1,
+        "unsupported": 0,
+        "total": 1
+      }
+    }
+  },
+  "runs": [
+    {
+      "runId": "e09cd8139",
+      "commit": "e09cd8139",
+      "commitSubject": "fix(ui): tab switch flicker, first-frame insets, Raft press treatment, switcher target, avatar tile (#3216)",
+      "generatedAt": "2026-10-20T07:39:09.321Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 99,
+        "same": 0,
+        "pass": 0,
+        "basic-pass": 2,
+        "different": 83,
+        "missing": 14
+      },
+      "analysisSummary": {
+        "total": 99,
+        "ready": 0,
+        "pending": 99
+      },
+      "comparisons": [
+        "react__android"
+      ],
+      "componentMatrixSummary": {
+        "total": 128,
+        "active": 108,
+        "pending": 17,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 95,
+            "active": 90,
+            "pending": 3,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 33,
+            "active": 18,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 97,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 110
+          },
+          "android": {
+            "active": 89,
+            "pending": 19,
+            "unsupported": 0,
+            "total": 108
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 82,
+            "unsupported": 0,
+            "total": 82
+          },
+          "ios": {
+            "active": 0,
+            "pending": 1,
+            "unsupported": 0,
+            "total": 1
+          }
+        }
+      },
+      "href": "runs/e09cd8139/",
+      "componentMatrix": "runs/e09cd8139/component-matrix.json",
+      "llms": "runs/e09cd8139/metadata.json"
+    }
+  ]
+}

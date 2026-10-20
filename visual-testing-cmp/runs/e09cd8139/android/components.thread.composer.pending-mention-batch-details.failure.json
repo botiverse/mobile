@@ -1,0 +1,19 @@
+{
+  "provider": "android",
+  "providerType": "android-kuikly-shared-page",
+  "source": "kmp-shared",
+  "caseId": "components.thread.composer.pending-mention-batch-details",
+  "status": "failed",
+  "failurePath": "exception-or-timeout",
+  "error": {
+    "type": "java.lang.IllegalArgumentException",
+    "message": "Pending mention View action is not visible; activeWindowPackage=build.raft.app.connectedtest windows=0 texts=3 pending mention targets | +1 | 3 people aren’t in this channel | @Alex · @Bryn · +1 | Add all | View | Message design | Add image | Take photo | Attach file | As Task | Send"
+  },
+  "diagnostics": {
+    "displayWidthPx": 1170,
+    "displayHeightPx": 2342,
+    "densityDpi": 480,
+    "note": "view-tree diagnostics skipped on the exception/timeout path (main thread may be blocked)"
+  },
+  "capturedAt": "1792479353052"
+}
