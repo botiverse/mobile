@@ -645,7 +645,7 @@ private fun RaftBrutalInputFieldFrame(
                 .fillMaxWidth()
                 .height(fieldMinHeight)
                 .background(raftSurfaceColor, shape)
-                .border(RaftAppStroke.Control, raftBorderColor, shape)
+                .border(RaftAppStroke.Field, raftBorderColor, shape)
                 .then(tapModifier)
                 .padding(horizontal = horizontalPadding, vertical = verticalPadding),
         contentAlignment = contentAlignment,
@@ -705,7 +705,8 @@ internal fun RaftBrutalInputField(
         }
     val resolvedHorizontalPadding =
         if (horizontalPadding == RaftBrutalInputLegacyHorizontalPadding) {
-            RaftMetrics.FieldPaddingHorizontal
+            // `px-3` inside the 1px field frame.
+            RaftMetrics.FieldPaddingHorizontal + RaftAppStroke.Field
         } else {
             horizontalPadding
         }
@@ -834,7 +835,8 @@ internal fun RaftBrutalInputField(
         }
     val resolvedHorizontalPadding =
         if (horizontalPadding == RaftBrutalInputLegacyHorizontalPadding) {
-            RaftMetrics.FieldPaddingHorizontal
+            // `px-3` inside the 1px field frame.
+            RaftMetrics.FieldPaddingHorizontal + RaftAppStroke.Field
         } else {
             horizontalPadding
         }

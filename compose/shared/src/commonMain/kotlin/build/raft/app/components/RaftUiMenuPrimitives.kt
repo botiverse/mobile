@@ -397,6 +397,9 @@ internal fun RaftLookSelectTrigger(
     enabled: Boolean,
     expanded: Boolean,
     height: Dp,
+    // raft-ui Select `chrome="field"`: in a form beside inputs, the value takes the
+    // field type (`text-field` 16/24 regular) so it matches the inputs.
+    fieldChrome: Boolean = false,
     onClick: () -> Unit
 ) {
     val shape = RoundedCornerShape(RaftAppRadius.Control)
@@ -412,18 +415,22 @@ internal fun RaftLookSelectTrigger(
                 .fillMaxWidth()
                 .height(height)
                 .background(if (enabled) RaftColor.Card else RaftColor.FillMuted, shape)
-                .border(RaftAppStroke.Control, if (enabled) RaftColor.LineField else RaftColor.BorderHairline, shape)
+                .border(RaftAppStroke.Field, if (enabled) RaftColor.LineField else RaftColor.BorderHairline, shape)
                 .clickable(enabled = enabled) { onClick() }
-                .padding(start = 14.dp, end = 12.dp),
+                .padding(start = if (fieldChrome) 13.dp else 14.dp, end = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = label.ifBlank { "Select..." },
             style =
-                RaftType.Body
-                    .copy(fontSize = 15.sp, lineHeight = 20.sp, color = ink)
-                    .withRaftFontWeight(if (placeholder) FontWeight.Medium else FontWeight.SemiBold),
+                if (fieldChrome) {
+                    RaftType.Input.copy(fontSize = 16.sp, lineHeight = 24.sp, color = ink)
+                } else {
+                    RaftType.Body
+                        .copy(fontSize = 15.sp, lineHeight = 20.sp, color = ink)
+                        .withRaftFontWeight(if (placeholder) FontWeight.Medium else FontWeight.SemiBold)
+                },
             color = ink,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

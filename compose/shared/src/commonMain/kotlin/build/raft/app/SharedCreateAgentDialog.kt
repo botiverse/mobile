@@ -1,5 +1,20 @@
 package build.raft.app
 
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.layout.height
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.app.components.RaftBrutalInputField
+import build.raft.app.components.RaftLookFieldLabel
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.ui.layout.layout
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.RaftBrutalSelectField
@@ -1312,7 +1327,8 @@ internal fun SharedCreateAgentDialog(
         dismissEnabled = !submitting,
         onDismiss = onDismiss,
         keyboardAvoidanceEnabled = true,
-        hostRoute = SharedCreateAgentDialogHostRoute
+        hostRoute = SharedCreateAgentDialogHostRoute,
+        overlayScroll = true
     ) {
         // #55 visual parity fix: the dialog body used to be capped at
         // `CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT = 430.dp` with Cancel/Create
@@ -1331,12 +1347,12 @@ internal fun SharedCreateAgentDialog(
         // `CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT` is left in place as a
         // reference value (kept for any future caller that wants the legacy
         // cap); the dialog itself no longer reads it.
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-            // React's normal dialog form uses space-y-4. Keep each field
-            // group at the same 16dp rhythm; field-internal helper/count
-            // spacing stays inside the group below.
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+        // Web CreateAgentDialog: a plain `stack-y-1` form (4dp between fields; every field
+        // reserves its own 16dp message row) whose action row is the form's last child. The
+        // dialog keeps its natural height and the backdrop scrolls (overlayScroll).
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
                 draftHint?.takeIf { it.isNotBlank() }?.let { hint ->
                     item(key = "draft-hint") {
@@ -1418,62 +1434,52 @@ internal fun SharedCreateAgentDialog(
                     }
                 }
                 item(key = "name") {
-                    RaftBrutalTextField(
+                    CreateAgentStableField(
                         label = stringResource(MR.strings.agent_create_label_name),
                         required = true,
-                        value = name,
-                        onValueChange = { name = it },
-                        placeholder = stringResource(MR.strings.agent_create_placeholder_name),
-                        enabled = !submitting,
-                        autoFocus = true,
+                        error = inlineNameError?.let { localizedInlineNameError ?: it },
                         labelAccessory = {
                             CreateAgentRandomNameButton(
                                 enabled = !submitting,
                                 onClick = { name = suggestAgentName(listOf(name) + takenAgentNames) }
                             )
                         }
-                    )
-                }
-                if (inlineNameError != null) {
-                    item(key = "name-error") {
-                        Text(
-                            text = localizedInlineNameError ?: inlineNameError,
-                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
-                            color = RaftColor.AccentRed
+                    ) {
+                        RaftBrutalInputField(
+                            value = name,
+                            onValueChange = { name = it },
+                            placeholder = stringResource(MR.strings.agent_create_placeholder_name),
+                            enabled = !submitting,
+                            autoFocus = true,
+                            borderColor = if (inlineNameError != null) RaftColor.AccentRed else RaftColor.BorderBlack
                         )
                     }
                 }
                 item(key = "description") {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        RaftBrutalTextField(
-                            label = stringResource(MR.strings.agent_create_label_description),
-                            optional = true,
+                    // Web: a plain "Description" label (no optional suffix); the counter
+                    // rides in the field's message row.
+                    CreateAgentStableField(
+                        label = stringResource(MR.strings.agent_create_label_description),
+                        error =
+                            if (descriptionTooLong) {
+                                MR.strings.agent_create_error_description_length
+                                    .format(listOf(CREATE_AGENT_DESCRIPTION_MAX_LENGTH))
+                                    .localized()
+                            } else {
+                                null
+                            },
+                        counter = "${description.text.length}/$CREATE_AGENT_DESCRIPTION_MAX_LENGTH".takeIf { !descriptionTooLong }
+                    ) {
+                        RaftBrutalInputField(
                             value = description,
                             onValueChange = { description = it.coerceTextLength(CREATE_AGENT_DESCRIPTION_MAX_LENGTH) },
                             placeholder = stringResource(MR.strings.agent_create_placeholder_description),
                             enabled = !submitting,
                             maxLines = 3,
-                            fieldMinHeight = 82.dp
+                            // `<Textarea rows={3}>`: three 24dp lines, py-2.5 and the 1dp frame.
+                            fieldMinHeight = 96.dp,
+                            verticalPadding = 11.dp
                         )
-                        if (descriptionTooLong) {
-                            Text(
-                                text =
-                                    MR.strings.agent_create_error_description_length
-                                        .format(listOf(CREATE_AGENT_DESCRIPTION_MAX_LENGTH))
-                                        .localized(),
-                                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
-                                color = RaftColor.AccentRed
-                            )
-                        } else {
-                            Row(modifier = Modifier.fillMaxWidth()) {
-                                Spacer(Modifier.weight(1f))
-                                Text(
-                                    text = "${description.text.length}/$CREATE_AGENT_DESCRIPTION_MAX_LENGTH",
-                                    style = RaftType.Caption,
-                                    color = RaftColor.TextMutedGray
-                                )
-                            }
-                        }
                     }
                 }
                 val v2FailureCode = (v2Load as? RuntimeFormV2DialogLoad.Failed)?.code
@@ -1716,73 +1722,74 @@ internal fun SharedCreateAgentDialog(
                         }
                     }
                 }
-            }
-            RaftDialogFooter {
-                RaftBrutalActionButton(
-                    label = stringResource(MR.strings.common_cancel),
-                    enabled = !submitting,
-                    backgroundColor = RaftColor.SurfaceWhite,
-                    onClick = onDismiss
-                )
-                RaftBrutalActionButton(
-                    label =
-                        if (submitting) {
-                            stringResource(MR.strings.agent_create_action_creating)
-                        } else {
-                            stringResource(MR.strings.agent_create_action_create)
-                        },
-                    enabled = canSubmit,
-                    minWidth = 126.dp,
-                    backgroundColor = RaftColor.AccentPink,
-                    onClick = {
-                        val v2Submit = (v2Form ?: v2Loaded)?.takeIf { v2Active }?.let { loaded ->
-                            SharedCreateAgentDialogSubmit(
-                                name = trimmedName.removePrefix("@"),
-                                description = description.text.trim().takeIf { it.isNotBlank() },
-                                machineId = requiredComputer?.takeIf { it.isNotBlank() } ?: selectedMachineId,
-                                runtimeFormV2 = RuntimeFormV2SubmitBody(
-                                    runtimeId = loaded.form.runtimeId.ifBlank { runtime },
-                                    formValues = runtimeFormV2Submission(loaded.form, v2Values, loaded.sources)
+                CreateAgentFormActions {
+                    RaftButton(
+                        text = stringResource(MR.strings.common_cancel),
+                        enabled = !submitting,
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftButtonSize.Lg,
+                        onClick = onDismiss
+                    )
+                    RaftButton(
+                        text =
+                            if (submitting) {
+                                stringResource(MR.strings.agent_create_action_creating)
+                            } else {
+                                stringResource(MR.strings.agent_create_action_create)
+                            },
+                        enabled = canSubmit,
+                        variant = RaftButtonVariant.Primary,
+                        size = RaftButtonSize.Lg,
+                        onClick = {
+                            val v2Submit = (v2Form ?: v2Loaded)?.takeIf { v2Active }?.let { loaded ->
+                                SharedCreateAgentDialogSubmit(
+                                    name = trimmedName.removePrefix("@"),
+                                    description = description.text.trim().takeIf { it.isNotBlank() },
+                                    machineId = requiredComputer?.takeIf { it.isNotBlank() } ?: selectedMachineId,
+                                    runtimeFormV2 = RuntimeFormV2SubmitBody(
+                                        runtimeId = loaded.form.runtimeId.ifBlank { runtime },
+                                        formValues = runtimeFormV2Submission(loaded.form, v2Values, loaded.sources)
+                                    )
+                                )
+                            }
+                            if (v2Submit != null) {
+                                onSubmit(v2Submit)
+                                return@RaftButton
+                            }
+                            onSubmit(
+                                buildSharedCreateAgentDialogSubmit(
+                                    name = trimmedName,
+                                    description = description.text,
+                                    selectedMachineId = selectedMachineId,
+                                    requiredComputer = requiredComputer,
+                                    external = external,
+                                    runtime = runtime,
+                                    model = model,
+                                    customModelMode = customModelMode,
+                                    customModelName = customModelName,
+                                    providerMode = providerMode,
+                                    providerApiUrl = providerApiUrl,
+                                    providerApiKey = providerApiKey,
+                                    piProviderId = piProviderId,
+                                    piProviderApiKey = piProviderApiKey,
+                                    fastMode = fastMode,
+                                    reasoningEffort = reasoningEffort,
+                                    envVarEntries = envVarEntries,
+                                    command = command,
+                                    builtInForm = builtInForm,
+                                    builtInProviderId = builtInProviderId,
+                                    builtInApiKey = effectiveBuiltInApiKey,
+                                    builtInBaseUrl = builtInBaseUrl,
+                                    builtInSupportsImageInput = builtInSupportsImageInput,
+                                    builtInLoadLocalPlugins = builtInLoadLocalPlugins,
+                                    builtInModel = builtInModel,
+                                    runtimeModelsOverride = runtimeModelsOverride,
+                                    kimiSdkForm = resolvedKimiSdkForm
                                 )
                             )
                         }
-                        if (v2Submit != null) {
-                            onSubmit(v2Submit)
-                            return@RaftBrutalActionButton
-                        }
-                        onSubmit(
-                            buildSharedCreateAgentDialogSubmit(
-                                name = trimmedName,
-                                description = description.text,
-                                selectedMachineId = selectedMachineId,
-                                requiredComputer = requiredComputer,
-                                external = external,
-                                runtime = runtime,
-                                model = model,
-                                customModelMode = customModelMode,
-                                customModelName = customModelName,
-                                providerMode = providerMode,
-                                providerApiUrl = providerApiUrl,
-                                providerApiKey = providerApiKey,
-                                piProviderId = piProviderId,
-                                piProviderApiKey = piProviderApiKey,
-                                fastMode = fastMode,
-                                reasoningEffort = reasoningEffort,
-                                envVarEntries = envVarEntries,
-                                command = command,
-                                builtInForm = builtInForm,
-                                builtInProviderId = builtInProviderId,
-                                builtInApiKey = effectiveBuiltInApiKey,
-                                builtInBaseUrl = builtInBaseUrl,
-                                builtInSupportsImageInput = builtInSupportsImageInput,
-                                builtInLoadLocalPlugins = builtInLoadLocalPlugins,
-                                builtInModel = builtInModel,
-                                runtimeModelsOverride = runtimeModelsOverride,
-                                kimiSdkForm = resolvedKimiSdkForm
-                            )
-                        )
-                    }
-                )
+                    )
+                }
             }
         }
     }
@@ -1808,6 +1815,96 @@ private fun onDismissOnce() {
     // intentionally empty
 }
 
+/** The create-agent form's rows were lazy items; the form is now a plain column (see overlayScroll). */
+@Composable
+private fun ColumnScope.item(key: Any, content: @Composable () -> Unit) {
+    key(key) { content() }
+}
+
+/** Web CreateAgentDialog action row: the form's last child, right-aligned, `gap-2`. */
+@Composable
+private fun CreateAgentFormActions(content: @Composable RowScope.() -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content
+    )
+}
+
+/**
+ * Web `StableField` (create-agent form): the label (13/18 semibold; a label action such as
+ * the dice or refresh button is a 32dp ghost icon button pulled to the label's 18dp line),
+ * 6dp, the control, 6dp, then a message row that is always reserved (16dp) so the form does
+ * not jump when a hint, an error or the counter appears.
+ */
+@Composable
+internal fun CreateAgentStableField(
+    label: String,
+    required: Boolean = false,
+    optional: Boolean = false,
+    hint: String? = null,
+    error: String? = null,
+    counter: String? = null,
+    labelAccessory: (@Composable () -> Unit)? = null,
+    control: @Composable () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            RaftLookFieldLabel(
+                label = label,
+                required = required,
+                optional = optional,
+                compact = false,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            if (labelAccessory != null) {
+                Spacer(Modifier.weight(1f))
+                Box(
+                    modifier =
+                        Modifier.layout { measurable, constraints ->
+                            // `-my-[7px]`: the 32dp button keeps the row at the label's 18dp.
+                            val bleed = 7.dp.roundToPx()
+                            val placeable = measurable.measure(constraints)
+                            layout(placeable.width, (placeable.height - bleed * 2).coerceAtLeast(0)) {
+                                placeable.place(0, -bleed)
+                            }
+                        }
+                ) { labelAccessory() }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        control()
+        Spacer(Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            val message = error ?: hint
+            Box(modifier = Modifier.weight(1f)) {
+                if (message != null) {
+                    Text(
+                        text = message,
+                        style =
+                            RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
+                                .withRaftFontWeight(if (error != null) FontWeight.SemiBold else FontWeight.Medium),
+                        color = if (error != null) RaftColor.DangerStrong else RaftColor.ForegroundHint
+                    )
+                }
+            }
+            if (counter != null) {
+                Text(
+                    text = counter,
+                    style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Normal),
+                    color = RaftColor.ForegroundHint,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int, planLabel: String?) {
     if (planLabel.isNullOrBlank()) {
@@ -1827,27 +1924,20 @@ private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int, planLabel: S
             .format(listOf(currentAgentCount, maxAgents, planLabel))
             .localized()
     val action = stringResource(MR.strings.agent_create_action_upgrade_for_more)
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(RaftUiBannerStatus.Warning.background)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                .padding(RaftUiBannerSize.Medium.padding)
-    ) {
-        Text(
-            text =
-                buildAnnotatedString {
-                    append(summary)
-                    append(" ")
-                    pushStyle(SpanStyle(textDecoration = TextDecoration.Underline))
-                    append(action)
-                    pop()
-                },
-            style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
-            color = RaftColor.TextBlack
-        )
-    }
+    // Web: `<Banner status="warning">` (soft tint, hairline ring, no icon) whose upgrade
+    // action is a strong TextLink inside the sentence.
+    RaftBanner(
+        description =
+            buildAnnotatedString {
+                append(summary)
+                append(" ")
+                pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
+                append(action)
+                pop()
+            },
+        status = RaftBannerStatus.Warning,
+        showIcon = false
+    )
 }
 
 @Composable
@@ -1862,8 +1952,19 @@ private fun MachinePicker(
     enabled: Boolean,
     onSelect: (String) -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_computer), required = true)
+    val computerHint =
+        if (!requiredComputer.isNullOrBlank()) {
+            MR.strings.agent_create_hint_required_computer.format(listOf(requiredComputer)).localized()
+        } else if (!suggestedComputer.isNullOrBlank()) {
+            MR.strings.agent_create_hint_suggested_computer.format(listOf(suggestedComputer)).localized()
+        } else {
+            null
+        }
+    CreateAgentStableField(
+        label = stringResource(MR.strings.agent_create_label_computer),
+        required = true,
+        hint = computerHint
+    ) {
         when {
             machinesLoading -> Text(
                 text = stringResource(MR.strings.agent_create_state_computers_loading),
@@ -1925,22 +2026,11 @@ private fun MachinePicker(
                     placeholder = stringResource(MR.strings.agent_create_placeholder_select_computer),
                     enabled = enabled,
                     rowHeight = 40.dp,
+                    triggerHeight = 44.dp,
+                    fieldChrome = true,
                     onSelect = { item -> onSelect(item.id) }
                 )
             }
-        }
-        if (!requiredComputer.isNullOrBlank()) {
-            Text(
-                text = MR.strings.agent_create_hint_required_computer.format(listOf(requiredComputer)).localized(),
-                style = RaftType.Caption,
-                color = RaftColor.TextMutedGray
-            )
-        } else if (!suggestedComputer.isNullOrBlank()) {
-            Text(
-                text = MR.strings.agent_create_hint_suggested_computer.format(listOf(suggestedComputer)).localized(),
-                style = RaftType.Caption,
-                color = RaftColor.TextMutedGray
-            )
         }
     }
 }
@@ -2214,8 +2304,19 @@ internal fun AdvancedRuntimeSection(
     val providerKeyInvalid = providerUrlRequired && providerApiKey.text.isBlank()
     val focusManager = LocalFocusManager.current
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_runtime))
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        CreateAgentStableField(
+            label = stringResource(MR.strings.agent_create_label_runtime),
+            required = true,
+            error =
+                runtimeAvailabilityError?.let { error ->
+                    if (error == CREATE_AGENT_NO_MACHINE_RUNTIMES_ERROR) {
+                        stringResource(MR.strings.agent_create_error_no_machine_runtimes)
+                    } else {
+                        error
+                    }
+                }
+        ) {
         RaftBrutalSelectField(
             options = runtimeOptions.toBrutalSelectOptions(),
             selectedId = runtime,
@@ -2226,31 +2327,25 @@ internal fun AdvancedRuntimeSection(
             placeholder = stringResource(MR.strings.agent_create_placeholder_select_runtime),
             enabled = runtimeEnabled,
             rowHeight = 36.dp,
+            triggerHeight = 44.dp,
+            fieldChrome = true,
             onSelect = { option ->
                 focusManager.clearFocus(force = true)
                 onRuntimeChange(option.id)
             }
         )
-        runtimeAvailabilityError?.let { error ->
-            Text(
-                text =
-                    if (error == CREATE_AGENT_NO_MACHINE_RUNTIMES_ERROR) {
-                        stringResource(MR.strings.agent_create_error_no_machine_runtimes)
-                    } else {
-                        error
-                    },
-                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
-                color = RaftColor.AccentRed
-            )
         }
         if (runtimeAvailabilityError == null) {
         if (supportsRuntimeApiUrl(runtime)) {
-            RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_provider), required = false)
             val providerOptions =
                 createAgentProviderDropdownItems(
                     defaultLabel = stringResource(MR.strings.agent_create_action_default),
                     customLabel = stringResource(MR.strings.agent_create_label_custom)
                 )
+            CreateAgentStableField(
+                label = stringResource(MR.strings.agent_create_label_provider),
+                hint = stringResource(MR.strings.agent_create_hint_provider)
+            ) {
             RaftBrutalSelectField(
                 options = providerOptions.toBrutalSelectOptions(),
                 selectedId = providerMode,
@@ -2260,6 +2355,8 @@ internal fun AdvancedRuntimeSection(
                 placeholder = stringResource(MR.strings.agent_create_placeholder_select_provider),
                 enabled = enabled,
                 rowHeight = 36.dp,
+                triggerHeight = 44.dp,
+                fieldChrome = true,
                 onSelect = { option ->
                     focusManager.clearFocus(force = true)
                     onProviderModeChange(option.id)
@@ -2269,43 +2366,38 @@ internal fun AdvancedRuntimeSection(
                     }
                 }
             )
-            Text(
-                text = stringResource(MR.strings.agent_create_hint_provider),
-                style = RaftType.Caption,
-                color = RaftColor.TextMutedGray
-            )
+            }
             if (providerMode == RUNTIME_PROVIDER_MODE_CUSTOM) {
-                RaftBrutalTextField(
+                val apiUrlError = stringResource(MR.strings.agent_create_error_provider_url)
+                    .takeIf { providerApiUrl.isNotBlank() && providerUrlInvalid }
+                CreateAgentStableField(
                     label = stringResource(MR.strings.agent_create_label_api_url),
                     required = true,
-                    value = providerApiUrl,
-                    onValueChange = { onProviderApiUrlChange(it) },
-                    placeholder = "https://gateway.example.com",
-                    enabled = enabled
-                )
-                if (providerApiUrl.isNotBlank() && providerUrlInvalid) {
-                    Text(
-                        text = stringResource(MR.strings.agent_create_error_provider_url),
-                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
-                        color = RaftColor.AccentRed
+                    error = apiUrlError
+                ) {
+                    RaftBrutalInputField(
+                        value = providerApiUrl,
+                        onValueChange = { onProviderApiUrlChange(it) },
+                        placeholder = "https://gateway.example.com",
+                        enabled = enabled,
+                        borderColor = if (apiUrlError != null) RaftColor.AccentRed else RaftColor.BorderBlack
                     )
                 }
-                RaftBrutalTextField(
+                val apiKeyError = stringResource(MR.strings.agent_create_error_provider_key).takeIf { providerKeyInvalid }
+                CreateAgentStableField(
                     label = stringResource(MR.strings.agent_create_label_api_key),
                     required = true,
-                    value = providerApiKey,
-                    // Keep the exact native TextFieldValue while masking only its presentation.
-                    // Product state reads `.text` at the submit boundary; bullets never enter it.
-                    password = true,
-                    onValueChange = { onProviderApiKeyChange(it) },
-                    placeholder = "sk-ant-...",
-                    enabled = enabled
-                )
-                if (providerKeyInvalid) {
-                    Text(
-                        text = stringResource(MR.strings.agent_create_error_provider_key),
-                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
-                        color = RaftColor.AccentRed
+                    error = apiKeyError
+                ) {
+                    RaftBrutalTextFieldControl(
+                        value = providerApiKey,
+                        // Keep the exact native TextFieldValue while masking only its presentation.
+                        // Product state reads `.text` at the submit boundary; bullets never enter it.
+                        password = true,
+                        onValueChange = { onProviderApiKeyChange(it) },
+                        placeholder = "sk-ant-...",
+                        enabled = enabled,
+                        invalid = apiKeyError != null
                     )
                 }
             }
@@ -2346,15 +2438,18 @@ internal fun AdvancedRuntimeSection(
                 )
             }
         }
-        CreateAgentSectionLabelWithAction(
-            label = stringResource(MR.strings.agent_create_label_model),
-            required = false,
-            actionIcon = RaftLucideIconName.RefreshCw,
-            actionEnabled = enabled && !runtimeModelsLoading,
-            loading = runtimeModelsLoading,
-            onAction = onRuntimeModelsRefresh
-        )
         val modelSelectItems = modelOptions.map { CreateAgentDropdownItem(id = it.id, label = it.label, custom = it.custom) }
+        CreateAgentStableField(
+            label = stringResource(MR.strings.agent_create_label_model),
+            labelAccessory = {
+                CreateAgentLabelActionButton(
+                    icon = RaftLucideIconName.RefreshCw,
+                    enabled = enabled && !runtimeModelsLoading,
+                    loading = runtimeModelsLoading,
+                    onClick = onRuntimeModelsRefresh
+                )
+            }
+        ) {
         RaftBrutalSelectField(
             options = modelSelectItems.toBrutalSelectOptions(),
             selectedId = if (customModelMode) CREATE_AGENT_CUSTOM_MODEL_ID else model,
@@ -2369,6 +2464,8 @@ internal fun AdvancedRuntimeSection(
             placeholder = stringResource(MR.strings.agent_create_placeholder_select_model),
             enabled = enabled,
             rowHeight = 36.dp,
+            triggerHeight = 44.dp,
+            fieldChrome = true,
             onSelect = { item ->
                 if (item.id == CREATE_AGENT_CUSTOM_MODEL_ID) {
                     focusManager.clearFocus(force = true)
@@ -2389,6 +2486,7 @@ internal fun AdvancedRuntimeSection(
                 }
             }
         )
+        }
         key(customModelMode) {
             if (customModelMode) {
                 RaftBrutalTextField(
@@ -2411,7 +2509,6 @@ internal fun AdvancedRuntimeSection(
         if (supportsRuntimeReasoningEffort(runtime)) {
             val reasoningModel =
                 if (customModelMode) customModelName.trim() else model
-            RaftBrutalSectionLabel(label = stringResource(MR.strings.agent_create_label_reasoning))
             val reasoningOptions =
                 createAgentReasoningDropdownItems(
                     defaultLabel = stringResource(MR.strings.agent_create_action_default),
@@ -2420,6 +2517,7 @@ internal fun AdvancedRuntimeSection(
                     runtimeModelsOverride = runtimeModelsOverride
                 )
             val reasoningSelectedId = reasoningEffort ?: CREATE_AGENT_DEFAULT_REASONING_ID
+            CreateAgentStableField(label = stringResource(MR.strings.agent_create_label_reasoning)) {
             RaftBrutalSelectField(
                 options = reasoningOptions.toBrutalSelectOptions(),
                 selectedId = reasoningSelectedId,
@@ -2429,6 +2527,8 @@ internal fun AdvancedRuntimeSection(
                 placeholder = stringResource(MR.strings.agent_create_action_default),
                 enabled = enabled,
                 rowHeight = 36.dp,
+                triggerHeight = 44.dp,
+                fieldChrome = true,
                 onSelect = { option ->
                     focusManager.clearFocus(force = true)
                     onReasoningEffortChange(
@@ -2436,6 +2536,7 @@ internal fun AdvancedRuntimeSection(
                     )
                 }
             )
+            }
         }
         // kimi-sdk (task #275): separate gate — live catalog + resolved form ref only,
         // never the static REASONING_EFFORT_RUNTIMES/BASE fallbacks above.
@@ -2604,9 +2705,55 @@ private fun CreateAgentRandomNameButton(
         disabledShadowColor = Color.Transparent,
         iconColor = RaftColor.TextBlackArgb,
         disabledIconColor = RaftColor.TextMutedGrayArgb,
-        size = 22.dp,
+        // Web: ghost `icon-sm` (32dp) with a 12px Dices glyph.
+        size = 32.dp,
         shadowOffset = 0.dp,
-        iconSize = 13.dp
+        iconSize = 12.dp
+    )
+}
+
+/** A field label action (Model refresh): ghost 32dp icon button, 12dp glyph, a spinner while busy. */
+@Composable
+private fun CreateAgentLabelActionButton(
+    icon: RaftLucideIconName,
+    enabled: Boolean,
+    loading: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier.size(32.dp).clickable(enabled = enabled) { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        if (loading) {
+            RaftCreateAgentSpinnerIcon()
+        } else {
+            RaftLucideIcon(
+                icon,
+                modifier = Modifier.size(12.dp),
+                color = if (enabled) RaftColor.TextBlackArgb else RaftColor.TextMutedGrayArgb
+            )
+        }
+    }
+}
+
+/** A masked text control (API keys) at the field look, for a [CreateAgentStableField]. */
+@Composable
+private fun RaftBrutalTextFieldControl(
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    placeholder: String,
+    enabled: Boolean,
+    password: Boolean,
+    invalid: Boolean
+) {
+    RaftBrutalInputField(
+        value = value,
+        onValueChange = onValueChange,
+        placeholder = placeholder,
+        enabled = enabled,
+        borderColor = if (invalid) RaftColor.AccentRed else RaftColor.BorderBlack,
+        visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
+        keyboardOptions = if (password) KeyboardOptions(keyboardType = KeyboardType.Password) else KeyboardOptions.Default
     )
 }
 

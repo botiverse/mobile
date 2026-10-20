@@ -156,6 +156,8 @@ internal object RaftAppStroke {
     val Control = 1.5.dp
     val Default = Control
     val Strong = 2.dp
+    // raft-ui 0.10.0: field frames (Input, Textarea, Select) are drawn at 1px in `line-field`.
+    val Field = 1.dp
 }
 
 // raft-ui 0.6.0 radii (styles.css --radius-*).

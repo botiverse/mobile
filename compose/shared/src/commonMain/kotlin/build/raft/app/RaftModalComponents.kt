@@ -28,6 +28,9 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -48,6 +51,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -390,6 +394,11 @@ internal fun RaftUnifiedDialog(
     contentSpacing: Dp = 16.dp,
     keyboardAvoidanceEnabled: Boolean = false,
     hostRoute: String = RaftUnifiedDialogGenericHostRoute,
+    // Web `Modal` + DialogCard: the dialog keeps its natural height and the backdrop
+    // scrolls when it is taller than the window (`fixed inset-0 overflow-y-auto`, the card
+    // `m-auto` in a `min-h-full p-4` box). The body must then not scroll itself: pass
+    // plain (non-lazy) content.
+    overlayScroll: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
     // raft-ui dialog titles keep the source case (never ALL CAPS).
@@ -420,6 +429,7 @@ internal fun RaftUnifiedDialog(
                 titleMaxLines = titleMaxLines,
                 contentSpacing = contentSpacing,
                 keyboardAvoidanceEnabled = keyboardAvoidanceEnabled,
+                overlayScroll = overlayScroll,
                 topInset = topInset,
                 hostBottomInset = raftUnifiedDialogHostBottomInset(0.dp, bottomSafeArea),
                 handleBack = false,
@@ -454,6 +464,7 @@ internal fun RaftUnifiedDialog(
                     titleMaxLines = titleMaxLines,
                     contentSpacing = contentSpacing,
                     keyboardAvoidanceEnabled = keyboardAvoidanceEnabled,
+                    overlayScroll = overlayScroll,
                     topInset = topInset,
                     hostBottomInset =
                         raftUnifiedDialogHostBottomInset(
@@ -516,6 +527,7 @@ private fun RaftUnifiedDialogSurface(
     titleMaxLines: Int,
     contentSpacing: Dp,
     keyboardAvoidanceEnabled: Boolean,
+    overlayScroll: Boolean,
     topInset: Dp,
     hostBottomInset: Dp,
     handleBack: Boolean,
@@ -543,17 +555,7 @@ private fun RaftUnifiedDialogSurface(
     val resolvedContentPadding = if (contentPadding == RaftUnifiedDialogLegacyPadding) 20.dp else contentPadding
     val resolvedHeaderPadding = if (headerPadding == RaftUnifiedDialogLegacyPadding) 20.dp else headerPadding
     val raftDefaultTitle = titleFontSize == RaftUnifiedDialogLegacyTitleSize
-    Box(
-        modifier =
-            Modifier
-                .fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        RaftModalDismissBarrier(
-            overlayAlpha = overlayAlpha,
-            onDismiss = onDismiss,
-            dismissEnabled = dismissEnabled
-        )
+    val dialogCard: @Composable () -> Unit = {
         Box(
             modifier =
                 modifier
@@ -632,7 +634,10 @@ private fun RaftUnifiedDialogSurface(
                         backgroundColor = Color.Transparent,
                         size = 32.dp,
                         iconSize = 18.dp,
-                        shadowOffset = 3.dp
+                        shadowOffset = 3.dp,
+                        // Web DialogCard close: `-my-1.5 -mr-1.5`, so the 32dp button pulls
+                        // into the corner and the header is only the title's 22dp line.
+                        modifier = if (raftDefaultTitle) Modifier.raftDialogCloseBleed() else Modifier
                     )
                 }
                 CompositionLocalProvider(
@@ -646,6 +651,38 @@ private fun RaftUnifiedDialogSurface(
                 }
             }
         }
+    }
+    if (overlayScroll) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            RaftModalDismissBarrier(
+                overlayAlpha = overlayAlpha,
+                onDismiss = onDismiss,
+                dismissEnabled = dismissEnabled
+            )
+            val viewportHeight = maxHeight
+            Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().heightIn(min = viewportHeight),
+                    contentAlignment = Alignment.Center
+                ) {
+                    dialogCard()
+                }
+            }
+        }
+        return
+    }
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        RaftModalDismissBarrier(
+            overlayAlpha = overlayAlpha,
+            onDismiss = onDismiss,
+            dismissEnabled = dismissEnabled
+        )
+        dialogCard()
     }
 }
 
@@ -1001,3 +1038,13 @@ private fun RaftModalMemberRemoveButton(
         )
     }
 }
+
+/** `-my-1.5 -mr-1.5`: lays the close button out 6dp smaller on the top, bottom and end. */
+private fun Modifier.raftDialogCloseBleed(): Modifier =
+    layout { measurable, constraints ->
+        val bleed = 6.dp.roundToPx()
+        val placeable = measurable.measure(constraints)
+        layout((placeable.width - bleed).coerceAtLeast(0), (placeable.height - bleed * 2).coerceAtLeast(0)) {
+            placeable.place(0, -bleed)
+        }
+    }
