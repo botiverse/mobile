@@ -78,13 +78,18 @@ class RaftAndroidHostHooksTest {
         try {
             val lease = Lease()
             val failure = CompletableDeferred<Throwable?>()
-            // Covers the FAST path: `open` returns synchronously and the caller never
-            // suspends, so `withContext` has no reason to check cancellation and returns
-            // normally. The cancel is issued from `beforeHandOver`, which runs in the
-            // window after that return and before the hand-over -- the one place the
-            // un-cancelled caller could otherwise still be handed a live lease.
+            // Covers the hand-over window, which no other case here reaches: the cancel
+            // is issued from `beforeHandOver`, i.e. after `withContext` has already
+            // returned and before the lease is handed out. `withContext` therefore cannot
+            // observe it -- by then it is done -- so without `ensureActive()` the lease
+            // goes to an already-cancelled caller and nothing closes it.
             // Deterministic by construction: the cancel point is pinned by the hook, not
             // by scheduling. Removing `ensureActive()` makes this fail with closes == 0.
+            //
+            // Note the caller DOES suspend here: `withContext(io)` switches dispatchers.
+            // What makes this the fast path is not the absence of suspension but that the
+            // cancellation lands after `withContext` returned, in the window with no
+            // cancellation check of its own.
             val jobRef = CompletableDeferred<Job>()
             val job =
                 launch(start = CoroutineStart.LAZY) {
