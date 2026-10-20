@@ -11,16 +11,19 @@ import build.raft.app.model.Presence
 import kotlinx.coroutines.flow.flowOf
 
 /**
- * Home DM rows showing the agent's live activity (web `SidebarAgentMeta`, `rf-srow__meta--live`).
- * Each row pins one branch of [raftHomeDmAgentLiveActivity] plus the trailing-column rules:
- *  - `Tool Agent`: working with a detail -> the detail verbatim;
+ * Home DM rows showing the agent's meta (web `SidebarAgentMeta`): live activity while it works
+ * (`rf-srow__meta--live`), else its runtime name. Each row pins one branch:
+ *  - `Tool Agent`: working with a server detail -> the detail verbatim;
  *  - `Busy Agent`: working, no detail -> "Working…";
+ *  - `Starting Agent`: detailKind `starting` -> localized "Starting…";
+ *  - `Compacting Agent`: detailKind `compacting_context` -> localized "Compacting context…";
+ *  - `Command Agent`: client-built `run_command` tool label -> localized "Running command…";
  *  - `Thinking Agent`: thinking (thought text withheld) -> "Thinking…";
- *  - `Long Activity Agent`: a long detail truncates at 58% of the row, the name keeps its room;
- *  - `Draft Agent`: draft mark, then the activity;
+ *  - `Long Activity Agent`: a long detail truncates inside the 58% trailing column;
+ *  - `Draft Agent`: draft mark, then the activity, both inside the 58% column;
  *  - `Unread Agent`: working but unread -> the count alone (status pixel stays on the avatar);
- *  - `Idle Agent`: online -> nothing on the right;
- *  - `External Agent`: an external agent never shows live activity.
+ *  - `Idle Agent`: online -> its runtime name in Space Mono;
+ *  - `External Agent`: never live activity; its runtime name instead.
  */
 @Page("compose_home_dm_agent_activity_visual", supportInLocal = true)
 internal class ComposeHomeDmAgentActivityVisualPage : BasePager() {
@@ -39,13 +42,43 @@ private data class HomeDmAgentActivityVisualRow(
     val description: String? = null
 )
 
-private fun visualAgentStatus(status: AgentStatus, label: String? = null, external: Boolean = false) =
-    SharedServerMemberStatus(status = status, presence = status.presence, statusLabel = label, external = external)
+private fun visualAgentStatus(
+    status: AgentStatus,
+    label: String? = null,
+    external: Boolean = false,
+    detailKind: String? = null,
+    toolName: String? = null,
+    runtime: String = if (external) "external" else "claude"
+) =
+    SharedServerMemberStatus(
+        status = status,
+        presence = status.presence,
+        statusLabel = label,
+        detailKind = detailKind,
+        activityToolName = toolName,
+        runtime = runtime,
+        external = external
+    )
 
 private val homeDmAgentActivityVisualRows =
     listOf(
         HomeDmAgentActivityVisualRow("agent-tool", "Tool Agent", visualAgentStatus(AgentStatus.Working, "Tool finished")),
         HomeDmAgentActivityVisualRow("agent-busy", "Busy Agent", visualAgentStatus(AgentStatus.Working)),
+        HomeDmAgentActivityVisualRow(
+            "agent-starting",
+            "Starting Agent",
+            visualAgentStatus(AgentStatus.Working, "Starting…", detailKind = "starting")
+        ),
+        HomeDmAgentActivityVisualRow(
+            "agent-compacting",
+            "Compacting Agent",
+            visualAgentStatus(AgentStatus.Working, "Compacting context...", detailKind = "compacting_context")
+        ),
+        HomeDmAgentActivityVisualRow(
+            "agent-command",
+            "Command Agent",
+            visualAgentStatus(AgentStatus.Working, "Running command...", toolName = "run_command", runtime = "codex")
+        ),
         HomeDmAgentActivityVisualRow(
             "agent-thinking",
             "Thinking Agent",
@@ -60,7 +93,7 @@ private val homeDmAgentActivityVisualRows =
         HomeDmAgentActivityVisualRow(
             "agent-draft",
             "Draft Agent",
-            visualAgentStatus(AgentStatus.Working, "Reading file..."),
+            visualAgentStatus(AgentStatus.Working, "Reading file...", toolName = "read_file"),
             hasDraft = true
         ),
         HomeDmAgentActivityVisualRow(

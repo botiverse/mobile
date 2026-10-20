@@ -1,8 +1,9 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
-import build.raft.app.data.NeutralAgentStatusLabel
 import build.raft.app.model.AgentStatus
+import build.raft.app.model.getRuntimeDisplayName
+import build.raft.app.model.isExternalAgentRuntime
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.compose.stringResource
 
@@ -15,22 +16,23 @@ import com.tencent.tmm.kmmresource.compose.stringResource
  * external agent (its presence is time-derived and the raw activity can
  * outlive it), and formats it with `formatActivityText`:
  *  - thinking -> "Thinking…" (the detail is not shown);
- *  - working  -> the activity detail verbatim ("Tool finished", "Running
- *    command…"), or "Working…" when there is none.
+ *  - working  -> "Starting…" / "Compacting context…" by `detailKind`, a
+ *    localized client-built tool label, else the activity detail verbatim
+ *    ("Tool finished"), or "Working…" when there is none.
  */
 internal sealed interface RaftHomeDmAgentLiveActivity {
     data object Thinking : RaftHomeDmAgentLiveActivity
 
     data object Working : RaftHomeDmAgentLiveActivity
 
-    data class Detail(val text: String) : RaftHomeDmAgentLiveActivity
+    data class Detail(val detail: RaftAgentActivityDetailText) : RaftHomeDmAgentLiveActivity
 }
 
 /**
  * Projects the same resolved agent status the thread header and member rows
  * read ([RaftAgentStatusResolver] -> `SharedServerMembersStore.memberStatusFlow`,
  * fed by realtime `agent:activity`) into the row's live activity, or null when
- * the row shows nothing.
+ * the row shows no live activity.
  */
 internal fun raftHomeDmAgentLiveActivity(
     state: RaftAgentStatusIndicatorState?
@@ -38,32 +40,63 @@ internal fun raftHomeDmAgentLiveActivity(
     if (state == null || state.external) return null
     return when (state.status) {
         AgentStatus.Thinking -> RaftHomeDmAgentLiveActivity.Thinking
-        AgentStatus.Working -> {
-            val detail = state.label.trim()
-            if (detail.isGenericWorkingLabel()) {
-                RaftHomeDmAgentLiveActivity.Working
-            } else {
-                RaftHomeDmAgentLiveActivity.Detail(detail)
-            }
-        }
+        AgentStatus.Working ->
+            state.workingActivityDetailText()?.let(RaftHomeDmAgentLiveActivity::Detail)
+                ?: RaftHomeDmAgentLiveActivity.Working
         else -> null
     }
 }
 
-/**
- * The indicator falls back to the bare status name ("Working") when no detail
- * arrived; that is web's "no detail" case, not a detail to print verbatim.
- */
-private fun String.isGenericWorkingLabel(): Boolean {
-    if (isBlank() || this == NeutralAgentStatusLabel) return true
-    val bare = trimEnd('.', '…').trim()
-    return bare.equals(AgentStatus.Working.label, ignoreCase = true)
+/** The right side of an agent DM row: the live activity, else the runtime name (web `SidebarAgentMeta`). */
+internal sealed interface RaftHomeDmAgentMeta {
+    data class Live(val activity: RaftHomeDmAgentLiveActivity) : RaftHomeDmAgentMeta
+
+    /** Web `getRuntimeDisplayName(agent.runtime)` in Space Mono (`SidebarItemMeta`). */
+    data class Runtime(val label: String) : RaftHomeDmAgentMeta
 }
+
+internal fun raftHomeDmAgentMeta(state: RaftAgentStatusIndicatorState?): RaftHomeDmAgentMeta? {
+    raftHomeDmAgentLiveActivity(state)?.let { return RaftHomeDmAgentMeta.Live(it) }
+    val runtime = state?.runtime?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return RaftHomeDmAgentMeta.Runtime(raftAgentRuntimeDisplayName(runtime))
+}
+
+/** Web shared `EXTERNAL_AGENT_RUNTIME_DISPLAY_NAME` (not localized on web either). */
+internal const val ExternalAgentRuntimeDisplayName = "External agent"
+
+/** Web shared `getRuntimeDisplayName`: the external sentinel reads "External agent". */
+internal fun raftAgentRuntimeDisplayName(runtime: String): String =
+    if (isExternalAgentRuntime(runtime)) ExternalAgentRuntimeDisplayName else getRuntimeDisplayName(runtime)
+
+/** One element of a DM row's trailing column, in render order. */
+internal enum class RaftHomeDmTrailingSlot {
+    UnreadBadge,
+    Draft,
+    AgentMeta
+}
+
+/**
+ * Web `SidebarPeerRowBody`: an unread count is shown alone; otherwise the
+ * draft mark, then the agent's meta (live activity or runtime).
+ */
+internal fun raftHomeDmTrailingSlots(
+    badge: String?,
+    hasDraft: Boolean,
+    isAgent: Boolean
+): List<RaftHomeDmTrailingSlot> =
+    if (badge != null) {
+        listOf(RaftHomeDmTrailingSlot.UnreadBadge)
+    } else {
+        buildList {
+            if (hasDraft) add(RaftHomeDmTrailingSlot.Draft)
+            if (isAgent) add(RaftHomeDmTrailingSlot.AgentMeta)
+        }
+    }
 
 @Composable
 internal fun RaftHomeDmAgentLiveActivity.localizedText(): String =
     when (this) {
         RaftHomeDmAgentLiveActivity.Thinking -> stringResource(MR.strings.home_dm_agent_activity_thinking)
         RaftHomeDmAgentLiveActivity.Working -> stringResource(MR.strings.home_dm_agent_activity_working)
-        is RaftHomeDmAgentLiveActivity.Detail -> text
+        is RaftHomeDmAgentLiveActivity.Detail -> detail.localizedText()
     }

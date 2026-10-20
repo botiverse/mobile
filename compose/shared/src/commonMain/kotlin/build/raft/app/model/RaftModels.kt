@@ -730,6 +730,10 @@ data class MemberPresenceUpdated(
     val kind: MemberKind? = null,
     val agentStatus: AgentStatus? = null,
     val statusLabel: String? = null,
+    /** agent:activity `detailKind` behind [statusLabel] ("starting", "compacting_context", ...). */
+    val detailKind: String? = null,
+    /** Normalized tool name when [statusLabel] is a client-built tool label (a `tool_start` entry). */
+    val activityToolName: String? = null,
     val serverSeq: Long? = null,
     val activityEntries: List<RealtimeAgentActivityEntry> = emptyList(),
     /**

@@ -303,6 +303,12 @@ data class SharedServerMemberStatus(
     val status: AgentStatus?,
     val presence: Presence,
     val statusLabel: String? = null,
+    /** agent:activity `detailKind` behind [statusLabel]; null when unknown. */
+    val detailKind: String? = null,
+    /** Normalized tool name when [statusLabel] is a client-built tool label. */
+    val activityToolName: String? = null,
+    /** The agent's runtime id (profile `roleDescription` for agents); null for humans/unknown. */
+    val runtime: String? = null,
     /**
      * External agents carry no managed liveness; the indicator must render them
      * as external regardless of [status]/[presence]. Required (no default) so a
@@ -413,6 +419,9 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             status = presenceFact.agentStatus ?: this?.agentStatus,
             presence = presenceFact.presence,
             statusLabel = presenceFact.statusLabel,
+            detailKind = presenceFact.detailKind,
+            activityToolName = presenceFact.activityToolName,
+            runtime = this?.agentRuntimeOrNull(),
             // A presence fact never carries external-ness; it comes from the
             // authoritative profile and must survive every liveness update.
             external = this?.isExternal == true,
@@ -423,10 +432,15 @@ private fun MemberProfile?.toSharedServerMemberStatus(
     return SharedServerMemberStatus(
         status = agentStatus,
         presence = presence,
+        runtime = agentRuntimeOrNull(),
         external = isExternal,
         lastSeenAt = resolvedLastSeenAt
     )
 }
+
+/** Agent profiles carry the runtime id in `roleDescription` (see `WireAgent.toMemberProfile`). */
+private fun MemberProfile.agentRuntimeOrNull(): String? =
+    roleDescription?.trim()?.takeIf { kind == MemberKind.Agent && it.isNotBlank() }
 
 /**
  * Server-scoped members directory shared by surfaces that need server members.

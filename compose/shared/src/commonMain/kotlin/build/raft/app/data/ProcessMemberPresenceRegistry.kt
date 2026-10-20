@@ -451,7 +451,10 @@ internal class ProcessMemberPresenceRegistry {
                 if (event.serverSeq == null && event.lastSeenAt != null && previous != null) {
                     event.copy(
                         agentStatus = event.agentStatus ?: previous.agentStatus,
-                        statusLabel = event.statusLabel ?: previous.statusLabel
+                        statusLabel = event.statusLabel ?: previous.statusLabel,
+                        detailKind = if (event.statusLabel != null) event.detailKind else previous.detailKind,
+                        activityToolName =
+                            if (event.statusLabel != null) event.activityToolName else previous.activityToolName
                     )
                 } else {
                     event
@@ -907,5 +910,7 @@ internal fun MemberPresenceUpdated.hasSameVisibleRegisteredPresenceAs(
     presence == previous.presence &&
         agentStatus == previous.agentStatus &&
         statusLabel == previous.statusLabel &&
+        detailKind == previous.detailKind &&
+        activityToolName == previous.activityToolName &&
         kind == previous.kind &&
         lastSeenAt == previous.lastSeenAt
