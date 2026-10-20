@@ -28,6 +28,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.ResolvedTextDirection
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -182,7 +183,10 @@ internal fun RaftSearchEmptyState(
  * Text with the DS search hit (raft-ui lib/search-hit.ts) on every [query] term: the hit
  * keeps the surrounding font but goes bold in `sticker-ink`, on a `brand` sticker (sticker
  * radius, 1.5dp inset `sticker-ink` edge, 1.5dp outer `sticker-edge` die-cut). The sticker
- * is drawn behind the glyphs, so it takes no layout room (web pads it 3px each side).
+ * is drawn behind the glyphs, so it takes no layout room: web pads it 3px each side, and here
+ * it reaches up to 3dp into a neighbouring space or line edge but never over a neighbouring
+ * glyph. Touching hits are already one range ([homeSearchHighlightRanges]), so one sticker.
+ * Hits hidden behind an ellipsis draw nothing.
  */
 @Composable
 internal fun RaftSearchHitText(
@@ -231,6 +235,9 @@ internal fun raftSearchHitAnnotatedString(text: String, ranges: List<IntRange>):
     }
 }
 
+/** web `px-[3px]`: the room the sticker wants beside the hit glyphs. */
+private val RaftSearchHitPadX = 3.dp
+
 private fun DrawScope.drawRaftSearchHits(
     layout: TextLayoutResult,
     ranges: List<IntRange>,
@@ -241,27 +248,55 @@ private fun DrawScope.drawRaftSearchHits(
 ) {
     val radius = CornerRadius(RaftAppRadius.Sticker.toPx())
     val stroke = RaftAppStroke.Control.toPx()
-    val padX = 2.dp.toPx()
+    val padX = RaftSearchHitPadX.toPx()
+    val layoutWidth = layout.size.width.toFloat()
     // CSS paints an inline background over the content area (~1.28em for these faces),
     // not the whole line box.
     val contentHeight = if (style.fontSize.isSp) style.fontSize.toPx() * 1.28f else Float.NaN
-    val textLength = layout.layoutInput.text.length
+    val text = layout.layoutInput.text.text
+    val textLength = text.length
+    // Free room beside a hit: a line edge allows the full pad, a space half its advance (so
+    // two hits a space apart never meet), a glyph none (the sticker stays on the hit).
+    fun roomBeside(neighbour: Int, lineEdge: Boolean): Float =
+        when {
+            lineEdge || neighbour !in 0 until textLength -> padX
+            text[neighbour].isWhitespace() -> layout.getBoundingBox(neighbour).width / 2f
+            else -> 0f
+        }
     ranges.forEach { range ->
         val start = range.first.coerceIn(0, textLength)
         val end = (range.last + 1).coerceIn(0, textLength)
         if (start >= end) return@forEach
         val firstLine = layout.getLineForOffset(start)
-        val lastLine = layout.getLineForOffset(end - 1)
+        val lastLine = minOf(layout.getLineForOffset(end - 1), layout.lineCount - 1)
         for (line in firstLine..lastLine) {
-            val segmentStart = maxOf(start, layout.getLineStart(line))
-            val segmentEnd = minOf(end, layout.getLineEnd(line, visibleEnd = true))
-            if (segmentStart >= segmentEnd) continue
-            val x1 = layout.getHorizontalPosition(segmentStart, usePrimaryDirection = true)
-            val x2 = layout.getHorizontalPosition(segmentEnd, usePrimaryDirection = true)
+            val ellipsized = layout.isLineEllipsized(line)
+            // On an ellipsized line the visible end stops before the ellipsis, so a hit (or the
+            // part of one) hidden behind it draws nothing.
+            val lineStart = layout.getLineStart(line)
+            val visibleEnd = layout.getLineEnd(line, visibleEnd = true)
+            val segment = raftSearchHitLineSegment(start, end, lineStart, visibleEnd) ?: continue
+            val segmentEnd = segment.last + 1
+            // The path covers every glyph run of the slice, so mixed-direction text gets the
+            // box round what is actually drawn.
+            val glyphs = layout.getPathForRange(segment.first, segmentEnd).getBounds()
+            if (glyphs.isEmpty) continue
+            val before = roomBeside(segment.first - 1, lineEdge = segment.first == lineStart)
+            val after = if (ellipsized && segmentEnd == visibleEnd) 0f else roomBeside(segmentEnd, lineEdge = segmentEnd == visibleEnd)
+            val rtl = layout.getParagraphDirection(segment.first) == ResolvedTextDirection.Rtl
+            val extent =
+                raftSearchHitStickerExtent(
+                    glyphLeft = glyphs.left,
+                    glyphRight = glyphs.right,
+                    roomLeft = if (rtl) after else before,
+                    roomRight = if (rtl) before else after,
+                    padX = padX,
+                    layoutWidth = layoutWidth,
+                ) ?: continue
             val top = layout.getLineTop(line)
             val bottom = layout.getLineBottom(line)
             val inset = if (contentHeight.isNaN()) 0f else ((bottom - top - contentHeight) / 2f).coerceAtLeast(0f)
-            val box = Rect(minOf(x1, x2) - padX, top + inset, maxOf(x1, x2) + padX, bottom - inset)
+            val box = Rect(extent.start, top + inset, extent.endInclusive, bottom - inset)
             if (dieCut.alpha > 0f) {
                 drawRoundRect(
                     dieCut,
@@ -281,4 +316,34 @@ private fun DrawScope.drawRaftSearchHits(
             )
         }
     }
+}
+
+/**
+ * The slice `[rangeStart, rangeEnd)` of a hit that shows on a line running from [lineStart]
+ * to [lineVisibleEnd] (exclusive; on an ellipsized line, where the ellipsis starts), or null
+ * when none of it shows there.
+ */
+internal fun raftSearchHitLineSegment(rangeStart: Int, rangeEnd: Int, lineStart: Int, lineVisibleEnd: Int): IntRange? {
+    val start = maxOf(rangeStart, lineStart)
+    val end = minOf(rangeEnd, lineVisibleEnd)
+    return if (start < end) start until end else null
+}
+
+/**
+ * Horizontal extent of one sticker: the hit glyphs `[glyphLeft, glyphRight]` grown by [padX]
+ * each side but by no more than the free room there ([roomLeft] / [roomRight]), so the
+ * sticker never covers a neighbouring glyph, then clamped to the text's `0..layoutWidth`.
+ * Null when nothing is left, i.e. the glyphs sit wholly outside the text box.
+ */
+internal fun raftSearchHitStickerExtent(
+    glyphLeft: Float,
+    glyphRight: Float,
+    roomLeft: Float,
+    roomRight: Float,
+    padX: Float,
+    layoutWidth: Float,
+): ClosedFloatingPointRange<Float>? {
+    val left = (glyphLeft - padX.coerceAtMost(roomLeft).coerceAtLeast(0f)).coerceIn(0f, layoutWidth)
+    val right = (glyphRight + padX.coerceAtMost(roomRight).coerceAtLeast(0f)).coerceIn(0f, layoutWidth)
+    return if (right > left) left..right else null
 }
