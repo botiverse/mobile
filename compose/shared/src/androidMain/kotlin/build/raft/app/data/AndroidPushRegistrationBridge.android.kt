@@ -26,10 +26,26 @@ object SlockAndroidPushRegistrationBridge {
     @Volatile
     private var coordinator: SlockPushRegistrationCoordinator? = null
 
-    fun install(candidateInstallationId: String): String {
-        val runtime = coordinator ?: createCoordinator().also {
-            coordinator = it
-            SlockPushRegistrationLifecycle.install(it)
+    /**
+     * [fcmUnavailableReason] non-null (no Google Play services, so no FCM transport on this device) turns
+     * registration off for the process before the startup reconcile runs: nothing is upserted, a payload
+     * left by an earlier process is dropped, and no delivery-status answer is kept, so the background
+     * realtime path keeps posting this device's notifications itself.
+     */
+    fun install(candidateInstallationId: String, fcmUnavailableReason: String? = null): String {
+        val existing = coordinator
+        val runtime = existing ?: createCoordinator()
+        if (fcmUnavailableReason != null) {
+            // Before the coordinator is published or handed to the lifecycle: once installed there, a
+            // session observer could already start a flush of a payload persisted by an earlier process.
+            runtime.reportProviderUnavailable(fcmUnavailableReason)
+        }
+        if (existing == null) {
+            coordinator = runtime
+            SlockPushRegistrationLifecycle.install(runtime)
+        }
+        if (fcmUnavailableReason != null) {
+            scope.launch { runtime.markProviderUnavailable(fcmUnavailableReason) }
         }
         val installationId = runtime.installationId(candidateInstallationId)
         runtime.onSessionSaved()
@@ -82,7 +98,7 @@ object SlockAndroidPushRegistrationBridge {
      * match against the current environment and user. Null when [install] has not run in this process.
      */
     fun storedDeliveryStatusOrNull(): SlockPushDeliveryStatus? =
-        runCatching { coordinator?.storedDeliveryStatus() }.getOrNull()
+        runCatching { coordinator?.takeUnless { it.isProviderUnavailable() }?.storedDeliveryStatus() }.getOrNull()
 
     fun installationIdOrNull(): String? =
         runCatching { coordinator?.currentInstallationId() }.getOrNull()

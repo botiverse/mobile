@@ -132,7 +132,7 @@ class PushRegistrationTest {
             object : SlockPushRegistrationApi {
                 override suspend fun upsert(payloadJson: String): HomeNetworkResponse {
                     calls += "POST"
-                    return HomeNetworkResponse(code = 204, bodyText = null)
+                    return confirmedUpsert(payloadJson)
                 }
 
                 override suspend fun unbind(installationId: String): HomeNetworkResponse {
@@ -423,7 +423,7 @@ class PushRegistrationTest {
         assertFalse(coordinator.isRemotePushActiveFor("server-1", now = clock.now))
 
         // Once the new registration is upserted, a fresh answer applies again.
-        api.upsertResponse = HomeNetworkResponse(code = 204, bodyText = null)
+        api.upsertResponse = null
         assertTrue(coordinator.retryPendingRegistration(reason = "host_retry"))
         assertTrue(coordinator.isRemotePushActiveFor("server-1", now = clock.now))
     }
@@ -578,6 +578,282 @@ class PushRegistrationTest {
         )
     }
 
+    @Test
+    fun upsertWithoutTheServersRegistrationEchoIsNotARegistration() = runBlocking {
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            coordinator(spec = SlockPushProviderSpec.Fcm, currentSession = { storedSession("user-1") }, api = api)
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        for (unconfirmed in listOf(
+            HomeNetworkResponse(code = 204, bodyText = null),
+            HomeNetworkResponse(code = 200, bodyText = "<html>portal</html>"),
+            HomeNetworkResponse(code = 200, bodyText = """{"ok":true}"""),
+            HomeNetworkResponse(
+                code = 200,
+                bodyText = """{"ok":true,"registration":{"installationId":"someone-else","provider":"fcm"}}"""
+            ),
+            HomeNetworkResponse(
+                code = 200,
+                bodyText = """{"ok":true,"registration":{"installationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","provider":"apns"}}"""
+            )
+        )) {
+            api.upsertResponse = unconfirmed
+            assertFalse(coordinator.registerFcm(), "unconfirmed: ${unconfirmed.bodyText}")
+        }
+        assertEquals(5, api.calls.size, "each unconfirmed upsert stays pending and is tried again")
+
+        api.upsertResponse = null
+        assertTrue(coordinator.retryPendingRegistration(reason = "foreground"))
+        assertEquals(6, api.calls.size)
+        assertTrue(coordinator.retryPendingRegistration(reason = "foreground"))
+        assertEquals(6, api.calls.size, "a confirmed registration dedupes")
+    }
+
+    @Test
+    fun aConfirmationOlderThanTheRefreshIntervalIsUpsertedAgain() = runBlocking {
+        val store = InMemorySlockKeyValueStore()
+        val clock = TestClock()
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            coordinator(
+                store = store,
+                spec = SlockPushProviderSpec.Fcm,
+                currentSession = { storedSession("user-1") },
+                api = api,
+                clockMillis = { clock.now }
+            )
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        assertTrue(coordinator.registerFcm())
+        assertTrue(coordinator.handleSessionSaved())
+        assertEquals(1, api.calls.size)
+
+        clock.now += PUSH_REGISTRATION_REFRESH_INTERVAL_MILLIS
+        assertTrue(coordinator.handleSessionSaved())
+        assertEquals(2, api.calls.size, "an idempotent re-upsert heals a registration the server dropped")
+        assertTrue(coordinator.handleSessionSaved())
+        assertEquals(2, api.calls.size)
+
+        // An install upgraded from a build that never stored the confirmation time re-confirms once.
+        store.putString("lastRegisteredAtMillis", null)
+        assertTrue(coordinator.handleSessionSaved())
+        assertEquals(3, api.calls.size)
+    }
+
+    @Test
+    fun aNewSessionFamilyRebindsTheSameUserAndToken() = runBlocking {
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            coordinator(spec = SlockPushProviderSpec.Fcm, currentSession = { storedSession("user-1") }, api = api)
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        assertTrue(coordinator.registerFcm())
+        assertEquals(1, api.calls.size)
+
+        // Token rotation and selection changes keep the binding.
+        assertTrue(coordinator.handleSessionSaved())
+        assertEquals(1, api.calls.size)
+
+        // A login (Authenticated) may have started a new session family on the server.
+        assertTrue(coordinator.handleSessionSaved(forceUpsert = true))
+        assertEquals(2, api.calls.size)
+        assertTrue(coordinator.handleSessionSaved())
+        assertEquals(2, api.calls.size, "the forced upsert happens once")
+    }
+
+    @Test
+    fun aLoginBeforeTheAuthRuntimeIsReadyStillForcesTheNextUpsert() = runBlocking {
+        var authReady = true
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            SlockPushRegistrationCoordinator(
+                store = InMemorySlockKeyValueStore(),
+                spec = SlockPushProviderSpec.Fcm,
+                currentSession = { storedSession("user-1") },
+                authRuntimeReady = { authReady },
+                apiProvider = { api },
+                scope = CoroutineScope(SupervisorJob()),
+                remoteNotificationsController = RecordingRemoteNotificationsController(),
+                clockMillis = { 0L }
+            )
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        assertTrue(coordinator.registerFcm())
+        assertEquals(1, api.calls.size)
+
+        // The Authenticated event arrives while the auth runtime is not ready: nothing flushes yet...
+        authReady = false
+        assertFalse(coordinator.handleSessionSaved(forceUpsert = true))
+        assertEquals(1, api.calls.size)
+
+        // ...but the force survives the early return and the next plain trigger re-upserts once.
+        authReady = true
+        assertTrue(coordinator.handleSessionSaved())
+        assertEquals(2, api.calls.size, "the forced upsert is not lost until the 24h expiry")
+        assertTrue(coordinator.handleSessionSaved())
+        assertEquals(2, api.calls.size)
+    }
+
+    @Test
+    fun aSameBindingRefreshKeepsTheStoredDeliveryStatus() = runBlocking {
+        val clock = TestClock()
+        val api = RecordingPushRegistrationApi()
+        api.deliveryStatusResponse = deliveryStatusBody("server-1" to true)
+        val coordinator =
+            deliveryStatusCoordinator(currentSession = { storedSession("user-1") }, api = api, clock = clock)
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        assertTrue(coordinator.registerFcm())
+        assertTrue(coordinator.isRemotePushActiveFor("server-1", now = clock.now))
+        val stored = coordinator.storedDeliveryStatus()
+        val posts = { api.calls.count { it.startsWith("POST ") } }
+        assertEquals(1, posts())
+        // Later status requests fail, so only the coordinator itself could drop the stored answer.
+        api.deliveryStatusResponse = HomeNetworkResponse(code = 503, bodyText = null)
+
+        // New session family: same token, user and environment, re-upserted.
+        assertTrue(coordinator.handleSessionSaved(forceUpsert = true))
+        assertEquals(2, posts())
+        assertEquals(stored, coordinator.storedDeliveryStatus(), "FCM still delivers; the answer stays")
+        assertTrue(coordinator.isRemotePushActiveFor("server-1", now = clock.now), "no local double alert")
+
+        // Confirmation expiry: same binding, re-upserted after 24h.
+        clock.now += PUSH_REGISTRATION_REFRESH_INTERVAL_MILLIS
+        assertTrue(coordinator.handleSessionSaved())
+        assertEquals(3, posts())
+        assertEquals(stored, coordinator.storedDeliveryStatus())
+
+        // A new token is a different registration: its answer is cleared.
+        assertTrue(coordinator.registerFcm(token = "dY0-BcD_eFgHiJkLmNoPqR"))
+        assertEquals(4, posts())
+        assertEquals(null, coordinator.storedDeliveryStatus())
+    }
+
+    @Test
+    fun anEnvironmentChangeRebindsTheRegistration() = runBlocking {
+        val clock = TestClock()
+        var environment = "https://api.example/"
+        val api = RecordingPushRegistrationApi()
+        val coordinator =
+            deliveryStatusCoordinator(
+                currentSession = { storedSession("user-1") },
+                api = api,
+                clock = clock,
+                environmentId = { environment }
+            )
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        assertTrue(coordinator.registerFcm())
+        val posts = { api.calls.count { it.startsWith("POST ") } }
+        assertEquals(1, posts())
+
+        environment = "https://api.other.example"
+        assertTrue(coordinator.handleSessionSaved())
+        assertEquals(2, posts())
+    }
+
+    @Test
+    fun theServerReportingNoRegistrationReupsertsOncePerProcess() = runBlocking {
+        val clock = TestClock()
+        val api = RecordingPushRegistrationApi()
+        api.deliveryStatusResponse = deliveryStatusBody(fcmRegistered = false, "server-1" to false)
+        val coordinator =
+            deliveryStatusCoordinator(currentSession = { storedSession("user-1") }, api = api, clock = clock)
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        val posts = { api.calls.count { it.startsWith("POST ") } }
+
+        // Upsert -> status says not registered -> one repair upsert -> status still says not registered.
+        assertTrue(coordinator.registerFcm())
+        assertEquals(2, posts())
+        assertEquals(null, coordinator.storedDeliveryStatus())
+        assertFalse(coordinator.isRemotePushActiveFor("server-1", now = clock.now))
+
+        // No loop: later answers only log.
+        clock.advanceBeyondRequestSpacing()
+        assertFalse(coordinator.refreshDeliveryStatus(reason = "app_foreground"))
+        assertTrue(coordinator.handleSessionSaved())
+        assertEquals(2, posts())
+
+        // Once the server has the registration again, its answer is stored as before.
+        api.deliveryStatusResponse = deliveryStatusBody(fcmRegistered = true, "server-1" to true)
+        clock.advanceBeyondRequestSpacing()
+        assertTrue(coordinator.refreshDeliveryStatus(reason = "app_foreground"))
+        assertTrue(coordinator.isRemotePushActiveFor("server-1", now = clock.now))
+    }
+
+    @Test
+    fun aServerWithoutTheRegisteredFieldKeepsTheCurrentBehaviour() = runBlocking {
+        val clock = TestClock()
+        val api = RecordingPushRegistrationApi()
+        api.deliveryStatusResponse = deliveryStatusBody("server-1" to false)
+        val coordinator =
+            deliveryStatusCoordinator(currentSession = { storedSession("user-1") }, api = api, clock = clock)
+        coordinator.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+        assertTrue(coordinator.registerFcm())
+        assertEquals(1, api.calls.count { it.startsWith("POST ") }, "fcmActive=false alone may be a switched-off rollout")
+        assertEquals("server-1", coordinator.storedDeliveryStatus()?.fcmActiveByServer?.keys?.single())
+    }
+
+    @Test
+    fun aDeviceWithoutFcmNeverRegistersAndKeepsLocalNotifications() = runBlocking {
+        val store = InMemorySlockKeyValueStore()
+        val clock = TestClock()
+        val api = RecordingPushRegistrationApi()
+        api.deliveryStatusResponse = deliveryStatusBody("server-1" to true)
+        // An earlier process registered the Firebase Installation ID and stored a delivery answer.
+        val earlier =
+            deliveryStatusCoordinator(store = store, currentSession = { storedSession("user-1") }, api = api, clock = clock)
+        earlier.installationId("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        assertTrue(earlier.registerFcm())
+        assertTrue(earlier.isRemotePushActiveFor("server-1", now = clock.now))
+        api.calls.clear()
+        api.deliveryStatusRequests = 0
+
+        // This process finds no Google Play services before its startup reconcile.
+        clock.now += PUSH_REGISTRATION_REFRESH_INTERVAL_MILLIS
+        val current =
+            deliveryStatusCoordinator(store = store, currentSession = { storedSession("user-1") }, api = api, clock = clock)
+        current.reportProviderUnavailable("no_play_services")
+        assertFalse(current.handleSessionSaved(forceUpsert = true))
+        current.markProviderUnavailable("no_play_services")
+
+        assertFalse(current.registerFcm())
+        assertFalse(current.retryPendingRegistration(reason = "host_retry"))
+        assertFalse(current.refreshDeliveryStatus(reason = "app_foreground", force = true))
+        assertTrue(api.calls.isEmpty(), "no upsert of an undeliverable token, no delivery-status request")
+        assertEquals(null, current.storedDeliveryStatus())
+        assertFalse(current.isRemotePushActiveFor("server-1", now = clock.now), "the realtime path posts locally")
+    }
+
+    @Test
+    fun authenticatedEventsReachTheSinkAsAuthenticated() = runBlocking {
+        val events = MutableSharedFlow<AuthSessionEvent>(extraBufferCapacity = 4)
+        val received = mutableListOf<String>()
+        val done = CompletableDeferred<Unit>()
+        SlockPushRegistrationLifecycle.install(
+            object : SlockPushRegistrationLifecycleSink {
+                override fun onSessionSaved() {
+                    received += "saved"
+                }
+
+                override fun onSessionAuthenticated() {
+                    received += "authenticated"
+                    done.complete(Unit)
+                }
+
+                override fun onSessionInvalidated(reason: AuthSessionClearReason) = Unit
+
+                override suspend fun unbindBeforeLogout() = Unit
+            }
+        )
+        SlockPushRegistrationLifecycle.observeSessionEvents(
+            source = events,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        )
+        events.emit(AuthSessionEvent.TokensRotated(generation = 1))
+        events.emit(AuthSessionEvent.Authenticated(generation = 2))
+        withTimeout(1_000) { done.await() }
+
+        assertEquals(listOf("saved", "saved", "authenticated"), received)
+    }
+
     private fun coordinator(
         store: SlockKeyValueStore = InMemorySlockKeyValueStore(),
         spec: SlockPushProviderSpec = SlockPushProviderSpec.Apns,
@@ -652,6 +928,16 @@ class PushRegistrationTest {
                 }
         )
 
+    private fun deliveryStatusBody(fcmRegistered: Boolean, vararg servers: Pair<String, Boolean>): HomeNetworkResponse =
+        HomeNetworkResponse(
+            code = 200,
+            bodyText =
+                servers.joinToString(
+                    prefix = """{"fcmRegistered":$fcmRegistered,"servers":{""",
+                    postfix = "}}"
+                ) { (id, active) -> """"$id":{"fcmActive":$active}""" }
+        )
+
     private fun storedSession(userId: String, serverId: String = "server-1"): StoredAuthSession =
         StoredAuthSession(
             user = StoredAuthUser(id = userId, email = "$userId@example.com"),
@@ -663,11 +949,12 @@ class PushRegistrationTest {
     private class RecordingPushRegistrationApi : SlockPushRegistrationApi {
         val calls = mutableListOf<String>()
 
-        var upsertResponse: HomeNetworkResponse = HomeNetworkResponse(code = 204, bodyText = null)
+        /** Null answers like the server: 200 echoing the stored registration. */
+        var upsertResponse: HomeNetworkResponse? = null
 
         override suspend fun upsert(payloadJson: String): HomeNetworkResponse {
             calls += "POST $payloadJson"
-            return upsertResponse
+            return upsertResponse ?: confirmedUpsert(payloadJson)
         }
 
         override suspend fun unbind(installationId: String): HomeNetworkResponse {
@@ -713,4 +1000,14 @@ class PushRegistrationTest {
             return HomeNetworkResponse(code = 204, bodyText = null)
         }
     }
+}
+
+/** The server's 200 for an upsert: the registration it stored, echoed. */
+private fun confirmedUpsert(payloadJson: String): HomeNetworkResponse {
+    val installationId = Regex("\"installationId\":\"([^\"]*)\"").find(payloadJson)?.groupValues?.get(1)
+    val provider = Regex("\"provider\":\"([^\"]*)\"").find(payloadJson)?.groupValues?.get(1)
+    return HomeNetworkResponse(
+        code = 200,
+        bodyText = """{"ok":true,"registration":{"installationId":"$installationId","provider":"$provider"}}"""
+    )
 }
