@@ -432,11 +432,8 @@
     <string name="thread_composer_load_channels_failed">无法加载频道</string>
     <string name="thread_composer_mention_added">已将 %1$s 添加到 %2$s</string>
     <string name="thread_composer_mention_notified">已单次通知 %1$s，但对方仍不在 %2$s 中</string>
-    <string name="thread_composer_mention_add_or_notify">将对方添加到 %1$s，或发送一次性通知。</string>
-    <string name="thread_composer_mention_add_hint">将对方添加到 %1$s，以便后续提及时能够收到通知。</string>
-    <string name="thread_composer_mention_notify_hint">不添加成员，仅发送一次性通知。</string>
-    <string name="thread_composer_mention_dismiss_hint">无需处理时可忽略此提醒。</string>
-    <string name="thread_composer_mention_not_in_channel">%1$s 不在 %2$s 中。%3$s</string>
+    <string name="thread_composer_mention_not_notified">%1$s 未收到通知，因为他们不在 %2$s</string>
+    <string name="thread_composer_mention_ignore">忽略</string>
     <string name="thread_composer_mention_added_chip">已添加</string>
     <string name="thread_composer_mention_adding_chip">添加中</string>
     <string name="thread_composer_mention_add_chip">添加</string>

@@ -1875,6 +1875,16 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M 22.0 11.0 L 16.0 11.0"),
                     ),
                 )
+            RaftLucideIconName.UserX ->
+                RaftLucideIconSpec(
+                    "user-x",
+                    listOf(
+                        RaftLucidePathSpec("M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"),
+                        RaftLucidePathSpec("M 5.0 7.0 A 4.0 4.0 0 1 0 13.0 7.0 A 4.0 4.0 0 1 0 5.0 7.0 Z"),
+                        RaftLucidePathSpec("M 17.0 8.0 L 22.0 13.0"),
+                        RaftLucidePathSpec("M 22.0 8.0 L 17.0 13.0"),
+                    ),
+                )
             RaftLucideIconName.Users ->
                 RaftLucideIconSpec(
                     "users",

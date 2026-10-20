@@ -254,6 +254,7 @@ LUCIDE_ICONS = [
     "user",
     "user-minus",
     "user-plus",
+    "user-x",
     "users",
     "users-round",
     "volume-x",

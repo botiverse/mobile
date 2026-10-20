@@ -948,7 +948,7 @@ class ThreadComposerPayloadTest {
         assertTrue(action.supportsMentionAction("notify"))
         assertEquals("@outside", action.targetLabel())
         assertEquals(
-            "@outside isn't in #channel. Add them to #channel or send a one-time notify.",
+            "@outside was not notified because they are not in #channel",
             action.pendingMentionActionDescription("#channel")
         )
         assertEquals(

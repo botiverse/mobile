@@ -438,11 +438,8 @@
     <string name="thread_composer_load_channels_failed">チャンネルを読み込めませんでした</string>
     <string name="thread_composer_mention_added">%1$s を %2$s に追加しました</string>
     <string name="thread_composer_mention_notified">%1$s に 1 回だけ通知しました — まだ %2$s に参加していません</string>
-    <string name="thread_composer_mention_add_or_notify">%1$s に追加するか、1 回だけ通知を送信します。</string>
-    <string name="thread_composer_mention_add_hint">%1$s に追加すると、今後のメンションが通知されるようになります。</string>
-    <string name="thread_composer_mention_notify_hint">追加せずに 1 回だけ通知を送信します。</string>
-    <string name="thread_composer_mention_dismiss_hint">対応が不要な場合は、このリマインダーを閉じてください。</string>
-    <string name="thread_composer_mention_not_in_channel">%1$s は %2$s に参加していません。%3$s</string>
+    <string name="thread_composer_mention_not_notified">%1$s は %2$s のメンバーではないため、通知されませんでした</string>
+    <string name="thread_composer_mention_ignore">無視</string>
     <string name="thread_composer_mention_added_chip">追加済み</string>
     <string name="thread_composer_mention_adding_chip">追加中</string>
     <string name="thread_composer_mention_add_chip">追加</string>

@@ -432,11 +432,8 @@
     <string name="thread_composer_load_channels_failed">Could not load channels</string>
     <string name="thread_composer_mention_added">%1$s was added to %2$s</string>
     <string name="thread_composer_mention_notified">Notified %1$s once — still not in %2$s</string>
-    <string name="thread_composer_mention_add_or_notify">Add them to %1$s or send a one-time notification.</string>
-    <string name="thread_composer_mention_add_hint">Add them to %1$s so future mentions notify them.</string>
-    <string name="thread_composer_mention_notify_hint">Send a one-time notification without adding them.</string>
-    <string name="thread_composer_mention_dismiss_hint">Dismiss this reminder when no action is needed.</string>
-    <string name="thread_composer_mention_not_in_channel">%1$s isn’t in %2$s. %3$s</string>
+    <string name="thread_composer_mention_not_notified">%1$s was not notified because they are not in %2$s</string>
+    <string name="thread_composer_mention_ignore">Ignore</string>
     <string name="thread_composer_mention_added_chip">Added</string>
     <string name="thread_composer_mention_adding_chip">Adding</string>
     <string name="thread_composer_mention_add_chip">Add</string>

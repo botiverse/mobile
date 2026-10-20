@@ -208,6 +208,7 @@ enum class RaftLucideIconName(val wireName: String) {
     User("user"),
     UserMinus("user-minus"),
     UserPlus("user-plus"),
+    UserX("user-x"),
     Users("users"),
     UsersRound("users-round"),
     VolumeX("volume-x"),

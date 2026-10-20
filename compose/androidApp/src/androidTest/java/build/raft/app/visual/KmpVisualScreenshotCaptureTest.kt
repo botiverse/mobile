@@ -885,7 +885,10 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-composer-member-suggestions")
                     .put("visualFixture", "member_suggestions"),
-            crop = THREAD_COMPOSER_SUGGESTIONS_CROP
+            crop = THREAD_COMPOSER_SUGGESTIONS_CROP,
+            // The suggestion list floats (raft-ui shadow-float); a root-view software draw
+            // drops elevation shadows, the window surface keeps them.
+            captureAppWindowSurface = true
         )
     }
 
@@ -898,7 +901,10 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-composer-channel-suggestions")
                     .put("visualFixture", "channel_suggestions"),
-            crop = THREAD_COMPOSER_SUGGESTIONS_CROP
+            crop = THREAD_COMPOSER_SUGGESTIONS_CROP,
+            // The suggestion list floats (raft-ui shadow-float); a root-view software draw
+            // drops elevation shadows, the window surface keeps them.
+            captureAppWindowSurface = true
         )
     }
 
@@ -911,7 +917,7 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-composer-image-preview")
                     .put("visualFixture", "image_preview"),
-            crop = THREAD_COMPOSER_ATTACHMENTS_CROP,
+            crop = THREAD_COMPOSER_IMAGE_PREVIEW_CROP,
             settleMs = 1_500
         )
     }
@@ -7001,6 +7007,14 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 320
+            )
+        // The web host is 210dp tall for components.thread.composer.image-preview.
+        private val THREAD_COMPOSER_IMAGE_PREVIEW_CROP =
+            VisualCrop(
+                leftDp = 24,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 210
             )
         private val THREAD_COMPOSER_ATTACHMENTS_CROP =
             VisualCrop(
