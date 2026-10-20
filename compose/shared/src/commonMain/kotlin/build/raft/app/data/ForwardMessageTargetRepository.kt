@@ -12,6 +12,11 @@ import build.raft.app.model.ThreadId
 import build.raft.app.model.messageStreamChannelId
 import build.raft.app.model.preferredAvatarWireValue
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.decodeFromString
@@ -222,10 +227,18 @@ class RealForwardMessageTargetRepository(
     private val channelRepository: ChannelRepository,
     private val memberRepository: MemberRepository,
     private val nowMillis: () -> Long = ::defaultNowMillis,
-    private val warningLogger: (String) -> Unit = {}
+    private val warningLogger: (String) -> Unit = {},
+    private val computeDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) : ForwardMessageTargetRepository {
     private var nextDirectorySnapshotId = 0L
     private val directorySnapshots = mutableMapOf<String, ForwardMessageTargetDirectorySnapshot>()
+
+    // One pre-normalised index per loaded authority. Search keystrokes filter it in
+    // memory; only a cold/expired index reaches the channel/DM/member APIs, and the
+    // mutex makes that fill single-flight.
+    private val searchIndexMutex = Mutex()
+    private var searchIndex: ForwardMessageTargetSearchIndex? = null
+    private var searchIndexLoadedAtMillis = 0L
 
     override suspend fun recentTargets(serverId: ServerId, limit: Int): DataResult<List<ForwardMessageTarget>> {
         currentSession() ?: return forwardAuthRequired()
@@ -260,6 +273,7 @@ class RealForwardMessageTargetRepository(
                 is DataResult.NoPermission -> return DataResult.NoPermission(authority.blocker)
             }
         val revision = targets.forwardDirectoryAuthorityRevision()
+        storeSearchIndex(serverId, targets, revision, now)
         val normalizedQuery = ""
         val requestedSnapshot =
             cursor.snapshotId?.let(directorySnapshots::get)?.takeIf { snapshot ->
@@ -305,8 +319,59 @@ class RealForwardMessageTargetRepository(
         currentSession() ?: return forwardAuthRequired()
         val cleanQuery = query.trim()
         if (cleanQuery.isBlank()) return DataResult.Content(emptyList())
-        return localSearchResult(serverId, cleanQuery, limit)
+        val index = searchIndexFor(serverId)
+        val matches =
+            if (index.size > ForwardSearchInlineMaxTargets) {
+                withContext(computeDispatcher) { index.search(cleanQuery, limit) }
+            } else {
+                index.search(cleanQuery, limit)
+            }
+        return DataResult.Content(matches)
     }
+
+    private suspend fun searchIndexFor(serverId: ServerId): ForwardMessageTargetSearchIndex =
+        searchIndexMutex.withLock {
+            val now = nowMillis()
+            searchIndex
+                ?.takeIf { it.serverId == serverId && now - searchIndexLoadedAtMillis < ForwardSearchIndexTtlMillis }
+                ?: run {
+                    val authority = localSearchTargets(serverId)
+                    buildSearchIndex(serverId, authority.targets).also { built ->
+                        // A partial authority still answers this search but is not cached,
+                        // so the next keystroke retries the failed source.
+                        if (authority.complete) {
+                            searchIndex = built
+                            searchIndexLoadedAtMillis = now
+                        }
+                    }
+                }
+        }
+
+    private suspend fun storeSearchIndex(
+        serverId: ServerId,
+        targets: List<ForwardMessageTarget>,
+        revision: String,
+        now: Long
+    ) {
+        searchIndexMutex.withLock {
+            val current = searchIndex
+            if (current == null || current.serverId != serverId || current.authorityRevision != revision) {
+                searchIndex = buildSearchIndex(serverId, targets, revision)
+            }
+            searchIndexLoadedAtMillis = now
+        }
+    }
+
+    private suspend fun buildSearchIndex(
+        serverId: ServerId,
+        targets: List<ForwardMessageTarget>,
+        revision: String = targets.forwardDirectoryAuthorityRevision()
+    ): ForwardMessageTargetSearchIndex =
+        if (targets.size > ForwardSearchInlineMaxTargets) {
+            withContext(computeDispatcher) { ForwardMessageTargetSearchIndex.build(serverId, targets, revision) }
+        } else {
+            ForwardMessageTargetSearchIndex.build(serverId, targets, revision)
+        }
 
     override suspend fun resolveTargetChannel(
         sourceServerId: ServerId,
@@ -482,31 +547,28 @@ class RealForwardMessageTargetRepository(
     private suspend fun currentSession(): StoredAuthSession? =
         sessionStore.readSession()
 
-    private suspend fun localSearchResult(
-        serverId: ServerId,
-        query: String,
-        limit: Int
-    ): DataResult<List<ForwardMessageTarget>> =
-        DataResult.Content(localSearchTargets(serverId, query, limit))
+    /** Lenient authority for search: a failed source contributes nothing instead of failing the search. */
+    private suspend fun localSearchTargets(serverId: ServerId): ForwardSearchAuthority {
+        val directMessageResult = channelRepository.getDirectMessages(serverId)
+        val channelResult = channelRepository.getChannels(serverId)
+        val memberResult = memberRepository.getMembers(DataRequestPriority.Foreground, serverId)
+        val directMessages = directMessageResult.contentOrEmpty { it.directMessages }
+        val channels = channelResult.contentOrEmpty { it.channels }
+        val members = memberResult.contentOrEmpty { it.members }
+        val complete =
+            listOf(directMessageResult, channelResult, memberResult).all {
+                it is DataResult.Content || it is DataResult.Empty
+            }
 
-    private suspend fun localSearchTargets(
-        serverId: ServerId,
-        query: String,
-        limit: Int
-    ): List<ForwardMessageTarget> {
-        val max = limit.coerceAtLeast(1)
-        val directMessages = channelRepository.getDirectMessages(serverId).contentOrEmpty { it.directMessages }
-        val channels = channelRepository.getChannels(serverId).contentOrEmpty { it.channels }
-        val members = memberRepository.getMembers(DataRequestPriority.Foreground, serverId).contentOrEmpty { it.members }
-
-        return fallbackForwardMessageTargets(
+        val targets = fallbackForwardMessageTargets(
             serverId = serverId,
             directMessages = directMessages,
             channels = channels,
             members = members,
-            query = query,
-            limit = max
+            query = "",
+            limit = directMessages.size + channels.size + members.size
         )
+        return ForwardSearchAuthority(targets, complete)
     }
 
     private suspend fun localDirectoryTargets(serverId: ServerId): DataResult<List<ForwardMessageTarget>> {
@@ -835,6 +897,10 @@ internal fun List<ForwardMessageTarget>.forwardDirectoryAuthorityRevision(): Str
 }
 
 private const val ForwardDirectorySnapshotCacheSize = 4
+
+private class ForwardSearchAuthority(val targets: List<ForwardMessageTarget>, val complete: Boolean)
+internal const val ForwardSearchIndexTtlMillis = 60_000L
+private const val ForwardSearchInlineMaxTargets = 400
 internal const val ForwardDirectorySnapshotTtlMillis = 60_000L
 
 private fun ForwardMessageTarget.isForwardJointChannel(): Boolean =
@@ -879,15 +945,7 @@ private fun MemberProfile.toForwardMemberCandidate(serverId: ServerId): ForwardM
 private fun ForwardMessageTarget.matchesForwardQuery(query: String): Boolean {
     val cleanQuery = query.trim()
     if (cleanQuery.isBlank()) return true
-    val identityValues = listOf(title, id, memberId?.value.orEmpty(), channelId?.value.orEmpty())
-    val searchableValues =
-        when (kind) {
-            ForwardMessageTargetKind.HumanDirectMessageCandidate,
-            ForwardMessageTargetKind.AgentDirectMessageCandidate -> identityValues + subtitle
-            else -> identityValues
-        }
-    return searchableValues
-        .any { value -> value.contains(cleanQuery, ignoreCase = true) }
+    return forwardSearchValues().any { value -> value.contains(cleanQuery, ignoreCase = true) }
 }
 
 private fun List<ForwardMessageTarget>.dedupeForwardTargets(): List<ForwardMessageTarget> =

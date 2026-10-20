@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 
 internal fun raftForwardPickerActionBottomPadding(bottomSafeArea: Dp): Dp =
     12.dp + if (bottomSafeArea > 0.dp) bottomSafeArea else 0.dp
@@ -232,6 +233,30 @@ internal fun RaftForwardPickerRequestIdentity.accepts(
         this.sessionKey == sessionKey &&
         this.query == query &&
         this.generation == generation
+
+/**
+ * Search filters an in-memory index, so the debounce only coalesces a burst of keystrokes;
+ * it is no longer covering for five network round trips.
+ */
+internal const val RaftForwardPickerSearchDebounceMillis = 120L
+
+/**
+ * One picker load behind the debounce and stale-token gates. The caller's coroutine is
+ * cancelled when a newer query/generation restarts it (a keystroke during the debounce
+ * never reaches [load]); [isCurrent] drops a result that a newer request superseded.
+ * Returns null when this request is stale.
+ */
+internal suspend fun <R : Any> raftForwardPickerGatedLoad(
+    debounce: Boolean,
+    isCurrent: () -> Boolean,
+    debounceMillis: Long = RaftForwardPickerSearchDebounceMillis,
+    load: suspend () -> R
+): R? {
+    if (debounce) delay(debounceMillis)
+    if (!isCurrent()) return null
+    val result = load()
+    return result.takeIf { isCurrent() }
+}
 
 internal fun RaftForwardTargetVisualKind.iconName(): RaftLucideIconName? =
     when (this) {

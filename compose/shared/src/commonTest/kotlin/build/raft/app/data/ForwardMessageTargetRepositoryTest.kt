@@ -12,6 +12,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 
 class ForwardMessageTargetRepositoryTest {
@@ -562,6 +565,85 @@ class ForwardMessageTargetRepositoryTest {
         assertTrue(network.calls.isEmpty())
     }
 
+    @Test
+    fun searchKeystrokesFilterTheLoadedDirectoryWithoutNetwork() = runBlocking {
+        val network = RecordingForwardNetworkClient()
+        network.peerChannelsBody = jointChannelsBody("Design-Room", "ops", "design-review")
+        network.membersBody =
+            """{"members":[{"userId":"user-2","name":"designer","displayName":"Second User"}]}"""
+        val repository = realRepository(network)
+        val peer = ServerId("server-peer")
+        assertIs<DataResult.Content<ForwardMessageTargetDirectoryPage>>(
+            repository.directoryTargets(peer, sessionId = "picker", pageSize = 30)
+        )
+        val authorityCalls = network.calls.size
+
+        val results =
+            listOf("d", "de", "DES", "design", "designer", "zzz").associateWith { query ->
+                assertIs<DataResult.Content<List<ForwardMessageTarget>>>(
+                    repository.searchTargets(peer, query, limit = 60)
+                ).data.map { it.id }
+            }
+
+        assertEquals(authorityCalls, network.calls.size, "a keystroke must not refetch channels/DMs/members")
+        assertEquals(listOf("Design-Room", "design-review", "user-2"), results.getValue("DES"))
+        // A member candidate also matches its @handle; channels never match helper copy.
+        assertEquals(listOf("user-2"), results.getValue("designer"))
+        assertEquals(emptyList(), results.getValue("zzz"))
+    }
+
+    @Test
+    fun coldSearchLoadsTheAuthorityOnceThenReusesItUntilTtl() = runBlocking {
+        val network = RecordingForwardNetworkClient()
+        network.peerChannelsBody = jointChannelsBody("alpha", "beta")
+        var now = 0L
+        val repository = realRepository(network, nowMillis = { now })
+        val peer = ServerId("server-peer")
+        fun channelCalls() = network.calls.count { it.path == "channels" && it.serverId == peer }
+
+        coroutineScope {
+            listOf("a", "al", "alp").map { query ->
+                async { repository.searchTargets(peer, query, limit = 60) }
+            }.awaitAll()
+        }
+        assertEquals(1, channelCalls(), "concurrent cold searches share one authority load")
+        assertEquals(
+            listOf("alpha"),
+            assertIs<DataResult.Content<List<ForwardMessageTarget>>>(
+                repository.searchTargets(peer, "ALPHA", limit = 60)
+            ).data.map { it.id }
+        )
+        assertEquals(1, channelCalls())
+
+        network.peerChannelsBody = jointChannelsBody("alpha", "alpine")
+        now = ForwardSearchIndexTtlMillis
+        assertEquals(
+            listOf("alpha", "alpine"),
+            assertIs<DataResult.Content<List<ForwardMessageTarget>>>(
+                repository.searchTargets(peer, "alp", limit = 60)
+            ).data.map { it.id }
+        )
+        assertEquals(2, channelCalls())
+    }
+
+    @Test
+    fun searchIndexMatchesThePerTargetQueryRule() {
+        val targets =
+            listOf(
+                directoryTarget("Ops-Room", ForwardMessageTargetKind.RecentChannel, "channel"),
+                directoryTarget("dm-ops", ForwardMessageTargetKind.RecentDirectMessage, "dm"),
+                directoryTarget("member-1", ForwardMessageTargetKind.HumanDirectMessageCandidate, "dm")
+                    .copy(title = "Opal", subtitle = "@ops-lead"),
+                directoryTarget("archive", ForwardMessageTargetKind.RecentChannel, "channel")
+                    .copy(subtitle = "ops helper copy")
+            )
+        val index = ForwardMessageTargetSearchIndex.build(serverId, targets)
+
+        assertEquals(listOf("dm-ops", "Ops-Room", "member-1"), index.search(" oPs ", limit = 60).map { it.id })
+        assertEquals(listOf("member-1"), index.search("opal", limit = 60).map { it.id })
+        assertEquals(4, index.search("", limit = 60).size)
+    }
+
     private fun canonicalMessageBody(channelId: String, content: String): String =
         """
             {
@@ -648,6 +730,7 @@ private class RecordingForwardNetworkClient : RaftNetworkClient {
     var peerChannelsBody: String =
         """[{"id":"joint-peer-projection","name":"joint-room","type":"joint","joined":true,"jointChannelId":"joint-root","jointRole":"participant","jointPeerServerId":"server-source"}]"""
     var peerChannelsCode: Int = 200
+    var membersBody: String = """{"members":[]}"""
     var forwardResponseBody: String =
         """
             {
@@ -687,7 +770,7 @@ private class RecordingForwardNetworkClient : RaftNetworkClient {
                 )
             path == "channels/dm" -> HomeNetworkResponse(code = 200, bodyText = "[]")
             path == "servers/${serverIdOverride?.value}/members" ->
-                HomeNetworkResponse(code = 200, bodyText = """{"members":[]}""")
+                HomeNetworkResponse(code = 200, bodyText = membersBody)
             path == "agents" -> HomeNetworkResponse(code = 200, bodyText = "[]")
             path == "servers/${serverIdOverride?.value}/machines" ->
                 HomeNetworkResponse(code = 200, bodyText = "[]")
