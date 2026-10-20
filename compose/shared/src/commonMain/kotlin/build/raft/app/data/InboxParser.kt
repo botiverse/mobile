@@ -268,35 +268,13 @@ fun parseSharedInboxSnapshot(
             }
             .distinctBy { it.key }
     val items = rawItems.map(InboxItem::withActivityFollowStateProjection)
-    val derivedCount = items.size
-    val derivedUnread = items.sumOf { it.unreadCount }
-    // Calculate the suppressed contribution from the same parsed rows that
-    // can reach the domain model. An invalid/duplicate wire row must not alter
-    // the aggregate for a row that was discarded by the strict parser.
-    val rawItemsUnread = rawItems.sumOf { it.unreadCount }
-    val rawUnfollowedUnread = rawItems
-        .asSequence()
-        .filter(InboxItem::isUnfollowedActivityThread)
-        .sumOf { it.unreadCount }
-    val wireUnread = decoded.totalUnreadCount
-    // A compliant server already reports zero attention for an unfollowed
-    // row. If an older/lagging serving path includes that row's raw unread
-    // value in the aggregate, remove just that projected contribution. When
-    // the aggregate is lower than the page's raw sum it is already an
-    // active-only aggregate, so retain it rather than subtracting twice.
-    val projectedUnread =
-        when {
-            wireUnread == null -> derivedUnread
-            rawUnfollowedUnread <= 0 -> maxOf(wireUnread, derivedUnread)
-            wireUnread >= rawItemsUnread ->
-                maxOf(derivedUnread, (wireUnread - rawUnfollowedUnread).coerceAtLeast(0))
-            else -> maxOf(wireUnread, derivedUnread)
-        }
+    // The server's aggregates are authoritative (it already zeroes unfollowed
+    // rows); derive them from the page only when an older server omits them.
     SharedInboxSnapshot(
         items = items,
         hasMore = decoded.hasMore,
-        totalCount = maxOf(decoded.totalCount ?: derivedCount, derivedCount),
-        totalUnreadCount = projectedUnread,
+        totalCount = decoded.totalCount ?: items.size,
+        totalUnreadCount = decoded.totalUnreadCount ?: items.sumOf { it.unreadCount },
         rawItemCount = decoded.items.size,
         activeUnreadCount = decoded.activeUnreadCount,
     )

@@ -187,7 +187,9 @@ class InboxSavedSearchRepositoryDataSourceTest {
         assertEquals(false, item.hasMention)
         assertNull(item.firstUnreadMessageId)
         assertEquals(1, snapshot.totalCount)
-        assertEquals(0, snapshot.totalUnreadCount)
+        // The aggregate is the server's as-is (web parity); a compliant server
+        // already zeroes unfollowed rows, the row guard above is only a guard.
+        assertEquals(7, snapshot.totalUnreadCount)
     }
 
     @Test
@@ -271,7 +273,7 @@ class InboxSavedSearchRepositoryDataSourceTest {
         assertTrue(result.data.items.isEmpty())
         assertEquals(true, result.data.hasMore)
         assertEquals(31, result.data.nextOffset)
-        assertEquals(0, result.data.totalUnreadCount)
+        assertEquals(4, result.data.totalUnreadCount, "server aggregate is not re-derived locally")
     }
 
     @Test

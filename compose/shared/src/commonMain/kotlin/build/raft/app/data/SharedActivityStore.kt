@@ -732,15 +732,15 @@ class SharedActivityStore internal constructor(
         if (existingIndex < 0) return false
         val existing = snapshot.items[existingIndex]
         if (existing.lastMessageId == message.id || existing.latestActivityMessageId == message.id) return true
-        val unreadIncrement =
-            if (existing.isUnfollowedActivityThread) {
-                0
-            } else if (message.author.id.value != current.ownerUserId) {
-                1
-            } else {
-                0
-            }
-        val nextUnreadCount = existing.unreadCount + unreadIncrement
+        // Web receiveThreadReply (slock 1bb70cbeb, inboxStore.ts:1712-1777): a row
+        // carrying a content frontier advances only on a strictly newer socket
+        // seq (fail closed when the frame has none); the canonical refetch
+        // supplies the row otherwise. Unread is never touched locally: the
+        // server owns it and the scheduled reconcile brings it.
+        val incomingSeq = message.seq?.takeIf { it >= 0L }?.toString()
+        if (existing.latestActivitySeq != null && compareActivitySeq(incomingSeq, existing.latestActivitySeq) <= 0) {
+            return true
+        }
 
         val patched =
             existing.copy(
@@ -752,12 +752,9 @@ class SharedActivityStore internal constructor(
                 latestActivitySenderKind = message.author.kind,
                 latestActivitySenderAvatarWireValue = message.author.avatar?.wireValue ?: message.author.avatarUrl,
                 replyCount = existing.replyCount + 1,
-                unreadCount = nextUnreadCount,
-                firstUnreadMessageId =
-                    existing.firstUnreadMessageId
-                        ?: message.id.takeIf { unreadIncrement > 0 },
-                // Keep the Done/read overlay marker in step with the patched row:
-                // a Done clicked on this row must cover this message too.
+                latestActivitySeq = incomingSeq ?: existing.latestActivitySeq,
+                // Keep the Done/read overlay marker in step with the patched row
+                // (legacy Done only; see advancedActivityFrontier).
                 readStateLatestActivitySeq = existing.advancedActivityFrontier(message.seq)
             ).withActivityFollowStateProjection()
         advanceReplyThreadContent(existing, patched)
@@ -780,12 +777,8 @@ class SharedActivityStore internal constructor(
         if (existingIndex < 0) return false
         val existing = snapshot.items[existingIndex]
         if (event.replyCount < existing.replyCount) return true
-        val nextUnreadCount =
-            if (existing.isUnfollowedActivityThread) {
-                0
-            } else {
-                event.unreadCount ?: existing.unreadCount
-            }
+        // Web updateThreadActivityMeta (inboxStore.ts:1779-1795) moves only the
+        // reply count and time; the event's unread never overwrites the row.
         val patched =
             existing.copy(
                 replyCount = event.replyCount,
@@ -794,13 +787,6 @@ class SharedActivityStore internal constructor(
                         event.lastReplyAt
                     } else {
                         existing.latestActivityAt
-                    },
-                unreadCount = nextUnreadCount,
-                firstUnreadMessageId =
-                    if (nextUnreadCount > 0) {
-                        event.firstUnreadMessageId ?: existing.firstUnreadMessageId
-                    } else {
-                        null
                     },
                 // The reply this event counts carries its seq: keep the overlay
                 // marker in step so a Done on the patched row covers it.
@@ -1676,23 +1662,17 @@ class SharedActivityStore internal constructor(
                     realtimeHighWater.remove(canonical.key)
                     return@map canonical
                 }
-                if (canonical.replyCount > localVersion.replyCount) {
-                    if (preservePendingRealtimeUnread && canonical.unreadCount < current.unreadCount) {
-                        rememberRealtimeHighWater(canonical.withRealtimeUnreadProjection(current))
-                        preserveTotalUnreadFloor = true
-                        return@map canonical.withRealtimeUnreadProjection(current)
-                    }
-                    realtimeHighWater.remove(canonical.key)
-                    return@map canonical
-                }
+                // A canonical row that reached (or passed) the local patch wins
+                // outright, unread included: patches never invent unread, so
+                // there is no local unread to preserve (web takes the incoming
+                // row, preserveNewerThreadActivity, inboxStore.ts:813-870).
                 if (
-                    canonical.replyCount == localVersion.replyCount &&
-                    canonical.latestActivityMessageId == localVersion.marker
+                    canonical.replyCount > localVersion.replyCount ||
+                    (
+                        canonical.replyCount == localVersion.replyCount &&
+                            canonical.latestActivityMessageId == localVersion.marker
+                        )
                 ) {
-                    if (preservePendingRealtimeUnread && canonical.unreadCount < current.unreadCount) {
-                        preserveTotalUnreadFloor = true
-                        return@map canonical.withRealtimeUnreadProjection(current)
-                    }
                     realtimeHighWater.remove(canonical.key)
                     return@map canonical
                 }
@@ -1740,12 +1720,6 @@ class SharedActivityStore internal constructor(
             latestActivitySenderKind = current.latestActivitySenderKind,
             latestActivitySenderAvatarWireValue = current.latestActivitySenderAvatarWireValue,
             replyCount = current.replyCount,
-            unreadCount = current.unreadCount,
-            firstUnreadMessageId = current.firstUnreadMessageId
-        ).withActivityFollowStateProjection()
-
-    private fun InboxItem.withRealtimeUnreadProjection(current: InboxItem): InboxItem =
-        copy(
             unreadCount = current.unreadCount,
             firstUnreadMessageId = current.firstUnreadMessageId
         ).withActivityFollowStateProjection()

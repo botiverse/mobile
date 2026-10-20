@@ -738,7 +738,9 @@ class SharedActivityStoreTest {
                 isFollowing = true,
                 hasMention = true
             )
-        val raw = snapshot(listOf(unfollowed, followed), totalCount = 2, totalUnreadCount = 7)
+        // A compliant server reports the aggregate without unfollowed attention;
+        // the projection guards the row and never re-derives that aggregate.
+        val raw = snapshot(listOf(unfollowed, followed), totalCount = 2, totalUnreadCount = 2)
 
         val all = raw.projectActivityFilter(InboxFilter.All)
         assertEquals(listOf("thread:thread-unfollowed", "thread:thread-followed"), all.items.map(InboxItem::key))
@@ -777,14 +779,14 @@ class SharedActivityStoreTest {
                             hasMore = true,
                             nextOffset = 1,
                             totalCount = 2,
-                            totalUnreadCount = 4
+                            totalUnreadCount = 0 /* compliant server: unfollowed attention is zero */
                         ),
                         snapshot(
                             listOf(unfollowed, followed),
                             hasMore = false,
                             nextOffset = 2,
                             totalCount = 2,
-                            totalUnreadCount = 4
+                            totalUnreadCount = 0 /* compliant server: unfollowed attention is zero */
                         )
                     ),
                 moreSnapshots =
@@ -2234,14 +2236,14 @@ class SharedActivityStoreTest {
         assertEquals("Realtime preview", patched.latestActivityPreview)
         assertEquals("User user-2", patched.latestActivitySenderName)
         assertEquals(3, patched.replyCount)
-        assertEquals(2, patched.unreadCount)
-        assertEquals(2, store.state.value.totalUnreadCount)
+        assertEquals(1, patched.unreadCount, "web never adds unread per reply")
+        assertEquals(1, store.state.value.totalUnreadCount)
         assertEquals(1, inbox.initialLoadCount)
 
         store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(event))
 
         assertEquals(3, store.state.value.items.single().replyCount)
-        assertEquals(2, store.state.value.totalUnreadCount)
+        assertEquals(1, store.state.value.totalUnreadCount)
         scope.cancel()
     }
 
@@ -2291,12 +2293,12 @@ class SharedActivityStoreTest {
         assertEquals(MessageId("reply-new"), patched.latestActivityMessageId)
         assertEquals("New reply", patched.latestActivityPreview)
         assertEquals(4, patched.replyCount)
-        assertEquals(2, patched.unreadCount)
+        assertEquals(1, patched.unreadCount, "unread is the server's")
         scope.cancel()
     }
 
     @Test
-    fun threadUpdatedPatchesMonotonicReplyAndAuthoritativeUnreadMetadata() = runBlocking {
+    fun threadUpdatedPatchesMonotonicReplyMetaButNeverOverwritesUnread() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store =
             activityStore(
@@ -2334,8 +2336,10 @@ class SharedActivityStoreTest {
         val patched = store.state.value.items.single()
         assertEquals(3, patched.replyCount)
         assertEquals("2026-07-13T03:05:00Z", patched.latestActivityAt)
-        assertEquals(9, patched.unreadCount)
-        assertEquals(MessageId("server-first-unread"), patched.firstUnreadMessageId)
+        // Web updateThreadActivityMeta (slock 1bb70cbeb inboxStore.ts:1779-1795):
+        // the event's unread never overwrites the row.
+        assertEquals(1, patched.unreadCount)
+        assertEquals(MessageId("first-thread-channel-1"), patched.firstUnreadMessageId)
 
         store.dispatch(
             SharedActivityIntent.ApplyRealtimeEvent(
@@ -2351,7 +2355,7 @@ class SharedActivityStoreTest {
 
         assertEquals(3, store.state.value.items.single().replyCount)
         assertEquals("2026-07-13T03:05:00Z", store.state.value.items.single().latestActivityAt)
-        assertEquals(9, store.state.value.items.single().unreadCount)
+        assertEquals(1, store.state.value.items.single().unreadCount)
 
         store.dispatch(
             SharedActivityIntent.ApplyRealtimeEvent(
@@ -2367,8 +2371,8 @@ class SharedActivityStoreTest {
             )
         )
 
-        assertEquals(0, store.state.value.items.single().unreadCount)
-        assertEquals(null, store.state.value.items.single().firstUnreadMessageId)
+        assertEquals(1, store.state.value.items.single().unreadCount)
+        assertEquals(MessageId("first-thread-channel-1"), store.state.value.items.single().firstUnreadMessageId)
         scope.cancel()
     }
 
@@ -2632,8 +2636,9 @@ class SharedActivityStoreTest {
         assertEquals(false, store.state.value.refreshing)
         assertEquals(false, store.state.value.pullRefreshing)
         assertEquals(MessageId("message-new"), store.state.value.items.single().latestActivityMessageId)
-        assertEquals(1, store.state.value.items.single().unreadCount)
-        assertEquals(1, store.state.value.totalUnreadCount)
+        // The patch moves content only; unread arrives with the canonical row.
+        assertEquals(0, store.state.value.items.single().unreadCount)
+        assertEquals(0, store.state.value.totalUnreadCount)
 
         inbox.completeNextSnapshot(snapshot(listOf(canonical), totalUnreadCount = 1))
         awaitState(store) { state -> state.items.singleOrNull()?.latestActivityMessageId == MessageId("message-new") }
@@ -2804,7 +2809,7 @@ class SharedActivityStoreTest {
         inbox.completeNextSnapshot(snapshot(emptyList(), totalUnreadCount = 1))
         delay(1L)
         assertEquals(listOf(stale.key), store.state.value.items.map { it.key })
-        assertEquals(1, store.state.value.items.single().unreadCount)
+        assertEquals(0, store.state.value.items.single().unreadCount, "patches never invent unread")
         assertEquals(1, store.state.value.totalUnreadCount)
 
         store.dispatch(
@@ -2815,8 +2820,9 @@ class SharedActivityStoreTest {
         awaitPendingCount(inbox, 1)
         inbox.completeNextSnapshot(snapshot(listOf(laggingReadProjection), totalUnreadCount = 0))
         delay(1L)
-        assertEquals(1, store.state.value.items.single().unreadCount)
-        assertEquals(1, store.state.value.totalUnreadCount)
+        // The canonical row reached the patch marker, so it wins, unread included.
+        assertEquals(0, store.state.value.items.single().unreadCount)
+        assertEquals(0, store.state.value.totalUnreadCount)
 
         store.dispatch(SharedActivityIntent.Refresh)
         awaitPendingCount(inbox, 1)
@@ -2884,7 +2890,7 @@ class SharedActivityStoreTest {
 
         assertEquals(listOf(stale.key), store.state.value.items.map { it.key })
         assertEquals(MessageId("message-new"), store.state.value.items.single().latestActivityMessageId)
-        assertEquals(1, store.state.value.totalUnreadCount)
+        assertEquals(0, store.state.value.totalUnreadCount, "no local unread inflation")
         scope.cancel()
     }
 
@@ -2919,7 +2925,7 @@ class SharedActivityStoreTest {
         delay(1L)
 
         assertEquals(2, store.state.value.items.size)
-        assertEquals(listOf(1, 1), store.state.value.items.map { it.unreadCount })
+        assertEquals(listOf(0, 0), store.state.value.items.map { it.unreadCount })
         assertEquals(2, store.state.value.totalUnreadCount)
         scope.cancel()
     }
@@ -2955,7 +2961,7 @@ class SharedActivityStoreTest {
         awaitPendingCount(inbox, 1)
         inbox.completeNextSnapshot(snapshot(listOf(sameMarkerRead), totalUnreadCount = 0))
         delay(1L)
-        assertEquals(1, store.state.value.items.single().unreadCount)
+        assertEquals(0, store.state.value.items.single().unreadCount)
 
         store.dispatch(
             SharedActivityIntent.ApplyRealtimeEvent(
@@ -3064,14 +3070,14 @@ class SharedActivityStoreTest {
 
         assertEquals(MessageId("message-new"), store.state.value.items.single().latestActivityMessageId)
         assertEquals(3, store.state.value.items.single().replyCount)
-        assertEquals(2, store.state.value.items.single().unreadCount)
+        assertEquals(1, store.state.value.items.single().unreadCount)
 
         inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 1))
 
         assertEquals(MessageId("message-new"), store.state.value.items.single().latestActivityMessageId)
         assertEquals(3, store.state.value.items.single().replyCount)
-        assertEquals(2, store.state.value.items.single().unreadCount)
-        assertEquals(2, store.state.value.totalUnreadCount)
+        assertEquals(1, store.state.value.items.single().unreadCount)
+        assertEquals(1, store.state.value.totalUnreadCount)
         assertEquals(false, store.state.value.refreshing)
 
         awaitPendingCount(inbox, 1)
@@ -3236,7 +3242,7 @@ class SharedActivityStoreTest {
 
         assertEquals(4, store.state.value.items.single().replyCount)
         assertEquals(MessageId("message-1"), store.state.value.items.single().latestActivityMessageId)
-        assertEquals(1, store.state.value.items.single().unreadCount)
+        assertEquals(0, store.state.value.items.single().unreadCount)
         assertEquals(false, store.state.value.refreshing)
         delay(150L)
         assertEquals(2, inbox.initialLoadCount)
@@ -3334,7 +3340,7 @@ class SharedActivityStoreTest {
         val reconciled = store.state.value.items.single()
         assertEquals("Realtime preview", reconciled.latestActivityPreview)
         assertEquals(4, reconciled.replyCount)
-        assertEquals(3, reconciled.unreadCount)
+        assertEquals(1, reconciled.unreadCount, "unread stays the server's")
         assertTrue(secondPatchEnteredOwner.isCompleted)
         scope.cancel()
     }

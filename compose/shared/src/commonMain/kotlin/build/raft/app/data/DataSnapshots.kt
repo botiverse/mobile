@@ -144,16 +144,9 @@ internal fun InboxItem.withActivityFollowStateProjection(): InboxItem =
  * repository/fixture consumer applies the same membership contract.
  */
 internal fun InboxSnapshot.projectActivityFilter(filter: InboxFilter): InboxSnapshot {
-    val rawUnread = items.sumOf(InboxItem::unreadCount)
+    // The unread aggregate is the server's (it already zeroes unfollowed rows);
+    // only row membership/attention is guarded here.
     val normalizedItems = items.map { item -> item.withActivityFollowStateProjection() }
-    val normalizedUnread = normalizedItems.sumOf(InboxItem::unreadCount)
-    val suppressedUnfollowedUnread = (rawUnread - normalizedUnread).coerceAtLeast(0)
-    val projectedTotalUnread =
-        if (totalUnreadCount >= rawUnread) {
-            (totalUnreadCount - suppressedUnfollowedUnread).coerceAtLeast(0)
-        } else {
-            maxOf(totalUnreadCount, normalizedUnread)
-        }
     val visibleItems =
         if (filter == InboxFilter.All) {
             normalizedItems
@@ -161,11 +154,10 @@ internal fun InboxSnapshot.projectActivityFilter(filter: InboxFilter): InboxSnap
             normalizedItems.filterNot { item -> item.isUnfollowedActivityThread }
         }
     val removedCount = normalizedItems.size - visibleItems.size
-    if (removedCount == 0 && normalizedItems == items && projectedTotalUnread == totalUnreadCount) return this
+    if (removedCount == 0 && normalizedItems == items) return this
     return copy(
         items = visibleItems,
-        totalCount = (totalCount - removedCount).coerceAtLeast(0),
-        totalUnreadCount = projectedTotalUnread
+        totalCount = (totalCount - removedCount).coerceAtLeast(0)
     )
 }
 
