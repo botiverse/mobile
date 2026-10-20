@@ -3292,6 +3292,16 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeDmAgentActivityStates() {
+        captureKmpComponentCase(
+            caseId = "screens.home.dm-agent-activity-states",
+            pageName = "compose_home_dm_agent_activity_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
     fun captureHomeServerSwitcherBadgeStates() {
         captureKmpComponentCase(
             caseId = "screens.home.server-switcher-badge-states",
