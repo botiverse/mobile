@@ -51,6 +51,11 @@ import kotlin.math.abs
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.RaftDropdownMenu
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftDialogSurface
 import build.raft.designsystem.components.RaftFieldLabel
@@ -182,6 +187,33 @@ class RaftInteractiveSemanticsTest {
             onNodeWithText("Description (facultatif)").assertIsDisplayed()
             onNodeWithContentDescription("Fermer").assertIsDisplayed()
             onNodeWithContentDescription("Chargement").assertExists()
+        }
+
+    /** On a TextFieldValue the textarea types at the caller's caret, counts the text and focuses its editor. */
+    @Test
+    fun aTextareaOnATextFieldValueTypesAtTheCallersCaret() =
+        runComposeUiTest {
+            var value by mutableStateOf(TextFieldValue("Hello", selection = TextRange(5)))
+            var focused = false
+            setContent(
+                themed {
+                    RaftField(label = "Message") {
+                        RaftTextarea(
+                            value = value,
+                            onValueChange = { value = it },
+                            limit = 10,
+                            inputModifier = Modifier.onFocusChanged { focused = it.isFocused },
+                        )
+                    }
+                },
+            )
+            val textarea = onNodeWithContentDescription("Message")
+            textarea.requestFocus()
+            assertTrue(focused, "the input modifier reaches the editor")
+            textarea.performTextInput(" Wug")
+            assertEquals("Hello Wug", value.text)
+            assertEquals(TextRange(9), value.selection)
+            onNodeWithText("9/10").assertExists()
         }
 
     @Test

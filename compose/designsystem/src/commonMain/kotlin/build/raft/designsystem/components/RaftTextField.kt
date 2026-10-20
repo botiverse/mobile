@@ -215,6 +215,10 @@ fun RaftTextField(
  *
  * [limit] adds the [RaftTextareaCounter] under the box at its end (TextareaGroup, 6dp
  * gap). Typing is never cut off at the limit, so the counter can show the text is over.
+ *
+ * [modifier] goes on the whole group (box and counter); [inputModifier] on the text field
+ * itself, for what must reach the editor: a `focusRequester`, `onFocusChanged`, IME and
+ * keyboard handling.
  */
 @Composable
 fun RaftTextarea(
@@ -231,17 +235,18 @@ fun RaftTextarea(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     interactionSource: MutableInteractionSource? = null,
+    inputModifier: Modifier = Modifier,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val look = raftFieldBoxLook(enabled, invalid, RaftTheme.colors, readOnly)
     val focused = enabled && raftIsFocused(source)
     val field = LocalRaftFieldState.current
-    Column(modifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    RaftTextareaGroup(modifier, count = value.length, limit = limit, invalid = invalid && enabled) {
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
             modifier =
-                Modifier
+                inputModifier
                     .fillMaxWidth()
                     .heightIn(min = minHeight, max = maxHeight)
                     // Focused: cursor and selection drags keep the drag from the host back swipe.
@@ -255,25 +260,99 @@ fun RaftTextarea(
             singleLine = false,
             interactionSource = source,
             cursorBrush = SolidColor(RaftTheme.colors.foreground),
-            decorationBox = { inner ->
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = minHeight)
-                        .raftFieldChrome(look, focused)
-                        // CSS `py-2.5 px-3` sit inside the 1dp border.
-                        .padding(horizontal = 12.dp + RaftStroke.Field, vertical = 10.dp + RaftStroke.Field),
-                ) {
-                    if (value.isEmpty() && placeholder != null) {
-                        RaftText(placeholder, style = raftFieldTextStyle(look.placeholder))
-                    }
-                    inner()
-                }
-            },
+            decorationBox = { inner -> RaftTextareaBox(look, focused, minHeight, value.isEmpty(), placeholder, inner) },
         )
+    }
+}
+
+/**
+ * [RaftTextarea] on a [TextFieldValue], for callers that own the selection and composition
+ * (a mention or emoji picker inserting at the caret). The counter counts the text.
+ */
+@Composable
+fun RaftTextarea(
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String? = null,
+    enabled: Boolean = LocalRaftFieldState.current.enabled,
+    readOnly: Boolean = false,
+    invalid: Boolean = LocalRaftFieldState.current.invalid,
+    limit: Int? = null,
+    minHeight: Dp = RaftTextFieldDefaults.TextareaMinHeight,
+    maxHeight: Dp = Dp.Infinity,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    interactionSource: MutableInteractionSource? = null,
+    inputModifier: Modifier = Modifier,
+) {
+    val source = interactionSource ?: remember { MutableInteractionSource() }
+    val look = raftFieldBoxLook(enabled, invalid, RaftTheme.colors, readOnly)
+    val focused = enabled && raftIsFocused(source)
+    val field = LocalRaftFieldState.current
+    RaftTextareaGroup(modifier, count = value.text.length, limit = limit, invalid = invalid && enabled) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier =
+                inputModifier
+                    .fillMaxWidth()
+                    .heightIn(min = minHeight, max = maxHeight)
+                    // Focused: cursor and selection drags keep the drag from the host back swipe.
+                    .raftKeepsBackSwipe(focused)
+                    .raftFieldSemantics(field.label, invalid, enabled, field.error),
+            enabled = enabled,
+            readOnly = readOnly,
+            textStyle = raftFieldTextStyle(look.text),
+            keyboardOptions = keyboardOptions,
+            keyboardActions = keyboardActions,
+            singleLine = false,
+            interactionSource = source,
+            cursorBrush = SolidColor(RaftTheme.colors.foreground),
+            decorationBox = { inner -> RaftTextareaBox(look, focused, minHeight, value.text.isEmpty(), placeholder, inner) },
+        )
+    }
+}
+
+/** TextareaGroup: the textarea, then its counter at the end 6dp under it when there is a [limit]. */
+@Composable
+private fun RaftTextareaGroup(
+    modifier: Modifier,
+    count: Int,
+    limit: Int?,
+    invalid: Boolean,
+    textarea: @Composable () -> Unit,
+) {
+    Column(modifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        textarea()
         if (limit != null) {
-            RaftTextareaCounter(count = value.length, limit = limit, invalid = invalid && enabled)
+            RaftTextareaCounter(count = count, limit = limit, invalid = invalid)
         }
+    }
+}
+
+/** The textarea's box round the editor: field chrome, `py-2.5 px-3`, the placeholder. */
+@Composable
+private fun RaftTextareaBox(
+    look: RaftFieldBoxLook,
+    focused: Boolean,
+    minHeight: Dp,
+    showPlaceholder: Boolean,
+    placeholder: String?,
+    inner: @Composable () -> Unit,
+) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = minHeight)
+            .raftFieldChrome(look, focused)
+            // CSS `py-2.5 px-3` sit inside the 1dp border.
+            .padding(horizontal = 12.dp + RaftStroke.Field, vertical = 10.dp + RaftStroke.Field),
+    ) {
+        if (showPlaceholder && placeholder != null) {
+            RaftText(placeholder, style = raftFieldTextStyle(look.placeholder))
+        }
+        inner()
     }
 }
 
