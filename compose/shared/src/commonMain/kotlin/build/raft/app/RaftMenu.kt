@@ -2,7 +2,6 @@ package build.raft.app
 
 import build.raft.app.components.RaftMetrics
 import build.raft.app.components.RaftLookSeparator
-import build.raft.app.components.raftActive
 import build.raft.app.components.raftLookOverlaySurface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -10,7 +9,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,7 +19,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.heightIn
@@ -72,8 +69,6 @@ private val RaftBaseMenuGroupLabelHeight = 28.dp
 private val RaftBaseMenuMinWidth = 136.dp
 private val RaftBaseMenuMaxWidth = 280.dp
 private val RaftBaseMenuRowHeight = 34.dp
-private val RaftBaseMenuIconSize = 14.dp
-private val RaftBaseMenuShadowOffset = 4.dp
 private val RaftBaseMenuHorizontalOffset = (-8).dp
 private val RaftBaseMenuVerticalOffset = 8.dp
 private val RaftBaseMenuViewportGap = 8.dp
@@ -89,6 +84,7 @@ internal enum class RaftMenuSelectedIndicatorPlacement {
     Trailing
 }
 
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftBaseMenuOverlay(
     anchor: RaftPopoverAnchor,
@@ -120,104 +116,20 @@ internal fun RaftBaseMenuOverlay(
     verticalPlacement: RaftFloatingVerticalPlacement = RaftFloatingVerticalPlacement.Auto
 ) {
     if (items.isEmpty()) return
-    if (raftActive()) {
-        RaftLookBaseMenuOverlay(
-            anchor = anchor,
-            items = items,
-            selectedId = selectedId,
-            onDismiss = onDismiss,
-            onSelect = onSelect,
-            width = raftLookBaseMenuWidth(items, fixedWidth = width, minWidth = minWidth),
-            horizontalOffset = horizontalOffset,
-            // The brutal default gap becomes DropdownMenuContent's `sideOffset` 6; a caller's
-            // own gap (the 4dp status menu) is kept.
-            verticalOffset = if (verticalOffset == RaftBaseMenuVerticalOffset) RaftMetrics.MenuSideOffset else verticalOffset,
-            verticalPlacement = verticalPlacement,
-            modifier = modifier
-        )
-        return
-    }
-    val density = LocalDensity.current
-    val shadowOffset = if (surfaceShadowColor == Color.Transparent) 0.dp else RaftBaseMenuShadowOffset
-    val menuWidth = width ?: raftBaseMenuWidth(items, uppercaseLabels, minWidth)
-    val menuSize = with(density) {
-        Size(
-            width = (menuWidth + shadowOffset).toPx(),
-            height =
-                rowHeight.toPx() * items.size +
-                    // Rows sit inside the border (react content-box height), see the
-                    // Column's border padding below (task #370).
-                    RaftAppStroke.Default.toPx() * 2 +
-                    RaftAppStroke.Default.toPx() * items.count { it.dividerBefore } +
-                    RaftBaseMenuGroupLabelHeight.toPx() * items.count { it.groupLabel != null } +
-                    shadowOffset.toPx()
-        )
-    }
-    val horizontalOffsetPx = with(density) { horizontalOffset.toPx() }
-    val verticalOffsetPx = with(density) { verticalOffset.toPx() }
-    val viewportGapPx = with(density) { RaftBaseMenuViewportGap.toPx() }
-    RaftModalAnchoredPopover(
+    RaftLookBaseMenuOverlay(
         anchor = anchor,
-        contentSize = menuSize,
-        viewportGap = viewportGapPx,
-        horizontalOffset = horizontalOffsetPx,
-        verticalOffset = verticalOffsetPx,
-        verticalPlacement = verticalPlacement,
-        horizontalAutoFlip = true,
+        items = items,
+        selectedId = selectedId,
         onDismiss = onDismiss,
+        onSelect = onSelect,
+        width = raftLookBaseMenuWidth(items, fixedWidth = width, minWidth = minWidth),
+        horizontalOffset = horizontalOffset,
+        // The brutal default gap becomes DropdownMenuContent's `sideOffset` 6; a caller's
+        // own gap (the 4dp status menu) is kept.
+        verticalOffset = if (verticalOffset == RaftBaseMenuVerticalOffset) RaftMetrics.MenuSideOffset else verticalOffset,
+        verticalPlacement = verticalPlacement,
         modifier = modifier
-    ) {
-        Box(
-            modifier = Modifier
-                .padding(end = shadowOffset, bottom = shadowOffset)
-        ) {
-            if (shadowOffset > 0.dp) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .offset(x = shadowOffset, y = shadowOffset)
-                        .background(surfaceShadowColor)
-                )
-            }
-            Column(
-                modifier = Modifier
-                    .width(menuWidth)
-                    .background(RaftColor.SurfaceWhite)
-                    .border(RaftAppStroke.Default, surfaceBorderColor)
-                    // This surface is the parent of actual Button rows. Native dispatch
-                    // capture here wins before child rows on Android, so only use the
-                    // no-op clickable needed to keep blank menu space out of the
-                    // sibling dismiss barrier.
-                    .clickable(onClick = {})
-                    // react draws its 2px border around the rows (content-box), so
-                    // the menu is rows + 2*2dp tall and the rows are inset by the
-                    // stroke; Compose paints the border over the content instead —
-                    // pad the rows in by the stroke to match (task #370).
-                    .padding(RaftAppStroke.Default)
-            ) {
-                items.forEach { item ->
-                    if (item.dividerBefore) {
-                        Box(Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftBaseMenuForegroundColor))
-                    }
-                    item.groupLabel?.let { RaftBaseMenuGroupLabel(it, horizontalPadding = 12.dp) }
-                    val selected = item.id == selectedId || item.checked
-                    RaftBaseMenuRow(
-                        item = item,
-                        selected = selected,
-                        selectedRowColor = selectedRowColor,
-                        uppercaseLabel = uppercaseLabels,
-                        rowHeight = rowHeight,
-                        labelFontSize = labelFontSize,
-                        labelLineHeight = labelLineHeight,
-                        labelFontWeight = labelFontWeight,
-                        labelLetterSpacing = labelLetterSpacing,
-                        selectedIndicatorPlacement = selectedIndicatorPlacement,
-                        onClick = { if (item.enabled) onSelect(item.id) }
-                    )
-                }
-            }
-        }
-    }
+    )
 }
 
 /** Muted, non-interactive menu group heading (raft-ui `DropdownMenuLabel`). */
@@ -263,7 +175,6 @@ internal fun RaftTaskStatusMenuOverlay(
         items = items,
         selectedId = selectedId,
         selectedRowColor = RaftColor.SurfaceWhite,
-        uppercaseLabels = false,
         // react's status menu renders at exactly its 140px min-width (the longest
         // label "In Progress" is narrower); the char estimate overshoots to 172dp.
         // Raft sets the selected label bold, so there 140dp is only the minimum
@@ -371,7 +282,7 @@ private fun RaftLookBaseMenuOverlay(
  * selected row) plus the row chrome and trailing check, up to the brutal max width.
  */
 internal fun raftLookBaseMenuWidth(items: List<RaftBaseMenuItem>, fixedWidth: Dp?, minWidth: Dp): Dp {
-    if (fixedWidth == null) return raftMenuWidth(raftBaseMenuWidth(items, uppercaseLabels = false, minWidth = minWidth))
+    if (fixedWidth == null) return raftMenuWidth(raftBaseMenuWidth(items, minWidth = minWidth))
     // Bold 14sp: ~8.5dp per Latin glyph, a full em for CJK and other wide glyphs.
     val widestLabelWidth =
         items.maxOfOrNull { item ->
@@ -389,73 +300,14 @@ internal fun raftLookBaseMenuWidth(items: List<RaftBaseMenuItem>, fixedWidth: Dp
     return kotlin.math.ceil(widestLabelWidth + chrome).dp.coerceIn(fixedWidth, maxWidth)
 }
 
-private fun raftBaseMenuWidth(items: List<RaftBaseMenuItem>, uppercaseLabels: Boolean, minWidth: Dp): Dp {
+private fun raftBaseMenuWidth(items: List<RaftBaseMenuItem>, minWidth: Dp): Dp {
     val widestLabelWidth =
         items.maxOfOrNull { item ->
-            val label = if (uppercaseLabels) item.label.raftDisplayUppercase() else item.label
-            label.fold(0) { total, char -> total + if (char.code > 127) 14 else 8 }
+            item.label.fold(0) { total, char -> total + if (char.code > 127) 14 else 8 }
         } ?: 0
     return (widestLabelWidth + RaftBaseMenuChromeWidthValue)
         .coerceIn(minWidth.value.toInt(), RaftBaseMenuMaxWidth.value.toInt())
         .dp
-}
-
-@Composable
-internal fun RaftBaseMenuRow(
-    item: RaftBaseMenuItem,
-    selected: Boolean,
-    selectedRowColor: Color,
-    uppercaseLabel: Boolean,
-    rowHeight: Dp,
-    labelFontSize: TextUnit,
-    labelLineHeight: TextUnit,
-    labelFontWeight: FontWeight,
-    labelLetterSpacing: TextUnit,
-    selectedIndicatorPlacement: RaftMenuSelectedIndicatorPlacement,
-    onClick: () -> Unit
-) {
-    Button(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(rowHeight)
-            .background(if (selected) selectedRowColor else RaftColor.SurfaceWhite)
-            .padding(horizontal = 12.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
-        ) {
-            val leadingIcon =
-                item.icon ?: RaftLucideIconName.Check.takeIf {
-                    selected && selectedIndicatorPlacement == RaftMenuSelectedIndicatorPlacement.Leading
-                }
-            if (leadingIcon != null) {
-                RaftLucideIcon(leadingIcon, modifier = Modifier.size(RaftBaseMenuIconSize), color = RaftColor.TextBlackArgb)
-            } else if (selectedIndicatorPlacement == RaftMenuSelectedIndicatorPlacement.Leading) {
-                Spacer(modifier = Modifier.width(RaftBaseMenuIconSize))
-            }
-            Text(
-                text = if (uppercaseLabel) item.label.raftDisplayUppercase() else item.label,
-                style = RaftType.Caption.copy(
-                    fontSize = labelFontSize,
-                    lineHeight = labelLineHeight,
-                    letterSpacing = labelLetterSpacing
-                ).withRaftFontWeight(labelFontWeight),
-                color = if (item.enabled) RaftBaseMenuForegroundColor else RaftColor.ForegroundDisabled,
-                maxLines = 1,
-                modifier = Modifier.weight(1f)
-            )
-            if (selectedIndicatorPlacement == RaftMenuSelectedIndicatorPlacement.Trailing) {
-                if (selected) {
-                    RaftLucideIcon(RaftLucideIconName.Check, modifier = Modifier.size(RaftBaseMenuIconSize), color = RaftColor.TextBlackArgb)
-                } else {
-                    Spacer(modifier = Modifier.width(RaftBaseMenuIconSize))
-                }
-            }
-        }
-    }
 }
 
 /*

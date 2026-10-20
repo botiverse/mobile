@@ -19,38 +19,7 @@ internal fun RaftSwitchButton(
     enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
-    if (raftActive()) {
-        RaftLookSwitch(checked = checked, enabled = enabled, modifier = modifier)
-        return
-    }
-    Box(
-        modifier =
-            modifier
-                .size(width = 42.dp, height = 24.dp)
-                .background(
-                    when {
-                        !enabled -> RaftColor.EmptyStateGray
-                        checked -> RaftColor.AccentLime
-                        else -> RaftColor.SurfaceWhite
-                    }
-                )
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                .padding(3.dp),
-        contentAlignment =
-            if (checked) {
-                Alignment.CenterEnd
-            } else {
-                Alignment.CenterStart
-            }
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(16.dp)
-                    .background(RaftColor.SurfaceWhite)
-                    .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
-        )
-    }
+    RaftLookSwitch(checked = checked, enabled = enabled, modifier = modifier)
 }
 
 /**

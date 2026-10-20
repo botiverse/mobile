@@ -135,7 +135,7 @@ internal fun UiButtonThemeVisualContent() {
                 .padding(16.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            RaftThemeProvider(theme = brutalTheme) {
+            RaftThemeProvider(theme = raftLightTheme) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     RaftBrutalActionButton(label = "Brutal", onClick = {}, minHeight = 32.dp, minWidth = 0.dp)
                     RaftBrutalActionButton(label = "Save", onClick = {}, backgroundColor = RaftColor.BrandYellow, minHeight = 32.dp, minWidth = 0.dp)
@@ -157,7 +157,7 @@ internal fun UiCardVisualContent() {
     // Core-bbox normalization across registers (XiShi contract): the brutal card reserves a
     // 4dp shadow gutter (visible core = outer - 4dp); the raft card (container radius,
     // hairline, no shadow) reserves none, matching web's 310px `rounded-container` card.
-    val cardWidth = if (theme.isAmbient) 310.dp else 314.dp
+    val cardWidth = 310.dp
     // Fixed 342x190 backdrop with only start/top padding (no end/bottom) so the outer
     // width isn't constrained to 310 — brutal outer 314 (core 314-4=310) and elegant outer
     // 310 (core 310) both fit and the visible card core equals 310dp from x=16 to x=326.
@@ -198,15 +198,7 @@ internal fun UiCardVisualContent() {
                 // 4dp footprint (2dp external + 2dp internal). Elegant renders via Modifier.shadow
                 // (no offset-box), so it ignores shadowOffset and takes NO external reserve — its
                 // geometry (the accepted waiver capture) is unchanged.
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .then(
-                        if (!theme.isAmbient) {
-                            Modifier.padding(end = 2.dp, bottom = 2.dp)
-                        } else {
-                            Modifier
-                        }
-                    ),
+                modifier = Modifier.fillMaxWidth(),
                 shadowOffset = 2.dp,
                 backgroundColor = RaftColor.BrandYellow,
                 minHeight = 28.dp,

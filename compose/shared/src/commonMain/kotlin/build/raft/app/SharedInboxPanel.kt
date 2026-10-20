@@ -1,5 +1,8 @@
 package build.raft.app
 
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import build.raft.app.components.raftCardSurface
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
@@ -121,7 +124,6 @@ import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.launch
 import kotlin.time.TimeSource
 
-private val ActivitySelectedRowShadowOffset = 2.dp
 
 @Composable
 internal fun SharedHomeActivityScreen(
@@ -1086,7 +1088,7 @@ private fun SharedActivityFilterBar(
                 SharedActivityMarkAllReadButton(onClick = onMarkAllRead)
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftColor.BorderBlack))
+        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
     }
 }
 
@@ -1577,7 +1579,6 @@ private fun SharedActivityList(
                     }
                 },
                 selectedId = "",
-                uppercaseLabels = false,
                 onDismiss = { activeMenuItem = null },
                 onSelect = { id ->
                     when (id) {
@@ -1692,34 +1693,22 @@ internal fun InboxItem.toReplyThreadPrewarmMarker(serverId: String): ActivityRep
     )
 }
 
+/**
+ * An Activity row's surface: the raft-ui card row (container radius, `layer-card`, 1dp
+ * hairline); the selected row takes the `info-soft` wash. No ink frame, no offset shadow.
+ */
 @Composable
 private fun SharedActivitySelectedRowSurface(
     selected: Boolean,
     modifier: Modifier = Modifier,
     content: @Composable (Modifier) -> Unit
 ) {
-    Box(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(end = ActivitySelectedRowShadowOffset, bottom = ActivitySelectedRowShadowOffset)
-    ) {
-        if (selected) {
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .offset(x = ActivitySelectedRowShadowOffset, y = ActivitySelectedRowShadowOffset)
-                    .background(RaftColor.ShadowBlack)
-            )
-        }
+    Box(modifier = modifier.fillMaxWidth()) {
         content(
             Modifier
                 .fillMaxWidth()
-                .background(RaftColor.SurfaceWhite)
-                .border(
-                    RaftAppStroke.Default,
-                    if (selected) RaftColor.BorderBlack else RaftColor.TextBlack.copy(alpha = 0.3f)
-                )
+                .clip(RoundedCornerShape(RaftAppRadius.Container))
+                .raftCardSurface(fill = if (selected) RaftColor.InfoSoft else RaftColor.Card)
         )
     }
 }

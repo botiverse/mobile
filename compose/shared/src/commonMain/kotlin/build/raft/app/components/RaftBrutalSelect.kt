@@ -9,8 +9,6 @@ import build.raft.app.RaftLiveRootAnchorRef
 import build.raft.app.RaftPopoverAnchor
 import build.raft.app.RaftPopoverLocalPoint
 import build.raft.app.RaftModalAnchoredPopover
-import build.raft.app.RaftShadow
-import build.raft.app.RaftAppStroke
 import build.raft.app.RaftType
 import build.raft.app.raftCaptureLiveRootAnchor
 import build.raft.app.withRaftFontWeight
@@ -19,8 +17,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,7 +24,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -38,7 +33,6 @@ import build.raft.app.compat.ui.nestedScroll
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalDensity
@@ -105,6 +99,7 @@ internal fun raftSelectListHeight(
     return (rows.dp + RaftMetrics.PopupPadding * 2).coerceAtMost(maxMenuHeight)
 }
 
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftBrutalSelectField(
     options: List<RaftBrutalSelectOption>,
@@ -118,119 +113,19 @@ internal fun RaftBrutalSelectField(
     triggerHeight: Dp = 40.dp,
     maxMenuHeight: Dp = 220.dp
 ) {
-    var expanded by remember { mutableStateOf(false) }
     val selectedOption = options.firstOrNull { it.id == selectedId }
     val displayLabel = selectedLabel.ifBlank { selectedOption?.label.orEmpty() }.ifBlank { placeholder }
-    val shadowOffset = if (enabled) RaftShadow.BrutalSmall else 0.dp
-    var triggerAnchorValue by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
-    var triggerRootWidthPx by remember { mutableStateOf(0f) }
-    val triggerAnchor = remember { RaftLiveRootAnchorRef(identity = "brutal_select") }
-    val density = LocalDensity.current
-    val menuWidth = raftSelectMenuWidth(triggerRootWidthPx, density.density)
-    val menuShadowOffset = RaftShadow.Brutal
-    val listHeight = raftBrutalSelectListHeight(options.size, rowHeight, maxMenuHeight)
-    if (raftActive()) {
-        RaftSelectField(
-            options = options,
-            selectedId = selectedId,
-            onSelect = onSelect,
-            modifier = modifier,
-            displayLabel = displayLabel,
-            placeholder = selectedLabel.isBlank() && selectedOption == null,
-            enabled = enabled,
-            triggerHeight = raftFieldHeight(triggerHeight),
-            maxMenuHeight = maxMenuHeight
-        )
-        return
-    }
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(triggerHeight + shadowOffset)
-                    .raftCaptureLiveRootAnchor(triggerAnchor) { size ->
-                        triggerRootWidthPx = size.width.toFloat()
-                    }
-        ) {
-            if (enabled) {
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(triggerHeight)
-                            .offset(x = shadowOffset, y = shadowOffset)
-                            .background(RaftColor.ShadowBlack)
-                )
-            }
-            Row(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(triggerHeight)
-                        .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                        .background(if (enabled) RaftColor.SurfaceWhite else RaftColor.SurfaceCream)
-                        .clickable(enabled = enabled) {
-                            if (expanded) {
-                                expanded = false
-                            } else {
-                                triggerAnchor.resolve(RaftPopoverLocalPoint.Exact(Offset.Zero))?.let { anchor ->
-                                    triggerAnchorValue = anchor
-                                    expanded = true
-                                }
-                            }
-                        }
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = displayLabel,
-                    style = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray),
-                    color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                RaftLucideIcon(
-                    RaftLucideIconName.ChevronDown,
-                    modifier = Modifier.size(14.dp),
-                    color = if (enabled) "#FF000000" else RaftColor.TextMutedGrayArgb
-                )
-            }
-        }
-        if (expanded && enabled && triggerAnchorValue != null) {
-            val contentSize =
-                with(density) {
-                    Size(
-                        width = (menuWidth + menuShadowOffset).toPx(),
-                        height = (listHeight + menuShadowOffset).toPx()
-                    )
-                }
-            RaftModalAnchoredPopover(
-                anchor = triggerAnchorValue!!,
-                contentSize = contentSize,
-                onDismiss = { expanded = false },
-                viewportGap = with(density) { RaftFloatingDefaultViewportGap.dp.toPx() },
-                verticalOffset = with(density) { (triggerHeight + shadowOffset).toPx() },
-                verticalOffsetAbove = with(density) { shadowOffset.toPx() },
-                verticalPlacement = RaftFloatingVerticalPlacement.Auto
-            ) {
-                RaftBrutalSelectMenu(
-                    options = options,
-                    selectedId = selectedId,
-                    enabled = enabled,
-                    rowHeight = rowHeight,
-                    listHeight = listHeight,
-                    modifier = Modifier.width(menuWidth),
-                    onSelect = { option ->
-                        expanded = false
-                        onSelect(option)
-                    }
-                )
-            }
-        }
-    }
+    RaftSelectField(
+        options = options,
+        selectedId = selectedId,
+        onSelect = onSelect,
+        modifier = modifier,
+        displayLabel = displayLabel,
+        placeholder = selectedLabel.isBlank() && selectedOption == null,
+        enabled = enabled,
+        triggerHeight = raftFieldHeight(triggerHeight),
+        maxMenuHeight = maxMenuHeight
+    )
 }
 
 /**
@@ -307,7 +202,7 @@ private fun RaftSelectField(
                             .width(menuWidth)
                             .height(listHeight)
                             // Keeps taps on empty popup space off the dismiss barrier while
-                            // letting the rows and the list's scroll win (see the brutal menu).
+                            // letting the rows and the list's scroll win.
                             .clickable(onClick = {})
                             .raftLookOverlaySurface()
                 ) {
@@ -373,102 +268,6 @@ private fun RaftSelectField(
                                 }
                             }
                         }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RaftBrutalSelectMenu(
-    options: List<RaftBrutalSelectOption>,
-    selectedId: String,
-    enabled: Boolean,
-    rowHeight: Dp,
-    listHeight: Dp,
-    onSelect: (RaftBrutalSelectOption) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val shadowOffset = RaftShadow.Brutal
-    Box(
-        modifier =
-            modifier
-                .height(listHeight + shadowOffset)
-                // This panel contains a LazyColumn. nativeDispatchCapture(),
-                // which raftFloatingContentClickTarget() installs on
-                // Android/OHOS, takes the drag stream before Kuikly's lazy
-                // list can scroll. A plain no-op clickable still keeps taps
-                // on empty menu space from reaching the dismiss barrier while
-                // allowing child rows and the list's scroll handler to win.
-                .clickable(onClick = {})
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(listHeight)
-                    .offset(x = shadowOffset, y = shadowOffset)
-                    .background(RaftColor.ShadowBlack)
-        )
-        // Keep the viewport chrome outside the scrolling node. Kuikly's
-        // LazyColumn repositions its native children while scrolling; when
-        // the background and border live on that same node, those children
-        // can repaint over the border and make the menu look split into
-        // multiple boxes. The outer Box owns the fixed white surface, clip,
-        // and continuous border; only its contents scroll.
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(listHeight)
-                    .background(RaftColor.SurfaceWhite)
-                    .clipToBounds()
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-        ) {
-            LazyColumn(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(listHeight)
-                        // The select lives in a floating overlay while its
-                        // trigger often sits inside a form LazyColumn. Keep
-                        // the drag entirely in this menu so an in-progress
-                        // option scroll cannot also move/focus the underlying
-                        // form after native capture was removed.
-                        .nestedScroll(
-                            scrollUp = NestedScrollMode.SELF_ONLY,
-                            scrollDown = NestedScrollMode.SELF_ONLY
-                        )
-            ) {
-                items(options.size, key = { idx -> options[idx].id }) { idx ->
-                    val option = options[idx]
-                    val selected = selectedId == option.id
-                    val rowEnabled = enabled && option.enabled && !option.header
-                    Row(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .height(rowHeight)
-                                .clickable(enabled = rowEnabled) { onSelect(option) }
-                                .background(if (selected) RaftColor.BrandYellow else RaftColor.SurfaceWhite)
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(modifier = Modifier.width(14.dp), contentAlignment = Alignment.Center) {
-                            if (selected) {
-                                RaftLucideIcon(RaftLucideIconName.Check, modifier = Modifier.size(12.dp), color = "#FF000000")
-                            }
-                        }
-                        Text(
-                            text = option.label,
-                            style = if (option.header) RaftType.Caption else RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
-                            color = if (rowEnabled) RaftColor.TextBlack else RaftColor.TextMutedGray,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
                     }
                 }
             }

@@ -15,7 +15,7 @@ import build.raft.app.compat.pager.Page
 internal class SearchRecoveryVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
-        setContent { RaftThemeProvider(brutalTheme) { SearchRecoveryVisualContent() } }
+        setContent { RaftThemeProvider(raftLightTheme) { SearchRecoveryVisualContent() } }
     }
 }
 

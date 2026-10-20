@@ -1,11 +1,8 @@
 package build.raft.app.components
 
-import build.raft.app.raftDisplayUppercase
 import build.raft.app.RaftColor
 import build.raft.app.RaftMonoFamily
 import build.raft.app.RaftAppRadius
-import build.raft.app.raftSlugSlashCenteringOffsetDp
-import build.raft.app.RaftShadow
 import build.raft.app.RaftAppStroke
 import build.raft.app.RaftType
 import build.raft.app.TextField
@@ -23,7 +20,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -60,6 +56,7 @@ internal val RaftSlugInputPrefixBackground =
 // REPLACE bug: disabled rendered MORE saturated than enabled's 0.30.)
 internal val RaftSlugInputDisabledPrefixBackground = Color(0xFFFFF7DD)
 
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun RaftFormField(
     label: String,
@@ -74,50 +71,21 @@ internal fun RaftFormField(
     labelAccessory: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
-    if (raftActive()) {
-        // raft-ui Field: label -> control -> help on a 6dp rhythm; sentence-case label
-        // (13/18 semibold muted, 12/16 compact), help 12/16 hint ink, error 12/16 semibold
-        // `--danger-strong`. [labelStyle] is ignored: raft never sets labels in ALL CAPS.
-        Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (showLabel) {
-                RaftLookFieldLabel(
-                    label = label,
-                    required = required,
-                    optional = optional,
-                    compact = size == RaftFormFieldSize.Compact,
-                    accessory = labelAccessory
-                )
-            }
-            content()
-            RaftFieldMessage(error = error, hint = hint)
-        }
-        return
-    }
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    // raft-ui Field: label -> control -> help on a 6dp rhythm; sentence-case label
+    // (13/18 semibold muted, 12/16 compact), help 12/16 hint ink, error 12/16 semibold
+    // `--danger-strong`. [labelStyle] is ignored: raft never sets labels in ALL CAPS.
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (showLabel) {
-            RaftFormFieldLabel(
+            RaftLookFieldLabel(
                 label = label,
                 required = required,
                 optional = optional,
-                labelStyle = labelStyle,
-                size = size,
+                compact = size == RaftFormFieldSize.Compact,
                 accessory = labelAccessory
             )
         }
         content()
-        val message = error?.takeIf { it.isNotBlank() } ?: hint?.takeIf { it.isNotBlank() }
-        message?.let {
-            Text(
-                text = it,
-                style =
-                    RaftType.Caption
-                        .copy(fontSize = 12.sp, lineHeight = 14.sp)
-                        .withRaftFontWeight(if (error != null) FontWeight.Bold else FontWeight.Normal),
-                color = if (error != null) RaftColor.AccentRed else RaftColor.TextBlack.copy(alpha = 0.50f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        RaftFieldMessage(error = error, hint = hint)
     }
 }
 
@@ -201,69 +169,6 @@ internal fun RaftFieldMessage(
 }
 
 @Composable
-private fun RaftFormFieldLabel(
-    label: String,
-    required: Boolean,
-    optional: Boolean,
-    labelStyle: RaftFormFieldLabelStyle,
-    size: RaftFormFieldSize,
-    accessory: (@Composable () -> Unit)? = null
-) {
-    val compact = size == RaftFormFieldSize.Compact
-    val uppercase = labelStyle == RaftFormFieldLabelStyle.Uppercase
-    val labelFontSize = if (compact) 11.sp else 14.sp
-    val labelLineHeight = if (compact) 14.sp else 18.sp
-    Row(
-        // An accessory sits at the trailing edge of the label row (react FormField
-        // `labelAccessory` + `ml-auto`); without one the row keeps its wrap-content width.
-        modifier = if (accessory != null) Modifier.fillMaxWidth() else Modifier,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = if (uppercase) label.raftDisplayUppercase() else label,
-            style =
-                RaftType.SectionLabel
-                    .copy(
-                        fontSize = labelFontSize,
-                        lineHeight = labelLineHeight,
-                        letterSpacing = if (uppercase) 1.1.sp else 0.sp
-                    )
-                    .withRaftFontWeight(FontWeight.Bold),
-            // react FormField.tsx: compact labels are text-black/60 (= #666666 over
-            // white); default labels stay solid text-black. Color is per-size, not
-            // per-state.
-            color = if (compact) RaftColor.TextBlack.copy(alpha = 0.60f) else RaftColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        if (required) {
-            Text(
-                text = "*",
-                style = RaftType.SectionLabel.copy(fontSize = labelFontSize, lineHeight = labelLineHeight),
-                color = RaftColor.AccentPink,
-                maxLines = 1
-            )
-        }
-        if (optional) {
-            Text(
-                text = stringResource(MR.strings.common_optional_suffix),
-                style =
-                    RaftType.Caption
-                        .copy(fontSize = if (compact) 11.sp else 12.sp, lineHeight = 14.sp)
-                        .withRaftFontWeight(if (compact) FontWeight.Bold else FontWeight.Normal),
-                color = if (compact) RaftColor.TextMutedGray else RaftColor.TextBlack.copy(alpha = 0.40f),
-                maxLines = 1
-            )
-        }
-        if (accessory != null) {
-            Spacer(modifier = Modifier.weight(1f))
-            accessory()
-        }
-    }
-}
-
-@Composable
 internal fun RaftBrutalTextarea(
     value: String,
     onValueChange: (String) -> Unit,
@@ -294,40 +199,12 @@ internal fun RaftBrutalTextarea(
             // per line and read visibly smaller than the web baseline.
             textStyle = RaftType.Input.copy(fontSize = 16.sp, lineHeight = 24.sp, color = RaftColor.TextBlack)
         )
-        if (raftActive()) {
-            RaftTextareaFooter(
-                error = error,
-                hint = hint,
-                count = if (showCounter && limit != null) value.length else null,
-                limit = limit
-            )
-            return@Column
-        }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-            Text(
-                text = error?.takeIf { it.isNotBlank() } ?: hint.orEmpty(),
-                style =
-                    RaftType.Caption
-                        .copy(fontSize = 12.sp, lineHeight = 14.sp)
-                        .withRaftFontWeight(if (hasError) FontWeight.Bold else FontWeight.Normal),
-                color = if (hasError) RaftColor.AccentRed else RaftColor.TextBlack.copy(alpha = 0.60f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            if (showCounter && limit != null) {
-                val overLimit = value.length > limit
-                Text(
-                    text = "${value.length}/$limit",
-                    style =
-                        RaftType.Caption
-                            .copy(fontSize = 12.sp, lineHeight = 14.sp)
-                            .withRaftFontWeight(if (overLimit || hasError) FontWeight.Bold else FontWeight.Normal),
-                    color = if (overLimit || hasError) RaftColor.AccentRed else RaftColor.TextBlack.copy(alpha = 0.50f),
-                    maxLines = 1
-                )
-            }
-        }
+        RaftTextareaFooter(
+            error = error,
+            hint = hint,
+            count = if (showCounter && limit != null) value.length else null,
+            limit = limit
+        )
     }
 }
 
@@ -362,40 +239,12 @@ internal fun RaftBrutalTextarea(
             // per line and read visibly smaller than the web baseline.
             textStyle = RaftType.Input.copy(fontSize = 16.sp, lineHeight = 24.sp, color = RaftColor.TextBlack)
         )
-        if (raftActive()) {
-            RaftTextareaFooter(
-                error = error,
-                hint = hint,
-                count = if (showCounter && limit != null) value.text.length else null,
-                limit = limit
-            )
-            return@Column
-        }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-            Text(
-                text = error?.takeIf { it.isNotBlank() } ?: hint.orEmpty(),
-                style =
-                    RaftType.Caption
-                        .copy(fontSize = 12.sp, lineHeight = 14.sp)
-                        .withRaftFontWeight(if (hasError) FontWeight.Bold else FontWeight.Normal),
-                color = if (hasError) RaftColor.AccentRed else RaftColor.TextBlack.copy(alpha = 0.60f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            if (showCounter && limit != null) {
-                val overLimit = value.text.length > limit
-                Text(
-                    text = "${value.text.length}/$limit",
-                    style =
-                        RaftType.Caption
-                            .copy(fontSize = 12.sp, lineHeight = 14.sp)
-                            .withRaftFontWeight(if (overLimit) FontWeight.Bold else FontWeight.Normal),
-                    color = if (overLimit) RaftColor.AccentRed else RaftColor.TextBlack.copy(alpha = 0.45f),
-                    maxLines = 1
-                )
-            }
-        }
+        RaftTextareaFooter(
+            error = error,
+            hint = hint,
+            count = if (showCounter && limit != null) value.text.length else null,
+            limit = limit
+        )
     }
 }
 
@@ -445,104 +294,22 @@ internal fun RaftSlugInput(
     // items-stretch span (120px @3x).
     fieldHeight: Dp = 44.dp
 ) {
-    if (raftActive()) {
-        RaftPrefixedInputFrame(prefix = "/", enabled = enabled, fieldHeight = fieldHeight, modifier = modifier) {
-            TextField(
-                value = value,
-                onValueChange = { if (enabled) onValueChange(it) },
-                placeholder = placeholder,
-                placeholderColor = if (placeholderColor == RaftColor.TextMutedGray) RaftColor.ForegroundHint else placeholderColor,
-                autoFocus = false,
-                maxLines = 1,
-                textStyle = RaftType.Input.copy(
-                    fontSize = 16.sp,
-                    lineHeight = 24.sp,
-                    color = if (enabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled
-                ),
-                modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                contentAlignment = Alignment.CenterStart
-            )
-        }
-        return
-    }
-    val shadowOffset = RaftShadow.BrutalSmall
-    // react's disabled look is CSS group opacity-60: each part flattens against
-    // what's beneath it INSIDE the group first, then the whole result dims over
-    // the page. Per-part alpha only equals that over the page backdrop, so parts
-    // stacked on the tile (border, slash) drift warm. Precomputed opaque react
-    // composites instead (white backdrop, matching the disabled-button precedent):
-    // shadow #141111 x0.6 = #727070; border/text black x0.6 = #666666.
-    val shadowColor = if (enabled) RaftColor.ShadowBlack else Color(0xFF727070)
-    val borderColor = if (enabled) RaftColor.BorderBlack else Color(0xFF666666)
-    val contentColor = if (enabled) RaftColor.TextBlack else Color(0xFF666666)
-    Box(modifier = modifier.fillMaxWidth().height(fieldHeight + shadowOffset)) {
-        if (shadowOffset > 0.dp) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(fieldHeight)
-                        .offset(x = shadowOffset, y = shadowOffset)
-                        .background(shadowColor)
-            )
-        }
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(fieldHeight)
-                    .background(RaftColor.SurfaceWhite)
-                    .border(RaftAppStroke.Default, borderColor),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        // react's w-8 (32px) span sits INSIDE the outer border-2;
-                        // Kuikly draws the Row border as a FOREGROUND over this
-                        // child's left 2dp, so 34dp is what leaves react's 30px
-                        // visible tile + 2px divider (#1038: the 32dp box shifted
-                        // the divider and all downstream text 2dp left).
-                        .width(34.dp)
-                        // structural mirror of react's items-stretch span
-                        .fillMaxHeight()
-                        .background(if (enabled) RaftSlugInputPrefixBackground else RaftSlugInputDisabledPrefixBackground)
-                        // Only the right divider is visible (the other 3 sides sit
-                        // under the Row's foreground border); react divider is
-                        // border-r-2 = 2px, so Default, not Thin.
-                        .border(RaftAppStroke.Default, borderColor),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "/",
-                    // Empirically measured on the pinned render build (run
-                    // 29142637461): react's slash ink is dead-centered in the
-                    // tile; android's sits 1.5dp low under the even-split span.
-                    // Platform-gated correction - see
-                    // raftSlugSlashCenteringOffsetDp() for the measurement
-                    // provenance and the do-not-copy-blind note for iOS/OHOS.
-                    modifier = Modifier.offset(y = raftSlugSlashCenteringOffsetDp().dp),
-                    style = RaftType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 18.sp),
-                    // react slash = text-black/70. Disabled must match react's GROUP
-                    // flatten (glyph over tile first, then x0.6 over white) = opaque
-                    // #94928A; a plain alpha over the dim tile lets ~2x the yellow
-                    // through (round-2 adversarial review, Delta(0,3,10)/px).
-                    color = if (enabled) RaftColor.TextBlack.copy(alpha = 0.70f) else Color(0xFF94928A),
-                    maxLines = 1
-                )
-            }
-            TextField(
-                value = value,
-                onValueChange = { if (enabled) onValueChange(it) },
-                placeholder = placeholder,
-                placeholderColor = placeholderColor,
-                autoFocus = false,
-                maxLines = 1,
-                textStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = contentColor),
-                modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                contentAlignment = Alignment.CenterStart
-            )
-        }
+    RaftPrefixedInputFrame(prefix = "/", enabled = enabled, fieldHeight = fieldHeight, modifier = modifier) {
+        TextField(
+            value = value,
+            onValueChange = { if (enabled) onValueChange(it) },
+            placeholder = placeholder,
+            placeholderColor = if (placeholderColor == RaftColor.TextMutedGray) RaftColor.ForegroundHint else placeholderColor,
+            autoFocus = false,
+            maxLines = 1,
+            textStyle = RaftType.Input.copy(
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                color = if (enabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled
+            ),
+            modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+            contentAlignment = Alignment.CenterStart
+        )
     }
 }
 
@@ -567,104 +334,22 @@ internal fun RaftSlugInput(
     // items-stretch span (120px @3x).
     fieldHeight: Dp = 44.dp
 ) {
-    if (raftActive()) {
-        RaftPrefixedInputFrame(prefix = "/", enabled = enabled, fieldHeight = fieldHeight, modifier = modifier) {
-            TextField(
-                value = value,
-                onValueChange = { if (enabled) onValueChange(it) },
-                placeholder = placeholder,
-                placeholderColor = if (placeholderColor == RaftColor.TextMutedGray) RaftColor.ForegroundHint else placeholderColor,
-                autoFocus = false,
-                maxLines = 1,
-                textStyle = RaftType.Input.copy(
-                    fontSize = 16.sp,
-                    lineHeight = 24.sp,
-                    color = if (enabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled
-                ),
-                modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                contentAlignment = Alignment.CenterStart
-            )
-        }
-        return
-    }
-    val shadowOffset = RaftShadow.BrutalSmall
-    // react's disabled look is CSS group opacity-60: each part flattens against
-    // what's beneath it INSIDE the group first, then the whole result dims over
-    // the page. Per-part alpha only equals that over the page backdrop, so parts
-    // stacked on the tile (border, slash) drift warm. Precomputed opaque react
-    // composites instead (white backdrop, matching the disabled-button precedent):
-    // shadow #141111 x0.6 = #727070; border/text black x0.6 = #666666.
-    val shadowColor = if (enabled) RaftColor.ShadowBlack else Color(0xFF727070)
-    val borderColor = if (enabled) RaftColor.BorderBlack else Color(0xFF666666)
-    val contentColor = if (enabled) RaftColor.TextBlack else Color(0xFF666666)
-    Box(modifier = modifier.fillMaxWidth().height(fieldHeight + shadowOffset)) {
-        if (shadowOffset > 0.dp) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(fieldHeight)
-                        .offset(x = shadowOffset, y = shadowOffset)
-                        .background(shadowColor)
-            )
-        }
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(fieldHeight)
-                    .background(RaftColor.SurfaceWhite)
-                    .border(RaftAppStroke.Default, borderColor),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        // react's w-8 (32px) span sits INSIDE the outer border-2;
-                        // Kuikly draws the Row border as a FOREGROUND over this
-                        // child's left 2dp, so 34dp is what leaves react's 30px
-                        // visible tile + 2px divider (#1038: the 32dp box shifted
-                        // the divider and all downstream text 2dp left).
-                        .width(34.dp)
-                        // structural mirror of react's items-stretch span
-                        .fillMaxHeight()
-                        .background(if (enabled) RaftSlugInputPrefixBackground else RaftSlugInputDisabledPrefixBackground)
-                        // Only the right divider is visible (the other 3 sides sit
-                        // under the Row's foreground border); react divider is
-                        // border-r-2 = 2px, so Default, not Thin.
-                        .border(RaftAppStroke.Default, borderColor),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "/",
-                    // Empirically measured on the pinned render build (run
-                    // 29142637461): react's slash ink is dead-centered in the
-                    // tile; android's sits 1.5dp low under the even-split span.
-                    // Platform-gated correction - see
-                    // raftSlugSlashCenteringOffsetDp() for the measurement
-                    // provenance and the do-not-copy-blind note for iOS/OHOS.
-                    modifier = Modifier.offset(y = raftSlugSlashCenteringOffsetDp().dp),
-                    style = RaftType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 18.sp),
-                    // react slash = text-black/70. Disabled must match react's GROUP
-                    // flatten (glyph over tile first, then x0.6 over white) = opaque
-                    // #94928A; a plain alpha over the dim tile lets ~2x the yellow
-                    // through (round-2 adversarial review, Delta(0,3,10)/px).
-                    color = if (enabled) RaftColor.TextBlack.copy(alpha = 0.70f) else Color(0xFF94928A),
-                    maxLines = 1
-                )
-            }
-            TextField(
-                value = value,
-                onValueChange = { if (enabled) onValueChange(it) },
-                placeholder = placeholder,
-                placeholderColor = placeholderColor,
-                autoFocus = false,
-                maxLines = 1,
-                textStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = contentColor),
-                modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                contentAlignment = Alignment.CenterStart
-            )
-        }
+    RaftPrefixedInputFrame(prefix = "/", enabled = enabled, fieldHeight = fieldHeight, modifier = modifier) {
+        TextField(
+            value = value,
+            onValueChange = { if (enabled) onValueChange(it) },
+            placeholder = placeholder,
+            placeholderColor = if (placeholderColor == RaftColor.TextMutedGray) RaftColor.ForegroundHint else placeholderColor,
+            autoFocus = false,
+            maxLines = 1,
+            textStyle = RaftType.Input.copy(
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                color = if (enabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled
+            ),
+            modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+            contentAlignment = Alignment.CenterStart
+        )
     }
 }
 
@@ -727,16 +412,10 @@ internal fun RaftCheckboxLabelRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         RaftAppCheckbox(checked = checked, onCheckedChange = {}, enabled = enabled, size = size)
-        val raft = raftActive()
         Text(
             text = label,
-            style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = if (raft) 20.sp else 18.sp),
-            color =
-                when {
-                    enabled -> RaftColor.TextBlack
-                    raft -> RaftColor.ForegroundDisabled
-                    else -> RaftColor.TextMutedGray
-                },
+            style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp),
+            color = if (enabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )

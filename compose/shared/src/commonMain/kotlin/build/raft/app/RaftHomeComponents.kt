@@ -11,7 +11,6 @@ import build.raft.app.components.RaftPublicPageGlobe
 import build.raft.app.components.channelOnPublicPage
 import build.raft.app.components.RaftAppSkeleton
 import build.raft.app.components.RaftAppSkeletonVariant
-import build.raft.app.components.raftActive
 import build.raft.app.components.raftCardSurface
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.DataResult
@@ -5994,7 +5993,7 @@ internal fun ServerSwitcherAvatarTile(server: RaftServerSwitcherItem) {
             Modifier
                 .size(32.dp)
                 // raft-ui square avatar: sticker radius (4dp), ink tile.
-                .raftThemedCorners(RaftAppRadius.Sticker)
+                .clip(RoundedCornerShape(RaftAppRadius.Sticker))
                 // No ink fill behind an uploaded image: a transparent server avatar must show the
                 // surface it sits on (the yellow frame), not a black square. The ink tile belongs to
                 // the initial-letter fallback only (ServerAvatarFallbackLabel draws it).
@@ -6244,8 +6243,8 @@ private fun SidebarActionRow(icon: RaftLucideIconName, label: String, modifier: 
                     .padding(horizontal = SidebarRowHorizontalPadding),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(modifier = Modifier.size(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) { RaftLucideIcon(icon, Modifier.size(SidebarActionIconSize)) }
-            Text(label, style = RaftType.ListItem, color = if (selected) RaftColor.StickerInk else RaftColor.TextBlack, modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Box(modifier = Modifier.size(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) { RaftLucideIcon(icon, Modifier.size(SidebarActionIconSize), color = if (selected) raftArgbHex(RaftColor.StickerInk) else RaftColor.TextBlackArgb) }
+            Text(label, style = if (selected) RaftType.ListItemBold else RaftType.ListItem, color = if (selected) RaftColor.StickerInk else RaftColor.TextBlack, modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (badge != null || trailingText != null) {
                 Box(
                     modifier = Modifier.width(SidebarActionTrailingSlotWidth),
@@ -7076,7 +7075,8 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             ) {
                 Text(
                     name,
-                    style = if (unread) RaftType.ListItemBold else RaftType.ListItem,
+                    // raft-ui SidebarItem `data-active:font-bold`.
+                    style = if (unread || selected) RaftType.ListItemBold else RaftType.ListItem,
                     color = if (selected) RaftColor.StickerInk else titleColor,
                     modifier =
                         if (descriptionText != null) {
@@ -7323,10 +7323,8 @@ internal fun RaftAppAvatar(
         }
     }
     // raft-ui 0.6.0 avatars are square stickers with the 4dp sticker radius (rounded-sticker),
-    // never circles; brutal keeps square corners.
-    // The border follows the same shape as the clip: a rectangular border under a rounded clip
-    // loses its corner strokes and reads as a square-cornered tile (Hands dd79da45 follow-up).
-    val frameShape = if (raftActive()) RoundedCornerShape(RaftAppRadius.Sticker) else RectangleShape
+    // never circles. The border follows the same shape as the clip (Hands dd79da45 follow-up).
+    val frameShape = RoundedCornerShape(RaftAppRadius.Sticker)
     val frameModifier = modifier.clip(frameShape)
     when {
         pixelSpec != null -> traceMarkdownSection(RaftAvatarTraceNames.RENDER, displayAvatarWireValue?.length ?: 0) {
