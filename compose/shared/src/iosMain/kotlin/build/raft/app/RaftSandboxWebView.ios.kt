@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
 import kotlin.math.roundToInt
 import kotlinx.cinterop.ObjCSignatureOverride
+import kotlinx.cinterop.objcPtr
 import kotlinx.cinterop.useContents
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSError
@@ -84,6 +85,20 @@ private const val RaftIosHostBridgeScript =
         "Object.defineProperty(window,\"RaftHost\",{value:Object.freeze({version:\"raft-host-v1\",capabilities:[\"raft-feedback-v1\"]," +
         "emit:function(k,p){if(typeof k===\"string\")h.postMessage(JSON.stringify({kind:k,payload:(p&&typeof p===\"object\"&&!Array.isArray(p))?p:{}}));}})," +
         "writable:false,configurable:false});})();"
+
+/**
+ * True when [a] and [b] refer to the same Objective-C object.
+ *
+ * Do not use `===` for this. Kotlin/Native hands an Objective-C object that comes back from
+ * Objective-C (a WKNavigationDelegate argument, a getter such as
+ * `configuration.userContentController`) to Kotlin as a newly bridged reference, so `===` against
+ * the reference Kotlin already holds can be false for the very same object. With `source !== webView`
+ * every delegate callback looked like it came from a stale WebView: the main document's
+ * navigation policy was cancelled without a blocked/failure event and the page stayed blank white
+ * (HTML attachment preview on iOS). The Objective-C `.m` compared pointers; so does this.
+ */
+internal fun raftIsSameObjCObject(a: Any?, b: Any?): Boolean =
+    a != null && b != null && a.objcPtr() == b.objcPtr()
 
 /**
  * Port of the Kuikly iOS `RaftSandboxWebView.m`: WKWebView rebuilt whenever a configuration-time
@@ -283,7 +298,7 @@ internal class RaftIosSandboxWebView(
 
     internal fun onObservedChange(source: Any?) {
         val view = webView ?: return
-        if (source !== view) return
+        if (!raftIsSameObjCObject(source, view)) return
         currentURL = view.URL?.absoluteString ?: currentURL
         currentTitle = view.title ?: ""
         currentProgress = (view.estimatedProgress * 100.0 + 0.5).toInt().coerceIn(0, 100)
@@ -398,7 +413,7 @@ internal class RaftIosSandboxWebView(
     // ---- delegate callbacks ----------------------------------------------------------------
 
     internal fun decidePolicy(source: WKWebView, action: WKNavigationAction): Boolean {
-        if (source !== webView) return false
+        if (!raftIsSameObjCObject(source, webView)) return false
         val targetURL = action.request.URL
         val isMainFrame = action.targetFrame?.mainFrame ?: true
         if (isMainFrame) {
@@ -416,7 +431,7 @@ internal class RaftIosSandboxWebView(
     }
 
     internal fun didStartProvisional(source: WKWebView) {
-        if (source !== webView) return
+        if (!raftIsSameObjCObject(source, webView)) return
         currentURL = source.URL?.absoluteString ?: currentURL
         currentTitle = ""
         currentProgress = (source.estimatedProgress * 100.0 + 0.5).toInt().coerceIn(0, 100)
@@ -427,18 +442,19 @@ internal class RaftIosSandboxWebView(
     }
 
     internal fun didCommit(source: WKWebView) {
-        if (source !== webView) return
+        if (!raftIsSameObjCObject(source, webView)) return
         currentURL = source.URL?.absoluteString ?: currentURL
         currentTitle = source.title ?: currentTitle
         currentLoading = source.loading
         events.onUrlChange(currentURL)
         notifyNavigationState(force = false)
-        // SlockSandboxWebViewPublishNavigationCommit: only the active WebView publishes commits.
-        if (source === webView) events.onLoadCommit()
+        // SlockSandboxWebViewPublishNavigationCommit: only the active WebView publishes commits
+        // (guarded by the identity check at the top).
+        events.onLoadCommit()
     }
 
     internal fun didFinish(source: WKWebView) {
-        if (source !== webView) return
+        if (!raftIsSameObjCObject(source, webView)) return
         currentURL = source.URL?.absoluteString ?: currentURL
         currentTitle = source.title ?: ""
         currentProgress = 100
@@ -449,7 +465,7 @@ internal class RaftIosSandboxWebView(
     }
 
     internal fun didFail(source: WKWebView, error: NSError) {
-        if (source !== webView || (error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled)) return
+        if (!raftIsSameObjCObject(source, webView) || (error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled)) return
         currentURL = source.URL?.absoluteString ?: currentURL
         currentLoading = false
         notifyNavigationState(force = false)
@@ -458,7 +474,7 @@ internal class RaftIosSandboxWebView(
 
     /** task #6: rebuild and reload after the web content process was reclaimed. */
     internal fun contentProcessDidTerminate(source: WKWebView) {
-        if (source !== webView) return
+        if (!raftIsSameObjCObject(source, webView)) return
         lastSuccessfulURL = ""
         lastLoadFailureKey = ""
         rebuildWebView()
@@ -466,14 +482,14 @@ internal class RaftIosSandboxWebView(
     }
 
     internal fun createWindowBlocked(source: WKWebView, action: WKNavigationAction) {
-        if (source !== webView) return
+        if (!raftIsSameObjCObject(source, webView)) return
         notifyNavigationBlocked(action.request.URL?.absoluteString ?: "")
     }
 
     internal fun didReceiveScriptMessage(controller: WKUserContentController, message: WKScriptMessage) {
         val view = webView ?: return
         if (message.name != RaftWebViewHostPortName || !hostEventsEnabled) return
-        if (controller !== view.configuration.userContentController || !message.frameInfo.mainFrame) return
+        if (!raftIsSameObjCObject(controller, view.configuration.userContentController) || !message.frameInfo.mainFrame) return
         val expectedURL = NSURL.URLWithString(src) ?: return
         val scheme = expectedURL.scheme?.lowercase() ?: return
         if (scheme != "https" && scheme != "http") return
