@@ -78,6 +78,8 @@ import build.raft.app.data.RaftNotificationPreferenceEvents
 import build.raft.app.data.RaftChatLayoutPreferenceEvents
 import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.RealtimeRoomLeaseOwner
+import build.raft.app.data.isAppUpdateHomeNotificationId
+import build.raft.app.data.isMachineHomeNotificationId
 import build.raft.app.data.MOBILE_ACTION_LANGUAGE
 import build.raft.app.data.MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES
 import build.raft.app.data.MOBILE_ACTION_COMPACT_MESSAGES
@@ -1407,8 +1409,6 @@ internal fun shouldDismissHomeNotificationCenterForAppShellTabSelection(currentT
 
 internal data class AppShellLaunchSelection(
     val selectedTab: String = "home",
-    /** Launch into the Activity tab's 通知 segment (the former Home notification center). */
-    val activityNotificationsSegment: Boolean = false,
 )
 
 internal data class DiagnosticsDeepLinkRequest(
@@ -1417,15 +1417,7 @@ internal data class DiagnosticsDeepLinkRequest(
 )
 
 internal fun JSONObject.appShellLaunchSelection(): AppShellLaunchSelection {
-    val launch =
-        raftAppShellLaunchTab(
-            rawTab = optString(AppShellInitialTabKey),
-            rawActivitySegment = optString(AppShellInitialActivitySegmentKey)
-        )
-    return AppShellLaunchSelection(
-        selectedTab = launch.tab,
-        activityNotificationsSegment = launch.activityNotificationsSegment
-    )
+    return AppShellLaunchSelection(selectedTab = raftAppShellLaunchTab(optString(AppShellInitialTabKey)))
 }
 
 internal fun JSONObject.diagnosticsDeepLinkRequest(): DiagnosticsDeepLinkRequest? {
@@ -2229,11 +2221,6 @@ private fun RaftAppShellReadyContent(
         pager.pageData.params.optString(APP_SHELL_AUTH_GATE_INSTANCE_ID)
     }
     var selectedTab by remember { mutableStateOf(launchSelection.selectedTab) }
-    // The Activity tab's 通知 segment is shell state (not an inbox filter): launches and the old
-    // notification-center entry points select it; the segment control toggles it.
-    var activityNotificationsSegmentSelected by remember {
-        mutableStateOf(launchSelection.activityNotificationsSegment)
-    }
     var childTabSwitchEpoch by remember { mutableStateOf(0) }
     var homeFocusLossDismissEpoch by remember { mutableStateOf(0) }
     var retainedAppShellTabs by remember {
@@ -5179,9 +5166,8 @@ private fun RaftAppShellReadyContent(
         return false
     }
 
-    fun openAppShellActivityTab(notificationsSegment: Boolean, source: String) {
-        bridge.log("app_shell_activity_tab_open source=$source notifications=$notificationsSegment from=$selectedTab")
-        activityNotificationsSegmentSelected = notificationsSegment
+    fun openAppShellActivityTab(source: String) {
+        bridge.log("app_shell_activity_tab_open source=$source from=$selectedTab")
         railInlineSecondaryDestination = null
         if (shouldDismissHomeNotificationCenterForAppShellTabSelection(selectedTab, "activity")) {
             homeFocusLossDismissEpoch += 1
@@ -5195,7 +5181,7 @@ private fun RaftAppShellReadyContent(
         if (retainedHomeSecondaryDestination(destination) == HomeDestinationActivity) {
             // artin 2026-10-20: Activity is a bottom tab; the old Home 动态 destination (and any
             // caller still asking for it) lands on the kept-alive Activity tab, not a pushed page.
-            openAppShellActivityTab(notificationsSegment = false, source = "home_secondary_destination")
+            openAppShellActivityTab(source = "home_secondary_destination")
             return
         }
         retainedHomeSecondaryDestination(destination)?.let { retainedDestination ->
@@ -5905,17 +5891,9 @@ private fun RaftAppShellReadyContent(
     val activityTabLabel = stringResource(MR.strings.tab_activity)
     val searchTabLabel = stringResource(MR.strings.home_nav_search)
     val moreTabLabel = stringResource(MR.strings.tab_more)
-    // Activity tab badge = Activity unread (the count the old Home 动态 row showed) plus the
-    // notification-center items that used to light the Home Bell.
-    // toHomeNotificationItem is @Composable (localized copy), so it maps outside remember.
-    val activityTabNotifications = homeState.notifications.map { it.toHomeNotificationItem() }
-    val activityTabNotificationCount =
-        remember(activityTabNotifications) { activityTabNotifications.raftActivityNotificationItems().size }
-    val activityTabBadgeCount =
-        raftActivityTabBadgeCount(
-            activityUnreadCount = homeActivitySidebarUnreadCount(activityUnreadSummary.totalUnreadCount),
-            notificationCount = activityTabNotificationCount
-        )
+    // Activity tab badge = Activity unread only (the count the old Home 动态 row showed). The
+    // notification center keeps its own Bell dot in the Home head (task #18).
+    val activityTabBadgeCount = homeActivitySidebarUnreadCount(activityUnreadSummary.totalUnreadCount)
     val appShellBottomTabItems = remember(
         selectedTab,
         homeTabLabel,
@@ -7089,34 +7067,6 @@ private fun RaftAppShellReadyContent(
                     // opened thread renders in the shared workspace detail slot at right —
                     // same canonical-identity OpenDetail path the Home tab uses, so compact
                     // keeps the standalone push behavior unchanged.
-                    // The tab's 通知 segment: the former Home Bell popover's notification center.
-                    val activityTabChrome =
-                        RaftActivityTabChrome(
-                            notificationsSelected = activityNotificationsSegmentSelected,
-                            notificationCount = activityTabNotificationCount,
-                            onNotificationsSelectedChange = { activityNotificationsSegmentSelected = it },
-                            notificationsContent = { _ ->
-                                RaftActivityNotificationsPane(
-                                    notifications = activityTabNotifications,
-                                    onView = { notification ->
-                                        routeRaftHomeNotificationView(
-                                            notification = notification,
-                                            onAppUpdateOpen = { pager.openAppUpdatePage(storeScope) },
-                                            onOpenComputers = {
-                                                selectAppShellTab("settings")
-                                                retainedAppShellTabs = retainedAppShellTabs + "settings"
-                                                pager.openSettingsComputersPage(storeScope)
-                                            },
-                                            onOpenUrl = settingsCapabilities::openUrl
-                                        )
-                                    },
-                                    onDismiss = { notification ->
-                                        homeShellStore.dispatch(SharedHomeShellIntent.DismissNotification(notification.id))
-                                    },
-                                    bottomContentPadding = appShellBottomContentInset
-                                )
-                            }
-                        )
                     val activityListPane: @Composable (Boolean) -> Unit = { listActive ->
                         SharedHomeActivityScreen(
                             bridge = bridge,
@@ -7139,7 +7089,7 @@ private fun RaftAppShellReadyContent(
                             activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
                             externalSelectedThreadId =
                                 adaptiveWorkspaceState?.selection?.identity?.threadId,
-                            tabChrome = activityTabChrome
+                            mainTab = true
                         )
                     }
                     val activityTabContent: @Composable (active: Boolean) -> Unit = { active ->
@@ -19958,12 +19908,17 @@ private fun SharedHomeScreen(
                     onOpenSaved()
                 },
                 onNotificationView = { notification ->
-                    routeRaftHomeNotificationView(
-                        notification = notification,
-                        onAppUpdateOpen = onAppUpdateOpen,
-                        onOpenComputers = onOpenComputers,
-                        onOpenUrl = onOpenUrl
-                    )
+                    when {
+                        notification.id.isAppUpdateHomeNotificationId() && onAppUpdateOpen != null ->
+                            onAppUpdateOpen()
+                        notification.id.isMachineHomeNotificationId() ->
+                            onOpenComputers()
+                        notification.targetId?.startsWith("http://") == true ||
+                            notification.targetId?.startsWith("https://") == true -> {
+                            notification.targetId?.let(onOpenUrl)
+                        }
+                        else -> Unit
+                    }
                 },
                 onNotificationDismiss = { notification ->
                     onNotificationDismiss(notification.id)
@@ -26458,9 +26413,9 @@ internal fun HomeActivityVisualContent() {
 }
 
 /**
- * Activity as the second app-shell bottom tab (artin 2026-10-20): the main-tab head, the four
- * segments (全部 · 未读 · 提及 · 通知) and the 5-tab bar with the Activity badge. pageData
- * `segment` picks all / unread / mentions / notifications.
+ * Activity as the second app-shell bottom tab (artin 2026-10-20): the main-tab head, the three
+ * segments (全部 · 未读 · 提及) and the 5-tab bar with the Activity badge. pageData
+ * `segment` picks all / unread / mentions.
  */
 @Composable
 internal fun RaftActivityTabVisualContent() {
@@ -26472,7 +26427,6 @@ internal fun RaftActivityTabVisualContent() {
     val filter =
         build.raft.app.data.InboxFilter.entries.firstOrNull { it.wireValue == segment }
             ?: build.raft.app.data.InboxFilter.All
-    val notifications = visualHomeNotifications()
     Column(modifier = Modifier.width(390.dp).height(844.dp).background(RaftColor.SurfaceWhite)) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             SharedHomeActivityScreen(
@@ -26489,20 +26443,7 @@ internal fun RaftActivityTabVisualContent() {
                 activityTaskStatusBadgesEnabled = true,
                 draftProjection = homeActivityVisualDraftProjection,
                 foregroundEpoch = 0L,
-                tabChrome =
-                    RaftActivityTabChrome(
-                        notificationsSelected = segment == RaftActivityNotificationsSegment,
-                        notificationCount = notifications.raftActivityNotificationItems().size,
-                        onNotificationsSelectedChange = {},
-                        notificationsContent = {
-                            RaftActivityNotificationsPane(
-                                notifications = notifications,
-                                onView = {},
-                                onDismiss = {},
-                                bottomContentPadding = RaftAppSpacing.Lg
-                            )
-                        }
-                    ),
+                mainTab = true,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -26515,11 +26456,7 @@ internal fun RaftActivityTabVisualContent() {
                     tasksLabel = "Tasks",
                     membersLabel = "Members",
                     settingsLabel = "Settings",
-                    activityBadgeCount =
-                        raftActivityTabBadgeCount(
-                            activityUnreadCount = homeActivityVisualSnapshot.totalUnreadCount,
-                            notificationCount = notifications.raftActivityNotificationItems().size
-                        )
+                    activityBadgeCount = homeActivityVisualSnapshot.totalUnreadCount
                 ),
             onSelect = {},
             modifier = Modifier.fillMaxWidth()

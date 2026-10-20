@@ -1085,27 +1085,33 @@ internal fun HomeTitlebarVisualScreen() {
         HomeTitlebar(
             serverName = designServer.name,
             hasOtherServerUnread = true,
+            notifications = visualHomeNotifications(),
             refreshing = false,
             topSafeArea = 0.dp,
             onServerBadgeClick = {},
+            onNotificationToggle = {}
         )
         HomeTitlebarDesignLabel("SETTING ON · SHORT NAME · 4DP CHEVRON GAP")
         HomeTitlebar(
             serverName = compactServer.name,
             serverIdentity = compactServer,
             hasOtherServerUnread = false,
+            notifications = visualHomeNotifications(),
             refreshing = false,
             topSafeArea = 0.dp,
             onServerBadgeClick = {},
+            onNotificationToggle = {}
         )
         HomeTitlebarDesignLabel("SETTING ON · LONG NAME ELLIPSIS · CHEVRON VISIBLE")
         HomeTitlebar(
             serverName = fallbackServer.name,
             serverIdentity = fallbackServer,
             hasOtherServerUnread = false,
+            notifications = visualHomeNotifications(),
             refreshing = false,
             topSafeArea = 0.dp,
             onServerBadgeClick = {},
+            onNotificationToggle = {}
         )
         HomeTitlebarDesignLabel("RIGHT PINK DOT = NOTIFICATION UNREAD")
         HomeTitlebarDesignLabel("EXPANDED SWITCHER · SAME IDENTITY TOKEN")
@@ -1262,23 +1268,26 @@ internal fun HomeTitlebarResizeVisualScreen() {
         HomeTitlebar(
             serverName = if (useLongServerName) "Raft Android Workspace" else "Raft",
             hasOtherServerUnread = true,
+            notifications = emptyList(),
             refreshing = false,
             topSafeArea = 0.dp,
             onServerBadgeClick = { useLongServerName = !useLongServerName },
+            onNotificationToggle = {}
         )
     }
 }
 
 @Composable
 internal fun HomeNotificationCenterVisualScreen() {
-    // artin 2026-10-20: the notification center is the Activity tab's 通知 segment now; this
-    // fixture (old page name kept) renders that segment's body with two notifications.
-    Box(modifier = Modifier.width(390.dp).height(844.dp).background(RaftColor.SurfaceWhite).padding(top = 48.dp)) {
-        RaftActivityNotificationsPane(
+    // Fill the full 390x844 viewport crop with SurfaceWhite so the pager's default
+    // surface does not bleed a cream band below/right of the popover. Fixes
+    // visual-drift #767.
+    Box(modifier = Modifier.width(390.dp).height(844.dp).background(RaftColor.SurfaceWhite).padding(top = 48.dp).padding(16.dp)) {
+        HomeNotificationPopover(
             notifications = visualHomeNotifications(),
             onView = {},
             onDismiss = {},
-            bottomContentPadding = RaftAppSpacing.Lg
+            modifier = Modifier.align(Alignment.TopStart)
         )
     }
 }
@@ -1289,9 +1298,11 @@ internal fun HomeAppUpdateBannerVisualScreen() {
         HomeTitlebar(
             serverName = "Raft Design",
             hasOtherServerUnread = false,
+            notifications = emptyList(),
             refreshing = false,
             topSafeArea = 0.dp,
             onServerBadgeClick = {},
+            onNotificationToggle = {}
         )
         HomeAppUpdateBanner(
             notification =
@@ -1317,9 +1328,11 @@ internal fun HomeAppUpdateBannerVisualScreen() {
 
 @Composable
 internal fun HomeNotificationTriggerStatesVisualScreen() {
-    // artin 2026-10-20: the Bell trigger left the Home head (notifications live in the Activity
-    // tab's 通知 segment). The old page name is kept and now pins that state: the Home head
-    // without a Bell (wide and narrow), and the empty 通知 segment.
+    // Native-only evidence capture (no React baseline): renders the Bell
+    // trigger in its independent states — empty-closed, unread-closed,
+    // unread-open, a narrow-screen variant, and the empty drawer — so pixel
+    // review can verify the web-mobile parity contract (task #692 / PR #5605)
+    // without relying on server-driven live notification state.
     val designServer =
         RaftServerSwitcherItem(
             id = "srv_design",
@@ -1335,37 +1348,63 @@ internal fun HomeNotificationTriggerStatesVisualScreen() {
                 .padding(top = 12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        HomeTitlebarDesignLabel("HOME HEAD · NO BELL")
+        HomeTitlebarDesignLabel("EMPTY · CLOSED")
         HomeTitlebar(
             serverName = designServer.name,
             hasOtherServerUnread = false,
+            notifications = emptyList(),
+            notificationCenterExpanded = false,
             refreshing = false,
             topSafeArea = 0.dp,
             onServerBadgeClick = {},
+            onNotificationToggle = {}
         )
-        HomeTitlebarDesignLabel("NARROW · NO BELL")
+        HomeTitlebarDesignLabel("UNREAD · CLOSED")
+        HomeTitlebar(
+            serverName = designServer.name,
+            hasOtherServerUnread = false,
+            notifications = visualHomeNotifications(),
+            notificationCenterExpanded = false,
+            refreshing = false,
+            topSafeArea = 0.dp,
+            onServerBadgeClick = {},
+            onNotificationToggle = {}
+        )
+        HomeTitlebarDesignLabel("UNREAD · OPEN")
+        HomeTitlebar(
+            serverName = designServer.name,
+            hasOtherServerUnread = false,
+            notifications = visualHomeNotifications(),
+            notificationCenterExpanded = true,
+            refreshing = false,
+            topSafeArea = 0.dp,
+            onServerBadgeClick = {},
+            onNotificationToggle = {}
+        )
+        HomeTitlebarDesignLabel("NARROW · UNREAD · CLOSED")
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Md)) {
             HomeTitlebar(
                 serverName = designServer.name,
-                hasOtherServerUnread = true,
+                hasOtherServerUnread = false,
+                notifications = visualHomeNotifications(),
+                notificationCenterExpanded = false,
                 refreshing = false,
                 topSafeArea = 0.dp,
                 onServerBadgeClick = {},
+                onNotificationToggle = {}
             )
         }
-        HomeTitlebarDesignLabel("ACTIVITY · NOTIFICATIONS · EMPTY")
-        Box(modifier = Modifier.fillMaxWidth().height(220.dp)) {
-            RaftActivityNotificationsPane(
-                notifications = emptyList(),
-                onView = {},
-                onDismiss = {},
-                bottomContentPadding = RaftAppSpacing.Md
-            )
-        }
+        HomeTitlebarDesignLabel("EMPTY DRAWER")
+        HomeNotificationPopover(
+            notifications = emptyList(),
+            onView = {},
+            onDismiss = {},
+            modifier = Modifier.padding(bottom = RaftAppSpacing.Md)
+        )
     }
 }
 
-internal fun visualHomeNotifications(): List<RaftHomeNotificationItem> =
+private fun visualHomeNotifications(): List<RaftHomeNotificationItem> =
     listOf(
         RaftHomeNotificationItem(
             id = "visual-agent-offline",
@@ -2191,8 +2230,13 @@ private fun RaftStructuralHomeShellContent(
     // notification center — it keeps its independent top banner. The Bell
     // trigger and center only see non-app-update notifications.
     val appUpdateBanner = remember(notifications) { notifications.homeAppUpdateBannerNotification() }
-    // artin 2026-10-20: the Bell trigger and its popover moved to the Activity tab's 通知 segment;
-    // Home keeps only the independent app-update banner.
+    val visibleNotifications = remember(notifications) { notifications.nonAppUpdateHomeNotifications() }
+    var notificationCenterExpanded by remember(currentServerId) { mutableStateOf(false) }
+    LaunchedEffect(externalFocusLossDismissEpoch) {
+        if (externalFocusLossDismissEpoch > 0) {
+            notificationCenterExpanded = false
+        }
+    }
     val sidebarInteractionsEnabled = true
     val disabledListAction: () -> Unit = {}
     val resolvedTopSafeArea = raftTopSafeAreaPadding()
@@ -2210,22 +2254,42 @@ private fun RaftStructuralHomeShellContent(
             bottomContentPadding
         }
     val bottomBarOverlaysContent = showBottomBar && raftAppBottomTabBarOverlaysContent()
+    val dismissNotificationCenterForFocusLoss = {
+        if (notificationCenterExpanded) {
+            notificationCenterExpanded = false
+        }
+    }
     val onServerBadgeClickWithDismiss: () -> Unit = {
+        dismissNotificationCenterForFocusLoss()
         onServerBadgeClick()
     }
     val onSearchClickWithDismiss: () -> Unit = {
+        dismissNotificationCenterForFocusLoss()
         onSearchClick()
     }
     val onSavedClickWithDismiss: () -> Unit = {
+        dismissNotificationCenterForFocusLoss()
         onSavedClick()
     }
     val onChannelClickWithDismiss: (String) -> Unit = { conversationId ->
+        dismissNotificationCenterForFocusLoss()
         onChannelClick(conversationId)
     }
     val onChannelLongPressWithDismiss: (String, RaftPopoverAnchor) -> Unit = { conversationId, anchor ->
+        dismissNotificationCenterForFocusLoss()
         onChannelLongPress(conversationId, anchor)
     }
-    val onBottomTabSelected: (String) -> Unit = { tabKey -> onTabSelected(tabKey) }
+    val onBottomTabSelected: (String) -> Unit = { tabKey ->
+        if (shouldDismissHomeNotificationCenterForTabSelection(
+                expanded = notificationCenterExpanded,
+                selectedTabKey = selectedTabKey,
+                targetTabKey = tabKey
+            )
+        ) {
+            notificationCenterExpanded = false
+        }
+        onTabSelected(tabKey)
+    }
     Box(
         modifier = modifier.fillMaxSize().background(RaftColor.AppBgLightBlue).padding(outerPadding)
     ) {
@@ -2238,14 +2302,18 @@ private fun RaftStructuralHomeShellContent(
                         serverIdentity = currentHomeHeaderServer.takeIf { homeServerAvatarEnabled },
                         serverPublicPageLive = currentHomeHeaderServer.publicPageLive,
                         hasOtherServerUnread = serverSwitcherHasOtherUnread,
+                        notifications = visibleNotifications,
+                        notificationCenterExpanded = notificationCenterExpanded,
                         refreshing = headerRefreshing,
                         topSafeArea = topSafeArea,
                         onServerBadgeClick = onServerBadgeClickWithDismiss,
                         onBlankClick = {
+                            dismissNotificationCenterForFocusLoss()
                             listScope.launch {
                                 listState.animateScrollToTopExpressive()
                             }
                         },
+                        onNotificationToggle = { notificationCenterExpanded = !notificationCenterExpanded }
                     )
                 }
                 RaftAppShellBodyTopBanner()
@@ -2432,6 +2500,7 @@ private fun RaftStructuralHomeShellContent(
                                                             // a stable member id in the per-user pinned
                                                             // order, so expose the section-level Sort action
                                                             // without inventing conversation operations.
+                                                            dismissNotificationCenterForFocusLoss()
                                                             activePinMenuConversationId = null
                                                             activePinnedMemberMenuKey = pinnedRow.key
                                                             activeMenuSection = RaftHomeSortSection.Pinned
@@ -2484,6 +2553,7 @@ private fun RaftStructuralHomeShellContent(
                                                                                     "memberId=${target.identity.memberId.value} " +
                                                                                     "memberKind=${target.identity.kind.memberKindWireValue()}"
                                                                             )
+                                                                            dismissNotificationCenterForFocusLoss()
                                                                             onPinnedMemberClick(target.identity)
                                                                         }
                                                                         null -> Unit
@@ -2975,6 +3045,28 @@ private fun RaftStructuralHomeShellContent(
                                         start = RaftAppSpacing.Lg
                                     )
                                     .clickable(onClick = {})
+                        )
+                    }
+                }
+            }
+            if (notificationCenterExpanded) {
+                RaftFloatingOverlayHost(
+                    onDismiss = { notificationCenterExpanded = false },
+                    modifier = Modifier.padding(bottom = bottomContentPadding),
+                    dismissActivationDelayMillis = RaftFloatingOverlayClickTriggeredDismissDelayMillis
+                ) { _ ->
+                    Box(Modifier.fillMaxSize()) {
+                        HomeNotificationPopover(
+                            visibleNotifications,
+                            onNotificationView,
+                            onNotificationDismiss,
+                            Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(
+                                    top = homeNotificationPopoverTopOffset(topSafeArea),
+                                    end = RaftAppSpacing.Md
+                                )
+                                .raftFloatingContentClickTarget()
                         )
                     }
                 }
@@ -4588,13 +4680,14 @@ private fun HomeTitlebar(
     serverIdentity: RaftServerSwitcherItem? = null,
     serverPublicPageLive: Boolean = false,
     hasOtherServerUnread: Boolean,
+    notifications: List<RaftHomeNotificationItem>,
+    notificationCenterExpanded: Boolean = false,
     refreshing: Boolean,
     topSafeArea: Dp,
     onServerBadgeClick: () -> Unit,
     onBlankClick: (() -> Unit)? = null,
+    onNotificationToggle: () -> Unit
 ) {
-    // artin 2026-10-20: the notification Bell left the Home head; the notification center is the
-    // Activity tab's 通知 segment now (RaftActivityNotificationsPane).
     // raft-ui phone head: the frame layer (Source Yellow in light) with a 1dp seam.
     Box(modifier = Modifier.fillMaxWidth().height(homeShellHeaderHeight(topSafeArea)).background(RaftColor.Frame)) {
         Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam).align(Alignment.BottomCenter))
@@ -4637,6 +4730,11 @@ private fun HomeTitlebar(
             if (refreshing) {
                 RaftHeaderRefreshIndicator()
             }
+            HomeNotificationCenter(
+                notifications = notifications,
+                open = notificationCenterExpanded,
+                onToggle = onNotificationToggle
+            )
         }
     }
 }
@@ -4875,6 +4973,59 @@ private fun ServerUnreadMarker(modifier: Modifier = Modifier) {
     )
 }
 
+@Composable
+private fun HomeNotificationCenter(
+    notifications: List<RaftHomeNotificationItem>,
+    open: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    // Web parity (task #692 / PR #5605): the Bell trigger is permanent and
+    // neutral. Availability (trigger exists), disclosure (popup open) and
+    // attention (unread notifications) are independent states: only attention
+    // gets the pink dot; only disclosure gets the selected button treatment.
+    // The trigger never carries warning/error severity colors.
+    val visibleNotifications = remember(notifications) { notifications.visibleHomeNotifications() }
+    val hasUnread = visibleNotifications.isNotEmpty()
+    Box(modifier = modifier.size(HomeNotificationTriggerSlotSize)) {
+        Box(modifier = Modifier.align(Alignment.TopEnd).padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
+            // raft-ui `PanelAction`: ghost; disclosure shows the pressed wash, no shadow.
+            Button(
+                onClick = onToggle,
+                pressOffset = 0.dp,
+                modifier =
+                    Modifier
+                        .size(HomeNotificationTriggerSize)
+                        .background(if (open) RaftColor.FillPressed else Color.Transparent, RoundedCornerShape(RaftAppRadius.Control))
+            ) {
+                // Web parity (task #113 / artin 2026-08-06): the pink dot sits
+                // directly at the Bell icon's top-right corner (web: dot on the
+                // icon wrapper span, `-top-1 -end-1`), not at the button slot
+                // corner. Icon-sized wrapper keeps the same geometry.
+                Box(modifier = Modifier.size(16.dp)) {
+                    RaftLucideIcon(RaftLucideIconName.Bell, Modifier.size(16.dp))
+                    if (hasUnread) {
+                        ServerUnreadMarker(Modifier.align(Alignment.TopEnd))
+                    }
+                }
+            }
+        }
+    }
+}
+
+private val HomeNotificationTriggerSize = 32.dp
+private val HomeNotificationTriggerSlotSize = HomeNotificationTriggerSize + HomeSmallShadowOffset
+private val HomeNotificationPopoverTopGap = 4.dp
+internal fun homeNotificationPopoverTopOffset(topSafeArea: Dp): Dp =
+    topSafeArea + RaftAppSize.PageHeaderHeight + HomeNotificationPopoverTopGap
+
+internal fun shouldDismissHomeNotificationCenterForTabSelection(
+    expanded: Boolean,
+    selectedTabKey: String,
+    targetTabKey: String
+): Boolean =
+    expanded && selectedTabKey != targetTabKey
+
 internal fun List<RaftHomeNotificationItem>.visibleHomeNotifications(): List<RaftHomeNotificationItem> =
     filter { notification ->
         notification.title.isNotBlank() || notification.body.isNotBlank()
@@ -4925,7 +5076,39 @@ private fun HomeAppUpdateBanner(
     Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
 }
 @Composable
-internal fun HomeNotificationCenterEmptyState() {
+private fun HomeNotificationPopover(notifications: List<RaftHomeNotificationItem>, onView: (RaftHomeNotificationItem) -> Unit, onDismiss: (RaftHomeNotificationItem) -> Unit, modifier: Modifier = Modifier) {
+    HardShadowPanel(modifier = modifier, minWidth = 320.dp, maxWidth = 320.dp) {
+        androidx.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().background(RaftColor.FillMuted).padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Sm), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(MR.strings.home_notification_center_title), style = RaftType.SectionLabel, color = RaftColor.TextMutedGray, maxLines = 1)
+            Text(
+                if (notifications.isEmpty()) {
+                    stringResource(MR.strings.home_notification_center_item_count_all_clear)
+                } else if (notifications.size == 1) {
+                    MR.strings.home_notification_center_item_count_one.format(listOf(notifications.size)).localized()
+                } else {
+                    MR.strings.home_notification_center_item_count_many.format(listOf(notifications.size)).localized()
+                },
+                style = RaftType.Button,
+                color = RaftColor.TextMutedGray,
+                maxLines = 1
+            )
+        }
+        Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
+        if (notifications.isEmpty()) {
+            HomeNotificationCenterEmptyState()
+        } else {
+            notifications.forEachIndexed { index, notification ->
+                if (index > 0) {
+                    Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
+                }
+                HomeNotificationRow(notification, { onView(notification) }, { onDismiss(notification) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeNotificationCenterEmptyState() {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Lg),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -4956,14 +5139,14 @@ internal fun HomeNotificationCenterEmptyState() {
 }
 
 @Composable
-internal fun HomeNotificationRow(notification: RaftHomeNotificationItem, onView: () -> Unit, onDismiss: () -> Unit) {
+private fun HomeNotificationRow(notification: RaftHomeNotificationItem, onView: () -> Unit, onDismiss: () -> Unit) {
     val title = notification.title.ifBlank { notification.body }
     val body = if (notification.title.isBlank()) "" else notification.body
     androidx.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().padding(RaftAppSpacing.Md), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
         Box(modifier = Modifier.size(24.dp).background(notification.kind.notificationColor(), RoundedCornerShape(RaftAppRadius.Sticker)).border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker)), contentAlignment = Alignment.Center) {
             RaftLucideIcon(notification.icon.notificationIconName(notification.kind), Modifier.size(16.dp))
         }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
+        Column(modifier = Modifier.width(HomeNotificationTextWidth), verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
             Text(title, style = RaftType.Button, color = RaftColor.TextBlack, overflow = TextOverflow.Ellipsis, maxLines = 3)
             if (body.isNotBlank()) {
                 Text(body, style = RaftType.Button, color = RaftColor.TextBlack, overflow = TextOverflow.Ellipsis, maxLines = 3)
@@ -4983,6 +5166,7 @@ internal fun HomeNotificationRow(notification: RaftHomeNotificationItem, onView:
     }
 }
 
+private val HomeNotificationTextWidth = 260.dp
 private val HomeNotificationActionShadowOffset = 2.dp
 private val HomeNotificationActionActiveShadowOffset = HomeNotificationActionShadowOffset * 2
 
