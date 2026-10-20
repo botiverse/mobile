@@ -34,6 +34,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
@@ -232,13 +233,14 @@ internal fun RaftTopPageHeaderFrame(
             horizontalArrangement = Arrangement.spacedBy(contentSpacing),
             content = content,
         )
-        // raft-ui panel head: a 1dp seam splits the head from the body (no ink rule).
+        // raft-ui panel head: a 1dp seam splits the head from the body (no ink rule). Flattened
+        // onto the canvas first so it rounds like the web (a draw-time 8-bit blend lands a level dark).
         Box(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .height(RaftAppStroke.Thin)
-                    .background(RaftColor.BorderSeam)
+                    .background(RaftColor.BorderSeam.compositeOver(RaftColor.Canvas))
                     .align(Alignment.BottomCenter)
         )
     }

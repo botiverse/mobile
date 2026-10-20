@@ -448,6 +448,15 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M 4.0 12.0 A 1.0 1.0 0 1 0 6.0 12.0 A 1.0 1.0 0 1 0 4.0 12.0 Z"),
                     ),
                 )
+            RaftLucideIconName.EllipsisVertical ->
+                RaftLucideIconSpec(
+                    "ellipsis-vertical",
+                    listOf(
+                        RaftLucidePathSpec("M 11.0 12.0 A 1.0 1.0 0 1 0 13.0 12.0 A 1.0 1.0 0 1 0 11.0 12.0 Z"),
+                        RaftLucidePathSpec("M 11.0 5.0 A 1.0 1.0 0 1 0 13.0 5.0 A 1.0 1.0 0 1 0 11.0 5.0 Z"),
+                        RaftLucidePathSpec("M 11.0 19.0 A 1.0 1.0 0 1 0 13.0 19.0 A 1.0 1.0 0 1 0 11.0 19.0 Z"),
+                    ),
+                )
             RaftLucideIconName.Maximize2 ->
                 RaftLucideIconSpec(
                     "maximize-2",

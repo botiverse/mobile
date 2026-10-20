@@ -765,6 +765,10 @@
     <string name="thread_files_empty_title">No files yet</string>
     <string name="thread_files_empty_detail">Files shared in this thread will show up here.</string>
     <string name="thread_files_error_load">Files failed to load</string>
+    <string name="thread_files_load_more">Load More</string>
+    <string name="thread_files_file_actions">Actions for %1$s</string>
+    <string name="thread_files_jump_to_message">Jump to Original Message</string>
+    <string name="thread_files_download_file">Download File</string>
     <string name="thread_state_note">NOTE</string>
     <string name="thread_open_task_number">OPEN TASK #%1$d</string>
     <string name="thread_image_pager_position">%1$d/%2$d</string>

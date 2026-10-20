@@ -103,6 +103,7 @@ LUCIDE_ICONS = [
     "dices",
     "download",
     "ellipsis",
+    "ellipsis-vertical",
     "maximize-2",
     "menu",
     "eraser",

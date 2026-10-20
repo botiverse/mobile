@@ -35,6 +35,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onPlaced
@@ -134,7 +135,8 @@ fun RaftTabStrip(
                 )
             }
         }
-        Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineSeam))
+        // Flattened onto the canvas so the seam rounds like the web's (a draw-time blend lands a level dark).
+        Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineSeam.compositeOver(colors.layerCanvas)))
     }
 }
 
