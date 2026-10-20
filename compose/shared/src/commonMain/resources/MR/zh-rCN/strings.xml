@@ -1724,6 +1724,12 @@
     <string name="settings_notifications_message_detail">当 Raft 在后台时，为新的未读消息显示系统通知。</string>
     <string name="settings_notifications_background_realtime_title">后台实时连接</string>
     <string name="settings_notifications_background_realtime_detail">在后台保持实时连接。%1$s 仍可能暂停长时间运行的会话。</string>
+    <string name="settings_notifications_keep_connection_title">后台保持连接</string>
+    <string name="settings_notifications_keep_connection_detail">此设备没有 Google Play 服务，Raft 无法接收推送通知。在后台保持 Raft 连接，即可继续收到消息通知。开启后会常驻一条“Raft 正在接收消息”通知，并增加耗电。</string>
+    <string name="settings_notifications_battery_optimization_title">允许后台运行</string>
+    <string name="settings_notifications_battery_optimization_detail">为 Raft 关闭电池优化，避免系统中断后台连接。部分手机还需要在应用启动管理或后台活动设置中允许 Raft。</string>
+    <string name="settings_notifications_battery_optimization_allowed">已允许</string>
+    <string name="settings_notifications_battery_optimization_request">允许</string>
     <string name="settings_notifications_offline_computers_title">计算机离线提醒</string>
     <string name="settings_notifications_offline_computers_detail">当已注册的计算机离线时，在首页显示提醒。默认关闭。</string>
     <string name="settings_notifications_test_title">发送测试通知</string>

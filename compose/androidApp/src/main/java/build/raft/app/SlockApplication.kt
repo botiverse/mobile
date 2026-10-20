@@ -12,6 +12,7 @@ import build.raft.app.data.slockReadStoredFontPreferenceForDiagnostics
 import build.raft.app.data.slockRestoreStoredFontPreferenceOnColdStart
 import build.hands.update.HandsCrash
 import build.raft.app.shared.AndroidAppScopeRealtimeOwner
+import build.raft.app.shared.AndroidRealtimeKeepAliveController
 import build.raft.app.shared.ProcessAndroidAttachmentMediaStoreCleanup
 import build.raft.app.shared.ProcessAndroidAttachmentPublicDownloads
 import build.raft.app.shared.SlockAndroidWebViewWarmup
@@ -111,6 +112,7 @@ class SlockApplication : Application() {
         installAndroidAppScopeEventBus(this)
         AndroidAppScopeRealtimeOwner.install(this)
         AndroidPushRegistration.start(this)
+        AndroidRealtimeKeepAliveController.installNoPlayServicesFallback(this)
         runCatching {
             runBlocking {
                 KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(this@SlockApplication)).readSession()

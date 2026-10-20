@@ -1394,6 +1394,7 @@ open class SlockKuiklyActivity :
             reportRealtimeVisibility(AndroidHostVisibility.Visible, "activity_on_resume")
         }
 
+        AndroidRealtimeKeepAliveController.onHostResumed(applicationContext)
         AndroidRealtimeKeepAliveController.start(
             context = applicationContext,
             source = "activity_on_resume"
@@ -2911,6 +2912,9 @@ open class SlockKuiklyActivity :
             shellInstanceId = shellInstanceId,
             explicitClose = explicitClose
         )
+        // Both calls above clear background keep-alive; restore it if the background connection service
+        // is up and this disconnect was not session-ending.
+        AndroidRealtimeKeepAliveController.restoreBackgroundKeepAliveAfterDisconnect(applicationContext, reason)
     }
 
     internal fun requestRealtimeCursorAdvance(

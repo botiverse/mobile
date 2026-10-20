@@ -497,4 +497,8 @@
     <string name="attachment_save_as_cancel">キャンセル</string>
     <string name="attachment_save_as_saved_toast">ファイルを保存しました</string>
     <string name="attachment_save_as_failed_toast">Raft でこのファイルを保存できませんでした。もう一度お試しください。</string>
+    <string name="raft_background_connection_channel_name">バックグラウンド接続</string>
+    <string name="raft_background_connection_channel_description">Google Play 開発者サービスのないデバイスで、Raft がメッセージ通知のためにバックグラウンドで接続を維持している間に表示されます。</string>
+    <string name="raft_background_connection_notification_title">Raft がメッセージを受信中</string>
+    <string name="raft_background_connection_notification_text">メッセージ通知のために接続を維持しています。</string>
 </resources>
