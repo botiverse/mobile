@@ -27,7 +27,7 @@ import build.raft.app.data.routeThreadOpen
 
 import build.raft.app.components.RaftAnchoredMetaChip
 import build.raft.app.components.RaftAttachmentPreviewCard
-import build.raft.app.components.RaftAttachmentPreviewCardWidth
+import build.raft.app.components.RaftAttachmentPreviewCardAction
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftExternalBridgeBadge
@@ -30059,14 +30059,28 @@ internal fun RaftThreadAttachmentItem.threadAttachmentChipMetaLine(htmlPreviewLa
         .filter { it.isNotBlank() }
         .joinToString(" · ")
 
-internal fun RaftThreadAttachmentItem.threadAttachmentSummaryLine(): StringDesc? =
-    when {
-        isPreviewableAudioAttachment() -> MR.strings.file_preview_audio.desc()
-        isPreviewableVideoAttachment() -> MR.strings.file_preview_video.desc()
-        isTextLikeAttachment() || isHtmlAttachment() -> MR.strings.file_preview_text.desc()
-        isPreviewableDocumentAttachment() -> MR.strings.file_preview_document.desc()
-        else -> null
+private fun RaftThreadAttachmentItem.threadAttachmentRendersAsCard(): Boolean =
+    !isPreviewableVideoAttachment() && !isPreviewableAudioAttachment()
+
+/** Consecutive file cards share one wrapping group; each inline player stands alone, in order. */
+private fun List<RaftThreadAttachmentItem>.threadAttachmentCardRuns(): List<List<RaftThreadAttachmentItem>> {
+    val runs = mutableListOf<MutableList<RaftThreadAttachmentItem>>()
+    forEach { attachment ->
+        val last = runs.lastOrNull()
+        if (attachment.threadAttachmentRendersAsCard() && last != null && last.first().threadAttachmentRendersAsCard()) {
+            last += attachment
+        } else {
+            runs += mutableListOf(attachment)
+        }
     }
+    return runs
+}
+
+private fun ThreadAttachmentOpenUiState?.threadAttachmentOpenFailed(): Boolean =
+    this?.status in setOf("missing", "no_app", "storage_failed", "download_failed", "failed")
+
+// raft-ui MessageAttachmentGroup `max-w-[360px]`.
+private val ThreadAttachmentGroupMaxWidth = 360.dp
 
 /** UI-bound formatting: raw bytes win; sizeLabel exists only for compatibility snapshots. */
 internal fun RaftThreadAttachmentItem.displaySizeLabel(): String =
@@ -30284,13 +30298,37 @@ private fun ThreadMessageAttachments(
                 }
             }
         }
-        fileAttachments.forEach { attachment ->
-            ThreadAttachmentChip(
-                attachment = attachment,
-                openState = attachmentOpenStates[attachment.id],
-                onOpen = { onOpenAttachment(attachment.id) },
-                onDownload = { onDownloadAttachment(attachment.id) }
-            )
+        // raft-ui MessageAttachmentGroup: file cards wrap side by side (`flex flex-wrap gap-2`,
+        // at most 360 wide); inline video / audio players keep their own full-width rows.
+        val fileAttachmentRuns =
+            remember(fileAttachments) { fileAttachments.threadAttachmentCardRuns() }
+        fileAttachmentRuns.forEach { run ->
+            val first = run.first()
+            if (!first.threadAttachmentRendersAsCard()) {
+                ThreadAttachmentChip(
+                    attachment = first,
+                    openState = attachmentOpenStates[first.id],
+                    onOpen = { onOpenAttachment(first.id) },
+                    onDownload = { onDownloadAttachment(first.id) }
+                )
+            } else {
+                @OptIn(ExperimentalLayoutApi::class)
+                FlowRow(
+                    modifier = Modifier.widthIn(max = ThreadAttachmentGroupMaxWidth),
+                    horizontalArrangement =
+                        Arrangement.spacedBy(RaftAppSpacing.Sm, if (alignEnd) Alignment.End else Alignment.Start),
+                    verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
+                ) {
+                    run.forEach { attachment ->
+                        ThreadAttachmentChip(
+                            attachment = attachment,
+                            openState = attachmentOpenStates[attachment.id],
+                            onOpen = { onOpenAttachment(attachment.id) },
+                            onDownload = { onDownloadAttachment(attachment.id) }
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -30356,23 +30394,26 @@ private fun ThreadAttachmentChip(
     }
     val isOpening = openState.threadAttachmentIsOpening()
     val meta = attachment.threadAttachmentChipMetaLine(stringResource(MR.strings.file_preview_html))
+    // Download progress and open failures take the size's place on the meta line, as the web's
+    // "Uploading · 64%" does.
     val statusLabel = openState.localizedThreadAttachmentStatusLabel()
-    val summaryLabel = statusLabel ?: attachment.threadAttachmentSummaryLine()?.localized()
-    val affordanceIcon =
-        if (attachment.threadAttachmentUsesPreviewAffordance()) RaftLucideIconName.Eye else RaftLucideIconName.Download
-    Column(
-        modifier = Modifier.width(RaftAttachmentPreviewCardWidth),
-        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
-    ) {
-        RaftAttachmentPreviewCard(
-            title = attachment.name,
-            meta = meta,
-            summary = summaryLabel,
-            affordanceIcon = affordanceIcon,
-            loading = isOpening,
-            onClick = if (isOpening) ({}) else onOpen
-        )
-    }
+    val previewDescription = stringResource(MR.strings.file_preview_action_open)
+    val downloadDescription = stringResource(MR.strings.file_preview_action_download)
+    val actions =
+        buildList {
+            if (attachment.threadAttachmentUsesPreviewAffordance()) {
+                add(RaftAttachmentPreviewCardAction(RaftLucideIconName.Eye, "$previewDescription ${attachment.name}", onOpen))
+            }
+            add(RaftAttachmentPreviewCardAction(RaftLucideIconName.Download, "$downloadDescription ${attachment.name}", onDownload))
+        }
+    RaftAttachmentPreviewCard(
+        title = attachment.name,
+        meta = statusLabel ?: meta,
+        actions = actions,
+        loading = isOpening,
+        failed = openState.threadAttachmentOpenFailed(),
+        onClick = if (isOpening) ({}) else onOpen
+    )
 }
 
 @Composable
