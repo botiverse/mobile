@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -38,6 +41,7 @@ import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.RaftSectionEyebrow
+import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
@@ -121,6 +125,51 @@ internal fun RaftForwardPickerHeader(
             } else {
                 null
             }
+    )
+}
+
+/**
+ * web `InputGroup` + inline-start Search addon (`autoFocus` on the phone picker): the DS
+ * field, so focus draws the raft-ui focus ring round the group.
+ */
+@Composable
+internal fun RaftForwardPickerSearchField(
+    query: String,
+    enabled: Boolean,
+    autoFocus: Boolean,
+    focusKey: Any?,
+    onQueryChange: (String) -> Unit
+) {
+    val focusRequester = remember { FocusRequester() }
+    if (autoFocus) {
+        LaunchedEffect(focusKey) {
+            runCatching { focusRequester.requestFocus() }
+        }
+    }
+    RaftTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        placeholder = stringResource(MR.strings.thread_forward_search_targets),
+        enabled = enabled,
+        leading = { ForwardPickerGlyph(RaftLucideIconName.Search, 18.dp) },
+        trailing =
+            if (query.isNotEmpty()) {
+                {
+                    Box(
+                        modifier = Modifier.size(18.dp).clickable(enabled = enabled) { onQueryChange("") },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        ForwardPickerGlyph(RaftLucideIconName.X, 16.dp)
+                    }
+                }
+            } else {
+                null
+            },
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(start = ForwardPickerBodyPadding, top = ForwardPickerBodyPadding, end = ForwardPickerBodyPadding)
+                .focusRequester(focusRequester)
     )
 }
 

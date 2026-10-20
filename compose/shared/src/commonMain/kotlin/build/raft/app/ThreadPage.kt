@@ -31952,17 +31952,12 @@ internal fun <T> RaftForwardTargetPicker(
                 }
             }
             // web `InputGroup` with the inline-start Search addon, inside `main p-3`, `mb-3`.
-            RaftBrutalSearchField(
-                value = state.query,
-                placeholder = stringResource(MR.strings.thread_forward_search_targets),
-                onValueChange = { onIntent(RaftForwardTargetPickerIntent.QueryChanged(it)) },
+            RaftForwardPickerSearchField(
+                query = state.query,
                 enabled = searchInputInteractive,
-                showClearWhenNotEmpty = true,
-                onClear = { onIntent(RaftForwardTargetPickerIntent.QueryChanged("")) },
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(start = ForwardPickerBodyPadding, top = ForwardPickerBodyPadding, end = ForwardPickerBodyPadding)
+                autoFocus = singleTapContinues,
+                focusKey = state.sessionKey,
+                onQueryChange = { onIntent(RaftForwardTargetPickerIntent.QueryChanged(it)) }
             )
             RaftForwardPickerEyebrow(
                 text =
