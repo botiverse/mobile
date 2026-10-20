@@ -1723,9 +1723,18 @@ internal fun threadComposerBottomPadding(
     keyboardInsetExcludesBottomSafeArea: Boolean = false
 ): Dp {
     val keyboardInset = keyboardInsetDp.coerceAtLeast(0f).dp
-    val safeAreaInset =
-        if (keyboardInsetDp > 0f && !keyboardInsetExcludesBottomSafeArea) 0.dp else bottomSafeArea
-    return ThreadComposerBottomBasePadding + ThreadComposerBottomSafeAreaLift + keyboardInset + safeAreaInset
+    // When the keyboard height already contains the bottom safe area (iOS keyboard frame), the
+    // keyboard and the safe area overlap: the composer sits on whichever is taller. Taking the max
+    // (instead of switching from safe area to keyboard as soon as the keyboard is > 0) keeps the
+    // padding from dipping below its resting value during the first frames of the keyboard
+    // animation, while the keyboard is still shorter than the safe area.
+    val bottomInset =
+        if (keyboardInsetExcludesBottomSafeArea) {
+            keyboardInset + bottomSafeArea
+        } else {
+            maxOf(keyboardInset, bottomSafeArea)
+        }
+    return ThreadComposerBottomBasePadding + ThreadComposerBottomSafeAreaLift + bottomInset
 }
 
 internal fun threadChannelHeaderSubtitle(channelName: String?): String? {
@@ -20959,14 +20968,26 @@ private fun ThreadMessagesListContent(
                                 itemCount = lazyItemCount,
                                 firstMessageId = renderPayload.messages.firstOrNull()?.id,
                                 lastMessageId = renderPayload.messages.lastOrNull()?.id,
-                                newerPagingActive = newerPageCycleActive || renderPayload.canLoadMoreAfter
+                                newerPageCycleActive = newerPageCycleActive,
+                                newerHistoryAvailable = renderPayload.canLoadMoreAfter,
+                                imeProgrammaticViewportPolicy = imeProgrammaticViewportPolicy
                             ),
-                        onAnchored = { state ->
-                            diagnosticsLogger(
-                                "thread_tail_layout_anchor action=pin_tail " +
-                                    "viewport=${state.previousViewportPx}->${state.nextViewportPx} " +
-                                    "items=${state.previousItemCount}->${state.nextItemCount}"
-                            )
+                        onTransition = { transition ->
+                            when (transition) {
+                                is ThreadTailLayoutAnchorTransition.Started -> {
+                                    val state = transition.state
+                                    diagnosticsLogger(
+                                        "thread_tail_layout_anchor action=pin_tail_start " +
+                                            "viewport=${state.previousViewportPx}->${state.nextViewportPx} " +
+                                            "items=${state.previousItemCount}->${state.nextItemCount}"
+                                    )
+                                }
+                                is ThreadTailLayoutAnchorTransition.Ended ->
+                                    diagnosticsLogger(
+                                        "thread_tail_layout_anchor action=pin_tail_end " +
+                                            "passes=${transition.pinnedPasses}"
+                                    )
+                            }
                         }
                     )
                     .keyboardDismissModeInteractiveIOS()
@@ -23772,7 +23793,7 @@ private const val ThreadUnreadJumpButtonZIndex = 5f
  * artin 2026-09-02: nothing in this family needs the 42.dp action-button target.
  */
 internal val ThreadFloatingPillButtonMinHeight = 28.dp
-private const val ThreadBackToBottomTolerancePx = 24
+internal const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 12
 private const val ThreadInitialBottomAnchorRetryDelayMs = 80L

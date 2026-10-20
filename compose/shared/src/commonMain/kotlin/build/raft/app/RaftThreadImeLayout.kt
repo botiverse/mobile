@@ -65,24 +65,28 @@ internal fun Modifier.raftThreadComposerLiveKeyboardPadding(
 ): Modifier {
     val ime = WindowInsets.ime
     val navigationBars = WindowInsets.navigationBars
-    return layout { measurable, constraints ->
-        val keyboardPx =
-            raftThreadKeyboardInsetPx(
-                imeBottomPx = ime.getBottom(this),
-                navigationBottomPx = navigationBars.getBottom(this),
-                excludesNavigationBars = raftKeyboardHeightExcludesNavigationBars,
-            )
-        val bottomPx =
-            threadComposerBottomPadding(
-                keyboardInsetDp = keyboardPx.toDp().value,
-                bottomSafeArea = bottomSafeArea,
-                keyboardInsetExcludesBottomSafeArea = keyboardInsetExcludesBottomSafeArea,
-            ).roundToPx().coerceAtLeast(0)
-        val placeable = measurable.measure(constraints.offset(vertical = -bottomPx))
-        layout(placeable.width, constraints.constrainHeight(placeable.height + bottomPx)) {
-            placeable.place(0, 0)
+    val padding =
+        remember(ime, navigationBars, bottomSafeArea, keyboardInsetExcludesBottomSafeArea) {
+            Modifier.layout { measurable, constraints ->
+                val keyboardPx =
+                    raftThreadKeyboardInsetPx(
+                        imeBottomPx = ime.getBottom(this),
+                        navigationBottomPx = navigationBars.getBottom(this),
+                        excludesNavigationBars = raftKeyboardHeightExcludesNavigationBars,
+                    )
+                val bottomPx =
+                    threadComposerBottomPadding(
+                        keyboardInsetDp = keyboardPx.toDp().value,
+                        bottomSafeArea = bottomSafeArea,
+                        keyboardInsetExcludesBottomSafeArea = keyboardInsetExcludesBottomSafeArea,
+                    ).roundToPx().coerceAtLeast(0)
+                val placeable = measurable.measure(constraints.offset(vertical = -bottomPx))
+                layout(placeable.width, constraints.constrainHeight(placeable.height + bottomPx)) {
+                    placeable.place(0, 0)
+                }
+            }
         }
-    }
+    return this.then(padding)
 }
 
 /** What the forward thread list does in the measure pass that sees a new viewport or tail. */
@@ -100,7 +104,10 @@ internal data class ThreadTailLayoutAnchorState(
     val followingLatest: Boolean,
     /** A drag, fling or programmatic scroll owns the viewport right now. */
     val scrollInProgress: Boolean,
-    /** In the previous layout the trailing row ended at the viewport end. */
+    /**
+     * In the previous layout the newest content was parked: the trailing row ended at the viewport
+     * end, or all content fit inside the viewport (see [threadTailParkedInPreviousLayout]).
+     */
     val previousTailAtRenderedBottom: Boolean,
     val previousViewportPx: Int,
     val nextViewportPx: Int,
@@ -110,8 +117,17 @@ internal data class ThreadTailLayoutAnchorState(
     val nextFirstMessageId: String?,
     val previousLastMessageId: String?,
     val nextLastMessageId: String?,
-    /** A newer page is loading / settling, or newer history exists: appends are pagination. */
-    val newerPagingActive: Boolean,
+    /**
+     * A newer-page cycle is loading or settling. The newer-page restoration owns the viewport
+     * (it restores a captured exact offset on settle), so the anchor must not move it for any
+     * change, the same fence the keyboard bottom correction honours.
+     */
+    val newerPageCycleActive: Boolean,
+    /** Newer history exists (`canLoadMoreAfter`): an append is pagination, not a realtime tail. */
+    val newerHistoryAvailable: Boolean,
+    /** The task #990 kill-switch policy; `SuppressWhileImeOpen` disables the anchor entirely. */
+    val imeProgrammaticViewportPolicy: ThreadImeProgrammaticViewportPolicy =
+        ThreadImeProgrammaticViewportPolicy.AllowWhileImeOpen,
 )
 
 /**
@@ -119,21 +135,28 @@ internal data class ThreadTailLayoutAnchorState(
  * row at the bottom by construction and never needs this.
  *
  * Applies only while the newest message owns the viewport (parked at the rendered bottom,
- * `FollowingLatest`, nothing scrolling), and only for the two structural changes that would
- * otherwise push the tail below the fold for a frame: the viewport shrinking (keyboard rising,
- * composer growing) and a genuine tail append. Pagination, prepends, list replacement and any user
- * movement leave the position untouched, so the programmatic-scroll ownership fences of the page
- * (focused-message sessions, older/newer page restoration, drag) are unaffected.
+ * `FollowingLatest`, nothing scrolling, no newer-page cycle), and only for the two structural
+ * changes that would otherwise push the tail below the fold for a frame: the viewport shrinking
+ * (keyboard rising, composer growing) and a genuine tail append. Pagination, prepends, list
+ * replacement and any user movement leave the position untouched, so the programmatic-scroll
+ * ownership fences of the page (focused-message sessions, older/newer page restoration, drag) are
+ * unaffected. On stop-loss platforms (`SuppressWhileImeOpen`) it never moves the list: the
+ * anchor is mostly an IME-time correction and those platforms must not reposition while the
+ * keyboard animates; they keep the pre-existing correction paths and their kill-switch gates.
  */
 internal fun resolveThreadTailLayoutAnchor(state: ThreadTailLayoutAnchorState): ThreadTailLayoutAnchor {
+    if (state.imeProgrammaticViewportPolicy == ThreadImeProgrammaticViewportPolicy.SuppressWhileImeOpen) {
+        return ThreadTailLayoutAnchor.None
+    }
     if (state.reverseLayout || !state.followingLatest || state.scrollInProgress) return ThreadTailLayoutAnchor.None
+    if (state.newerPageCycleActive) return ThreadTailLayoutAnchor.None
     if (!state.previousTailAtRenderedBottom) return ThreadTailLayoutAnchor.None
     if (state.previousViewportPx <= 0 || state.nextViewportPx <= 0 || state.nextItemCount <= 0) {
         return ThreadTailLayoutAnchor.None
     }
     val viewportShrank = state.nextViewportPx < state.previousViewportPx
     val tailAppended =
-        !state.newerPagingActive &&
+        !state.newerHistoryAvailable &&
             state.nextItemCount > state.previousItemCount &&
             state.previousItemCount > 0 &&
             state.previousFirstMessageId == state.nextFirstMessageId &&
@@ -157,14 +180,24 @@ internal data class ThreadTailLayoutAnchorInputs(
     val itemCount: Int,
     val firstMessageId: String?,
     val lastMessageId: String?,
-    val newerPagingActive: Boolean,
+    val newerPageCycleActive: Boolean,
+    val newerHistoryAvailable: Boolean,
+    val imeProgrammaticViewportPolicy: ThreadImeProgrammaticViewportPolicy,
 )
+
+/** A run of consecutive pinned passes started or ended; logged instead of every pinned frame. */
+internal sealed interface ThreadTailLayoutAnchorTransition {
+    data class Started(val state: ThreadTailLayoutAnchorState) : ThreadTailLayoutAnchorTransition
+
+    data class Ended(val pinnedPasses: Int) : ThreadTailLayoutAnchorTransition
+}
 
 private class ThreadTailLayoutAnchorMemory {
     var viewportPx: Int = -1
     var itemCount: Int = -1
     var firstMessageId: String? = null
     var lastMessageId: String? = null
+    var pinnedPasses: Int = 0
 }
 
 /**
@@ -173,69 +206,104 @@ private class ThreadTailLayoutAnchorMemory {
  * takes effect in the list's own measure right after this one. No coroutine, no extra frame, so
  * there is nothing for the follow-latest command or the bottom-correction collector to fight: when
  * they run, the tail is already at the bottom and their scroll is a no-op.
+ *
+ * [onTransition] reports only the start and the end of a run of pinned passes (an IME animation
+ * pins on every frame), so diagnostics stay out of the per-frame path.
  */
 @Composable
 internal fun Modifier.raftThreadTailLayoutAnchor(
     listState: ThreadListViewport,
     inputs: ThreadTailLayoutAnchorInputs,
-    onAnchored: (ThreadTailLayoutAnchorState) -> Unit = {},
+    onTransition: (ThreadTailLayoutAnchorTransition) -> Unit = {},
 ): Modifier {
-    val memory = remember(listState) { ThreadTailLayoutAnchorMemory() }
     val currentInputs: State<ThreadTailLayoutAnchorInputs> = rememberUpdatedState(inputs)
-    val currentOnAnchored = rememberUpdatedState(onAnchored)
-    return layout { measurable, constraints ->
-        // Observed on purpose: a new tail must re-run this pass before the list measures it.
-        val next = currentInputs.value
-        val nextViewportPx = if (constraints.hasBoundedHeight) constraints.maxHeight else -1
-        if (!next.reverseLayout) {
-            val state =
-                Snapshot.withoutReadObservation {
-                    ThreadTailLayoutAnchorState(
-                        reverseLayout = next.reverseLayout,
-                        followingLatest = next.followingLatest,
-                        scrollInProgress = listState.isScrollInProgress,
-                        previousTailAtRenderedBottom = listState.raw.layoutInfo.threadTailEndsAtViewportEnd(),
-                        previousViewportPx = memory.viewportPx,
-                        nextViewportPx = nextViewportPx,
-                        previousItemCount = memory.itemCount,
-                        nextItemCount = next.itemCount,
-                        previousFirstMessageId = memory.firstMessageId,
-                        nextFirstMessageId = next.firstMessageId,
-                        previousLastMessageId = memory.lastMessageId,
-                        nextLastMessageId = next.lastMessageId,
-                        newerPagingActive = next.newerPagingActive,
-                    )
+    val currentOnTransition = rememberUpdatedState(onTransition)
+    val anchor =
+        remember(listState) {
+            val memory = ThreadTailLayoutAnchorMemory()
+            Modifier.layout { measurable, constraints ->
+                // Observed on purpose: a new tail must re-run this pass before the list measures it.
+                val next = currentInputs.value
+                val nextViewportPx = if (constraints.hasBoundedHeight) constraints.maxHeight else -1
+                var pinned = false
+                if (!next.reverseLayout) {
+                    val state =
+                        Snapshot.withoutReadObservation {
+                            ThreadTailLayoutAnchorState(
+                                reverseLayout = next.reverseLayout,
+                                followingLatest = next.followingLatest,
+                                scrollInProgress = listState.isScrollInProgress,
+                                previousTailAtRenderedBottom = listState.raw.threadTailParkedInPreviousLayout(),
+                                previousViewportPx = memory.viewportPx,
+                                nextViewportPx = nextViewportPx,
+                                previousItemCount = memory.itemCount,
+                                nextItemCount = next.itemCount,
+                                previousFirstMessageId = memory.firstMessageId,
+                                nextFirstMessageId = next.firstMessageId,
+                                previousLastMessageId = memory.lastMessageId,
+                                nextLastMessageId = next.lastMessageId,
+                                newerPageCycleActive = next.newerPageCycleActive,
+                                newerHistoryAvailable = next.newerHistoryAvailable,
+                                imeProgrammaticViewportPolicy = next.imeProgrammaticViewportPolicy,
+                            )
+                        }
+                    if (resolveThreadTailLayoutAnchor(state) == ThreadTailLayoutAnchor.PinTail) {
+                        listState.raw.requestScrollToItem(next.itemCount - 1)
+                        pinned = true
+                        if (memory.pinnedPasses == 0) {
+                            currentOnTransition.value(ThreadTailLayoutAnchorTransition.Started(state))
+                        }
+                        memory.pinnedPasses++
+                    }
                 }
-            if (resolveThreadTailLayoutAnchor(state) == ThreadTailLayoutAnchor.PinTail) {
-                listState.raw.requestScrollToItem(next.itemCount - 1)
-                currentOnAnchored.value(state)
+                if (!pinned && memory.pinnedPasses > 0) {
+                    currentOnTransition.value(ThreadTailLayoutAnchorTransition.Ended(memory.pinnedPasses))
+                    memory.pinnedPasses = 0
+                }
+                memory.viewportPx = nextViewportPx
+                memory.itemCount = next.itemCount
+                memory.firstMessageId = next.firstMessageId
+                memory.lastMessageId = next.lastMessageId
+                val placeable = measurable.measure(constraints)
+                layout(placeable.width, placeable.height) { placeable.place(0, 0) }
             }
         }
-        memory.viewportPx = nextViewportPx
-        memory.itemCount = next.itemCount
-        memory.firstMessageId = next.firstMessageId
-        memory.lastMessageId = next.lastMessageId
-        val placeable = measurable.measure(constraints)
-        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-    }
+    return this.then(anchor)
 }
 
 /**
- * Whether the last laid-out pass ended with the list's final row flush with the viewport end.
- * Reads the previous layout only (index and count from the same snapshot), so it stays correct in
- * the pass where composition has already appended a row the list has not measured yet.
+ * Whether the newest content was parked in the last laid-out pass: the list's final row flush
+ * with the viewport end, or everything fitting inside the viewport (the tail then sits above the
+ * viewport end, and a keyboard shrinking the viewport below the content height must still keep it
+ * on the composer). Reads the previous layout only (index and count from the same snapshot), so it
+ * stays correct in the pass where composition has already appended a row the list has not
+ * measured yet.
  */
-internal fun androidx.compose.foundation.lazy.LazyListLayoutInfo.threadTailEndsAtViewportEnd(): Boolean {
-    val last = visibleItemsInfo.lastOrNull() ?: return false
-    if (last.index != totalItemsCount - 1) return false
-    return threadTailEndsAtViewportEnd(
-        tailOffsetPx = last.offset,
-        tailSizePx = last.size,
-        viewportEndPx = viewportEndOffset,
+internal fun androidx.compose.foundation.lazy.LazyListState.threadTailParkedInPreviousLayout(): Boolean {
+    val info = layoutInfo
+    val last = info.visibleItemsInfo.lastOrNull()
+    return threadTailParkedInPreviousLayout(
+        tailVisible = last != null && last.index == info.totalItemsCount - 1,
+        tailOffsetPx = last?.offset ?: 0,
+        tailSizePx = last?.size ?: 0,
+        viewportEndPx = info.viewportEndOffset,
+        canScrollForward = canScrollForward,
+        canScrollBackward = canScrollBackward,
     )
 }
 
-internal fun threadTailEndsAtViewportEnd(tailOffsetPx: Int, tailSizePx: Int, viewportEndPx: Int): Boolean =
-    kotlin.math.abs(tailOffsetPx + tailSizePx - viewportEndPx) <= ThreadTailLayoutAnchorTolerancePx
+internal fun threadTailParkedInPreviousLayout(
+    tailVisible: Boolean,
+    tailOffsetPx: Int,
+    tailSizePx: Int,
+    viewportEndPx: Int,
+    canScrollForward: Boolean,
+    canScrollBackward: Boolean,
+): Boolean {
+    if (!tailVisible) return false
+    if (!canScrollForward && !canScrollBackward) return true
+    return threadTailEndsAtViewportEnd(tailOffsetPx, tailSizePx, viewportEndPx)
+}
 
-private const val ThreadTailLayoutAnchorTolerancePx = 24
+internal fun threadTailEndsAtViewportEnd(tailOffsetPx: Int, tailSizePx: Int, viewportEndPx: Int): Boolean =
+    kotlin.math.abs(tailOffsetPx + tailSizePx - viewportEndPx) <= ThreadBackToBottomTolerancePx
