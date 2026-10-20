@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -463,10 +464,124 @@ internal fun RaftSectionHeaderIconAction(
         },
         modifier =
             Modifier
-                .size(size)
+                // requiredSize: a phone sidebar head keeps its 28dp controls on an 18dp
+                // title line (web `-my-1.5`), letting them overhang it symmetrically.
+                .requiredSize(size)
                 .raftCaptureLiveRootAnchor(anchorRef)
     ) {
         RaftLucideIcon(icon, Modifier.size(iconSize))
+    }
+}
+
+/** raft-ui `SidebarSectionControl`: h-7 min-w-7 ghost with a 16dp glyph. */
+internal val RaftSidebarSectionControlSize = 28.dp
+private val RaftSidebarSectionChevronSize = 14.dp
+private val RaftSidebarSectionDisclosureGap = 6.dp
+private val RaftSidebarSectionControlsGap = 4.dp
+private val RaftSidebarSectionHeaderTopPadding = 16.dp
+private val RaftSidebarSectionHeaderBottomPadding = 6.dp
+private val RaftSidebarSectionHeaderSidePadding = 8.dp
+private val RaftSidebarSectionTitleLineHeight = 18.dp
+
+/**
+ * raft-ui `SidebarSectionHeader` on a phone tab root (web Sidebar.tsx): 16 above, 6 below,
+ * 8 in from the list edge; the disclosure is a bare 14dp chevron, the title in
+ * `text-footnote` 700 and the Space Mono count, all foreground-hint with 6dp gaps; the
+ * 28dp ghost controls sit on the 18dp title line with 4dp between them.
+ */
+@Composable
+internal fun RaftSidebarSectionHeader(
+    label: String,
+    count: Int,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    showCollapsedUnreadDot: Boolean = false,
+    sortContentDescription: String? = null,
+    onSortClick: ((RaftPopoverAnchor) -> Unit)? = null,
+    onLongPress: ((RaftPopoverAnchor) -> Unit)? = null,
+    longPressAnchorIdentity: String = label,
+    trailingContent: (@Composable RowScope.() -> Unit)? = null
+) {
+    val longPressAnchorRef = remember(longPressAnchorIdentity) { RaftLiveRootAnchorRef(identity = "section-header:$longPressAnchorIdentity") }
+    val hint = RaftColor.ForegroundHint
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(
+                start = RaftSidebarSectionHeaderSidePadding,
+                end = RaftSidebarSectionHeaderSidePadding,
+                top = RaftSidebarSectionHeaderTopPadding,
+                bottom = RaftSidebarSectionHeaderBottomPadding
+            )
+            .height(RaftSidebarSectionTitleLineHeight),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .then(
+                    if (onLongPress != null) {
+                        Modifier
+                            .raftCaptureLiveRootAnchor(longPressAnchorRef)
+                            .pointerInput(onExpandedChange, expanded) {
+                                detectTapGestures(
+                                    onTap = { onExpandedChange(!expanded) },
+                                    onLongPress = {
+                                        longPressAnchorRef.resolve(RaftPopoverLocalPoint.BottomStart)?.let(onLongPress)
+                                    }
+                                )
+                            }
+                    } else {
+                        Modifier.clickable { onExpandedChange(!expanded) }
+                    }
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(RaftSidebarSectionDisclosureGap)
+        ) {
+            RaftLucideIcon(
+                RaftLucideIconName.ChevronRight,
+                Modifier.size(RaftSidebarSectionChevronSize),
+                color = raftArgbHex(hint),
+                rotationDegrees = if (expanded) 90f else 0f,
+                rotationAnimationDurationSeconds = RaftCollapsibleSectionTokens.AnimationDurationSeconds
+            )
+            Text(
+                label,
+                style = RaftType.SectionLabel.copy(letterSpacing = 0.sp),
+                color = hint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            Text(
+                count.toString(),
+                style = RaftCollapsibleSectionCountTextStyle,
+                color = hint
+            )
+            if (!expanded && showCollapsedUnreadDot) {
+                RaftStatusIndicator(
+                    color = RaftColor.AccentPink,
+                    size = RaftStatusIndicatorTokens.ServerUnreadSize,
+                    modifier = Modifier.padding(start = RaftAppSpacing.Xs)
+                )
+            }
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(RaftSidebarSectionControlsGap)
+        ) {
+            if (sortContentDescription != null && onSortClick != null) {
+                RaftSectionHeaderIconAction(
+                    icon = RaftLucideIconName.ArrowUpDown,
+                    contentDescription = sortContentDescription,
+                    onClick2 = onSortClick,
+                    size = RaftSidebarSectionControlSize
+                )
+            }
+            trailingContent?.invoke(this)
+        }
     }
 }
 

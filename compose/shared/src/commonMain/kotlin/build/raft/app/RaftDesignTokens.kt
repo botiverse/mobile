@@ -381,9 +381,18 @@ internal object RaftType {
     // GETTERS, not vals: the UI-text locale ([raftUiTextLocaleList]) follows the app language,
     // which can change at runtime.
 
+    /** `text-display` 34/40 700, -0.02em: phone tab-root large titles. */
+    val Display: TextStyle
+        get() = raftTextStyle(RaftScale.display)
     /** `text-title` 22/28 700, -0.01em. */
     val PageTitle: TextStyle
         get() = raftTextStyle(RaftScale.title)
+    /** `text-headline` 17/22 700: top-bar titles and the phone Home workspace pill. */
+    val Headline: TextStyle
+        get() = raftTextStyle(RaftScale.headline)
+    /** `text-footnote` 13/18 400: sidebar section descriptions and empty hints. */
+    val Footnote: TextStyle
+        get() = raftTextStyle(RaftScale.footnote)
     /**
      * raft-ui sidebar group / section label: `text-footnote font-bold normal-case
      * tracking-normal` (13/18 700), source case, no tracking.

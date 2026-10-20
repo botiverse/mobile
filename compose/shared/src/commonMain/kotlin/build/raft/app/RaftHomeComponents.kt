@@ -66,6 +66,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -130,6 +131,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.Path
@@ -177,17 +179,19 @@ import kotlinx.serialization.json.Json
 const val RAFT_HOME_PAGE = "compose_home"
 private const val HOME_PAGE_DATA_EVENT = "slockPageData"
 
-private val SidebarActionIconSize = 14.dp
-private val SidebarActionIconBoxSize = 14.dp
+private val SidebarActionIconSize = 20.dp
+private val SidebarActionIconBoxSize = 20.dp
 private val HomeSmallShadowOffset = 2.dp
-private val SidebarRowHorizontalPadding = 8.dp
-private val SidebarActionLabelGap = 6.dp
+// raft-ui SidebarItem `gap-2`; the phone Home entries use `gap-3`.
+private val SidebarActionLabelGap = 8.dp
+private val SidebarEntryLabelGap = 12.dp
 private val SidebarActionTrailingSlotWidth = 36.dp
 private val ChannelSymbolWidth = 18.dp
 private val ChannelSymbolIconSize = 14.dp
 private val ChannelAvatarSize = 20.dp
 private val ChannelAvatarFontSize = 11.sp
-private val ChannelRowHeight = 32.dp
+// raft-ui SidebarItem on a phone (`max-md:min-h-11`): 44dp rows.
+private val ChannelRowHeight = 44.dp
 
 /**
  * Sidebar row height: 32dp at the default font scale, grown with the font scale so the
@@ -198,10 +202,12 @@ private val ChannelRowHeight = 32.dp
 private fun sidebarRowHeight(): Dp =
     with(LocalDensity.current) { maxOf(ChannelRowHeight, RaftTextSize.ContentLineHeight.toDp() + SidebarRowTextInset) }
 
-// Vertical room around the name inside the 32dp row (32 - 24).
-private val SidebarRowTextInset = 8.dp
+// Vertical room around the name inside the 44dp row (1.5 + 8.5 on each side of the 24dp line).
+private val SidebarRowTextInset = 20.dp
 private const val EdgeAutoScrollStepPx = 18f
-private val ChannelRowHorizontalPadding = 8.dp
+// raft-ui SidebarItem: a 1.5dp (transparent) edge, then `pl-2` / `pr-2.5`.
+private val ChannelRowHorizontalPadding = 9.5.dp
+private val ChannelRowEndPadding = 11.5.dp
 private val ChannelRowShadowOffset = 2.dp
 private val ChannelRowMutedIconSize = 12.dp
 private val ChannelRowMutedIconGap = 4.dp
@@ -213,7 +219,17 @@ private val CountPillMinWidth = 18.dp
 private val CountPillHeight = 16.dp
 private val HomeUnreadBadgeRadius = 4.dp
 private val HomeUnreadBadgeTextOffsetY = 0.dp
-private val HomeListHorizontalPadding = RaftAppSpacing.Md
+// Web Sidebar list `px-2`.
+private val HomeListHorizontalPadding = RaftAppSpacing.Sm
+private val HomeListItemGap = 1.dp
+private val HomeListTopSpacer = 3.dp
+private const val HomeLargeTitleItemKey = "home-large-title"
+private const val HomeLoadingJointChannelSkeletonRows = 2
+// raft-ui SkeletonRow in the sidebar (`my-px h-9 gap-2 px-2.5`, a 19dp sticker avatar).
+private val HomeSkeletonRowHeight = 36.dp
+private val HomeSkeletonRowInset = 10.dp
+private val HomeSkeletonAvatarSize = 19.dp
+private val HomeSkeletonGap = 8.dp
 // #372 React parity: the post-sign-in loading state shows skeleton rows
 // under the CHANNELS / DIRECT MESSAGES section headers (4 + 3 rows in the
 // React app) instead of a bare shell.
@@ -228,9 +244,11 @@ private val HomeServerSwitcherDragHandleWidth = 32.dp
 internal val HomeServerSwitcherDragHandleIconName = RaftLucideIconName.GripVertical
 private const val HomeServerSwitcherMaxVisibleRows = 6
 private const val HomeServerBadgeTiltDegrees = -2f
-private val HomeServerBadgeHorizontalInset = 14.dp
-private val HomeServerBadgeVerticalInset = 6.dp
-private val HomeServerBadgeContentGap = 6.dp
+private val HomeServerBadgeContentGap = 8.dp
+private val HomeServerPillMinHeight = 36.dp
+private val HomeServerPillStartInset = 12.dp
+private val HomeServerPillEndInset = 10.dp
+private val HomeServerPillEdgeWidth = 1.5.dp
 private val HomeServerBadgeChevronSize = 16.dp
 internal val HomeServerIdentityNameChevronGap = 4.dp
 internal val HomeServerPublicPageGlobeGap = 4.dp
@@ -550,6 +568,7 @@ enum class RaftSidebarSortMode(val wireValue: String) {
 
 @Serializable
 data class RaftHomeShellLabels(
+    val home: String = "Home",
     val search: String = "Search",
     val inbox: String = "Activity",
     val followedThreads: String = "Followed threads",
@@ -601,6 +620,7 @@ data class RaftHomeShellLabels(
     companion object {
         @Composable
         fun localized(): RaftHomeShellLabels = RaftHomeShellLabels(
+            home = stringResource(MR.strings.tab_home),
             search = stringResource(MR.strings.home_nav_search),
             inbox = stringResource(MR.strings.home_nav_activity),
             followedThreads = stringResource(MR.strings.home_nav_followed_threads),
@@ -1070,86 +1090,37 @@ private fun RaftHomeConversationItem.toThreadLaunchConversationIdentity(): Threa
 
 @Composable
 internal fun HomeTitlebarVisualScreen() {
-    val compactServer =
-        RaftServerSwitcherItem(
-            id = "srv_mobile",
-            name = "Raft Mobile",
-            slug = "raft-mobile",
-            avatarUrl = "pixel:robot"
-        )
-    val designServer =
-        RaftServerSwitcherItem(
-            id = "srv_design",
-            name = "Raft Product Design Workspace",
-            slug = "raft-design",
-            avatarUrl = "pixel:paint"
-        )
-    val fallbackServer = designServer.copy(avatarUrl = null)
+    // components.home.titlebar.states, the web case's frame (VisualTestingCases.tsx
+    // HomeTitlebarVisualCaseView): 48dp down, a 342dp-wide window clipped to the first
+    // 62dp of the phone Home head (the 56dp bar, then the top of the large-title block).
+    // Same fixture as the web: the "Raft Design" workspace, no other-workspace unread and
+    // no notifications.
     Column(
         modifier =
             Modifier
-                .width(342.dp)
-                .height(560.dp)
-                .background(RaftColor.SurfaceWhite)
-                .padding(top = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+                .width(390.dp)
+                .height(844.dp)
+                .background(RaftColor.Canvas)
+                .padding(top = 48.dp)
     ) {
-        HomeTitlebarDesignLabel("SETTING OFF · EXISTING COMPACT BADGE")
-        HomeTitlebar(
-            serverName = designServer.name,
-            hasOtherServerUnread = true,
-            notifications = visualHomeNotifications(),
-            refreshing = false,
-            topSafeArea = 0.dp,
-            onServerBadgeClick = {},
-            onNotificationToggle = {}
-        )
-        HomeTitlebarDesignLabel("SETTING ON · SHORT NAME · 4DP CHEVRON GAP")
-        HomeTitlebar(
-            serverName = compactServer.name,
-            serverIdentity = compactServer,
-            hasOtherServerUnread = false,
-            notifications = visualHomeNotifications(),
-            refreshing = false,
-            topSafeArea = 0.dp,
-            onServerBadgeClick = {},
-            onNotificationToggle = {}
-        )
-        HomeTitlebarDesignLabel("SETTING ON · LONG NAME ELLIPSIS · CHEVRON VISIBLE")
-        HomeTitlebar(
-            serverName = fallbackServer.name,
-            serverIdentity = fallbackServer,
-            hasOtherServerUnread = false,
-            notifications = visualHomeNotifications(),
-            refreshing = false,
-            topSafeArea = 0.dp,
-            onServerBadgeClick = {},
-            onNotificationToggle = {}
-        )
-        HomeTitlebarDesignLabel("RIGHT PINK DOT = NOTIFICATION UNREAD")
-        HomeTitlebarDesignLabel("EXPANDED SWITCHER · SAME IDENTITY TOKEN")
-        HardShadowPanel(
-            modifier = Modifier.padding(horizontal = RaftAppSpacing.Md),
-            minWidth = 276.dp,
-            maxWidth = 328.dp
+        Column(
+            modifier =
+                Modifier
+                    .width(342.dp)
+                    .height(62.dp)
+                    .clipToBounds()
         ) {
-            ServerSwitcherRow(
-                server = designServer,
-                selected = true,
-                pending = false,
-                onClick = {}
+            HomeTitlebar(
+                serverName = "Raft Design",
+                hasOtherServerUnread = false,
+                notifications = emptyList(),
+                refreshing = false,
+                topSafeArea = 0.dp,
+                onServerBadgeClick = {},
+                showSeam = false,
+                onNotificationToggle = {}
             )
-            ServerSwitcherRow(
-                server =
-                    RaftServerSwitcherItem(
-                        id = "srv_fallback",
-                        name = "Raft Community",
-                        slug = "raft-community"
-                    ),
-                selected = false,
-                pending = false,
-                onClick = {}
-            )
+            HomeLargeTitleBlock(RaftHomeShellLabels.localized().home)
         }
     }
 }
@@ -2095,7 +2066,8 @@ private fun RaftStructuralHomeShellContent(
             hasDisplayedPinned,
             hasDisplayedJointChannels,
             hasDisplayedDirectMessages,
-            hideEmptySections
+            hideEmptySections,
+            showLoadingSkeletons
         ) {
             homeSidebarSectionOrder(
                 sectionOrder = sectionOrder,
@@ -2104,7 +2076,9 @@ private fun RaftStructuralHomeShellContent(
                 hasPinned = hasDisplayedPinned,
                 hasJointChannels = hasDisplayedJointChannels,
                 hasDirectMessages = hasDisplayedDirectMessages,
-                hideEmptySections = hideEmptySections
+                // Web shouldHideEmptySidebarSection: never drop a section mid-load, so the
+                // loading Home shows every system section with its skeleton rows.
+                hideEmptySections = hideEmptySections && !showLoadingSkeletons
             )
         }
     val pinnedSectionHasUnread = remember(displayedPinned) { displayedPinned.any { it.conversation?.homeConversationBadgeProjection()?.hasUnread == true } }
@@ -2303,6 +2277,13 @@ private fun RaftStructuralHomeShellContent(
         }
         onTabSelected(tabKey)
     }
+    // Web LargeTitle: the bar's seam shows only once the large-title block has scrolled
+    // under the bar (or the list starts elsewhere, e.g. a restored position).
+    val homeLargeTitleVisible by remember(listState) {
+        derivedStateOf {
+            listState.layoutInfo.visibleItemsInfo.any { it.key == HomeLargeTitleItemKey }
+        }
+    }
     Box(
         modifier = modifier.fillMaxSize().background(RaftColor.AppBgLightBlue).padding(outerPadding)
     ) {
@@ -2326,6 +2307,7 @@ private fun RaftStructuralHomeShellContent(
                                 listState.animateScrollToTopExpressive()
                             }
                         },
+                        showSeam = !homeLargeTitleVisible,
                         onNotificationToggle = { notificationCenterExpanded = !notificationCenterExpanded }
                     )
                 }
@@ -2424,10 +2406,13 @@ private fun RaftStructuralHomeShellContent(
                                                 listState.animateScrollToTopExpressive()
                                             }
                                         },
-                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                                // Web sidebar rows carry `my-px`; adjacent margins collapse to 1dp.
+                                verticalArrangement = Arrangement.spacedBy(HomeListItemGap),
                             ) {
                                 raftPullToRefreshItem()
-                                item { Spacer(Modifier.height(RaftAppSpacing.Md)) }
+                                item(key = HomeLargeTitleItemKey) { HomeLargeTitleBlock(labels.home) }
+                                // Web list `pt-1` plus the first row's `my-px`, less this list's 1dp item gap on each side.
+                                item { Spacer(Modifier.height(HomeListTopSpacer)) }
                                 item { SidebarActionRow(RaftLucideIconName.Search, labels.search, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClickWithDismiss else null) }
                                 // artin 2026-10-20: Activity is a bottom tab now; the Home list keeps Search and Saved.
                                 item { SidebarActionRow(RaftLucideIconName.Bookmark, labels.saved, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = formatHomeSavedCount(savedCount), onClick = if (sidebarInteractionsEnabled) onSavedClickWithDismiss else null) }
@@ -2448,9 +2433,8 @@ private fun RaftStructuralHomeShellContent(
                             displayedSidebarSections.forEach { sidebarSection ->
                                 when (sidebarSection) {
                                     RaftHomeSidebarSection.Pinned -> {
-                                        item { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
                                         item {
-                                            RaftCollapsibleSectionHeader(
+                                            RaftSidebarSectionHeader(
                                                 label = labels.pinned,
                                                 count = displayedPinned.size,
                                                 expanded = pinnedExpanded,
@@ -2611,9 +2595,8 @@ private fun RaftStructuralHomeShellContent(
                                     }
 
                                     RaftHomeSidebarSection.JointChannels -> {
-                                        item { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
                                         item {
-                                            RaftCollapsibleSectionHeader(
+                                            RaftSidebarSectionHeader(
                                                 label = labels.jointChannels,
                                                 count = displayedJointChannels.size,
                                                 expanded = jointChannelsExpanded,
@@ -2640,7 +2623,12 @@ private fun RaftStructuralHomeShellContent(
                                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
                                             )
                                         }
-                                        if (jointChannelsExpanded && displayedJointChannels.isEmpty()) {
+                                        if (jointChannelsExpanded && showLoadingSkeletons) {
+                                            items(HomeLoadingJointChannelSkeletonRows, key = { index -> "joint-skeleton-$index" }) {
+                                                HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListHorizontalPadding))
+                                            }
+                                        }
+                                        if (jointChannelsExpanded && displayedJointChannels.isEmpty() && !showLoadingSkeletons) {
                                             item(key = "joint-empty:$currentServerId") {
                                                 HomeSidebarSectionEmptyHint(labels.jointChannelsEmpty, Modifier.padding(horizontal = HomeListHorizontalPadding))
                                             }
@@ -2689,9 +2677,8 @@ private fun RaftStructuralHomeShellContent(
                                     }
 
                                     RaftHomeSidebarSection.Channels -> {
-                                        item { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
                                         item {
-                                            RaftCollapsibleSectionHeader(
+                                            RaftSidebarSectionHeader(
                                                 label = labels.channels,
                                                 count = displayedChannels.size,
                                                 expanded = channelsExpanded,
@@ -2717,7 +2704,7 @@ private fun RaftStructuralHomeShellContent(
                                                 longPressAnchorIdentity = "$currentServerId:system:channels",
                                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
                                             ) {
-                                                RaftSectionHeaderIconAction(RaftLucideIconName.Plus, labels.addChannel, if (sidebarInteractionsEnabled) onCreateChannelClick else disabledListAction)
+                                                RaftSectionHeaderIconAction(RaftLucideIconName.Plus, labels.addChannel, if (sidebarInteractionsEnabled) onCreateChannelClick else disabledListAction, size = RaftSidebarSectionControlSize)
                                             }
                                         }
                                         if (channelsExpanded) {
@@ -2770,9 +2757,8 @@ private fun RaftStructuralHomeShellContent(
                                     }
 
                                     RaftHomeSidebarSection.DirectMessages -> {
-                                        item { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
                                         item {
-                                            RaftCollapsibleSectionHeader(
+                                            RaftSidebarSectionHeader(
                                                 label = labels.directMessages,
                                                 count = displayedDirectMessages.size,
                                                 expanded = directMessagesExpanded,
@@ -2858,11 +2844,8 @@ private fun RaftStructuralHomeShellContent(
                                         val sectionRows = sidebarSection.rows
                                         val customSection = sectionRows.section
                                         val customSectionExpanded = customSection.id !in collapsedCustomSectionIds
-                                        item(key = "custom-section-spacer:$currentServerId:${customSection.id}") {
-                                            Spacer(Modifier.height(RaftAppSpacing.Xs))
-                                        }
                                         item(key = "custom-section-header:$currentServerId:${customSection.id}") {
-                                            RaftCollapsibleSectionHeader(
+                                            RaftSidebarSectionHeader(
                                                 label = customSection.sidebarSectionHeaderLabel(),
                                                 count = sectionRows.items.size,
                                                 expanded = customSectionExpanded,
@@ -2878,7 +2861,6 @@ private fun RaftStructuralHomeShellContent(
                                                 },
                                                 showCollapsedUnreadDot =
                                                     sectionRows.items.any { it.homeConversationBadgeProjection().hasUnread },
-                                                uppercaseLabel = false,
                                                 onLongPress =
                                                     if (sidebarInteractionsEnabled) {
                                                         { anchor ->
@@ -2895,6 +2877,7 @@ private fun RaftStructuralHomeShellContent(
                                                 RaftSectionHeaderIconAction(
                                                     RaftLucideIconName.Ellipsis,
                                                     customSection.name,
+                                                    size = RaftSidebarSectionControlSize,
                                                     onClick2 = { anchor ->
                                                         if (sidebarInteractionsEnabled) {
                                                             activeSectionMenuId = customSection.id
@@ -3835,12 +3818,40 @@ data class RaftHomeSectionCreateRequest(
 /** Web `SidebarSectionDescription` hint under an empty, expanded section. */
 @Composable
 private fun HomeSidebarSectionEmptyHint(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        style = RaftType.Caption,
-        color = RaftColor.TextMutedGray,
-        modifier = modifier.fillMaxWidth().padding(start = RaftAppSpacing.Lg, top = RaftAppSpacing.Xs, bottom = RaftAppSpacing.Xs)
-    )
+    // Web `SidebarSectionDescription tone="subtle"` (`px-2 mb-1 min-h-9 py-1.5`,
+    // text-footnote in foreground-hint).
+    Box(modifier = modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+        Box(modifier = Modifier.fillMaxWidth().heightIn(min = 36.dp).padding(horizontal = 8.dp, vertical = 6.dp)) {
+            Text(
+                text = text,
+                style = RaftType.Footnote,
+                color = RaftColor.ForegroundHint
+            )
+        }
+    }
+}
+
+/**
+ * Web LargeTitle on the phone Home root: the frame-coloured block under the 56dp bar
+ * (`px-4 pt-1 pb-2`, the page name in `text-display`) that closes with the seam. It
+ * scrolls with the list, so the header shrinks as the list moves up.
+ */
+@Composable
+private fun HomeLargeTitleBlock(title: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxWidth().background(RaftColor.Frame)) {
+        Box(modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp)) {
+            Text(
+                text = title,
+                style = RaftType.Display,
+                color = RaftColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                // `-ml-[0.05em]` of the 34sp display type.
+                modifier = Modifier.offset(x = (-1.7).dp)
+            )
+        }
+        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
+    }
 }
 
 /** task #512: create/rename target for the custom-section dialog. */
@@ -4701,17 +4712,23 @@ private fun HomeTitlebar(
     topSafeArea: Dp,
     onServerBadgeClick: () -> Unit,
     onBlankClick: (() -> Unit)? = null,
+    // Web LargeTitle: while the Home large title shows under the bar, the bar and the
+    // title read as one yellow header, so the bar's own seam is transparent.
+    showSeam: Boolean = true,
     onNotificationToggle: () -> Unit
 ) {
     // raft-ui phone head: the frame layer (Source Yellow in light) with a 1dp seam.
     Box(modifier = Modifier.fillMaxWidth().height(homeShellHeaderHeight(topSafeArea)).background(RaftColor.Frame)) {
-        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam).align(Alignment.BottomCenter))
+        if (showSeam) {
+            Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam).align(Alignment.BottomCenter))
+        }
         androidx.compose.foundation.layout.Row(
             modifier =
                 Modifier
                     .padding(top = topSafeArea)
                     .height(RaftAppSize.PageHeaderContentHeight)
-                    .padding(horizontal = RaftAppSpacing.Md),
+                    // Web phone NavBar: content on 16, the last 44dp button 3dp from the edge.
+                    .padding(start = RaftAppSpacing.Md, end = HomeTitlebarEndInset),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -4723,7 +4740,7 @@ private fun HomeTitlebar(
                         tilted = true,
                         unread = hasOtherServerUnread,
                         publicPageLive = serverPublicPageLive,
-                        textStyle = RaftType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 24.sp)
+                        textStyle = RaftType.Headline
                     )
                 }
                 val blankModifier =
@@ -4849,33 +4866,54 @@ private fun RaftTiltedLogoBadge(
     showDropdown: Boolean = false,
     unread: Boolean = false,
     publicPageLive: Boolean = false,
-    textStyle: TextStyle = RaftType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 24.sp)
+    textStyle: TextStyle = RaftType.Headline
 ) {
-    key(text, showDropdown, publicPageLive) {
-        RaftTiltedBadgeSurface(modifier = modifier) {
-            androidx.compose.foundation.layout.Row(
-                modifier = Modifier.padding(
-                    horizontal = HomeServerBadgeHorizontalInset,
-                    vertical = HomeServerBadgeVerticalInset
-                ),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text, color = RaftColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
-                if (publicPageLive) {
-                    Spacer(Modifier.width(HomeServerBadgeContentGap))
-                    RaftPublicPageGlobe(live = true, size = HomeServerPublicPageGlobeSize, color = RaftColor.BrandYellowArgb)
+    // Web `.rf-ws--pill` (Sidebar.tsx MOBILE_WORKSPACE_PILL_CLASS): an ink tile on the
+    // control radius, 36 tall, 12 / 10 side insets, the workspace name in yellow
+    // `text-headline` with an 8dp gap to the 16dp chevron, the whole pill tilted -2deg
+    // and ringed by 1.5dp of sticker-edge outside its bounds (transparent in light).
+    // No hard shadow.
+    val shape = RoundedCornerShape(RaftAppRadius.Control)
+    val edge = RaftColor.StickerEdge
+    Box(
+        modifier =
+            modifier
+                .graphicsLayer { rotationZ = HomeServerBadgeTiltDegrees }
+                .drawBehind {
+                    if (edge.alpha > 0f) {
+                        val ring = HomeServerPillEdgeWidth.toPx()
+                        val radius = RaftAppRadius.Control.toPx() + ring
+                        drawRoundRect(
+                            color = edge,
+                            topLeft = Offset(-ring, -ring),
+                            size = Size(size.width + ring * 2, size.height + ring * 2),
+                            cornerRadius = CornerRadius(radius, radius)
+                        )
+                    }
                 }
-                if (showDropdown) {
-                    Spacer(Modifier.width(HomeServerBadgeContentGap))
-                    RaftLucideIcon(
-                        RaftLucideIconName.ChevronDown,
-                        Modifier.size(HomeServerBadgeChevronSize),
-                        color = RaftColor.BrandYellowArgb
-                    )
-                }
+    ) {
+        androidx.compose.foundation.layout.Row(
+            modifier =
+                Modifier
+                    .heightIn(min = HomeServerPillMinHeight)
+                    .background(RaftColor.StickerInk, shape)
+                    .padding(start = HomeServerPillStartInset, end = HomeServerPillEndInset),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(HomeServerBadgeContentGap)
+        ) {
+            Text(text, color = RaftColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
+            if (publicPageLive) {
+                RaftPublicPageGlobe(live = true, size = HomeServerPublicPageGlobeSize, color = RaftColor.BrandYellowArgb)
             }
-            if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
+            if (showDropdown) {
+                RaftLucideIcon(
+                    RaftLucideIconName.ChevronDown,
+                    Modifier.size(HomeServerBadgeChevronSize),
+                    color = RaftColor.BrandYellowArgb
+                )
+            }
         }
+        if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
     }
 }
 
@@ -5002,8 +5040,8 @@ private fun HomeNotificationCenter(
     // The trigger never carries warning/error severity colors.
     val visibleNotifications = remember(notifications) { notifications.visibleHomeNotifications() }
     val hasUnread = visibleNotifications.isNotEmpty()
-    Box(modifier = modifier.size(HomeNotificationTriggerSlotSize)) {
-        Box(modifier = Modifier.align(Alignment.TopEnd).padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
+    Box(modifier = modifier.size(HomeNotificationTriggerSize)) {
+        Box(modifier = Modifier.align(Alignment.TopEnd)) {
             // raft-ui `PanelAction`: ghost; disclosure shows the pressed wash, no shadow.
             Button(
                 onClick = onToggle,
@@ -5017,8 +5055,8 @@ private fun HomeNotificationCenter(
                 // directly at the Bell icon's top-right corner (web: dot on the
                 // icon wrapper span, `-top-1 -end-1`), not at the button slot
                 // corner. Icon-sized wrapper keeps the same geometry.
-                Box(modifier = Modifier.size(16.dp)) {
-                    RaftLucideIcon(RaftLucideIconName.Bell, Modifier.size(16.dp))
+                Box(modifier = Modifier.size(HomeNotificationTriggerIconSize)) {
+                    RaftLucideIcon(RaftLucideIconName.Bell, Modifier.size(HomeNotificationTriggerIconSize))
                     if (hasUnread) {
                         ServerUnreadMarker(Modifier.align(Alignment.TopEnd))
                     }
@@ -5028,8 +5066,10 @@ private fun HomeNotificationCenter(
     }
 }
 
-private val HomeNotificationTriggerSize = 32.dp
-private val HomeNotificationTriggerSlotSize = HomeNotificationTriggerSize + HomeSmallShadowOffset
+// Web NotificationTrigger `mobile-navbar`: a 44dp ghost button with a 22dp Bell.
+private val HomeNotificationTriggerSize = 44.dp
+private val HomeNotificationTriggerIconSize = 22.dp
+private val HomeTitlebarEndInset = 3.dp
 private val HomeNotificationPopoverTopGap = 4.dp
 internal fun homeNotificationPopoverTopOffset(topSafeArea: Dp): Dp =
     topSafeArea + RaftAppSize.PageHeaderHeight + HomeNotificationPopoverTopGap
@@ -6384,17 +6424,16 @@ private fun SidebarActionRow(icon: RaftLucideIconName, label: String, modifier: 
     }
     // raft-ui `SidebarItem`: the current location is the Source Yellow sticker
     // (sticker-ink edge); hover/press/focus lay the pressed wash; nothing casts a shadow.
+    // Web phone Home entries never wear the yellow "you are here" sticker: the phone
+    // shows the current page by pushing it. Press / hover lay the pressed wash.
     val rowBackground = when (effectiveInteractionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
-        ChannelRowInteractionState.Selected -> RaftColor.Brand
+        ChannelRowInteractionState.Selected -> Color.Transparent
         ChannelRowInteractionState.Hovered -> RaftColor.FillPressed
         ChannelRowInteractionState.Focused -> RaftColor.FillPressed
         ChannelRowInteractionState.Pressed -> RaftColor.FillPressed
     }
-    val borderColor = when (effectiveInteractionState) {
-        ChannelRowInteractionState.Selected -> RaftColor.StickerInk
-        else -> Color.Transparent
-    }
+    val borderColor = Color.Transparent
     val gestureOwner =
         rememberRaftGestureOwner(
             surface = "home-sidebar-action",
@@ -6442,11 +6481,13 @@ private fun SidebarActionRow(icon: RaftLucideIconName, label: String, modifier: 
                     .height(sidebarRowHeight())
                     .background(rowBackground, RoundedCornerShape(RaftAppRadius.Control))
                     .border(RaftAppStroke.Control, borderColor, RoundedCornerShape(RaftAppRadius.Control))
-                    .padding(horizontal = SidebarRowHorizontalPadding),
+                    .padding(start = ChannelRowHorizontalPadding, end = ChannelRowEndPadding),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(modifier = Modifier.size(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) { RaftLucideIcon(icon, Modifier.size(SidebarActionIconSize), color = if (selected) raftArgbHex(RaftColor.StickerInk) else RaftColor.TextBlackArgb) }
-            Text(label, style = if (selected) RaftType.ListItemBold else RaftType.ListItem, color = if (selected) RaftColor.StickerInk else RaftColor.TextBlack, modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // Web phone Home entries (`.rf-row--entry`): a 20dp foreground-hint glyph,
+            // 12dp to the name in text-body 600.
+            Box(modifier = Modifier.size(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) { RaftLucideIcon(icon, Modifier.size(SidebarActionIconSize), color = raftArgbHex(RaftColor.ForegroundHint)) }
+            Text(label, style = RaftType.ListItem, color = RaftColor.TextBlack, modifier = Modifier.padding(start = SidebarEntryLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (badge != null || trailingText != null) {
                 Box(
                     modifier = Modifier.width(SidebarActionTrailingSlotWidth),
@@ -6713,7 +6754,7 @@ private fun ChannelRow(
                     .height(sidebarRowHeight())
                     .background(rowBackground, RoundedCornerShape(RaftAppRadius.Control))
                     .border(RaftAppStroke.Control, borderColor, RoundedCornerShape(RaftAppRadius.Control))
-                    .padding(start = ChannelRowHorizontalPadding, end = RaftAppSpacing.Sm),
+                    .padding(start = ChannelRowHorizontalPadding, end = ChannelRowEndPadding),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (content.positionPrefix != null) {
@@ -6828,15 +6869,15 @@ private fun HomeSidebarSkeletonRow(modifier: Modifier = Modifier) {
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(sidebarRowHeight())
-                .padding(start = ChannelRowHorizontalPadding, end = RaftAppSpacing.Sm),
+                .height(HomeSkeletonRowHeight)
+                .padding(horizontal = HomeSkeletonRowInset),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        RaftAppSkeleton(modifier = Modifier.size(ChannelAvatarSize), variant = RaftAppSkeletonVariant.Circle)
+        RaftAppSkeleton(modifier = Modifier.size(HomeSkeletonAvatarSize), variant = RaftAppSkeletonVariant.Circle)
+        Spacer(Modifier.width(HomeSkeletonGap))
         RaftAppSkeleton(
             modifier =
                 Modifier
-                    .padding(start = SidebarActionLabelGap)
                     .weight(HomeLoadingSkeletonLineWeight)
                     .height(HomeLoadingSkeletonLineHeight),
             variant = RaftAppSkeletonVariant.Line
@@ -7259,7 +7300,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                     .height(sidebarRowHeight())
                     .background(rowBackground, RoundedCornerShape(RaftAppRadius.Control))
                     .border(RaftAppStroke.Control, borderColor, RoundedCornerShape(RaftAppRadius.Control))
-                    .padding(start = ChannelRowHorizontalPadding, end = RaftAppSpacing.Sm),
+                    .padding(start = ChannelRowHorizontalPadding, end = ChannelRowEndPadding),
             verticalAlignment = Alignment.CenterVertically
         ) {
             DirectMessageAvatar(
