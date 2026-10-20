@@ -21548,7 +21548,8 @@ internal fun SharedHomeSavedPanel(
                         Modifier
                             .fillMaxSize()
                             .background(RaftColor.SurfaceWhite),
-                    verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
+                    // web SavedPanel scroller `py-1`: plain rows stacked edge to edge.
+                    contentPadding = PaddingValues(top = 4.dp)
                 ) {
                     raftPullToRefreshItem()
                     val hasSavedRows = projectedItems.isNotEmpty()
@@ -21585,12 +21586,35 @@ internal fun SharedHomeSavedPanel(
                         )
                     }
                     if (state.hasMore) {
-                        item {
-                            SharedHomeLoadMoreRow(
-                                loading = state.loadingMore,
-                                label = stringResource(MR.strings.saved_action_load_more),
-                                onClick = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSaved) }
-                            )
+                        item(key = "saved-load-more-sentinel") {
+                            // web SavedPanel: an infinite-scroll sentinel (min 40dp, 12dp padding), not a
+                            // button. Composing it means the list end is near, so the next page loads; a
+                            // failed page keeps an explicit retry.
+                            val latestOnIntent by rememberUpdatedState(onIntent)
+                            val canRequest = !state.loadingMore && state.errorCode == null
+                            LaunchedEffect(projectedItems.size, canRequest) {
+                                if (canRequest) latestOnIntent(SharedHomeSearchSavedIntent.LoadMoreSaved)
+                            }
+                            if (state.errorCode != null && !state.loadingMore) {
+                                SharedHomeLoadMoreRow(
+                                    loading = false,
+                                    label = stringResource(MR.strings.saved_action_load_more),
+                                    onClick = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSaved) }
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp).padding(vertical = 12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (state.loadingMore) {
+                                        Text(
+                                            text = stringResource(MR.strings.common_loading),
+                                            style = RaftType.Caption,
+                                            color = RaftColor.ForegroundHint
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                     item {
@@ -21701,20 +21725,14 @@ private fun SharedHomeSavedHeader(
     topSafeAreaPadding: Dp = 0.dp,
     onTitleClick: (() -> Unit)? = null
 ) {
-    RaftTopPageHeader(
+    // web SavedPanel head: raft-ui PanelHeader with the phone Back, "N saved items".
+    RaftPanelBackHeader(
         title = stringResource(MR.strings.saved_title),
-        subtitle = stringResource(MR.strings.saved_count, count),
-        backgroundColor = RaftColor.SurfaceWhite,
-        topSafeAreaOverride = topSafeAreaPadding,
+        subtitle = stringResource(if (count == 1) MR.strings.saved_count_one else MR.strings.saved_count, count),
+        onBack = onClose,
+        topSafeArea = topSafeAreaPadding,
         refreshing = refreshing,
-        leadingContent =
-            onClose?.let { close ->
-                {
-                    RaftTopPageHeaderAction(icon = RaftLucideIconName.ArrowLeft, onClick = close)
-                }
-            },
         onTitleClick = onTitleClick,
-        showBodyTopBanner = false,
     )
 }
 
@@ -22067,17 +22085,11 @@ private fun SharedHomeSavedSelectedSurface(
             modifier
                 .fillMaxWidth()
     ) {
-        // raft card: the selected card carries the 1.5dp ink edge, others a hairline.
+        // raft-ui ListRow `plain`: no frame; the open row keeps the fill-pressed wash.
         content(
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = 122.dp)
-                .raftControlSurface(
-                    fill = RaftColor.Card,
-                    border = if (selected) RaftColor.BorderBlack else RaftColor.BorderHairline,
-                    radius = RaftAppRadius.Container,
-                    borderWidth = if (selected) RaftAppStroke.Control else RaftAppStroke.Thin
-                )
+                .background(if (selected) RaftColor.FillPressed else Color.Transparent)
         )
     }
 }
@@ -22166,17 +22178,16 @@ private fun SharedHomeSavedResultCard(
                     }
                 )
         )
+    // web SavedPanel row: a plain raft-ui ListRow (16/12dp padding, no card frame); the
+    // pressed / open row takes the fill-pressed wash.
     SharedHomeSavedSelectedSurface(
         selected = selected,
-        modifier =
-            Modifier
-                .padding(horizontal = SearchMessagesHorizontalPadding, vertical = 4.dp)
-                .fillMaxWidth()
+        modifier = Modifier.fillMaxWidth()
     ) { surfaceModifier ->
         Row(
             modifier =
                 surfaceModifier
-                    .padding(horizontal = 12.dp, vertical = 12.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
                     .raftCaptureLiveRootAnchor(contentAnchor)
                     .raftGesturePointerInput(gestureOwner) { owner ->
                         val trailingActionWidthPx = SavedUnsaveHitTargetSize.toPx()
@@ -22202,43 +22213,41 @@ private fun SharedHomeSavedResultCard(
                             }
                         )
                     },
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.Top
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
+            Column(modifier = Modifier.weight(1f)) {
+                // Meta line: `text-caption`, 8dp gaps: place, Thread, sender (14dp avatar), time.
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     source?.let {
                         Text(
                             text = it,
-                            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
-                            color = RaftColor.TextBlack.copy(alpha = 0.5f),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.widthIn(max = 82.dp)
+                            style = RaftType.Caption,
+                            color = RaftColor.ForegroundHint,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                     if (item.kind == InboxItemKind.Thread) {
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            RaftLucideIcon(RaftLucideIconName.MessageSquare, color = "#66000000", modifier = Modifier.size(10.dp))
+                            RaftLucideIcon(
+                                RaftLucideIconName.MessageSquare,
+                                color = raftArgbHex(RaftColor.ForegroundHint),
+                                modifier = Modifier.size(12.dp)
+                            )
                             Text(
                                 text = stringResource(MR.strings.saved_meta_thread),
-                                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp),
-                                color = RaftColor.TextBlack.copy(alpha = 0.4f),
+                                style = RaftType.Caption,
+                                color = RaftColor.ForegroundHint,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                softWrap = false
                             )
                         }
                     }
@@ -22248,25 +22257,27 @@ private fun SharedHomeSavedResultCard(
                     sender?.let {
                         SharedHomeSavedSenderMeta(
                             senderName = it,
+                            senderKind = item.latestActivitySenderKind ?: item.lastMessageSenderKind,
                             avatarWireValue = item.resolvedSenderAvatarWireValueForPreview(memberAvatarResolver),
                             avatarCacheIdentity = avatarCacheIdentity,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                     }
                     time?.let { timestamp ->
                         RaftRelativeTimestampText(
                             value = timestamp,
                             timeContext = timeContext,
-                            style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
-                            color = RaftColor.TextBlack.copy(alpha = 0.4f),
+                            style = RaftType.Caption.copy(fontFamily = RaftMonoFamily),
+                            color = RaftColor.ForegroundHint,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            softWrap = false
                         )
                     }
                 }
+                // `text-callout`, three lines.
                 Text(
                     text = preview,
-                    style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = 0.sp),
+                    style = RaftType.Button.withRaftFontWeight(FontWeight.Normal),
                     color = RaftColor.TextBlack,
                     maxLines = 3,
                     overflow = TextOverflow.Ellipsis
@@ -22284,12 +22295,15 @@ private data class SharedHomeSavedResultGestureCallbacks(
     val onLongPress: (Offset, Float, Float) -> Unit
 )
 
+/**
+ * web SavedPanel toggle: a pressed PanelToggleAction drawn quiet (no sticker fill) on a phone,
+ * 44dp, with the filled 22dp bookmark — every row is saved, so the filled mark is the state.
+ */
 @Composable
 private fun SharedHomeSavedUnsaveButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val size = 31.dp
     val currentOnClick by rememberUpdatedState(onClick)
     Box(
         modifier =
@@ -22299,45 +22313,45 @@ private fun SharedHomeSavedUnsaveButton(
                 .raftButtonAccessibility(enabled = true) { currentOnClick() },
         contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(size)
-                    .raftControlSurface(fill = RaftColor.Card, border = RaftColor.BorderBlack),
-            contentAlignment = Alignment.Center
-        ) {
-            // React's saved card renders a lucide bookmark-minus (BookmarkMinus) for the
-            // unsave affordance; android previously drew a plain Bookmark with a hand-drawn
-            // overlay bar. Use the generated BookmarkMinus glyph to match react (#370).
-            RaftLucideIcon(RaftLucideIconName.BookmarkMinus, color = RaftColor.TextBlackArgb, modifier = Modifier.size(16.dp))
-        }
+        RaftLucideIcon(
+            RaftLucideIconName.Bookmark,
+            color = RaftColor.TextBlackArgb,
+            fill = RaftColor.TextBlackArgb,
+            modifier = Modifier.size(22.dp)
+        )
     }
 }
 
+/**
+ * web SavedPanel sender: the 14dp `preview-mini` avatar, 4dp, the name in semibold ink. A
+ * person without a photo shows the placeholder person (web GravatarAvatar), not initials.
+ */
 @Composable
 private fun SharedHomeSavedSenderMeta(
     senderName: String,
+    senderKind: MemberKind?,
     avatarWireValue: String?,
     avatarCacheIdentity: RaftMemberAvatarCacheIdentity? = null,
     modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        val wireValue = avatarWireValue ?: savedSenderAvatarFallback(senderName)
         RaftAppAvatar(
-            avatarWireValue = avatarWireValue ?: savedSenderAvatarFallback(senderName),
-            label = senderName,
-            avatarSize = 12.dp,
+            avatarWireValue = wireValue,
+            label = if (wireValue == null && senderKind == MemberKind.Human) "" else senderName,
+            avatarSize = 14.dp,
             cacheSubject = avatarCacheIdentity?.subject,
             cacheServerId = avatarCacheIdentity?.serverId
         )
         Text(
             text = senderName,
-            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
+            style = RaftType.Caption.withRaftFontWeight(FontWeight.SemiBold),
             color = RaftColor.TextBlack,
-            maxLines = 2,
+            maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
     }
@@ -26211,6 +26225,9 @@ private val homeCreateChannelVisualMembers = listOf(
         )
 )
 
+// savedMessagesFixture.json (slock packages/visual-testing/shared): three entries of 5, more to
+// load. Times are what react renders for each createdAt at the fixture instant
+// (2026-06-19T12:30Z): 2026-06-22 -> "in 3 days", 2026-06-21T09:12Z -> "in 2 days".
 private val homeSavedVisualState = SharedHomeSavedPanelState(
     items =
         listOf(
@@ -26221,7 +26238,7 @@ private val homeSavedVisualState = SharedHomeSavedPanelState(
                 channelName = "design",
                 lastMessageId = MessageId("msg-saved-visual-1"),
                 lastMessagePreview = "Captured the Android visual artifact for #product:f8e569cb and queued React parity.",
-                lastMessageAt = "14 days ago",
+                lastMessageAt = "in 3 days",
                 lastMessageSenderName = "Cindy",
                 lastMessageSenderId = "agent-cindy",
                 lastMessageSenderKind = MemberKind.Agent,
@@ -26234,7 +26251,7 @@ private val homeSavedVisualState = SharedHomeSavedPanelState(
                 channelName = "design",
                 lastMessageId = MessageId("msg-saved-visual-2"),
                 lastMessagePreview = "Rename old visual cases under components.* before rerunning baseline.",
-                lastMessageAt = "14 days ago",
+                lastMessageAt = "in 3 days",
                 lastMessageSenderName = "artin",
                 lastMessageSenderId = "visual-user",
                 lastMessageSenderKind = MemberKind.Human,
@@ -26251,7 +26268,7 @@ private val homeSavedVisualState = SharedHomeSavedPanelState(
                 channelName = "design",
                 lastMessageId = MessageId("msg-saved-visual-3"),
                 lastMessagePreview = "Publish preflight is green — report goes live after the next full run.",
-                lastMessageAt = "15 days ago",
+                lastMessageAt = "in 2 days",
                 lastMessageSenderName = "Product UX Designer",
                 lastMessageSenderId = "agent-product-ux",
                 lastMessageSenderKind = MemberKind.Agent,
@@ -26268,7 +26285,10 @@ private val homeSavedVisualState = SharedHomeSavedPanelState(
 // packages/visual-testing/shared/activityResultsFixture.json in the slock repo
 // (thread card in #design with 5 replies / @you / 2 new, #android-artifacts
 // channel card with 1 new, @Cindy dm card). Relative time labels match what
-// react renders for the fixture ISO stamps.
+// react renders for the fixture ISO stamps at the fixture instant
+// (fixtureData.locale.nowEpochMillis = 2026-06-19T12:30Z): the thread's
+// 2026-06-22T02:35Z reply is "in 3 days", the 2026-06-19T12:24Z rows are
+// "6 minutes ago". No task and no draft: the React fixture has neither.
 private val homeActivityVisualSnapshot = InboxSnapshot(
     server = homeSearchVisualServer,
     items =
@@ -26291,15 +26311,11 @@ private val homeActivityVisualSnapshot = InboxSnapshot(
                 parentMessageSenderKind = MemberKind.Agent,
                 latestActivityMessageId = MessageId("msg-visual-activity-reply"),
                 latestActivityPreview = "Review the Android composer crop before release.",
-                latestActivityAt = "14 days ago",
+                latestActivityAt = "in 3 days",
                 latestActivitySenderName = "artin",
                 latestActivitySenderId = "visual-user",
                 latestActivitySenderKind = MemberKind.Human,
-                replyCount = 5,
-                taskNumber = 607,
-                taskStatus = TaskStatus.InProgress,
-                taskClaimedByName = "Mahua",
-                hasDraft = true
+                replyCount = 5
             ),
             InboxItem(
                 key = "activity-channel-artifacts",
@@ -26310,7 +26326,7 @@ private val homeActivityVisualSnapshot = InboxSnapshot(
                 firstUnreadMessageId = MessageId("msg-visual-activity-android"),
                 lastMessageId = MessageId("msg-visual-activity-android"),
                 lastMessagePreview = "Captured the previous visual baseline before leaving the workspace.",
-                lastMessageAt = "16 days ago",
+                lastMessageAt = "6 minutes ago",
                 lastMessageSenderName = "Cindy",
                 lastMessageSenderId = "agent-cindy",
                 lastMessageSenderKind = MemberKind.Agent
@@ -26322,7 +26338,7 @@ private val homeActivityVisualSnapshot = InboxSnapshot(
                 channelName = "Cindy",
                 lastMessageId = MessageId("msg-visual-activity-dm"),
                 lastMessagePreview = "201继续推进",
-                lastMessageAt = "16 days ago",
+                lastMessageAt = "6 minutes ago",
                 lastMessageSenderName = "Cindy",
                 lastMessageSenderId = "agent-cindy",
                 lastMessageSenderKind = MemberKind.Agent
@@ -26332,6 +26348,24 @@ private val homeActivityVisualSnapshot = InboxSnapshot(
     totalUnreadCount = 3,
     hasMore = false
 )
+
+// Activity-tab (Android-only) screens keep the richer thread row: a claimed task and a draft.
+private val homeActivityTabVisualSnapshot =
+    homeActivityVisualSnapshot.copy(
+        items =
+            homeActivityVisualSnapshot.items.map { item ->
+                if (item.key == "activity-thread-visual-parity") {
+                    item.copy(
+                        taskNumber = 607,
+                        taskStatus = TaskStatus.InProgress,
+                        taskClaimedByName = "Mahua",
+                        hasDraft = true
+                    )
+                } else {
+                    item
+                }
+            }
+    )
 
 private val homeActivityVisualDraftProjection =
     setOf(
@@ -26370,7 +26404,6 @@ internal fun HomeActivityVisualContent() {
             includeTopSafeArea = params.optBoolean("task797IncludeTopSafeArea", false),
             pullRefreshing = params.optBoolean("task797Refreshing", false),
             activityTaskStatusBadgesEnabled = true,
-            draftProjection = homeActivityVisualDraftProjection,
             foregroundEpoch = 0L,
             modifier = Modifier.fillMaxSize()
         )
@@ -26398,7 +26431,7 @@ internal fun RaftActivityTabVisualContent() {
                 state =
                     build.raft.app.data.SharedActivityState(
                         selectedFilter = filter,
-                        snapshot = homeActivityVisualSnapshot,
+                        snapshot = homeActivityTabVisualSnapshot,
                         loaded = true,
                     ),
                 onIntent = {},
@@ -26421,7 +26454,7 @@ internal fun RaftActivityTabVisualContent() {
                     tasksLabel = "Tasks",
                     membersLabel = "Members",
                     settingsLabel = "Settings",
-                    activityBadgeCount = homeActivityVisualSnapshot.totalUnreadCount
+                    activityBadgeCount = homeActivityTabVisualSnapshot.totalUnreadCount
                 ),
             onSelect = {},
             modifier = Modifier.fillMaxWidth()

@@ -1702,7 +1702,8 @@
     <string name="saved_empty_title">暂无收藏的消息</string>
     <string name="saved_empty_detail">点击任意消息上的书签图标即可收藏。</string>
     <string name="saved_title">收藏</string>
-    <string name="saved_count">已收藏 %1$d 条</string>
+    <string name="saved_count">%1$d 项</string>
+    <string name="saved_count_one">%1$d 项</string>
     <string name="saved_action_load_more">加载更多</string>
     <string name="saved_action_copy_link">复制链接</string>
     <string name="saved_action_copy_markdown">复制 Markdown</string>

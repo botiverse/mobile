@@ -1702,12 +1702,13 @@
     <string name="saved_empty_title">No saved messages yet</string>
     <string name="saved_empty_detail">Save messages by clicking the bookmark icon on any message.</string>
     <string name="saved_title">Saved</string>
-    <string name="saved_count">%1$d saved</string>
+    <string name="saved_count">%1$d saved items</string>
+    <string name="saved_count_one">%1$d saved item</string>
     <string name="saved_action_load_more">Load More</string>
     <string name="saved_action_copy_link">Copy Link</string>
     <string name="saved_action_copy_markdown">Copy Markdown</string>
     <string name="saved_action_remove">Remove from Saved</string>
-    <string name="saved_meta_thread">thread</string>
+    <string name="saved_meta_thread">Thread</string>
     <string name="saved_state_no_preview">No preview</string>
     <string name="panel_error_no_permission">No permission</string>
     <string name="panel_error_load">Could not load</string>

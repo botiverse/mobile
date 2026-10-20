@@ -249,6 +249,14 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M20 6 9 17l-5-5"),
                     ),
                 )
+            RaftLucideIconName.CheckCheck ->
+                RaftLucideIconSpec(
+                    "check-check",
+                    listOf(
+                        RaftLucidePathSpec("M18 6 7 17l-5-5"),
+                        RaftLucidePathSpec("m22 10-7.5 7.5L13 16"),
+                    ),
+                )
             RaftLucideIconName.ChevronDown ->
                 RaftLucideIconSpec(
                     "chevron-down",

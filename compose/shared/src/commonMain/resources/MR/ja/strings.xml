@@ -1708,7 +1708,8 @@
     <string name="saved_empty_title">まだ保存済みメッセージはありません</string>
     <string name="saved_empty_detail">メッセージのブックマークアイコンをクリックすると保存できます。</string>
     <string name="saved_title">保存済み</string>
-    <string name="saved_count">%1$d 件保存済み</string>
+    <string name="saved_count">%1$d 件</string>
+    <string name="saved_count_one">%1$d 件</string>
     <string name="saved_action_load_more">さらに読み込む</string>
     <string name="saved_action_copy_link">リンクをコピー</string>
     <string name="saved_action_copy_markdown">Markdown をコピー</string>
