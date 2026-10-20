@@ -49,6 +49,12 @@ internal data class ThreadRepliesAcceptedProjection(
     val identity: ThreadRepliesScopeIdentity,
     val model: ThreadRepliesReadModel,
     val revision: Long,
+    /**
+     * The window was seeded from [RaftThreadReplyWindowCache] and has not been confirmed by an
+     * authoritative summary or a realtime frame in this screen yet: its replyCount is a last-known
+     * lower bound, never a reason to lower a fresher count.
+     */
+    val fromLocalCache: Boolean = false,
 )
 
 internal typealias ThreadRepliesAuthoritativeCommit =
@@ -82,6 +88,7 @@ internal class ThreadRepliesSyncHost(
         val lock: SynchronizedObject = SynchronizedObject(),
         var activeCore: SyncCore = newThreadRepliesSyncCore(),
         var revision: Long = 0L,
+        var seededFromCache: Boolean = false,
     )
 
     private data class PendingRebaseline(
@@ -184,7 +191,10 @@ internal class ThreadRepliesSyncHost(
                         accepted = merged
                     }
                 }
-                if (accepted != before) scopeOwner.revision += 1L
+                if (accepted != before) {
+                    scopeOwner.revision += 1L
+                    scopeOwner.seededFromCache = false
+                }
                 revision = scopeOwner.revision
                 accepted
             }
@@ -270,12 +280,65 @@ internal class ThreadRepliesSyncHost(
                 synchronized(scopeOwner.lock) {
                     scopeOwner.activeCore = replacement
                     scopeOwner.revision += 1L
+                    scopeOwner.seededFromCache = false
                     scopeOwner.revision
                 }
             projections[identity.parentMessageId] =
                 ThreadRepliesAcceptedProjection(identity, replacementState, revision)
         }
         return projections
+    }
+
+    /**
+     * Seeds last-known windows from the durable reply-window cache (Hands dd79da45) so the first
+     * frame and the first network commit of a cold-started screen carry the replies blocks. Only
+     * scopes this host has never seen are seeded: anything accepted in this screen (authoritative
+     * summary or realtime frame) is newer by construction. Returns the seeded projections, keyed
+     * by parent message id.
+     */
+    fun seedCachedWindows(
+        page: ThreadRepliesPageIdentity,
+        windows: Map<String, RaftCachedThreadReplyWindow>,
+    ): Map<String, ThreadRepliesAcceptedProjection> {
+        if (!page.isValid() || windows.isEmpty()) return emptyMap()
+        val seeded = linkedMapOf<String, ThreadRepliesAcceptedProjection>()
+        synchronized(linearizationLock) {
+            windows.forEach { (parentMessageId, window) ->
+                val identity =
+                    ThreadRepliesScopeIdentity(page, parentMessageId, window.threadChannelId)
+                        .takeIf(ThreadRepliesScopeIdentity::isValid)
+                        ?: return@forEach
+                val model = window.model
+                if (model.replies.isEmpty()) return@forEach
+                val watermark = maxOf(model.snapshotSeq, model.replies.maxOf { it.seq })
+                val core = newThreadRepliesSyncCore()
+                val outcome =
+                    core.ingestSnapshot(
+                        THREAD_REPLIES_SYNC_DOMAIN,
+                        SyncSnapshot(
+                            scopeId = identity.scopeId,
+                            watermark = watermark.toSyncSeq(),
+                            epoch = null,
+                            state = model,
+                        ),
+                    )
+                if (outcome !is SyncIngestOutcome.Applied) return@forEach
+                val created =
+                    synchronized(ownersLock) {
+                        if (identity.scopeId in owners) {
+                            false
+                        } else {
+                            owners[identity.scopeId] = ScopeOwner(activeCore = core, seededFromCache = true)
+                            true
+                        }
+                    }
+                if (created) {
+                    seeded[parentMessageId] =
+                        ThreadRepliesAcceptedProjection(identity, model, revision = 0L, fromLocalCache = true)
+                }
+            }
+        }
+        return seeded
     }
 
     /**
@@ -297,6 +360,7 @@ internal class ThreadRepliesSyncHost(
                             identity = identity,
                             model = scopeOwner.activeCore.threadRepliesState(identity.scopeId),
                             revision = scopeOwner.revision,
+                            fromLocalCache = scopeOwner.seededFromCache,
                         )
                 }
             }

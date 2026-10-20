@@ -54,6 +54,7 @@ import build.raft.app.network.installRaftNetworkTransportController
 import build.raft.app.network.RaftNetworkKmmRecoveryRemoteFlagBridge
 import build.raft.app.network.raftNetworkKmmRecoveryEnvironmentId
 import build.raft.app.network.sync.AttachmentCommentsReadCacheV2
+import build.raft.app.network.sync.RaftThreadReplyWindowCache
 import build.raft.app.network.sync.CanonicalMessageFoldInput
 import build.raft.app.network.sync.CanonicalMessageFoldKind
 import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
@@ -672,6 +673,9 @@ internal class RaftSharedStoreProvider private constructor(
                 }
                 shellConversationIdentityHubs.entries().forEach { (_, hub) -> hub.clear() }
                 clearActiveServerSelectionsIfUnchanged(selectionReceipts)
+                // Reply previews are message content: they leave with the session (their page
+                // keys are principal-scoped, so a successor never reads them in the meantime).
+                threadDurableLastKnownReader.replyWindowCache?.clearAll()
             }
         }
         updateNetworkKmmRecoveryEnvironment()
@@ -2197,6 +2201,15 @@ internal class RaftSharedStoreProvider private constructor(
                     // Lines already start with `canonical_v2_canary` (task #168: no doubled prefix).
                     logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2Canary"),
                 )
+            // Reply-preview windows are viewer-scoped thread state, not V2 facts: they live beside
+            // the V2 partition (page key = server + principal + parent scope) and are not gated by
+            // the messages flag, so a network-only first frame can use them as well.
+            val threadReplyWindowCache =
+                RaftThreadReplyWindowCache(
+                    storage = SqlDelightRaftThreadReplyWindowStorage(database, ::defaultNowMillis),
+                    scope = CoroutineScope(SupervisorJob()),
+                    diagnosticsLogger = sharedInfoLogger("ThreadReplyWindowCache"),
+                )
             // Read side of the same partition the canary writes: same store instance, same per-server
             // flag, no baseline-coordinator side effects (task #1123).
             val threadDurableLastKnownReader =
@@ -2209,6 +2222,7 @@ internal class RaftSharedStoreProvider private constructor(
                         )
                     },
                     logger = sharedInfoLogger("ThreadDurableLastKnown", "thread_durable_last_known"),
+                    replyWindowCache = threadReplyWindowCache,
                 )
             // Parallel on purpose: sends, realtime ingest/decode and authority work are not store-state
             // writes. Only the stores built on RaftStoreThreading.newScope() (home, activity, translation,

@@ -136,6 +136,7 @@ import build.raft.app.network.sync.ThreadRepliesAuthoritativeSnapshot
 import build.raft.app.network.sync.ThreadRepliesPageIdentity
 import build.raft.app.network.sync.ThreadRepliesScopeIdentity
 import build.raft.app.network.sync.ThreadRepliesSyncHost
+import build.raft.app.network.sync.RaftCachedThreadReplyWindow
 import build.raft.app.network.sync.initialThreadRepliesReadModel
 import build.raft.app.network.sync.toThreadMessageItem
 import build.raft.app.model.messageStreamChannelId
@@ -2295,6 +2296,26 @@ internal class SharedThreadDataSource(
 
     internal suspend fun abandonDurableLatestPageBaseline(baseline: CanonicalMessageV2EnterBaseline) {
         withContext(NonCancellable) { durablePageExtender?.abandonLatestPageBaseline(baseline) }
+    }
+
+    /**
+     * Last known reply-preview windows of [page] (Hands dd79da45), or empty. Same identity rule as
+     * the durable frame: the provenance must still be current after the disk read.
+     */
+    internal suspend fun cachedReplyWindowsIfCurrent(
+        page: ThreadRepliesPageIdentity,
+        context: ReplyCacheProducerContext,
+    ): Map<String, RaftCachedThreadReplyWindow> {
+        val cache = durableLastKnownReader?.replyWindowCache ?: return emptyMap()
+        if (!isCurrentReplyCacheProvenance(context.provenance)) return emptyMap()
+        val windows = cache.load(page)
+        if (!isCurrentReplyCacheProvenance(context.provenance)) return emptyMap()
+        return windows
+    }
+
+    /** Persists accepted reply-preview windows for the next cold start. */
+    internal fun recordReplyWindows(projections: Collection<ThreadRepliesAcceptedProjection>) {
+        durableLastKnownReader?.replyWindowCache?.record(projections)
     }
 
     internal suspend fun durableLastKnownPayloadIfCurrent(
@@ -6594,7 +6615,18 @@ internal class SharedThreadStore(
             } else {
                 null
             }
-        durableLastKnown?.let { accepted ->
+        // Hands dd79da45: with no in-memory candidate (cold start), seed the reply-preview windows
+        // persisted by the last session. The durable frame shows them on its first frame, and the
+        // first network commit re-reads them from the sync host until the summaries confirm them.
+        val seededReplyWindows =
+            if (cached == null && current == null && producerContext != null) {
+                seedCachedReplyWindows(routeContextPayload, producerContext)
+            } else {
+                emptyMap()
+            }
+        val durableLastKnownWithReplies =
+            durableLastKnown?.withSeededReplyWindows(seededReplyWindows)
+        durableLastKnownWithReplies?.let { accepted ->
             dataSource.seedThreadAuthorProfiles(
                 serverId = session?.currentServerId,
                 payload = accepted,
@@ -6610,7 +6642,7 @@ internal class SharedThreadStore(
         val visiblePayload =
             (cached
                 ?: current
-                ?: durableLastKnown
+                ?: durableLastKnownWithReplies
                 ?: if (threadId == null) {
                     routeContextPayload
                 } else {
@@ -6729,6 +6761,20 @@ internal class SharedThreadStore(
         }
     }
 
+    private suspend fun seedCachedReplyWindows(
+        routePayload: RaftThreadScreenPayload,
+        context: ReplyCacheProducerContext,
+    ): Map<String, ThreadRepliesAcceptedProjection> {
+        val page = captureThreadRepliesPageIdentity(routePayload, context) ?: return emptyMap()
+        val windows = dataSource.cachedReplyWindowsIfCurrent(page, context)
+        val seeded = threadRepliesSyncHost.seedCachedWindows(page, windows)
+        diagnosticsLogger?.invoke(
+            "thread_reply_windows_seed threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                "cached=${windows.size} seeded=${seeded.size}"
+        )
+        return seeded
+    }
+
     private suspend fun captureThreadRepliesPageIdentity(
         payload: RaftThreadScreenPayload,
     ): ThreadRepliesPageIdentity? {
@@ -6828,6 +6874,7 @@ internal class SharedThreadStore(
             )
                 ?: return withAcceptedThreadRepliesProjection(emptyMap(), previous)
                     .copy(replySummariesAuthority = previous.replySummariesAuthority)
+        dataSource.recordReplyWindows(accepted.values)
         return withAcceptedThreadRepliesProjection(accepted, previous)
             .copy(replySummariesAuthority = previous.replySummariesAuthority)
     }
@@ -8308,6 +8355,7 @@ internal class SharedThreadStore(
                         null
                     }
                 if (event is ThreadUpdated && acceptedRepliesProjection != null) {
+                    dataSource.recordReplyWindows(listOf(acceptedRepliesProjection))
                     event.latestReply?.let { reply ->
                         dataSource.seedAcceptedRealtimeThreadReplyAuthorProfile(
                             serverId = currentSession?.currentServerId,
@@ -11442,7 +11490,12 @@ private fun RaftThreadScreenPayload.withAcceptedThreadRepliesProjection(
         if (projection != null) {
             return copy(
                 threadChannelId = projection.identity.threadChannelId,
-                replyCount = projection.model.replyCount,
+                replyCount =
+                    if (projection.fromLocalCache) {
+                        maxOf(replyCount, projection.model.replyCount)
+                    } else {
+                        projection.model.replyCount
+                    },
                 inlineReplies = projection.model,
             )
         }
@@ -11531,6 +11584,34 @@ private fun RaftThreadScreenPayload.withSecondaryTimelineProjectionFrom(
             originMessage = projectedOrigin,
             replySummariesAuthority = projectedAuthority,
         ).withOriginReplyCountAtLeastLoadedReplies()
+    }
+}
+
+/**
+ * Fills the replies block of messages that have none yet from windows seeded out of the durable
+ * reply-window cache. A message whose own thread channel names a different scope keeps its state.
+ */
+internal fun RaftThreadScreenPayload.withSeededReplyWindows(
+    seeded: Map<String, ThreadRepliesAcceptedProjection>,
+): RaftThreadScreenPayload {
+    if (seeded.isEmpty()) return this
+    fun RaftThreadMessageItem.fill(): RaftThreadMessageItem {
+        if (inlineReplies != null) return this
+        val projection = seeded[id] ?: return this
+        val ownThreadChannelId = threadChannelId?.trim()?.takeIf { it.isNotBlank() }
+        if (ownThreadChannelId != null && ownThreadChannelId != projection.identity.threadChannelId) return this
+        return copy(
+            threadChannelId = ownThreadChannelId ?: projection.identity.threadChannelId,
+            replyCount = maxOf(replyCount, projection.model.replyCount),
+            inlineReplies = projection.model,
+        )
+    }
+    val filledMessages = messages.map { it.fill() }
+    val filledOrigin = originMessage?.fill()
+    return if (filledMessages == messages && filledOrigin == originMessage) {
+        this
+    } else {
+        copy(messages = filledMessages, originMessage = filledOrigin)
     }
 }
 
