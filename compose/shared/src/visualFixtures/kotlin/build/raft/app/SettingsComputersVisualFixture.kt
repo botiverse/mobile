@@ -10,7 +10,6 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsComputerAgentSnapshot
-import build.raft.app.data.SettingsComputerApiKey
 import build.raft.app.data.SettingsComputerDetailSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputerWorkspaceSnapshot
@@ -23,9 +22,8 @@ const val SETTINGS_COMPUTERS_VISUAL_PAGE = "compose_settings_computers_visual"
 
 /**
  * Native Settings > Computers with seeded store states and no network: `fixtureKey` is `list`
- * (mixed online / offline / update-available rows), `empty`, `error`, `detail` (agents and a
- * scanned workspace list) or `rotated-key` (the detail page under the one-time key dialog, with a
- * fake key). The snapshots go through the production state mapping
+ * (mixed online / offline / update-available rows), `empty`, `error` or `detail` (agents and a
+ * scanned workspace list). The snapshots go through the production state mapping
  * ([raftComputersListModel], [raftComputerDetailModel]) and content composables; the clock is
  * pinned so relative times are stable.
  */
@@ -36,9 +34,6 @@ internal class SettingsComputersVisualFixture : BasePager() {
         setContent { SettingsComputersVisualContent() }
     }
 }
-
-/** Not a real key: the `sk_machine_` + 64 hex shape of the server's generator, all fixed digits. */
-private const val VisualFakeRotatedKey = "sk_machine_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 // 2026-10-20T12:00:00Z
 private const val VisualNowEpochMillis = 1_792_497_600_000L
@@ -55,7 +50,7 @@ private fun SettingsComputersVisualContent() {
             )
         }
     CompositionLocalProvider(LocalRaftTimeContextProvider provides timeContext) {
-        if (fixtureKey == "detail" || fixtureKey == "rotated-key") {
+        if (fixtureKey == "detail") {
             val detail = visualComputerDetail()
             SettingsDetailShell(
                 title = detail.computer.name,
@@ -73,7 +68,6 @@ private fun SettingsComputersVisualContent() {
                                 currentServerId = "server-visual",
                             ),
                         actionState = null,
-                        rotatedKey = SettingsComputerApiKey(VisualFakeRotatedKey).takeIf { fixtureKey == "rotated-key" },
                         onRetry = {},
                         onIntent = {},
                         onOpenAgent = {},
@@ -194,5 +188,4 @@ private fun visualComputerDetail() =
         canManageMachines = true,
         canEditMachine = true,
         canRemoveMachine = true,
-        canRotateMachineKey = true,
     )

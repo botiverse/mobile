@@ -1880,12 +1880,7 @@
     <string name="settings_computers_cannot_delete_message_one">このコンピューターには %1$d 件のエージェントが割り当てられています。コンピューターを削除する前に、すべてのエージェントを削除してください。</string>
     <string name="settings_computers_cannot_delete_message_many">このコンピューターには %1$d 件のエージェントが割り当てられています。コンピューターを削除する前に、すべてのエージェントを削除してください。</string>
     <string name="settings_computers_error_refresh_title">更新できませんでした</string>
-    <string name="settings_computers_rotate_key_confirm_title">%1$s の API キーをローテーションしますか？</string>
-    <string name="settings_computers_rotate_key_confirm_message">このコンピューターの既存の API キーは直ちに使用できなくなります。コンピューター上のデーモンは、新しいキーを設定するまで再接続できません。新しいキーはローテーション後に 1 回だけ表示されます。</string>
-    <string name="settings_computers_rotated_key_title">新しい API キー</string>
-    <string name="settings_computers_rotated_key_detail">コンピューター上のデーモンにこのキーを設定すると、再接続できます。</string>
-    <string name="settings_computers_rotated_key_once">このキーは 1 回だけ表示されます。今すぐコピーしてください。閉じると再び表示できません。</string>
-    <string name="settings_computers_rotated_key_copy">キーをコピー</string>
+    <string name="settings_computers_rotate_key_web_hint">このコンピューターの API キーの再発行はウェブで行ってください。</string>
     <string name="settings_connected_apps_loading">連携、マーケットプレイスアプリ、OAuth クライアントを読み込んでいます。</string>
     <string name="settings_connected_apps_empty">連携アプリはありません</string>
     <string name="settings_connected_apps_error">連携アプリのエラー</string>

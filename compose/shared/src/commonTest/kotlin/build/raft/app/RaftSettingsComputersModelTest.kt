@@ -219,20 +219,6 @@ class RaftSettingsComputersModelTest {
     }
 
     @Test
-    fun detailActionsFollowTheirOwnServerGates() {
-        listOf(
-            Triple(true, true, false), // e.g. a member who attached the Computer: edit/remove, no rotate
-            Triple(false, false, true),
-        ).forEach { (edit, remove, rotate) ->
-            val snapshot = detail("m-1").copy(canEditMachine = edit, canRemoveMachine = remove, canRotateMachineKey = rotate)
-            val model = assertIs<RaftComputerDetailModel.Content>(
-                raftComputerDetailModel(ScreenLoadState.Content(snapshot), "m-1", null, "server-1")
-            )
-            assertEquals(Triple(edit, remove, rotate), Triple(model.canEdit, model.canRemove, model.canRotateKey))
-        }
-    }
-
-    @Test
     fun detailMapsMissingMachineAndFailures() {
         assertEquals(
             RaftComputerDetailModel.Unavailable,
