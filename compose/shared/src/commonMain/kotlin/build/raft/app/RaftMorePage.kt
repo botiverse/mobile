@@ -18,7 +18,8 @@ import androidx.compose.ui.semantics.semantics
 import build.raft.app.components.RaftAttentionDot
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.isAppUpdateHomeNotificationId
-import build.raft.app.data.isMachineHomeNotificationId
+import build.raft.app.data.raftComputerAttentionPairs
+import build.raft.app.data.raftComputerAttentionUnseen
 import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftIconTileSize
@@ -55,13 +56,21 @@ internal val RaftMoreRows: List<RaftMoreRow> = RaftMoreRow.entries
  * Rows that have something new (Jasper 2026-10-20): each dots its own row on the More page and
  * the More tab. Driven by the Home notices the shell already loads (they clear when dismissed):
  * - Settings: the app-update notice (an update is available; Settings > About checks/installs).
- * - Computers: the offline-computer or outdated-daemon notice.
- * Members has no unread signal today.
+ * - Computers: a computer the offline-computer or outdated-daemon notice names is in a state
+ *   not yet seen ([computersSeen]; raft-design #620 "Attention dots": the dot marks an unseen
+ *   change, opening Computers sees it — see data/RaftComputerAttentionSeen.kt).
+ * Members has no unread signal today. The More tab dot reads this same set
+ * ([appShellMoreTabShowsDot]), so the tab and its row light and clear together.
  */
-internal fun raftMoreAttentionRows(homeNotificationIds: List<String>): Set<RaftMoreRow> =
+internal fun raftMoreAttentionRows(
+    homeNotificationIds: List<String>,
+    computersSeen: Set<String> = emptySet(),
+): Set<RaftMoreRow> =
     buildSet {
         if (homeNotificationIds.any { it.isAppUpdateHomeNotificationId() }) add(RaftMoreRow.Settings)
-        if (homeNotificationIds.any { it.isMachineHomeNotificationId() }) add(RaftMoreRow.Computers)
+        if (raftComputerAttentionUnseen(raftComputerAttentionPairs(homeNotificationIds), computersSeen)) {
+            add(RaftMoreRow.Computers)
+        }
     }
 
 @Composable
