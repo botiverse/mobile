@@ -14,8 +14,8 @@ import build.raft.mermaid.layout.simple.SimpleMermaidLayout
  * Renders a Mermaid diagram block.
  *
  * Parse → layout runs on the multiplatform `build.raft.mermaid` artifacts; the resulting
- * [LayoutScene] is drawn by [RaftMermaidCanvas] (Compose Canvas, replacing the Kuikly
- * `CanvasView` + `MermaidKuiklyRenderer` of the Kuikly build) inside [RaftMermaidCard].
+ * [LayoutScene] is drawn by the `mermaid-compose` library ([RaftMermaidViewport]) inside
+ * [RaftMermaidCard], with its text in [diagramTextStyle] (the message body font).
  *
  * Contract: if Mermaid source parses and lays out, render the diagram with interactive zoom;
  * otherwise gracefully fall back to [fallback].
@@ -23,7 +23,7 @@ import build.raft.mermaid.layout.simple.SimpleMermaidLayout
 @Composable
 internal fun RaftMermaidDiagramBlock(
     code: String,
-    style: TextStyle,
+    diagramTextStyle: TextStyle,
     fallback: @Composable () -> Unit
 ) {
     val layoutScene: LayoutScene? = remember(code) { raftMermaidLayoutScene(code) }
@@ -32,9 +32,17 @@ internal fun RaftMermaidDiagramBlock(
         RaftMermaidCard(
             code = code,
             diagramWidth = layoutScene.width.toFloat(),
+            diagramHeight = layoutScene.height.toFloat(),
             codeContent = fallback,
-            diagramContent = { scale ->
-                RaftMermaidCanvas(scene = layoutScene, scale = scale, textStyle = style)
+            diagramContent = { fitScale, state, panAlways, modifier ->
+                RaftMermaidViewport(
+                    scene = layoutScene,
+                    textStyle = diagramTextStyle,
+                    fitScale = fitScale,
+                    state = state,
+                    panAlways = panAlways,
+                    modifier = modifier
+                )
             }
         )
     } else {

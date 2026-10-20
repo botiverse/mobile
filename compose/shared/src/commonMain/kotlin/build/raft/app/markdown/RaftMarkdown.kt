@@ -9,6 +9,7 @@ import build.raft.app.RaftAppRadius
 import build.raft.app.RaftAppThemeState
 import com.tencent.kuiklybase.markdown.compose.elements.material.MarkdownBasicText
 import build.raft.app.raftArgbHex
+import build.raft.app.raftMultiWeightFontFamily
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
 import build.raft.app.model.TaskStatus
@@ -2711,9 +2712,14 @@ private fun RaftMarkdownCodeBlockWithCopy(
     style: TextStyle
 ) {
     if (language.equals("mermaid", ignoreCase = true)) {
+        // Diagram labels follow the message body font (not the code font), in the multi-weight
+        // family so the scene's bold labels pick the bundled Bold face.
+        val paragraph = LocalMarkdownTypography.current.paragraph
+        val diagramTextStyle =
+            remember(paragraph) { paragraph.copy(fontFamily = raftMultiWeightFontFamily("sans")) }
         RaftMermaidDiagramBlock(
             code = code,
-            style = style,
+            diagramTextStyle = diagramTextStyle,
             fallback = {
                 RaftMarkdownCodeBlockContent(code, language, style)
             }
