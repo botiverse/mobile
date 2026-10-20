@@ -56,6 +56,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import build.raft.designsystem.components.RaftTextarea
+import build.raft.designsystem.components.RaftTextFieldClearAction
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftDialogSurface
 import build.raft.designsystem.components.RaftFieldLabel
@@ -214,6 +215,30 @@ class RaftInteractiveSemanticsTest {
             assertEquals("Hello Wug", value.text)
             assertEquals(TextRange(9), value.selection)
             onNodeWithText("9/10").assertExists()
+        }
+
+    /** The clear button addon is a named button of its own inside the field, and clears it. */
+    @Test
+    fun aTextFieldClearActionIsANamedButtonThatClears() =
+        runComposeUiTest {
+            var value by mutableStateOf("design")
+            setContent(
+                themed {
+                    RaftField(label = "Search channels") {
+                        RaftTextField(
+                            value,
+                            { value = it },
+                            trailingAction = if (value.isNotEmpty()) ({ RaftTextFieldClearAction({ value = "" }, label = "Clear Search") }) else null,
+                        )
+                    }
+                },
+            )
+            onNodeWithContentDescription("Clear Search")
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+                .performClick()
+            assertEquals("", value)
+            onNodeWithContentDescription("Clear Search").assertDoesNotExist()
+            onNodeWithContentDescription("Search channels").assertIsDisplayed()
         }
 
     @Test

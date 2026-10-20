@@ -77,6 +77,8 @@ import build.raft.designsystem.components.RaftTabStrip
 import build.raft.designsystem.components.RaftTabs
 import build.raft.designsystem.components.RaftTabsVariant
 import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextFieldAction
+import build.raft.designsystem.components.RaftTextFieldClearAction
 import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftTextLinkVariant
@@ -152,6 +154,23 @@ class InteractiveComponentScreenshotTest {
                     RaftTextField("wug", {}, suffix = "@slock.ai", trailing = { RaftGlyphIcon(RaftGlyph.Info, size = 18.dp) })
                     RaftTextField("design lab", {}, prefix = "/", invalid = true)
                     RaftTextField("design-lab", {}, prefix = "/", enabled = false)
+                    Caption("Button addon: clear, copy (pressed), after a suffix, disabled")
+                    RaftTextField(
+                        "design",
+                        {},
+                        leading = { RaftGlyphIcon(RaftGlyph.Search, size = 18.dp) },
+                        trailingAction = { RaftTextFieldClearAction({}) },
+                    )
+                    StateCell(pressed = true) {
+                        RaftTextField(
+                            "raft.build/invite/7f3k",
+                            {},
+                            readOnly = true,
+                            trailingAction = { RaftTextFieldAction({}, "Copy Invite Link") { RaftGlyphIcon(RaftGlyph.Copy) } },
+                        )
+                    }
+                    RaftTextField("wug", {}, suffix = "@slock.ai", trailingAction = { RaftTextFieldClearAction({}) })
+                    RaftTextField("wug", {}, enabled = false, trailingAction = { RaftTextFieldClearAction({}, enabled = false) })
                 }
             }
         }

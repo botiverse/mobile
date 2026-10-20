@@ -3,6 +3,7 @@ package build.raft.designsystem.components
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +27,9 @@ import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -35,6 +39,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.LocalRaftStrings
+import build.raft.designsystem.theme.RaftStrings
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
@@ -122,6 +128,11 @@ internal fun raftFieldBoxLook(enabled: Boolean, invalid: Boolean, colors: RaftUi
  * ([LocalRaftContentColor]), 12dp from the edge and 8dp from the text. [prefix] /
  * [suffix] take fixed text (a `/`, a domain, a unit) in Space Mono `text-mono-code`,
  * `foreground-hint`, 2dp from the text.
+ *
+ * [trailingAction] is InputGroup's button addon at the very end: a [RaftTextFieldAction]
+ * (show the password, copy) or [RaftTextFieldClearAction] (show it once there is text). It
+ * keeps its own 28dp size, 6dp from the border (its icon lines up with a [trailing] icon's),
+ * after any [suffix] or [trailing] icon.
  */
 @Composable
 fun RaftTextField(
@@ -140,6 +151,7 @@ fun RaftTextField(
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     interactionSource: MutableInteractionSource? = null,
+    trailingAction: (@Composable () -> Unit)? = null,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val look = raftFieldBoxLook(enabled, invalid, RaftTheme.colors, readOnly)
@@ -160,7 +172,7 @@ fun RaftTextField(
         interactionSource = source,
         cursorBrush = SolidColor(RaftTheme.colors.foreground),
         decorationBox = { inner ->
-            RaftInputBox(look, focused, value.isEmpty(), placeholder, leading, trailing, prefix, suffix, inner)
+            RaftInputBox(look, focused, value.isEmpty(), placeholder, leading, trailing, prefix, suffix, trailingAction, inner)
         },
     )
 }
@@ -183,6 +195,7 @@ fun RaftTextField(
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     interactionSource: MutableInteractionSource? = null,
+    trailingAction: (@Composable () -> Unit)? = null,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val look = raftFieldBoxLook(enabled, invalid, RaftTheme.colors, readOnly)
@@ -203,7 +216,7 @@ fun RaftTextField(
         interactionSource = source,
         cursorBrush = SolidColor(RaftTheme.colors.foreground),
         decorationBox = { inner ->
-            RaftInputBox(look, focused, value.text.isEmpty(), placeholder, leading, trailing, prefix, suffix, inner)
+            RaftInputBox(look, focused, value.text.isEmpty(), placeholder, leading, trailing, prefix, suffix, trailingAction, inner)
         },
     )
 }
@@ -411,14 +424,20 @@ private fun RaftInputBox(
     trailing: (@Composable () -> Unit)?,
     prefix: String?,
     suffix: String?,
+    trailingAction: (@Composable () -> Unit)?,
     inner: @Composable () -> Unit,
 ) {
     // input-group.tsx: an addon is `px-3`, trimmed to 8dp (icon) / 2dp (text) on the
     // control's side, and the control drops its own padding on that side. All of it sits
-    // inside the 1dp border.
+    // inside the 1dp border. A button addon at the end keeps 6dp to the border, so its 16dp
+    // icon (centred in 28dp) lines up with an 18dp icon addon's 12dp edge.
     val edge = 12.dp + RaftStroke.Field
+    val actionEdge = 6.dp + RaftStroke.Field
+    val hasAction = trailingAction != null
+    // Before a button addon, the addons on its side end 4dp from it.
+    val endEdge = if (hasAction) 4.dp else edge
     val hasStart = leading != null || prefix != null
-    val hasEnd = trailing != null || suffix != null
+    val hasEnd = trailing != null || suffix != null || hasAction
     Row(
         Modifier
             .fillMaxWidth()
@@ -457,15 +476,82 @@ private fun RaftInputBox(
         }
         CompositionLocalProvider(LocalRaftContentColor provides look.addon) {
             if (suffix != null) {
-                AddonText(suffix, Modifier.padding(start = 2.dp, end = if (trailing != null) 8.dp else edge), look.addon)
+                AddonText(suffix, Modifier.padding(start = 2.dp, end = if (trailing != null) 8.dp else endEdge), look.addon)
             }
             if (trailing != null) {
                 Box(
-                    Modifier.padding(start = if (suffix != null) 0.dp else 8.dp, end = edge).size(RaftTextFieldDefaults.AddonIconSize),
+                    Modifier.padding(start = if (suffix != null) 0.dp else 8.dp, end = endEdge).size(RaftTextFieldDefaults.AddonIconSize),
                     contentAlignment = Alignment.Center,
                 ) { trailing() }
             }
         }
+        if (trailingAction != null) {
+            Box(
+                Modifier.padding(start = if (suffix != null || trailing != null) 0.dp else 4.dp, end = actionEdge),
+                contentAlignment = Alignment.Center,
+            ) { trailingAction() }
+        }
+    }
+}
+
+/**
+ * raft-ui InputGroup button addon: a 28dp square (control radius) inside a field's box, for
+ * the field's own action, at the end of a [RaftTextField] (`trailingAction`). [label] names
+ * it in Title Case ("Show Password", "Copy Invite Link"); [icon] is drawn at 16dp in its ink.
+ *
+ * - Rest: `foreground-muted` (combobox.tsx `clear`); pressed or hovered: `fill-pressed`
+ *   under `foreground`. Keyboard focus: the focus ring.
+ * - Disabled (by default when its [RaftField] is): `foreground-disabled`, no press.
+ * - Its hit area is its 28dp: it is not widened, as it would take taps from the text.
+ */
+@Composable
+fun RaftTextFieldAction(
+    onClick: () -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = LocalRaftFieldState.current.enabled,
+    interactionSource: MutableInteractionSource? = null,
+    icon: @Composable () -> Unit,
+) {
+    val colors = RaftTheme.colors
+    val source = interactionSource ?: remember { MutableInteractionSource() }
+    val active = enabled && (raftIsPressed(source) || raftIsHovered(source))
+    val focused = enabled && raftIsFocused(source)
+    val ink =
+        when {
+            !enabled -> colors.foregroundDisabled
+            active -> colors.foreground
+            else -> colors.foregroundMuted
+        }
+    Box(
+        modifier
+            .size(28.dp)
+            .raftFocusRing(focused, RaftRadius.Control, colors)
+            .raftPressOverlay(active, raftPressOverlayColor(RaftPressSurface.Paper, colors), RaftRadius.Control)
+            .clickable(interactionSource = source, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        CompositionLocalProvider(LocalRaftContentColor provides ink) {
+            Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) { icon() }
+        }
+    }
+}
+
+/**
+ * The clear (×) [RaftTextFieldAction] of a search or filter field: show it once there is
+ * text, and empty the field in [onClear]. Named [label], by default [RaftStrings.clear]
+ * from [LocalRaftStrings] (raft-ui asks for "Clear Search" on a search field).
+ */
+@Composable
+fun RaftTextFieldClearAction(
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier,
+    label: String = LocalRaftStrings.current.clear,
+    enabled: Boolean = LocalRaftFieldState.current.enabled,
+) {
+    RaftTextFieldAction(onClick = onClear, label = label, modifier = modifier, enabled = enabled) {
+        RaftGlyphIcon(RaftGlyph.X, size = 16.dp)
     }
 }
 
