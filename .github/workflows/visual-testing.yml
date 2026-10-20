@@ -58,7 +58,7 @@ jobs:
   react-capture:
     if: ${{ !inputs.site_only }}
     name: React capture (playwright)
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-8vcpu-ubuntu-2204
     timeout-minutes: 45
     defaults:
       run:
@@ -144,7 +144,8 @@ jobs:
     name: Android build (connected test APKs)
     # ubuntu-latest-m (org larger runner, 4 cores / 15GB): the standard 7GB
     # runner forces emulator and gradle to fight for memory. (task #418)
-    runs-on: ubuntu-latest
+    # Gradle is CPU-bound: a large Blacksmith runner (as android-release.yml) cuts the build most.
+    runs-on: blacksmith-16vcpu-ubuntu-2204
     timeout-minutes: 60
     outputs:
       method_filter: ${{ steps.methods.outputs.filter }}
@@ -315,6 +316,7 @@ jobs:
   android-capture:
     name: Android capture (shard ${{ matrix.shard }}/8)
     # See android-build: emulator boot + render are the slow path on 7GB. (task #418)
+    # Stays GitHub-hosted until /dev/kvm is verified on Blacksmith (the emulator needs it).
     runs-on: ubuntu-latest
     timeout-minutes: 45
     needs: android-build
@@ -458,7 +460,8 @@ jobs:
   ios-capture:
     name: iOS capture (simulator)
     if: ${{ !inputs.site_only }}
-    runs-on: macos-latest
+    # Same macOS pool as ios-release.yml.
+    runs-on: blacksmith-12vcpu-macos-latest
     timeout-minutes: 75
     env:
       # iPhone 14: 390x844pt @3x = 1170x2532 px, the exact android/react
@@ -742,7 +745,7 @@ jobs:
     # with an empty android side (react__android missing 89). iOS stays
     # tolerated (red/skipped degrades to fewer pairs, never blocks).
     if: ${{ !cancelled() && (inputs.site_only || (needs.react-capture.result == 'success' && needs.android-capture.result == 'success')) }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-8vcpu-ubuntu-2204
     # AI analysis moved to the ai-analysis job (images publish first, per
     # artin 2026-07-09); without it diff/report/site fits well inside 30.
     timeout-minutes: 30
@@ -942,7 +945,7 @@ jobs:
     needs: [report]
     # Only meaningful when the report actually published a site to update.
     if: ${{ !cancelled() && needs.report.result == 'success' && needs.report.outputs.published == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 60
     # A rerun/new publish supersedes the in-flight analysis of the previous
     # one: cancel it instead of letting it burn model calls and a runner
