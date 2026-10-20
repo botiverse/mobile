@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
+import androidx.compose.ui.draw.clip
 import build.raft.app.data.SHELL_OVERLAY_MESSAGE_TYPE
 import build.raft.app.data.SHELL_OVERLAY_REQUEST_ID
 import build.raft.app.data.AuthenticatedRouteOwner
@@ -23199,6 +23200,7 @@ private fun SharedHomeSearchControlSurface(
     )
 }
 
+@Suppress("UNUSED_PARAMETER")
 @Composable
 private fun SharedHomeSearchShadowSurface(
     modifier: Modifier = Modifier,
@@ -23212,27 +23214,17 @@ private fun SharedHomeSearchShadowSurface(
     contentPaddingVertical: Dp = 0.dp,
     content: @Composable () -> Unit
 ) {
-    Box(
-        modifier =
-            modifier.padding(
-                end = if (shadowColor == Color.Transparent) 0.dp else SearchControlShadowOffset,
-                bottom = if (shadowColor == Color.Transparent) 0.dp else SearchControlShadowOffset
-            )
-    ) {
-        if (shadowColor != Color.Transparent) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = SearchControlShadowOffset, y = SearchControlShadowOffset)
-                        .background(if (enabled) shadowColor else shadowColor.copy(alpha = 0.18f))
-            )
-        }
+    // raft-ui: a selected (yellow) control is the brand sticker (1.5dp sticker-ink edge);
+    // every other one is a ghost control. Control radius, no ink frame, no offset shadow.
+    val shape = RoundedCornerShape(RaftAppRadius.Control)
+    val sticker = background == RaftColor.BrandYellow || background == RaftColor.Brand
+    Box(modifier = modifier) {
         val surfaceModifier =
             Modifier
                 .fillMaxSize()
-                .background(background)
-                .border(borderWidth, borderColor)
+                .clip(shape)
+                .background(if (sticker) RaftColor.Brand else Color.Transparent, shape)
+                .border(RaftAppStroke.Control, if (sticker) RaftColor.StickerInk else Color.Transparent, shape)
                 .padding(horizontal = contentPaddingHorizontal, vertical = contentPaddingVertical)
         Box(
             modifier =

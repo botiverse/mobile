@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
+import androidx.compose.ui.draw.clip
+import build.raft.app.components.raftCardSurface
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.RaftAnchorPlacement
@@ -1221,8 +1223,8 @@ private fun SharedTasksToolbar(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(RaftAppStroke.Default)
-                    .background(RaftColor.BorderBlack)
+                    .height(RaftAppStroke.Thin)
+                    .background(RaftColor.BorderSeam)
         )
     }
 }
@@ -1410,7 +1412,6 @@ private fun SharedTaskCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(end = 3.dp, bottom = 3.dp)
             .then(
                 if (captureLongPressAnchor) {
                     Modifier.raftCaptureLiveRootAnchor(rootAnchor)
@@ -1419,17 +1420,12 @@ private fun SharedTaskCard(
                 }
             )
     ) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .offset(x = 3.dp, y = 3.dp)
-                .background(RaftColor.ShadowBlack)
-        )
+        // raft-ui card: container radius, card layer, 1dp hairline; no ink frame or offset shadow.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(RaftColor.SurfaceWhite)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .clip(RoundedCornerShape(RaftAppRadius.Container))
+                .raftCardSurface()
                 .raftGesturePointerInput(gestureOwner) { owner ->
                     var gesture: RaftGestureSession<SharedTaskCardGestureCallbacks>? = null
                     // tap = open task; long-press = open status menu. Wrapping both in the
@@ -1612,50 +1608,6 @@ private fun SharedTasksStatusLabel(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-    }
-}
-
-@Composable
-private fun SharedTasksPillButton(
-    label: String,
-    selected: Boolean,
-    enabled: Boolean = true,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier =
-            Modifier
-                .padding(end = if (selected) 2.dp else 0.dp, bottom = if (selected) 2.dp else 0.dp)
-                .widthIn(min = 44.dp)
-                .heightIn(min = 30.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        if (selected) {
-            Box(Modifier.matchParentSize().offset(x = 2.dp, y = 2.dp).background(RaftColor.ShadowBlack))
-        }
-        Button(
-            onClick = onClick,
-            enabled = enabled,
-            modifier = Modifier
-                .matchParentSize()
-        ) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .background(if (selected) RaftColor.BrandYellow else RaftColor.SurfaceWhite, RoundedCornerShape(RaftAppRadius.Xs))
-                    .border(RaftAppStroke.Default, if (enabled) RaftColor.BorderBlack else RaftColor.EmptyStateGray, RoundedCornerShape(RaftAppRadius.Xs))
-                    .padding(horizontal = RaftAppSpacing.Sm, vertical = RaftAppSpacing.Xs),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = label.raftDisplayUppercase(),
-                    style = RaftType.SectionLabel,
-                    color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
     }
 }
 

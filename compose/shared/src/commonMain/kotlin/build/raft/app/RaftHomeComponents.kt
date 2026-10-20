@@ -6244,8 +6244,8 @@ private fun SidebarActionRow(icon: RaftLucideIconName, label: String, modifier: 
                     .padding(horizontal = SidebarRowHorizontalPadding),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(modifier = Modifier.size(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) { RaftLucideIcon(icon, Modifier.size(SidebarActionIconSize)) }
-            Text(label, style = RaftType.ListItem, color = if (selected) RaftColor.StickerInk else RaftColor.TextBlack, modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Box(modifier = Modifier.size(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) { RaftLucideIcon(icon, Modifier.size(SidebarActionIconSize), color = if (selected) raftArgbHex(RaftColor.StickerInk) else RaftColor.TextBlackArgb) }
+            Text(label, style = if (selected) RaftType.ListItemBold else RaftType.ListItem, color = if (selected) RaftColor.StickerInk else RaftColor.TextBlack, modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (badge != null || trailingText != null) {
                 Box(
                     modifier = Modifier.width(SidebarActionTrailingSlotWidth),
@@ -7076,7 +7076,8 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             ) {
                 Text(
                     name,
-                    style = if (unread) RaftType.ListItemBold else RaftType.ListItem,
+                    // raft-ui SidebarItem `data-active:font-bold`.
+                    style = if (unread || selected) RaftType.ListItemBold else RaftType.ListItem,
                     color = if (selected) RaftColor.StickerInk else titleColor,
                     modifier =
                         if (descriptionText != null) {

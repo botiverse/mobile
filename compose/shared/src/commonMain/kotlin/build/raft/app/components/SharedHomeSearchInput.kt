@@ -33,7 +33,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val SharedHomeSearchInputShadowOffset = 2.dp
 
 /**
  * raft-ui Input / InputGroup metrics for the Home search field ([raftField]): 44dp tall,
@@ -159,21 +158,13 @@ internal fun SharedHomeSearchInput(
             modifier =
                 modifier
                     .height(38.dp)
-                    .padding(end = SharedHomeSearchInputShadowOffset, bottom = SharedHomeSearchInputShadowOffset)
         ) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = SharedHomeSearchInputShadowOffset, y = SharedHomeSearchInputShadowOffset)
-                        .background(RaftColor.ShadowBlack)
-            )
+            // raft field look (static placeholder): control radius, card fill, field ink.
             Box(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .background(RaftColor.SurfaceWhite)
-                        .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                        .raftControlSurface(fill = RaftColor.Card, border = RaftColor.LineField)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(start = 11.dp, top = 7.dp, end = 7.dp, bottom = 7.dp),
@@ -239,21 +230,13 @@ internal fun SharedHomeSearchInput(
             modifier =
                 modifier
                     .height(38.dp)
-                    .padding(end = SharedHomeSearchInputShadowOffset, bottom = SharedHomeSearchInputShadowOffset)
         ) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = SharedHomeSearchInputShadowOffset, y = SharedHomeSearchInputShadowOffset)
-                        .background(RaftColor.ShadowBlack)
-            )
+            // raft field look (static placeholder): control radius, card fill, field ink.
             Box(
                 modifier =
                     Modifier
                         .fillMaxSize()
-                        .background(RaftColor.SurfaceWhite)
-                        .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                        .raftControlSurface(fill = RaftColor.Card, border = RaftColor.LineField)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(start = 11.dp, top = 7.dp, end = 7.dp, bottom = 7.dp),
