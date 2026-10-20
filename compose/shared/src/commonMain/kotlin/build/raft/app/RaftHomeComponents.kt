@@ -90,6 +90,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -4440,7 +4441,9 @@ private fun HomeTitlebar(
                 }
                 val blankModifier =
                     if (onBlankClick != null) {
-                        Modifier.weight(1f).height(RaftAppSize.PageHeaderContentHeight).clickable(onClick = onBlankClick)
+                        Modifier.weight(1f).height(RaftAppSize.PageHeaderContentHeight)
+                            // Blank header space: an affordance-less tap target, so no press wash.
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onBlankClick)
                     } else {
                         Modifier.weight(1f)
                     }
@@ -4470,8 +4473,23 @@ private fun HomeServerIdentityCluster(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // The caller hands this cluster the header's remaining width (weight). Only the
+    // avatar + name + chevron is the switcher: the free space to its right must not be a
+    // touch target, so the clickable sits on a wrap-content row inside that width.
+    val pressSource = remember { MutableInteractionSource() }
+    val pressed = pressSource.collectIsPressedAsState().value
+    Box(
+        modifier = modifier.height(RaftAppSize.PageHeaderContentHeight),
+        contentAlignment = Alignment.CenterStart
+    ) {
     Row(
-        modifier = modifier.height(RaftAppSize.PageHeaderContentHeight).clickable(onClick = onClick),
+        modifier = Modifier
+            .fillMaxHeight()
+            .background(
+                if (pressed) RaftColor.FillFramePressed else Color.Transparent,
+                RoundedCornerShape(RaftAppRadius.Control)
+            )
+            .clickable(interactionSource = pressSource, indication = null, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically
     ) {
         ServerSwitcherAvatarTile(server)
@@ -4494,6 +4512,7 @@ private fun HomeServerIdentityCluster(
             Modifier.size(HomeServerIdentityChevronSize),
             color = RaftColor.TextBlackArgb
         )
+    }
     }
 }
 
@@ -5887,7 +5906,9 @@ internal fun ServerSwitcherAvatarTile(server: RaftServerSwitcherItem) {
                 .size(32.dp)
                 // raft-ui square avatar: sticker radius (4dp), ink tile.
                 .raftThemedCorners(RaftAppRadius.Sticker)
-                .background(RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker))
+                // No ink fill behind an uploaded image: a transparent server avatar must show the
+                // surface it sits on (the yellow frame), not a black square. The ink tile belongs to
+                // the initial-letter fallback only (ServerAvatarFallbackLabel draws it).
                 .border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker)),
         contentAlignment = Alignment.Center
     ) {
@@ -5926,6 +5947,12 @@ internal fun ServerSwitcherAvatarTile(server: RaftServerSwitcherItem) {
 
 @Composable
 private fun ServerAvatarFallbackLabel(label: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker)),
+        contentAlignment = Alignment.Center
+    ) {
     Text(
         label,
         style =
@@ -5939,6 +5966,7 @@ private fun ServerAvatarFallbackLabel(label: String) {
         maxLines = 1,
         textAlign = TextAlign.Center
     )
+    }
 }
 
 internal data class ServerSwitcherAvatarPresentation(

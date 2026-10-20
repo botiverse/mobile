@@ -73,6 +73,8 @@ internal object RaftColor {
     val FillMuted: Color get() = RaftAppThemeState.colors.fillMuted
     val FillStrong: Color get() = RaftAppThemeState.colors.fillStrong
     val FillPressed: Color get() = RaftAppThemeState.colors.fillPressed
+    // Pressed wash on the yellow frame (`fill-frame-pressed`), e.g. header controls.
+    val FillFramePressed: Color get() = RaftAppThemeState.colors.fillFramePressed
     // `--line-field` (input ink); card edges and menu separators use [BorderHairline].
     val LineField: Color get() = RaftAppThemeState.colors.lineField
     // The yellow frame (`--layer-frame`) and the overlay backdrop.

@@ -8,6 +8,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -196,11 +198,20 @@ internal fun RaftBottomTabBar(
         ) {
             items.forEach { item ->
                 val selected = item.selected
+                // raft-ui MobileNav press: the overlay sits on the sticker (12% ink on the active
+                // brand sticker, fill-pressed at rest), never a wash over the whole cell. A bare
+                // clickable here fell back to CMP's default indication: a dark gray rectangle.
+                val pressSource = remember { MutableInteractionSource() }
+                val pressed = pressSource.collectIsPressedAsState().value
                 Column(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .clickable(enabled = item.enabled) { onSelect(item.key) },
+                        .clickable(
+                            interactionSource = pressSource,
+                            indication = null,
+                            enabled = item.enabled
+                        ) { onSelect(item.key) },
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Top
                 ) {
@@ -219,6 +230,16 @@ internal fun RaftBottomTabBar(
                                         .padding(RaftAppStroke.Control)
                                         .background(RaftColor.Brand, RoundedCornerShape(RaftAppRadius.Control))
                                         .border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Control))
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .then(
+                                if (pressed && item.enabled) {
+                                    Modifier.background(
+                                        raftBottomTabPressOverlay(selected),
+                                        RoundedCornerShape(RaftAppRadius.Control)
+                                    )
                                 } else {
                                     Modifier
                                 }
@@ -299,7 +320,7 @@ internal fun RaftAppBottomTabBarHost(
             .fillMaxWidth()
             .height(raftSharedBottomTabBarHostHeight(bottomSafeArea))
             .background(RaftColor.Card)
-            .clickable(onClick = {})
+            .raftTouchBlocker()
     ) {
         RaftBottomTabBar(
             items = items,
@@ -461,7 +482,7 @@ internal fun RaftFloatingDockTabBar(
         modifier = modifier
             .fillMaxWidth()
             .height(raftFloatingDockBottomTabBarHostHeight(bottomSafeArea))
-            .clickable(onClick = {})
+            .raftTouchBlocker()
     ) {
         Box(
             modifier = Modifier
@@ -740,3 +761,15 @@ private fun RaftVerticalTabItem(
         }
     }
 }
+
+/** Press overlay of a bottom tab's sticker (raft-ui Color > Pressed overlays). */
+internal fun raftBottomTabPressOverlay(selected: Boolean): Color =
+    if (selected) RaftColor.StickerPressed else RaftColor.FillPressed
+
+/**
+ * Swallows touches that would otherwise fall through the tab bar to the page under it, without
+ * any press feedback (a bare `clickable` greyed the whole bar while a finger rested on it).
+ */
+@Composable
+private fun Modifier.raftTouchBlocker(): Modifier =
+    clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {})
