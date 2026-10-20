@@ -286,7 +286,8 @@ private fun AttachmentCommentCard(comment: ThreadAttachmentCommentItem, filename
                     lineHeight = RaftTheme.typography.footnote.lineHeight,
                     color = colors.foreground
                 ),
-            modifier = Modifier.padding(top = CommentChipLineBoxDescent)
+            modifier = Modifier.padding(top = CommentChipLineBoxDescent),
+            minInlineLineHeight = RaftTheme.typography.footnote.lineHeight
         )
     }
 }

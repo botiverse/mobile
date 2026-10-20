@@ -2098,7 +2098,11 @@ fun RaftMarkdownBody(
     // task #800: right-aligned own messages wrap short paragraphs so a brief
     // message hugs the End edge; block children that fill width still expand
     // to the parent cap, so long/ranged content is unaffected.
-    fillWidth: Boolean = true
+    fillWidth: Boolean = true,
+    // The floor under the text's line height that keeps inline chips (mentions, refs) clear of
+    // the next line. Surfaces whose web line box is tighter than the chips (attachment comment
+    // cards, footnote 13/18) pass their own line height.
+    minInlineLineHeight: TextUnit = RaftMarkdownMinimumInlineLineHeight
 ) {
     // task #441: print the factual renderer-capability marker so visual capture
     // records this platform's caps (collector: scripts/collect_richtext_caps.py;
@@ -2184,8 +2188,8 @@ fun RaftMarkdownBody(
         } else {
             modifier.let { if (fillWidth) it.fillMaxWidth() else it }
         }
-    val markdownTextStyle = remember(textStyle) {
-        raftMarkdownTextStyleWithInlineLineHeight(textStyle)
+    val markdownTextStyle = remember(textStyle, minInlineLineHeight) {
+        raftMarkdownTextStyleWithInlineLineHeight(textStyle, minInlineLineHeight)
     }
     val currentOnOpenTag by rememberUpdatedState(onOpenTag)
     val currentOnOpenTagAction by rememberUpdatedState(onOpenTagAction)
@@ -2196,7 +2200,9 @@ fun RaftMarkdownBody(
     val colors = RaftMarkdownColorsDefault
     // The typography carries theme colours (h6, quotes); the theme is part of its key.
     val markdownDark = RaftAppThemeState.isDark
-    val typography = remember(markdownTextStyle, markdownDark) { raftMarkdownTypography(markdownTextStyle) }
+    val typography = remember(markdownTextStyle, markdownDark, minInlineLineHeight) {
+        raftMarkdownTypography(markdownTextStyle, minInlineLineHeight)
+    }
     val markdownParserContent = remember(content) {
         MarkdownParserContent.from(content)
     }
@@ -2676,7 +2682,7 @@ private val RaftMarkdownCodeBlockForeground: Color get() = RaftAppThemeState.col
 /** web MarkdownContent th/td `px-2 py-1`. */
 internal val RaftMarkdownTableCellPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
 private val RaftMarkdownCodeBlockPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 48.dp, bottom = 8.dp)
-private val RaftMarkdownMinimumInlineLineHeight = 22.sp
+internal val RaftMarkdownMinimumInlineLineHeight = 22.sp
 private val RaftMarkdownDividerColor: Color get() = RaftColor.BorderBlack.copy(alpha = 0.22f)
 private val RaftMarkdownDividerThickness = 2.dp
 private val RaftMarkdownDividerVerticalPadding = RaftAppSpacing.Sm
@@ -2812,11 +2818,14 @@ internal val RaftMarkdownColorsDefault: DefaultMarkdownColors
         tableStroke = RaftColor.BorderHairline
     )
 
-internal fun raftMarkdownTextStyleWithInlineLineHeight(base: TextStyle): TextStyle {
+internal fun raftMarkdownTextStyleWithInlineLineHeight(
+    base: TextStyle,
+    minInlineLineHeight: TextUnit = RaftMarkdownMinimumInlineLineHeight
+): TextStyle {
     val resolvedBase = base.withResolvedRaftFontFamily()
     val minLineHeight =
         maxOf(
-            RaftMarkdownMinimumInlineLineHeight.value,
+            minInlineLineHeight.value,
             resolvedBase.fontSize.takeIf { it.isSpecified }?.value ?: 0f
         )
     val lineHeight = resolvedBase.lineHeight.takeIf { it.isSpecified }?.value
@@ -2840,10 +2849,14 @@ internal fun raftMarkdownHeadingStyle(base: TextStyle, scale: Float): TextStyle 
     )
 }
 
-internal fun raftMarkdownTypography(base: TextStyle): DefaultMarkdownTypography {
+internal fun raftMarkdownTypography(
+    base: TextStyle,
+    minInlineLineHeight: TextUnit = RaftMarkdownMinimumInlineLineHeight
+): DefaultMarkdownTypography {
     // Markdown is user content: every style derives from this base, so Han characters render in
     // Simplified Chinese forms throughout.
-    val resolvedBase = raftMarkdownTextStyleWithInlineLineHeight(base).withRaftUserContentLocale()
+    val resolvedBase =
+        raftMarkdownTextStyleWithInlineLineHeight(base, minInlineLineHeight).withRaftUserContentLocale()
     // web pre: `font-mono [font-size:inherit]` — Space Mono at the body size.
     val codeBlock =
         resolvedBase.copy(
