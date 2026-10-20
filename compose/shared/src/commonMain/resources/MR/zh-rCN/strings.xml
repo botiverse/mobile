@@ -2241,6 +2241,11 @@
     <string name="settings_notifications_preview_mode_full">显示全部</string>
     <string name="settings_notifications_preview_mode_sender_only">只显示发送者</string>
     <string name="settings_notifications_preview_mode_hidden">全部隐藏</string>
+    <string name="push_preview_hidden_title">Raft</string>
+    <string name="push_preview_hidden_message">你有一条新消息</string>
+    <string name="push_preview_hidden_mention">有人提到了你</string>
+    <string name="push_preview_sender_only_message">%1$s 发来一条消息</string>
+    <string name="push_preview_sender_only_mention">%1$s 提到了你</string>
     <string name="settings_app_language_japanese">日本語</string>
     <string name="settings_mobile_new_design_settings">新版设置设计</string>
     <string name="settings_mobile_new_design_settings_detail">打开新版独立频道设置页。关闭时继续使用现有 Thread 设置弹窗。</string>

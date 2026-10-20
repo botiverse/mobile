@@ -75,6 +75,7 @@ import build.raft.app.data.NetworkRaftHomeApi
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.BridgeRaftAvatarNativeCache
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
+import build.raft.app.data.KeyValuePushPreviewModePreferenceStore
 import build.raft.app.data.PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
 import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.RaftHostNetworkEvents
@@ -4525,6 +4526,19 @@ private fun RaftAppShellReadyContent(
         )
     }
     val latestForegroundMessageBannersEnabled by rememberUpdatedState(foregroundMessageBannersEnabled)
+    // The in-app banner obeys the device push preview choice (read per event from the single store).
+    val pushPreviewModeStore = remember { KeyValuePushPreviewModePreferenceStore(raftSharedPreferenceStore()) }
+    val latestPushPreviewBannerStrings by rememberUpdatedState(
+        RaftPushPreviewBannerStrings(
+            hiddenTitle = stringResource(MR.strings.push_preview_hidden_title),
+            hiddenMessage = stringResource(MR.strings.push_preview_hidden_message),
+            hiddenMention = stringResource(MR.strings.push_preview_hidden_mention),
+            senderOnlyMessageTemplate =
+                stringResource(MR.strings.push_preview_sender_only_message, RaftPushPreviewBannerStrings.SENDER_PLACEHOLDER),
+            senderOnlyMentionTemplate =
+                stringResource(MR.strings.push_preview_sender_only_mention, RaftPushPreviewBannerStrings.SENDER_PLACEHOLDER)
+        )
+    )
     when (val gate = authGateState) {
         SharedAuthGateState.Restoring -> {
             if (cachedHomePreview) {
@@ -5855,6 +5869,14 @@ private fun RaftAppShellReadyContent(
                                         )
                                     }
                                     )
+                                        ?.redactedForPushPreview(
+                                            mode =
+                                                PushPreviewMode.fromWire(pushPreviewModeStore.readPushPreviewModeSync())
+                                                    ?: PushPreviewMode.Hidden,
+                                            senderName = event.senderName,
+                                            mentioned = event.mentioned == true,
+                                            strings = latestPushPreviewBannerStrings
+                                        )
                                 banner?.let {
                                     bridge.log(
                                         "notification_push_banner_shown serverId=${event.serverId.value} " +

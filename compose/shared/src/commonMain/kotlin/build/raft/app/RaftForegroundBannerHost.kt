@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.components.raftLookOverlaySurface
+import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.ComposeLocalDataStore
@@ -903,6 +904,60 @@ internal fun raftNotificationPushBannerOrNull(
         avatarLabel = (event.senderName ?: event.title).trim().take(2).uppercase().ifBlank { "??" }
     )
 }
+
+/**
+ * The push preview texts, resolved in composition (MR strings need it) and applied later from the
+ * realtime collector. The sender_only templates keep [SENDER_PLACEHOLDER] where the name goes.
+ */
+internal data class RaftPushPreviewBannerStrings(
+    val hiddenTitle: String,
+    val hiddenMessage: String,
+    val hiddenMention: String,
+    val senderOnlyMessageTemplate: String,
+    val senderOnlyMentionTemplate: String
+) {
+    fun hiddenBody(mentioned: Boolean): String = if (mentioned) hiddenMention else hiddenMessage
+
+    fun senderOnlyBody(sender: String, mentioned: Boolean): String =
+        (if (mentioned) senderOnlyMentionTemplate else senderOnlyMessageTemplate).replace(SENDER_PLACEHOLDER, sender)
+
+    companion object {
+        const val SENDER_PLACEHOLDER = "\uE000sender\uE000"
+    }
+}
+
+/**
+ * The in-app foreground banner follows the device push preview choice too: it is built from the raw
+ * notification:push event, so without this a sender_only/hidden device would still show message text
+ * while the app is open. sender_only keeps the conversation title and names only the sender; hidden
+ * also drops the conversation, server and sender (avatar included).
+ */
+internal fun RaftForegroundMessageBanner.redactedForPushPreview(
+    mode: PushPreviewMode,
+    senderName: String?,
+    mentioned: Boolean,
+    strings: RaftPushPreviewBannerStrings
+): RaftForegroundMessageBanner =
+    when (mode) {
+        PushPreviewMode.Full -> this
+        PushPreviewMode.SenderOnly -> {
+            val sender = senderName?.trim()?.takeIf { it.isNotEmpty() }
+            copy(
+                threadContext = null,
+                body = sender?.let { strings.senderOnlyBody(it, mentioned) } ?: strings.hiddenBody(mentioned)
+            )
+        }
+        PushPreviewMode.Hidden ->
+            copy(
+                title = strings.hiddenTitle,
+                context = "",
+                threadContext = null,
+                body = strings.hiddenBody(mentioned),
+                senderMemberId = null,
+                avatarWireValue = null,
+                avatarLabel = strings.hiddenTitle.take(2).uppercase()
+            )
+    }
 
 private fun NotificationPushReceived.foregroundBannerTitle(): String {
     val serverLabel = serverName?.trim()?.takeIf { it.isNotBlank() }

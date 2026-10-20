@@ -2242,6 +2242,11 @@
     <string name="settings_notifications_preview_mode_full">Show all</string>
     <string name="settings_notifications_preview_mode_sender_only">Sender only</string>
     <string name="settings_notifications_preview_mode_hidden">Hide all</string>
+    <string name="push_preview_hidden_title">Raft</string>
+    <string name="push_preview_hidden_message">You have a new message</string>
+    <string name="push_preview_hidden_mention">You were mentioned</string>
+    <string name="push_preview_sender_only_message">%1$s sent a message</string>
+    <string name="push_preview_sender_only_mention">%1$s mentioned you</string>
     <string name="settings_mobile_new_design_settings">New design settings</string>
     <string name="settings_mobile_new_design_settings_detail">Open the new standalone channel settings page. When off, keep the current Thread settings dialog.</string>
     <string name="home_adaptive_select_conversation">Select a conversation</string>
