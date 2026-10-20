@@ -331,6 +331,8 @@ class RaftDisplaySemanticsTest {
             button.performTouchInput { longClick() }
             mainClock.advanceTimeBy(300)
             onNode(hasText("Remove Attachment")).assertDoesNotExist()
+            // Without a tooltip or onLongClick, releasing a long press is an ordinary click.
+            clicks = 0
             button.performClick()
             assertEquals(1, clicks)
         }
