@@ -100,7 +100,7 @@ class RaftIosPage internal constructor(
      * [viewController]'s view) would be consumed by the page's horizontal content (a tab pager past
      * its first page, a scroller away from its start): the host's full-page interactive pop must
      * then not begin. Content registers through `rememberRaftBackSwipeScroll` /
-     * `rememberRaftBackSwipeRegion`.
+     * `raftBackSwipeRegion` / `raftKeepsBackSwipe` / `RaftBlockBackSwipe`.
      */
     fun contentConsumesBackSwipe(x: Double, y: Double): Boolean =
         backSwipeRegions.contentConsumesBackSwipeAtPoint(x, y)

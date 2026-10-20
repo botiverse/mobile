@@ -127,6 +127,51 @@ class RaftNativeTabBarTest {
     }
 
     @Test
+    fun coverHidesTheBarUntilEveryCoverIsReleased() {
+        val bridge = RaftNativeTabBarBridge()
+        val recorder = Recorder()
+        bridge.attachListener(recorder)
+        val publisher = Any()
+        val drawer = Any()
+        val other = Any()
+        val shown = raftNativeTabBarState(fiveTabs(selectedKey = "home"), visible = true)
+        bridge.publish(publisher, shown) {}
+
+        bridge.cover(drawer)
+        bridge.cover(drawer)
+        bridge.cover(other)
+        assertEquals(shown.copy(visible = false), bridge.currentState)
+        // A shell update under the cover keeps the bar hidden but carries the new tabs.
+        val tasks = raftNativeTabBarState(fiveTabs(selectedKey = "tasks"), visible = true)
+        bridge.publish(publisher, tasks) {}
+        assertEquals(tasks.copy(visible = false), bridge.currentState)
+
+        bridge.uncover(drawer)
+        assertFalse(bridge.currentState.visible)
+        bridge.uncover(other)
+        assertEquals(tasks, bridge.currentState)
+        bridge.uncover(other)
+
+        assertEquals(
+            listOf(true, false, false, true),
+            recorder.states.drop(1).map { it.visible },
+        )
+    }
+
+    @Test
+    fun releasingACoverDoesNotShowARetractedBar() {
+        val bridge = RaftNativeTabBarBridge()
+        val publisher = Any()
+        val drawer = Any()
+        bridge.publish(publisher, raftNativeTabBarState(fiveTabs(selectedKey = "home"), visible = true)) {}
+        bridge.cover(drawer)
+        bridge.retract(publisher)
+        bridge.uncover(drawer)
+
+        assertFalse(bridge.currentState.visible)
+    }
+
+    @Test
     fun bottomInsetIgnoresInvalidHostValues() {
         val bridge = RaftNativeTabBarBridge()
         bridge.updateBottomInset(83.0)

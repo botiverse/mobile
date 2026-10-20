@@ -7549,6 +7549,9 @@ private fun AppShellServerDrawerHost(
                 drawerWidth = drawerWidth
             )
         val scrimWidth = (maxWidth - drawerWidth * drawerState.progress).coerceAtLeast(0.dp)
+        // The drawer slides the shell (and its Compose bar) aside; the iOS system tab bar stays
+        // put above the page, so it hides while any of the drawer shows.
+        RaftNativeTabBarCover(active = drawerState.progress > 0.01f)
         var commandState by remember(drawerState) { mutableStateOf(HomeServerDrawerCommandState()) }
         val pointerPolicy = commandState.pointerPolicy(projection.commandIntent)
         val openGestureAdmission =
@@ -18742,7 +18745,9 @@ private fun SharedMembersScreen(
     val currentServerId = session?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
     var selectedDetail by detailSelection
     val showMemberSplit = desktopMembersEnabled && paneLayout == RaftAdaptivePaneLayout.DualPane
-    RaftBackHandler(enabled = active && selectedDetail != null, label = "members_detail_pane") { selectedDetail = null }
+    // In the split view the detail pane is page state; only the compact detail overlay blocks
+    // the full-page back swipe.
+    RaftBackHandler(enabled = active && selectedDetail != null, label = "members_detail_pane", blocksBackSwipe = !showMemberSplit) { selectedDetail = null }
     var state by remember(currentServerId) {
         mutableStateOf<SharedMembersUiState>(initialContent ?: SharedMembersUiState.Loading)
     }
@@ -25379,7 +25384,7 @@ internal fun BottomTabBarSmokeContent() {
 
 @Composable
 internal fun BottomTabBarVisualContent() {
-    // React measures the live tab bar element at full page width (390x53dp), so
+    // The bar is measured at full page width (390x58dp, approved mockup A), so
     // render the bar flush at the window origin at exactly 390dp — explicit width
     // rather than fillMaxWidth because the capture window can be wider than 390dp
     // (task #370).

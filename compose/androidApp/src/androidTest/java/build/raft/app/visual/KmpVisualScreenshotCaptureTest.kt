@@ -194,6 +194,17 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureNavigationTabbarMockup() {
+        // Approved activity-tab mockup A: 动态 selected with its count, then 任务 selected with
+        // the count on the unselected 动态 tab (bars at y=16 and y=16+58+24).
+        captureKmpComponentCase(
+            caseId = "components.navigation.tabbar.mockup",
+            pageName = "compose_bottom_tabbar_mockup_visual",
+            crop = NAVIGATION_TABBAR_MOCKUP_CROP
+        )
+    }
+
+    @Test
     fun captureActivityTabSegments() {
         // Activity is the second bottom tab (artin 2026-10-20): main-tab head, the three segments
         // (All / Unread / Mentions) and the 5-tab bar with the Activity badge.
@@ -1737,6 +1748,20 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    /** Task #12: inline image attachment frame (raft-ui MessageImageGallery, lone tall image). */
+    @Test
+    fun captureThreadMessageRowInlineImage() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.inline-image",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-inline-image")
+                    .put("visualFixture", "inline_image"),
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
     @Test
     fun captureThreadMessageMenuDefault() {
         captureKmpComponentCase(
@@ -3244,6 +3269,31 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureHomeActivityConversationList() {
+        // activity_conversation_list_v0 ON: the web ThreadsInbox list layout (one compact row per
+        // conversation, avatar/tile, one-line preview, time, unread count, @ marker, muted bell)
+        // with sidebar pins, so the Pinned / All conversations sections render. The web has no
+        // matching react case yet; this is Android evidence until the React case lands.
+        captureKmpComponentCase(
+            caseId = "components.home.activity.conversation-list",
+            pageName = "compose_home_activity_conversation_list_visual",
+            crop = HOME_ACTIVITY_RESULTS_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
+    fun captureHomeActivityConversationListUnpinned() {
+        // Same rows without sidebar pins: no section labels, loaded order kept.
+        captureKmpComponentCase(
+            caseId = "components.home.activity.conversation-list.unpinned",
+            pageName = "compose_home_activity_conversation_list_unpinned_visual",
+            crop = HOME_ACTIVITY_RESULTS_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
     fun captureHomeActivityBottomHitTarget() {
         val openedMarker = "ACTIVITY_HIT_TARGET_OPENED:activity-thread-visual-parity"
         captureKmpComponentCase(
@@ -3725,6 +3775,17 @@ class KmpVisualScreenshotCaptureTest {
         captureMembersAgentDetailScreen(
             caseId = "screens.members.agent-detail.activity",
             tab = "activity"
+        )
+    }
+
+    // slock task #17: the Activity tab with `activity_overview_web_v0` on opens on the per-turn
+    // Overview (web AgentActivityOverview). The seed mirrors the web behaviour-test turns.
+    @Test
+    fun captureMembersAgentDetailActivityOverviewScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.activity.overview",
+            tab = "activity",
+            memberId = "agent-activity-overview"
         )
     }
 
@@ -6505,7 +6566,14 @@ class KmpVisualScreenshotCaptureTest {
                 leftDp = 0,
                 topDp = 0,
                 widthDp = 390,
-                heightDp = 53
+                heightDp = 58
+            )
+        private val NAVIGATION_TABBAR_MOCKUP_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 390,
+                heightDp = 172
             )
         private val ANDROID_FLOATING_TABBAR_CROP =
             VisualCrop(

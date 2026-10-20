@@ -38,7 +38,6 @@ internal fun ExternalShareTargetPickerSurface(
         messageCount = contentCount,
         skippedCount = 0,
         nestedForwardCount = 0,
-        taskLinkedCount = 0,
         state = surface.picker,
         onIntent = { pickerIntent ->
             if (pickerIntent is RaftForwardTargetPickerIntent.QueryChanged) {

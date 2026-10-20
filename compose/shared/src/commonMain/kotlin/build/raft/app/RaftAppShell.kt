@@ -110,6 +110,7 @@ internal fun RaftAppShellRootBackHandler(
     RaftBackHandler(
         enabled = true,
         label = "app_shell_root",
+        blocksBackSwipe = false,
         onLifecycleLog = onLifecycleLog,
         onBack = onBack
     )

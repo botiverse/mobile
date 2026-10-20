@@ -2,6 +2,8 @@
 
 package build.raft.app
 
+import build.raft.designsystem.gesture.raftKeepsBackSwipe
+import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import build.raft.app.compat.ui.nativeEvent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
@@ -86,6 +88,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.disabled
@@ -320,7 +323,8 @@ internal fun RaftAspectFitImagePreviewSurface(
     Box(
         modifier = modifier
             .background(backgroundColor)
-            .border(borderWidth, RaftColor.BorderBlack),
+            // 0.dp is Dp.Hairline to Modifier.border (a 1px line), so a frameless surface skips it.
+            .then(if (borderWidth > 0.dp) Modifier.border(borderWidth, RaftColor.BorderBlack) else Modifier),
         contentAlignment = Alignment.Center
     ) {
         if (activeSource != null) {
@@ -1324,6 +1328,8 @@ fun Modal(
     onWillDismiss: ((Any?) -> Unit)? = null,
     content: (@Composable () -> Unit)
 ) {
+    // A right swipe must not pop the page underneath an open modal.
+    RaftBlockBackSwipe()
     Dialog(
         onDismissRequest = { onWillDismiss?.invoke("") },
         properties = raftModalDialogPropertiesWithoutScrim()
@@ -1862,8 +1868,13 @@ internal fun TextField(
             }
         }
     val resolvedTextStyle = raftTextFieldResolvedTextStyle(textStyle)
+    // Focused: cursor and selection drags (and single-line scrolling) keep the drag from the
+    // host's full-page back swipe.
+    val keepsBackSwipe = remember { mutableStateOf(false) }
     BasicTextField(
-        modifier = updatedModifier,
+        modifier = updatedModifier
+            .raftKeepsBackSwipe(keepsBackSwipe.value)
+            .onFocusChanged { keepsBackSwipe.value = it.isFocused },
         value = value,
         onValueChange = currentOnValueChange,
         textStyle = resolvedTextStyle,
@@ -2013,36 +2024,62 @@ internal fun TextField(
             }
         }
     }
+    // Touch double-tap word / triple-tap paragraph selection; see raftTextFieldMultiTapSelection.
+    val (multiTapSelectionModifier, multiTapSelection) =
+        rememberRaftTextFieldMultiTapSelection(
+            enabled =
+                enabled &&
+                    !readOnly &&
+                    visualTransformation == VisualTransformation.None &&
+                    raftPlatformTextFieldNeedsMultiTapBackport(),
+            composedValue = value,
+            currentValue = { liveValueForReader.value },
+            onValueChange = onValueChangeRecordingLive,
+        )
     val resolvedTextStyle = raftTextFieldResolvedTextStyle(textStyle)
-    BasicTextField(
-        modifier = updatedModifier,
-        value = value,
-        onValueChange = onValueChangeRecordingLive,
-        textStyle = resolvedTextStyle,
-        singleLine = raftTextFieldSingleLine(maxLines),
-        maxLines = maxLines,
-        onTextLayout = currentOnTextLayout,
-        keyboardOptions = resolvedKeyboardOptions,
-        keyboardActions = keyboardActions,
-        cursorBrush = cursorBrush,
-        enabled = enabled,
-        readOnly = readOnly,
-        visualTransformation = visualTransformation,
-        decorationBox = { innerTextField ->
-            Box(contentAlignment = contentAlignment) {
-                if (value.text.isEmpty() && placeholder.isNotEmpty()) {
-                    Text(
-                        text = placeholder,
-                        style = resolvedTextStyle.copy(color = placeholderColor ?: resolvedTextStyle.color),
-                        color = placeholderColor ?: resolvedTextStyle.color,
-                        maxLines = maxLines,
-                        overflow = TextOverflow.Ellipsis
-                    )
+    // Focused: cursor and selection drags (and single-line scrolling) keep the drag from the
+    // host's full-page back swipe.
+    val keepsBackSwipe = remember { mutableStateOf(false) }
+    // The field gets the backport's toolbar so its own hide() calls do not close a multi-tap menu.
+    val fieldToolbar = if (raftPlatformTextFieldNeedsMultiTapBackport()) multiTapSelection.fieldToolbar else LocalTextToolbar.current
+    CompositionLocalProvider(LocalTextToolbar provides fieldToolbar) {
+        BasicTextField(
+            // Outside the field's own pointer modifiers, so its Main pass runs after the field's tap
+            // handler has placed the cursor.
+            modifier = multiTapSelectionModifier.then(updatedModifier)
+                .raftKeepsBackSwipe(keepsBackSwipe.value)
+                .onFocusChanged { keepsBackSwipe.value = it.isFocused },
+            value = value,
+            onValueChange = onValueChangeRecordingLive,
+            textStyle = resolvedTextStyle,
+            singleLine = raftTextFieldSingleLine(maxLines),
+            maxLines = maxLines,
+            onTextLayout = { layout ->
+                multiTapSelection.textLayout = layout
+                currentOnTextLayout(layout)
+            },
+            keyboardOptions = resolvedKeyboardOptions,
+            keyboardActions = keyboardActions,
+            cursorBrush = cursorBrush,
+            enabled = enabled,
+            readOnly = readOnly,
+            visualTransformation = visualTransformation,
+            decorationBox = { innerTextField ->
+                Box(contentAlignment = contentAlignment) {
+                    if (value.text.isEmpty() && placeholder.isNotEmpty()) {
+                        Text(
+                            text = placeholder,
+                            style = resolvedTextStyle.copy(color = placeholderColor ?: resolvedTextStyle.color),
+                            color = placeholderColor ?: resolvedTextStyle.color,
+                            maxLines = maxLines,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    innerTextField()
                 }
-                innerTextField()
             }
-        }
-    )
+        )
+    }
 
     LaunchedEffect(autoFocus) {
         if (autoFocus) {

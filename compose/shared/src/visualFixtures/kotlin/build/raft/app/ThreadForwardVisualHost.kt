@@ -88,7 +88,6 @@ internal fun ThreadForwardModalVisualScreen() {
         messageCount = 2,
         skippedCount = 0,
         nestedForwardCount = 0,
-        taskLinkedCount = 0,
         state =
             RaftForwardTargetPickerUiState(
                 sessionKey = RaftForwardPickerSessionKey("visual", "server-visual", 1),

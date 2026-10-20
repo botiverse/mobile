@@ -36,7 +36,7 @@ class ThreadTerminologyResourceTest {
             "settings_mobile_single_tap_thread_detail",
             "settings_mobile_single_tap_thread_enabled",
             "thread_action_follow_thread",
-            "thread_action_open_thread",
+            "thread_action_reply_in_thread",
             "thread_action_unfollow_thread",
             "thread_comments_blocked_unlinked",
             "thread_composer_members_this_thread",
@@ -71,7 +71,7 @@ class ThreadTerminologyResourceTest {
         val zh = readStrings("zh-rCN")
         val expected =
             mapOf(
-                "thread_action_open_thread" to "打开消息列",
+                "thread_action_reply_in_thread" to "在消息列中回复",
                 "thread_action_follow_thread" to "关注消息列",
                 "thread_action_unfollow_thread" to "取消关注消息列",
                 "thread_reply_title" to "消息列",
@@ -91,7 +91,7 @@ class ThreadTerminologyResourceTest {
     @Test
     fun baseEnglishThreadValuesAreUnchanged() {
         val base = readStrings("base")
-        assertEquals("Open Thread", base["thread_action_open_thread"])
+        assertEquals("Reply in Thread", base["thread_action_reply_in_thread"])
         assertEquals("Thread", base["thread_reply_title"])
         assertEquals("Unfollowed thread", base["thread_feedback_unfollowed"])
         assertEquals("Followed threads", base["home_nav_followed_threads"])
@@ -123,7 +123,7 @@ class ThreadTerminologyResourceTest {
         val zh = readStrings("zh-rCN")
 
         // Mutation: inject a stray %1$s into one zh value that base does not carry.
-        val victim = "thread_action_open_thread" // base "Open Thread" has no placeholder
+        val victim = "thread_action_reply_in_thread" // base "Reply in Thread" has no placeholder
         assertEquals(emptyList(), threadPlaceholderMismatches(base, zh, listOf(victim)))
         val mutatedZh = zh.toMutableMap().also { it[victim] = it.getValue(victim) + " %1\$s" }
         assertEquals(

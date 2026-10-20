@@ -1,5 +1,6 @@
 package build.raft.app.markdown
 
+import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
@@ -253,6 +254,8 @@ private fun RaftMermaidFullscreen(
                         .weight(1f)
                         .padding(bottom = bottomSafeArea)
                         .clipToBounds()
+                        // Panning the diagram keeps every drag from the host back swipe.
+                        .raftKeepsBackSwipe()
                         .pointerInput(Unit) {
                             detectDragGestures { change, dragAmount ->
                                 change.consume()

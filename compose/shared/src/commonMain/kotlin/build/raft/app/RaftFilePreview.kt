@@ -1,6 +1,7 @@
 package build.raft.app
 
-import build.raft.designsystem.gesture.rememberRaftBackSwipeRegion
+import build.raft.designsystem.gesture.raftKeepsBackSwipe
+import build.raft.designsystem.gesture.raftBackSwipeRegion
 import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.base.Utils
 import build.raft.app.base.reduceAttachmentDownloadProgress
@@ -4596,6 +4597,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                             }
                         }
                     }
+                    .raftKeepsBackSwipe(tool != RaftComposerImageEditorTool.Text)
                     .pointerInput(payload.imageUrl, tool, pencilMode, selectedPenColor) {
                         if (tool == RaftComposerImageEditorTool.Text) return@pointerInput
                         var lastMosaicPoint = Offset.Zero
@@ -4846,6 +4848,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                                     )
                                 }
                             }
+                            .raftKeepsBackSwipe(tool == RaftComposerImageEditorTool.Text)
                             .pointerInput(payload.imageUrl, annotation.id, tool) {
                                 if (tool != RaftComposerImageEditorTool.Text) return@pointerInput
                                 detectDragGestures(
@@ -8010,7 +8013,7 @@ private fun RaftFilePreviewImageGallerySurface(
             Modifier
         }
     // Past the first image a back-direction drag pages the gallery, not the host's back swipe.
-    val galleryBackSwipe = rememberRaftBackSwipeRegion {
+    val galleryBackSwipe = Modifier.raftBackSwipeRegion {
         progressLabel != null && onImageGalleryIndexChange != null && payload.imageGalleryIndex > 0
     }
     Box(modifier = modifier.clipToBounds().then(galleryBackSwipe).then(galleryModifier)) {

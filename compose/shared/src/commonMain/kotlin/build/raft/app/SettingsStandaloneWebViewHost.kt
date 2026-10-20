@@ -307,6 +307,7 @@ internal fun SettingsWebViewPageScaffold(
     RaftBackHandler(
         enabled = true,
         label = "settings_webview_${surface.diagnosticsName}",
+        blocksBackSwipe = false,
         onBack = ::goBackOrClose,
     )
 

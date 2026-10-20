@@ -173,7 +173,7 @@ private fun ExternalShareStatusSurface(
     onClose: (() -> Unit)?,
     retry: (() -> Unit)? = null
 ) {
-    RaftBackHandler(enabled = true, label = "external_share_status") {
+    RaftBackHandler(enabled = true, label = "external_share_status", blocksBackSwipe = false) {
         onClose?.invoke()
     }
     ExternalShareFullScreen {

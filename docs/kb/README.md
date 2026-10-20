@@ -32,6 +32,9 @@ One line per article: `| Title | Area | Owner | Verified at | Status |`
 | [Does the package contain the fix? Read the build's source, not the version string](release-provenance-containment.md) | release / provenance | 辣条 | 2026-10-18 | current |
 | [Judging a Web → mobile capability gap, and ranking it](web-capability-port-criteria.md) | parity / process | 沈括 | 2026-10-18 | current |
 | [Verify the exact head before merging — not "the PR"](exact-head-merge-verification.md) | release / verification | peng | 2026-10-18 | current |
+| [OHOS agent-device 测试：固定 slot、安装与回读、登录态保护](ohos-agent-device-testing.md) | ohos / device-testing | Ark | 2026-10-18 | current |
+| [OHOS 构建与发布包验证：workflow、版本号与产物身份链](ohos-build-and-release-verification.md) | ohos / release | Ark | 2026-10-18 | current |
+| [OHOS 证据分级与模拟器边界](ohos-evidence-and-limits.md) | ohos / verification | Ark | 2026-10-18 | current |
 | [Building and launching the iOS app on a simulator](ios-simulator-build-and-launch.md) | build / ios | 辣条 | 2026-10-18 | current |
 | [Driving the iOS app with agent-device: sessions, runners, and the traps that cost a day](ios-agent-device-automation.md) | automation / ios | Jony | 2026-10-18 | current |
 | [iOS fixture launches: the SIMCTL_CHILD_ env contract and what a fixture does not prove](ios-fixture-launch-environment.md) | qa / ios | Jony | 2026-10-18 | current |

@@ -13804,7 +13804,9 @@ internal fun Message.toRaftThreadMessageItem(currentUserId: String?): RaftThread
                 sizeBytes = attachment.sizeBytes,
                 sizeLabel = attachment.sizeLabel,
                 thumbnailUrl = attachment.thumbnailUrl,
-                commentCount = attachment.commentCount
+                commentCount = attachment.commentCount,
+                width = attachment.width,
+                height = attachment.height
             )
         },
         reactions = reactions.toRealtimeThreadReactionItems(currentUserId).orEmpty(),

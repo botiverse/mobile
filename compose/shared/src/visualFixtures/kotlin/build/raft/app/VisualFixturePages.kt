@@ -337,6 +337,38 @@ internal class ComposeAndroidFloatingTabBarVisualPage : BasePager() {
     }
 }
 
+/**
+ * The approved activity-tab mockup A bottom bar: 首页 · 动态 · 任务 · 成员 · 设置, rendered by the
+ * shared Compose bar at 390dp. Top: 动态 selected with its count on the pill corner; bottom: 任务
+ * selected with the count on the unselected 动态 tab.
+ */
+@Page("compose_bottom_tabbar_mockup_visual", supportInLocal = true)
+internal class ComposeBottomTabBarMockupVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent {
+            Column(
+                modifier = Modifier.background(RaftColor.Canvas).padding(vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                listOf("activity" to 51, "tasks" to 16).forEach { (selectedKey, count) ->
+                    RaftBottomTabBar(
+                        items = listOf(
+                            RaftBottomTabItemPayload("home", "首页", RaftLucideIconName.House, selected = selectedKey == "home"),
+                            RaftBottomTabItemPayload("activity", "动态", RaftLucideIconName.Activity, selected = selectedKey == "activity", badgeCount = count),
+                            RaftBottomTabItemPayload("tasks", "任务", RaftLucideIconName.SquareCheckBig, selected = selectedKey == "tasks"),
+                            RaftBottomTabItemPayload("members", "成员", RaftLucideIconName.Users, selected = selectedKey == "members"),
+                            RaftBottomTabItemPayload("settings", "设置", RaftLucideIconName.Settings, selected = selectedKey == "settings")
+                        ),
+                        onSelect = {},
+                        modifier = Modifier.width(390.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Page("compose_lucide_catalog_atlas_visual", supportInLocal = true)
 internal class ComposeLucideCatalogAtlasVisualPage : BasePager() {
     override fun willInit() {
@@ -623,6 +655,24 @@ internal class ComposeHomeActivityAvatarOffVisualPage : BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { HomeActivityAvatarVisualContent(activitySenderAvatarsEnabled = false) }
+    }
+}
+
+// activity_conversation_list_v0: Activity as the web ThreadsInbox list layout (flag on), with and
+// without sidebar pins (the Pinned / All conversations sections only appear with pins).
+@Page("compose_home_activity_conversation_list_visual", supportInLocal = true)
+internal class ComposeHomeActivityConversationListVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeActivityConversationListVisualContent(withPins = true) }
+    }
+}
+
+@Page("compose_home_activity_conversation_list_unpinned_visual", supportInLocal = true)
+internal class ComposeHomeActivityConversationListUnpinnedVisualPage : BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeActivityConversationListVisualContent(withPins = false) }
     }
 }
 

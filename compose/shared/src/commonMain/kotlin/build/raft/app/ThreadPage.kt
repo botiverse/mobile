@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.designsystem.gesture.rememberRaftBackSwipeRegion
+import build.raft.designsystem.gesture.raftBackSwipeRegion
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY
 import build.raft.app.data.RAFT_SHELL_OVERLAY_REQUEST_EVENT
@@ -183,6 +183,7 @@ import build.raft.app.data.isAuthSessionBlocker
 import build.raft.app.data.isAuthSessionErrorCode
 import build.raft.app.data.isEdgeBlockedMarker
 import build.raft.app.data.actionCardFromMessageMetadata
+import build.raft.app.data.messageMetadataHasActionCard
 import build.raft.app.data.authLossTokenFingerprint
 import build.raft.app.data.canonicalServerMembersMentionHandle
 import build.raft.app.data.convertMessageToCanonicalTask
@@ -205,6 +206,7 @@ import build.raft.app.model.Presence
 import build.raft.app.model.preferredAvatarWireValue
 import build.raft.app.model.providerLabel
 import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
+import build.raft.app.markdown.RaftMarkdownOwnTaskStatusScope
 import build.raft.app.markdown.LocalRaftMessagePermalinkLabelResolver
 import build.raft.app.markdown.RaftDirectMessagePeerKindSeparator
 import build.raft.app.markdown.formatRaftDirectMessagePeerRef
@@ -333,6 +335,10 @@ import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import build.raft.designsystem.components.RaftMessageImageDimensions
+import build.raft.designsystem.components.RaftMessageImageFit
+import build.raft.designsystem.components.RaftMessageImageGallery
+import build.raft.designsystem.theme.LocalRaftColors
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -502,7 +508,12 @@ internal enum class ThreadNewMessageMenuTool {
     Forward,
     Save,
     Translate,
-    Select
+    Select,
+    AddReaction,
+    CopyLink,
+    FollowThread,
+    TaskStatus,
+    ConvertToTask
 }
 
 internal val ThreadNewMessageMenuToolOrder =
@@ -515,13 +526,31 @@ internal val ThreadNewMessageMenuToolOrder =
         ThreadNewMessageMenuTool.Select
     )
 
+/**
+ * The Compact menu's second row: the remaining Classic actions, each shown only when it applies
+ * (the primary row keeps its six slots and greys unavailable ones out instead).
+ */
+internal val ThreadNewMessageMenuSecondaryToolOrder =
+    listOf(
+        ThreadNewMessageMenuTool.AddReaction,
+        ThreadNewMessageMenuTool.CopyLink,
+        ThreadNewMessageMenuTool.FollowThread,
+        ThreadNewMessageMenuTool.TaskStatus,
+        ThreadNewMessageMenuTool.ConvertToTask
+    )
+
 internal data class ThreadNewMessageMenuToolCallbacks(
     val onCopy: () -> Unit,
     val onReply: () -> Unit,
     val onForward: () -> Unit,
     val onSave: () -> Unit,
     val onTranslate: () -> Unit,
-    val onSelect: () -> Unit
+    val onSelect: () -> Unit,
+    val onAddReaction: () -> Unit = {},
+    val onCopyLink: () -> Unit = {},
+    val onFollowThread: () -> Unit = {},
+    val onTaskStatus: () -> Unit = {},
+    val onConvertToTask: () -> Unit = {}
 )
 
 internal fun ThreadNewMessageMenuTool.dispatch(callbacks: ThreadNewMessageMenuToolCallbacks) {
@@ -532,6 +561,11 @@ internal fun ThreadNewMessageMenuTool.dispatch(callbacks: ThreadNewMessageMenuTo
         ThreadNewMessageMenuTool.Save -> callbacks.onSave()
         ThreadNewMessageMenuTool.Translate -> callbacks.onTranslate()
         ThreadNewMessageMenuTool.Select -> callbacks.onSelect()
+        ThreadNewMessageMenuTool.AddReaction -> callbacks.onAddReaction()
+        ThreadNewMessageMenuTool.CopyLink -> callbacks.onCopyLink()
+        ThreadNewMessageMenuTool.FollowThread -> callbacks.onFollowThread()
+        ThreadNewMessageMenuTool.TaskStatus -> callbacks.onTaskStatus()
+        ThreadNewMessageMenuTool.ConvertToTask -> callbacks.onConvertToTask()
     }
 }
 
@@ -543,7 +577,18 @@ internal data class ThreadNewMessageMenuActionAvailability(
     val save: Boolean = true,
     val translate: Boolean = true,
     val select: Boolean = true,
-    val more: Boolean = true
+    val more: Boolean = true,
+    /** Save toggles to "Remove from Saved" like the Classic menu and web. */
+    val saved: Boolean = false,
+    /** Translation in flight: the slot reads "Translating…" and is disabled (web parity). */
+    val translatePending: Boolean = false,
+    val addReaction: Boolean = false,
+    val copyLink: Boolean = false,
+    val followThread: Boolean = false,
+    val threadFollowed: Boolean = false,
+    val taskStatus: Boolean = false,
+    val taskDone: Boolean = false,
+    val convertToTask: Boolean = false
 ) {
     fun enabled(tool: ThreadNewMessageMenuTool): Boolean =
         when (tool) {
@@ -551,10 +596,42 @@ internal data class ThreadNewMessageMenuActionAvailability(
             ThreadNewMessageMenuTool.Reply -> reply
             ThreadNewMessageMenuTool.Forward -> forward
             ThreadNewMessageMenuTool.Save -> save
-            ThreadNewMessageMenuTool.Translate -> translate
+            ThreadNewMessageMenuTool.Translate -> translate && !translatePending
             ThreadNewMessageMenuTool.Select -> select
+            ThreadNewMessageMenuTool.AddReaction -> addReaction
+            ThreadNewMessageMenuTool.CopyLink -> copyLink
+            ThreadNewMessageMenuTool.FollowThread -> followThread
+            ThreadNewMessageMenuTool.TaskStatus -> taskStatus
+            ThreadNewMessageMenuTool.ConvertToTask -> convertToTask
         }
+
+    fun secondaryTools(): List<ThreadNewMessageMenuTool> =
+        ThreadNewMessageMenuSecondaryToolOrder.filter(::enabled)
 }
+
+internal fun ThreadMessageMenuCapabilities.toThreadNewMessageMenuActionAvailability(
+    message: RaftThreadMessageItem,
+    replyMetadata: ThreadReplyMetadata
+): ThreadNewMessageMenuActionAvailability =
+    ThreadNewMessageMenuActionAvailability(
+        reactions = quickReactions,
+        copy = true,
+        reply = reply,
+        forward = forward,
+        save = save,
+        translate = translate != ThreadMessageMenuTranslateState.Hidden,
+        select = selectMessage,
+        more = true,
+        saved = message.isSaved,
+        translatePending = translate == ThreadMessageMenuTranslateState.Pending,
+        addReaction = addReaction,
+        copyLink = copyLink,
+        followThread = follow,
+        threadFollowed = replyMetadata.isThreadFollowed,
+        taskStatus = taskStatus,
+        taskDone = message.isThreadTaskDone(),
+        convertToTask = convertToTask
+    )
 
 internal fun threadMessageMetadataSlotLayout(
     showAvatar: Boolean,
@@ -1426,6 +1503,31 @@ internal fun ThreadTimelineSlice.withThreadWriteActionsEnabled(enabled: Boolean)
             canConvertMessagesToTasks = false
         )
     }
+
+/**
+ * Web parity for the per-message menu: Forward needs a non-guest viewer and a source channel
+ * (ChatPanel/ThreadPanel `showForwardAction = !isGuest && canForwardFromSource(channel)`), and
+ * guests cannot enter Select Message (MessageItem hides it for `currentUserServerRole === "guest"`).
+ */
+internal fun ThreadTimelineSlice.withThreadViewerMessageActions(
+    viewerIsGuest: Boolean,
+    forwardSourceAvailable: Boolean
+): ThreadTimelineSlice {
+    val forward = !viewerIsGuest && forwardSourceAvailable
+    // Keep the instance stable when nothing changes so slice-keyed remembers do not churn.
+    if (this.viewerIsGuest == viewerIsGuest && showForwardAction == forward) return this
+    return copy(viewerIsGuest = viewerIsGuest, showForwardAction = forward)
+}
+
+internal fun StoredAuthSession?.threadViewerIsGuest(serverId: String?): Boolean {
+    val session = this ?: return false
+    val resolvedServerId = serverId?.takeIf { it.isNotBlank() } ?: session.currentServerId
+    return session.servers
+        .firstOrNull { it.id == resolvedServerId }
+        ?.role
+        ?.trim()
+        ?.equals("guest", ignoreCase = true) == true
+}
 
 internal fun handleThreadStoreRetryEvent(
     action: String,
@@ -2912,7 +3014,10 @@ internal data class RaftThreadAttachmentItem(
     val sizeLabel: String = "",
     val sizeBytes: Long = 0L,
     val thumbnailUrl: String? = null,
-    val commentCount: Int = 0
+    val commentCount: Int = 0,
+    /** Intrinsic pixel size when the server knows it: reserves the inline image's box before it loads. */
+    val width: Int? = null,
+    val height: Int? = null
 )
 
 private data class ThreadImagePreviewUrl(
@@ -7679,11 +7784,11 @@ private fun SharedThreadRouteContentContent(
         }
     }
     val markdownTaskStatuses =
-        remember(taskProjectionSlice.tasks, serverTaskProjectionSlice.tasks, timelineSlice.messages, timelineSlice.originMessage) {
+        remember(taskProjectionSlice, serverTaskProjectionSlice) {
             threadMarkdownTaskStatusesByNumber(
                 channelTasks = taskProjectionSlice.tasks,
                 serverTasks = serverTaskProjectionSlice.tasks,
-                messages = listOfNotNull(timelineSlice.originMessage) + timelineSlice.messages
+                loaded = threadMarkdownTaskSourceLoaded(taskProjectionSlice, serverTaskProjectionSlice)
             )
         }
     val linkedTasksProjection =
@@ -7706,7 +7811,15 @@ private fun SharedThreadRouteContentContent(
             baseRenderedPayload.withThreadMembersProjection(threadMembersProjection)
         }
     val renderedThread = renderedPayload.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled && jointBillingNotice != JointBillingNotice.Locked)
-    val renderedTimelineSlice = timelineSlice.withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled && jointBillingNotice != JointBillingNotice.Locked)
+    val threadViewerIsGuest = currentSession.threadViewerIsGuest(headerProjectionServerId?.value)
+    val threadForwardSourceAvailable = renderedPayload.threadForwardSourceChannelId() != null
+    val renderedTimelineSlice =
+        timelineSlice
+            .withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled && jointBillingNotice != JointBillingNotice.Locked)
+            .withThreadViewerMessageActions(
+                viewerIsGuest = threadViewerIsGuest,
+                forwardSourceAvailable = threadForwardSourceAvailable
+            )
     val emptyMemberSuggestionSliceFlow = remember { MutableStateFlow(SharedMembersMemberSuggestionSlice()) }
     val memberSuggestionsFlow =
         remember(
@@ -13431,7 +13544,7 @@ private fun ThreadImagePreviewOverlay(
             Column(modifier = Modifier.fillMaxSize()) {
                 val previewBottomPadding = if (hasMultiple) 0.dp else bottomSafeArea
                 // Past the first image a back-direction drag pages the preview, not the host's back swipe.
-                val galleryBackSwipe = rememberRaftBackSwipeRegion {
+                val galleryBackSwipe = Modifier.raftBackSwipeRegion {
                     hasMultiple && currentPreviewState.currentIndex > 0
                 }
                 Box(
@@ -15701,7 +15814,6 @@ private fun ThreadPageContentContent(
                     messageCount = forwardMessageSelection.forwardableMessages.size,
                     skippedCount = forwardMessageSelection.skippedCount,
                     nestedForwardCount = forwardMessageSelection.nestedForwardCount,
-                    taskLinkedCount = forwardMessageSelection.taskLinkedCount,
                     // Keep the search field composed while results load: swapping it
                     // for the read-only placeholder destroys the focused field and
                     // closes the IME on every keystroke (verify feedback #255).
@@ -18815,6 +18927,8 @@ private fun ThreadMessagesListContent(
         }
     }
     var taskStatusMenuMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    // Add Reaction: the message whose full emoji picker is open (web hover-toolbar picker).
+    var reactionPickerMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var taskStatusMenuAnchor by remember(threadInstanceKey) { mutableStateOf<RaftPopoverAnchor?>(null) }
 
     // Long-message collapse: expanded ids, one-way collapsible latch and threshold live for the
@@ -21808,14 +21922,48 @@ private fun ThreadMessagesListContent(
                 actionMenuAnchor?.takeIf { it.belongsTo(threadMessageMenuOwnerIdentity(messageId)) }
                     ?: return@let
             renderPayload.threadActionMessage(messageId, linkedTasksProjection)?.let { message ->
-                val isFailedLocalSend = message.isFailedLocalSend()
-                val isSendingLocalSend = message.isSendingLocalSend()
                 val replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message)
-                val translateAvailable =
-                    translationStore != null && message.isTranslationEligible(translationState.settings)
+                val capabilities =
+                    threadMessageMenuCapabilities(
+                        message = message,
+                        replyMetadata = replyMetadata,
+                        slice = renderPayload,
+                        writeActionsEnabled = writeActionsEnabled,
+                        translate =
+                            threadMessageMenuTranslateState(
+                                message = message,
+                                translationState = translationState,
+                                translationAvailable = translationStore != null
+                            ),
+                        taskConvertPending = message.id in pendingTaskConvertMessageIds
+                    )
                 val closeActionMenu: () -> Unit = {
                     actionMessageId = null
                     classicMenuOverrideMessageId = null
+                }
+                val onAddReaction: () -> Unit = {
+                    closeActionMenu()
+                    reactionPickerMessageId = message.id
+                }
+                val onTranslate: () -> Unit = {
+                    closeActionMenu()
+                    translationStore?.translateNow(message.toTranslationCandidate())
+                }
+                val onFollowThread: () -> Unit = {
+                    closeActionMenu()
+                    onThreadEvent(FOLLOW_THREAD_ACTION, message.id, null, null)
+                }
+                val onUnfollowThread: (String) -> Unit = { threadChannelId ->
+                    closeActionMenu()
+                    onThreadEvent(UNFOLLOW_THREAD_ACTION, message.id, threadChannelId, null)
+                }
+                val onTaskStatusChange: (String) -> Unit = { action ->
+                    closeActionMenu()
+                    onThreadEvent(action, message.taskId, null, null)
+                }
+                val onConvertToTask: () -> Unit = {
+                    closeActionMenu()
+                    onThreadEvent("convertMessageToTask", message.id, null, null)
                 }
                 val variant =
                     if (classicMenuOverrideMessageId == message.id) {
@@ -21827,19 +21975,10 @@ private fun ThreadMessagesListContent(
                         )
                     }
                 if (variant == ThreadMessageMenuVariant.Compact) {
+                    val followThreadChannelId = replyMetadata.threadChannelId?.takeIf { it.isNotBlank() }
                     ThreadNewMessageMenu(
                         anchor = resolvedActionAnchor,
-                        availability =
-                            ThreadNewMessageMenuActionAvailability(
-                                reactions = writeActionsEnabled && renderPayload.showReactionActions,
-                                copy = true,
-                                reply = renderPayload.showReplyActions,
-                                forward = writeActionsEnabled,
-                                save = renderPayload.showMessageSaveAction,
-                                translate = translateAvailable,
-                                select = true,
-                                more = true
-                            ),
+                        availability = capabilities.toThreadNewMessageMenuActionAvailability(message, replyMetadata),
                         onDismiss = closeActionMenu,
                         onReact = { emoji ->
                             closeActionMenu()
@@ -21861,10 +22000,7 @@ private fun ThreadMessagesListContent(
                             closeActionMenu()
                             onThreadEvent("toggleMessageSaved", message.id, null, null)
                         },
-                        onTranslate = {
-                            closeActionMenu()
-                            translationStore?.translateNow(message.toTranslationCandidate())
-                        },
+                        onTranslate = onTranslate,
                         onSelect = {
                             closeActionMenu()
                             onEnterShareSelection(message.id)
@@ -21872,26 +22008,43 @@ private fun ThreadMessagesListContent(
                         onMore = {
                             classicMenuOverrideMessageId = message.id
                             diagnosticsLogger("thread_message_menu_compact_more messageId=${message.id}")
-                        }
+                        },
+                        onAddReaction = onAddReaction,
+                        onCopyLink = {
+                            closeActionMenu()
+                            onThreadEvent("copyMessageLink", message.id, null, null)
+                        },
+                        onFollowThread = {
+                            if (replyMetadata.isThreadFollowed && followThreadChannelId != null) {
+                                onUnfollowThread(followThreadChannelId)
+                            } else {
+                                onFollowThread()
+                            }
+                        },
+                        onTaskStatus = {
+                            onTaskStatusChange(if (message.isThreadTaskDone()) "reopenTask" else "markTaskDone")
+                        },
+                        onConvertToTask = onConvertToTask
                     )
                 } else {
                     ThreadMessageActionMenu(
                         message = message,
                         replyMetadata = replyMetadata,
                         anchor = resolvedActionAnchor,
-                        showReplyAction = renderPayload.showReplyActions && !message.hasLocalSendState(),
-                        showSaveAction = renderPayload.showMessageSaveAction && !message.hasLocalSendState(),
-                        showFollowAction = writeActionsEnabled && !message.hasLocalSendState(),
-                        showTaskStatusAction = renderPayload.showTaskStatusActions && !message.hasLocalSendState(),
-                        showConvertToTaskAction =
-                            renderPayload.canConvertMessagesToTasks && !message.hasLocalSendState() &&
-                                message.id !in pendingTaskConvertMessageIds,
-                        showReactionActions = renderPayload.showReactionActions && !message.hasLocalSendState(),
-                        showCopyLinkAction = !message.hasLocalSendState(),
-                        showShareMessagesAction = !message.hasLocalSendState(),
-                        showCancelAction = writeActionsEnabled && isSendingLocalSend,
-                        showDeleteAction = writeActionsEnabled && isFailedLocalSend,
-                        showTranslateAction = translateAvailable,
+                        showReplyAction = capabilities.reply,
+                        showSaveAction = capabilities.save,
+                        showFollowAction = capabilities.follow,
+                        showTaskStatusAction = capabilities.taskStatus,
+                        showConvertToTaskAction = capabilities.convertToTask,
+                        showReactionActions = capabilities.quickReactions,
+                        showCopyLinkAction = capabilities.copyLink,
+                        showShareMessagesAction = capabilities.selectMessage,
+                        showCancelAction = capabilities.cancelLocalSend,
+                        showDeleteAction = capabilities.deleteLocalSend,
+                        showTranslateAction = capabilities.translate != ThreadMessageMenuTranslateState.Hidden,
+                        translatePending = capabilities.translate == ThreadMessageMenuTranslateState.Pending,
+                        showForwardAction = capabilities.forward,
+                        showAddReactionAction = capabilities.addReaction,
                         onDismiss = closeActionMenu,
                         onCopyLink = {
                             closeActionMenu()
@@ -21917,26 +22070,14 @@ private fun ThreadMessagesListContent(
                             closeActionMenu()
                             onThreadEvent("toggleMessageSaved", message.id, null, null)
                         },
-                        onFollowThread = {
-                            closeActionMenu()
-                            onThreadEvent("followMessageThread", message.id, null, null)
-                        },
-                        onUnfollowThread = { threadChannelId ->
-                            closeActionMenu()
-                            onThreadEvent("unfollowMessageThread", message.id, threadChannelId, null)
-                        },
+                        onFollowThread = onFollowThread,
+                        onUnfollowThread = onUnfollowThread,
                         onReact = { emoji ->
                             closeActionMenu()
                             onThreadEvent("toggleReaction", message.id, null, emoji)
                         },
-                        onTaskStatusChange = { action ->
-                            closeActionMenu()
-                            onThreadEvent(action, message.taskId, null, null)
-                        },
-                        onConvertToTask = {
-                            closeActionMenu()
-                            onThreadEvent("convertMessageToTask", message.id, null, null)
-                        },
+                        onTaskStatusChange = onTaskStatusChange,
+                        onConvertToTask = onConvertToTask,
                         onCancel = {
                             closeActionMenu()
                             onThreadEvent("cancelLocalSend", message.id, null, null)
@@ -21945,14 +22086,26 @@ private fun ThreadMessagesListContent(
                             closeActionMenu()
                             onThreadEvent("deleteLocalFailedSend", message.id, null, null)
                         },
-                        onTranslate = {
+                        onTranslate = onTranslate,
+                        onForward = {
                             closeActionMenu()
-                            translationStore?.translateNow(message.toTranslationCandidate())
+                            onForwardMessage(message.id)
                         },
+                        onAddReaction = onAddReaction,
                         diagnosticsLogger = diagnosticsLogger
                     )
                 }
             }
+        }
+        reactionPickerMessageId?.let { messageId ->
+            RaftEmojiPickerDialog(
+                title = stringResource(MR.strings.thread_action_add_reaction),
+                onDismiss = { reactionPickerMessageId = null },
+                onSelect = { emoji ->
+                    reactionPickerMessageId = null
+                    onThreadEvent("toggleReaction", messageId, null, emoji)
+                }
+            )
         }
         taskStatusMenuMessageId?.let { messageId ->
             val resolvedTaskStatusAnchor =
@@ -22117,8 +22270,6 @@ private fun ThreadTimelineSlice.threadSelectedShareMessages(
 
 internal const val ThreadNestedForwardUnsupportedMessage =
     "Forwarded messages can't be forwarded. Select the original message instead."
-internal const val ThreadTaskLinkedForwardUnsupportedMessage =
-    "Task-linked messages can't be forwarded yet. Select an ordinary message instead."
 internal const val ThreadUnsupportedSourceMessage =
     "System messages and action messages can't be forwarded. Select an ordinary message instead."
 internal const val ThreadForwardSourceTargetForbiddenMessage =
@@ -22133,8 +22284,7 @@ internal const val ThreadForwardTargetChangedMessage =
 internal data class ThreadForwardMessageSelection(
     val forwardableMessages: List<RaftThreadMessageItem>,
     val skippedCount: Int,
-    val nestedForwardCount: Int,
-    val taskLinkedCount: Int
+    val nestedForwardCount: Int
 )
 
 internal fun List<RaftThreadMessageItem>.threadForwardMessageSelection(): ThreadForwardMessageSelection {
@@ -22142,23 +22292,24 @@ internal fun List<RaftThreadMessageItem>.threadForwardMessageSelection(): Thread
     return ThreadForwardMessageSelection(
         forwardableMessages = forwardableMessages,
         skippedCount = size - forwardableMessages.size,
-        nestedForwardCount = count { message -> message.forwardBundle != null },
-        taskLinkedCount = count { message -> message.isTaskLinkedChatMessage() }
+        nestedForwardCount = count { message -> message.forwardBundle != null }
     )
 }
 
-private fun RaftThreadMessageItem.isTaskLinkedChatMessage(): Boolean =
-    messageType.equals("Chat", ignoreCase = true) &&
-        (taskId != null || taskNumber != null || taskStatus != null)
-
-private fun RaftThreadMessageItem.isForwardableOrdinaryChatMessage(): Boolean =
+/**
+ * Web `getForwardableMessages` parity: system messages, action cards and forwarded bundles are
+ * not forwardable; everything else is, including task-linked messages (the server's
+ * `POST /messages/forward` only rejects non-chat rows, rows with action metadata and bundles).
+ * Local sends that have not reached the server have no server id to forward yet.
+ */
+internal fun RaftThreadMessageItem.isForwardableOrdinaryChatMessage(): Boolean =
     messageType.equals("Chat", ignoreCase = true) &&
         deliveryState == ThreadMessageDeliverySent &&
         forwardBundle == null &&
-        taskId == null &&
-        taskNumber == null &&
-        taskStatus == null &&
-        metadata["kind"] != "action-card"
+        !isThreadActionCardMessage()
+
+internal fun RaftThreadMessageItem.isThreadActionCardMessage(): Boolean =
+    messageMetadataHasActionCard(metadata) || metadata["kind"] == "action-card"
 
 internal fun String.threadForwardErrorMessage(): String =
     when (trim().lowercase()) {
@@ -22183,24 +22334,20 @@ internal fun String.threadForwardErrorMessage(): String =
 internal fun ThreadForwardMessageSelection.threadForwardSelectionFailureMessage(): String =
     when {
         nestedForwardCount == skippedCount -> ThreadNestedForwardUnsupportedMessage
-        taskLinkedCount == skippedCount -> ThreadTaskLinkedForwardUnsupportedMessage
         else -> ThreadUnsupportedSourceMessage
     }
 
 internal fun threadForwardSkippedWarning(
     skippedCount: Int,
-    nestedForwardCount: Int,
-    taskLinkedCount: Int = 0
+    nestedForwardCount: Int
 ): String? {
     if (skippedCount <= 0) return null
     val skippedLabel = if (skippedCount == 1) "1 selected message was" else "$skippedCount selected messages were"
     return when {
         nestedForwardCount == skippedCount ->
             "$skippedLabel skipped because forwarded messages can't be forwarded again."
-        taskLinkedCount == skippedCount ->
-            "$skippedLabel skipped because task-linked messages can't be forwarded yet."
         else ->
-            "$skippedLabel skipped. Forwarded bundles, task-linked messages, system messages, and action messages can't be forwarded."
+            "$skippedLabel skipped. Forwarded bundles, system messages, and action messages can't be forwarded."
     }
 }
 
@@ -24919,26 +25066,33 @@ private fun ThreadMessageCardContent(
                                                     )
                                                 }
                                                 key(markdownRenderSignature) {
-                                                    RaftMarkdownBody(
-                                                        body = bodyForRender,
-                                                        fillWidth = !alignOwnMessageRight,
-                                                        textStyle = messageBodyTextStyle,
-                                                        highlightedMentions = highlightedMentions,
-                                                        isTagValid = isMarkdownTagValid,
-                                                        resolveTagLabel = resolveMarkdownTagLabel,
-                                                        inlineContentScope = markdownRenderSignature.inlineContentScope,
-                                                        activeTagKey = activeMarkdownTagKey,
-                                                        onOpenTagAction = { tag, actionId ->
-                                                            tapMovementGate.rejectChildAction("markdown_tag")
-                                                            onOpenMarkdownTag(tag, actionId)
-                                                        },
-                                                        onOpenUrl = { url ->
-                                                            tapMovementGate.rejectChildAction("markdown_url")
-                                                            onOpenMarkdownUrl(url)
-                                                        },
-                                                        performanceKey = messagePerformanceKey,
-                                                        performanceLogger = diagnosticsLogger
-                                                    )
+                                                    // web MessageItem taskByNumber: the message's own
+                                                    // linked task wins, for this body only.
+                                                    RaftMarkdownOwnTaskStatusScope(
+                                                        taskNumber = message.taskNumber,
+                                                        taskStatus = message.taskStatus,
+                                                    ) {
+                                                        RaftMarkdownBody(
+                                                            body = bodyForRender,
+                                                            fillWidth = !alignOwnMessageRight,
+                                                            textStyle = messageBodyTextStyle,
+                                                            highlightedMentions = highlightedMentions,
+                                                            isTagValid = isMarkdownTagValid,
+                                                            resolveTagLabel = resolveMarkdownTagLabel,
+                                                            inlineContentScope = markdownRenderSignature.inlineContentScope,
+                                                            activeTagKey = activeMarkdownTagKey,
+                                                            onOpenTagAction = { tag, actionId ->
+                                                                tapMovementGate.rejectChildAction("markdown_tag")
+                                                                onOpenMarkdownTag(tag, actionId)
+                                                            },
+                                                            onOpenUrl = { url ->
+                                                                tapMovementGate.rejectChildAction("markdown_url")
+                                                                onOpenMarkdownUrl(url)
+                                                            },
+                                                            performanceKey = messagePerformanceKey,
+                                                            performanceLogger = diagnosticsLogger
+                                                        )
+                                                    }
                                                 }
                                             } else {
                                                 Text(
@@ -25118,9 +25272,15 @@ internal fun ThreadNewMessageMenu(
     onSave: () -> Unit,
     onTranslate: () -> Unit,
     onSelect: () -> Unit,
-    onMore: () -> Unit
+    onMore: () -> Unit,
+    onAddReaction: () -> Unit = {},
+    onCopyLink: () -> Unit = {},
+    onFollowThread: () -> Unit = {},
+    onTaskStatus: () -> Unit = {},
+    onConvertToTask: () -> Unit = {}
 ) {
     val density = LocalDensity.current
+    val secondaryRowCount = if (availability.secondaryTools().isEmpty()) 0 else 1
     val contentSize =
         with(density) {
             Size(
@@ -25129,7 +25289,7 @@ internal fun ThreadNewMessageMenu(
                     (
                         ThreadNewMessageMenuReactionRowHeight +
                             RaftAppStroke.Thin +
-                            ThreadNewMessageMenuToolRowHeight +
+                            ThreadNewMessageMenuToolRowHeight * (1 + secondaryRowCount) +
                             ThreadNewMessageMenuMoreOverlayHeight +
                             ThreadNewMessageMenuVerticalPadding * 2 +
                             RaftShadow.BrutalSmall
@@ -25157,7 +25317,12 @@ internal fun ThreadNewMessageMenu(
             onSave = onSave,
             onTranslate = onTranslate,
             onSelect = onSelect,
-            onMore = onMore
+            onMore = onMore,
+            onAddReaction = onAddReaction,
+            onCopyLink = onCopyLink,
+            onFollowThread = onFollowThread,
+            onTaskStatus = onTaskStatus,
+            onConvertToTask = onConvertToTask
         )
     }
 }
@@ -25173,8 +25338,28 @@ internal fun ThreadNewMessageMenuChrome(
     onTranslate: () -> Unit,
     onSelect: () -> Unit,
     onMore: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onAddReaction: () -> Unit = {},
+    onCopyLink: () -> Unit = {},
+    onFollowThread: () -> Unit = {},
+    onTaskStatus: () -> Unit = {},
+    onConvertToTask: () -> Unit = {}
 ) {
+    val callbacks =
+        ThreadNewMessageMenuToolCallbacks(
+            onCopy = onCopy,
+            onReply = onReply,
+            onForward = onForward,
+            onSave = onSave,
+            onTranslate = onTranslate,
+            onSelect = onSelect,
+            onAddReaction = onAddReaction,
+            onCopyLink = onCopyLink,
+            onFollowThread = onFollowThread,
+            onTaskStatus = onTaskStatus,
+            onConvertToTask = onConvertToTask
+        )
+    val secondaryTools = availability.secondaryTools()
     // raft-ui overlay: popover layer, seam ring and the float shadow (no offset box).
     Box(modifier = modifier) {
         Column(
@@ -25202,14 +25387,17 @@ internal fun ThreadNewMessageMenuChrome(
                         .background(RaftColor.BorderHairline)
             )
             ThreadNewMessageMenuToolRow(
-                onCopy = onCopy,
-                onReply = onReply,
-                onForward = onForward,
-                onSave = onSave,
-                onTranslate = onTranslate,
-                onSelect = onSelect,
+                tools = ThreadNewMessageMenuToolOrder,
+                callbacks = callbacks,
                 availability = availability
             )
+            if (secondaryTools.isNotEmpty()) {
+                ThreadNewMessageMenuToolRow(
+                    tools = secondaryTools,
+                    callbacks = callbacks,
+                    availability = availability
+                )
+            }
             ThreadNewMessageMenuMoreOverlay(
                 enabled = availability.more,
                 onClick = onMore
@@ -25219,60 +25407,82 @@ internal fun ThreadNewMessageMenuChrome(
 }
 
 @Composable
+private fun ThreadNewMessageMenuTool.compactLabel(availability: ThreadNewMessageMenuActionAvailability): String =
+    when (this) {
+        ThreadNewMessageMenuTool.Copy -> stringResource(MR.strings.thread_action_copy_markdown)
+        ThreadNewMessageMenuTool.Reply -> stringResource(MR.strings.thread_new_message_menu_reply)
+        ThreadNewMessageMenuTool.Forward -> stringResource(MR.strings.thread_action_forward)
+        ThreadNewMessageMenuTool.Save ->
+            if (availability.saved) {
+                stringResource(MR.strings.thread_action_remove_from_saved)
+            } else {
+                stringResource(MR.strings.thread_action_save_message)
+            }
+        ThreadNewMessageMenuTool.Translate ->
+            if (availability.translatePending) {
+                stringResource(MR.strings.translation_state_in_progress)
+            } else {
+                stringResource(MR.strings.thread_action_translate)
+            }
+        ThreadNewMessageMenuTool.Select -> stringResource(MR.strings.thread_action_select_message)
+        ThreadNewMessageMenuTool.AddReaction -> stringResource(MR.strings.thread_action_add_reaction)
+        ThreadNewMessageMenuTool.CopyLink -> stringResource(MR.strings.thread_action_copy_link)
+        ThreadNewMessageMenuTool.FollowThread ->
+            if (availability.threadFollowed) {
+                stringResource(MR.strings.thread_action_unfollow_thread)
+            } else {
+                stringResource(MR.strings.thread_action_follow_thread)
+            }
+        ThreadNewMessageMenuTool.TaskStatus ->
+            if (availability.taskDone) {
+                stringResource(MR.strings.thread_action_reopen_task)
+            } else {
+                stringResource(MR.strings.thread_action_mark_done)
+            }
+        ThreadNewMessageMenuTool.ConvertToTask -> stringResource(MR.strings.thread_action_convert_to_task)
+    }
+
+internal fun ThreadNewMessageMenuTool.compactIcon(
+    availability: ThreadNewMessageMenuActionAvailability
+): RaftLucideIconName =
+    when (this) {
+        ThreadNewMessageMenuTool.Copy -> RaftLucideIconName.Copy
+        ThreadNewMessageMenuTool.Reply -> RaftLucideIconName.MessageSquare
+        ThreadNewMessageMenuTool.Forward -> RaftLucideIconName.Redo2
+        ThreadNewMessageMenuTool.Save ->
+            if (availability.saved) RaftLucideIconName.BookmarkMinus else RaftLucideIconName.Bookmark
+        ThreadNewMessageMenuTool.Translate -> RaftLucideIconName.Languages
+        ThreadNewMessageMenuTool.Select -> RaftLucideIconName.CircleCheck
+        ThreadNewMessageMenuTool.AddReaction -> RaftLucideIconName.SmilePlus
+        ThreadNewMessageMenuTool.CopyLink -> RaftLucideIconName.Link
+        ThreadNewMessageMenuTool.FollowThread -> threadFollowMenuIcon(availability.threadFollowed)
+        ThreadNewMessageMenuTool.TaskStatus ->
+            if (availability.taskDone) RaftLucideIconName.RefreshCw else RaftLucideIconName.CircleCheckBig
+        ThreadNewMessageMenuTool.ConvertToTask -> RaftLucideIconName.ClipboardCheck
+    }
+
+@Composable
 private fun ThreadNewMessageMenuToolRow(
-    onCopy: () -> Unit,
-    onReply: () -> Unit,
-    onForward: () -> Unit,
-    onSave: () -> Unit,
-    onTranslate: () -> Unit,
-    onSelect: () -> Unit,
+    tools: List<ThreadNewMessageMenuTool>,
+    callbacks: ThreadNewMessageMenuToolCallbacks,
     availability: ThreadNewMessageMenuActionAvailability
 ) {
-    val callbacks =
-        ThreadNewMessageMenuToolCallbacks(
-            onCopy = onCopy,
-            onReply = onReply,
-            onForward = onForward,
-            onSave = onSave,
-            onTranslate = onTranslate,
-            onSelect = onSelect
-        )
     Row(
         modifier = Modifier.fillMaxWidth().height(ThreadNewMessageMenuToolRowHeight),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        ThreadNewMessageMenuToolOrder.forEach { tool ->
-            val label =
-                when (tool) {
-                    ThreadNewMessageMenuTool.Copy ->
-                        stringResource(MR.strings.thread_new_message_menu_copy)
-                    ThreadNewMessageMenuTool.Reply ->
-                        stringResource(MR.strings.thread_new_message_menu_reply)
-                    ThreadNewMessageMenuTool.Forward ->
-                        stringResource(MR.strings.thread_action_forward)
-                    ThreadNewMessageMenuTool.Save ->
-                        stringResource(MR.strings.thread_new_message_menu_save)
-                    ThreadNewMessageMenuTool.Translate ->
-                        stringResource(MR.strings.thread_action_translate)
-                    ThreadNewMessageMenuTool.Select ->
-                        stringResource(MR.strings.thread_new_message_menu_select)
-                }
-            val icon =
-                when (tool) {
-                    ThreadNewMessageMenuTool.Copy -> RaftLucideIconName.Copy
-                    ThreadNewMessageMenuTool.Reply -> RaftLucideIconName.MessageSquare
-                    ThreadNewMessageMenuTool.Forward -> RaftLucideIconName.Redo2
-                    ThreadNewMessageMenuTool.Save -> RaftLucideIconName.Bookmark
-                    ThreadNewMessageMenuTool.Translate -> RaftLucideIconName.Languages
-                    ThreadNewMessageMenuTool.Select -> RaftLucideIconName.CircleCheck
-                }
+        tools.forEach { tool ->
             ThreadNewMessageMenuToolButton(
-                label = label,
-                icon = icon,
+                label = tool.compactLabel(availability),
+                icon = tool.compactIcon(availability),
                 enabled = availability.enabled(tool),
                 onClick = { tool.dispatch(callbacks) },
                 modifier = Modifier.weight(1f)
             )
+        }
+        // A shorter second row keeps the primary row's slot width so its columns line up.
+        repeat((ThreadNewMessageMenuToolOrder.size - tools.size).coerceAtLeast(0)) {
+            Spacer(Modifier.weight(1f))
         }
     }
 }
@@ -25343,7 +25553,9 @@ private fun ThreadNewMessageMenuToolButton(
                     fontWeight = FontWeight.Normal
                 ),
             color = if (enabled) RaftColor.TextBlack else RaftColor.TextMutedGray,
-            maxLines = 1,
+            // Web labels ("Remove from Saved", "Unfollow Thread") wrap to a second line in the
+            // ~54dp slot; the 52dp row fits an 18dp icon plus two 12sp lines.
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth()
@@ -28268,6 +28480,85 @@ internal const val UNFOLLOW_THREAD_ACTION = "unfollowMessageThread"
 internal fun threadFollowMenuIcon(isFollowed: Boolean): RaftLucideIconName =
     if (isFollowed) RaftLucideIconName.MessageCircleOff else RaftLucideIconName.MessageCirclePlus
 
+/**
+ * What a message's long-press menu offers, shared by the Classic and Compact menus and aligned
+ * with web MessageItem's context menu (botiverse/slock 9be029411):
+ *  - quick reactions / Add Reaction: `!isSystem && canReact`
+ *  - Select Message: not system, not a guest
+ *  - Reply in Thread: `!hideThreadActions`
+ *  - Forward: `showForwardAction` (non-guest, source channel) and `getForwardableMessages`
+ *  - Follow/Unfollow: `canShowThreadFollowAction && hasThreadConversation`
+ *  - Mark as Done/Reopen and Convert to Task: never for external senders
+ * Mobile-only: Select Text, and Delete/Cancel for local sends.
+ */
+internal data class ThreadMessageMenuCapabilities(
+    val quickReactions: Boolean,
+    val addReaction: Boolean,
+    val copyLink: Boolean,
+    val selectMessage: Boolean,
+    val translate: ThreadMessageMenuTranslateState,
+    val reply: Boolean,
+    val forward: Boolean,
+    val save: Boolean,
+    val follow: Boolean,
+    val taskStatus: Boolean,
+    val convertToTask: Boolean,
+    val cancelLocalSend: Boolean,
+    val deleteLocalSend: Boolean
+)
+
+internal fun threadMessageMenuCapabilities(
+    message: RaftThreadMessageItem,
+    replyMetadata: ThreadReplyMetadata,
+    slice: ThreadTimelineSlice,
+    writeActionsEnabled: Boolean,
+    translate: ThreadMessageMenuTranslateState = ThreadMessageMenuTranslateState.Hidden,
+    taskConvertPending: Boolean = false
+): ThreadMessageMenuCapabilities {
+    val localSend = message.hasLocalSendState()
+    val system = message.isSystemMessage()
+    val external = message.externalAuthor != null
+    val canReact = writeActionsEnabled && slice.showReactionActions && !localSend && !system
+    // Web hides thread actions on rows inside the thread panel but still offers Follow on the
+    // panel's parent (`showThreadFollowAction`); mobile's origin message is that parent.
+    val threadFollowSurface =
+        slice.showReplyActions || slice.originMessage?.id == message.id
+    return ThreadMessageMenuCapabilities(
+        quickReactions = canReact,
+        addReaction = canReact,
+        copyLink = !localSend,
+        selectMessage = !localSend && !system && !slice.viewerIsGuest,
+        translate = if (localSend) ThreadMessageMenuTranslateState.Hidden else translate,
+        reply = slice.showReplyActions && !localSend,
+        forward =
+            writeActionsEnabled &&
+                slice.showForwardAction &&
+                !system &&
+                message.isForwardableOrdinaryChatMessage(),
+        save = slice.showMessageSaveAction && !localSend,
+        follow =
+            writeActionsEnabled &&
+                !localSend &&
+                threadFollowSurface &&
+                shouldShowThreadFollowAction(message, replyMetadata),
+        taskStatus =
+            slice.showTaskStatusActions &&
+                !localSend &&
+                !external &&
+                !message.taskId.isNullOrBlank(),
+        convertToTask =
+            slice.canConvertMessagesToTasks &&
+                !taskConvertPending &&
+                !external &&
+                message.canConvertToTask(),
+        cancelLocalSend = writeActionsEnabled && message.isSendingLocalSend(),
+        deleteLocalSend = writeActionsEnabled && message.isFailedLocalSend()
+    )
+}
+
+internal fun RaftThreadMessageItem.isThreadTaskDone(): Boolean =
+    taskStatus?.trim()?.lowercase() in setOf("done", "closed")
+
 internal fun threadMessageMenuActions(
     message: RaftThreadMessageItem,
     replyMetadata: ThreadReplyMetadata = message.toThreadReplyMetadata(),
@@ -28281,6 +28572,9 @@ internal fun threadMessageMenuActions(
     showCancelAction: Boolean,
     showDeleteAction: Boolean,
     showTranslateAction: Boolean = false,
+    translatePending: Boolean = false,
+    showForwardAction: Boolean = false,
+    showAddReactionAction: Boolean = false,
     onReply: () -> Unit,
     onCopyLink: () -> Unit,
     onCopy: () -> Unit,
@@ -28293,9 +28587,21 @@ internal fun threadMessageMenuActions(
     onConvertToTask: () -> Unit,
     onCancel: () -> Unit,
     onDelete: () -> Unit,
-    onTranslate: () -> Unit = {}
+    onTranslate: () -> Unit = {},
+    onForward: () -> Unit = {},
+    onAddReaction: () -> Unit = {}
 ): List<ThreadMessageMenuAction> =
     buildList {
+        if (showAddReactionAction) {
+            add(
+                ThreadMessageMenuAction(
+                    label = MR.strings.thread_action_add_reaction.desc(),
+                    icon = RaftLucideIconName.SmilePlus,
+                    group = "reaction",
+                    onClick = onAddReaction
+                )
+            )
+        }
         if (showCopyLinkAction) {
             add(
                 ThreadMessageMenuAction(
@@ -28311,9 +28617,15 @@ internal fun threadMessageMenuActions(
         if (showTranslateAction) {
             add(
                 ThreadMessageMenuAction(
-                    label = MR.strings.thread_action_translate.desc(),
+                    label =
+                        if (translatePending) {
+                            MR.strings.translation_state_in_progress.desc()
+                        } else {
+                            MR.strings.thread_action_translate.desc()
+                        },
                     icon = RaftLucideIconName.Languages,
                     group = "copy",
+                    enabled = !translatePending,
                     onClick = onTranslate
                 )
             )
@@ -28329,7 +28641,11 @@ internal fun threadMessageMenuActions(
             )
         }
         if (showReplyAction) {
-            add(ThreadMessageMenuAction(MR.strings.thread_action_open_thread.desc(), RaftLucideIconName.MessageSquare, "message", onClick = onReply))
+            add(ThreadMessageMenuAction(MR.strings.thread_action_reply_in_thread.desc(), RaftLucideIconName.MessageSquare, "message", onClick = onReply))
+        }
+        if (showForwardAction) {
+            // Web uses the select-mode Forward glyph (lucide send) for the per-message entry.
+            add(ThreadMessageMenuAction(MR.strings.thread_action_forward.desc(), RaftLucideIconName.Send, "message", onClick = onForward))
         }
         if (showSaveAction) {
             add(
@@ -28340,7 +28656,7 @@ internal fun threadMessageMenuActions(
                         } else {
                             MR.strings.thread_action_save_message.desc()
                         },
-                    icon = RaftLucideIconName.Bookmark,
+                    icon = if (message.isSaved) RaftLucideIconName.BookmarkMinus else RaftLucideIconName.Bookmark,
                     group = "message",
                     onClick = onSave
                 )
@@ -28389,7 +28705,7 @@ internal fun threadMessageMenuActions(
             )
         }
         message.taskId?.takeIf { showTaskStatusAction && it.isNotBlank() }?.let {
-            val isDone = message.taskStatus?.trim()?.lowercase() in setOf("done", "closed")
+            val isDone = message.isThreadTaskDone()
             add(
                 ThreadMessageMenuAction(
                     label =
@@ -28432,6 +28748,9 @@ private fun ThreadMessageActionMenu(
     showCancelAction: Boolean,
     showDeleteAction: Boolean,
     showTranslateAction: Boolean = false,
+    translatePending: Boolean = false,
+    showForwardAction: Boolean = false,
+    showAddReactionAction: Boolean = false,
     onDismiss: () -> Unit,
     onReply: () -> Unit,
     onCopyLink: () -> Unit,
@@ -28447,6 +28766,8 @@ private fun ThreadMessageActionMenu(
     onCancel: () -> Unit,
     onDelete: () -> Unit,
     onTranslate: () -> Unit = {},
+    onForward: () -> Unit = {},
+    onAddReaction: () -> Unit = {},
     diagnosticsLogger: (String) -> Unit = {}
 ) {
     val reactionAtlasImage = LocalThreadReactionAtlasImage.current
@@ -28464,6 +28785,9 @@ private fun ThreadMessageActionMenu(
             showCancelAction,
             showDeleteAction,
             showTranslateAction,
+            translatePending,
+            showForwardAction,
+            showAddReactionAction,
             onReply,
             onCopyLink,
             onCopy,
@@ -28476,7 +28800,9 @@ private fun ThreadMessageActionMenu(
             onConvertToTask,
             onCancel,
             onDelete,
-            onTranslate
+            onTranslate,
+            onForward,
+            onAddReaction
         ) {
             threadMessageMenuActions(
                 message = message,
@@ -28491,6 +28817,9 @@ private fun ThreadMessageActionMenu(
                 showCancelAction = showCancelAction,
                 showDeleteAction = showDeleteAction,
                 showTranslateAction = showTranslateAction,
+                translatePending = translatePending,
+                showForwardAction = showForwardAction,
+                showAddReactionAction = showAddReactionAction,
                 onReply = onReply,
                 onCopyLink = onCopyLink,
                 onCopy = onCopy,
@@ -28503,7 +28832,9 @@ private fun ThreadMessageActionMenu(
                 onConvertToTask = onConvertToTask,
                 onCancel = onCancel,
                 onDelete = onDelete,
-                onTranslate = onTranslate
+                onTranslate = onTranslate,
+                onForward = onForward,
+                onAddReaction = onAddReaction
             )
         }
     val density = LocalDensity.current
@@ -29671,8 +30002,6 @@ private fun ThreadMessageCommentRefChip(
     }
 }
 
-private val SharedThreadAttachmentImageSize = 92.dp
-
 internal fun RaftThreadAttachmentItem.isImageAttachment(): Boolean =
     raftFilePreviewIsImageAttachment(fileName = name, mimeType = mimeType)
 
@@ -29924,23 +30253,27 @@ private fun ThreadMessageAttachments(
         horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start
     ) {
         if (imageAttachments.isNotEmpty()) {
-            val backSwipeRowState = rememberLazyListState()
-            val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
-            LazyRow(
-                state = backSwipeRowState,
-                userScrollEnabled = backSwipeRow.userScrollEnabled,
-                modifier = Modifier.then(backSwipeRow.modifier).fillMaxWidth(),
-                horizontalArrangement =
-                    Arrangement.spacedBy(
-                        RaftAppSpacing.Sm,
-                        if (alignEnd) Alignment.End else Alignment.Start
-                    ),
-                verticalAlignment = Alignment.CenterVertically
+            val imageDimensions =
+                remember(imageAttachments) {
+                    imageAttachments.map { RaftMessageImageDimensions(width = it.width, height = it.height) }
+                }
+            // raft-ui MessageImageGallery (web MessageItem): rounded hairline frames on fill-muted,
+            // a lone image in its own reserved box, multi-image rows in the phone grid.
+            CompositionLocalProvider(
+                LocalRaftColors provides
+                    if (RaftAppThemeState.isDark) {
+                        build.raft.designsystem.tokens.RaftUiThemeColors.RaftDark
+                    } else {
+                        build.raft.designsystem.tokens.RaftUiThemeColors.RaftLight
+                    }
             ) {
-                items(imageAttachments.size, key = { imageAttachments[it].id }) { index ->
-                    ThreadImageAttachmentTile(
-                        attachment = imageAttachments[index],
-                        onOpen = { onOpenAttachment(imageAttachments[index].id) }
+                RaftMessageImageGallery(
+                    images = imageDimensions,
+                    onClick = { index -> onOpenAttachment(imageAttachments[index].id) }
+                ) { layout ->
+                    ThreadImageAttachmentContent(
+                        attachment = imageAttachments[layout.index],
+                        fit = layout.fit
                     )
                 }
             }
@@ -29957,9 +30290,9 @@ private fun ThreadMessageAttachments(
 }
 
 @Composable
-private fun ThreadImageAttachmentTile(
+private fun ThreadImageAttachmentContent(
     attachment: RaftThreadAttachmentItem,
-    onOpen: () -> Unit
+    fit: RaftMessageImageFit
 ) {
     val fallbackHost = LocalThreadInlineImageFallbackHost.current
     val fallbackUrl = fallbackHost?.state?.resolvedUrls?.get(attachment.id)
@@ -29976,24 +30309,22 @@ private fun ThreadImageAttachmentTile(
             fallbackHost?.requestFallback?.invoke(attachment.id)
         }
     }
-    Box(
-        modifier = Modifier.size(SharedThreadAttachmentImageSize)
-            .clickable(onClick = onOpen),
-        contentAlignment = Alignment.Center
-    ) {
-        RaftAspectFitImagePreviewSurface(
-            source = thumbnailUrl,
-            fallbackSource = fallbackUrl,
-            contentDescription = attachment.name,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = RaftImageThumbnailContentScale,
-            onImageStateChange = { state ->
-                if (state is AsyncImagePainter.State.Error && fallbackUrl == null) {
-                    fallbackHost?.requestFallback?.invoke(attachment.id)
-                }
+    // The frame (fill, border, radius, press) is RaftMessageImageFrame's; the surface only
+    // draws the image, so it brings no fill or border of its own.
+    RaftAspectFitImagePreviewSurface(
+        source = thumbnailUrl,
+        fallbackSource = fallbackUrl,
+        contentDescription = attachment.name,
+        modifier = Modifier.fillMaxSize(),
+        backgroundColor = Color.Transparent,
+        borderWidth = 0.dp,
+        contentScale = if (fit == RaftMessageImageFit.Cover) RaftImageThumbnailContentScale else ContentScale.Fit,
+        onImageStateChange = { state ->
+            if (state is AsyncImagePainter.State.Error && fallbackUrl == null) {
+                fallbackHost?.requestFallback?.invoke(attachment.id)
             }
-        )
-    }
+        }
+    )
 }
 
 @Composable
@@ -31526,7 +31857,6 @@ internal fun <T> RaftForwardTargetPicker(
     messageCount: Int,
     skippedCount: Int,
     nestedForwardCount: Int,
-    taskLinkedCount: Int,
     state: RaftForwardTargetPickerUiState<T>,
     onIntent: (RaftForwardTargetPickerIntent<T>) -> Unit,
     topContent: (@Composable () -> Unit)? = null,
@@ -31581,7 +31911,7 @@ internal fun <T> RaftForwardTargetPicker(
                 }
             )
             topContent?.invoke()
-            threadForwardSkippedWarning(skippedCount, nestedForwardCount, taskLinkedCount)?.let { warning ->
+            threadForwardSkippedWarning(skippedCount, nestedForwardCount)?.let { warning ->
                 Box(
                     modifier =
                         Modifier

@@ -134,7 +134,7 @@ fun RaftListRowGroup(
  * - Text column: [title] 16/24 semibold on one line (bold when [RaftRowTone.Unread]) with
  *   [meta] (the time, Space Mono 12 ink-3) after it; [subtitle] on its own line in Space
  *   Mono 12 ink-3, 2dp under the title (4dp with [alignTop]); [description] (the preview,
- *   or a setting's consequence with [wrapDescription]) in 14/20 ink-2, then at most one
+ *   or a setting's consequence with [wrapDescription], up to [descriptionMaxLines]) in 14/20 ink-2, then at most one
  *   [badge] at the end of that line.
  * - [trailing]: a value and chevron ([RaftListRowValue], [RaftListRowChevron]), a switch,
  *   or a 32dp button, centred, 6dp apart.
@@ -164,6 +164,7 @@ fun RaftListRow(
     subtitle: String? = null,
     description: String? = null,
     wrapDescription: Boolean = false,
+    descriptionMaxLines: Int = Int.MAX_VALUE,
     alignTop: Boolean = false,
     leading: (@Composable () -> Unit)? = null,
     badge: (@Composable () -> Unit)? = null,
@@ -241,7 +242,7 @@ fun RaftListRow(
                                 modifier = Modifier.weight(1f),
                                 style = typography.callout,
                                 color = inks.ink2,
-                                maxLines = if (wrapDescription) Int.MAX_VALUE else 1,
+                                maxLines = if (wrapDescription) descriptionMaxLines.coerceAtLeast(1) else 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
                         } else {

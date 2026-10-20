@@ -1,5 +1,6 @@
 package build.raft.designsystem.components
 
+import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -369,6 +370,8 @@ fun RaftDropdownMenu(
         }
     val dismiss by rememberUpdatedState(onDismissRequest)
     val nav = remember { RaftMenuNav() }
+    // A right swipe must not pop the page underneath an open menu.
+    RaftBlockBackSwipe()
     Popup(popupPositionProvider = provider, onDismissRequest = { dismiss() }, properties = PopupProperties(focusable = true)) {
         LaunchedEffect(Unit) {
             if (inputModes.inputMode == InputMode.Keyboard) {

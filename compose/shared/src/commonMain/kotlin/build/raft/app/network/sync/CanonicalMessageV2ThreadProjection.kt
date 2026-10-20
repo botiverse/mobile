@@ -101,6 +101,8 @@ private fun CanonicalAttachmentV2.toAttachmentItem(index: Int): RaftThreadAttach
         thumbnailUrl = thumbnailUrl,
         // Viewer-scoped comment count is explicitly excluded from the shared fact.
         commentCount = 0,
+        width = width,
+        height = height,
     )
 
 /**

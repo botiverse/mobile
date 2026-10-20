@@ -14,6 +14,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
@@ -111,6 +114,21 @@ private const val FEATURE_FLAG_REASON_MISSING_FLAG: String = "missing_flag"
  */
 const val RUNTIME_FORM_V2_FEATURE_FLAG_KEY: String = "runtime_form_v2_web"
 
+/**
+ * Agent Activity tab per-turn Overview (slock task #17). The same key the web reads (slock
+ * `ACTIVITY_OVERVIEW_WEB_FLAG_KEY`), so one switch turns the overview on for every client.
+ * Off (or unresolved), the Activity tab is the raw log only, as before.
+ */
+const val ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY: String = "activity_overview_web_v0"
+
+/**
+ * Activity as a conversation list: one row per conversation with an avatar, a one-line preview and the
+ * unread count, sidebar-pinned conversations first. The same per-server key the web reads (slock
+ * `ACTIVITY_CONVERSATION_LIST_FLAG_KEY`, drizzle 0362: `randomization_unit = 'server'`, default off).
+ * Off (the default, and before the first evaluation) Activity keeps its card rows.
+ */
+const val ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY: String = "activity_conversation_list_v0"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
@@ -129,6 +147,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY,
     MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY,
     RUNTIME_FORM_V2_FEATURE_FLAG_KEY,
+    ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY,
+    ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY,
 )
 
 /**
@@ -267,6 +287,41 @@ class SharedServerFeatureFlags(
     // per-server prefetches from losing one another's snapshot updates.
     @Volatile
     private var snapshots: Map<String, ServerFeatureFlagSnapshot> = emptyMap()
+
+    private val snapshotRevisionState = MutableStateFlow(0L)
+
+    /**
+     * Bumped every time an evaluation is accepted into the per-server snapshots, and once when the first
+     * evaluation attempt of a server without a snapshot settles as a failure (that ends
+     * [isDecisionPending]). UI that must follow a flag live (web `useServerFeatureFlag` re-renders when the
+     * snapshot lands) keys its [isEnabled] / [isDecisionPending] reads on this.
+     */
+    val snapshotRevision: StateFlow<Long> = snapshotRevisionState.asStateFlow()
+
+    /** Servers whose evaluation attempt settled without a snapshot (failed / malformed). Under [stateLock]. */
+    private val settledWithoutSnapshot = mutableSetOf<String>()
+
+    /**
+     * True while [isEnabled] for [key] on [serverId] is only the before-evaluation default: no online
+     * evaluation in this process, no stored last-known value, and no evaluation attempt has settled yet.
+     * A layout that must not paint one way and then switch (Activity's conversation list) waits on this;
+     * a failed attempt ends the wait (the flag then reads its default, off), so the wait is bounded by
+     * one evaluation request.
+     */
+    fun isDecisionPending(serverId: ServerId, key: String): Boolean {
+        if (serverId.value.isBlank()) return false
+        if (snapshots[serverId.value] != null) return false
+        if (lastKnown?.read(serverId, key) != null) return false
+        return synchronized(stateLock) { serverId.value !in settledWithoutSnapshot }
+    }
+
+    private fun markAttemptSettledWithoutSnapshot(serverId: ServerId) {
+        val changed =
+            synchronized(stateLock) {
+                snapshots[serverId.value] == null && settledWithoutSnapshot.add(serverId.value)
+            }
+        if (changed) snapshotRevisionState.value += 1
+    }
 
     fun snapshotFor(serverId: ServerId?): ServerFeatureFlagSnapshot =
         serverId?.let { snapshots[it.value] } ?: ServerFeatureFlagSnapshot.Unresolved
@@ -415,17 +470,27 @@ class SharedServerFeatureFlags(
                 nextRequestGenerationByServer[serverId.value] = generation
             }
         }
-        val response = api.evaluate(serverId, keys)
+        val response =
+            try {
+                api.evaluate(serverId, keys)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                markAttemptSettledWithoutSnapshot(serverId)
+                throw error
+            }
         currentCoroutineContext().ensureActive()
         val body = response.bodyText
         if (!response.isSuccessful || body == null) {
             diagnosticsLogger?.invoke("feature_flags evaluate failed server=${serverId.value} code=${response.code}")
+            markAttemptSettledWithoutSnapshot(serverId)
             return snapshotFor(serverId)
         }
         val decoded = try {
             featureFlagsJson.decodeFromString<FeatureFlagEvaluateResponseBody>(body)
         } catch (_: SerializationException) {
             diagnosticsLogger?.invoke("feature_flags evaluate malformed body server=${serverId.value}")
+            markAttemptSettledWithoutSnapshot(serverId)
             return snapshotFor(serverId)
         }
         val values = keys.associateWith { it in clientDefaultOnKeys }.toMutableMap()
@@ -461,6 +526,7 @@ class SharedServerFeatureFlags(
             } else {
                 acceptedGenerationByServer[serverId.value] = requestGeneration
                 snapshots = snapshots + (serverId.value to snapshot)
+                snapshotRevisionState.value += 1
                 true
             }
         }

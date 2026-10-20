@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -78,6 +80,10 @@ import build.raft.designsystem.components.RaftStatusSize
 import build.raft.designsystem.components.RaftStatusVariant
 import build.raft.designsystem.components.RaftStickerTile
 import build.raft.designsystem.components.RaftSwitch
+import build.raft.designsystem.components.RaftMessageImageDimensions
+import build.raft.designsystem.components.RaftMessageImageFit
+import build.raft.designsystem.components.RaftMessageImageFrame
+import build.raft.designsystem.components.RaftMessageImageGallery
 import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.components.raftActiveStickerLook
 import build.raft.designsystem.components.raftInsetFocusOutline
@@ -354,6 +360,17 @@ class DisplayComponentScreenshotTest {
                     RaftBadge("Online", variant = RaftBadgeVariant.Success)
                     RaftBadge("API_KEY", appearance = RaftBadgeAppearance.Outline)
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    // Narrower than its label: ends in an ellipsis, never a half glyph.
+                    Caption("Truncated", Modifier.width(96.dp))
+                    RaftBadge(
+                        "Thinking about the release notes",
+                        modifier = Modifier.width(120.dp),
+                        appearance = RaftBadgeAppearance.Soft,
+                        variant = RaftBadgeVariant.Primary,
+                    )
+                    RaftBadge("OPENAI_API_KEY=••••••••", modifier = Modifier.width(110.dp), appearance = RaftBadgeAppearance.Outline)
+                }
             }
         }
 
@@ -458,6 +475,16 @@ class DisplayComponentScreenshotTest {
                 RaftPanelNotice(
                     "Wug couldn't start: the runtime is missing.",
                     actions = { RaftButton("View Logs", onClick = {}, variant = RaftButtonVariant.Ghost) },
+                )
+                Caption("Panel notice, stacked actions")
+                RaftPanelNotice(
+                    "Wug couldn't start: the runtime exited with code 1 after loading the workspace. Check the computer's log for the missing dependency and restart the agent.",
+                    maxLines = 4,
+                    stackActions = true,
+                    actions = {
+                        RaftButton("Copy Info", onClick = {}, variant = RaftButtonVariant.Ghost)
+                        RaftButton("View Logs", onClick = {}, variant = RaftButtonVariant.Ghost)
+                    },
                 )
             }
         }
@@ -650,6 +677,49 @@ class DisplayComponentScreenshotTest {
                 }
             }
         }
+
+    /**
+     * raft-ui MessageImageGallery: a lone landscape, portrait and unsized image (each its
+     * reserved box, `contain` on `fill-muted`), a row of two, a wrapped row of three, and
+     * frames at rest, pressed and focused.
+     */
+    @Test
+    fun messageImageGallery() =
+        capture("message_image_gallery") {
+            Column(Modifier.width(360.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Caption("Lone images: landscape, portrait (letterboxed), unknown size")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+                    RaftMessageImageGallery(listOf(RaftMessageImageDimensions(400, 300)), Modifier.width(160.dp)) { FakeImage(4f / 3f, it.fit) }
+                    RaftMessageImageGallery(listOf(RaftMessageImageDimensions(300, 1000)), Modifier.width(80.dp)) { FakeImage(9f / 16f, it.fit) }
+                }
+                RaftMessageImageGallery(listOf(RaftMessageImageDimensions())) { FakeImage(9f / 19f, it.fit) }
+                Caption("Two, then three (phone grid wraps the third)")
+                RaftMessageImageGallery(List(2) { RaftMessageImageDimensions(800, 600) }) { FakeImage(4f / 3f, it.fit) }
+                RaftMessageImageGallery(listOf(RaftMessageImageDimensions(800, 600), RaftMessageImageDimensions(300, 1000), RaftMessageImageDimensions(800, 600))) {
+                    FakeImage(if (it.index == 1) 0.3f else 4f / 3f, it.fit)
+                }
+                Caption("Frame: rest, pressed, focused, pending")
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    StateCell { RaftMessageImageFrame(Modifier.size(64.dp), onClick = {}) { FakeImage(1f, RaftMessageImageFit.Cover) } }
+                    StateCell(pressed = true) { RaftMessageImageFrame(Modifier.size(64.dp), onClick = {}) { FakeImage(1f, RaftMessageImageFit.Cover) } }
+                    StateCell(focused = true) { RaftMessageImageFrame(Modifier.size(64.dp), onClick = {}) { FakeImage(1f, RaftMessageImageFit.Cover) } }
+                    StateCell { RaftMessageImageFrame(Modifier.size(64.dp), pending = true) { FakeImage(1f, RaftMessageImageFit.Cover) } }
+                }
+            }
+        }
+
+    /** A stand-in photo of [ratio]: fills the cell when cropped, else sits letterboxed. */
+    @Composable
+    private fun FakeImage(ratio: Float, fit: RaftMessageImageFit) {
+        val photo = Modifier.background(RaftUiPalette.attention400)
+        if (fit == RaftMessageImageFit.Cover) {
+            Box(Modifier.fillMaxSize().then(photo))
+        } else {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(Modifier.aspectRatio(ratio, matchHeightConstraintsFirst = ratio < 1f).then(photo))
+            }
+        }
+    }
 
     // Fixture parts ------------------------------------------------------------------
 

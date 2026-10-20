@@ -116,6 +116,8 @@ import com.tencent.kuiklybase.markdown.model.DefaultMarkdownTypography
 import com.tencent.kuiklybase.markdown.model.ImageLinkHandlerImpl
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
 import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownAnnotationRevision
+import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownTableCellPadding
+import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownTableClosedGrid
 import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownParagraphFillWidth
 import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownRowRenderCostSink
 import com.tencent.kuiklybase.markdown.compose.RaftMarkdownNodeTrace
@@ -846,9 +848,7 @@ private data class RaftRichTextRendererInput(
 
     fun taskChipInlineContent(): Map<String, InlineTextContent> {
         if (taskStatusesOrNull() == null) return emptyMap()
-        return raftMarkdownTaskChipInlineContent(
-            (TaskStatus.entries + listOf<TaskStatus?>(null)).map { status -> raftMarkdownTaskChipStyle(status) }
-        )
+        return raftMarkdownTaskChipInlineContent(dark = RaftAppThemeState.isDark)
     }
 
     fun raftRefTokensStartingInRange(start: Int, endExclusive: Int): List<RaftRichTextInlineToken> =
@@ -1087,29 +1087,32 @@ private fun AnnotatedString.Builder.appendRaftRichTextToken(
             return
         }
     }
-    pushStringAnnotation(
-        tag = RaftMarkdownTagAnnotationTag,
-        annotation = action.id
-    )
-    withLink(
-        LinkAnnotation.Clickable(
-            tag = action.id,
-            styles = raftMarkdownRichTextTagLinkStyles(token.chrome),
-            linkInteractionListener = LinkInteractionListener { onOpenAction(action) }
+    val boxStyle = raftMarkdownRichTextTagInlineBoxStyle(token.chrome)
+    withRaftInlineChipGaps(boxStyle) {
+        pushStringAnnotation(
+            tag = RaftMarkdownTagAnnotationTag,
+            annotation = action.id
         )
-    ) {
-        // Chip box / coloured underline are annotations painted by raftInlineDecorations.
-        withRaftInlineBox(raftMarkdownRichTextTagInlineBoxStyle(token.chrome)) {
-            withRaftInlineUnderline(raftMarkdownRichTextTagInlineUnderlineStyle(token.chrome)) {
-                append(label)
+        withLink(
+            LinkAnnotation.Clickable(
+                tag = action.id,
+                styles = raftMarkdownRichTextTagLinkStyles(token.chrome),
+                linkInteractionListener = LinkInteractionListener { onOpenAction(action) }
+            )
+        ) {
+            // Chip box / coloured underline are annotations painted by raftInlineDecorations.
+            withRaftInlineBox(boxStyle) {
+                withRaftInlineUnderline(raftMarkdownRichTextTagInlineUnderlineStyle(token.chrome)) {
+                    append(label)
+                }
+            }
+            if (token.active && token.trailingIndicator.isEmpty()) {
+                append(" ")
+                appendInlineContent(raftMarkdownActionSpinnerInlineId(action.id), "\uFFFC")
             }
         }
-        if (token.active && token.trailingIndicator.isEmpty()) {
-            append(" ")
-            appendInlineContent(raftMarkdownActionSpinnerInlineId(action.id), "\uFFFC")
-        }
+        pop()
     }
-    pop()
 }
 
 /**
@@ -1124,25 +1127,27 @@ private fun AnnotatedString.Builder.appendRaftRichTextTaskChipToken(
     onOpenAction: (RaftRichTextAction) -> Unit,
 ) {
     val style = raftMarkdownTaskChipStyle(taskNumberFromRefLabel(action.label)?.let(taskStatuses::get))
-    pushStringAnnotation(
-        tag = RaftMarkdownTagAnnotationTag,
-        annotation = action.id
-    )
-    withLink(
-        LinkAnnotation.Clickable(
-            tag = action.id,
-            styles = style.linkStyles(),
-            linkInteractionListener = LinkInteractionListener { onOpenAction(action) }
+    withRaftInlineChipGaps(style.box) {
+        pushStringAnnotation(
+            tag = RaftMarkdownTagAnnotationTag,
+            annotation = action.id
         )
-    ) {
-        appendRaftMarkdownTaskChip(style, label) {
-            if (token.active && token.trailingIndicator.isEmpty()) {
-                append(" ")
-                appendInlineContent(raftMarkdownActionSpinnerInlineId(action.id), "\uFFFC")
+        withLink(
+            LinkAnnotation.Clickable(
+                tag = action.id,
+                styles = style.linkStyles(),
+                linkInteractionListener = LinkInteractionListener { onOpenAction(action) }
+            )
+        ) {
+            appendRaftMarkdownTaskChip(style, label) {
+                if (token.active && token.trailingIndicator.isEmpty()) {
+                    append(" ")
+                    appendInlineContent(raftMarkdownActionSpinnerInlineId(action.id), "\uFFFC")
+                }
             }
         }
+        pop()
     }
-    pop()
 }
 
 internal fun resolveRaftRichTextTokenLabel(
@@ -1295,7 +1300,8 @@ private object RaftMarkdownTextProvider : TextProvider {
         val resolvedInlineContent =
             remember(resolvedText, inlineContent, permalinkContent) {
                 resolvedText.filteredRaftMarkdownInlineContent(
-                    inlineContent + permalinkContent.inlineContent
+                    inlineContent + permalinkContent.inlineContent +
+                        raftInlineGapInlineContent(resolvedText.raftMarkdownInlineContentIds())
                 )
             }
         logMarkdownSpike(
@@ -1589,7 +1595,9 @@ private fun AnnotatedString.withRaftMessagePermalinkChipContent(
         val iconId = "$inlinePrefix-icon"
         val iconGapId = "$inlinePrefix-icon-gap"
         val suffixGapId = "$inlinePrefix-suffix-gap"
-        builder.withRaftInlineBox(raftMessagePermalinkChipBoxStyle()) {
+        val chipBox = raftMessagePermalinkChipBoxStyle()
+        builder.withRaftInlineChipGaps(chipBox) {
+        withRaftInlineBox(chipBox) {
           withLink(
             LinkAnnotation.Url(
                 url = link.url,
@@ -1622,6 +1630,7 @@ private fun AnnotatedString.withRaftMessagePermalinkChipContent(
                 append(kindLabel)
             }
           }
+        }
         }
         inlineContent[iconId] = raftMessagePermalinkIconInlineContent()
         inlineContent[iconGapId] = raftMessagePermalinkSpacerInlineContent(4.sp)
@@ -2184,7 +2193,9 @@ fun RaftMarkdownBody(
     val taskStatuses = LocalRaftMarkdownTaskStatuses.current
     val currentTaskStatuses by rememberUpdatedState(taskStatuses)
     val colors = RaftMarkdownColorsDefault
-    val typography = remember(markdownTextStyle) { raftMarkdownTypography(markdownTextStyle) }
+    // The typography carries theme colours (h6, quotes); the theme is part of its key.
+    val markdownDark = RaftAppThemeState.isDark
+    val typography = remember(markdownTextStyle, markdownDark) { raftMarkdownTypography(markdownTextStyle) }
     val markdownParserContent = remember(content) {
         MarkdownParserContent.from(content)
     }
@@ -2313,6 +2324,8 @@ fun RaftMarkdownBody(
     // will serve stale output for it.
     val annotationRevision: List<String?> =
         buildList {
+            // Link and task-chip spans resolve theme colours at annotation time.
+            add(if (markdownDark) "theme:dark" else "theme:light")
             if (bodyActiveActionId != null) add("activeAction:$bodyActiveActionId")
             if (bodyActiveTagKey != null) add("activeTag:$bodyActiveTagKey")
             if (activeActionIndicator.isNotEmpty()) add("indicator:$activeActionIndicator")
@@ -2323,7 +2336,7 @@ fun RaftMarkdownBody(
             }
             // Task chips read the status map and the theme at annotation time.
             if (taskStatuses != null) {
-                addAll(raftMarkdownTaskChipRevision(richTextDocument.actions, taskStatuses, RaftAppThemeState.isDark))
+                addAll(raftMarkdownTaskChipRevision(richTextDocument.actions, taskStatuses, markdownDark))
             }
         }
     val padding = remember {
@@ -2394,20 +2407,27 @@ fun RaftMarkdownBody(
             // Overriding the component here keeps the vendored fork free of a new
             // divergence.
             table = { model ->
-                MarkdownTable(
-                    model.content,
-                    model.node,
-                    style = model.typography.table,
-                    headerBlock = { content, header, style, columnWidths, rowWidths ->
-                        MarkdownTableHeader(
-                            content = content,
-                            header = header,
-                            style = style.withRaftFontWeight(FontWeight.Bold),
-                            columnWidths = columnWidths,
-                            rowWidths = rowWidths
-                        )
-                    }
-                )
+                // web MarkdownContent table: `border-collapse border border-line-hairline`,
+                // th/td `border border-line-hairline px-2 py-1` — a closed 1px hairline grid.
+                CompositionLocalProvider(
+                    LocalRaftMarkdownTableCellPadding provides RaftMarkdownTableCellPadding,
+                    LocalRaftMarkdownTableClosedGrid provides true,
+                ) {
+                    MarkdownTable(
+                        model.content,
+                        model.node,
+                        style = model.typography.table,
+                        headerBlock = { content, header, style, columnWidths, rowWidths ->
+                            MarkdownTableHeader(
+                                content = content,
+                                header = header,
+                                style = style.withRaftFontWeight(FontWeight.Bold),
+                                columnWidths = columnWidths,
+                                rowWidths = rowWidths
+                            )
+                        }
+                    )
+                }
             },
             // task #66: code blocks carry a persistent transparent copy
             // affordance (top-right lucide copy, no plate — May task #9 native
@@ -2642,15 +2662,18 @@ private object RaftMarkdownDimens : MarkdownDimens {
     override val tableMaxWidth: Dp = Dp.Unspecified
     override val tableCellWidth: Dp = 160.dp
     override val tableSeparatorThickness: Dp = 1.dp
-    // web td/th `px-2 py-1`; the vendor table takes one uniform inset.
+    // Legacy uniform inset; Raft tables use RaftMarkdownTableCellPadding (web px-2 py-1).
     override val tableCellPadding: Dp = 6.dp
-    override val tableCornerSize: Dp = 8.dp
+    // web chat table has no radius (and the vendor table never read this).
+    override val tableCornerSize: Dp = 0.dp
 }
 // web MarkdownContent BaseCodePre: `bg-layer-code text-code-foreground border
 // border-line-hairline rounded-container px-3 py-2 pr-12 font-mono
 // [font-size:inherit]` (light: white surface, dark: #0A0C10).
 private val RaftMarkdownCodeBlockBackground: Color get() = RaftAppThemeState.colors.layerCode
 private val RaftMarkdownCodeBlockForeground: Color get() = RaftAppThemeState.colors.codeForeground
+/** web MarkdownContent th/td `px-2 py-1`. */
+internal val RaftMarkdownTableCellPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
 private val RaftMarkdownCodeBlockPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 48.dp, bottom = 8.dp)
 private val RaftMarkdownMinimumInlineLineHeight = 22.sp
 private val RaftMarkdownDividerColor: Color get() = RaftColor.BorderBlack.copy(alpha = 0.22f)
@@ -2770,7 +2793,7 @@ internal fun raftMarkdownLinkSpanStyle(base: TextStyle): SpanStyle =
     )
 
 // A getter, not a val: text/line colours follow RaftAppThemeState.
-private val RaftMarkdownColorsDefault: DefaultMarkdownColors
+internal val RaftMarkdownColorsDefault: DefaultMarkdownColors
     get() = DefaultMarkdownColors(
         text = RaftColor.TextBlack,
         codeText = RaftMarkdownCodeBlockForeground,
@@ -2781,7 +2804,8 @@ private val RaftMarkdownColorsDefault: DefaultMarkdownColors
         inlineCodeBackground = Color.Unspecified,
         dividerColor = RaftColor.BorderBlack,
         tableText = RaftColor.TextBlack,
-        tableBackground = RaftColor.SurfaceWhite,
+        // web table has no fill of its own (it shows the message surface); unused by the vendor table.
+        tableBackground = Color.Transparent,
         // web th `bg-fill-muted`, every cell `border border-line-hairline`.
         tableHeaderBackground = RaftAppThemeState.colors.fillMuted,
         tableStroke = RaftColor.BorderHairline

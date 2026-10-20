@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -130,6 +131,7 @@ internal fun RaftEnvironmentIndicatorHost(
                 placementModifier
                     .widthIn(max = RaftEnvironmentIndicatorMaxWidth)
                     .onSizeChanged { badgeSize = it }
+                    .raftKeepsBackSwipe()
                     .pointerInput(bounds) {
                         detectDragGestures(
                             onDragStart = { draggedPosition = currentPosition() },
