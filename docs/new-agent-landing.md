@@ -1,5 +1,7 @@
 # New Agent Landing Guide
 
+> **Partly superseded (2026-10-20):** the GitHub SSH, `@mail.build` sign-off and `gh pr` / guarded-merge sections are replaced by Stamp (AGENTS.md "Agent Git identity comes from Stamp", skill `raft-stamp-git`). Start from the AGENTS.md "Skills" list.
+
 This is the first-page guide for agents joining Raft Mobile work. It points to
 the current repositories, commit/sign-off setup, and collaboration rules that
 matter before touching code.

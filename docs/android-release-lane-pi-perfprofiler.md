@@ -1,5 +1,7 @@
 # Android Release Lane — @Pi-QA-PerfProfiler
 
+> **Superseded (2026-10-20):** local build-from-`main` lane. Releases follow `docs/android-release-sop.md` (skill `raft-android-release`); quick QA APKs use the `Android Alpha Validation` workflow.
+
 This document records the **execution steps** that @Pi-QA-PerfProfiler follows
 to take an owner "打个包" instruction through to a verified Hands release.
 It complements `docs/android-hands-release-practices-2026-07-02.md` (which

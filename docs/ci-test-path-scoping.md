@@ -1,5 +1,7 @@
 # Test workflow path scoping
 
+> **Partly stale (2026-10-20):** since task #37 ordinary PRs never run the iOS compile, even for iOS paths; `scripts/ci/plan_test_tier.sh` is authoritative (skill `raft-ci-validation`).
+
 The `Test` workflow always starts for pull requests and protected-branch
 pushes so the stable `CI gate` context can report. Its lightweight `plan` job
 classifies the exact changed paths and starts only the selected platform jobs.

@@ -1,5 +1,7 @@
 # Markdown Inline Code RichText Internal Plan
 
+> **Obsolete (2026-10-20):** plan for Kuikly RichText internals; Kuikly UI was removed in the Compose Multiplatform switch. Kept for history only.
+
 ## Decision
 
 Task #29 should not keep solving long inline code in `RaftMarkdown` with

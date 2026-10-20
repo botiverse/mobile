@@ -1,5 +1,7 @@
 # Markdown & inline-code rendering (Android/Kuikly)
 
+> **Obsolete (2026-10-20):** describes the Kuikly RichText render path (`KRRichTextBuilder`, vendored Kuikly sources), which no longer exists on `main`. Kept for history only.
+
 Reference for how markdown — and specifically the inline-code "chip" (`` `like this` ``) —
 is rendered on Android/Kuikly, why fixes here have been fiddly, and how to change
 the geometry safely. Written after task #54 (inline-code trailing margin).

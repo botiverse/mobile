@@ -1,5 +1,7 @@
 # Kuikly Host Alignment Audit
 
+> **Obsolete (2026-10-20):** audits the Kuikly Android/OHOS hosts, which the Compose Multiplatform switch (#3192) and the OHOS removal (#3181) replaced. Kept for history only.
+
 Date: 2026-05-20
 
 This notes the current gap between Kuikly's default Android host/router implementation and Slock's later-added Android/OHOS Kuikly hosts. The goal is to stop fixing host behavior one field at a time and move Slock toward the same host contract on both platforms.
