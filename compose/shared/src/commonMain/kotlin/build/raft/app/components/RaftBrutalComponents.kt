@@ -110,7 +110,7 @@ import kotlinx.coroutines.delay
  * | RaftBrutalDropdownMenu (2)                   | app popover positioning around RaftMenuSurface             |
  * | RaftBrutalModalLayer (2) / Header (2)        | RaftDialogHeader; Header removed                           |
  * | RaftBrutalTextarea (2)                       | RaftTextarea (no TextFieldValue / focus-hook overload yet) |
- * | RaftBrutalPanel (1)                          | no generic popover surface yet (raft-look kept)            |
+ * | RaftBrutalPanel (1)                          | removed: RaftPopoverSurface at the call site               |
  * | RaftBrutalPanelShell (1) / ListShell (1)     | removed: RaftListRowGroup at the call sites                |
  * | RaftBrutalListSectionHeader (1)              | removed: RaftSectionEyebrow at the call site               |
  * | RaftBrutalActionSheetRow (1)                 | RaftListRow + RaftIconTile (no danger tone yet)            |

@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -36,27 +35,4 @@ internal fun RaftBrutalCard(
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = verticalArrangement, content = content)
         }
     }
-}
-
-/**
- * A width-bounded floating panel (server switcher and friends): the raft overlay surface
- * (container radius, `--layer-popover`, 1dp seam ring, the overlay float shadow). The
- * legacy brutal offset shadow is gone.
- */
-@Composable
-internal fun RaftBrutalPanel(
-    minWidth: Dp,
-    maxWidth: Dp,
-    modifier: Modifier = Modifier,
-    contentModifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Column(
-        modifier = modifier
-            .widthIn(min = minWidth, max = maxWidth)
-            .raftLookOverlaySurface()
-            .then(contentModifier)
-            .fillMaxWidth(),
-        content = content
-    )
 }
