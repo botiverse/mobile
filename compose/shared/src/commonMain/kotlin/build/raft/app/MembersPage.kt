@@ -182,6 +182,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.draw.rotate
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
@@ -6388,7 +6391,9 @@ private fun MembersDetailContent(
                             if (
                                 initialVisualMode != MembersAgentDetailVisualMode.AvatarManagement &&
                                 pageTab != MembersAgentDetailTab.Profile &&
-                                pageTab != MembersAgentDetailTab.Apps
+                                pageTab != MembersAgentDetailTab.Apps &&
+                                pageTab != MembersAgentDetailTab.Reminders &&
+                                pageTab != MembersAgentDetailTab.Workspace
                             ) {
                                 item(key = "member-detail-${member.id.value}-top-spacer") {
                                     Spacer(Modifier.height(RaftAppSpacing.Sm))
@@ -6531,7 +6536,8 @@ private fun MembersDetailContent(
                                             detail = detail,
                                             timeContext = timeContext,
                                             onOpenMessageRef = onOpenReminderMessage,
-                                            modifier = Modifier.padding(horizontal = MembersPageInset)
+                                            // web AgentRemindersSection variant="tab": `px-5 py-5`.
+                                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp)
                                         )
                                     MembersAgentDetailTab.Workspace ->
                                         MembersAgentWorkspaceTab(
@@ -6542,8 +6548,7 @@ private fun MembersDetailContent(
                                             dirErrors = workspaceDirErrors,
                                             onRefresh = { loadWorkspaceRoot() },
                                             onToggleDirectory = { toggleWorkspaceDirectory(it) },
-                                            onSelectFile = { selectWorkspaceFile(it) },
-                                            modifier = Modifier.padding(horizontal = MembersPageInset)
+                                            onSelectFile = { selectWorkspaceFile(it) }
                                         )
                                     MembersAgentDetailTab.Apps ->
                                         MembersAgentAppsTab(
@@ -9530,10 +9535,10 @@ private fun MembersAgentAvatarDialog(
                     modifier = Modifier
                         .size(44.dp)
                         .clip(RoundedCornerShape(RaftRadius.Control))
-                        .background(if (uploadSelected) colors.brand else Color.Transparent)
+                        .background(if (uploadSelected) RaftUiPalette.brand else Color.Transparent)
                         .then(
                             if (uploadSelected) {
-                                Modifier.border(RaftStroke.Control, colors.stickerInk, RoundedCornerShape(RaftRadius.Control))
+                                Modifier.border(RaftStroke.Control, RaftUiPalette.stickerInk, RoundedCornerShape(RaftRadius.Control))
                             } else {
                                 Modifier.membersDashedBorder(colors.lineStrong, RaftRadius.Control)
                             }
@@ -9583,10 +9588,10 @@ private fun MembersAgentAvatarDialog(
                             modifier = Modifier
                                 .size(44.dp)
                                 .clip(RoundedCornerShape(RaftRadius.Control))
-                                .background(if (selected) colors.brand else Color.Transparent)
+                                .background(if (selected) RaftUiPalette.brand else Color.Transparent)
                                 .then(
                                     if (selected) {
-                                        Modifier.border(RaftStroke.Control, colors.stickerInk, RoundedCornerShape(RaftRadius.Control))
+                                        Modifier.border(RaftStroke.Control, RaftUiPalette.stickerInk, RoundedCornerShape(RaftRadius.Control))
                                     } else {
                                         Modifier
                                     }
@@ -12971,21 +12976,19 @@ private fun MembersAgentReminderCard(
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    // raft-ui Card (default): the card title, when it fires (relative, then the date in
-    // Space Mono), then its recurrence and the message it points at as badges.
+    // web ReminderCard (SurfaceListItem `px-4 py-3`): the title (subhead semibold), `mt-1`
+    // when it fires (caption muted, then the date in Space Mono), `mt-2` its message ref.
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .membersRaftCard()
-            .padding(RaftAppSpacing.Md),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         RaftText(
             text = reminder.title,
-            style = typography.cardTitle,
-            color = colors.foreground,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis
+            style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.foreground
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -13003,7 +13006,7 @@ private fun MembersAgentReminderCard(
                 )
                 RaftText(
                     text = reminder.fireAt.membersReminderRelativeTime(timeContext),
-                    style = typography.footnote.copy(fontWeight = FontWeight.Medium),
+                    style = typography.caption,
                     color = colors.foregroundMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -13077,59 +13080,143 @@ private fun MembersAgentWorkspaceTab(
     modifier: Modifier = Modifier
 ) {
     val errorStrings = localizedErrorPresentationStrings()
-    MembersDetailSection(
-        title = stringResource(MR.strings.member_section_workspace),
-        modifier = modifier,
-        framed = false,
-        trailingContent = {
-            // Ghost Lg: the 18dp glyph is unchanged, the touch target is 44dp.
-            RaftIconButton(
-                onClick = onRefresh,
-                tooltip = stringResource(MR.strings.member_action_refresh),
-                variant = RaftButtonVariant.Ghost,
-                size = RaftIconButtonSize.Lg
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    val seam = colors.lineSeam
+    val clipboard = LocalClipboardManager.current
+    // web AgentWorkspace (compact = false): a path bar (`px-3 py-1.5`, Space Mono meta muted,
+    // a 24dp copy icon) over a seam; the tree pane with its own seam head (`py-1.5 pr-1.5
+    // pl-3`, the Workspace eyebrow, 32dp icon buttons) and a seam on its right edge.
+    Column(modifier = modifier.fillMaxWidth()) {
+        val workspacePath =
+            (treeState as? MembersAgentWorkspaceTreeState.Content)?.snapshot?.rootPath
+                ?.takeIf { it.isNotBlank() }
+                ?.let { if (it.endsWith("/")) it else "$it/" }
+        if (workspacePath != null) {
+            var copied by remember(workspacePath) { mutableStateOf(false) }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .drawBehind {
+                        val w = RaftStroke.Hairline.toPx()
+                        drawLine(seam, Offset(0f, size.height - w / 2), Offset(size.width, size.height - w / 2), w)
+                    }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                RaftContentLucideIcon(RaftLucideIconName.RefreshCw, size = 18.dp)
+                RaftText(
+                    text = workspacePath,
+                    style = typography.monoMeta,
+                    color = colors.foregroundMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                val copyLabel = stringResource(if (copied) MR.strings.member_action_copied_path else MR.strings.member_action_copy_path)
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .semantics { contentDescription = copyLabel }
+                        .clickable(role = Role.Button) {
+                            clipboard.setText(AnnotatedString(workspacePath))
+                            copied = true
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    RaftLucideIcon(
+                        if (copied) RaftLucideIconName.Check else RaftLucideIconName.Copy,
+                        modifier = Modifier.size(14.dp),
+                        color = raftArgbHex(if (copied) colors.foreground else colors.foregroundHint)
+                    )
+                }
             }
         }
-    ) {
-        when (treeState) {
-            MembersAgentWorkspaceTreeState.Idle,
-            MembersAgentWorkspaceTreeState.Loading ->
-                MembersDetailField(
-                    stringResource(MR.strings.member_label_status),
-                    stringResource(MR.strings.member_state_workspace_loading)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .drawBehind {
+                    val w = RaftStroke.Hairline.toPx()
+                    drawLine(seam, Offset(size.width - w / 2, 0f), Offset(size.width - w / 2, size.height), w)
+                }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .drawBehind {
+                        val w = RaftStroke.Hairline.toPx()
+                        drawLine(seam, Offset(0f, size.height - w / 2), Offset(size.width, size.height - w / 2), w)
+                    }
+                    .padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RaftSectionEyebrow(
+                    text = stringResource(MR.strings.member_section_workspace),
+                    modifier = Modifier.weight(1f)
                 )
-            MembersAgentWorkspaceTreeState.Empty ->
-                MembersWorkspaceEmptyState(stringResource(MR.strings.member_state_no_files), onRefresh)
-            is MembersAgentWorkspaceTreeState.Error ->
-                MembersWorkspaceErrorState(
-                    stringResource(
-                        MR.strings.member_error_workspace_load,
-                        treeState.error.userFacingMessage(errorStrings)
-                    ),
-                    onRefresh
-                )
-            is MembersAgentWorkspaceTreeState.NoPermission ->
-                MembersWorkspaceErrorState(
-                    stringResource(
-                        MR.strings.member_error_workspace_hidden,
-                        treeState.blocker.userFacingMessage(errorStrings)
-                    ),
-                    onRefresh
-                )
-            is MembersAgentWorkspaceTreeState.Content ->
-                MembersWorkspaceTreeView(
-                    root = treeState.snapshot.root,
-                    expandedDirs = expandedDirs,
-                    loadedDirs = loadedDirs,
-                    loadingDirs = loadingDirs,
-                    dirErrors = dirErrors,
-                    onToggleDirectory = onToggleDirectory,
-                    onSelectFile = onSelectFile
-                )
+                val refreshLabel = stringResource(MR.strings.member_action_refresh)
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .semantics { contentDescription = refreshLabel }
+                        .clickable(role = Role.Button, onClick = onRefresh),
+                    contentAlignment = Alignment.Center
+                ) {
+                    RaftLucideIcon(
+                        RaftLucideIconName.RefreshCw,
+                        modifier = Modifier.size(16.dp),
+                        color = raftArgbHex(colors.foregroundMuted)
+                    )
+                }
+            }
+            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                when (treeState) {
+                    MembersAgentWorkspaceTreeState.Idle,
+                    MembersAgentWorkspaceTreeState.Loading ->
+                        MembersWorkspaceCenteredText(stringResource(MR.strings.member_state_workspace_loading))
+                    MembersAgentWorkspaceTreeState.Empty ->
+                        MembersWorkspaceCenteredText(stringResource(MR.strings.member_state_no_files))
+                    is MembersAgentWorkspaceTreeState.Error ->
+                        MembersWorkspaceErrorState(
+                            stringResource(
+                                MR.strings.member_error_workspace_load,
+                                treeState.error.userFacingMessage(errorStrings)
+                            ),
+                            onRefresh
+                        )
+                    is MembersAgentWorkspaceTreeState.NoPermission ->
+                        MembersWorkspaceErrorState(
+                            stringResource(
+                                MR.strings.member_error_workspace_hidden,
+                                treeState.blocker.userFacingMessage(errorStrings)
+                            ),
+                            onRefresh
+                        )
+                    is MembersAgentWorkspaceTreeState.Content ->
+                        MembersWorkspaceTreeView(
+                            root = treeState.snapshot.root,
+                            expandedDirs = expandedDirs,
+                            loadedDirs = loadedDirs,
+                            loadingDirs = loadingDirs,
+                            dirErrors = dirErrors,
+                            onToggleDirectory = onToggleDirectory,
+                            onSelectFile = onSelectFile
+                        )
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun MembersWorkspaceCenteredText(text: String) {
+    RaftText(
+        text = text,
+        style = RaftTheme.typography.callout,
+        color = RaftTheme.colors.foregroundHint,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 16.dp)
+    )
 }
 
 @Composable
@@ -13146,20 +13233,11 @@ private fun MembersWorkspaceTreeView(
         membersWorkspaceRows(root.children, expandedDirs, loadedDirs)
     }
     if (rows.isEmpty()) {
-        MembersDetailField(stringResource(MR.strings.member_section_workspace), stringResource(MR.strings.member_state_no_files))
+        MembersWorkspaceCenteredText(stringResource(MR.strings.member_state_no_files))
         return
     }
-    // The tree sits in one raft-ui Card, its rows flush inside it.
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 280.dp, max = 560.dp)
-            .membersRaftCard(),
-        contentPadding = PaddingValues(vertical = RaftAppSpacing.Xs),
-        verticalArrangement = Arrangement.spacedBy(0.dp),
-    ) {
-        items(rows.size, key = { "workspace-${rows[it].node.path}" }) { index ->
-            val row = rows[index]
+    rows.forEach { row ->
+        key("workspace-${row.node.path}") {
             MembersWorkspaceNodeRow(
                 row = row,
                 expanded = row.node.path in expandedDirs,
@@ -13185,74 +13263,49 @@ private fun MembersWorkspaceNodeRow(
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val muted = raftArgbHex(colors.foregroundMuted)
-    // A tree row: 32dp, 12dp sides, 16dp per level; chevron in hint ink, the type icon in
-    // muted ink, the name in callout, sizes in Space Mono hint (raft-ui files row type).
+    val folder = node.kind == RaftWorkspaceFileKind.Folder
+    // web TREE_ROW_CLASS: `gap-1 py-1 pr-2`, Space Mono code type; a folder starts
+    // `depth*16+8` in with its chevron (hint) and folder icon, a file `depth*16+22`.
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 32.dp)
                 .clickable {
-                    if (node.kind == RaftWorkspaceFileKind.Folder) {
-                        onToggleDirectory(node.path)
-                    } else {
-                        onSelectFile(node.path)
-                    }
+                    if (folder) onToggleDirectory(node.path) else onSelectFile(node.path)
                 }
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(start = (row.depth * 16 + if (folder) 8 else 22).dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Spacer(Modifier.width((row.depth * 16).dp))
-            if (node.kind == RaftWorkspaceFileKind.Folder) {
+            if (folder) {
                 if (loading) {
-                    // #70: replace the chevron with a rotating Loader spinner
-                    // while the directory contents are being fetched. Mirrors
-                    // React's `AgentWorkspace.tsx` spinner pattern (but KMP
-                    // per @artin's 06-23 20:51 directive shows the spinner
-                    // inline as the chevron substitute instead of alongside
-                    // a "Loading..." text label).
                     RaftSpinnerIcon(size = 14.dp)
                 } else {
                     RaftLucideIcon(
-                        if (expanded) RaftLucideIconName.ChevronDown else RaftLucideIconName.ChevronRight,
-                        Modifier.size(14.dp),
+                        RaftLucideIconName.ChevronRight,
+                        Modifier.size(14.dp).rotate(if (expanded) 90f else 0f),
                         color = raftArgbHex(colors.foregroundHint)
                     )
                 }
-            } else {
-                Spacer(Modifier.width(14.dp))
             }
-            RaftLucideIcon(node.membersWorkspaceIconName(expanded), Modifier.size(16.dp), color = muted)
+            RaftLucideIcon(node.membersWorkspaceIconName(expanded), Modifier.size(14.dp), color = muted)
             RaftText(
                 text = node.name.ifBlank { node.path },
-                style = typography.callout.copy(
-                    fontWeight = if (node.name == "memory.md") FontWeight.SemiBold else FontWeight.Normal
+                style = typography.monoCode.copy(
+                    fontWeight = when {
+                        node.name == "memory.md" -> FontWeight.Bold
+                        folder -> FontWeight.Medium
+                        else -> FontWeight.Normal
+                    }
                 ),
                 color = colors.foreground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f, fill = false)
             )
-            node.meta?.takeIf { it.isNotBlank() }?.let { meta ->
-                RaftText(
-                    text = meta,
-                    style = typography.monoMeta,
-                    color = colors.foregroundHint,
-                    maxLines = 1
-                )
-            }
-            if (loading) {
-                RaftText(
-                    text = stringResource(MR.strings.common_loading),
-                    style = typography.caption,
-                    color = colors.foregroundHint,
-                    maxLines = 1
-                )
-            }
         }
         errorMessage?.let {
-            Box(Modifier.padding(start = (12 + (row.depth + 1) * 16).dp, end = 12.dp, bottom = 6.dp)) {
+            Box(Modifier.padding(start = ((row.depth + 1) * 16 + 22).dp, end = 8.dp, bottom = 4.dp)) {
                 RaftText(
                     text = stringResource(MR.strings.member_error_workspace_child_load, it),
                     style = typography.caption.copy(fontWeight = FontWeight.SemiBold),
