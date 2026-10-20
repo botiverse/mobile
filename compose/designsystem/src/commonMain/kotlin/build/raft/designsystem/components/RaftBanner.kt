@@ -170,7 +170,9 @@ fun RaftBanner(
  * raft-ui PanelNotice: something in one panel failed. A full-width strip directly under
  * the panel header, no radius, no hairline of its own: the panel header's seam is above
  * it and a `line-seam` below. A status pixel leads the one message (semibold
- * `text-callout`, at most 2 lines), 16dp from the sides on a phone; [actions] sit on the right, centred on the first line.
+ * `text-callout`, at most [maxLines] lines), 16dp from the sides on a phone; [actions] sit on the right, centred on the first line.
+ * With [stackActions] the actions move to their own row under the message (aligned with the
+ * text), so a long message such as a runtime error keeps the full width.
  * [status] is [RaftBannerStatus.Warning] for something to fix, `Destructive` only for
  * what cannot be undone.
  */
@@ -179,6 +181,8 @@ fun RaftPanelNotice(
     message: String,
     modifier: Modifier = Modifier,
     status: RaftBannerStatus = RaftBannerStatus.Warning,
+    maxLines: Int = 2,
+    stackActions: Boolean = false,
     actions: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
@@ -209,12 +213,31 @@ fun RaftPanelNotice(
         Box(Modifier.width(9.dp).height(20.dp), contentAlignment = Alignment.Center) {
             RaftStatusDot(variant = pixel)
         }
+        if (stackActions && actions != null) {
+            Column(Modifier.weight(1f)) {
+                RaftText(
+                    message,
+                    style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.foreground,
+                    maxLines = maxLines,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                CompositionLocalProvider(LocalRaftSurfaceColor provides raftBannerFill(status, colors).compositeOver(RaftTheme.surfaceColor)) {
+                    Row(
+                        Modifier.padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) { actions() }
+                }
+            }
+            return@Row
+        }
         RaftText(
             message,
             modifier = Modifier.weight(1f),
             style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
             color = colors.foreground,
-            maxLines = 2,
+            maxLines = maxLines,
             overflow = TextOverflow.Ellipsis,
         )
         if (actions != null) {
