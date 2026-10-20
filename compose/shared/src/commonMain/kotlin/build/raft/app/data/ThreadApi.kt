@@ -747,8 +747,23 @@ private fun AttachmentCommentReactionDto.toThreadAttachmentCommentReaction(): Th
 private fun AttachmentCommentViewerDto.toThreadAttachmentCommentViewer(): ThreadAttachmentCommentViewer =
     ThreadAttachmentCommentViewer(canComment = canComment, reason = reason)
 
+// web `anchorLabel` (attachmentCommentAnchors.ts): a section is `§ <heading>`, a line range
+// `L<start>–<end>`; other anchors keep their own label or quote.
 private fun AttachmentCommentAnchorDto.toAnchorLabel(): String? {
     val json = data ?: return null
+    when (type) {
+        "md-section" -> {
+            val title =
+                json["headingTitle"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+                    ?: json["headingId"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+            if (title != null) return "§ $title".take(80)
+        }
+        "lines" -> {
+            val start = json["start"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()?.toLong()
+            val end = json["end"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()?.toLong() ?: start
+            if (start != null) return if (end == null || end == start) "L$start" else "L$start–$end"
+        }
+    }
     val label =
         json["label"]?.jsonPrimitive?.contentOrNull
             ?: json["quote"]?.jsonPrimitive?.contentOrNull

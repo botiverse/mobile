@@ -651,6 +651,9 @@
     <string name="thread_state_refreshing_original">正在刷新原消息…</string>
     <string name="thread_error_refresh_original">刷新失败：%1$s</string>
     <string name="thread_comments_title">评论</string>
+    <string name="thread_comments_header">评论 · %1$s</string>
+    <string name="thread_comments_composer_placeholder">评论 %1$s…</string>
+    <string name="thread_comments_empty_hint">这里的评论仅关联 %1$s。如需一般性讨论，请在消息列中回复。</string>
     <string name="thread_comments_filter_all">全部</string>
     <string name="thread_comments_filter_unresolved">未解决</string>
     <string name="thread_comments_load_failed">无法加载评论</string>

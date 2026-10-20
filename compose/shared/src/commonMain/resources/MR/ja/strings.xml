@@ -657,6 +657,9 @@
     <string name="thread_state_refreshing_original">元のメッセージを更新中…</string>
     <string name="thread_error_refresh_original">更新に失敗しました: %1$s</string>
     <string name="thread_comments_title">コメント</string>
+    <string name="thread_comments_header">コメント · %1$s</string>
+    <string name="thread_comments_composer_placeholder">%1$s にコメント…</string>
+    <string name="thread_comments_empty_hint">ここでのコメントは %1$s に紐付けられます。全般的な話し合いは、スレッドで返信してください。</string>
     <string name="thread_comments_filter_all">すべて</string>
     <string name="thread_comments_filter_unresolved">未解決</string>
     <string name="thread_comments_load_failed">コメントを読み込めませんでした</string>

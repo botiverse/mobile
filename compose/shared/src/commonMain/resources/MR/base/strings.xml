@@ -651,6 +651,9 @@
     <string name="thread_state_refreshing_original">Refreshing original message…</string>
     <string name="thread_error_refresh_original">Refresh failed: %1$s</string>
     <string name="thread_comments_title">Comments</string>
+    <string name="thread_comments_header">Comments · %1$s</string>
+    <string name="thread_comments_composer_placeholder">Comment on %1$s…</string>
+    <string name="thread_comments_empty_hint">Comments here are pinned to %1$s. For general discussion, reply in the thread.</string>
     <string name="thread_comments_filter_all">All</string>
     <string name="thread_comments_filter_unresolved">Unresolved</string>
     <string name="thread_comments_load_failed">Failed to load comments</string>
