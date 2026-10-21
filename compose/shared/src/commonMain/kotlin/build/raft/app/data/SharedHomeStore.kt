@@ -5137,3 +5137,12 @@ private fun RealtimeEvent.homeRealtimeDirtyReason(): String =
 
 private fun Throwable.safeHomeStoreDiagnosticsType(): String =
     this::class.simpleName?.takeIf { it.isNotBlank() } ?: "Throwable"
+
+/**
+ * Home state for a pushed page, seeded with the store's CURRENT value (data-layer plan: pages never
+ * start from an empty default). Collect it with `collectAsState()` so the first frame already has
+ * the pin state and the conversation rows the store holds; a page without a Home store gets a fixed
+ * empty state.
+ */
+internal fun SharedHomeStore?.homeStateForPage(): StateFlow<SharedHomeState> =
+    this?.state ?: MutableStateFlow(SharedHomeState())

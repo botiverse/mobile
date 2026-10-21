@@ -42,6 +42,11 @@ internal class ProcessRealtimeIngressCoordinator(
      * else `channel:join_denied`) for the channel id. Same witness / epoch checks as [onRoomsJoined].
      */
     private val onChannelJoinAck: suspend (RealtimeGrantRecord, Long, String, Boolean) -> Unit = { _, _, _, _ -> },
+    /**
+     * Data-layer plan, Tenny rule 2: an accepted `server:membership_removed` / `server:deleted` for the
+     * grant's server. The account lost the server, so its cached timelines (memory + durable) go.
+     */
+    private val onServerAccessLost: suspend (RealtimeGrantRecord) -> Unit = {},
 ) {
     fun start() {
         // kotlinx JsonObject is immutable: hand the event to the coroutine without a defensive copy.
@@ -140,6 +145,9 @@ internal class ProcessRealtimeIngressCoordinator(
                 )
             }
         if (!accepted) return
+        if (event is ServerMembershipRemoved || event is ServerDeleted) {
+            onServerAccessLost(grant)
+        }
         RealtimeCursorPolicy.appliedSeqForEvent(event)
             .takeIf { it > 0L }
             ?.let { appliedSeq ->

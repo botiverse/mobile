@@ -6,4 +6,4 @@ package build.raft.app
 internal const val TestThreadEnvironmentId = "https://prod.example.test"
 internal const val TestThreadPrincipalId = "user-1"
 internal const val TestThreadOwnerScopeId =
-    "https://prod.example.test\u001fuser-1\u001fserver-1\u001f1\u001f1"
+    "https://prod.example.test\u001fuser-1\u001fserver-1"
