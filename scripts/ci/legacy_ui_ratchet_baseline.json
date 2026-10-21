@@ -1,7 +1,7 @@
 {
   "totals": {
     "legacyComponentCalls": 254,
-    "thickInkBorders": 48
+    "thickInkBorders": 47
   },
   "files": {
     "compose/shared/src/commonMain/kotlin/build/raft/app/AddComputerDialog.kt": {
@@ -39,10 +39,6 @@
     "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt": {
       "legacyComponentCalls": 19,
       "thickInkBorders": 3
-    },
-    "compose/shared/src/commonMain/kotlin/build/raft/app/PrivateDeploymentSheet.kt": {
-      "legacyComponentCalls": 0,
-      "thickInkBorders": 1
     },
     "compose/shared/src/commonMain/kotlin/build/raft/app/RaftBrutalDropdownMenu.kt": {
       "legacyComponentCalls": 5,

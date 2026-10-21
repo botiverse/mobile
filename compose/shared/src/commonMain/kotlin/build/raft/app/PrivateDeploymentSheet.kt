@@ -15,24 +15,22 @@ import build.raft.app.network.RaftHttpExecutor
 import build.raft.app.network.RaftRequestPriority
 import build.raft.app.network.createPlatformRaftHttpExecutor
 import build.raft.app.resources.MR
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.unit.dp
-import build.raft.app.compat.ui.KeyboardParams
+import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftDialog
+import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextLink
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -40,7 +38,8 @@ import kotlinx.coroutines.withTimeoutOrNull
  * The login pages' "Sign in to a private deployment" sheet (artin, 2026-10-15): the web (frontend) address and
  * the server (API) address of a self-hosted Raft, nothing else. A web URL alone cannot locate the API (the web
  * app bakes its API origin in at build time and there is no discovery endpoint yet), so both are asked for.
- * The full API environment editor stays an internal debugging page.
+ * The full API environment editor stays an internal debugging page. Drawn as a design-system [RaftDialog] form
+ * (task #59), not the old square brutal panel.
  */
 @Composable
 internal fun PrivateDeploymentSheet(
@@ -55,11 +54,6 @@ internal fun PrivateDeploymentSheet(
     var apiValue by remember(visible) { mutableStateOf(TextFieldValue(if (isCustom) current.apiBaseUrl else "")) }
     var pending by remember(visible) { mutableStateOf<SharedSettingsApiEnvironmentRequest?>(null) }
     var errorCode by remember(visible) { mutableStateOf<String?>(null) }
-    // The sheet sits outside AuthScaffold, whose keyboard provider the fields would otherwise fall back to (a
-    // no-op), so the fields report here and the sheet lifts above the keyboard like RaftUnifiedDialog does.
-    var keyboardHeightDp by remember(visible) { mutableStateOf(0f) }
-    val onKeyboardHeightChange: (KeyboardParams) -> Unit = { keyboardHeightDp = it.height.coerceAtLeast(0f) }
-
     val webProbe = remember { createPlatformRaftHttpExecutor {} }
     LaunchedEffect(pending) {
         val request = pending ?: return@LaunchedEffect
@@ -93,108 +87,83 @@ internal fun PrivateDeploymentSheet(
     val saving = pending != null
 
     if (!visible) return
-    // Read before entering Modal: its content is rehosted in a native window where the pager's locals are gone.
-    val bottomInset = raftBottomSafeAreaPadding()
-    // Not Kuikly's ModalBottomSheet: its Dialog hard-codes dismissOnClickOutside, which on iOS turns the whole
-    // window into one accessibility leaf and hides the fields (see raftModalDialogPropertiesWithoutScrim).
-    Modal(onWillDismiss = { if (!saving) onDismiss() }) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            RaftModalDismissBarrier(overlayAlpha = 0.35f, onDismiss = onDismiss, dismissEnabled = !saving)
-            Box(
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .padding(
-                            start = 12.dp,
-                            end = 12.dp,
-                            bottom =
-                                if (keyboardHeightDp > 0f) {
-                                    // Android's reported height leaves the suggestion strip over the buttons (HuaTuo).
-                                    keyboardHeightDp.dp + PRIVATE_DEPLOYMENT_KEYBOARD_GAP
-                                } else {
-                                    bottomInset + RaftAppSpacing.Sm
-                                },
-                        )
-                        .raftDialogContentPointerBarrier()
-            ) {
-                Column(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .background(RaftColor.SurfaceCream)
-                            .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                            .padding(RaftAppSpacing.Lg),
-                    verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
-                ) {
-                    Text(text = stringResource(MR.strings.auth_private_deployment_title), style = RaftType.PageTitle)
-                    Text(
-                        text = stringResource(MR.strings.auth_private_deployment_hint),
-                        style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                    )
-                    AuthTextField(
-                        value = webValue,
-                        onValueChange = {
-                            webValue = it
+    val dismiss = { if (!saving) onDismiss() }
+    // raft-ui Dialog form (the invite dialog's pattern): rounded `layer-popover` surface, themed in light and
+    // dark, Back / × / Cancel dismiss, and the dialog keeps its fields above the keyboard (safe-drawing insets).
+    RaftDesignSystemTheme {
+        RaftDialog(
+            onDismissRequest = dismiss,
+            title = stringResource(MR.strings.auth_private_deployment_title),
+            description = stringResource(MR.strings.auth_private_deployment_hint),
+            // A form: a stray tap outside must not lose the typed addresses.
+            dismissOnClickOutside = false,
+            closeLabel = stringResource(MR.strings.common_close),
+            footer = {
+                RaftButton(
+                    text = stringResource(MR.strings.auth_private_deployment_cancel),
+                    onClick = dismiss,
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Lg,
+                    enabled = !saving,
+                )
+                RaftButton(
+                    text = stringResource(MR.strings.auth_private_deployment_save),
+                    onClick = {
+                        val request = privateDeploymentRequest(webValue.text, apiValue.text)
+                        if (request == null) errorCode = PRIVATE_DEPLOYMENT_INVALID else pending = request
+                    },
+                    variant = RaftButtonVariant.Primary,
+                    size = RaftButtonSize.Lg,
+                    loading = saving,
+                )
+            },
+        ) {
+            if (errorMessage != null) {
+                RaftBanner(description = errorMessage, status = RaftBannerStatus.Warning)
+            }
+            RaftField(label = stringResource(MR.strings.auth_private_deployment_web_label), enabled = !saving) {
+                RaftTextField(
+                    value = webValue,
+                    onValueChange = {
+                        webValue = it
+                        errorCode = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = stringResource(MR.strings.auth_private_deployment_web_placeholder),
+                    enabled = !saving,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
+                )
+            }
+            RaftField(label = stringResource(MR.strings.auth_private_deployment_api_label), enabled = !saving) {
+                RaftTextField(
+                    value = apiValue,
+                    onValueChange = {
+                        apiValue = it
+                        errorCode = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = stringResource(MR.strings.auth_private_deployment_api_placeholder),
+                    enabled = !saving,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
+                )
+            }
+            if (isCustom) {
+                RaftTextLink(
+                    text = stringResource(MR.strings.auth_private_deployment_reset),
+                    enabled = !saving,
+                    onClick = {
+                        if (!saving) {
                             errorCode = null
-                        },
-                        label = stringResource(MR.strings.auth_private_deployment_web_label),
-                        placeholder = stringResource(MR.strings.auth_private_deployment_web_placeholder),
-                        enabled = !saving,
-                        keyboardHeightChange = onKeyboardHeightChange,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
-                    )
-                    AuthTextField(
-                        value = apiValue,
-                        onValueChange = {
-                            apiValue = it
-                            errorCode = null
-                        },
-                        label = stringResource(MR.strings.auth_private_deployment_api_label),
-                        placeholder = stringResource(MR.strings.auth_private_deployment_api_placeholder),
-                        enabled = !saving,
-                        keyboardHeightChange = onKeyboardHeightChange,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
-                    )
-                    AuthError(errorMessage)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
-                        AuthActionButton(
-                            text = stringResource(MR.strings.auth_private_deployment_save),
-                            tone = AuthButtonTone.Pink,
-                            enabled = !saving,
-                            loading = saving,
-                            variant = AuthActionButtonVariant.Default,
-                            // AuthActionButton fills the width; weights share the row instead of pushing Cancel out.
-                            modifier = Modifier.weight(1f),
-                            onClick = {
-                                val request = privateDeploymentRequest(webValue.text, apiValue.text)
-                                if (request == null) errorCode = PRIVATE_DEPLOYMENT_INVALID else pending = request
-                            },
-                        )
-                        AuthActionButton(
-                            text = stringResource(MR.strings.auth_private_deployment_cancel),
-                            tone = AuthButtonTone.White,
-                            enabled = !saving,
-                            variant = AuthActionButtonVariant.Default,
-                            modifier = Modifier.weight(1f),
-                            onClick = onDismiss,
-                        )
-                    }
-                    if (isCustom) {
-                        AuthTextLink(stringResource(MR.strings.auth_private_deployment_reset)) {
-                            if (!saving) {
-                                errorCode = null
-                                pending = SharedSettingsApiEnvironmentRequest(
-                                    key = SharedApiEnvironmentStore.Production.key,
-                                    label = SharedApiEnvironmentStore.Production.label,
-                                    apiBaseUrl = SharedApiEnvironmentStore.Production.apiBaseUrl,
-                                    socketBaseUrl = SharedApiEnvironmentStore.Production.socketBaseUrl,
-                                    webUrl = SharedApiEnvironmentStore.Production.webUrl,
-                                )
-                            }
+                            pending = SharedSettingsApiEnvironmentRequest(
+                                key = SharedApiEnvironmentStore.Production.key,
+                                label = SharedApiEnvironmentStore.Production.label,
+                                apiBaseUrl = SharedApiEnvironmentStore.Production.apiBaseUrl,
+                                socketBaseUrl = SharedApiEnvironmentStore.Production.socketBaseUrl,
+                                webUrl = SharedApiEnvironmentStore.Production.webUrl,
+                            )
                         }
-                    }
-                }
+                    },
+                )
             }
         }
     }
@@ -203,7 +172,6 @@ internal fun PrivateDeploymentSheet(
 private const val PRIVATE_DEPLOYMENT_INVALID = "private_deployment_invalid"
 private const val PRIVATE_DEPLOYMENT_SAVE_FAILED = "private_deployment_save_failed"
 private const val PRIVATE_DEPLOYMENT_WEB_UNREACHABLE = "private_deployment_web_unreachable"
-private val PRIVATE_DEPLOYMENT_KEYBOARD_GAP = 48.dp
 private const val PRIVATE_DEPLOYMENT_WEB_PROBE_TIMEOUT_MS = 10_000L
 
 /** GET the web address: a 2xx/3xx answer is reachable; another status, a transport failure or a timeout is not. */

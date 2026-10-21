@@ -30732,7 +30732,7 @@ internal fun ThreadAttachmentCommentsSheet(
     // Not Kuikly's ModalBottomSheet: its Dialog hard-codes dismissOnClickOutside, which on
     // iOS turns the whole window into one accessibility leaf and hides the comment editor
     // (see raftModalDialogPropertiesWithoutScrim). Modal + RaftModalDismissBarrier is the established
-    // bottom-sheet pattern for content with text fields (see PrivateDeploymentSheet).
+    // bottom-sheet pattern for content with text fields.
     Modal(onWillDismiss = { onDismiss() }) {
         Box(modifier = Modifier.fillMaxSize()) {
             RaftModalDismissBarrier(overlayAlpha = 0.60f, onDismiss = onDismiss)
