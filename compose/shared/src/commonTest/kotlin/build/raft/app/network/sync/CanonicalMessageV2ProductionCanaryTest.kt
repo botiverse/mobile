@@ -645,6 +645,44 @@ class CanonicalMessageV2ProductionCanaryTest {
         assertEquals("discontinuous reason=thread_delivery_unconfirmed", run(leaveAfterAck = true, rejoinAck = true))
     }
 
+    /**
+     * Review finding on #14c: the leave runs synchronously from the room-lease registry while epochs and acks reach
+     * the canary asynchronously, so a leave on the new socket E2 can be noted BEFORE `noteTransportEpoch(E2)`
+     * (or before any epoch at all), and the ack of a join sent before the leave can be processed after it. Any
+     * leave of the thread room voids its acks on every epoch; the paired control without the leave is continuous.
+     */
+    @Test
+    fun aLeaveNotedBeforeTheNewSocketsEpochStillVoidsItsLaterAck() = runBlocking {
+        fun reconnected(leave: Boolean): String = runBlocking {
+            val fixture = Fixture(enabled = true)
+            fixture.connect(1L)
+            // Socket E2: the host rejoined the thread room, the server acked; the user closed the thread (leave)
+            // before shared processed E2's epoch; then the ack, then the epoch; the user reopens.
+            if (leave) fixture.canary.noteRoomLeft("server-1", "thread-1")
+            fixture.joinAck(2L)
+            fixture.connect(2L)
+            fixture.enterThread(1L)
+            fixture.accept(fixture.reply("r2", 2L), transportEpoch = 2L)
+            threadEnterReason(fixture).also {
+                if (it != "continuous") assertEquals(0, fixture.store.incrementalCalls)
+            }
+        }
+        assertEquals("discontinuous reason=thread_delivery_unconfirmed", reconnected(leave = true))
+        assertEquals("continuous", reconnected(leave = false))
+
+        fun firstConnection(leave: Boolean): String = runBlocking {
+            val fixture = Fixture(enabled = true)
+            // The leave is noted before any epoch was recorded.
+            if (leave) fixture.canary.noteRoomLeft("server-1", "thread-1")
+            fixture.connect(1L)
+            fixture.joinAck(1L)
+            fixture.enterThread(1L)
+            threadEnterReason(fixture)
+        }
+        assertEquals("discontinuous reason=thread_delivery_unconfirmed", firstConnection(leave = true))
+        assertEquals("continuous", firstConnection(leave = false))
+    }
+
     @Test
     fun theThreadsOwnNonMembershipYieldsToTheAckButTheParentsNeverDoes() = runBlocking {
         fun run(nonMember: Boolean, parentNonMember: Boolean, ack: Boolean): String = runBlocking {

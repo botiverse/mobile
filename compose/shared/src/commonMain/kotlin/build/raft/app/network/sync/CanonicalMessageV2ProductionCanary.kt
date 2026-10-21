@@ -115,7 +115,8 @@ class CanonicalMessageV2EnterBaseline internal constructor(
     internal val parentNonMemberAtRequest: Boolean = false,
     /**
      * Task #14c: the server's latest answer to `join:channel` for [scopeId] on the socket of [epochAtRequest]
-     * when the request was sent, with no leave of that room since the answer ([CanonicalMessageV2ThreadJoin]).
+     * when the request was sent, with no leave of that room ever noted in this process
+     * ([CanonicalMessageV2ThreadJoin]).
      */
     internal val threadJoinAtRequest: CanonicalMessageV2ThreadJoin = CanonicalMessageV2ThreadJoin.Unconfirmed,
 ) {
@@ -141,10 +142,10 @@ class CanonicalMessageV2EnterBaseline internal constructor(
 
 /** Task #14c: what the server last answered to this socket's `join:channel` of one thread channel. */
 internal enum class CanonicalMessageV2ThreadJoin {
-    /** No answer on this connection (or a leave of the room since): nothing is known. */
+    /** No answer on this connection (or the room was left at any time in this process): nothing is known. */
     Unconfirmed,
 
-    /** `channel:joined` on this connection and the room was not left since: the socket is in `channel:<id>`. */
+    /** `channel:joined` on this connection and the room was never left in this process: the socket is in the room. */
     Joined,
 
     /** `channel:join_denied` was the latest answer on this connection. */
@@ -155,8 +156,6 @@ internal enum class CanonicalMessageV2ThreadJoin {
 private class CanonicalMessageV2ChannelJoinSignal(
     val transportEpoch: Long,
     val joined: Boolean,
-    /** The room's leave count when the answer arrived: a later leave voids a `joined`. */
-    val roomLeaveCount: Long,
 )
 
 /**
@@ -270,7 +269,8 @@ private sealed interface CanonicalMessageV2AppendResult {
  *      only then does the server broadcast replies to `channel:<threadId>`. Under a `private` / `dm` / `joint`
  *      parent they reach only followers' `user:<id>` rooms → `reason=thread_delivery_follower_only`, ack or not;
  *   2. `channel:joined` for the thread arrived on the baseline's epoch BEFORE the baseline was registered, and
- *      the thread room was not left since ([CanonicalMessageV2EnterBaseline.threadJoinAtRequest]); otherwise
+ *      the thread room was never left in this process ([CanonicalMessageV2EnterBaseline.threadJoinAtRequest]);
+ *      otherwise
  *      `reason=thread_delivery_unconfirmed` (no ack: also an older server, the safe default) or
  *      `reason=thread_join_ack_after_request` (the ack arrived only while the fetch was in flight). A later
  *      enter on the same connection then becomes continuous; an ack after the commit changes nothing;
@@ -291,10 +291,17 @@ private sealed interface CanonicalMessageV2AppendResult {
  *   broadcast a reply to a room the socket is not yet in, and only then join — that reply is in neither the page
  *   nor the stream, and a later reply would advance the cursor over it (a permanent hole). Hence such an ack
  *   only serves the next enter. The epoch pins the ack to the socket that delivers the frames (a reconnect
- *   drops every room; the host rejoins and the server acks again with the new epoch), and a leave of the room
- *   after the ack voids it (the ack records the room's leave count), as does any leave of the room on that
- *   epoch (an ack arriving after a leave may answer a join sent before it; the server joins after an async
- *   access check), until the next connection.
+ *   drops every room; the host rejoins and the server acks again with the new epoch).
+ *   Leaves: ANY leave of the thread room in this process ([noteRoomLeft], on any epoch, before or after the
+ *   ack) voids every ack of that room for the rest of the process: such a thread is never continuous again
+ *   until a restart. A tighter rule is not sound with what the client observes: (a) the leave runs
+ *   synchronously from the room-lease registry while acks and epochs reach the canary asynchronously, so a
+ *   leave cannot be tied to the socket it happened on (it may be noted before that socket's epoch, or before
+ *   any epoch); (b) the server joins after an async access check and the ack carries no request id, so an ack
+ *   processed after a leave may answer a join sent BEFORE it (join → ack in flight → leave → reopen → the old
+ *   ack confirms a room the socket left, while the new join is still pending). The cost is small: a room is
+ *   left only when the directory says the user is not a member of it (#2994), which a reply-thread room
+ *   rarely is, and only continuity is lost (replies stay display only).
  * - Task #14a partial facts ("store partial, fill in when data arrives", owner decision). The server's
  *   ordinary `message:new` omits `senderDescription` and `reactions`, and no other realtime delivery of that
  *   message is fuller (a reply's `thread:updated.latestReply` is the same payload, the own-send HTTP response
@@ -359,15 +366,6 @@ internal class CanonicalMessageV2ProductionCanary(
 
     /** Guarded by [roomLeaveLock]: how many times the socket left each (server, room). */
     private val roomLeaveCountByRoom = mutableMapOf<Pair<String, String>, Long>()
-
-    /** Task #14c, guarded by [roomLeaveLock]: the latest transport epoch recorded per server id. */
-    private val transportEpochByServer = mutableMapOf<String, Long>()
-
-    /**
-     * Task #14c, guarded by [roomLeaveLock]: the epochs on which the socket left each (server, room) (bounded).
-     * A `channel:joined` of such an epoch may answer a join sent BEFORE the leave, so it never confirms delivery.
-     */
-    private val roomLeftEpochsByRoom = mutableMapOf<Pair<String, String>, LinkedHashSet<Long>>()
 
     init {
         generationEngine.addPartitionRevocationObserver(::onPartitionRevoked)
@@ -721,10 +719,6 @@ internal class CanonicalMessageV2ProductionCanary(
     suspend fun noteTransportEpoch(partition: DurablePartitionKey, transportEpoch: Long) {
         if (transportEpoch <= 0L) return
         stateMutex.withLock { currentTransportEpochByPartition[partition] = transportEpoch }
-        synchronized(roomLeaveLock) {
-            val server = partition.serverId
-            transportEpochByServer[server] = maxOf(transportEpochByServer[server] ?: 0L, transportEpoch)
-        }
     }
 
     /**
@@ -736,12 +730,6 @@ internal class CanonicalMessageV2ProductionCanary(
     fun noteRoomLeft(serverId: String, roomId: String) {
         val count = synchronized(roomLeaveLock) {
             val key = serverId to roomId
-            transportEpochByServer[serverId]?.let { epoch ->
-                val epochs = roomLeftEpochsByRoom.getOrPut(key) { LinkedHashSet() }
-                epochs.remove(epoch)
-                epochs += epoch
-                while (epochs.size > ROOMS_JOINED_EPOCH_MEMORY) epochs.remove(epochs.first())
-            }
             ((roomLeaveCountByRoom[key] ?: 0L) + 1L).also { roomLeaveCountByRoom[key] = it }
         }
         logger("canonical_v2_canary room_left server=$serverId scope=$roomId count=$count")
@@ -785,7 +773,6 @@ internal class CanonicalMessageV2ProductionCanary(
             channelJoinSignalByChannel[key] = CanonicalMessageV2ChannelJoinSignal(
                 transportEpoch = transportEpoch,
                 joined = joined,
-                roomLeaveCount = roomLeaveCount(partition.serverId, channelId),
             )
             while (channelJoinSignalByChannel.size > CHANNEL_JOIN_SIGNAL_MEMORY) {
                 channelJoinSignalByChannel.remove(channelJoinSignalByChannel.keys.first())
@@ -815,11 +802,9 @@ internal class CanonicalMessageV2ProductionCanary(
         return when {
             signal == null || signal.transportEpoch != epoch -> CanonicalMessageV2ThreadJoin.Unconfirmed
             !signal.joined -> CanonicalMessageV2ThreadJoin.Denied
-            // A leave of the room since the ack: the socket is no longer in it.
-            signal.roomLeaveCount != roomLeaveCount(partition.serverId, channelId) -> CanonicalMessageV2ThreadJoin.Unconfirmed
-            // A leave on this socket at all: the ack may answer a join sent before it (the server joins after an
-            // async access check, so join → leave → late ack can leave the socket outside the room).
-            roomLeftOnEpoch(partition.serverId, channelId, epoch) -> CanonicalMessageV2ThreadJoin.Unconfirmed
+            // Any leave of the room in this process, on any epoch, before or after the ack: never trusted (see
+            // the class doc: a leave is not reliably tied to an epoch, nor an ack to the join it answers).
+            roomLeaveCount(partition.serverId, channelId) != 0L -> CanonicalMessageV2ThreadJoin.Unconfirmed
             else -> CanonicalMessageV2ThreadJoin.Joined
         }
     }
@@ -827,9 +812,6 @@ internal class CanonicalMessageV2ProductionCanary(
     /** Holding [stateMutex]. */
     private fun roomsJoinedLocked(partition: DurablePartitionKey, epoch: Long?): Boolean =
         epoch != null && roomsJoinedEpochsByPartition[partition]?.contains(epoch) == true
-
-    private fun roomLeftOnEpoch(serverId: String, roomId: String, epoch: Long): Boolean =
-        synchronized(roomLeaveLock) { roomLeftEpochsByRoom[serverId to roomId]?.contains(epoch) == true }
 
     private fun roomLeaveCount(serverId: String, roomId: String): Long =
         synchronized(roomLeaveLock) { roomLeaveCountByRoom[serverId to roomId] ?: 0L }
