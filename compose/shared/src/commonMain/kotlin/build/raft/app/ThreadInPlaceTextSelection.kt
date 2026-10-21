@@ -38,6 +38,34 @@ import build.raft.app.compat.ui.LocalRaftPageActive
 import kotlinx.coroutines.awaitCancellation
 
 /**
+ * Holds the page's selection menu behind one stable composable reference. The list republishes
+ * the content on every recomposition (its captures change); only [menu]'s body reads the latest
+ * content, so the write recomposes just an open selection menu, never the visible rows.
+ */
+internal class ThreadInPlaceSelectionMenuSlot {
+    private var latest by mutableStateOf<(@Composable (ThreadInPlaceSelectionMenuRequest) -> Unit)?>(null)
+
+    val menu: @Composable (ThreadInPlaceSelectionMenuRequest) -> Unit = { request ->
+        // Explicit branch, not `latest?.invoke(...)`: a conditional composable call inside `?.`
+        // is the shape behind the Kotlin 2.4.21 missing-group crash.
+        val content = latest
+        if (content != null) content(request)
+    }
+
+    fun publish(content: @Composable (ThreadInPlaceSelectionMenuRequest) -> Unit) {
+        latest = content
+    }
+}
+
+/** What the host needs from a message's selection; [ThreadInPlaceSelectionController] in production. */
+internal interface ThreadInPlaceSelectionTarget {
+    val messageId: String
+    val hasSelection: Boolean
+
+    fun clear()
+}
+
+/**
  * In-place text selection for chat-stream message bodies, behind the "New Message Menu" toggle.
  *
  * Gesture rule (toggle ON): a long-press that lands on the message body belongs to Compose's
@@ -51,14 +79,6 @@ import kotlinx.coroutines.awaitCancellation
  * that skiko/iOS still uses) by the full Compact New Message Menu, WeChat style: reactions and
  * message tools, with Copy copying the selection and Select All added.
  */
-/** What the host needs from a message's selection; [ThreadInPlaceSelectionController] in production. */
-internal interface ThreadInPlaceSelectionTarget {
-    val messageId: String
-    val hasSelection: Boolean
-
-    fun clear()
-}
-
 internal class ThreadInPlaceTextSelectionHost(
     val enabled: Boolean,
     val copyText: (String) -> Unit,
@@ -66,10 +86,10 @@ internal class ThreadInPlaceTextSelectionHost(
     private var active: ThreadInPlaceSelectionTarget? = null
 
     /**
-     * The page's Compact New Message Menu for a selection (set by ThreadMessagesListContent,
-     * which owns the message actions); null until the list has composed.
+     * The page's Compact New Message Menu for a selection; ThreadMessagesListContent, which owns
+     * the message actions, publishes into it.
      */
-    var selectionMenu by mutableStateOf<(@Composable (ThreadInPlaceSelectionMenuRequest) -> Unit)?>(null)
+    val selectionMenu = ThreadInPlaceSelectionMenuSlot()
 
     /** The thread list's visible viewport in window space; the bar never leaves it. */
     var viewportInWindow by mutableStateOf<Rect?>(null)
@@ -431,8 +451,7 @@ internal fun ThreadInPlaceSelectableBody(
         diagnosticsLogger("thread_in_place_selection_back_clear messageId=${controller.messageId}")
         controller.clear()
     }
-    val selectionMenu = host.selectionMenu
-    if (pageActive && selectionMenu != null && controller.menuRequested && controller.hasSelection) {
+    if (pageActive && controller.menuRequested && controller.hasSelection) {
         val request =
             remember(controller, fullMessageText, wholeMessageText, host) {
                 ThreadInPlaceSelectionMenuRequest(
@@ -467,7 +486,7 @@ internal fun ThreadInPlaceSelectableBody(
                 )
             }
         ThreadInPlaceSelectionMenuHost(controller = controller) {
-            selectionMenu(request)
+            host.selectionMenu.menu(request)
         }
     }
 }
