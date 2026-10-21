@@ -26,7 +26,6 @@ interface HostCapabilities :
     HostFeedbackCapability,
     HostLinkCapability,
     HostSettingsCapability,
-    HostSocialAuthCapability,
     HostAttachmentPickerCapability,
     HostAvatarCacheCapability,
     HostRealtimeCapability,
@@ -57,11 +56,6 @@ interface HostSettingsCapability {
      * Returns a disposer that drops the callback early.
      */
     fun settingsCapabilityStream(command: JsonObject, onEvent: (JsonObject?) -> Unit): () -> Unit
-}
-
-/** `socialAuth`: Google/Apple sign-in; resolves to the provider credential payload. */
-interface HostSocialAuthCapability {
-    suspend fun socialAuth(provider: String): JsonObject?
 }
 
 /** `threadAttachmentUpload` (photo library / camera / document picker) and `compressThreadImage`. */

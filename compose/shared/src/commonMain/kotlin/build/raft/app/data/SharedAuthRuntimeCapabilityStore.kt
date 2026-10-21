@@ -18,13 +18,6 @@ import kotlinx.coroutines.flow.asStateFlow
  * these values cannot enable Apple on another platform or hide it on iOS.
  */
 data class SharedAuthRuntimeCapabilities(
-    /** The host only offers browser web login. */
-    val webLoginOnly: Boolean = false,
-    /**
-     * The host implements browser web login (`appLoginPrepare` / `appLoginOpen` and the `login/callback`
-     * deep link) and also keeps the email/social login; [MobileWebLoginGate] picks one (Android, iOS).
-     */
-    val webLoginSupported: Boolean = false,
     val socialProviderIds: Set<String> = emptySet(),
     /** Legacy backend provider snapshot; not an Apple sign-in availability gate. */
     val backendEnabledSocialProviderIds: Set<String>? = null,
@@ -63,14 +56,6 @@ class SharedAuthRuntimeCapabilityStore {
             _state.value = _state.value.copy(backendEnabledSocialProviderIds = providerIds)
             _state.value
         }
-
-    fun seedWebLoginOnly(value: Boolean?) = synchronized(lock) {
-        if (value != null) _state.value = _state.value.copy(webLoginOnly = value)
-    }
-
-    fun seedWebLoginSupported(value: Boolean?) = synchronized(lock) {
-        if (value != null) _state.value = _state.value.copy(webLoginSupported = value)
-    }
 
     fun current(): SharedAuthRuntimeCapabilities = synchronized(lock) { _state.value }
 }

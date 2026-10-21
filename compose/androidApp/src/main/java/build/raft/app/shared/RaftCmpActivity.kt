@@ -112,9 +112,6 @@ import build.raft.app.RaftHostStrings
 import build.raft.app.releaseRaftShellStoreScope
 import build.raft.app.selectExternalWebHandlerPackage
 import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
-import build.raft.app.core.data.auth.GoogleSocialAuthGateway
-import build.raft.app.core.data.auth.GoogleSocialAuthResult
-import build.raft.app.core.data.auth.completeGoogleSocialAuth
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.AndroidApiServerEnvironment
 import build.raft.app.core.data.auth.AndroidApiServerEnvironmentStore
@@ -824,7 +821,6 @@ internal open class RaftCmpActivity :
             ?: pageSpec?.pageData?.shellInstanceId?.trim()?.takeIf(String::isNotBlank)
             ?: "legacy-app-shell"
     }
-    private val googleSocialAuthGateway = GoogleSocialAuthGateway()
     // Registered before the page composes, so every Compose BackHandler the page installs runs first.
     private val hostSystemBackCallback =
             object : OnBackPressedCallback(true) {
@@ -1998,83 +1994,6 @@ internal open class RaftCmpActivity :
         )
     }
 
-    override fun requestGoogleNativeSocialAuth(callback: RaftBridgeCallback?): Boolean {
-        if (!googleSocialAuthGateway.isNativeConfigured()) return false
-
-        val loginTransition = AndroidLoginTransitionRouting.captureAuthentication(this)
-        lifecycleScope.launch {
-            val nativeResult = googleSocialAuthGateway.signIn(this@RaftCmpActivity)
-            when (nativeResult) {
-                is GoogleSocialAuthResult.IdToken -> {
-                    val result =
-                            withContext(Dispatchers.IO) {
-                                SharedAuthDataSource(
-                                        api = AndroidAuthApiFactory.createAuthApi(applicationContext),
-                                        sessionStore =
-                                                KeyValueAuthSessionStore(
-                                                        androidMMKVAuthKeyValueStore(applicationContext)
-                                                ),
-                                        diagnosticsLogger = ::logSharedAuthDiagnostics
-                                ).completeGoogleSocialAuth(nativeResult)
-                            }
-                    when (result) {
-                        is SharedAuthResult.Success -> {
-                            val accepted = AndroidLoginTransitionRouting.afterSuccessfulAuthentication(
-                                this@RaftCmpActivity, loginTransition,
-                            ) {
-                                RaftCmpActivity.startAppShell(
-                                        this@RaftCmpActivity,
-                                        clearTask = true
-                                )
-                            }
-                            if (accepted) {
-                                callback?.invoke(mapOf("code" to 200, "status" to "success"))
-                                finish()
-                            }
-                        }
-                        is SharedAuthResult.Failure -> {
-                            callback?.invoke(
-                                    mapOf(
-                                            "code" to 0,
-                                            "status" to "error",
-                                            "message" to result.message
-                                    )
-                            )
-                        }
-                        SharedAuthResult.Unauthenticated -> {
-                            callback?.invoke(
-                                    mapOf(
-                                            "code" to 0,
-                                            "status" to "error",
-                                            "message" to "Google sign-in failed. Try again."
-                                    )
-                            )
-                        }
-                    }
-                }
-                GoogleSocialAuthResult.Cancelled -> {
-                    callback?.invoke(
-                            mapOf(
-                                    "code" to 0,
-                                    "status" to "cancelled",
-                                    "message" to "Google sign-in canceled."
-                            )
-                    )
-                }
-                is GoogleSocialAuthResult.Failure -> {
-                    callback?.invoke(
-                            mapOf(
-                                    "code" to 0,
-                                    "status" to "error",
-                                    "message" to nativeResult.message
-                            )
-                    )
-                }
-            }
-        }
-        return true
-    }
-
     private fun handleThreadAttachmentPickerResult(
             uris: List<Uri>,
             persistable: Boolean = false,
@@ -3031,9 +2950,6 @@ internal open class RaftCmpActivity :
         private const val ATTACHMENT_SAVE_AS_STATE_KEY = "slockAttachmentSaveAsState"
         private const val THREAD_CAMERA_CAPTURE_STATE_KEY = "slockThreadCameraCaptureState"
         const val PAGE_LOGIN = RaftPages.LOGIN
-        const val PAGE_REGISTER = RaftPages.REGISTER
-        const val PAGE_FORGOT_PASSWORD = RaftPages.FORGOT_PASSWORD
-        const val PAGE_AUTH_LEGAL_ACCEPTANCE = RaftPages.AUTH_LEGAL_ACCEPTANCE
         const val PAGE_AUTH_CHOOSE_SERVER = RaftPages.AUTH_CHOOSE_SERVER
         const val PAGE_APP_SHELL = RaftPages.APP_SHELL
         const val PAGE_THREAD = RaftPages.THREAD
@@ -3154,14 +3070,6 @@ internal open class RaftCmpActivity :
             clearTask: Boolean = false
         ) {
             start(context, PAGE_AUTH_CHOOSE_SERVER, pageData, clearTask)
-        }
-
-        fun startAuthLegalAcceptance(
-            context: Context,
-            pageData: JSONObject,
-            clearTask: Boolean = false
-        ) {
-            start(context, PAGE_AUTH_LEGAL_ACCEPTANCE, pageData, clearTask)
         }
 
         internal fun appShellPageDataFromIntent(intent: Intent?): JSONObject {
@@ -3319,8 +3227,6 @@ internal open class RaftCmpActivity :
                     putKuiklyVerificationFlagsIfMissing()
                     if (pageName == PAGE_LOGIN || pageName == PAGE_APP_SHELL) {
                         put("slockSocialAuthProviders", "google,github")
-                        // Browser web login is available; the shared gate decides whether it replaces this page.
-                        put("slockWebLoginSupported", true)
                     }
                 }
 
@@ -3692,10 +3598,6 @@ internal class RaftBridgeModule(
             }
             "cancelCompressThreadImage" -> {
                 cancelCompressThreadImage(params)
-                null
-            }
-            "socialAuth" -> {
-                socialAuth(params, callback)
                 null
             }
             "urlEncode" -> {
@@ -8288,108 +8190,6 @@ internal class RaftBridgeModule(
     private fun showToast(message: String) {
         Handler(Looper.getMainLooper()).post {
             Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun socialAuth(params: String?, callback: RaftBridgeCallback?) {
-        val provider = JSONObject(params ?: "{}").optString("provider").trim().lowercase()
-        if (!AndroidMobileOAuth.isSupportedProvider(provider)) {
-            callback?.invoke(
-                    mapOf(
-                            "code" to 0,
-                            "status" to "error",
-                            "message" to "This sign-in provider is not available on Android yet"
-                    )
-            )
-            return
-        }
-        val lifecycleOwner = activity as? RaftHostActivity
-        if (lifecycleOwner == null) {
-            callback?.invoke(
-                    mapOf(
-                            "code" to 0,
-                            "status" to "error",
-                            "message" to "Unable to open ${provider.socialProviderDisplayName()} sign-in"
-                    )
-            )
-            return
-        }
-
-        lifecycleOwner.lifecycleScope.launch {
-            val pkce = AndroidMobileOAuth.createPkce()
-            val authDataSource =
-                    SharedAuthDataSource(
-                            api = AndroidAuthApiFactory.createAuthApi(appContext),
-                            sessionStore =
-                                    KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)),
-                            diagnosticsLogger = ::logSharedAuthDiagnostics
-                    )
-            val startResult =
-                    withContext(Dispatchers.IO) {
-                        authDataSource.startMobileOAuthLogin(
-                                provider = provider,
-                                appEnv = AndroidMobileOAuth.AppEnv,
-                                returnUri = AndroidMobileOAuth.ReturnUri,
-                                codeChallenge = pkce.codeChallenge
-                        )
-                    }
-            when (startResult) {
-                is SharedAuthResult.Success -> {
-                    AndroidMobileOAuthPendingStore(appContext).save(
-                            AndroidMobileOAuthPendingRequest(
-                                    provider = provider,
-                                    requestId = startResult.data.requestId,
-                                    codeVerifier = pkce.codeVerifier,
-                                    mode = AndroidMobileOAuth.ModeLogin
-                            )
-                    )
-                    val intent =
-                            Intent(Intent.ACTION_VIEW, Uri.parse(startResult.data.authorizationUrl)).apply {
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                    runCatching {
-                                appContext.startActivity(intent)
-                            }
-                            .onSuccess {
-                                callback?.invoke(mapOf("code" to 202, "status" to "started"))
-                            }
-                            .onFailure { throwable ->
-                                AndroidMobileOAuthPendingStore(appContext).clear()
-                                val message =
-                                        if (throwable is ActivityNotFoundException) {
-                                            "No browser can open ${provider.socialProviderDisplayName()} sign-in"
-                                        } else {
-                                            "Unable to open ${provider.socialProviderDisplayName()} sign-in"
-                                        }
-                                Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show()
-                                callback?.invoke(
-                                        mapOf(
-                                                "code" to 0,
-                                                "status" to "error",
-                                                "message" to message
-                                        )
-                                )
-                            }
-                }
-                is SharedAuthResult.Failure -> {
-                    callback?.invoke(
-                            mapOf(
-                                    "code" to 0,
-                                    "status" to "error",
-                                    "message" to startResult.message
-                            )
-                    )
-                }
-                SharedAuthResult.Unauthenticated -> {
-                    callback?.invoke(
-                            mapOf(
-                                    "code" to 0,
-                                    "status" to "error",
-                                    "message" to "${provider.socialProviderDisplayName()} sign-in failed. Try again."
-                            )
-                    )
-                }
-            }
         }
     }
 

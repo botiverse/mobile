@@ -209,129 +209,6 @@ class SharedAuthDataSource(
         return completeSocialLoginWithBody(normalizedProvider, body)
     }
 
-    suspend fun completeGoogleIdTokenLogin(
-        idToken: String,
-        nonce: String? = null
-    ): SharedAuthResult<StoredAuthSession> {
-        if (idToken.isBlank()) {
-            return SharedAuthResult.Failure(
-                SharedAuthErrorCode.Validation,
-                "Google sign-in did not return an ID token."
-            )
-        }
-
-        val body =
-            authJson.encodeToString(
-                AuthSocialCompleteRequestBody(
-                    idToken = idToken.trim(),
-                    nonce = nonce?.takeIf { it.isNotBlank() }
-                )
-            )
-        return completeSocialLoginWithBody("google", body)
-    }
-
-    suspend fun startMobileOAuthLogin(
-        provider: String,
-        platform: String = "android",
-        appEnv: String,
-        returnUri: String,
-        codeChallenge: String
-    ): SharedAuthResult<AuthMobileOAuthStartResponse> {
-        val normalizedProvider = provider.trim().lowercase()
-        if (normalizedProvider !in BrowserMobileOAuthProviders) {
-            return SharedAuthResult.Failure(
-                SharedAuthErrorCode.Validation,
-                "This sign-in provider is not available on this device."
-            )
-        }
-        if (platform.isBlank() || appEnv.isBlank() || returnUri.isBlank() || codeChallenge.isBlank()) {
-            return SharedAuthResult.Failure(
-                SharedAuthErrorCode.Validation,
-                "Mobile sign-in could not be prepared."
-            )
-        }
-        return when (
-            val response =
-                api.startMobileOAuth(
-                    provider = normalizedProvider,
-                    mode = "login",
-                    platform = platform.trim(),
-                    appEnv = appEnv.trim(),
-                    returnUri = returnUri.trim(),
-                    codeChallenge = codeChallenge.trim()
-                )
-        ) {
-            is AuthApiResult.Success -> SharedAuthResult.Success(response.data)
-            is AuthApiResult.Failure -> response.toSharedAuthFailure()
-        }
-    }
-
-    suspend fun startNativeAppleMobileOAuthLogin(
-        appEnv: String,
-        returnUri: String,
-        codeChallenge: String,
-    ): SharedAuthResult<AuthNativeAppleMobileOAuthStartResponse> =
-        startNativeAppleMobileOAuth(
-            mode = "login",
-            appEnv = appEnv,
-            returnUri = returnUri,
-            codeChallenge = codeChallenge,
-        )
-
-    suspend fun authorizeNativeAppleMobileOAuthLogin(
-        requestId: String,
-        requestToken: String,
-        authorizationCode: String,
-        identityToken: String,
-    ): SharedAuthResult<AuthNativeAppleMobileOAuthAuthorizationResponse> =
-        authorizeNativeAppleMobileOAuth(
-            mode = "login",
-            requestId = requestId,
-            requestToken = requestToken,
-            authorizationCode = authorizationCode,
-            identityToken = identityToken,
-        )
-
-    suspend fun completeMobileOAuthLogin(
-        code: String,
-        codeVerifier: String,
-        platform: String = "android",
-        acceptLegalTerms: Boolean = false
-    ): SharedAuthResult<StoredAuthSession> {
-        if (code.isBlank() || codeVerifier.isBlank()) {
-            return SharedAuthResult.Failure(
-                SharedAuthErrorCode.Validation,
-                "Mobile sign-in did not return the required credentials."
-            )
-        }
-        diagnosticsLogger("auth_login_start provider=mobile_oauth")
-        val login =
-            when (
-                val response =
-                    api.completeMobileOAuth(
-                        code = code.trim(),
-                        codeVerifier = codeVerifier.trim(),
-                        platform = platform.trim().ifBlank { "android" },
-                        acceptLegalTerms = acceptLegalTerms
-                    )
-            ) {
-                is AuthApiResult.Success -> {
-                    diagnosticsLogger("auth_login_result provider=mobile_oauth result=success parsed=true")
-                    response.data
-                }
-                is AuthApiResult.Failure -> {
-                    val failure = response.toSharedAuthFailure()
-                    diagnosticsLogger(
-                        "auth_login_result provider=mobile_oauth result=failure code=${failure.code} " +
-                            "http=${response.code} ${response.errorBodyText.authErrorDiagnostics()} " +
-                            "message=${failure.message.authDiagnosticsToken()}"
-                    )
-                    return failure
-                }
-            }
-        return establishLoginSession(login)
-    }
-
     suspend fun startAppLogin(returnUri: String, codeChallenge: String): SharedAuthResult<AuthAppLoginStartResponse> =
         when (val response = api.startAppLogin(returnUri, codeChallenge)) {
             is AuthApiResult.Success -> SharedAuthResult.Success(response.data)
@@ -622,48 +499,6 @@ class SharedAuthDataSource(
         return SharedAuthResult.Success(session)
     }
 
-    suspend fun register(
-        email: String,
-        password: String
-    ): SharedAuthResult<StoredAuthSession> {
-        if (email.isBlank() || password.isBlank()) {
-            return SharedAuthResult.Failure(
-                SharedAuthErrorCode.Validation,
-                "Email and password are required."
-            )
-        }
-        if (password.length < 8) {
-            return SharedAuthResult.Failure(
-                SharedAuthErrorCode.Validation,
-                "Password must be at least 8 characters."
-            )
-        }
-
-        val register =
-            when (val response = api.register(email = email.trim(), password = password)) {
-                is AuthApiResult.Success -> response.data
-                is AuthApiResult.Failure -> return response.toSharedAuthFailure()
-            }
-        val servers =
-            when (val response = api.servers("Bearer ${register.accessToken}")) {
-                is AuthApiResult.Success -> response.data
-                is AuthApiResult.Failure -> emptyList()
-            }
-        val orderedServers =
-            servers.orderedByServerOrder(
-                loadServerOrderOrNull("Bearer ${register.accessToken}", source = "register")
-            )
-        val session =
-            StoredAuthSession(
-                user = register.user,
-                accessToken = register.accessToken,
-                refreshToken = register.refreshToken,
-                servers = orderedServers
-            ).withValidatedServerSelection(orderedServers, serverSelectionMemory)
-        replaceAuthenticatedSessionAndRetireChangedAccount(session, "register")
-        return SharedAuthResult.Success(session)
-    }
-
     suspend fun completeProfile(name: String, displayName: String): SharedAuthResult<StoredAuthSession> {
         val normalizedName = name.trim().removePrefix("@")
         val normalizedDisplayName = displayName.trim()
@@ -693,16 +528,6 @@ class SharedAuthDataSource(
             return SharedAuthResult.Unauthenticated
         }
         return SharedAuthResult.Success(persisted)
-    }
-
-    suspend fun forgotPassword(email: String): SharedAuthResult<Unit> {
-        if (email.isBlank() || !email.contains("@")) {
-            return SharedAuthResult.Failure(SharedAuthErrorCode.Validation, "Enter a valid email address.")
-        }
-        return when (val response = api.forgotPassword(email.trim())) {
-            is AuthApiResult.Success -> SharedAuthResult.Success(Unit)
-            is AuthApiResult.Failure -> response.toSharedAuthFailure()
-        }
     }
 
     suspend fun resendVerification(): SharedAuthResult<Unit> {
@@ -1817,15 +1642,6 @@ interface RaftAuthApi {
     suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse>
     suspend fun completeSocialLogin(provider: String, bodyText: String): AuthApiResult<AuthSocialCompleteResponse>
     suspend fun fetchSocialAuthProviders(platform: String): AuthApiResult<Set<String>>
-    suspend fun startMobileOAuth(
-        provider: String,
-        mode: String,
-        platform: String,
-        appEnv: String,
-        returnUri: String,
-        codeChallenge: String,
-        authorization: String? = null
-    ): AuthApiResult<AuthMobileOAuthStartResponse>
     suspend fun startNativeAppleMobileOAuth(
         mode: String,
         platform: String,
@@ -1841,13 +1657,6 @@ interface RaftAuthApi {
         identityToken: String,
         authorization: String? = null,
     ): AuthApiResult<AuthNativeAppleMobileOAuthAuthorizationResponse> = AuthApiResult.Failure(code = 501)
-    suspend fun completeMobileOAuth(
-        code: String,
-        codeVerifier: String,
-        platform: String,
-        acceptLegalTerms: Boolean = false,
-        authorization: String? = null
-    ): AuthApiResult<AuthLoginResponse>
     suspend fun startMobileOAuthLink(
         provider: String,
         returnUri: String,
@@ -1860,13 +1669,11 @@ interface RaftAuthApi {
         codeVerifier: String,
         authorization: String
     ): AuthApiResult<AuthMobileOAuthLinkCompleteResponse>
-    suspend fun register(email: String, password: String): AuthApiResult<AuthLoginResponse>
     suspend fun completeProfile(
         authorization: String,
         name: String,
         displayName: String
     ): AuthApiResult<StoredAuthUser> = AuthApiResult.Failure(code = 501)
-    suspend fun forgotPassword(email: String): AuthApiResult<Unit>
     suspend fun resendVerification(authorization: String): AuthApiResult<Unit>
     suspend fun verifyEmail(token: String): AuthApiResult<Unit>
     suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser>
@@ -1932,36 +1739,6 @@ class RaftAuthApiClient(
         transport.completeAppLogin(authJson.encodeToString(AuthAppLoginCompleteBody(code, codeVerifier)))
             .mapAuthBody("auth_app_login_complete_contract_mismatch", AuthLoginResponseDto.serializer(), diagnosticsLogger) { it.toDomain() }
 
-    override suspend fun startMobileOAuth(
-        provider: String,
-        mode: String,
-        platform: String,
-        appEnv: String,
-        returnUri: String,
-        codeChallenge: String,
-        authorization: String?
-    ): AuthApiResult<AuthMobileOAuthStartResponse> =
-        transport.startMobileOAuth(
-            authJson.encodeToString(
-                AuthMobileOAuthStartRequestBody(
-                    provider = provider,
-                    mode = mode,
-                    platform = platform,
-                    appEnv = appEnv,
-                    returnUri = returnUri,
-                    codeChallenge = codeChallenge,
-                    codeChallengeMethod = "S256"
-                )
-            ),
-            authorization = authorization
-        ).mapAuthBody(
-            "auth_mobile_oauth_start_contract_mismatch",
-            AuthMobileOAuthStartResponseDto.serializer(),
-            diagnosticsLogger
-        ) {
-            it.toDomain()
-        }
-
     override suspend fun startNativeAppleMobileOAuth(
         mode: String,
         platform: String,
@@ -2015,34 +1792,6 @@ class RaftAuthApiClient(
             it.toDomain()
         }
 
-    override suspend fun completeMobileOAuth(
-        code: String,
-        codeVerifier: String,
-        platform: String,
-        acceptLegalTerms: Boolean,
-        authorization: String?
-    ): AuthApiResult<AuthLoginResponse> =
-        transport.completeMobileOAuth(
-            authJson.encodeToString(
-                AuthMobileOAuthCompleteRequestBody(
-                    code = code,
-                    codeVerifier = codeVerifier,
-                    platform = platform,
-                    acceptTerms = acceptLegalTerms.takeIf { it },
-                    termsVersion = CURRENT_TERMS_VERSION.takeIf { acceptLegalTerms },
-                    privacyVersion = CURRENT_PRIVACY_VERSION.takeIf { acceptLegalTerms },
-                    legalAcceptanceSource = "oauth".takeIf { acceptLegalTerms }
-                )
-            ),
-            authorization = authorization
-        ).mapAuthBody(
-            "auth_mobile_oauth_complete_contract_mismatch",
-            AuthLoginResponseDto.serializer(),
-            diagnosticsLogger
-        ) {
-            it.toDomain()
-        }
-
     override suspend fun startMobileOAuthLink(
         provider: String,
         returnUri: String,
@@ -2092,10 +1841,6 @@ class RaftAuthApiClient(
             it.toDomain()
         }
 
-    override suspend fun register(email: String, password: String): AuthApiResult<AuthLoginResponse> =
-        transport.register(authJson.encodeToString(AuthRegisterRequestBody(email = email, password = password)))
-            .mapAuthBody("auth_register_contract_mismatch", AuthLoginResponseDto.serializer(), diagnosticsLogger) { it.toDomain() }
-
     override suspend fun completeProfile(
         authorization: String,
         name: String,
@@ -2109,16 +1854,6 @@ class RaftAuthApiClient(
             StoredAuthUser.serializer(),
             diagnosticsLogger
         ) { it }
-
-    override suspend fun forgotPassword(email: String): AuthApiResult<Unit> {
-        val response = transport.forgotPassword(authJson.encodeToString(AuthForgotPasswordRequestBody(email = email)))
-        if (!response.isSuccessful) return response.toAuthApiFailure()
-        return response.mapAuthBody(
-            "auth_forgot_password_contract_mismatch",
-            AuthOkResponseDto.serializer(),
-            diagnosticsLogger
-        ) { Unit }
-    }
 
     override suspend fun resendVerification(authorization: String): AuthApiResult<Unit> {
         val response = transport.resendVerification(authorization)
@@ -2469,17 +2204,6 @@ data class AuthSocialCompleteRequestBody(
 )
 
 @kotlinx.serialization.Serializable
-data class AuthMobileOAuthStartRequestBody(
-    val provider: String,
-    val mode: String,
-    val platform: String,
-    val appEnv: String,
-    val returnUri: String,
-    val codeChallenge: String,
-    val codeChallengeMethod: String
-)
-
-@kotlinx.serialization.Serializable
 data class AuthNativeAppleMobileOAuthStartRequestBody(
     val mode: String,
     val platform: String,
@@ -2498,17 +2222,6 @@ data class AuthNativeAppleMobileOAuthAuthorizationRequestBody(
 )
 
 @kotlinx.serialization.Serializable
-data class AuthMobileOAuthCompleteRequestBody(
-    val code: String,
-    val codeVerifier: String,
-    val platform: String,
-    val acceptTerms: Boolean? = null,
-    val termsVersion: String? = null,
-    val privacyVersion: String? = null,
-    val legalAcceptanceSource: String? = null
-)
-
-@kotlinx.serialization.Serializable
 data class AuthMobileOAuthLinkStartRequestBody(
     val returnUri: String,
     val codeChallenge: String,
@@ -2522,24 +2235,9 @@ data class AuthMobileOAuthLinkCompleteRequestBody(
 )
 
 @kotlinx.serialization.Serializable
-data class AuthRegisterRequestBody(
-    val email: String,
-    val password: String,
-    val acceptTerms: Boolean = true,
-    val termsVersion: String = CURRENT_TERMS_VERSION,
-    val privacyVersion: String = CURRENT_PRIVACY_VERSION,
-    val legalAcceptanceSource: String = "signup"
-)
-
-@kotlinx.serialization.Serializable
 data class AuthCompleteProfileRequestBody(
     val name: String,
     val displayName: String
-)
-
-@kotlinx.serialization.Serializable
-data class AuthForgotPasswordRequestBody(
-    val email: String
 )
 
 @kotlinx.serialization.Serializable
@@ -2558,9 +2256,6 @@ data class AuthCreateServerRequestBody(
 data class AuthRefreshRequestBody(
     val refreshToken: String
 )
-
-private const val CURRENT_TERMS_VERSION = "2026-05-12"
-private const val CURRENT_PRIVACY_VERSION = "2026-05-12"
 
 @kotlinx.serialization.Serializable
 data class AuthLogoutRequestBody(

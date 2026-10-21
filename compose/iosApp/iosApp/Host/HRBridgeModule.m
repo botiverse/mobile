@@ -4512,20 +4512,6 @@ static NSDictionary *RaftFeedbackDiagnosticsBindingPayload(NSDictionary *binding
     return YES;
 }
 
-- (void)socialAuth:(NSDictionary *)args {
-    NSDictionary *params = RaftBridgeParams(args);
-    RaftBridgeCallback callback = args[RaftBridgeCallbackKey];
-    if (!callback) {
-        return;
-    }
-    NSString *provider = RaftBridgeString(params[@"provider"]);
-    [[RaftIosMobileOAuthHost shared] startWithProvider:provider
-                                                  mode:@"login"
-                                            completion:^(NSDictionary *result) {
-        callback(result);
-    }];
-}
-
 #pragma mark - Slock persistent attachment store
 
 // Persistent local copy keyed by <ownerKey>-<safe(attachmentId)>.

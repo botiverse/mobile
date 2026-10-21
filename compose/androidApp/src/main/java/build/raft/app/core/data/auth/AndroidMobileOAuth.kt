@@ -17,17 +17,15 @@ data class AndroidMobileOAuthPendingRequest(
     val provider: String,
     val requestId: String,
     val codeVerifier: String,
-    val mode: String = AndroidMobileOAuth.ModeLogin
+    val mode: String = AndroidMobileOAuth.ModeLink
 )
 
 object AndroidMobileOAuth {
-    const val AppEnv = "dev"
     val ReturnUri: String
         get() = "${BuildConfig.OAUTH_CALLBACK_SCHEME}://oauth/callback"
     /** Browser web login return URI; the shared [build.raft.app.data.APP_LOGIN_RETURN_URIS] allowlist. */
     val AppLoginReturnUri: String
         get() = "${BuildConfig.OAUTH_CALLBACK_SCHEME}://login/callback"
-    const val ModeLogin = "login"
     const val ModeLink = "link"
     private const val VerifierByteCount = 32
     private val SupportedProviders = setOf("google", "github")
@@ -72,7 +70,8 @@ class AndroidMobileOAuthPendingStore(context: Context) {
         val provider = store.getString(KEY_PROVIDER)?.takeIf { it.isNotBlank() } ?: return null
         val requestId = store.getString(KEY_REQUEST_ID)?.takeIf { it.isNotBlank() } ?: return null
         val verifier = store.getString(KEY_VERIFIER)?.takeIf { it.isNotBlank() } ?: return null
-        val mode = store.getString(KEY_MODE)?.takeIf { it.isNotBlank() } ?: AndroidMobileOAuth.ModeLogin
+        // Provider linking is the only native OAuth flow; a request left by the removed native login is stale.
+        val mode = store.getString(KEY_MODE)?.takeIf { it == AndroidMobileOAuth.ModeLink } ?: return null
         return AndroidMobileOAuthPendingRequest(
             provider = provider,
             requestId = requestId,

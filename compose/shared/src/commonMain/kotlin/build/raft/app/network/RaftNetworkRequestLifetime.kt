@@ -50,7 +50,7 @@ internal fun raftNetworkMethodClass(
 
 /** Not server-scoped (no server yet); matched by suffix so a self-hosted API base path works too. */
 private val ONE_TIME_AUTH_CODE_EXCHANGE_PATHS =
-    listOf("/auth/app-login/complete", "/auth/mobile/oauth/complete")
+    listOf("/auth/app-login/complete")
 
 internal fun interface RaftNetworkRequestCancelHandle {
     fun cancel()

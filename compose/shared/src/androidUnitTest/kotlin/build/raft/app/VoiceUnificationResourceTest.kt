@@ -16,12 +16,9 @@ import kotlin.test.assertTrue
  */
 class VoiceUnificationResourceTest {
 
-    // The 14 keys whose zh copy formerly used the formal 您, now unified to 你.
+    // The keys whose zh copy formerly used the formal 您, now unified to 你 (four left with the legacy login pages).
     private val voiceUnifiedKeys =
         listOf(
-            "auth_hint_reset_password",
-            "auth_fallback_your_email",
-            "auth_legal_notice_prefix",
             "auth_error_restore_session",
             "auth_error_session_refresh_choose_server",
             "auth_error_session_changed_retry_create_server",
@@ -31,7 +28,6 @@ class VoiceUnificationResourceTest {
             "auth_server_empty_hint",
             "auth_error_session_refresh",
             "auth_title_verify_email",
-            "auth_check_email_title",
             "settings_translation_mode_detail"
         )
 
@@ -49,7 +45,7 @@ class VoiceUnificationResourceTest {
     fun voiceUnifiedKeysDropFormalYouAndExistInBothLocales() {
         val base = readStrings("base")
         val zh = readStrings("zh-rCN")
-        assertEquals(14, voiceUnifiedKeys.size, "voice-unified key set must stay at 14")
+        assertEquals(10, voiceUnifiedKeys.size, "voice-unified key set must stay at 10")
         voiceUnifiedKeys.forEach { key ->
             assertTrue(key in base, "base missing voice key $key")
             assertTrue(key in zh, "zh-rCN missing voice key $key")
@@ -60,12 +56,9 @@ class VoiceUnificationResourceTest {
     @Test
     fun representativeVoiceKeysUseInformalYou() {
         val zh = readStrings("zh-rCN")
-        assertEquals("你的邮箱", zh.getValue("auth_fallback_your_email"))
         assertEquals("验证你的邮箱", zh.getValue("auth_title_verify_email"))
-        assertEquals("请检查你的邮箱", zh.getValue("auth_check_email_title"))
         assertEquals("创建你的第一个服务器", zh.getValue("auth_server_title_first"))
         assertTrue(zh.getValue("auth_server_empty_hint").startsWith("你还没有服务器"))
-        assertTrue(zh.getValue("auth_legal_notice_prefix").startsWith("继续即表示你同意"))
     }
 
     @Test

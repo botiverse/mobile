@@ -328,7 +328,7 @@ class MainActivity : ComponentActivity() {
         val pending = pendingStore.read()
         if (pending == null) {
             pendingStore.clear()
-            openAfterMobileOAuthError(getString(R.string.oauth_request_expired_toast), AndroidMobileOAuth.ModeLogin)
+            openAfterMobileOAuthError(getString(R.string.oauth_request_expired_toast))
             return true
         }
         val providerName = pending.provider.socialProviderDisplayName()
@@ -340,51 +340,15 @@ class MainActivity : ComponentActivity() {
             // whose email simply already had a password account saw the literal
             // string "account_conflict" with no idea what to do next. Any other
             // code keeps the existing passthrough.
-            openAfterMobileOAuthError(
-                mobileOAuthConflictMessageOrNull(providerName, error) ?: error,
-                pending.mode,
-            )
+            openAfterMobileOAuthError(mobileOAuthConflictMessageOrNull(providerName, error) ?: error)
             return true
         }
         val handoffCode = uri.getQueryParameter("code")
         if (handoffCode.isNullOrBlank()) {
             pendingStore.clear()
-            openAfterMobileOAuthError(getString(R.string.provider_no_handoff_code_toast, providerName), pending.mode)
+            openAfterMobileOAuthError(getString(R.string.provider_no_handoff_code_toast, providerName))
             return true
         }
-        if (pending.mode == AndroidMobileOAuth.ModeLink) {
-            lifecycleScope.launch {
-                val result =
-                    withContext(Dispatchers.IO) {
-                        SharedAuthDataSource(
-                            api = AndroidAuthApiFactory.createAuthApi(applicationContext),
-                            sessionStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(applicationContext)),
-                            diagnosticsLogger = ::logSharedAuthDiagnostics
-                        ).completeMobileOAuthLink(
-                            provider = pending.provider,
-                            code = handoffCode,
-                            codeVerifier = pending.codeVerifier
-                        )
-                    }
-                pendingStore.clear()
-                when (result) {
-                    is SharedAuthResult.Success -> {
-                        Toast.makeText(this@MainActivity, getString(R.string.provider_linked_toast, providerName), Toast.LENGTH_SHORT).show()
-                        openSettingsAccountAfterMobileOAuthLink()
-                    }
-                    is SharedAuthResult.Failure -> {
-                        Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_SHORT).show()
-                        openSettingsAccountAfterMobileOAuthLink()
-                    }
-                    SharedAuthResult.Unauthenticated -> {
-                        Toast.makeText(this@MainActivity, getString(R.string.provider_link_sign_in_again_toast, providerName), Toast.LENGTH_SHORT).show()
-                        openSettingsAccountAfterMobileOAuthLink()
-                    }
-                }
-            }
-            return true
-        }
-        val loginTransition = AndroidLoginTransitionRouting.captureAuthentication(this)
         lifecycleScope.launch {
             val result =
                 withContext(Dispatchers.IO) {
@@ -392,37 +356,25 @@ class MainActivity : ComponentActivity() {
                         api = AndroidAuthApiFactory.createAuthApi(applicationContext),
                         sessionStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(applicationContext)),
                         diagnosticsLogger = ::logSharedAuthDiagnostics
-                    ).completeMobileOAuthLogin(
+                    ).completeMobileOAuthLink(
+                        provider = pending.provider,
                         code = handoffCode,
                         codeVerifier = pending.codeVerifier
                     )
                 }
+            pendingStore.clear()
             when (result) {
                 is SharedAuthResult.Success -> {
-                    pendingStore.clear()
-                    openPostLoginDestination(result.data, loginTransition)
+                    Toast.makeText(this@MainActivity, getString(R.string.provider_linked_toast, providerName), Toast.LENGTH_SHORT).show()
+                    openSettingsAccountAfterMobileOAuthLink()
                 }
                 is SharedAuthResult.Failure -> {
-                    if (result.code == SharedAuthErrorCode.LegalAcceptanceRequired) {
-                        pendingStore.clear()
-                        RaftCmpActivity.startAuthLegalAcceptance(
-                            this@MainActivity,
-                            pageData = mobileOAuthLegalAcceptancePageData(
-                                provider = pending.provider,
-                                code = handoffCode,
-                                codeVerifier = pending.codeVerifier
-                            ),
-                            clearTask = true
-                        )
-                        finish()
-                    } else {
-                        pendingStore.clear()
-                        Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_SHORT).show()
-                    }
+                    Toast.makeText(this@MainActivity, result.message, Toast.LENGTH_SHORT).show()
+                    openSettingsAccountAfterMobileOAuthLink()
                 }
                 SharedAuthResult.Unauthenticated -> {
-                    pendingStore.clear()
-                    Toast.makeText(this@MainActivity, getString(R.string.provider_sign_in_failed_toast, providerName), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, getString(R.string.provider_link_sign_in_again_toast, providerName), Toast.LENGTH_SHORT).show()
+                    openSettingsAccountAfterMobileOAuthLink()
                 }
             }
         }
@@ -465,24 +417,9 @@ class MainActivity : ComponentActivity() {
         if (accepted) finish()
     }
 
-    private fun openLoginAfterMobileOAuthError(message: String) {
+    private fun openAfterMobileOAuthError(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-        RaftCmpActivity.start(
-            this,
-            RaftCmpActivity.PAGE_LOGIN,
-            pageData = mobileOAuthLoginErrorPageData(message),
-            clearTask = true
-        )
-        finish()
-    }
-
-    private fun openAfterMobileOAuthError(message: String, mode: String) {
-        if (mode == AndroidMobileOAuth.ModeLink) {
-            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-            openSettingsAccountAfterMobileOAuthLink()
-        } else {
-            openLoginAfterMobileOAuthError(message)
-        }
+        openSettingsAccountAfterMobileOAuthLink()
     }
 
     private fun openSettingsAccountAfterMobileOAuthLink() {
@@ -523,23 +460,6 @@ internal fun settingsAccountAppShellPageData(owner: AndroidShellRouteOwner? = nu
         .put("slockInitialTab", "settings")
         .put("slockInitialSettingsDestination", "account")
         .let { base -> owner?.let { base.withAndroidShellRouteOwner(it) } ?: base }
-
-internal fun mobileOAuthLoginErrorPageData(message: String): JSONObject =
-    JSONObject()
-        .put("slockAuthMessage", message)
-        .put(RaftRouteKeys.AUTH_SOCIAL_PROVIDERS, "google,github")
-
-internal fun mobileOAuthLegalAcceptancePageData(
-    provider: String,
-    code: String,
-    codeVerifier: String
-): JSONObject =
-    JSONObject()
-        .put(RaftRouteKeys.AUTH_LEGAL_PROVIDER, provider)
-        .put(RaftRouteKeys.AUTH_LEGAL_PLATFORM, "android")
-        .put(RaftRouteKeys.AUTH_LEGAL_CODE, code)
-        .put(RaftRouteKeys.AUTH_LEGAL_CODE_VERIFIER, codeVerifier)
-        .put(RaftRouteKeys.AUTH_SOCIAL_PROVIDERS, "google,github")
 
 private fun logSharedAuthDiagnostics(message: String) {
     RaftAppLog.auth("SlockKuikly", "shared_auth $message")

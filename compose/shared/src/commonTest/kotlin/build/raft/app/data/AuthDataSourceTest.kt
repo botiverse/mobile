@@ -649,126 +649,6 @@ class AuthDataSourceTest {
     }
 
     @Test
-    fun googleIdTokenCompleteWritesStoredSessionAndFetchesServers() = runBlocking {
-        val store = InMemoryRaftAuthSessionStore()
-        val api = FakeAuthApi()
-        val source = SharedAuthDataSource(transport = api, sessionStore = store)
-
-        val result = source.completeGoogleIdTokenLogin("native-id-token", nonce = "nonce-1")
-
-        assertTrue(result is SharedAuthResult.Success)
-        assertEquals("""{"idToken":"native-id-token","nonce":"nonce-1"}""", api.socialCompleteBody)
-        assertEquals("google", api.socialCompleteProvider)
-        assertEquals("Bearer social-access", api.currentUserAuthorization)
-        assertEquals("Bearer social-access", api.serversAuthorization)
-        assertEquals("user-1", store.readSession()?.user?.id)
-        assertEquals("social-access", store.readSession()?.accessToken)
-        assertEquals("social-refresh", store.readSession()?.refreshToken)
-        assertEquals(null, store.readSession()?.selectedServerId)
-    }
-
-    @Test
-    fun mobileOAuthStartUsesServerBrokerContract() = runBlocking {
-        val store = InMemoryRaftAuthSessionStore()
-        val api = FakeAuthApi()
-        val source = SharedAuthDataSource(transport = api, sessionStore = store)
-
-        val result =
-            source.startMobileOAuthLogin(
-                provider = " GitHub ",
-                appEnv = "dev",
-                returnUri = "raft://oauth/callback",
-                codeChallenge = "challenge-1"
-            )
-
-        assertTrue(result is SharedAuthResult.Success)
-        assertEquals("https://accounts.example/oauth", result.data.authorizationUrl)
-        assertEquals("request-1", result.data.requestId)
-        assertEquals("raft://oauth/callback", result.data.returnUri)
-        assertEquals(
-            """{"provider":"github","mode":"login","platform":"android","appEnv":"dev","returnUri":"raft://oauth/callback","codeChallenge":"challenge-1","codeChallengeMethod":"S256"}""",
-            api.mobileOAuthStartBody
-        )
-    }
-
-    @Test
-    fun mobileOAuthStartHonorsExplicitIosPlatformContract() = runBlocking {
-        val store = InMemoryRaftAuthSessionStore()
-        val api = FakeAuthApi()
-        val source = SharedAuthDataSource(transport = api, sessionStore = store)
-
-        val result =
-            source.startMobileOAuthLogin(
-                provider = "google",
-                platform = "ios",
-                appEnv = "production",
-                returnUri = "raft://oauth/callback",
-                codeChallenge = "challenge-ios"
-            )
-
-        assertTrue(result is SharedAuthResult.Success)
-        assertEquals(
-            """{"provider":"google","mode":"login","platform":"ios","appEnv":"production","returnUri":"raft://oauth/callback","codeChallenge":"challenge-ios","codeChallengeMethod":"S256"}""",
-            api.mobileOAuthStartBody
-        )
-    }
-
-    @Test
-    fun appleCannotUseTheBrowserMobileOAuthBroker() = runBlocking {
-        val store = InMemoryRaftAuthSessionStore()
-        val api = FakeAuthApi()
-        val source = SharedAuthDataSource(transport = api, sessionStore = store)
-
-        val result =
-            source.startMobileOAuthLogin(
-                provider = " Apple ",
-                platform = "ios",
-                appEnv = "production",
-                returnUri = "raft://oauth/callback",
-                codeChallenge = "challenge-apple"
-            )
-
-        assertTrue(result is SharedAuthResult.Failure)
-        assertEquals(null, api.mobileOAuthStartBody)
-    }
-
-    @Test
-    fun nativeAppleStartAndAuthorizationUseTheDedicatedIosCredentialContract() = runBlocking {
-        val store = InMemoryRaftAuthSessionStore()
-        val api = FakeAuthApi()
-        val source = SharedAuthDataSource(transport = api, sessionStore = store)
-
-        val start =
-            source.startNativeAppleMobileOAuthLogin(
-                appEnv = "production",
-                returnUri = "raft://oauth/callback",
-                codeChallenge = "challenge-apple"
-            )
-
-        assertTrue(start is SharedAuthResult.Success)
-        assertEquals("native-request-1", start.data.requestId)
-        assertEquals("native-request-token", start.data.requestToken)
-        assertEquals(
-            """{"mode":"login","platform":"ios","appEnv":"production","returnUri":"raft://oauth/callback","codeChallenge":"challenge-apple","codeChallengeMethod":"S256"}""",
-            api.nativeAppleStartBody
-        )
-
-        val authorize =
-            source.authorizeNativeAppleMobileOAuthLogin(
-                requestId = "native-request-1",
-                requestToken = "native-request-token",
-                authorizationCode = "apple-authorization-code",
-                identityToken = "apple-identity-token"
-            )
-        assertTrue(authorize is SharedAuthResult.Success)
-        assertEquals("apple-handoff", authorize.data.handoffCode)
-        assertEquals(
-            """{"requestId":"native-request-1","requestToken":"native-request-token","authorizationCode":"apple-authorization-code","identityToken":"apple-identity-token"}""",
-            api.nativeAppleAuthorizeBody
-        )
-    }
-
-    @Test
     fun nativeAppleLinkStartAndAuthorizationRemainBoundToTheCurrentSession() = runBlocking {
         val store = InMemoryRaftAuthSessionStore().apply {
             saveSession(storedSession(accessToken = "current-access"))
@@ -806,29 +686,6 @@ class AuthDataSourceTest {
         assertTrue(authorize is SharedAuthResult.Success)
         assertEquals("link", authorize.data.mode)
         assertEquals("Bearer current-access", api.nativeAppleAuthorizeAuthorization)
-    }
-
-    @Test
-    fun mobileOAuthCompleteStoresReturnedSessionAndFetchesServers() = runBlocking {
-        val store = InMemoryRaftAuthSessionStore()
-        val api = FakeAuthApi()
-        val source = SharedAuthDataSource(transport = api, sessionStore = store)
-
-        val result =
-            source.completeMobileOAuthLogin(
-                code = "handoff-1",
-                codeVerifier = "verifier-1"
-            )
-
-        assertTrue(result is SharedAuthResult.Success)
-        assertEquals(
-            """{"code":"handoff-1","codeVerifier":"verifier-1","platform":"android"}""",
-            api.mobileOAuthCompleteBody
-        )
-        assertEquals("Bearer access-token", api.serversAuthorization)
-        assertEquals("user-1", store.readSession()?.user?.id)
-        assertEquals("access-token", store.readSession()?.accessToken)
-        assertEquals("refresh-token", store.readSession()?.refreshToken)
     }
 
     @Test
@@ -878,76 +735,6 @@ class AuthDataSourceTest {
             """{"code":"handoff-1","codeVerifier":"verifier-1"}""",
             api.mobileOAuthLinkCompleteBody
         )
-    }
-
-    @Test
-    fun mobileOAuthCompleteMapsLegalAcceptanceRequired() = runBlocking {
-        val store = InMemoryRaftAuthSessionStore()
-        val source =
-            SharedAuthDataSource(
-                transport =
-                    FakeAuthApi(
-                        mobileOAuthCompleteResponse =
-                            AuthNetworkResponse(
-                                422,
-                                null,
-                                """{"error":"LEGAL_ACCEPTANCE_REQUIRED","legal":{"termsVersion":"2026-05-12","privacyVersion":"2026-05-12"}}"""
-                            )
-                    ),
-                sessionStore = store
-            )
-
-        val result =
-            source.completeMobileOAuthLogin(
-                code = "handoff-1",
-                codeVerifier = "verifier-1"
-            )
-
-        assertTrue(result is SharedAuthResult.Failure)
-        assertEquals(SharedAuthErrorCode.LegalAcceptanceRequired, result.code)
-        assertEquals(null, store.readSession())
-    }
-
-    @Test
-    fun mobileOAuthCompleteCanRetryWithLegalAcceptance() = runBlocking {
-        val store = InMemoryRaftAuthSessionStore()
-        val api = FakeAuthApi()
-        val source = SharedAuthDataSource(transport = api, sessionStore = store)
-
-        val result =
-            source.completeMobileOAuthLogin(
-                code = "handoff-1",
-                codeVerifier = "verifier-1",
-                platform = "ios",
-                acceptLegalTerms = true
-            )
-
-        assertTrue(result is SharedAuthResult.Success)
-        assertEquals(
-            """{"code":"handoff-1","codeVerifier":"verifier-1","platform":"ios","acceptTerms":true,"termsVersion":"2026-05-12","privacyVersion":"2026-05-12","legalAcceptanceSource":"oauth"}""",
-            api.mobileOAuthCompleteBody
-        )
-        assertEquals("user-1", store.readSession()?.user?.id)
-    }
-
-    @Test
-    fun registerAndForgotPasswordUseSharedDtoBodies() = runBlocking {
-        val store = InMemoryRaftAuthSessionStore()
-        val api = FakeAuthApi()
-        val source = SharedAuthDataSource(transport = api, sessionStore = store)
-
-        val registered = source.register(email = " user@slock.ai ", password = "password123")
-        val forgot = source.forgotPassword(" user@slock.ai ")
-
-        assertTrue(registered is SharedAuthResult.Success)
-        assertTrue(forgot is SharedAuthResult.Success)
-        assertEquals(
-            """{"email":"user@slock.ai","password":"password123","acceptTerms":true,"termsVersion":"2026-05-12","privacyVersion":"2026-05-12","legalAcceptanceSource":"signup"}""",
-            api.registerBody
-        )
-        assertEquals("""{"email":"user@slock.ai"}""", api.forgotPasswordBody)
-        assertEquals("user-1", store.readSession()?.user?.id)
-        assertEquals(null, store.readSession()?.selectedServerId)
     }
 
     @Test
@@ -2050,16 +1837,6 @@ class AuthDataSourceTest {
                 200,
                 """{"provider":"google","mode":"login","accessToken":"social-access","refreshToken":"social-refresh"}"""
             ),
-        private val mobileOAuthStartResponse: AuthNetworkResponse =
-            AuthNetworkResponse(
-                200,
-                """{"authorizationUrl":"https://accounts.example/oauth","requestId":"request-1","returnUri":"raft://oauth/callback","expiresAt":"2026-06-29T00:00:00Z"}"""
-            ),
-        private val mobileOAuthCompleteResponse: AuthNetworkResponse =
-            AuthNetworkResponse(
-                200,
-                """{"user":{"id":"user-1","email":"user@slock.ai","displayName":"Artin"},"accessToken":"access-token","refreshToken":"refresh-token"}"""
-            ),
         private val nativeAppleStartResponse: AuthNetworkResponse =
             AuthNetworkResponse(
                 201,
@@ -2122,21 +1899,13 @@ class AuthDataSourceTest {
     ) : RaftAuthTransport {
         var loginBody: String? = null
             private set
-        var registerBody: String? = null
-            private set
         var completeProfileAuthorization: String? = null
             private set
         var completeProfileBody: String? = null
             private set
-        var forgotPasswordBody: String? = null
-            private set
         var socialCompleteProvider: String? = null
             private set
         var socialCompleteBody: String? = null
-            private set
-        var mobileOAuthStartBody: String? = null
-            private set
-        var mobileOAuthCompleteBody: String? = null
             private set
         var nativeAppleStartBody: String? = null
             private set
@@ -2189,6 +1958,8 @@ class AuthDataSourceTest {
             return loginResponse
         }
 
+        override suspend fun completeAppLogin(bodyText: String): AuthNetworkResponse = loginResponse
+
         override suspend fun completeSocialLogin(provider: String, bodyText: String): AuthNetworkResponse {
             socialCompleteProvider = provider
             socialCompleteBody = bodyText
@@ -2197,16 +1968,6 @@ class AuthDataSourceTest {
 
         override suspend fun socialAuthProviders(platform: String): AuthNetworkResponse =
             AuthNetworkResponse(code = 501, bodyText = null)
-
-        override suspend fun startMobileOAuth(bodyText: String, authorization: String?): AuthNetworkResponse {
-            mobileOAuthStartBody = bodyText
-            return mobileOAuthStartResponse
-        }
-
-        override suspend fun completeMobileOAuth(bodyText: String, authorization: String?): AuthNetworkResponse {
-            mobileOAuthCompleteBody = bodyText
-            return mobileOAuthCompleteResponse
-        }
 
         override suspend fun startNativeAppleMobileOAuth(
             bodyText: String,
@@ -2246,16 +2007,6 @@ class AuthDataSourceTest {
             mobileOAuthLinkCompleteBody = bodyText
             mobileOAuthLinkCompleteAuthorization = authorization
             return mobileOAuthLinkCompleteResponse
-        }
-
-        override suspend fun register(bodyText: String): AuthNetworkResponse {
-            registerBody = bodyText
-            return loginResponse
-        }
-
-        override suspend fun forgotPassword(bodyText: String): AuthNetworkResponse {
-            forgotPasswordBody = bodyText
-            return AuthNetworkResponse(200, """{"ok":true,"message":"sent"}""")
         }
 
         override suspend fun resendVerification(authorization: String): AuthNetworkResponse {

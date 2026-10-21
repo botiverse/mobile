@@ -120,8 +120,6 @@ internal object AndroidLoginTransitionRouting {
             destination in setOf(RaftPages.APP_SHELL, RaftPages.AUTH_CHOOSE_SERVER) &&
             sourcePage in setOf(
                 RaftPages.LOGIN,
-                RaftPages.REGISTER,
-                RaftPages.AUTH_LEGAL_ACCEPTANCE,
                 RaftPages.AUTH_CHOOSE_SERVER,
                 "compose_auth_profile_setup",
             )

@@ -1084,12 +1084,6 @@ class SharedRaftAuthTransport internal constructor(
     override suspend fun completeAppLogin(bodyText: String): AuthNetworkResponse =
         request(path = "auth/app-login/complete", method = "POST", bodyText = bodyText)
 
-    override suspend fun startMobileOAuth(bodyText: String, authorization: String?): AuthNetworkResponse =
-        request(path = "auth/mobile/oauth/start", method = "POST", authorization = authorization, bodyText = bodyText)
-
-    override suspend fun completeMobileOAuth(bodyText: String, authorization: String?): AuthNetworkResponse =
-        request(path = "auth/mobile/oauth/complete", method = "POST", authorization = authorization, bodyText = bodyText)
-
     override suspend fun startNativeAppleMobileOAuth(bodyText: String, authorization: String?): AuthNetworkResponse =
         request(
             path = "auth/mobile/oauth/apple/native/start",
@@ -1129,12 +1123,6 @@ class SharedRaftAuthTransport internal constructor(
             authorization = authorization,
             bodyText = bodyText
         )
-
-    override suspend fun register(bodyText: String): AuthNetworkResponse =
-        request(path = "auth/register", method = "POST", bodyText = bodyText)
-
-    override suspend fun forgotPassword(bodyText: String): AuthNetworkResponse =
-        request(path = "auth/forgot-password", method = "POST", bodyText = bodyText)
 
     override suspend fun resendVerification(authorization: String): AuthNetworkResponse =
         request(path = "auth/resend-verification", method = "POST", authorization = authorization)

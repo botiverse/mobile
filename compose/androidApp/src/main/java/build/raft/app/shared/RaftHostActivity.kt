@@ -39,9 +39,6 @@ internal interface RaftHostActivity : LifecycleOwner {
         callback: RaftBridgeCallback?,
     )
 
-    /** Starts native Google sign-in; false when it is not configured (the caller falls back to the web flow). */
-    fun requestGoogleNativeSocialAuth(callback: RaftBridgeCallback?): Boolean
-
     fun updatePerformanceScene(action: String, sceneName: String)
 
     fun requestRealtimeConnect(

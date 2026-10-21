@@ -31,9 +31,6 @@ internal class RaftHostCapabilities(
     ): () -> Unit =
         bridge.settingsCapabilityStream(command.toKuiklyJson()) { payload -> onEvent(payload?.toJsonObject()) }
 
-    override suspend fun socialAuth(provider: String): JsonObject? =
-        bridge.socialAuth(provider)?.toJsonObject()
-
     override suspend fun threadAttachmentUpload(
         channelId: String,
         imageOnly: Boolean,

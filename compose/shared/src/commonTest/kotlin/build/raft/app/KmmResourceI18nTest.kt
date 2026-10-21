@@ -758,30 +758,7 @@ class KmmResourceI18nTest {
 
     @Test
     fun authErrorPresentationResourcesAreGenerated() {
-        val staticResources =
-            listOf(
-                MR.strings.auth_error_login_setup,
-                MR.strings.auth_error_local_session_setup,
-                MR.strings.auth_error_login_failed,
-                MR.strings.auth_error_request_expired,
-                MR.strings.auth_error_register_setup,
-                MR.strings.auth_error_register_failed,
-                MR.strings.auth_error_password_reset_setup,
-                MR.strings.auth_error_password_reset_failed
-            )
-
-        staticResources.forEach { resource ->
-            assertTrue(
-                resource.desc() is ResourceStringDesc,
-                "auth error resources must produce ResourceStringDesc entries"
-            )
-        }
-
         listOf(
-            MR.strings.auth_error_provider_unavailable,
-            MR.strings.auth_error_provider_setup,
-            MR.strings.auth_error_provider_failed,
-            MR.strings.auth_provider_cancelled,
             MR.strings.auth_error_mobile_oauth_account_conflict,
             MR.strings.auth_error_mobile_oauth_provider_conflict
         ).forEach { resource ->
@@ -796,29 +773,9 @@ class KmmResourceI18nTest {
     fun authPageVisibleCopyResourcesAreGenerated() {
         listOf(
             MR.strings.auth_label_name,
-            MR.strings.auth_title_sign_in,
             MR.strings.auth_action_sign_in,
-            MR.strings.auth_state_signing_in,
             MR.strings.auth_social_divider_or,
-            MR.strings.auth_link_forgot_password,
-            MR.strings.auth_prompt_no_account,
-            MR.strings.auth_action_create_one,
-            MR.strings.auth_title_create_account,
-            MR.strings.auth_action_create_account,
-            MR.strings.auth_state_creating_account,
-            MR.strings.auth_prompt_already_have_account,
-            MR.strings.auth_title_reset_password,
-            MR.strings.auth_hint_reset_password,
-            MR.strings.auth_fallback_your_email,
-            MR.strings.auth_state_sending,
-            MR.strings.auth_action_send_reset_link,
-            MR.strings.auth_link_back_to_sign_in,
-            MR.strings.auth_hint_legal_acceptance,
-            MR.strings.auth_state_continuing,
             MR.strings.auth_action_continue,
-            MR.strings.auth_legal_notice_prefix,
-            MR.strings.auth_legal_notice_connector,
-            MR.strings.auth_legal_notice_suffix,
             MR.strings.auth_terms_agreement_prefix,
             MR.strings.auth_terms_agreement_connector,
             MR.strings.auth_terms_agreement_acknowledgement,
@@ -865,10 +822,6 @@ class KmmResourceI18nTest {
         }
 
         listOf(
-            MR.strings.auth_action_continue_with_provider,
-            MR.strings.auth_action_opening_provider,
-            MR.strings.auth_notice_password_reset_sent,
-            MR.strings.auth_title_provider_sign_in,
             MR.strings.auth_server_signed_in_as,
             MR.strings.auth_hint_verify_email_address
         ).forEach { resource ->

@@ -109,11 +109,6 @@ class BridgeWireHostCapabilitiesTest {
         calls.single().callback!!("""{"status": "late"}""")
         assertEquals(JsonPrimitive("ok"), result.await()!!["status"])
 
-        val auth = async(start = CoroutineStart.UNDISPATCHED) { capabilities.socialAuth("google") }
-        assertEquals("socialAuth" to """{"provider": "google"}""", wire().last())
-        calls.last().callback!!(null)
-        assertNull(auth.await())
-
         val upload = async(start = CoroutineStart.UNDISPATCHED) { capabilities.threadAttachmentUpload("c1", imageOnly = true) }
         assertEquals(
             "threadAttachmentUpload" to """{"channelId": "c1","imageOnly": true,"capture": false,"compressImages": false}""",

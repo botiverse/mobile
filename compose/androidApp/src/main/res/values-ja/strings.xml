@@ -491,7 +491,6 @@
     <string name="provider_no_handoff_code_toast">%1$s がハンドオフコードを返しませんでした</string>
     <string name="provider_linked_toast">%1$s アカウントを連携しました。</string>
     <string name="provider_link_sign_in_again_toast">%1$s を連携するには、もう一度ログインしてください。</string>
-    <string name="provider_sign_in_failed_toast">%1$s のログインに失敗しました。もう一度お試しください。</string>
     <string name="attachment_no_app_toast">この添付ファイルを開けるアプリがありません</string>
     <string name="attachment_open_failed_toast">添付ファイルを開けませんでした</string>
     <string name="attachment_open_with_chooser_title">アプリで開く</string>

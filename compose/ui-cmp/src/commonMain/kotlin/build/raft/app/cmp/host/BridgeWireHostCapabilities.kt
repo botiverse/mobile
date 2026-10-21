@@ -75,9 +75,6 @@ class BridgeWireHostCapabilities(
         return { active.value = false }
     }
 
-    override suspend fun socialAuth(provider: String): JsonObject? =
-        request("socialAuth", params("provider" to provider))
-
     override suspend fun threadAttachmentUpload(
         channelId: String,
         imageOnly: Boolean,

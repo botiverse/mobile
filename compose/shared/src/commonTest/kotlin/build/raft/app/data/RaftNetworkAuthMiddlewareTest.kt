@@ -570,26 +570,6 @@ class RaftNetworkAuthMiddlewareTest {
         override suspend fun fetchSocialAuthProviders(platform: String): AuthApiResult<Set<String>> =
             error("not used")
 
-        override suspend fun startMobileOAuth(
-            provider: String,
-            mode: String,
-            platform: String,
-            appEnv: String,
-            returnUri: String,
-            codeChallenge: String,
-            authorization: String?
-        ): AuthApiResult<AuthMobileOAuthStartResponse> =
-            error("not used")
-
-        override suspend fun completeMobileOAuth(
-            code: String,
-            codeVerifier: String,
-            platform: String,
-            acceptLegalTerms: Boolean,
-            authorization: String?
-        ): AuthApiResult<AuthLoginResponse> =
-            error("not used")
-
         override suspend fun startMobileOAuthLink(
             provider: String,
             returnUri: String,
@@ -604,12 +584,6 @@ class RaftNetworkAuthMiddlewareTest {
             codeVerifier: String,
             authorization: String
         ): AuthApiResult<AuthMobileOAuthLinkCompleteResponse> =
-            error("not used")
-
-        override suspend fun register(email: String, password: String): AuthApiResult<AuthLoginResponse> =
-            error("not used")
-
-        override suspend fun forgotPassword(email: String): AuthApiResult<Unit> =
             error("not used")
 
         override suspend fun resendVerification(authorization: String): AuthApiResult<Unit> =

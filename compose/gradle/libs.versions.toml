@@ -25,8 +25,6 @@ activityCompose = "1.8.0"
 fragment = "1.8.9"
 composeBom = "2026.09.00"
 recyclerview = "1.3.2"
-credentials = "1.6.0"
-googleid = "1.2.0"
 okhttp = "4.12.0"
 gson = "2.11.0"
 socketIoClient = "2.1.2"
@@ -69,9 +67,6 @@ androidx-compose-material-icons-extended = { group = "androidx.compose.material"
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-compose-material3-adaptive-navigation-suite = { group = "androidx.compose.material3", name = "material3-adaptive-navigation-suite" }
 androidx-recyclerview = { group = "androidx.recyclerview", name = "recyclerview", version.ref = "recyclerview" }
-androidx-credentials = { group = "androidx.credentials", name = "credentials", version.ref = "credentials" }
-androidx-credentials-play-services-auth = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "credentials" }
-googleid = { group = "com.google.android.libraries.identity.googleid", name = "googleid", version.ref = "googleid" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 socket-io-client = { group = "io.socket", name = "socket.io-client", version.ref = "socketIoClient" }

@@ -18171,26 +18171,6 @@ internal class AuthChooseServerVisualApi(
     override suspend fun fetchSocialAuthProviders(platform: String): AuthApiResult<Set<String>> =
         AuthApiResult.Failure(code = 400)
 
-    override suspend fun startMobileOAuth(
-        provider: String,
-        mode: String,
-        platform: String,
-        appEnv: String,
-        returnUri: String,
-        codeChallenge: String,
-        authorization: String?
-    ): AuthApiResult<AuthMobileOAuthStartResponse> =
-        AuthApiResult.Failure(code = 400)
-
-    override suspend fun completeMobileOAuth(
-        code: String,
-        codeVerifier: String,
-        platform: String,
-        acceptLegalTerms: Boolean,
-        authorization: String?
-    ): AuthApiResult<AuthLoginResponse> =
-        AuthApiResult.Failure(code = 400)
-
     override suspend fun startMobileOAuthLink(
         provider: String,
         returnUri: String,
@@ -18205,12 +18185,6 @@ internal class AuthChooseServerVisualApi(
         codeVerifier: String,
         authorization: String
     ): AuthApiResult<AuthMobileOAuthLinkCompleteResponse> =
-        AuthApiResult.Failure(code = 400)
-
-    override suspend fun register(email: String, password: String): AuthApiResult<AuthLoginResponse> =
-        AuthApiResult.Failure(code = 400)
-
-    override suspend fun forgotPassword(email: String): AuthApiResult<Unit> =
         AuthApiResult.Failure(code = 400)
 
     override suspend fun resendVerification(authorization: String): AuthApiResult<Unit> =
