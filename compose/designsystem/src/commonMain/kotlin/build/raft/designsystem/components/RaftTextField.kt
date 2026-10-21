@@ -18,6 +18,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.KeyboardActionHandler
+import androidx.compose.foundation.text.input.OutputTransformation
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -109,7 +113,9 @@ internal fun raftFieldBoxLook(enabled: Boolean, invalid: Boolean, colors: RaftUi
  * a 1dp `line-field` border on `layer-card`, control radius, 12dp side padding and
  * the field type (`text-field`, 16/24 regular).
  *
- * Controlled: show [value] and update it from [onValueChange].
+ * Controlled: show [value] and update it from [onValueChange]. The editor itself edits a
+ * [TextFieldState] kept in step with [value] ([rememberRaftTextFieldState]), so the IME is never
+ * handed a stale value (iOS marked text survives, task #69).
  *
  * - [placeholder]: an example value ("Wug") in `foreground-hint`, never the label. Put
  *   the field in a [RaftField] for its label and help text.
@@ -153,28 +159,22 @@ fun RaftTextField(
     interactionSource: MutableInteractionSource? = null,
     trailingAction: (@Composable () -> Unit)? = null,
 ) {
-    val source = interactionSource ?: remember { MutableInteractionSource() }
-    val look = raftFieldBoxLook(enabled, invalid, RaftTheme.colors, readOnly)
-    val isFocused = raftIsFocused(source)
-    val focused = enabled && isFocused
-    val field = LocalRaftFieldState.current
-    BasicTextField(
-        value = value,
-        onValueChange = onValueChange,
-        // Focused: cursor and selection drags (and single-line scrolling) keep the drag.
-        modifier = modifier.raftKeepsBackSwipe(focused).raftFieldSemantics(field.label, invalid, enabled, field.error),
+    RaftTextField(
+        state = rememberRaftTextFieldState(value, onValueChange, traceName = "RaftTextField"),
+        modifier = modifier,
+        placeholder = placeholder,
         enabled = enabled,
         readOnly = readOnly,
-        textStyle = raftFieldTextStyle(look.text),
+        invalid = invalid,
+        leading = leading,
+        trailing = trailing,
+        prefix = prefix,
+        suffix = suffix,
         keyboardOptions = keyboardOptions,
-        keyboardActions = keyboardActions,
-        singleLine = true,
-        visualTransformation = visualTransformation,
-        interactionSource = source,
-        cursorBrush = SolidColor(RaftTheme.colors.foreground),
-        decorationBox = { inner ->
-            RaftInputBox(look, focused, value.isEmpty(), placeholder, leading, trailing, prefix, suffix, trailingAction, inner)
-        },
+        onKeyboardAction = keyboardActions.toRaftKeyboardActionHandler(keyboardOptions.imeAction),
+        outputTransformation = visualTransformation.toRaftOutputTransformation(),
+        interactionSource = interactionSource,
+        trailingAction = trailingAction,
     )
 }
 
@@ -198,27 +198,69 @@ fun RaftTextField(
     interactionSource: MutableInteractionSource? = null,
     trailingAction: (@Composable () -> Unit)? = null,
 ) {
+    RaftTextField(
+        state = rememberRaftTextFieldState(value, onValueChange, traceName = "RaftTextField"),
+        modifier = modifier,
+        placeholder = placeholder,
+        enabled = enabled,
+        readOnly = readOnly,
+        invalid = invalid,
+        leading = leading,
+        trailing = trailing,
+        prefix = prefix,
+        suffix = suffix,
+        keyboardOptions = keyboardOptions,
+        onKeyboardAction = keyboardActions.toRaftKeyboardActionHandler(keyboardOptions.imeAction),
+        outputTransformation = visualTransformation.toRaftOutputTransformation(),
+        interactionSource = interactionSource,
+        trailingAction = trailingAction,
+    )
+}
+
+/**
+ * [RaftTextField] on a [TextFieldState] the caller holds: the state-based editor without a
+ * controlled-value bridge. [outputTransformation] changes what is shown, not the state (a
+ * password mask).
+ */
+@Composable
+fun RaftTextField(
+    state: TextFieldState,
+    modifier: Modifier = Modifier,
+    placeholder: String? = null,
+    enabled: Boolean = LocalRaftFieldState.current.enabled,
+    readOnly: Boolean = false,
+    invalid: Boolean = LocalRaftFieldState.current.invalid,
+    leading: (@Composable () -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+    prefix: String? = null,
+    suffix: String? = null,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    onKeyboardAction: KeyboardActionHandler? = null,
+    outputTransformation: OutputTransformation? = null,
+    interactionSource: MutableInteractionSource? = null,
+    trailingAction: (@Composable () -> Unit)? = null,
+) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val look = raftFieldBoxLook(enabled, invalid, RaftTheme.colors, readOnly)
     val isFocused = raftIsFocused(source)
     val focused = enabled && isFocused
     val field = LocalRaftFieldState.current
     BasicTextField(
-        value = value,
-        onValueChange = onValueChange,
+        state = state,
         // Focused: cursor and selection drags (and single-line scrolling) keep the drag.
         modifier = modifier.raftKeepsBackSwipe(focused).raftFieldSemantics(field.label, invalid, enabled, field.error),
         enabled = enabled,
         readOnly = readOnly,
+        inputTransformation = rememberRaftTextInputTraceTransformation("RaftTextField"),
         textStyle = raftFieldTextStyle(look.text),
         keyboardOptions = keyboardOptions,
-        keyboardActions = keyboardActions,
-        singleLine = true,
-        visualTransformation = visualTransformation,
+        onKeyboardAction = onKeyboardAction,
+        lineLimits = TextFieldLineLimits.SingleLine,
         interactionSource = source,
         cursorBrush = SolidColor(RaftTheme.colors.foreground),
-        decorationBox = { inner ->
-            RaftInputBox(look, focused, value.text.isEmpty(), placeholder, leading, trailing, prefix, suffix, trailingAction, inner)
+        outputTransformation = outputTransformation,
+        decorator = { inner ->
+            RaftInputBox(look, focused, state.text.isEmpty(), placeholder, leading, trailing, prefix, suffix, trailingAction, inner)
         },
     )
 }
@@ -252,33 +294,21 @@ fun RaftTextarea(
     interactionSource: MutableInteractionSource? = null,
     inputModifier: Modifier = Modifier,
 ) {
-    val source = interactionSource ?: remember { MutableInteractionSource() }
-    val look = raftFieldBoxLook(enabled, invalid, RaftTheme.colors, readOnly)
-    val isFocused = raftIsFocused(source)
-    val focused = enabled && isFocused
-    val field = LocalRaftFieldState.current
-    RaftTextareaGroup(modifier, count = value.length, limit = limit, invalid = invalid && enabled) {
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier =
-                inputModifier
-                    .fillMaxWidth()
-                    .heightIn(min = minHeight, max = maxHeight)
-                    // Focused: cursor and selection drags keep the drag from the host back swipe.
-                    .raftKeepsBackSwipe(focused)
-                    .raftFieldSemantics(field.label, invalid, enabled, field.error),
-            enabled = enabled,
-            readOnly = readOnly,
-            textStyle = raftFieldTextStyle(look.text),
-            keyboardOptions = keyboardOptions,
-            keyboardActions = keyboardActions,
-            singleLine = false,
-            interactionSource = source,
-            cursorBrush = SolidColor(RaftTheme.colors.foreground),
-            decorationBox = { inner -> RaftTextareaBox(look, focused, minHeight, value.isEmpty(), placeholder, inner) },
-        )
-    }
+    RaftTextarea(
+        state = rememberRaftTextFieldState(value, onValueChange, traceName = "RaftTextarea"),
+        modifier = modifier,
+        placeholder = placeholder,
+        enabled = enabled,
+        readOnly = readOnly,
+        invalid = invalid,
+        limit = limit,
+        minHeight = minHeight,
+        maxHeight = maxHeight,
+        keyboardOptions = keyboardOptions,
+        onKeyboardAction = keyboardActions.toRaftKeyboardActionHandler(keyboardOptions.imeAction),
+        interactionSource = interactionSource,
+        inputModifier = inputModifier,
+    )
 }
 
 /**
@@ -302,15 +332,48 @@ fun RaftTextarea(
     interactionSource: MutableInteractionSource? = null,
     inputModifier: Modifier = Modifier,
 ) {
+    RaftTextarea(
+        state = rememberRaftTextFieldState(value, onValueChange, traceName = "RaftTextarea"),
+        modifier = modifier,
+        placeholder = placeholder,
+        enabled = enabled,
+        readOnly = readOnly,
+        invalid = invalid,
+        limit = limit,
+        minHeight = minHeight,
+        maxHeight = maxHeight,
+        keyboardOptions = keyboardOptions,
+        onKeyboardAction = keyboardActions.toRaftKeyboardActionHandler(keyboardOptions.imeAction),
+        interactionSource = interactionSource,
+        inputModifier = inputModifier,
+    )
+}
+
+/** [RaftTextarea] on a [TextFieldState] the caller holds. The counter counts the state's text. */
+@Composable
+fun RaftTextarea(
+    state: TextFieldState,
+    modifier: Modifier = Modifier,
+    placeholder: String? = null,
+    enabled: Boolean = LocalRaftFieldState.current.enabled,
+    readOnly: Boolean = false,
+    invalid: Boolean = LocalRaftFieldState.current.invalid,
+    limit: Int? = null,
+    minHeight: Dp = RaftTextFieldDefaults.TextareaMinHeight,
+    maxHeight: Dp = Dp.Infinity,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    onKeyboardAction: KeyboardActionHandler? = null,
+    interactionSource: MutableInteractionSource? = null,
+    inputModifier: Modifier = Modifier,
+) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val look = raftFieldBoxLook(enabled, invalid, RaftTheme.colors, readOnly)
     val isFocused = raftIsFocused(source)
     val focused = enabled && isFocused
     val field = LocalRaftFieldState.current
-    RaftTextareaGroup(modifier, count = value.text.length, limit = limit, invalid = invalid && enabled) {
+    RaftTextareaGroup(modifier, count = state.text.length, limit = limit, invalid = invalid && enabled) {
         BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
+            state = state,
             modifier =
                 inputModifier
                     .fillMaxWidth()
@@ -320,13 +383,14 @@ fun RaftTextarea(
                     .raftFieldSemantics(field.label, invalid, enabled, field.error),
             enabled = enabled,
             readOnly = readOnly,
+            inputTransformation = rememberRaftTextInputTraceTransformation("RaftTextarea"),
             textStyle = raftFieldTextStyle(look.text),
             keyboardOptions = keyboardOptions,
-            keyboardActions = keyboardActions,
-            singleLine = false,
+            onKeyboardAction = onKeyboardAction,
+            lineLimits = TextFieldLineLimits.MultiLine(),
             interactionSource = source,
             cursorBrush = SolidColor(RaftTheme.colors.foreground),
-            decorationBox = { inner -> RaftTextareaBox(look, focused, minHeight, value.text.isEmpty(), placeholder, inner) },
+            decorator = { inner -> RaftTextareaBox(look, focused, minHeight, state.text.isEmpty(), placeholder, inner) },
         )
     }
 }

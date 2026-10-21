@@ -215,6 +215,8 @@ class RaftInteractiveSemanticsTest {
             textarea.requestFocus()
             assertTrue(focused, "the input modifier reaches the editor")
             textarea.performTextInput(" Wug")
+            // The editor's TextFieldState reports the edit to the owner after the next composition.
+            waitForIdle()
             assertEquals("Hello Wug", value.text)
             assertEquals(TextRange(9), value.selection)
             onNodeWithText("9/10").assertExists()
