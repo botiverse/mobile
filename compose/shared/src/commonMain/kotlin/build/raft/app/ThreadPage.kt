@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
@@ -24992,9 +24993,9 @@ private fun ThreadMessageCardContent(
             if (shareSelectionActive && selectedForShare) {
                 RaftColor.InfoSoft
             } else if (popupOpen) {
-                // raft-ui MessageItem `data-popup-open:bg-fill-pressed`: the row
-                // under an open context menu stays pressed.
-                RaftColor.FillPressed
+                // raft-ui 0.13 MessageItem `data-popup-open:bg-fill-row-open`: the row
+                // under an open context menu keeps one step past the hover.
+                RaftTheme.colors.fillRowOpen
             } else {
                 threadMessageFocusHighlightColor(focusAlpha)
             }
@@ -25096,6 +25097,9 @@ private fun ThreadMessageCardContent(
                                         overflow = TextOverflow.Ellipsis,
                                         modifier =
                                             Modifier
+                                                // raft-ui 0.17 MessageItemHeader `items-baseline`: name, meta,
+                                                // subtitle and time share the first baseline.
+                                                .alignByBaseline()
                                                 .widthIn(max = 220.dp)
                                                 .clickable { openAuthorProfile("author_name") }
                                     )
@@ -25112,6 +25116,7 @@ private fun ThreadMessageCardContent(
                                                 ),
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.alignByBaseline(),
                                         )
                                     }
                                     authorBadgeLabel?.let { label ->
@@ -25143,7 +25148,7 @@ private fun ThreadMessageCardContent(
                                             description = description,
                                             rootAnchor = subtitleAnchor,
                                             onClick = handleSubtitleClick,
-                                            modifier = Modifier.weight(1f, fill = false)
+                                            modifier = Modifier.weight(1f, fill = false).alignByBaseline()
                                         )
                                     }
                                     // RFC 077: "sent by Friday" after the sender cluster, before
@@ -25158,6 +25163,7 @@ private fun ThreadMessageCardContent(
                                     if (showTimestampInHeader) {
                                         ThreadMessageTimestampLabel(
                                             timestampLabel = timestampLabel,
+                                            modifier = Modifier.alignByBaseline(),
                                             onToggle = {
                                                 tapMovementGate.rejectChildAction("timestamp")
                                             }
@@ -29779,6 +29785,7 @@ private fun ThreadMessageAuthorSubtitle(
 @Composable
 private fun ThreadMessageTimestampLabel(
     timestampLabel: String,
+    modifier: Modifier = Modifier,
     onToggle: (RaftTimestampDisplayMode) -> Unit = {}
 ) {
     RaftRelativeTimestampText(
@@ -29793,7 +29800,7 @@ private fun ThreadMessageTimestampLabel(
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         textAlign = TextAlign.End,
-        modifier = threadMessageHeaderTimestampLayoutSpec().toTimestampModifier(),
+        modifier = modifier.then(threadMessageHeaderTimestampLayoutSpec().toTimestampModifier()),
         onToggle = onToggle
     )
 }

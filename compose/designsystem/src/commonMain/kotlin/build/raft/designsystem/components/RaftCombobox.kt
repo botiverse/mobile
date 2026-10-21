@@ -751,7 +751,7 @@ internal fun RaftComboboxOptionRow(
             )
             .background(if (highlighted) colors.brandSoft else Color.Transparent, RoundedCornerShape(RaftRadius.Control))
             .selectable(selected = selected, interactionSource = source, indication = null, enabled = enabled, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 10.dp, vertical = raftOptionInset(labelStyle)),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = if (description != null) Alignment.Top else Alignment.CenterVertically,
     ) {
@@ -761,7 +761,8 @@ internal fun RaftComboboxOptionRow(
             }
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            RaftText(text, style = labelStyle, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // raft-ui 0.13: a long option wraps to two lines, then clamps.
+            RaftText(text, style = labelStyle, color = ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (description != null) {
                 RaftText(
                     description,
