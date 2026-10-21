@@ -4925,8 +4925,8 @@ private fun HomeNotificationCenter(
                 // directly at the Bell icon's top-right corner (web: dot on the
                 // icon wrapper span, `-top-1 -end-1`), not at the button slot
                 // corner. Icon-sized wrapper keeps the same geometry.
-                Box(modifier = Modifier.size(16.dp)) {
-                    RaftLucideIcon(RaftLucideIconName.Bell, Modifier.size(16.dp))
+                Box(modifier = Modifier.size(HomeNotificationBellIconSize)) {
+                    RaftLucideIcon(RaftLucideIconName.Bell, Modifier.size(HomeNotificationBellIconSize))
                     if (hasUnread) {
                         ServerUnreadMarker(Modifier.align(Alignment.TopEnd))
                     }
@@ -4936,7 +4936,9 @@ private fun HomeNotificationCenter(
     }
 }
 
-private val HomeNotificationTriggerSize = 32.dp
+// Web phone header: a 22px bell in a 44px button (`PanelAction`, `size-[22px]`).
+private val HomeNotificationTriggerSize = 44.dp
+private val HomeNotificationBellIconSize = 22.dp
 private val HomeNotificationTriggerSlotSize = HomeNotificationTriggerSize + HomeSmallShadowOffset
 private val HomeNotificationPopoverTopGap = 4.dp
 internal fun homeNotificationPopoverTopOffset(topSafeArea: Dp): Dp =
