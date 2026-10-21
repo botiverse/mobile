@@ -13,27 +13,41 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** artin 2026-10-21: Activity head tap / tab re-tap walks the visible list's unread rows. */
+/**
+ * artin 2026-10-21: Activity head tap / tab re-tap walks the visible list's unread rows (web
+ * parity: slock #10720, raft-design #671).
+ */
 class ActivityUnreadJumpTest {
 
-    /** "u" = unread row, "r" = read row, "s" = section label; keys are "k<index>". */
-    private fun entries(pattern: String): List<ActivityUnreadJumpEntry> =
-        pattern.mapIndexed { index, c -> ActivityUnreadJumpEntry(key = "k$index", unread = c == 'u') }
+    /** "u" = unread row, "r" = read row, "s" = section label; keys are "k<index>" unless given. */
+    private fun entries(pattern: String, keys: List<String> = pattern.indices.map { "k$it" }): List<ActivityUnreadJumpEntry> =
+        pattern.mapIndexed { index, c -> ActivityUnreadJumpEntry(key = keys[index], unread = c == 'u') }
+
+    private fun viewport(firstVisible: Int = 0, offset: Int = 0, visible: IntRange = firstVisible..(firstVisible + 4), size: Int = 100) =
+        ActivityUnreadJumpViewport(
+            firstVisibleItemIndex = firstVisible,
+            firstVisibleItemScrollOffset = offset,
+            visibleItemKeys = visible.filter { it < size }.map { "k$it" },
+        )
 
     private fun target(
         pattern: String,
         firstVisible: Int = 0,
         offset: Int = 0,
         visible: IntRange = firstVisible..(firstVisible + 4),
-        cursor: Int? = null,
+        walk: ActivityUnreadWalk = ActivityUnreadWalk.Idle,
+        canLoadMore: Boolean = false,
     ): ActivityUnreadJumpTarget =
         activityNextUnreadJumpTarget(
             entries = entries(pattern),
-            firstVisibleItemIndex = firstVisible,
-            firstVisibleItemScrollOffset = offset,
-            visibleItemKeys = visible.filter { it < pattern.length }.map { "k$it" }.toSet(),
-            cursorKey = cursor?.let { "k$it" },
+            viewport = viewport(firstVisible, offset, visible, pattern.length),
+            walk = walk,
+            canLoadMore = canLoadMore,
         )
+
+    /** The walk as the list leaves it after a finished jump to row [index] with [firstVisible] on top. */
+    private fun settledAt(index: Int, firstVisible: Int = index, offset: Int = 0) =
+        ActivityUnreadWalk.AtRow(key = "k$index", settled = true, anchorKey = "k$firstVisible", anchorOffset = offset)
 
     private fun row(index: Int) = ActivityUnreadJumpTarget.Row(index = index, key = "k$index")
 
@@ -47,43 +61,32 @@ class ActivityUnreadJumpTest {
     @Test
     fun goesToTheNextUnreadBelowTheViewportAndSkipsRowsAbove() {
         // Unread rows 1 and 3 are above the viewport (first visible 5): the walk goes down to 7.
-        assertEquals(row(7), target("rururrrur", firstVisible = 5, offset = 0))
+        assertEquals(row(7), target("rururrrur", firstVisible = 5))
         // A first visible row partly scrolled out counts as above.
         assertEquals(row(7), target("rrrrrurur", firstVisible = 5, offset = 40))
         // Flush with the viewport top, it is the next one.
-        assertEquals(row(5), target("rrrrrurur", firstVisible = 5, offset = 0))
-    }
-
-    @Test
-    fun repeatedTapsWalkDownFromTheRowJumpedToEvenWhenTheListCouldNotBringItToTheTop() {
-        // Rows 8 and 9 are near the end: the list clamps at first visible 6, so the jumped-to
-        // row 8 is still laid out but not first; the walk continues after it, not back to it.
-        assertEquals(row(9), target("rrrrrrrruur", firstVisible = 6, visible = 6..10, cursor = 8))
-        // Cursor row scrolled out of view (the reader moved): restart from the viewport.
-        assertEquals(row(2), target("rrurrrrruu", firstVisible = 0, visible = 0..4, cursor = 8))
+        assertEquals(row(5), target("rrrrrurur", firstVisible = 5))
     }
 
     @Test
     fun unreadRowsNearTheBottomThatCannotReachTheTopAreVisitedInOrderThenWrapToTop() {
         // Ten rows, five fit the viewport: the list cannot scroll past first visible 5, so the
-        // unread rows 6, 8 and 9 never become the first visible row (web parity, raft-design #671).
+        // unread rows 6 and 9 never become the first visible row.
         val pattern = "rrurrrurru" // unread: 2, 6, 9
-        val lastFirstVisible = 5
-        fun clampedFirstVisible(target: Int) = minOf(target, lastFirstVisible)
         var firstVisible = 0
-        var cursor: Int? = null
+        var walk: ActivityUnreadWalk = ActivityUnreadWalk.Idle
         val visited = mutableListOf<String>()
         repeat(5) {
-            when (val next = target(pattern, firstVisible = firstVisible, visible = firstVisible..(firstVisible + 4), cursor = cursor)) {
-                ActivityUnreadJumpTarget.Top -> {
-                    visited += "top"
-                    firstVisible = 0
-                    cursor = null
-                }
+            when (val next = target(pattern, firstVisible = firstVisible, walk = walk)) {
                 is ActivityUnreadJumpTarget.Row -> {
                     visited += next.key
-                    firstVisible = clampedFirstVisible(next.index)
-                    cursor = next.index
+                    firstVisible = minOf(next.index, 5)
+                    walk = settledAt(next.index, firstVisible)
+                }
+                else -> {
+                    visited += "top"
+                    firstVisible = 0
+                    walk = ActivityUnreadWalk.Idle
                 }
             }
         }
@@ -91,11 +94,48 @@ class ActivityUnreadJumpTest {
     }
 
     @Test
-    fun afterTheLastUnreadRowTheNextTapGoesToTheTopAndThenRestarts() {
-        assertEquals(ActivityUnreadJumpTarget.Top, target("ruru", firstVisible = 0, visible = 0..3, cursor = 3))
+    fun afterTheLastUnreadRowTheNextTapGoesToTheTop() {
+        assertEquals(ActivityUnreadJumpTarget.Top, target("ruru", visible = 0..3, walk = settledAt(3, firstVisible = 0)))
         assertEquals(ActivityUnreadJumpTarget.Top, target("urrrrrrr", firstVisible = 3))
-        // Back at the top (cursor cleared): first unread again.
-        assertEquals(row(1), target("ruru", firstVisible = 0, visible = 0..3, cursor = null))
+    }
+
+    @Test
+    fun aManualScrollRecomputesFromTheCurrentPosition() {
+        // The walk left row 2 on top; the reader scrolled down to first visible 7 meanwhile:
+        // row 4 (the walk's next) is skipped, the next unread from the viewport is 8.
+        assertEquals(row(8), target("rrurururu", firstVisible = 7, walk = settledAt(2)))
+        // ...or back up: rows above the old place are visited again.
+        assertEquals(row(2), target("rrururrru", firstVisible = 1, walk = settledAt(4)))
+        // A drag of less than a row also counts: row 2 partly shown again, so it is next.
+        assertEquals(row(2), target("rrururrru", firstVisible = 1, offset = 30, walk = settledAt(2)))
+    }
+
+    @Test
+    fun aRealtimeReorderContinuesFromTheJumpedRowsCurrentPosition() {
+        // The walk sat on "b" (index 1, first visible); a new row landed above it, so "b" is now
+        // index 2 and still the first visible item (LazyColumn keeps it anchored by key).
+        val keys = listOf("new", "a", "b", "c", "d")
+        val next =
+            activityNextUnreadJumpTarget(
+                entries = entries("uruuu", keys),
+                viewport = ActivityUnreadJumpViewport(2, 0, listOf("b", "c", "d")),
+                walk = ActivityUnreadWalk.AtRow(key = "b", settled = true, anchorKey = "b", anchorOffset = 0),
+            )
+        assertEquals(ActivityUnreadJumpTarget.Row(index = 3, key = "c"), next)
+    }
+
+    @Test
+    fun aTapDuringTheScrollToTopRestartsAtTheFirstUnreadRow() {
+        // Mid-animation the viewport is still far down; the walk restarts from the head anyway.
+        assertEquals(row(1), target("rurrrrrruu", firstVisible = 7, walk = ActivityUnreadWalk.ReturningToTop))
+    }
+
+    @Test
+    fun anInterruptedJumpContinuesAfterItsRowOnlyWhileTheRowIsOnScreen() {
+        val interrupted = ActivityUnreadWalk.AtRow(key = "k4", settled = false)
+        assertEquals(row(6), target("ruruurur", firstVisible = 2, visible = 2..6, walk = interrupted))
+        // The row is off screen (a drag took the list elsewhere): from the viewport.
+        assertEquals(row(1), target("ruruurur", firstVisible = 0, visible = 0..3, walk = interrupted))
     }
 
     @Test
@@ -103,6 +143,29 @@ class ActivityUnreadJumpTest {
         assertEquals(ActivityUnreadJumpTarget.Top, target("rrrr"))
         assertEquals(ActivityUnreadJumpTarget.Top, target("rrrr", firstVisible = 2))
         assertEquals(ActivityUnreadJumpTarget.Top, target(""))
+    }
+
+    @Test
+    fun aPagedListLoadsTheNextPageBeforeWrappingToTop() {
+        assertEquals(ActivityUnreadJumpTarget.LoadMore, target("rurr", visible = 0..3, walk = settledAt(1, firstVisible = 0), canLoadMore = true))
+        assertEquals(ActivityUnreadJumpTarget.LoadMore, target("rrrr", canLoadMore = true))
+        // After the page landed, the same walk finds the unread row in it.
+        assertEquals(row(5), target("rurrru", visible = 0..4, walk = settledAt(1, firstVisible = 0), canLoadMore = true))
+        // An unread row already loaded wins over loading.
+        assertEquals(row(1), target("ru", canLoadMore = true))
+    }
+
+    @Test
+    fun pagingStateDecidesWhenAPageHasLanded() {
+        val before = ActivityUnreadJumpPaging(rowCount = 20, hasMore = true, loadingMore = false, loadMoreErrorCode = null)
+        assertTrue(before.canLoadMore)
+        assertFalse(before.copy(loadMoreErrorCode = "network").canLoadMore)
+        assertFalse(before.copy(hasMore = false).canLoadMore)
+        assertFalse(before.copy(loadingMore = true).settledAfter(before))
+        assertFalse(before.settledAfter(before), "nothing happened yet")
+        assertTrue(before.copy(rowCount = 40).settledAfter(before))
+        assertTrue(before.copy(hasMore = false).settledAfter(before))
+        assertTrue(before.copy(loadMoreErrorCode = "network").settledAfter(before))
     }
 
     @Test
@@ -116,9 +179,9 @@ class ActivityUnreadJumpTest {
         // Unread filter: every row is unread, so each tap advances one row.
         val unreadOnly = "uuu"
         assertEquals(row(0), target(unreadOnly))
-        assertEquals(row(1), target(unreadOnly, visible = 0..2, cursor = 0))
-        assertEquals(row(2), target(unreadOnly, firstVisible = 0, visible = 0..2, cursor = 1))
-        assertEquals(ActivityUnreadJumpTarget.Top, target(unreadOnly, visible = 0..2, cursor = 2))
+        assertEquals(row(1), target(unreadOnly, visible = 0..2, walk = settledAt(0)))
+        assertEquals(row(2), target(unreadOnly, visible = 0..2, walk = settledAt(1, firstVisible = 0)))
+        assertEquals(ActivityUnreadJumpTarget.Top, target(unreadOnly, visible = 0..2, walk = settledAt(2, firstVisible = 0)))
         // Mentions filter, all read: a tap only scrolls to top.
         assertEquals(ActivityUnreadJumpTarget.Top, target("rr"))
     }
