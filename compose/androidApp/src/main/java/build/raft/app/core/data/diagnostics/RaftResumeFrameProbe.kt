@@ -56,7 +56,7 @@ object RaftResumeFrameProbe {
                 backgroundMillis = pendingBackgroundMillis,
                 startToResumeMillis = SystemClock.elapsedRealtime() - foregroundAt,
                 stats = RaftResumeFrameStats(
-                    startNanos = SystemClock.uptimeNanos(),
+                    startNanos = System.nanoTime(),
                     frameIntervalNanos = (1_000_000_000.0 / refreshRate.toDouble()).toLong()
                 )
             )
@@ -90,14 +90,14 @@ object RaftResumeFrameProbe {
 
         override fun onDraw() {
             if (stats.firstDrawNanos >= 0L) return
-            stats.onFirstDraw(SystemClock.uptimeNanos())
+            stats.onFirstDraw(System.nanoTime())
             // A draw listener cannot be removed from inside onDraw.
             activity.window?.decorView?.post { detachDrawListener() }
         }
 
         override fun doFrame(frameTimeNanos: Long) {
             if (finished) return
-            val now = SystemClock.uptimeNanos()
+            val now = System.nanoTime()
             stats.onFrameCallback(now)
             if (now - stats.startNanos >= WindowMillis * 1_000_000L) {
                 finish(reason = "window")
@@ -112,7 +112,7 @@ object RaftResumeFrameProbe {
             Choreographer.getInstance().removeFrameCallback(this)
             detachDrawListener()
             if (active === this) active = null
-            val summary = stats.summary(SystemClock.uptimeNanos())
+            val summary = stats.summary(System.nanoTime())
             RaftAppLog.w(
                 Tag,
                 "resume_frames page=$pageName reason=$reason backgroundMs=$backgroundMillis " +
