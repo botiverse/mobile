@@ -54,10 +54,16 @@ internal enum class ChannelSettingsAction {
     Visibility,
     Archive,
     Delete,
+    /** Joint channels: `POST channels/:id/disconnect` takes the place of Delete (web EditChannelDialog). */
+    Disconnect,
 }
 
 internal sealed interface ChannelSettingsEffect {
-    data class Failure(val action: ChannelSettingsAction, val code: String) : ChannelSettingsEffect
+    data class Failure(
+        val action: ChannelSettingsAction,
+        val code: String,
+        val serverMessage: String? = null,
+    ) : ChannelSettingsEffect
     data class Updated(val action: ChannelSettingsAction) : ChannelSettingsEffect
     data object ProfileSaved : ChannelSettingsEffect
     data object Close : ChannelSettingsEffect
@@ -222,6 +228,7 @@ internal sealed interface ChannelSettingsIntent {
     data object MakePrivate : ChannelSettingsIntent
     data object Archive : ChannelSettingsIntent
     data object Delete : ChannelSettingsIntent
+    data object Disconnect : ChannelSettingsIntent
     data object ClearProfileStatus : ChannelSettingsIntent
     data object ConsumeEffect : ChannelSettingsIntent
 }
@@ -234,6 +241,7 @@ internal interface ChannelSettingsDataSource {
     suspend fun makePrivate(): DataResult<Unit>
     suspend fun archive(): DataResult<Unit>
     suspend fun delete(): DataResult<Unit>
+    suspend fun disconnect(): DataResult<Unit>
 }
 
 internal class RealChannelSettingsDataSource(
@@ -329,6 +337,12 @@ internal class RealChannelSettingsDataSource(
             channelRepository(networkClient).deleteChannel(route.channelId).map { Unit }
         }
 
+    override suspend fun disconnect(): DataResult<Unit> =
+        runner.run { _, networkClient ->
+            build.raft.app.data.RealJointChannelRepository(networkClient) { logger("joint $it") }
+                .disconnect(route.channelId)
+        }
+
     private fun channelRepository(networkClient: build.raft.app.data.RaftNetworkClient): RealChannelRepository =
         RealChannelRepository(
             sessionStore = authStore,
@@ -422,6 +436,13 @@ internal class ChannelSettingsStore(
                 val channel = mutableState.value.channel ?: return
                 if (channelSettingsCanDelete(channel)) {
                     launchAction(ChannelSettingsAction.Delete, dataSource::delete)
+                }
+            }
+            ChannelSettingsIntent.Disconnect -> {
+                if (!mutableState.value.writeActionsEnabled || !mutableState.value.canManage) return
+                val channel = mutableState.value.channel ?: return
+                if (channelSettingsCanDisconnect(channel)) {
+                    launchAction(ChannelSettingsAction.Disconnect, dataSource::disconnect)
                 }
             }
             ChannelSettingsIntent.ClearProfileStatus ->
@@ -600,8 +621,9 @@ internal class ChannelSettingsStore(
                 if (requestGeneration != actionGeneration) return@launch
                 when (result) {
                     is DataResult.Content -> applyMutationSuccess(action, result.data)
-                    is DataResult.Error -> applyMutationFailure(action, result.error.code)
-                    is DataResult.NoPermission -> applyMutationFailure(action, result.blocker.code)
+                    is DataResult.Error -> applyMutationFailure(action, result.error.code, result.error.serverMessage)
+                    is DataResult.NoPermission ->
+                        applyMutationFailure(action, result.blocker.code, result.blocker.serverMessage)
                     is DataResult.Empty -> applyMutationFailure(action, result.reason.name)
                 }
             }
@@ -649,11 +671,16 @@ internal class ChannelSettingsStore(
                         effect = ChannelSettingsEffect.Updated(action),
                     )
                 ChannelSettingsAction.Archive,
-                ChannelSettingsAction.Delete ->
+                ChannelSettingsAction.Delete,
+                ChannelSettingsAction.Disconnect ->
                     current.copy(actionInFlight = null, effect = ChannelSettingsEffect.Close)
             }
         mutableState.value = next
-        if (action == ChannelSettingsAction.Archive || action == ChannelSettingsAction.Delete) {
+        if (
+            action == ChannelSettingsAction.Archive ||
+            action == ChannelSettingsAction.Delete ||
+            action == ChannelSettingsAction.Disconnect
+        ) {
             snapshotCache.remove(owner, route)
         } else {
             next.toSnapshotOrNull()?.let { snapshot -> snapshotCache.put(owner, route, snapshot) }
@@ -671,7 +698,7 @@ internal class ChannelSettingsStore(
         )
     }
 
-    private fun applyMutationFailure(action: ChannelSettingsAction, code: String) {
+    private fun applyMutationFailure(action: ChannelSettingsAction, code: String, serverMessage: String? = null) {
         if (code == AUTHENTICATED_ROUTE_AUTHORITY_CHANGED) {
             snapshotCache.remove(owner, route)
             mutableState.value = authorityRejectedState()
@@ -687,7 +714,7 @@ internal class ChannelSettingsStore(
                         mutableState.value.profileStatus
                     },
                 profileErrorCode = code.takeIf { action == ChannelSettingsAction.Profile },
-                effect = ChannelSettingsEffect.Failure(action, code),
+                effect = ChannelSettingsEffect.Failure(action, code, serverMessage),
             )
     }
 

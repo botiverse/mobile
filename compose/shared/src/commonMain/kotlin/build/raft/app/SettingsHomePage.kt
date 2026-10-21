@@ -221,6 +221,7 @@ import build.raft.app.data.realtime.RealtimeCursorPolicy
 import build.raft.app.data.realtime.realtimeProcessDesiredSession
 import build.raft.app.data.HomeRowRestoredHint
 import build.raft.app.data.SharedHomeContentState
+import build.raft.app.data.jointInviteIdFromHomeNotificationIdOrNull
 import build.raft.app.data.displayRowHints
 import build.raft.app.data.SharedHomeDataSource
 import build.raft.app.data.HomeSnapshot
@@ -2841,6 +2842,19 @@ private fun RaftAppShellReadyContent(
                 sessionStore = shellAuthStore,
                 networkClient = appShellNetworkClient,
                 warningLogger = raftLogger("SlockChannelRepository", "shared_channel_repository", RaftLogLevel.Warn)
+            )
+        }
+    // Pending joint-channel invites for the Home notification center (web usePendingJointInvites).
+    val jointInviteScope = rememberCoroutineScope()
+    val jointInviteStore =
+        remember(appShellNetworkClient, jointInviteScope) {
+            build.raft.app.data.SharedJointInviteStore(
+                dataSource =
+                    build.raft.app.data.NetworkJointInviteDataSource(
+                        networkClient = appShellNetworkClient,
+                        logger = raftLogger("SlockJointInvites", "shared_joint_invites", RaftLogLevel.Warn),
+                    ),
+                scope = jointInviteScope,
             )
         }
     val homeReadReceiptRepository =
@@ -7178,6 +7192,7 @@ private fun RaftAppShellReadyContent(
                                 },
                                 serverMembersStore = appShellServerMembersStore,
                                 channelRepository = channelRepository,
+                                jointInviteStore = jointInviteStore,
                                 topSafeAreaOverride = shellScope.topSafeArea,
                                 bottomContentPadding = appShellBottomContentInset,
                                 listPositionServerId = homeListPositionServerId,
@@ -19647,6 +19662,7 @@ private fun SharedHomeScreen(
     onOpenConversation: (ThreadLaunchConversationIdentity) -> Unit,
     serverMembersStore: SharedServerMembersStore? = null,
     channelRepository: ChannelRepository? = null,
+    jointInviteStore: build.raft.app.data.SharedJointInviteStore? = null,
     topSafeAreaOverride: Dp? = null,
     bottomContentPadding: Dp = RaftAppSpacing.Lg,
     listPositionServerId: String? = null,
@@ -19667,6 +19683,15 @@ private fun SharedHomeScreen(
     val pinnedMemberOpenScope = rememberCoroutineScope()
     val homeContentSummary = sharedHomeContentRenderSummary(state.content)
     val shouldStartHome = sharedHomeShouldStartOnActive(active, sessionReady, state)
+    val jointInvites =
+        rememberHomeJointInvites(
+            bridge = bridge,
+            store = jointInviteStore,
+            content = state.content,
+            active = active,
+            onIntent = onIntent,
+            onOpenConversation = onOpenConversation,
+        )
     LaunchedEffect(active, sessionReady, homeContentSummary, state.homeRealtimeDirty, shouldStartHome) {
         bridge.log(
             "shared_home_screen_enter active=$active sessionReady=$sessionReady " +
@@ -19958,7 +19983,7 @@ private fun SharedHomeScreen(
                         "directMessageDraftIds=${directMessageDraftIds.joinToString(separator = ",")}"
                 )
             }
-            val notificationItems = state.notifications.map { it.toHomeNotificationItem() }
+            val notificationItems = jointInvites.items + state.notifications.map { it.toHomeNotificationItem() }
             val conversationsByThreadId =
                 remember(snapshot.channels, snapshot.directMessages) {
                     (snapshot.channels + snapshot.directMessages).associateBy { it.threadId.value }
@@ -20073,7 +20098,10 @@ private fun SharedHomeScreen(
                     onOpenSaved()
                 },
                 onNotificationView = { notification ->
+                    val jointInviteId = notification.id.jointInviteIdFromHomeNotificationIdOrNull()
                     when {
+                        jointInviteId != null ->
+                            jointInviteStore?.dispatch(build.raft.app.data.SharedJointInviteIntent.Accept(jointInviteId))
                         notification.id.isAppUpdateHomeNotificationId() && onAppUpdateOpen != null ->
                             onAppUpdateOpen()
                         notification.id.isMachineHomeNotificationId() ->
@@ -20086,10 +20114,16 @@ private fun SharedHomeScreen(
                     }
                 },
                 onNotificationDismiss = { notification ->
-                    onNotificationDismiss(notification.id)
+                    val jointInviteId = notification.id.jointInviteIdFromHomeNotificationIdOrNull()
+                    if (jointInviteId != null) {
+                        jointInviteStore?.dispatch(build.raft.app.data.SharedJointInviteIntent.Dismiss(jointInviteId))
+                    } else {
+                        onNotificationDismiss(notification.id)
+                    }
                 },
                 onRefresh = {
                     onIntent(SharedHomeIntent.Refresh)
+                    jointInvites.refresh()
                 },
                 onChannelClick = { threadId ->
                     val conversation = conversationsByThreadId[threadId]

@@ -24,6 +24,7 @@ internal val raftProductPageFactories: Map<String, () -> Pager> =
         "compose_home_search" to { build.raft.app.ComposeHomeSearchPage() },
         "compose_icon_gallery" to { build.raft.app.RaftLucideIconGalleryPage() },
         "compose_in_app_browser" to { build.raft.app.ComposeRaftInAppBrowserPage() },
+        "compose_joint_channel_connections" to { build.raft.app.RaftJointChannelConnectionsPage() },
         "compose_login" to { build.raft.app.ComposeLoginPage() },
         "compose_member_detail" to { build.raft.app.ComposeMemberDetailPage() },
         "compose_members" to { build.raft.app.ComposeMembersPage() },
