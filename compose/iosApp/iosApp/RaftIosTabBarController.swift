@@ -92,10 +92,29 @@ final class RaftIosTabBarController: UIViewController {
         tabs.didMove(toParent: self)
         overlayView.tabBar = tabs.tabBar
         tabs.tabBar.tintColor = .label
+        applyAppearance()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appearanceDidChange),
+            name: RaftIosAppearanceHost.didChangeNotification,
+            object: nil
+        )
         applyVisibility(false, animated: false)
 
         // Replays the current shared state.
         bridge.attachListener(listener: stateListener)
+    }
+
+    /// The bar takes the app's theme choice itself. Inherited from the window alone, an app set
+    /// to Dark on a phone in Light mode still showed a light glass bar.
+    private func applyAppearance() {
+        let style = RaftIosAppearanceHost.currentStyle
+        systemTabBarController.overrideUserInterfaceStyle = style
+        systemTabBarController.tabBar.overrideUserInterfaceStyle = style
+    }
+
+    @objc private func appearanceDidChange() {
+        applyAppearance()
     }
 
     override func viewDidLayoutSubviews() {

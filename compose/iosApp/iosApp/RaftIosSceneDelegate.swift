@@ -163,7 +163,16 @@ enum RaftIosAppearanceHost {
                     window.backgroundColor = canvas
                 }
             }
+            NotificationCenter.default.post(name: didChangeNotification, object: nil)
         }
+    }
+
+    /// Posted after every theme choice is applied to the windows.
+    static let didChangeNotification = Notification.Name("RaftIosAppearanceDidChange")
+
+    /// The app's explicit Light/Dark choice, or `.unspecified` to follow the system.
+    static var currentStyle: UIUserInterfaceStyle {
+        UIUserInterfaceStyle(rawValue: Int(RaftAppAppearanceRuntime.shared.hostStyleCode)) ?? .unspecified
     }
 }
 
