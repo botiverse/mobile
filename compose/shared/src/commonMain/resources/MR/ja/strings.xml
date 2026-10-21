@@ -1576,6 +1576,7 @@
     <string name="home_action_unpin">ピン留めを解除</string>
     <string name="home_action_mark_as_read">既読にする</string>
     <string name="home_action_mark_as_unread">未読にする</string>
+    <string name="home_action_mark_all_as_read">すべて既読にする</string>
     <string name="home_action_mute">ミュート</string>
     <string name="home_action_unmute">ミュートを解除</string>
     <string name="home_action_close_chat">チャットを閉じる</string>

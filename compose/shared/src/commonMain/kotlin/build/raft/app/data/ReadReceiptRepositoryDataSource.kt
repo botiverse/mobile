@@ -45,6 +45,28 @@ private suspend fun RaftNetworkClient.markChannelReadAll(
         serverIdOverride = serverId
     )
 
+/**
+ * Sidebar "Mark All as Read" (slock `packages/server/src/routes/channels.ts`
+ * `POST /:id/conversation-read-all`, behind `sidebar_mark_all_read_v0`): reads the channel and its
+ * active followed threads at one frontier. No request body. The response
+ * `{ ok, serverId, markedCount, scopes: [{ scopeId, maxReadSeq, readStateVersion }] }` is the same
+ * read-ack envelope [parseReadReceiptResult] reads for `inbox/read-all`.
+ */
+internal fun conversationReadAllPath(channelId: ChannelId): String =
+    "channels/${channelId.value}/conversation-read-all"
+
+private suspend fun RaftNetworkClient.markConversationReadAll(
+    priority: DataRequestPriority,
+    channelId: ChannelId,
+    serverId: ServerId
+): HomeNetworkResponse =
+    request(
+        priority,
+        conversationReadAllPath(channelId),
+        method = "POST",
+        serverIdOverride = serverId
+    )
+
 private suspend fun RaftNetworkClient.markChannelUnread(
     priority: DataRequestPriority,
     channelId: ChannelId
@@ -129,6 +151,26 @@ class RealReadReceiptRepository(
             mapper = { bodyText ->
                 parseReadReceiptResult(bodyText, fallbackChannelId = channelId)
                     ?: throw IllegalStateException("Read receipt response missing ok")
+            }
+        )
+    }
+
+    /**
+     * Sidebar "Mark All as Read" for [channelId] and its followed threads. A user-blocking menu
+     * mutation, so it runs at [DataRequestPriority.Foreground]. Each acknowledged scope comes back in
+     * [ReadReceiptResult.scopes].
+     */
+    suspend fun markConversationReadAll(channelId: ChannelId): DataResult<ReadReceiptResult> {
+        val context = currentContext() ?: return authRequired()
+        return executeReadReceipt(
+            emptyReason = EmptyReason.NoMessages,
+            block = {
+                networkClient.markConversationReadAll(DataRequestPriority.Foreground, channelId, context.server.id)
+            },
+            source = "read_conversation_all",
+            mapper = { bodyText ->
+                parseReadReceiptResult(bodyText, fallbackChannelId = channelId)
+                    ?: throw IllegalStateException("Conversation read-all response missing ok")
             }
         )
     }

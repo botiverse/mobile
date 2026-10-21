@@ -292,6 +292,36 @@ class RaftHomeSidebarSectionsTest {
         assertEquals(listOf("section:sec-2"), placed.filter { it.checked }.map { it.id })
     }
 
+    /** Web SidebarReadToggleMenuItem (botiverse/slock d60367a1) and its behavior test. */
+    @Test
+    fun readToggleOffersMarkAllAsReadOnlyForJoinedChannelsWithBothGatesOn() {
+        fun readItem(
+            conversation: RaftHomeConversationItem,
+            gatesOn: Boolean,
+            directMessage: Boolean = false
+        ) =
+            raftHomeConversationMenuItems(
+                conversation = conversation,
+                pinTargetIsPinned = false,
+                sortableFromMenu = false,
+                activeIsDirectMessage = directMessage,
+                activeCanArchive = false,
+                markAllReadEnabled = gatesOn
+            ).single { it.id.startsWith("mark-") }.let { it.id to it.label }
+        val threadOnly = RaftHomeConversationItem(id = "c-1", name = "one", followedThreadUnreadCount = 12)
+        val unread = RaftHomeConversationItem(id = "c-1", name = "one", unreadCount = 2)
+        // Thread-only unread reads the whole conversation ("全部已读" / "Mark All as Read").
+        assertEquals("mark-all-read" to "Mark All as Read", readItem(threadOnly, gatesOn = true))
+        assertEquals("mark-all-read" to "Mark All as Read", readItem(unread, gatesOn = true))
+        // Gate off keeps the single-scope toggle; thread-only unread is not unread to it.
+        assertEquals("mark-unread" to "Mark as Unread", readItem(threadOnly, gatesOn = false))
+        assertEquals("mark-read" to "Mark as Read", readItem(unread, gatesOn = false))
+        // DMs and unjoined channels never include threads.
+        assertEquals("mark-read" to "Mark as Read", readItem(unread, gatesOn = true, directMessage = true))
+        assertEquals("mark-read" to "Mark as Read", readItem(unread.copy(joined = false), gatesOn = true))
+        assertEquals("mark-unread" to "Mark as Unread", readItem(RaftHomeConversationItem(id = "c-2", name = "two"), gatesOn = true))
+    }
+
     @Test
     fun conversationMenuLeadsWithMoveToSectionEvenWithoutCustomSections() {
         val channelMenu =

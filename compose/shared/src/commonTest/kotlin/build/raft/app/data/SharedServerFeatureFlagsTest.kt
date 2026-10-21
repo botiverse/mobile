@@ -167,12 +167,15 @@ class SharedServerFeatureFlagsTest {
         assertEquals("activity_overview_web_v0", ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY)
         // slock serverFeatureFlags.ts THREAD_UNREAD_BADGE_FLAG_KEY (staging 259f9fe0), default off.
         assertEquals("thread_unread_badge_v0", THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY)
+        // botiverse/slock d60367a1 packages/shared/src/featureFlags.ts SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY.
+        assertEquals("sidebar_mark_all_read_v0", SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY)
         for (
             key in listOf(
                 WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY,
                 ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY,
                 ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY,
                 THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY,
+                SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY,
             )
         ) {
             assertTrue(key in REGISTERED_SERVER_FEATURE_FLAG_KEYS, key)

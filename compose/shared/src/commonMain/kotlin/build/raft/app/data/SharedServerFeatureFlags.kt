@@ -140,6 +140,14 @@ const val ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY: String = "activity_conver
  */
 const val THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY: String = "thread_unread_badge_v0"
 
+/**
+ * Sidebar "Mark All as Read": one action reads a channel and its followed threads through
+ * `POST channels/:id/conversation-read-all`. The same per-server key the web reads (slock
+ * `packages/shared/src/featureFlags.ts` `SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY`); the route answers 404
+ * while it is off, so the row menu keeps the single-scope "Mark as Read" until it resolves on.
+ */
+const val SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY: String = "sidebar_mark_all_read_v0"
+
 /** Agent migration UI (slock `AGENT_MIGRATION_FEATURE_FLAG_KEY`); off hides the section. */
 const val AGENT_MIGRATION_FEATURE_FLAG_KEY: String = "agent_migration_v0"
 
@@ -167,6 +175,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY,
     ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY,
     THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY,
+    SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY,
     AGENT_MIGRATION_FEATURE_FLAG_KEY,
     AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY,
 )

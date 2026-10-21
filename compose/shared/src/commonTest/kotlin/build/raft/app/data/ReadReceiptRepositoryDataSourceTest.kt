@@ -56,8 +56,71 @@ class ReadReceiptRepositoryDataSourceTest {
         )
     }
 
-    private class RecordingReadReceiptNetworkClient : RaftNetworkClient {
+    /**
+     * Wire vector from botiverse/slock d60367a1: `packages/server/src/routes/channels.ts`
+     * `POST /:id/conversation-read-all` answers
+     * `{ ok, serverId, markedCount, scopes: [{ scopeId, maxReadSeq, readStateVersion }] }` with no request
+     * body (`packages/server/src/routes/readMutations.api.test.ts`, web `messageStore.markConversationRead`).
+     */
+    @Test
+    fun conversationReadAllPostsWithoutBodyAtForegroundAndReadsEveryAckedScope() = runBlocking {
+        val network =
+            RecordingReadReceiptNetworkClient(
+                conversationReadAllBody =
+                    """{"ok":true,"serverId":"server-a","markedCount":2,"scopes":[""" +
+                        """{"scopeId":"channel-1","maxReadSeq":1,"readStateVersion":3},""" +
+                        """{"scopeId":"thread-1","maxReadSeq":2,"readStateVersion":1}]}"""
+            )
+        val repository =
+            RealReadReceiptRepository(
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                networkClient = network
+            )
+
+        val result = repository.markConversationReadAll(ChannelId("channel-1"))
+
+        assertTrue(result is DataResult.Content)
+        assertEquals(
+            listOf(
+                ReadStateV1AckScope(ChannelId("channel-1"), readStateVersion = 3, maxReadSeq = 1),
+                ReadStateV1AckScope(ChannelId("thread-1"), readStateVersion = 1, maxReadSeq = 2),
+            ),
+            result.data.scopes
+        )
+        assertEquals(
+            listOf(ReadReceiptNetworkCall("POST", "channels/channel-1/conversation-read-all", ServerId("server-a"), null)),
+            network.calls
+        )
+        assertEquals(listOf(DataRequestPriority.Foreground), network.priorities)
+    }
+
+    @Test
+    fun conversationReadAllGateOffSurfacesAnErrorNotAnEmptyRead() = runBlocking {
+        // The route answers 404 `sidebar_mark_all_read_disabled` while the rollout flag is off.
+        val network =
+            RecordingReadReceiptNetworkClient(
+                conversationReadAllBody =
+                    """{"error":"Conversation read-all is not enabled","code":"sidebar_mark_all_read_disabled"}""",
+                conversationReadAllCode = 404
+            )
+        val repository =
+            RealReadReceiptRepository(
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                networkClient = network
+            )
+
+        val result = repository.markConversationReadAll(ChannelId("channel-1"))
+
+        assertTrue(result is DataResult.Error)
+        assertEquals("http_404", result.error.code)
+    }
+
+    private class RecordingReadReceiptNetworkClient(
+        private val conversationReadAllBody: String = "",
+        private val conversationReadAllCode: Int = 200
+    ) : RaftNetworkClient {
         val calls = mutableListOf<ReadReceiptNetworkCall>()
+        val priorities = mutableListOf<DataRequestPriority>()
 
         override suspend fun request(
             priority: DataRequestPriority,
@@ -68,6 +131,10 @@ class ReadReceiptRepositoryDataSourceTest {
             bodyText: String?
         ): HomeNetworkResponse {
             calls += ReadReceiptNetworkCall(method, path, serverIdOverride, bodyText)
+            priorities += priority
+            if (path.endsWith("conversation-read-all")) {
+                return HomeNetworkResponse(code = conversationReadAllCode, bodyText = conversationReadAllBody)
+            }
             val response =
                 if (path.endsWith("read-all")) {
                     """{"ok":true,"seq":44,"readStateVersion":9}"""

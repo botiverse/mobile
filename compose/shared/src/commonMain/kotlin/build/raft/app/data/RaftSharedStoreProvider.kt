@@ -33,6 +33,7 @@ import build.raft.app.model.Heartbeat
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
+import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
@@ -1355,6 +1356,9 @@ internal class RaftSharedStoreProvider private constructor(
         markChannelUnread: suspend (ChannelId) -> DataResult<ReadReceiptResult> = {
             DataResult.Empty(EmptyReason.NoMessages)
         },
+        markConversationReadAll: suspend (ChannelId) -> DataResult<ReadReceiptResult> = {
+            DataResult.Empty(EmptyReason.NoMessages)
+        },
         archiveChannel: suspend (ChannelId) -> DataResult<ChannelArchiveResult> = {
             DataResult.Empty(EmptyReason.NoChannels)
         },
@@ -1374,12 +1378,14 @@ internal class RaftSharedStoreProvider private constructor(
                 updateServerOrder = updateServerOrder,
                 markChannelReadAll = markChannelReadAll,
                 markChannelUnread = markChannelUnread,
+                markConversationReadAll = markConversationReadAll,
                 archiveChannel = archiveChannel,
                 setChannelActivityMuted = setChannelActivityMuted,
                 readReceiptCoordinator = processReadReceiptCoordinator(),
                 readReceiptOwnerFactory = ::readReceiptOwner,
                 readStateV1Canary = processReadStateV1Canary,
-                pinUpdateFailureCallback = pinUpdateFailureCallback
+                pinUpdateFailureCallback = pinUpdateFailureCallback,
+                onConversationReadAllAcknowledged = ::publishConversationReadAllAck
             )
             return store
         }
@@ -1398,6 +1404,7 @@ internal class RaftSharedStoreProvider private constructor(
                 updateServerOrder = updateServerOrder,
                 markChannelReadAll = markChannelReadAll,
                 markChannelUnread = markChannelUnread,
+                markConversationReadAll = markConversationReadAll,
                 archiveChannel = archiveChannel,
                 setChannelActivityMuted = setChannelActivityMuted,
                 perReceiverStateVersionStore = PerReceiverStateVersionStore(sharedPreferenceStore),
@@ -1405,6 +1412,7 @@ internal class RaftSharedStoreProvider private constructor(
                 readReceiptOwnerFactory = ::readReceiptOwner,
                 readStateV1Canary = processReadStateV1Canary,
                 pinUpdateFailureCallback = pinUpdateFailureCallback,
+                onConversationReadAllAcknowledged = ::publishConversationReadAllAck,
                 // Identity first: the hint slice attaches to the durable content it restores.
                 persistSlices = listOf(homeIdentityPersistSlice, homeRowHintPersistSlice),
                 conversationIdentityPublicationSink = publication@{ publication ->
@@ -1496,6 +1504,24 @@ internal class RaftSharedStoreProvider private constructor(
                     },
                 diagnosticsLogger = diagnosticsLogger ?: {}
             )
+        }
+    }
+
+    /**
+     * A Home "Mark All as Read" ack reaches Activity the way the server's read-state push does: the
+     * Activity unread summary is invalidated and each Activity store applies the versioned scopes
+     * (web `markConversationRead` -> `applyReadStateUpdate`).
+     */
+    private fun publishConversationReadAllAck(accountId: String, event: PerReceiverReadStateChanged) {
+        val serverId = event.serverId?.value ?: return
+        activityUnreadSummaryStore.invalidate(
+            readReceiptOwner(serverId, accountId).toProcessActivityUnreadOwner(),
+            reason = "conversation_read_all"
+        )
+        homeActivityStores.entries().forEach { (shellScope, store) ->
+            runOnStoreScope(homeActivityStoreScopes.get(shellScope)) {
+                store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(event))
+            }
         }
     }
 

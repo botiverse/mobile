@@ -24,6 +24,7 @@ import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
 import build.raft.app.model.PerReceiverPinnedChanged
 import build.raft.app.model.PerReceiverReadStateChanged
+import build.raft.app.model.PerReceiverReadStateScope
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
@@ -117,6 +118,10 @@ internal class SharedHomeStore(
     private var markChannelUnread: suspend (ChannelId) -> DataResult<ReadReceiptResult> = {
         DataResult.Empty(EmptyReason.NoMessages)
     },
+    /** Sidebar "Mark All as Read": `POST channels/:id/conversation-read-all` (channel + followed threads). */
+    private var markConversationReadAll: suspend (ChannelId) -> DataResult<ReadReceiptResult> = {
+        DataResult.Empty(EmptyReason.NoMessages)
+    },
     private var archiveChannel: suspend (ChannelId) -> DataResult<ChannelArchiveResult> = {
         DataResult.Empty(EmptyReason.NoChannels)
     },
@@ -136,6 +141,13 @@ internal class SharedHomeStore(
      * tests keep compiling.
      */
     private var pinUpdateFailureCallback: (String) -> Unit = {},
+    /**
+     * A `conversation-read-all` ack, as the read-state push the server also sends. The process host
+     * hands it to the Activity stores and invalidates the Activity unread summary, so the Activity
+     * badge follows the same versioned ingress as a socket receipt (web `applyReadStateUpdate`).
+     */
+    private var onConversationReadAllAcknowledged: (accountId: String, event: PerReceiverReadStateChanged) -> Unit =
+        { _, _ -> },
     private val persistSlices: List<MviPersistSlice<SharedHomeState, SharedHomeIntent>> = emptyList(),
     /**
      * #81: wall-clock source for [AppBadgeCount.lastUpdated]. Injected so
@@ -256,6 +268,9 @@ internal class SharedHomeStore(
         markChannelUnread: suspend (ChannelId) -> DataResult<ReadReceiptResult> = {
             DataResult.Empty(EmptyReason.NoMessages)
         },
+        markConversationReadAll: suspend (ChannelId) -> DataResult<ReadReceiptResult> = {
+            DataResult.Empty(EmptyReason.NoMessages)
+        },
         archiveChannel: suspend (ChannelId) -> DataResult<ChannelArchiveResult> = {
             DataResult.Empty(EmptyReason.NoChannels)
         },
@@ -265,7 +280,9 @@ internal class SharedHomeStore(
         readReceiptCoordinator: ReadReceiptCoordinator? = this.readReceiptCoordinator,
         readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = this.readReceiptOwnerFactory,
         readStateV1Canary: ReadStateV1ProductionCanary? = this.readStateV1Canary,
-        pinUpdateFailureCallback: (String) -> Unit = {}
+        pinUpdateFailureCallback: (String) -> Unit = {},
+        onConversationReadAllAcknowledged: (accountId: String, event: PerReceiverReadStateChanged) -> Unit =
+            this.onConversationReadAllAcknowledged
     ) {
         loadJob?.cancel()
         agentDirectMessageStatusJob?.cancel()
@@ -283,12 +300,14 @@ internal class SharedHomeStore(
         this.updateServerOrder = updateServerOrder
         this.markChannelReadAll = markChannelReadAll
         this.markChannelUnread = markChannelUnread
+        this.markConversationReadAll = markConversationReadAll
         this.archiveChannel = archiveChannel
         this.setChannelActivityMuted = setChannelActivityMuted
         this.readReceiptCoordinator = readReceiptCoordinator
         this.readReceiptOwnerFactory = readReceiptOwnerFactory
         this.readStateV1Canary = readStateV1Canary
         this.pinUpdateFailureCallback = pinUpdateFailureCallback
+        this.onConversationReadAllAcknowledged = onConversationReadAllAcknowledged
         diagnosticsLogger("home_runtime_integrations_updated")
     }
 
@@ -717,6 +736,8 @@ internal class SharedHomeStore(
                 markConversationRead(intent.conversationId)
             is SharedHomeIntent.MarkUnread ->
                 markConversationUnread(intent.conversationId)
+            is SharedHomeIntent.MarkConversationReadAll ->
+                markConversationReadAll(intent.conversationId)
             is SharedHomeIntent.CloseDirectMessage ->
                 closeDirectMessage(intent.conversationId)
             is SharedHomeIntent.ArchiveChannel ->
@@ -3395,6 +3416,66 @@ internal class SharedHomeStore(
         return ownerFactory(serverId, accountId) == owner
     }
 
+    /**
+     * Web `messageStore.markConversationRead`: one `conversation-read-all` request reads the
+     * conversation and its active followed threads. The row and its `[thread] N` mark clear at once;
+     * a failed request puts back what this action cleared. The ack's scopes then flow to Activity as
+     * the read-state push they are, and the followed-thread summary reloads (web
+     * `loadFollowedThreads`).
+     */
+    private suspend fun markConversationReadAll(conversationId: String) {
+        val current = _state.value.content as? SharedHomeContentState.Content
+        val target = current?.snapshot?.findHomeConversation(conversationId)
+        if (current == null || target == null) {
+            pinUpdateFailureCallback("Unable to mark conversation read: home not loaded")
+            return
+        }
+        val channelId = target.messageStreamChannelId()
+        val serverId = current.snapshot.server.id
+        val accountId = current.snapshot.currentMember.id.value
+        val clearedThreads =
+            current.snapshot.followedThreadUnread.filterValues { it.parentChannelId == channelId }
+        if (target.unreadCount <= 0 && target.mentionCount <= 0 && clearedThreads.isEmpty()) return
+        val cleared =
+            HomeConversationReadAllClear(
+                conversationId = conversationId,
+                unreadCount = target.unreadCount,
+                mentionCount = target.mentionCount,
+                firstUnreadMessageId = target.firstUnreadMessageId,
+                threads = clearedThreads
+            )
+        applyHomeSnapshotLocally { it.withConversationReadAllCleared(cleared) }
+        when (val result = markConversationReadAll(channelId)) {
+            is DataResult.Content -> {
+                val scopes =
+                    result.data.scopes.mapNotNull { scope ->
+                        val version = scope.readStateVersion ?: return@mapNotNull null
+                        PerReceiverReadStateScope(
+                            scopeId = scope.channelId,
+                            maxReadSeq = scope.maxReadSeq,
+                            readStateVersion = version
+                        )
+                    }
+                if (scopes.isNotEmpty()) {
+                    onConversationReadAllAcknowledged(
+                        accountId,
+                        PerReceiverReadStateChanged(serverId = serverId, scopes = scopes)
+                    )
+                }
+                followedThreadUnreadRefresh.request()
+            }
+            is DataResult.Empty -> followedThreadUnreadRefresh.request()
+            is DataResult.Error,
+            is DataResult.NoPermission -> {
+                val now = _state.value.content as? SharedHomeContentState.Content
+                if (now != null && now.snapshot.server.id == serverId && now.snapshot.currentMember.id.value == accountId) {
+                    applyHomeSnapshotLocally { it.withConversationReadAllRestored(cleared) }
+                }
+                pinUpdateFailureCallback("Unable to mark conversation read")
+            }
+        }
+    }
+
     private suspend fun markConversationUnread(conversationId: String) {
         val current = _state.value.content as? SharedHomeContentState.Content
         val target = current?.snapshot?.findHomeConversation(conversationId)
@@ -4176,6 +4257,7 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.ReorderServers -> "${SharedHomeChannelFoldEvent.Patch.wireName}:server-order:${serverOrder.size}"
         is SharedHomeIntent.MarkRead -> "${SharedHomeChannelFoldEvent.Patch.wireName}:read:$conversationId"
         is SharedHomeIntent.MarkUnread -> "${SharedHomeChannelFoldEvent.Patch.wireName}:unread:$conversationId"
+        is SharedHomeIntent.MarkConversationReadAll -> "${SharedHomeChannelFoldEvent.Patch.wireName}:read-all:$conversationId"
         is SharedHomeIntent.CloseDirectMessage -> "${SharedHomeChannelFoldEvent.Remove.wireName}:dm:$conversationId"
         is SharedHomeIntent.ArchiveChannel -> "${SharedHomeChannelFoldEvent.Remove.wireName}:archive:$conversationId"
         is SharedHomeIntent.SetChannelActivityMuted -> "${SharedHomeChannelFoldEvent.Mute.wireName}:$conversationId:$muted"
@@ -4520,6 +4602,66 @@ internal fun HomeSnapshot.withConversationUnread(
         unreadTotal = nextUnreadTotal,
         serverUnreadCounts = serverUnreadCounts + (server.id.value to nextServerUnreadCount)
     )
+}
+
+/** What a sidebar "Mark All as Read" cleared, so a failed request can put exactly that back. */
+internal data class HomeConversationReadAllClear(
+    val conversationId: String,
+    val unreadCount: Int,
+    val mentionCount: Int,
+    val firstUnreadMessageId: MessageId?,
+    /** The followed threads under the conversation that were unread, keyed by thread channel id. */
+    val threads: Map<String, HomeFollowedThreadUnread>
+)
+
+/** The optimistic half of "Mark All as Read": the row and every followed thread under it read. */
+internal fun HomeSnapshot.withConversationReadAllCleared(clear: HomeConversationReadAllClear): HomeSnapshot {
+    val withRow = withConversationUnread(clear.conversationId, 0)
+    if (clear.threads.isEmpty()) return withRow
+    return withRow.copy(followedThreadUnread = withRow.followedThreadUnread - clear.threads.keys)
+}
+
+/**
+ * Rollback for a failed "Mark All as Read". Unread that arrived while the request was in flight is
+ * kept on top of what the action cleared, and a thread the summary has re-listed since is left as is.
+ */
+internal fun HomeSnapshot.withConversationReadAllRestored(clear: HomeConversationReadAllClear): HomeSnapshot {
+    val row = findHomeConversation(clear.conversationId)
+    val withCount =
+        if (row == null) {
+            this
+        } else {
+            withConversationUnread(clear.conversationId, row.unreadCount + clear.unreadCount)
+        }
+    val restoredMentions = clear.mentionCount
+    val withRow =
+        withCount.copy(
+            channels =
+                withCount.channels.map { channel ->
+                    if (!channel.matchesHomeConversation(clear.conversationId)) {
+                        channel
+                    } else {
+                        channel.copy(
+                            mentionCount = channel.mentionCount + restoredMentions,
+                            firstUnreadMessageId = clear.firstUnreadMessageId ?: channel.firstUnreadMessageId
+                        )
+                    }
+                },
+            directMessages =
+                withCount.directMessages.map { dm ->
+                    if (!dm.matchesHomeConversation(clear.conversationId)) {
+                        dm
+                    } else {
+                        dm.copy(
+                            mentionCount = dm.mentionCount + restoredMentions,
+                            firstUnreadMessageId = clear.firstUnreadMessageId ?: dm.firstUnreadMessageId
+                        )
+                    }
+                }
+        )
+    val missingThreads = clear.threads.filterKeys { it !in withRow.followedThreadUnread }
+    if (missingThreads.isEmpty()) return withRow
+    return withRow.copy(followedThreadUnread = withRow.followedThreadUnread + missingThreads)
 }
 
 private enum class HomeReadStateApplyOutcome(val diagnosticsName: String) {
@@ -4913,6 +5055,12 @@ sealed interface SharedHomeIntent {
     data class ReorderServers(val serverOrder: List<String>) : SharedHomeIntent
     data class MarkRead(val conversationId: String) : SharedHomeIntent
     data class MarkUnread(val conversationId: String) : SharedHomeIntent
+
+    /**
+     * Sidebar "Mark All as Read" (web `SidebarReadToggleMenuItem` -> `markConversationRead`): the
+     * channel and its followed threads in one `conversation-read-all` request.
+     */
+    data class MarkConversationReadAll(val conversationId: String) : SharedHomeIntent
     data class CloseDirectMessage(val conversationId: String) : SharedHomeIntent
     data class ArchiveChannel(val conversationId: String) : SharedHomeIntent
     data class SetChannelActivityMuted(val conversationId: String, val muted: Boolean) : SharedHomeIntent
@@ -4968,6 +5116,7 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.ReorderServers,
             is SharedHomeIntent.MarkRead,
             is SharedHomeIntent.MarkUnread,
+            is SharedHomeIntent.MarkConversationReadAll,
             is SharedHomeIntent.CloseDirectMessage,
             is SharedHomeIntent.ArchiveChannel,
             is SharedHomeIntent.SetChannelActivityMuted,
@@ -5015,6 +5164,7 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.ReorderServers,
             is SharedHomeIntent.MarkRead,
             is SharedHomeIntent.MarkUnread,
+            is SharedHomeIntent.MarkConversationReadAll,
             is SharedHomeIntent.CloseDirectMessage,
             is SharedHomeIntent.ArchiveChannel,
             is SharedHomeIntent.SetChannelActivityMuted,
@@ -5062,6 +5212,7 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.ReorderServers,
             is SharedHomeIntent.MarkRead,
             is SharedHomeIntent.MarkUnread,
+            is SharedHomeIntent.MarkConversationReadAll,
             is SharedHomeIntent.CloseDirectMessage,
             is SharedHomeIntent.ArchiveChannel,
             is SharedHomeIntent.SetChannelActivityMuted,

@@ -406,6 +406,7 @@ private fun SharedHomeIntent.toSharedHomeShellHomeIntentDiagnosticsLabel(): Stri
         is SharedHomeIntent.ReorderServers -> "patch:server-order:${serverOrder.size}"
         is SharedHomeIntent.MarkRead -> "patch:read:$conversationId"
         is SharedHomeIntent.MarkUnread -> "patch:unread:$conversationId"
+        is SharedHomeIntent.MarkConversationReadAll -> "patch:read-all:$conversationId"
         is SharedHomeIntent.CloseDirectMessage -> "remove:dm:$conversationId"
         is SharedHomeIntent.ArchiveChannel -> "remove:archive:$conversationId"
         is SharedHomeIntent.SetChannelActivityMuted -> "mute:$conversationId:$muted"

@@ -565,6 +565,7 @@ data class RaftHomeShellLabels(
     val unpin: String = "Unpin",
     val markAsRead: String = "Mark as Read",
     val markAsUnread: String = "Mark as Unread",
+    val markAllAsRead: String = "Mark All as Read",
     val mute: String = "Mute",
     val unmute: String = "Unmute",
     val closeChat: String = "Close Chat",
@@ -618,6 +619,7 @@ data class RaftHomeShellLabels(
             unpin = stringResource(MR.strings.home_action_unpin),
             markAsRead = stringResource(MR.strings.home_action_mark_as_read),
             markAsUnread = stringResource(MR.strings.home_action_mark_as_unread),
+            markAllAsRead = stringResource(MR.strings.home_action_mark_all_as_read),
             mute = stringResource(MR.strings.home_action_mute),
             unmute = stringResource(MR.strings.home_action_unmute),
             closeChat = stringResource(MR.strings.home_action_close_chat),
@@ -1534,6 +1536,12 @@ internal class RaftStructuralHomeShellCallbacks(
     val onChannelLongPress: (String, RaftPopoverAnchor) -> Unit = { _, _ -> },
     val onPinToggle: (String) -> Unit = {},
     val onReadToggle: (conversationId: String, markUnread: Boolean) -> Unit = { _, _ -> },
+    /**
+     * Sidebar "Mark All as Read" for a joined channel and its followed threads (web
+     * `SidebarReadToggleMenuItem` with `includeThreads`). Null while `thread_unread_badge_v0` or
+     * `sidebar_mark_all_read_v0` is off: the row keeps the single-scope read toggle.
+     */
+    val onMarkConversationReadAll: ((conversationId: String) -> Unit)? = null,
     val onChannelActivityMuteToggle: (conversationId: String, muted: Boolean) -> Unit = { _, _ -> },
     val onCloseDirectMessage: (String) -> Unit = {},
     val onArchiveChannel: (String) -> Unit = {},
@@ -1637,6 +1645,7 @@ internal fun RaftStructuralHomeShell(
     onChannelLongPress: (String, RaftPopoverAnchor) -> Unit = { _, _ -> },
     onPinToggle: (String) -> Unit = {},
     onReadToggle: (conversationId: String, markUnread: Boolean) -> Unit = { _, _ -> },
+    onMarkConversationReadAll: ((conversationId: String) -> Unit)? = null,
     onChannelActivityMuteToggle: (conversationId: String, muted: Boolean) -> Unit = { _, _ -> },
     onCloseDirectMessage: (String) -> Unit = {},
     onArchiveChannel: (String) -> Unit = {},
@@ -1748,6 +1757,7 @@ internal fun RaftStructuralHomeShell(
                 onChannelLongPress = onChannelLongPress,
                 onPinToggle = onPinToggle,
                 onReadToggle = onReadToggle,
+                onMarkConversationReadAll = onMarkConversationReadAll,
                 onChannelActivityMuteToggle = onChannelActivityMuteToggle,
                 onCloseDirectMessage = onCloseDirectMessage,
                 onArchiveChannel = onArchiveChannel,
@@ -1857,6 +1867,7 @@ private fun RaftStructuralHomeShellContent(
     val onChannelLongPress = callbacks.onChannelLongPress
     val onPinToggle = callbacks.onPinToggle
     val onReadToggle = callbacks.onReadToggle
+    val onMarkConversationReadAll = callbacks.onMarkConversationReadAll
     val onChannelActivityMuteToggle = callbacks.onChannelActivityMuteToggle
     val onCloseDirectMessage = callbacks.onCloseDirectMessage
     val onArchiveChannel = callbacks.onArchiveChannel
@@ -3092,7 +3103,8 @@ private fun RaftStructuralHomeShellContent(
                     pinTargetIsPinned = pinTargetIsPinned,
                     sortableFromMenu = sortableFromMenu && sortOverlaySection == null,
                     activeIsDirectMessage = activeIsDirectMessage,
-                    activeCanArchive = activeCanArchive
+                    activeCanArchive = activeCanArchive,
+                    markAllReadEnabled = onMarkConversationReadAll != null
                 )
             }
             if (activeConversationId != null && pinMenuItems != null) {
@@ -3110,6 +3122,7 @@ private fun RaftStructuralHomeShellContent(
                         when (actionId) {
                             "mark-read" -> onReadToggle(activeConversationId, false)
                             "mark-unread" -> onReadToggle(activeConversationId, true)
+                            "mark-all-read" -> onMarkConversationReadAll?.invoke(activeConversationId)
                             "mute-channel" -> onChannelActivityMuteToggle(activeConversationId, true)
                             "unmute-channel" -> onChannelActivityMuteToggle(activeConversationId, false)
                             "toggle-pin" -> onPinToggle(activeConversationId)
@@ -3577,7 +3590,9 @@ internal fun raftHomeConversationMenuItems(
     sortableFromMenu: Boolean,
     activeIsDirectMessage: Boolean,
     activeCanArchive: Boolean,
-    canMoveToSection: Boolean = true
+    canMoveToSection: Boolean = true,
+    /** Both `thread_unread_badge_v0` and `sidebar_mark_all_read_v0` are on for this server. */
+    markAllReadEnabled: Boolean = false
 ): List<RaftBaseMenuItem> =
     buildList {
         // Web parity (Sidebar.tsx row context menu): "Move to Section" leads,
@@ -3591,11 +3606,27 @@ internal fun raftHomeConversationMenuItems(
                 )
             )
         }
-        val hasUnread = conversation.homeConversationBadgeProjection().hasUnread
+        // Web SidebarReadToggleMenuItem: a joined channel reads with its followed threads ("Mark All
+        // as Read") once both gates are on, and thread-only unread then also counts as unread.
+        // DMs and unjoined channels keep the single-scope toggle.
+        val readConversation = markAllReadEnabled && conversation.joined && !activeIsDirectMessage
+        val hasUnread =
+            conversation.homeConversationBadgeProjection().hasUnread ||
+                (readConversation && conversation.followedThreadUnreadCount > 0)
         add(
             RaftBaseMenuItem(
-                id = if (hasUnread) "mark-read" else "mark-unread",
-                label = if (hasUnread) labels.markAsRead else labels.markAsUnread,
+                id =
+                    when {
+                        !hasUnread -> "mark-unread"
+                        readConversation -> "mark-all-read"
+                        else -> "mark-read"
+                    },
+                label =
+                    when {
+                        !hasUnread -> labels.markAsUnread
+                        readConversation -> labels.markAllAsRead
+                        else -> labels.markAsRead
+                    },
                 icon = if (hasUnread) RaftLucideIconName.MailOpen else RaftLucideIconName.Mail,
                 dividerBefore = canMoveToSection
             )
