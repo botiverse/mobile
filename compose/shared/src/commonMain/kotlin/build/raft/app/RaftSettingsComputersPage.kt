@@ -92,6 +92,7 @@ import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.components.raftAvatarInitials
+import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftAppearance
@@ -806,19 +807,44 @@ private fun RaftComputerAgentsSection(
                             divider = index > 0,
                             subtitle = agent.runtime?.takeIf { it.isNotBlank() },
                             description = agent.description?.takeIf { it.isNotBlank() },
-                            leading = {
-                                RaftAvatar(
-                                    type = RaftAvatarType.Agent,
-                                    size = RaftAvatarSize.Md,
-                                    initials = raftAvatarInitials(agent.name, RaftAvatarSize.Md),
-                                )
-                            },
+                            leading = { RaftComputerAgentAvatar(agent) },
                             trailing = { RaftListRowChevron() },
                         )
                     }
                 }
         }
     }
+}
+
+/**
+ * An agent on this computer: its own avatar (pixel avatar or photo) in the agent sticker,
+ * as the Members list draws it; the initials only while it has none (artin 2026-10-21).
+ */
+@Composable
+private fun RaftComputerAgentAvatar(agent: SettingsComputerAgentSnapshot) {
+    val size = RaftAvatarSize.Md
+    val avatarUrl = agent.avatarUrl?.takeIf { it.isNotBlank() }
+    RaftAvatar(
+        type = RaftAvatarType.Agent,
+        size = size,
+        initials = raftAvatarInitials(agent.name, size),
+        image =
+            if (avatarUrl != null) {
+                {
+                    RaftAppAvatar(
+                        avatarWireValue = avatarUrl,
+                        label = agent.name,
+                        // The face fills the inside of the 1.5dp sticker edge.
+                        avatarSize = size.edge - RaftStroke.Control * 2,
+                        borderWidth = 0.dp,
+                        cacheSubject = raftMemberAvatarCacheSubject(MemberKind.Agent, agent.id),
+                        fallbackFill = raftAvatarFallbackFill(MemberKind.Agent),
+                    )
+                }
+            } else {
+                null
+            },
+    )
 }
 
 @Composable
