@@ -7236,8 +7236,9 @@ private fun RaftAppShellReadyContent(
                                 prefersChineseCommunity = prefersChineseCommunity,
                                 serverDrawerEnabled = serverDrawerEnabled,
                                 homeServerAvatarEnabled = homeServerAvatarEnabled,
-                                // The phone bar (not the wide rail) carries Search and Activity.
-                                searchAndActivityInBottomBar = !navRailActive,
+                                // The phone bar or the wide rail carries Search and Activity (nav
+                                // spec §5): the list keeps only Saved, never a second copy.
+                                searchAndActivityOnShellNav = appShellNavCarriesSearchAndActivity(navRailActive),
                                 threadUnreadBadgeEnabled = homeThreadUnreadBadgeEnabled,
                                 sidebarMarkAllReadEnabled = homeSidebarMarkAllReadEnabled,
                                 onIntent = { intent ->
@@ -19875,7 +19876,7 @@ private fun SharedHomeScreen(
     serverDrawerEnabled: Boolean = false,
     homeServerAvatarEnabled: Boolean = false,
     /** The phone bottom bar is on screen: the list drops its Search / Activity rows. */
-    searchAndActivityInBottomBar: Boolean = false,
+    searchAndActivityOnShellNav: Boolean = false,
     /** Server flag `thread_unread_badge_v0`: channel rows show followed-thread unread (web parity). */
     threadUnreadBadgeEnabled: Boolean = false,
     /** Server flag `sidebar_mark_all_read_v0`: with the thread badge on, rows offer "Mark All as Read". */
@@ -19980,7 +19981,7 @@ private fun SharedHomeScreen(
             if (session != null) {
                 SharedHomeSessionShell(
                     session = session,
-                    searchAndActivityInBottomBar = searchAndActivityInBottomBar,
+                    searchAndActivityOnShellNav = searchAndActivityOnShellNav,
                     scrollToTopRequest = scrollToTopRequest,
                     serverSwitcherExpanded = serverSwitcherExpanded,
                     serverDrawerEnabled = serverDrawerEnabled,
@@ -20019,7 +20020,7 @@ private fun SharedHomeScreen(
         is SharedHomeContentState.Empty ->
             SharedHomeSessionShell(
                 session = current.session,
-                searchAndActivityInBottomBar = searchAndActivityInBottomBar,
+                searchAndActivityOnShellNav = searchAndActivityOnShellNav,
                 scrollToTopRequest = scrollToTopRequest,
                 serverSwitcherExpanded = serverSwitcherExpanded,
                 serverDrawerEnabled = serverDrawerEnabled,
@@ -20054,7 +20055,7 @@ private fun SharedHomeScreen(
             if (current.session != null) {
                 SharedHomeSessionShell(
                     session = current.session,
-                    searchAndActivityInBottomBar = searchAndActivityInBottomBar,
+                    searchAndActivityOnShellNav = searchAndActivityOnShellNav,
                     scrollToTopRequest = scrollToTopRequest,
                     serverSwitcherExpanded = serverSwitcherExpanded,
                     serverDrawerEnabled = serverDrawerEnabled,
@@ -20297,7 +20298,7 @@ private fun SharedHomeScreen(
                 hideEmptySections = hideEmptySections,
                 canArchiveChannels = snapshot.server.permissions.canManageSettings,
                 showBottomBar = false,
-                searchAndActivityInBottomBar = searchAndActivityInBottomBar,
+                searchAndActivityOnShellNav = searchAndActivityOnShellNav,
                 externalFocusLossDismissEpoch = externalFocusLossDismissEpoch,
                 bottomContentPadding = bottomContentPadding,
                 outerPadding = 0.dp,
@@ -24384,7 +24385,7 @@ private fun SharedHomeSessionShell(
     // skeleton rows under the CHANNELS / DIRECT MESSAGES headers so the
     // post-sign-in transition matches the React app instead of a bare shell.
     loadingSkeletons: Boolean = false,
-    searchAndActivityInBottomBar: Boolean = false,
+    searchAndActivityOnShellNav: Boolean = false,
     inlineError: RaftHomeInlineError? = null,
     onInlineErrorAction: () -> Unit = {},
     onServerBadgeClick: () -> Unit,
@@ -24423,7 +24424,7 @@ private fun SharedHomeSessionShell(
         prefersChineseCommunity = prefersChineseCommunity,
         topSafeAreaOverride = topSafeAreaOverride,
         showBottomBar = false,
-        searchAndActivityInBottomBar = searchAndActivityInBottomBar,
+        searchAndActivityOnShellNav = searchAndActivityOnShellNav,
         bottomContentPadding = bottomContentPadding,
         outerPadding = 0.dp,
         labels = RaftHomeShellLabels.localized(),
@@ -25710,8 +25711,11 @@ private fun AppShellCachedHomePreviewContent(
             serverDrawerEnabled = false,
             homeServerAvatarEnabled = false,
             // Match the list the restored shell will show (desktop mode defaults on, so the wide
-            // dual-pane layout uses the rail and keeps the rows).
-            searchAndActivityInBottomBar = shellScope.adaptivePane.layout != RaftAdaptivePaneLayout.DualPane,
+            // dual-pane layout uses the rail, which carries Search and Activity like the bar).
+            searchAndActivityOnShellNav =
+                appShellNavCarriesSearchAndActivity(
+                    navRailActive = shellScope.adaptivePane.layout == RaftAdaptivePaneLayout.DualPane
+                ),
             onIntent = {},
             onNotificationDismiss = {},
             onOpenSearch = {},

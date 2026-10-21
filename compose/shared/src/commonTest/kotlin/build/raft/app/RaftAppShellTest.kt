@@ -1591,8 +1591,8 @@ class RaftAppShellTest {
 
     @Test
     fun homeListDropsSearchAndActivityRowsOnlyWhereThePhoneBarShows() {
-        assertFalse(homeSidebarShowsSearchAndActivityRows(searchAndActivityInBottomBar = true))
-        assertTrue(homeSidebarShowsSearchAndActivityRows(searchAndActivityInBottomBar = false))
+        assertFalse(homeSidebarShowsSearchAndActivityRows(searchAndActivityOnShellNav = true))
+        assertTrue(homeSidebarShowsSearchAndActivityRows(searchAndActivityOnShellNav = false))
     }
 
     @Test

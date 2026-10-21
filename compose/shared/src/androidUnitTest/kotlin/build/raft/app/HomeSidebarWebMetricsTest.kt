@@ -163,7 +163,7 @@ private fun HomeSidebarWebMetricsFixture() {
         applyTopSafeArea = false,
         topSafeAreaOverride = 0.dp,
         showBottomBar = false,
-        searchAndActivityInBottomBar = true,
+        searchAndActivityOnShellNav = true,
         bottomContentPadding = 0.dp,
         outerPadding = 0.dp,
         contentRefreshEnabled = false,
