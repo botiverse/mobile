@@ -758,7 +758,7 @@ private val SearchMutedTextColor: Color get() = RaftColor.TextBlack.copy(alpha =
 // xxchan 2026-10-20: the phone bar is 主页 · 动态 · 任务 · 更多 (+ the Search action); Members and
 // Settings are pushed from More. They stay shell child pages so the wide rail, deep links and
 // old launch values keep selecting them directly.
-private val AppShellChildPageTabKeys = listOf("home", "activity", "tasks", AppShellSearchTabKey, "more", "members", "settings")
+internal val AppShellChildPageTabKeys = listOf("home", "activity", "tasks", AppShellSearchTabKey, "more", "members", "settings")
 private val AppShellChildPagePrewarmOrder = listOf("settings", "tasks", "members")
 
 internal typealias AppShellChildTabRenderer = @Composable (tab: String, active: Boolean) -> Unit
@@ -2285,7 +2285,6 @@ private fun RaftAppShellReadyContent(
     var membersListState by remember { mutableStateOf(AppShellMembersListState()) }
     var adaptiveDefaultLandingServerId by remember { mutableStateOf<String?>(null) }
     var tabScrollToTopRequests by remember { mutableStateOf(AppShellTabScrollToTopRequests()) }
-    val bottomTabTapTracker = remember { AppShellBottomTabTapTracker() }
     val tasksSurfaceActive = selectedTab == "tasks"
     // The wide rail's server switcher belongs to the rail, not to Home: it opens over whatever
     // page is showing, anchored next to the rail's server avatar.
@@ -2299,11 +2298,12 @@ private fun RaftAppShellReadyContent(
     var railInlineSecondaryDestination by remember { mutableStateOf<String?>(null) }
     // The Search tab's result list position survives leaving and re-entering the tab.
     val searchTabListState = rememberLazyListState()
+    // Re-tapping the selected Search tab focuses its field (one increment per tap).
+    var searchTabFocusInputRequest by remember { mutableStateOf(0) }
     // task #13: once a rail surface exposes Activity (rail active or an inline destination is
     // covering the middle pane) the live tab must survive width transitions — narrowing must
     // not clamp a user-reached Activity selection back to Home.
     var railActivityReached by remember { mutableStateOf(false) }
-    val bottomTabTapClock = remember { TimeSource.Monotonic.markNow() }
     var hostNetworkStatus by remember { mutableStateOf(RaftAppShellNetworkStatus.Online) }
     val childTabShellId = remember(pager.pagerId) { "app-shell-child-tabs-${pager.pagerId}" }
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
@@ -6399,18 +6399,16 @@ private fun RaftAppShellReadyContent(
     val onAppShellTabSelected: (String) -> Unit = onBottomTabSelected@{
                 prewarmAdmissionGate.invalidate("bottom_tab_tap:$it")
                 val nextTab = retainedAppShellSelectedTab(it)
-                when (
-                    bottomTabTapTracker.onTap(
-                        selectedTab = selectedTab,
-                        tappedTab = nextTab,
-                        nowMs = bottomTabTapClock.elapsedNow().inWholeMilliseconds,
-                    )
-                ) {
+                when (appShellBottomTabTapAction(selectedTab = selectedTab, tappedTab = nextTab)) {
                     AppShellBottomTabTapAction.ScrollCurrentToTop -> {
                         tabScrollToTopRequests = tabScrollToTopRequests.request(nextTab)
                         return@onBottomTabSelected
                     }
-                    AppShellBottomTabTapAction.ArmCurrent -> return@onBottomTabSelected
+                    AppShellBottomTabTapAction.FocusSearchField -> {
+                        searchTabFocusInputRequest += 1
+                        return@onBottomTabSelected
+                    }
+                    AppShellBottomTabTapAction.Ignore -> return@onBottomTabSelected
                     AppShellBottomTabTapAction.Select -> Unit
                 }
                 if (!shouldHandleAppShellTabSelection(selectedTab, nextTab)) return@onBottomTabSelected
@@ -7336,6 +7334,7 @@ private fun RaftAppShellReadyContent(
                                 },
                             session = (authGateState as? SharedAuthGateState.Ready)?.session,
                             bottomContentPadding = appShellBottomContentInset,
+                            scrollToTopRequest = tabScrollToTopRequests.more,
                             onSettingsHeaderClick = {
                                 prewarmAdmissionGate.invalidate("settings_header")
                                 val nextTapCount = settingsHeaderTapCount + 1
@@ -7386,11 +7385,16 @@ private fun RaftAppShellReadyContent(
                     // stdrc 2026-10-21 (option B): the phone Search tab. A tab root (no Back, the bar
                     // stays); a result pushes its page over the shell and Back returns here with the
                     // query, results and scroll kept (the tab stays composed like the others).
-                    val searchTabContent: @Composable (active: Boolean) -> Unit = { _ ->
+                    // The field never autofocuses (nav spec: the first switch shows the tab with the bar);
+                    // tapping it or re-tapping the selected Search tab focuses it. While the tab is not
+                    // shown its field holds neither focus nor the IME.
+                    val searchTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         HomeSecondaryRouterContent(
                             destination = HomeDestinationSearch,
                             routeVisibleTick = pageVisibleTick,
-                            initialSearchFocusInput = true,
+                            initialSearchFocusInput = false,
+                            searchInputActive = active,
+                            searchFocusInputRequest = searchTabFocusInputRequest,
                             adaptivePane = shellScope.adaptivePane,
                             tabRoot = true,
                             hostPager = pager,
@@ -8152,6 +8156,7 @@ private fun SettingsAppShellHomeContent(
     onSettingsHeaderClick: () -> Unit,
     onSelect: (String) -> Unit,
     moreRoot: SettingsMoreRoot? = null,
+    scrollToTopRequest: Int = 0,
 ) {
     val payload = appShellSettingsHomePayload(session)
     val membersSubtitle = stringResource(MR.strings.more_hub_members_subtitle)
@@ -8164,6 +8169,7 @@ private fun SettingsAppShellHomeContent(
         bottomContentPadding = bottomContentPadding,
         onHeaderClick = onSettingsHeaderClick,
         onSelect = onSelect,
+        scrollToTopRequest = scrollToTopRequest,
     )
 }
 
@@ -20781,6 +20787,11 @@ internal fun SharedHomeSearchPanel(
     showSenderFilter: Boolean = true,
     initialOpenFilterId: String? = null,
     initialFocusInput: Boolean = false,
+    // False while the page is kept alive but not shown (the phone Search tab when another tab is
+    // selected or a page is pushed over the shell): the field must not hold focus or the IME.
+    inputActive: Boolean = true,
+    // Each increment focuses the field (re-tapping the selected Search tab).
+    focusInputRequest: Int = 0,
     initialHistoryEditing: Boolean = false,
     searchHomeVisualTextScale: Float = 1f,
     onOpenItem: (InboxItem) -> Unit,
@@ -20874,6 +20885,12 @@ internal fun SharedHomeSearchPanel(
     var historyEditing by remember(initialHistoryEditing) { mutableStateOf(initialHistoryEditing) }
     val searchEditor = remember { SharedHomeSearchEditorOwner(state.query) }
     val searchFocusRequester = remember { FocusRequester() }
+    val searchInputFocus =
+        rememberSharedHomeSearchInputFocus(
+            focusRequester = searchFocusRequester,
+            inputActive = inputActive,
+            focusInputRequest = focusInputRequest
+        )
     var senderSearch by remember { mutableStateOf("") }
     var channelSearch by remember { mutableStateOf("") }
     val pinLabel = stringResource(MR.strings.home_action_pin)
@@ -20937,6 +20954,7 @@ internal fun SharedHomeSearchPanel(
                 SharedHomeSearchToolbar(
                     editor = searchEditor,
                     focusRequester = searchFocusRequester,
+                    fieldModifier = searchInputFocus.fieldModifier,
                     query = state.query,
                     loading = state.loading,
                     onQueryChange = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged(it)) },
@@ -20944,7 +20962,7 @@ internal fun SharedHomeSearchPanel(
                     onClear = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged("")) },
                     onClose = onClose,
                     interactive = interactiveSearchField,
-                    autoFocus = initialFocusInput,
+                    autoFocus = initialFocusInput && inputActive,
                     topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
                     placeholder = stringResource(MR.strings.search_placeholder)
                 )
@@ -21096,7 +21114,10 @@ internal fun SharedHomeSearchPanel(
                                     memberAvatarResolver = memberAvatarResolver,
                                     isPinned = frequentEntityResults[index].isPinnedBy(pinnedItems),
                                     visualTextScale = searchHomeVisualTextScale,
-                                    onOpen = { onOpenEntity(frequentEntityResults[index]) },
+                                    onOpen = {
+                                        searchInputFocus.release()
+                                        onOpenEntity(frequentEntityResults[index])
+                                    },
                                     onContextMenu = null,
                                 )
                             }
@@ -21114,7 +21135,10 @@ internal fun SharedHomeSearchPanel(
                                 agentStatusResolver = agentStatusResolver,
                                 memberAvatarResolver = memberAvatarResolver,
                                 isPinned = entityResults[index].isPinnedBy(pinnedItems),
-                                onOpen = { onOpenEntity(entityResults[index]) },
+                                onOpen = {
+                                    searchInputFocus.release()
+                                    onOpenEntity(entityResults[index])
+                                },
                                 onContextMenu =
                                     searchEntityPinTarget(entityResults[index])
                                         ?.takeIf { onTogglePin != null }
@@ -21148,7 +21172,10 @@ internal fun SharedHomeSearchPanel(
                                         cacheServerId = cacheServerId,
                                         memberAvatarResolver = memberAvatarResolver,
                                         timeContext = timeContext,
-                                        onOpen = { onOpenItem(group.item) }
+                                        onOpen = {
+                                            searchInputFocus.release()
+                                            onOpenItem(group.item)
+                                        }
                                     )
                                 }
                             }
@@ -21161,7 +21188,10 @@ internal fun SharedHomeSearchPanel(
                                         cacheServerId = cacheServerId,
                                         memberAvatarResolver = memberAvatarResolver,
                                         timeContext = timeContext,
-                                        onOpenItem = onOpenItem
+                                        onOpenItem = { item ->
+                                            searchInputFocus.release()
+                                            onOpenItem(item)
+                                        }
                                     )
                                 }
                             }
@@ -21564,6 +21594,7 @@ private fun SharedHomeSearchHistoryTag(
 private fun SharedHomeSearchToolbar(
     editor: SharedHomeSearchEditorOwner,
     focusRequester: FocusRequester,
+    fieldModifier: Modifier = Modifier,
     query: String,
     loading: Boolean,
     onQueryChange: (String) -> Unit,
@@ -21596,7 +21627,7 @@ private fun SharedHomeSearchToolbar(
             onSubmit = onSubmit,
             onClear = { editor.clear(onClear) },
             raftField = true,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f).then(fieldModifier)
         )
     }
 }
@@ -27390,8 +27421,14 @@ internal fun SettingsHomeContent(
     applyTopSafeArea: Boolean = true,
     onHeaderClick: (() -> Unit)? = null,
     onBack: (() -> Unit)? = null,
+    scrollToTopRequest: Int = 0,
     onSelect: (String) -> Unit
 ) {
+    val listState = rememberLazyListState()
+    val scrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
+    LaunchedEffect(scrollToTopRequest) {
+        if (scrollToTopRequestFence.consume(scrollToTopRequest)) listState.animateScrollToTopExpressive()
+    }
     val headerModifier =
         if (onHeaderClick != null) {
             Modifier.clickable(role = Role.Button, onClick = onHeaderClick)
@@ -27407,6 +27444,7 @@ internal fun SettingsHomeContent(
             onBack = onBack
         )
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {

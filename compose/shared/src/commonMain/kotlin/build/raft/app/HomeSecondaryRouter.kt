@@ -283,6 +283,8 @@ internal fun HomeSecondaryRouterContent(
     hostPager: Pager? = null,
     searchListState: LazyListState? = null,
     searchBottomContentPadding: Dp? = null,
+    searchInputActive: Boolean = true,
+    searchFocusInputRequest: Int = 0,
 ) {
     val environment = rememberHomeSecondaryRouteEnvironment(
         routeVisibleTick,
@@ -310,7 +312,9 @@ internal fun HomeSecondaryRouterContent(
                     initialOpenFilterId = initialSearchOpenFilterId,
                     initialFocusInput = initialSearchFocusInput,
                     listState = searchListState,
-                    bottomContentPadding = searchBottomContentPadding
+                    bottomContentPadding = searchBottomContentPadding,
+                    inputActive = searchInputActive,
+                    focusInputRequest = searchFocusInputRequest
                 )
             HomeDestinationSaved -> HomeSavedRouterContent(environment, routeVisibleTick)
             else -> RaftCenteredLoading(message = stringResource(MR.strings.auth_state_opening_server))
@@ -742,7 +746,9 @@ private fun HomeSearchRouterContent(
     initialOpenFilterId: String? = null,
     initialFocusInput: Boolean = false,
     listState: LazyListState? = null,
-    bottomContentPadding: Dp? = null
+    bottomContentPadding: Dp? = null,
+    inputActive: Boolean = true,
+    focusInputRequest: Int = 0
 ) {
     val conversationNotReadyMessage = stringResource(MR.strings.home_error_conversation_not_ready)
     val homeDataSource =
@@ -1010,6 +1016,8 @@ private fun HomeSearchRouterContent(
             },
         initialOpenFilterId = initialOpenFilterId,
         initialFocusInput = initialFocusInput,
+        inputActive = inputActive,
+        focusInputRequest = focusInputRequest,
         bottomContentPadding =
             bottomContentPadding ?: environment.shellScope.bottomInset(includeBottomTabBar = chrome.aboveBottomBar),
         timeContext = environment.timeContext,

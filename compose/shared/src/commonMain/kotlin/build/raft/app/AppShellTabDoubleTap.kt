@@ -1,65 +1,33 @@
 package build.raft.app
 
-internal const val AppShellBottomTabDoubleTapWindowMs: Long = 400L
-
 internal enum class AppShellBottomTabTapAction {
+    /** Another tab: select it. */
     Select,
-    ArmCurrent,
+    /** The selected tab again, and it has no re-tap action. */
+    Ignore,
+    /** The selected tab again: scroll its list to the top. */
     ScrollCurrentToTop,
+    /** The selected Search tab again: focus its field (nav spec: no autofocus on the switch). */
+    FocusSearchField,
 }
 
 /**
- * Turns the renderer-neutral stream of bottom-tab click callbacks into a deterministic
- * double-tap action. Native and shared tab bars both emit the same single-click callback,
- * so recognition belongs at the app-shell interaction boundary rather than in three
- * platform renderers.
+ * The bottom-bar tap at the app-shell interaction boundary (native and shared bars emit the same
+ * click callback). Re-tapping the selected tab scrolls its list to the top (Home, Activity, Tasks,
+ * More and the rail's Members); re-tapping the selected Search tab focuses its field.
  */
-internal class AppShellBottomTabTapTracker(
-    private val doubleTapWindowMs: Long = AppShellBottomTabDoubleTapWindowMs,
-) {
-    private var armedTab: String? = null
-    private var armedAtMs: Long = Long.MIN_VALUE
-
-    fun onTap(
-        selectedTab: String,
-        tappedTab: String,
-        nowMs: Long,
-    ): AppShellBottomTabTapAction {
-        val normalizedSelected = retainedAppShellSelectedTab(selectedTab)
-        val normalizedTapped = retainedAppShellSelectedTab(tappedTab)
-        val supportsScrollToTop = normalizedTapped in AppShellScrollToTopTabs
-        val elapsed = nowMs - armedAtMs
-        val completesDoubleTap =
-            supportsScrollToTop &&
-                armedTab == normalizedTapped &&
-                elapsed in 0..doubleTapWindowMs
-
-        if (completesDoubleTap && normalizedSelected == normalizedTapped) {
-            clear()
-            return AppShellBottomTabTapAction.ScrollCurrentToTop
-        }
-
-        if (supportsScrollToTop) {
-            armedTab = normalizedTapped
-            armedAtMs = nowMs
-        } else {
-            clear()
-        }
-
-        return if (normalizedSelected == normalizedTapped) {
-            AppShellBottomTabTapAction.ArmCurrent
-        } else {
-            AppShellBottomTabTapAction.Select
-        }
-    }
-
-    private fun clear() {
-        armedTab = null
-        armedAtMs = Long.MIN_VALUE
+internal fun appShellBottomTabTapAction(selectedTab: String, tappedTab: String): AppShellBottomTabTapAction {
+    val normalizedSelected = retainedAppShellSelectedTab(selectedTab)
+    val normalizedTapped = retainedAppShellSelectedTab(tappedTab)
+    return when {
+        normalizedSelected != normalizedTapped -> AppShellBottomTabTapAction.Select
+        normalizedTapped == AppShellSearchTabKey -> AppShellBottomTabTapAction.FocusSearchField
+        normalizedTapped in AppShellScrollToTopTabs -> AppShellBottomTabTapAction.ScrollCurrentToTop
+        else -> AppShellBottomTabTapAction.Ignore
     }
 }
 
-internal val AppShellScrollToTopTabs: Set<String> = setOf("home", "activity", "dms", "tasks", "members")
+internal val AppShellScrollToTopTabs: Set<String> = setOf("home", "activity", "dms", "tasks", "members", "more", "settings")
 
 internal data class AppShellTabScrollToTopRequests(
     val home: Int = 0,
@@ -67,6 +35,8 @@ internal data class AppShellTabScrollToTopRequests(
     val dms: Int = 0,
     val tasks: Int = 0,
     val members: Int = 0,
+    // The More root (the Settings page; "settings" on the wide rail).
+    val more: Int = 0,
 ) {
     fun request(tab: String): AppShellTabScrollToTopRequests =
         when (retainedAppShellSelectedTab(tab)) {
@@ -75,6 +45,7 @@ internal data class AppShellTabScrollToTopRequests(
             "dms" -> copy(dms = dms + 1)
             "tasks" -> copy(tasks = tasks + 1)
             "members" -> copy(members = members + 1)
+            "more", "settings" -> copy(more = more + 1)
             else -> this
         }
 
@@ -85,6 +56,7 @@ internal data class AppShellTabScrollToTopRequests(
             "dms" -> dms
             "tasks" -> tasks
             "members" -> members
+            "more", "settings" -> more
             else -> 0
         }
 }

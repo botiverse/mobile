@@ -1088,87 +1088,42 @@ class RaftAppShellTest {
     }
 
     @Test
-    fun bottomTabDoubleTapScrollsOnlyTheCurrentHomeTasksOrMembersSurface() {
-        val tracker = AppShellBottomTabTapTracker(doubleTapWindowMs = 400L)
-
-        assertEquals(
-            AppShellBottomTabTapAction.ArmCurrent,
-            tracker.onTap(selectedTab = "home", tappedTab = "home", nowMs = 100L),
-        )
-        assertEquals(
-            AppShellBottomTabTapAction.ScrollCurrentToTop,
-            tracker.onTap(selectedTab = "home", tappedTab = "home", nowMs = 500L),
-        )
-        assertEquals(
-            AppShellBottomTabTapAction.ArmCurrent,
-            tracker.onTap(selectedTab = "home", tappedTab = "home", nowMs = 501L),
-        )
-
-        assertEquals(
-            AppShellBottomTabTapAction.Select,
-            tracker.onTap(selectedTab = "home", tappedTab = "tasks", nowMs = 1_000L),
-        )
+    fun reTappingTheSelectedTabScrollsHomeActivityTasksAndMoreToTop() {
+        for (tab in listOf("home", "activity", "tasks", "more", "members")) {
+            assertEquals(
+                AppShellBottomTabTapAction.ScrollCurrentToTop,
+                appShellBottomTabTapAction(selectedTab = tab, tappedTab = tab),
+                "re-tap $tab",
+            )
+        }
+        // A single re-tap is enough; no double-tap window.
         assertEquals(
             AppShellBottomTabTapAction.ScrollCurrentToTop,
-            tracker.onTap(selectedTab = "tasks", tappedTab = "tasks", nowMs = 1_250L),
-        )
-
-        assertEquals(
-            AppShellBottomTabTapAction.Select,
-            tracker.onTap(selectedTab = "tasks", tappedTab = "settings", nowMs = 2_000L),
-        )
-        assertEquals(
-            AppShellBottomTabTapAction.ArmCurrent,
-            tracker.onTap(selectedTab = "settings", tappedTab = "settings", nowMs = 2_100L),
+            appShellBottomTabTapAction(selectedTab = "activity", tappedTab = "activity"),
         )
     }
 
     @Test
-    fun bottomTabDoubleTapExpiresAndDifferentTabRetiresTheArmedIntent() {
-        val tracker = AppShellBottomTabTapTracker(doubleTapWindowMs = 400L)
-
+    fun reTappingTheSelectedSearchTabFocusesItsFieldAndSwitchingToItDoesNot() {
         assertEquals(
-            AppShellBottomTabTapAction.ArmCurrent,
-            tracker.onTap(selectedTab = "members", tappedTab = "members", nowMs = 100L),
-        )
-        assertEquals(
-            AppShellBottomTabTapAction.ArmCurrent,
-            tracker.onTap(selectedTab = "members", tappedTab = "members", nowMs = 501L),
+            AppShellBottomTabTapAction.FocusSearchField,
+            appShellBottomTabTapAction(selectedTab = AppShellSearchTabKey, tappedTab = AppShellSearchTabKey),
         )
         assertEquals(
             AppShellBottomTabTapAction.Select,
-            tracker.onTap(selectedTab = "members", tappedTab = "home", nowMs = 550L),
-        )
-        assertEquals(
-            AppShellBottomTabTapAction.ArmCurrent,
-            tracker.onTap(selectedTab = "members", tappedTab = "members", nowMs = 600L),
+            appShellBottomTabTapAction(selectedTab = "home", tappedTab = AppShellSearchTabKey),
         )
     }
 
     @Test
-    fun bottomTabDoubleTapOnActivityScrollsItsListToTop() {
-        val tracker = AppShellBottomTabTapTracker(doubleTapWindowMs = 400L)
-
-        assertEquals(
-            AppShellBottomTabTapAction.Select,
-            tracker.onTap(selectedTab = "home", tappedTab = "activity", nowMs = 100L),
-        )
-        assertEquals(
-            AppShellBottomTabTapAction.ScrollCurrentToTop,
-            tracker.onTap(selectedTab = "activity", tappedTab = "activity", nowMs = 300L),
-        )
-        assertEquals(
-            AppShellBottomTabTapAction.ArmCurrent,
-            tracker.onTap(selectedTab = "activity", tappedTab = "activity", nowMs = 1_000L),
-        )
-        assertEquals(
-            AppShellBottomTabTapAction.ScrollCurrentToTop,
-            tracker.onTap(selectedTab = "activity", tappedTab = "activity", nowMs = 1_200L),
-        )
+    fun tappingAnotherTabSelectsIt() {
+        assertEquals(AppShellBottomTabTapAction.Select, appShellBottomTabTapAction("home", "tasks"))
+        // Members is pushed from More: tapping More goes back to the More root.
+        assertEquals(AppShellBottomTabTapAction.Select, appShellBottomTabTapAction("members", "more"))
     }
 
     @Test
-    fun tabScrollRequestsAreMonotonicPerSurfaceAndSettingsIsExcluded() {
+    fun tabScrollRequestsAreMonotonicPerSurfaceAndMoreSharesTheSettingsPage() {
         val initial = AppShellTabScrollToTopRequests()
         val requested =
             initial
@@ -1177,15 +1132,17 @@ class RaftAppShellTest {
                 .request("dms")
                 .request("tasks")
                 .request("members")
-                .request("settings")
+                .request("more")
 
         assertEquals(1, requested.forTab("home"))
         assertEquals(1, requested.forTab("dms"))
         assertEquals(1, requested.forTab("tasks"))
         assertEquals(1, requested.forTab("members"))
-        assertEquals(0, requested.forTab("settings"))
         assertEquals(1, requested.forTab("activity"))
-        assertEquals(0, requested.forTab("more"))
+        assertEquals(1, requested.forTab("more"))
+        // The rail's Settings entry renders the same page as More.
+        assertEquals(2, requested.request("settings").forTab("more"))
+        assertEquals(0, requested.forTab(AppShellSearchTabKey))
     }
 
     @Test
@@ -1540,6 +1497,19 @@ class RaftAppShellTest {
         listOf("home", "activity", "tasks", "more", "settings", "unknown").forEach { tab ->
             assertNull(appShellMoreChildBackTarget(tab, navRailActive = false), "tab=$tab")
         }
+    }
+
+    @Test
+    fun everyInShellPageWithoutTheBarHasBack() {
+        // Navigation rule: a pushed page always has Back. An in-shell page that hides the bar must
+        // carry a Back target (Members from More was a dead end with neither).
+        (AppShellChildPageTabKeys + "unknown").forEach { tab ->
+            val barVisible = appShellBottomTabsVisible(tab, selectedHomeDestination = null, navRailActive = false)
+            if (!barVisible) {
+                assertEquals("more", appShellMoreChildBackTarget(tab, navRailActive = false), "tab=$tab")
+            }
+        }
+        assertFalse(appShellBottomTabsVisible("members", selectedHomeDestination = null, navRailActive = false))
     }
 
     @Test
