@@ -98,7 +98,7 @@ class ActivityRefreshTopAnchorTest {
     }
 
     @Test
-    fun `only a genuine head update counts, never pagination, in-place updates or removing the head`() {
+    fun `only a genuine head update counts - never pagination or in-place updates or removing the head`() {
         assertTrue(activityHasNewTopRow(cachedKeys, freshKeys), "new rows above the old head")
         assertTrue(activityHasNewTopRow(cachedKeys, listOf("c1", "c3", "c2")), "row bumped to the top")
         assertTrue(activityHasNewTopRow(cachedKeys, listOf("n1", "c2", "c1")), "head replaced by a new row")
