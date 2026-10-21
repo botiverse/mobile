@@ -4700,14 +4700,17 @@ private fun RaftAppShellReadyContent(
      * could write back parentVisible=false (pre-switch), leaving the new detail inactive while the
      * previous conversation (e.g. Home's #all) stayed on screen.
      */
-    fun openLaunchPayloadInAdaptiveDetail(launchPayload: WireThreadLaunchPayload): RaftAdaptiveDetailSelection? {
+    fun openLaunchPayloadInAdaptiveDetail(
+        launchPayload: WireThreadLaunchPayload,
+        defaultLanding: Boolean = false,
+    ): RaftAdaptiveDetailSelection? {
         val adaptiveIdentity = readyServerId?.let(launchPayload::toRaftAdaptiveDetailIdentity)
         if (!desktopModeOnLargeScreen || adaptiveIdentity == null) return null
         var before: SharedAdaptiveWorkspaceSession? = null
         val after =
             adaptiveWorkspaceStore.update { current ->
                 before = current
-                current.withOpenedDetail(adaptiveIdentity, launchPayload)
+                current.withOpenedDetail(adaptiveIdentity, launchPayload, defaultLanding)
             }
         val opened =
             after.workspace?.selection?.takeIf { after !== before && it.identity == adaptiveIdentity }
@@ -4727,7 +4730,10 @@ private fun RaftAppShellReadyContent(
         source: String,
         anchorMessageId: String? = null,
         recordForwardHistory: Boolean = true,
-        originFallback: ThreadLaunchOriginFallback? = null
+        originFallback: ThreadLaunchOriginFallback? = null,
+        // Shell-initiated wide default landing: only ever fills the visible empty pane; it must
+        // never fall back to a standalone push or park a compact selection the user did not pick.
+        adaptiveDefaultLanding: Boolean = false,
     ) {
         if (
             !appShellHomeConversationOpenAllowed(
@@ -4780,7 +4786,11 @@ private fun RaftAppShellReadyContent(
                 "anchorMessageId=${anchorMessageId.orEmpty()} originParentMessageId=${launchPayload.originParentMessageId.orEmpty()}"
         )
         val adaptiveIdentity = readyServerId?.let(launchPayload::toRaftAdaptiveDetailIdentity)
-        if (openLaunchPayloadInAdaptiveDetail(launchPayload) != null) return
+        if (openLaunchPayloadInAdaptiveDetail(launchPayload, adaptiveDefaultLanding) != null) return
+        if (adaptiveDefaultLanding) {
+            bridge.log("home_open_conversation_landing_refused threadId=${conversation.threadId.value}")
+            return
+        }
         // task #45: while desktop mode is OFF the standalone push still owns the screen,
         // but a parked workspace (same server) must track the user's current selection —
         // otherwise the next ON tick would resurrect a stale pre-OFF detail.
@@ -4829,6 +4839,7 @@ private fun RaftAppShellReadyContent(
         desktopModeOnLargeScreen,
         adaptiveWorkspaceState?.pane,
         adaptiveWorkspaceState?.selection,
+        adaptiveWorkspaceState?.parentVisible,
         adaptiveDefaultLandingServerId,
         readyServerId,
         selectedHomeConversationId,
@@ -4840,8 +4851,7 @@ private fun RaftAppShellReadyContent(
         val serverId = readyServerId?.trim()?.takeIf(String::isNotBlank) ?: return@LaunchedEffect
         if (
             !desktopModeOnLargeScreen ||
-            workspace.pane.layout != RaftAdaptivePaneLayout.DualPane ||
-            workspace.selection != null ||
+            !workspace.acceptsAdaptiveDefaultLanding() ||
             adaptiveDefaultLandingServerId == serverId
         ) {
             return@LaunchedEffect
@@ -4867,6 +4877,8 @@ private fun RaftAppShellReadyContent(
             openHomeConversation(
                 conversation = row.toThreadLaunchConversationIdentity(),
                 source = "adaptive_default_landing",
+                recordForwardHistory = false,
+                adaptiveDefaultLanding = true,
             )
         }
     }

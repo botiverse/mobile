@@ -35,6 +35,27 @@ class AdaptiveDetailNavigationTest {
         assertNull(session().selectedConversationWhenShellReturns(desktopModeOnLargeScreen = false))
     }
 
+    @Test fun returningToTheShellAfterATransientWideLandingShowsTheHomeList() {
+        // Hands d5ec0533: landing installed while wide, window back to compact, user pops to Home.
+        val wide = RaftAdaptiveWorkspaceState(
+            shellInstanceId = "shell", serverId = "server",
+            pane = RaftAdaptivePaneState(widthPx = 2848, heightPx = 1320, density = 3.375f,
+                posture = RaftAdaptivePanePosture.Flat, layout = RaftAdaptivePaneLayout.DualPane),
+        )
+        val landed = SharedAdaptiveWorkspaceSession(workspace = wide)
+            .withOpenedDetail(channel.toRaftAdaptiveDetailIdentity("server")!!, channel, defaultLanding = true)
+        assertEquals("channel", landed.selectedConversationWhenShellReturns(desktopModeOnLargeScreen = true))
+        val compact = landed.copy(workspace = reduceRaftAdaptiveWorkspace(landed.workspace!!,
+            RaftAdaptiveWorkspaceIntent.WindowChanged(wide.pane.copy(widthPx = 1320, heightPx = 2848,
+                layout = RaftAdaptivePaneLayout.Compact))))
+        assertEquals(RaftAdaptiveWorkspacePresentation.ListOnly, compact.workspace!!.presentation)
+        assertNull(compact.selectedConversationWhenShellReturns(desktopModeOnLargeScreen = true))
+
+        // Covered shell: the landing is refused outright and the session is untouched.
+        val covered = SharedAdaptiveWorkspaceSession(workspace = wide.copy(parentVisible = false))
+        assertSame(covered, covered.withOpenedDetail(channel.toRaftAdaptiveDetailIdentity("server")!!, channel, defaultLanding = true))
+    }
+
     @Test fun returningToTheShellKeepsADetailStillShownBesideTheList() {
         val split = session()
         assertEquals(RaftAdaptiveWorkspacePresentation.Split, split.workspace!!.presentation)

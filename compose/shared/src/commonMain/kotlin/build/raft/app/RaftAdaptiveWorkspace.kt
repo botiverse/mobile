@@ -156,7 +156,19 @@ internal data class RaftAdaptiveWorkspaceState(
     val pane: RaftAdaptivePaneState = RaftAdaptivePaneState(),
     val selection: RaftAdaptiveDetailSelection? = null,
     val generationCursor: Long = 0L,
+    /**
+     * Generation of a [selection] the shell installed on its own via
+     * [RaftAdaptiveWorkspaceIntent.LandDefaultDetail] (the wide "default landing"), as opposed to
+     * one the user opened. Such a selection only exists to fill an otherwise empty wide detail
+     * pane; it is dropped when the window leaves DualPane so a transient wide window (rotation,
+     * resize) cannot leave an auto-picked conversation parked in the compact Home tab.
+     * Null once the user opens/parks that selection or any other one.
+     */
+    val landingGeneration: Long? = null,
 ) {
+    val selectionIsDefaultLanding: Boolean
+        get() = landingGeneration != null && selection?.generation == landingGeneration
+
     val presentation: RaftAdaptiveWorkspacePresentation
         get() =
             when {
@@ -180,6 +192,14 @@ internal sealed interface RaftAdaptiveWorkspaceIntent {
 
     /** Wide-only install. Compact row opens retain the existing standalone Router behavior. */
     data class OpenDetail(val identity: RaftAdaptiveDetailIdentity) : RaftAdaptiveWorkspaceIntent
+
+    /**
+     * Shell-initiated fill of an EMPTY, VISIBLE wide detail pane (the Home "default landing").
+     * Unlike [OpenDetail] it is not user navigation: it never replaces a selection, is refused
+     * while the shell is covered by pushed pages, and is dropped again on a non-DualPane
+     * [WindowChanged] instead of surviving as a compact DetailOnly page.
+     */
+    data class LandDefaultDetail(val identity: RaftAdaptiveDetailIdentity) : RaftAdaptiveWorkspaceIntent
 
     data class CloseDetail(
         val identityKey: String,
@@ -215,8 +235,31 @@ internal fun reduceRaftAdaptiveWorkspace(
         is RaftAdaptiveWorkspaceIntent.ParentVisibilityChanged ->
             state.copy(parentVisible = intent.visible)
 
-        is RaftAdaptiveWorkspaceIntent.WindowChanged ->
-            state.copy(pane = intent.pane.withConservativeAdaptiveLayout())
+        is RaftAdaptiveWorkspaceIntent.WindowChanged -> {
+            val pane = intent.pane.withConservativeAdaptiveLayout()
+            if (pane.layout != RaftAdaptivePaneLayout.DualPane && state.selectionIsDefaultLanding) {
+                state.copy(
+                    pane = pane,
+                    selection = null,
+                    landingGeneration = null,
+                    generationCursor = state.generationCursor.nextAdaptiveGeneration(),
+                )
+            } else {
+                state.copy(pane = pane)
+            }
+        }
+
+        is RaftAdaptiveWorkspaceIntent.LandDefaultDetail ->
+            if (!state.acceptsAdaptiveDefaultLanding() || intent.identity.serverId != state.serverId) {
+                state
+            } else {
+                val nextGeneration = state.generationCursor.nextAdaptiveGeneration()
+                state.copy(
+                    selection = RaftAdaptiveDetailSelection(intent.identity, nextGeneration),
+                    generationCursor = nextGeneration,
+                    landingGeneration = nextGeneration,
+                )
+            }
 
         is RaftAdaptiveWorkspaceIntent.OpenDetail -> {
             if (
@@ -225,12 +268,14 @@ internal fun reduceRaftAdaptiveWorkspace(
             ) {
                 state
             } else if (state.selection?.identity == intent.identity) {
-                state
+                // The user explicitly opened the landed conversation: it is theirs now.
+                state.copy(landingGeneration = null)
             } else {
                 val nextGeneration = state.generationCursor.nextAdaptiveGeneration()
                 state.copy(
                     selection = RaftAdaptiveDetailSelection(intent.identity, nextGeneration),
                     generationCursor = nextGeneration,
+                    landingGeneration = null,
                 )
             }
         }
@@ -281,16 +326,25 @@ internal fun reduceRaftAdaptiveWorkspace(
             if (intent.identity.serverId != state.serverId) {
                 state
             } else if (state.selection?.identity == intent.identity) {
-                state
+                state.copy(landingGeneration = null)
             } else {
                 val nextGeneration = state.generationCursor.nextAdaptiveGeneration()
                 state.copy(
                     selection = RaftAdaptiveDetailSelection(intent.identity, nextGeneration),
                     generationCursor = nextGeneration,
+                    landingGeneration = null,
                 )
             }
         }
     }
+
+/**
+ * The Home default landing may only fill an empty wide detail pane that is actually on screen.
+ * While the shell is covered by pushed pages (parentVisible=false) there is nothing to fill, and
+ * landing there would leave an auto-picked conversation behind the user's stack.
+ */
+internal fun RaftAdaptiveWorkspaceState.acceptsAdaptiveDefaultLanding(): Boolean =
+    pane.layout == RaftAdaptivePaneLayout.DualPane && parentVisible && selection == null
 
 internal fun RaftAdaptiveWorkspaceState.acceptsDetailCallback(
     identityKey: String,

@@ -95,6 +95,7 @@ internal fun SharedAdaptiveWorkspaceSession.backFromDetail(
 internal fun SharedAdaptiveWorkspaceSession.withOpenedDetail(
     identity: RaftAdaptiveDetailIdentity,
     target: WireThreadLaunchPayload,
+    defaultLanding: Boolean = false,
 ): SharedAdaptiveWorkspaceSession {
     val current = workspace ?: return this
     // The wide pane must be able to host the detail. Checked up front: a compact workspace that
@@ -102,7 +103,11 @@ internal fun SharedAdaptiveWorkspaceSession.withOpenedDetail(
     if (current.pane.layout != RaftAdaptivePaneLayout.DualPane || current.serverId != identity.serverId) {
         return this
     }
-    val next = reduceRaftAdaptiveWorkspace(current, RaftAdaptiveWorkspaceIntent.OpenDetail(identity))
+    val intent =
+        if (defaultLanding) RaftAdaptiveWorkspaceIntent.LandDefaultDetail(identity)
+        else RaftAdaptiveWorkspaceIntent.OpenDetail(identity)
+    val next = reduceRaftAdaptiveWorkspace(current, intent)
+    if (next === current && defaultLanding) return this
     if (next.selection?.identity != identity) return this
     return copy(workspace = next, launchPayload = target)
 }
