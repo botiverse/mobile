@@ -119,7 +119,7 @@ internal class SharedHomeSearchSavedStore(
                 scheduleSearchRefresh()
             }
             SharedHomeSearchSavedIntent.SubmitSearch -> runSearch(refresh = true)
-            SharedHomeSearchSavedIntent.RefreshSearch -> runSearch(refresh = true)
+            SharedHomeSearchSavedIntent.RefreshSearch -> runSearch(refresh = true, keepLoadedDepth = true)
             SharedHomeSearchSavedIntent.LoadMoreSearch -> runSearch(refresh = false)
             is SharedHomeSearchSavedIntent.PreselectSearchChannel -> {
                 _state.value =
@@ -309,7 +309,7 @@ internal class SharedHomeSearchSavedStore(
         if (owner != request.owner || readPredictionRevisions[request.channelId] != request.revision) return
         readPredictionRevisions = readPredictionRevisions - request.channelId
         if (_state.value.saved.loaded) loadSaved(refresh = true, pullRefresh = false)
-        if (_state.value.search.searched) runSearch(refresh = true)
+        if (_state.value.search.searched) runSearch(refresh = true, keepLoadedDepth = true)
     }
 
     private fun loadSenderFilters() {
@@ -494,7 +494,12 @@ internal class SharedHomeSearchSavedStore(
 
     private fun runSearch(
         refresh: Boolean,
-        cancelDebounce: Boolean = true
+        cancelDebounce: Boolean = true,
+        // A refresh of the same query and filters (page reappears, foreground, retry) reloads as
+        // many rows as are shown, so a reader scrolled past the first page keeps their place
+        // (nav spec §9.7 / §10.2: the Search tab keeps its results and scroll). A new query,
+        // filter or sort starts from the first page.
+        keepLoadedDepth: Boolean = false
     ) {
         if (cancelDebounce) {
             searchDebounceJob?.cancel()
@@ -547,22 +552,39 @@ internal class SharedHomeSearchSavedStore(
                             previous.myMessagesOnly -> listOf(session.user.id)
                             else -> emptyList()
                         }
-                    val result =
+                    val options =
+                        SearchQueryOptions(
+                            sort = previous.sort,
+                            senderIds = senderIds,
+                            scopes = previous.selectedScopes,
+                            channelId = previous.selectedChannelId?.let(::ChannelId),
+                            afterIso = bounds.afterIso,
+                            beforeIso = bounds.beforeIso
+                        )
+                    val fetchPage: suspend (Int, Int) -> DataResult<SearchSnapshot> = { offset, limit ->
                         searchRepository.search(
                             serverId = serverId,
                             query = previous.query,
-                            offset = if (refresh) 0 else previous.nextOffset ?: previous.items.size,
-                            limit = HomeSearchPageSize,
-                            options =
-                                SearchQueryOptions(
-                                    sort = previous.sort,
-                                    senderIds = senderIds,
-                                    scopes = previous.selectedScopes,
-                                    channelId = previous.selectedChannelId?.let(::ChannelId),
-                                    afterIso = bounds.afterIso,
-                                    beforeIso = bounds.beforeIso
-                                )
+                            offset = offset,
+                            limit = limit,
+                            options = options
                         )
+                    }
+                    val result =
+                        if (refresh) {
+                            loadSearchSnapshotToDepth(
+                                depth =
+                                    if (keepLoadedDepth && previous.resultQuery == previous.query.trim()) {
+                                        previous.items.size
+                                    } else {
+                                        0
+                                    },
+                                pageSize = HomeSearchPageSize,
+                                fetchPage = fetchPage
+                            )
+                        } else {
+                            fetchPage(previous.nextOffset ?: previous.items.size, HomeSearchPageSize)
+                        }
                     if (isActiveSearchRequest(requestToken)) {
                         applySearchResult(
                             result = result,
@@ -1505,3 +1527,42 @@ internal fun List<MemberProfile>.toSearchSenderFilters(
                 .thenBy { if (it.kind == MemberKind.Human) 0 else 1 }
                 .thenBy { it.label.lowercase() }
         )
+
+/**
+ * Loads search results from offset 0 until at least [depth] rows are loaded (at least one page),
+ * the server has no more, or a page fails. Pages are [pageSize] rows (the server caps a page at
+ * 50), so a depth beyond one page takes several requests. The combined snapshot continues paging
+ * where the last loaded page ended. A failure on the first page is returned as is; a failure on a
+ * later page keeps the rows loaded so far and leaves more to load from there.
+ */
+internal suspend fun loadSearchSnapshotToDepth(
+    depth: Int,
+    pageSize: Int,
+    fetchPage: suspend (offset: Int, limit: Int) -> DataResult<SearchSnapshot>,
+): DataResult<SearchSnapshot> {
+    val first = fetchPage(0, pageSize)
+    var combined = (first as? DataResult.Content)?.data ?: return first
+    while (combined.hasMore && combined.items.size < depth) {
+        val offset = combined.nextOffset ?: combined.items.size
+        when (val page = fetchPage(offset, pageSize)) {
+            is DataResult.Content -> {
+                val items = (combined.items + page.data.items).distinctBy { it.key }
+                val grew = items.size > combined.items.size
+                combined =
+                    combined.copy(
+                        items = items,
+                        totalCount = items.size,
+                        hasMore = page.data.hasMore,
+                        nextOffset = page.data.nextOffset
+                    )
+                // A page of rows already shown cannot make progress; stop instead of looping.
+                if (!grew) break
+            }
+            is DataResult.Empty -> {
+                combined = combined.copy(hasMore = false, nextOffset = null)
+            }
+            else -> break
+        }
+    }
+    return DataResult.Content(combined)
+}

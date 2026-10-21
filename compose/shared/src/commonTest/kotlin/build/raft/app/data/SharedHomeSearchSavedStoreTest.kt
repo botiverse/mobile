@@ -14,6 +14,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
 import kotlinx.coroutines.withContext
 import kotlin.test.Test
@@ -828,6 +830,59 @@ class SharedHomeSearchSavedStoreTest {
         scope.cancel()
     }
 
+    // Nav spec §9.7 / §10.2: the Search tab keeps its results and scroll. The tab refreshes when
+    // the shell reappears (Back from a result, foreground); that refresh reloads every row shown,
+    // not just the first page, so a reader scrolled past it keeps their place.
+    @Test
+    fun refreshSearchReloadsEveryLoadedPageWhileNewSearchStartsFromFirstPage() = runTest {
+        val newSearches = listOf(null, SharedHomeSearchSavedIntent.SubmitSearch, SharedHomeSearchSavedIntent.SetSearchSort(SearchSort.Recent))
+        for (newSearch in newSearches) {
+            val search = PagedSearchRepository(total = 75)
+            val store =
+                SharedHomeSearchSavedStore(
+                    authStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                    savedRepository = FakeSavedRepository(),
+                    searchRepository = search,
+                    scope = backgroundScope,
+                    searchDebounceMillis = 0L
+                )
+            store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("release"))
+            runCurrent()
+            store.dispatch(SharedHomeSearchSavedIntent.LoadMoreSearch)
+            runCurrent()
+            assertEquals(60, store.state.value.search.items.size)
+            search.calls.clear()
+
+            store.dispatch(newSearch ?: SharedHomeSearchSavedIntent.RefreshSearch)
+            runCurrent()
+
+            val after = store.state.value.search
+            if (newSearch == null) {
+                assertEquals(listOf(0 to 30, 30 to 30), search.calls)
+                assertEquals((0 until 60).map { "message-$it" }, after.items.map { it.key })
+                assertEquals(true to 60, after.hasMore to after.nextOffset)
+            } else {
+                assertEquals(listOf(0 to 30), search.calls, "new search $newSearch")
+                assertEquals(30, after.items.size, "new search $newSearch")
+            }
+            assertEquals(false, after.refreshing)
+        }
+    }
+
+    @Test
+    fun searchDepthLoadKeepsLoadedRowsWhenALaterPageFails() = runTest {
+        val search = PagedSearchRepository(total = 100, failAtOffset = 60)
+        val result =
+            loadSearchSnapshotToDepth(depth = 90, pageSize = 30) { offset, limit ->
+                search.search(ServerId("server-1"), "release", offset, limit, SearchQueryOptions())
+            }
+        val snapshot = (result as DataResult.Content).data
+        assertEquals(Triple(60, true, 60), Triple(snapshot.items.size, snapshot.hasMore, snapshot.nextOffset))
+        val firstPageFailure =
+            loadSearchSnapshotToDepth(depth = 90, pageSize = 30) { _, _ -> DataResult.Error(ScreenError(code = "search_network")) }
+        assertEquals("search_network", (firstPageFailure as DataResult.Error).error.code)
+    }
+
     @Test
     fun sortChangeDuringInitialSearchStaysLoadingUntilReplacementCompletes() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -1314,6 +1369,35 @@ class SharedHomeSearchSavedStoreTest {
                         )
                     )
                 )
+        }
+    }
+
+    /** Serves `message-0 until total` by offset/limit and records each (offset, limit) call. */
+    private inner class PagedSearchRepository(
+        private val total: Int,
+        private val failAtOffset: Int? = null,
+    ) : SearchRepository {
+        val calls = mutableListOf<Pair<Int, Int>>()
+
+        override suspend fun search(
+            serverId: ServerId,
+            query: String,
+            offset: Int,
+            limit: Int,
+            options: SearchQueryOptions
+        ): DataResult<SearchSnapshot> {
+            calls += offset to limit
+            if (offset == failAtOffset) return DataResult.Error(ScreenError(code = "search_network"))
+            val end = minOf(offset + limit, total)
+            return DataResult.Content(
+                SearchSnapshot(
+                    server = testServer(serverId),
+                    query = query,
+                    items = (offset until end).map { inboxItem("message-$it") },
+                    hasMore = end < total,
+                    nextOffset = end
+                )
+            )
         }
     }
 
