@@ -32,6 +32,24 @@ internal const val ActivityLocalMutationRequestTimeoutMillis: Long = 30_000L
 internal const val ActivityRealtimeBackgroundRefreshIntervalMillis: Long = 2_500L
 
 /**
+ * A visible `Refresh` (tab entry, return from a pushed page, app resume) joins a foreground reset
+ * load only while that load is younger than this window; an older one is superseded. Every
+ * Activity tab entry used to fire up to three Refreshes in one frame (shell SetSelectedTab, the
+ * `active` edge, the pageDidAppear tick), and a load started while the tab was hidden — the
+ * server-switch LoadInitial on a slow network — swallowed every later entry until the user pulled
+ * (Hands 679ef9ce, 2026-10-21).
+ */
+internal const val ActivityRefreshCoalesceWindowMillis: Long = 2_000L
+
+/**
+ * Whether a visible `Refresh` joins the load already in flight instead of starting its own.
+ * [inFlightAgeMillis] is null when no foreground reset load is in flight (no load, a LoadMore,
+ * or a background reconcile — those never stand in for a visible refresh).
+ */
+internal fun activityRefreshJoinsInFlightLoad(inFlightAgeMillis: Long?, windowMillis: Long): Boolean =
+    inFlightAgeMillis != null && inFlightAgeMillis < windowMillis
+
+/**
  * Monotonic milliseconds since the store was created; injectable for virtual-time tests.
  *
  * Device sleep: `TimeSource.Monotonic` is `System.nanoTime()` on JVM/Android and

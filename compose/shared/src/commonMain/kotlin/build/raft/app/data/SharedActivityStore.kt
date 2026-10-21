@@ -106,6 +106,8 @@ class SharedActivityStore internal constructor(
     private val realtimeBackgroundRefreshIntervalMillis: Long = ActivityRealtimeBackgroundRefreshIntervalMillis,
     /** Monotonic clock for the throttle window and the local Done/read hold; injectable for virtual time. */
     private val nowMillis: () -> Long = activityMonotonicClock(),
+    /** See [ActivityRefreshCoalesceWindowMillis]. */
+    private val refreshCoalesceWindowMillis: Long = ActivityRefreshCoalesceWindowMillis,
     localMutationHoldMillis: Long = ActivityLocalMutationHoldMillis,
     private val beforeRealtimeHighWaterFold: () -> Unit = {},
     private val onRealtimePatchOwnerEntered: () -> Unit = {},
@@ -125,6 +127,8 @@ class SharedActivityStore internal constructor(
     private val readOverlay = ActivityLocalMutationOverlay(nowMillis, localMutationHoldMillis)
     private val doneOverlay = ActivityLocalMutationOverlay(nowMillis, localMutationHoldMillis)
     private var lastResetLoadStartedAtMillis: Long? = null
+    /** Start time of [loadJob] when it is a foreground reset load (not LoadMore / background). */
+    private var foregroundResetLoadStartedAtMillis: Long? = null
     /**
      * Local duplicate-request fence for Activity Follow/Unfollow actions.
      * The server remains the authority for the eventual boolean; this set only
@@ -240,6 +244,7 @@ class SharedActivityStore internal constructor(
             is SharedActivityIntent.PrewarmVisibleReplyThreads -> prewarmVisibleReplyThreads(intent.markers)
             is SharedActivityIntent.PrewarmActivityTail -> prewarmActivityTail(intent.orderedMarkers)
             SharedActivityIntent.DetachPrewarmViewport -> prewarmVisibleReplyThreads(emptySet())
+            SharedActivityIntent.SurfaceHidden -> onSurfaceHidden()
             is SharedActivityIntent.ApplyRealtimeEvent -> {
                 if (intent.event is PerReceiverReadStateChanged) {
                     scope.launch { applyPerReceiverReadStateChanged(intent.event) }
@@ -265,12 +270,19 @@ class SharedActivityStore internal constructor(
         }
     }
 
+    private fun onSurfaceHidden() {
+        synchronized(realtimeOwnerLock) {
+            foregroundResetLoadStartedAtMillis = null
+        }
+    }
+
     fun clear() {
         val ownerServerId = synchronized(realtimeOwnerLock) {
             val owner = _state.value.ownerServerId
             loadGeneration += 1L
             loadJob?.cancel()
             loadJob = null
+            foregroundResetLoadStartedAtMillis = null
             realtimeBackgroundReconcileJob?.cancel()
             realtimeBackgroundReconcileJob = null
             realtimeBackgroundReconcileDirty = false
@@ -1129,20 +1141,32 @@ class SharedActivityStore internal constructor(
                 val current = _state.value
                 val inFlightLoad = loadJob?.takeUnless { job -> job.isCompleted }
                 if (backgroundRefresh && inFlightLoad != null) return@synchronized null
-                if (
-                    refresh &&
-                    !pullRefresh &&
-                    intent == SharedActivityIntent.Refresh &&
-                    inFlightLoad != null &&
-                    (current.loading || current.refreshing)
-                ) {
-                    return@synchronized null
+                if (refresh && !pullRefresh && intent == SharedActivityIntent.Refresh && inFlightLoad != null) {
+                    // Keyed on the job, not on loading/refreshing: those flags are only set once
+                    // the launched load has read the session, so a same-frame second Refresh used
+                    // to cancel and restart the first.
+                    val inFlightAgeMillis = foregroundResetLoadStartedAtMillis?.let { startedAt -> nowMillis() - startedAt }
+                    if (activityRefreshJoinsInFlightLoad(inFlightAgeMillis, refreshCoalesceWindowMillis)) {
+                        diagnosticsLogger(
+                            "store_load domain=activity phase=coalesced intent=refresh " +
+                                "generation=$loadGeneration inFlightAgeMs=$inFlightAgeMillis"
+                        )
+                        return@synchronized null
+                    }
+                    if (inFlightAgeMillis != null) {
+                        diagnosticsLogger(
+                            "store_load domain=activity phase=supersede_stale intent=refresh " +
+                                "generation=$loadGeneration inFlightAgeMs=$inFlightAgeMillis"
+                        )
+                    }
                 }
                 if (!refresh && (current.loading || current.refreshing || current.loadingMore || !current.hasMore)) {
                     return@synchronized null
                 }
                 val generation = ++loadGeneration
-                if (refresh) lastResetLoadStartedAtMillis = nowMillis()
+                val startedAtMillis = nowMillis()
+                if (refresh) lastResetLoadStartedAtMillis = startedAtMillis
+                foregroundResetLoadStartedAtMillis = startedAtMillis.takeIf { refresh && !backgroundRefresh }
                 loadJob?.cancel()
                 scope.launch(start = CoroutineStart.LAZY) {
                     val startedAt = TimeSource.Monotonic.markNow()
@@ -2789,6 +2813,13 @@ sealed interface SharedActivityIntent {
         val orderedMarkers: List<ActivityReplyThreadPrewarmMarker>
     ) : SharedActivityIntent
     data object DetachPrewarmViewport : SharedActivityIntent
+    /**
+     * The Activity surface stopped being visible (another tab, a pushed page, the app went to the
+     * background). A load already in flight then is never joined by the next entry's Refresh: it
+     * may have hung across the background, and the monotonic clock does not advance while the
+     * device sleeps, so its age alone cannot tell.
+     */
+    data object SurfaceHidden : SharedActivityIntent
     data class ApplyRealtimeEvent(
         val event: RealtimeEvent,
         val allowLocalPatch: Boolean = true
@@ -2819,6 +2850,7 @@ private fun SharedActivityIntent.activitySummarySource(): String =
         is SharedActivityIntent.PrewarmVisibleReplyThreads -> "prewarm_visible"
         is SharedActivityIntent.PrewarmActivityTail -> "prewarm_tail"
         SharedActivityIntent.DetachPrewarmViewport -> "prewarm_detach"
+        SharedActivityIntent.SurfaceHidden -> "surface_hidden"
         is SharedActivityIntent.ApplyRealtimeEvent -> "realtime"
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> "realtime_summary"
     }
@@ -2844,7 +2876,8 @@ private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
         is SharedActivityIntent.ApplyReadReceiptResult,
         is SharedActivityIntent.PrewarmVisibleReplyThreads,
         is SharedActivityIntent.PrewarmActivityTail,
-        SharedActivityIntent.DetachPrewarmViewport -> false
+        SharedActivityIntent.DetachPrewarmViewport,
+        SharedActivityIntent.SurfaceHidden -> false
     }
 
 private fun RealtimeEvent.refreshesActivity(): Boolean = affectsActivityContent()
