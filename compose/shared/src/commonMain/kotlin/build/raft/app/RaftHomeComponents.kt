@@ -151,6 +151,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.Path
@@ -4611,9 +4612,17 @@ private fun HomeTitlebar(
     onBlankClick: (() -> Unit)? = null,
     onNotificationToggle: () -> Unit
 ) {
-    // raft-ui phone head: the frame layer (Source Yellow in light) with a 1dp seam.
+    // raft-ui phone head: the frame layer (Source Yellow in light) with a 1dp seam. The seam is
+    // flattened onto the canvas like RaftTopPageHeader's, so it reads the same grey on every tab
+    // (an alpha seam over the yellow frame came out yellow-brown).
     Box(modifier = Modifier.fillMaxWidth().height(homeShellHeaderHeight(topSafeArea)).background(RaftColor.Frame)) {
-        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam).align(Alignment.BottomCenter))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(RaftAppStroke.Thin)
+                .background(RaftColor.BorderSeam.compositeOver(RaftColor.Canvas))
+                .align(Alignment.BottomCenter)
+        )
         androidx.compose.foundation.layout.Row(
             modifier =
                 Modifier
@@ -4936,9 +4945,10 @@ private fun HomeNotificationCenter(
     }
 }
 
-// Web phone header: a 22px bell in a 44px button (`PanelAction`, `size-[22px]`).
+// A 20dp bell in a 44dp button: raft-ui NotificationCenter's bell size (`size-5`). The web phone navbar
+// uses 22px; artin found that too big in the app (2026-10-21).
 private val HomeNotificationTriggerSize = 44.dp
-private val HomeNotificationBellIconSize = 22.dp
+private val HomeNotificationBellIconSize = 20.dp
 private val HomeNotificationTriggerSlotSize = HomeNotificationTriggerSize + HomeSmallShadowOffset
 private val HomeNotificationPopoverTopGap = 4.dp
 internal fun homeNotificationPopoverTopOffset(topSafeArea: Dp): Dp =

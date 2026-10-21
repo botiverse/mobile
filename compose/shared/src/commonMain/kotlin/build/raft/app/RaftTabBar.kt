@@ -46,6 +46,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.designsystem.components.RaftUnreadCount
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -576,7 +577,7 @@ internal fun RaftNavigationRailTabBar(
                         // exactly the channel list header baseline; and the 40dp tile keeps
                         // ~60dp of room instead of clipping.
                         .height(
-                            RaftNavigationRailHeaderHeight + topSafeArea - RaftAppStroke.Default
+                            RaftNavigationRailHeaderHeight + topSafeArea - RaftAppStroke.Thin
                         )
                         .padding(top = topSafeArea),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -591,8 +592,8 @@ internal fun RaftNavigationRailTabBar(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(RaftAppStroke.Default)
-                        .background(RaftColor.BorderBlack)
+                        .height(RaftAppStroke.Thin)
+                        .background(RaftColor.BorderSeam)
                 )
             } else {
                 Spacer(Modifier.height(RaftAppSpacing.Sm + topSafeArea))
@@ -629,9 +630,9 @@ internal fun RaftNavigationRailTabBar(
         // list; artin (2026-10-03) chose the full-height line instead.
         Box(
             modifier = Modifier
-                .width(RaftAppStroke.Default)
+                .width(RaftAppStroke.Thin)
                 .fillMaxHeight()
-                .background(RaftColor.BorderBlack)
+                .background(RaftColor.BorderSeam)
         )
     }
 }
@@ -654,22 +655,15 @@ private fun RaftNavigationRailTabItem(
         contentAlignment = Alignment.Center
     ) {
         Box(modifier = Modifier.size(RaftNavigationRailButtonSize)) {
-            if (selected) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .offset(x = RaftAppStroke.Default, y = RaftAppStroke.Default)
-                        .background(RaftColor.BorderBlack)
-                )
-            }
+            // raft-ui ghost control (web desktop rail): no edge, no offset shadow; "you are here"
+            // is the pressed-fill wash on the control radius.
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .background(if (selected) RaftColor.SurfaceWhite else Color.Transparent)
-                    // Keep the border modifier on every state and change only its color. Dropping
-                    // it on deselect left the native border in place, so every rail button tapped
-                    // before kept an outline (artin, 1.13.0 large screen, Android and HarmonyOS).
-                    .border(RaftAppStroke.Default, if (selected) RaftColor.BorderBlack else Color.Transparent),
+                    .background(
+                        if (selected) RaftColor.FillPressed else Color.Transparent,
+                        RoundedCornerShape(RaftAppRadius.Control),
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 RaftLucideIcon(
@@ -709,16 +703,10 @@ private fun RaftNavigationRailServerTile(
         Box(
             modifier = Modifier
                 .size(tileSize)
-                .align(Alignment.TopStart)
-                .offset(x = RaftAppStroke.Default, y = RaftAppStroke.Default)
-                .background(RaftColor.BorderBlack)
-        )
-        Box(
-            modifier = Modifier
-                .size(tileSize)
-                .align(Alignment.TopStart)
+                .align(Alignment.Center)
+                .clip(RoundedCornerShape(RaftAppRadius.Control))
                 .background(RaftColor.SurfaceWhite)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Control))
                 .clickable(enabled = header.enabled) { onSelect(header.key) },
             contentAlignment = Alignment.Center
         ) {
