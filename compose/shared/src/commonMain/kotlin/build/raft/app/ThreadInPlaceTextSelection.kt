@@ -38,20 +38,6 @@ import build.raft.app.compat.ui.LocalRaftPageActive
 import kotlinx.coroutines.awaitCancellation
 
 /**
- * In-place text selection for chat-stream message bodies, behind the "New Message Menu" toggle.
- *
- * Gesture rule (toggle ON): a long-press that lands on the message body belongs to Compose's
- * [SelectionContainer] (select word, drag handles); the row-level long-press menu does not fire
- * there. A long-press on the rest of the row (avatar, author line, attachments, blank row space)
- * still opens the message menu. Toggle OFF: no container, no deferral, the row behaves exactly as
- * before.
- *
- * The platform text toolbar is replaced on both toolbar paths (Android's new text context menu,
- * [LocalTextContextMenuToolbarProvider], on by default there, and the legacy [LocalTextToolbar]
- * that skiko/iOS still uses) by the full Compact New Message Menu, WeChat style: reactions and
- * message tools, with Copy copying the selection and Select All added.
- */
-/**
  * Holds the page's selection menu behind one stable composable reference. The list republishes
  * the content on every recomposition (its captures change); only [menu]'s body reads the latest
  * content, so the write recomposes just an open selection menu, never the visible rows.
@@ -59,7 +45,12 @@ import kotlinx.coroutines.awaitCancellation
 internal class ThreadInPlaceSelectionMenuSlot {
     private var latest by mutableStateOf<(@Composable (ThreadInPlaceSelectionMenuRequest) -> Unit)?>(null)
 
-    val menu: @Composable (ThreadInPlaceSelectionMenuRequest) -> Unit = { request -> latest?.invoke(request) }
+    val menu: @Composable (ThreadInPlaceSelectionMenuRequest) -> Unit = { request ->
+        // Explicit branch, not `latest?.invoke(...)`: a conditional composable call inside `?.`
+        // is the shape behind the Kotlin 2.4.21 missing-group crash.
+        val content = latest
+        if (content != null) content(request)
+    }
 
     fun publish(content: @Composable (ThreadInPlaceSelectionMenuRequest) -> Unit) {
         latest = content
@@ -74,6 +65,20 @@ internal interface ThreadInPlaceSelectionTarget {
     fun clear()
 }
 
+/**
+ * In-place text selection for chat-stream message bodies, behind the "New Message Menu" toggle.
+ *
+ * Gesture rule (toggle ON): a long-press that lands on the message body belongs to Compose's
+ * [SelectionContainer] (select word, drag handles); the row-level long-press menu does not fire
+ * there. A long-press on the rest of the row (avatar, author line, attachments, blank row space)
+ * still opens the message menu. Toggle OFF: no container, no deferral, the row behaves exactly as
+ * before.
+ *
+ * The platform text toolbar is replaced on both toolbar paths (Android's new text context menu,
+ * [LocalTextContextMenuToolbarProvider], on by default there, and the legacy [LocalTextToolbar]
+ * that skiko/iOS still uses) by the full Compact New Message Menu, WeChat style: reactions and
+ * message tools, with Copy copying the selection and Select All added.
+ */
 internal class ThreadInPlaceTextSelectionHost(
     val enabled: Boolean,
     val copyText: (String) -> Unit,
