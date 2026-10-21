@@ -2,9 +2,9 @@
 // Regenerate: python3 tools/design-tokens/gen_tokens.py
 // Sources (tools/design-tokens/manifest.json):
 //   npm:tailwindcss@4.3.3/theme.css sha256=443d7af364200f8e
-//   npm:@botiverse/raft-ui@0.7.1/dist/styles.css sha256=03a09bc2cc12b8af
-//   npm:@botiverse/raft-ui@0.7.1/dist/foundation.css sha256=8bea55d645010db8
-//   botiverse/slock@b09755fcefeaea6286e42f0445388da97d98f1fe:packages/web/src/index.css sha256=e661c0943fed16c9
+//   npm:@botiverse/raft-ui@0.18.0/dist/styles.css sha256=2fc15ee9546c460b
+//   npm:@botiverse/raft-ui@0.18.0/dist/foundation.css sha256=ef3d8974a294d24b
+//   botiverse/slock@f5c4e69c0a2df5f60b041467d02641fcc0245d7f:packages/web/src/index.css sha256=e0c22a67b7c14810
 
 package build.raft.designsystem.tokens
 
@@ -1250,10 +1250,16 @@ sealed class RaftUiThemeColors {
     abstract val dangerStrong: Color
     /** `--fill-frame-pressed` */
     abstract val fillFramePressed: Color
+    /** `--fill-message-hover` */
+    abstract val fillMessageHover: Color
     /** `--fill-muted` */
     abstract val fillMuted: Color
     /** `--fill-pressed` */
     abstract val fillPressed: Color
+    /** `--fill-row-hover` */
+    abstract val fillRowHover: Color
+    /** `--fill-row-open` */
+    abstract val fillRowOpen: Color
     /** `--fill-strong` */
     abstract val fillStrong: Color
     /** `--foreground` */
@@ -1316,6 +1322,8 @@ sealed class RaftUiThemeColors {
     abstract val ink8: Color
     /** `--layer-backdrop` */
     abstract val layerBackdrop: Color
+    /** `--layer-backdrop-nested` */
+    abstract val layerBackdropNested: Color
     /** `--layer-canvas` */
     abstract val layerCanvas: Color
     /** `--layer-canvas-muted` */
@@ -1414,8 +1422,11 @@ sealed class RaftUiThemeColors {
         override val dangerSoft = Color(0xFFFDDEDD)
         override val dangerStrong = Color(0xFFB5321A)
         override val fillFramePressed = Color(0x1F141111)
+        override val fillMessageHover = Color(0x08141111)
         override val fillMuted = Color(0xFFF3F3F3)
         override val fillPressed = Color(0x14141111)
+        override val fillRowHover = Color(0x0A141111)
+        override val fillRowOpen = Color(0x0D141111)
         override val fillStrong = Color(0xFFEAEAEA)
         override val foreground = Color(0xFF141111)
         override val foregroundActive = Color(0xFF141111)
@@ -1447,6 +1458,7 @@ sealed class RaftUiThemeColors {
         override val ink6 = Color(0x0F141111)
         override val ink8 = Color(0x14141111)
         override val layerBackdrop = Color(0xA6000000)
+        override val layerBackdropNested = Color(0x66000000)
         override val layerCanvas = Color(0xFFFFFFFF)
         override val layerCanvasMuted = Color(0xFFFFFAEF)
         override val layerCard = Color(0xFFFFFFFF)
@@ -1504,8 +1516,11 @@ sealed class RaftUiThemeColors {
         override val dangerSoft = Color(0x2EC93126)
         override val dangerStrong = Color(0xFFF8A49D)
         override val fillFramePressed = Color(0x14FAFAF7)
+        override val fillMessageHover = Color(0x06FAFAF7)
         override val fillMuted = Color(0xFF32322F)
         override val fillPressed = Color(0x14FAFAF7)
+        override val fillRowHover = Color(0x08FAFAF7)
+        override val fillRowOpen = Color(0x0AFAFAF7)
         override val fillStrong = Color(0xFF3A3A37)
         override val foreground = Color(0xFFE5E5E2)
         override val foregroundActive = Color(0xFFE5E5E2)
@@ -1537,6 +1552,7 @@ sealed class RaftUiThemeColors {
         override val ink6 = Color(0x0FFAFAF7)
         override val ink8 = Color(0x14FAFAF7)
         override val layerBackdrop = Color(0x99000000)
+        override val layerBackdropNested = Color(0x66000000)
         override val layerCanvas = Color(0xFF1B1B19)
         override val layerCanvasMuted = Color(0xFF0D0D0B)
         override val layerCard = Color(0xFF242422)
