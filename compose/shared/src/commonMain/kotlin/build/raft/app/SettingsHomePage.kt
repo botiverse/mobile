@@ -12,6 +12,9 @@ import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftRadioRow
 import build.raft.designsystem.components.RaftRadioGroup
 import build.raft.app.data.RaftAppAppearanceRuntime
+import build.raft.app.data.RaftNavDestination
+import build.raft.app.data.RaftNavSurface
+import build.raft.app.data.RaftProductEvents
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
@@ -2306,6 +2309,17 @@ private fun RaftAppShellReadyContent(
     // destination rendered INLINE in the AppShell middle pane — never a pushed secondary page
     // (the rail must stay). Narrow or flag-off keeps the legacy push path unchanged.
     var railInlineSecondaryDestination by remember { mutableStateOf<String?>(null) }
+    // page_viewed for the wide rail's inline list panes (Search, Saved): they are not pages of their own.
+    val railInlineProductPageSlot = remember(pager.pagerId) { "${pager.pagerId}#rail-inline" }
+    val railInlineProductPageView = appShellRailInlineProductPageView(railInlineSecondaryDestination)
+    DisposableEffect(railInlineProductPageSlot, railInlineProductPageView) {
+        val pageViews = RaftProductEvents.pageViews
+        if (railInlineProductPageView != null) {
+            pageViews.onPageRoute(railInlineProductPageSlot, railInlineProductPageView)
+            pageViews.onPageShown(railInlineProductPageSlot)
+        }
+        onDispose { pageViews.onPageClosed(railInlineProductPageSlot) }
+    }
     // The Search tab's result list position survives leaving and re-entering the tab.
     val searchTabListState = rememberLazyListState()
     val searchTabReturnHighlight = remember { HomeSearchReturnHighlight() }
@@ -4001,6 +4015,8 @@ private fun RaftAppShellReadyContent(
                 } else {
                     val lease = ProcessAttachmentAuthScopes.bind(storeScope, state.session, serverId)
                     bridge.attachmentDownloadOwnerChanged(lease)
+                    // Product analytics: events go to the server the signed-in shell shows.
+                    RaftProductEvents.setSignedIn(serverId)
                 }
             }
             SharedAuthGateState.AuthRequired,
@@ -4010,6 +4026,8 @@ private fun RaftAppShellReadyContent(
             is SharedAuthGateState.BootstrapRecoveryRequired -> {
                 ProcessAttachmentAuthScopes.retireShell(storeScope.shellInstanceId)
                 bridge.attachmentDownloadScopeRetired(storeScope.shellInstanceId)
+                // Nothing before sign-in (RFC-067 native apps): drop what was recorded so far.
+                RaftProductEvents.setSignedOut()
             }
             SharedAuthGateState.Restoring,
             is SharedAuthGateState.Error -> Unit
@@ -6502,7 +6520,14 @@ private fun RaftAppShellReadyContent(
         RaftAppShellSurface(
             shellScope = shellScope,
             bottomTabs = appShellBottomTabItems,
-            onBottomTabSelected = onAppShellTabSelected,
+            onBottomTabSelected = { key ->
+                RaftProductEvents.navEntrySelected(
+                    destination = appShellNavDestination(key),
+                    surface = RaftNavSurface.MobileTabBar,
+                    wasActive = appShellPhoneBottomBarSelectedKey(selectedTab) == key,
+                )
+                onAppShellTabSelected(key)
+            },
             networkStatus = hostNetworkStatus,
             showBottomTabs = showAppShellBottomTabs,
             // artin 2026-10-10 (Hands 79db9fe6): the cached Home is usable at once while the
@@ -6574,6 +6599,17 @@ private fun RaftAppShellReadyContent(
                                 // inline destination that never goes through selectAppShellTab)
                                 // and a tap on the tab that is already selected.
                                 railServerSwitcherOpen = false
+                                RaftProductEvents.navEntrySelected(
+                                    destination = appShellNavDestination(key),
+                                    surface = RaftNavSurface.Rail,
+                                    wasActive =
+                                        if (key == AppShellRailSearchKey) {
+                                            railInlineSecondaryDestination == AppShellRailSearchKey
+                                        } else {
+                                            railInlineSecondaryDestination == null &&
+                                                retainedAppShellSelectedTab(selectedTab) == key
+                                        },
+                                )
                                 if (key == AppShellRailSearchKey) {
                                     railInlineSecondaryDestination = AppShellRailSearchKey
                                     bridge.log("app_shell_rail_secondary_open destination=search")
@@ -6614,6 +6650,11 @@ private fun RaftAppShellReadyContent(
                             bottomItems = railBottomItems,
                             onBottomItemSelect = { key ->
                                 railServerSwitcherOpen = false
+                                RaftProductEvents.navEntrySelected(
+                                    destination = appShellNavDestination(key),
+                                    surface = RaftNavSurface.Rail,
+                                    wasActive = retainedAppShellSelectedTab(selectedTab) == key,
+                                )
                                 onAppShellTabSelected(key)
                             },
                             topSafeArea = shellScope.topSafeArea,
@@ -6948,7 +6989,7 @@ private fun RaftAppShellReadyContent(
                                 prewarmAdmissionGate.invalidate("tasks_open_task")
                                 // task #34: wide desktop mode keeps the board and opens the task's
                                 // thread in a bounded overlay; otherwise the full-page push stays.
-                                val overlaySelection =
+                                val taskLaunchPayload =
                                     buildStandaloneTaskThreadLaunchPayload(
                                         task = task,
                                         serverId = readyServerId.orEmpty(),
@@ -6956,7 +6997,10 @@ private fun RaftAppShellReadyContent(
                                         timeContext = threadTimeContext,
                                         alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
                                         compactConsecutiveMessages = compactConsecutiveMessages,
-                                    )?.let(::openLaunchPayloadInAdaptiveDetail)
+                                    )
+                                // page_viewed: the thread page this opens counts as `task`.
+                                taskLaunchPayload?.instanceId?.let(RaftProductEvents.recorder::markTaskThreadOpening)
+                                val overlaySelection = taskLaunchPayload?.let(::openLaunchPayloadInAdaptiveDetail)
                                 if (overlaySelection != null) {
                                     tasksDetailOverlayActive = true
                                     bridge.log(
@@ -7202,6 +7246,18 @@ private fun RaftAppShellReadyContent(
                                     openHomeSecondaryDestination(HomeDestinationActivity)
                                 },
                                 onOpenSaved = {
+                                    RaftProductEvents.navEntrySelected(
+                                        destination = RaftNavDestination.Saved,
+                                        surface =
+                                            if (desktopModeOnLargeScreen) {
+                                                RaftNavSurface.Sidebar
+                                            } else {
+                                                RaftNavSurface.MobileHomeShortcuts
+                                            },
+                                        wasActive =
+                                            desktopModeOnLargeScreen &&
+                                                railInlineSecondaryDestination == AppShellRailSavedKey,
+                                    )
                                     if (desktopModeOnLargeScreen) {
                                         // Large screens keep the rail and open Saved as the
                                         // list pane with the shared detail beside it.
@@ -7406,6 +7462,11 @@ private fun RaftAppShellReadyContent(
                                 settingsHeaderTapCount = 0
                                 when (key) {
                                     SettingsMoreMembersRowKey -> {
+                                        RaftProductEvents.navEntrySelected(
+                                            destination = RaftNavDestination.Members,
+                                            surface = RaftNavSurface.MobileMore,
+                                            wasActive = false,
+                                        )
                                         bridge.log("app_shell_more_open row=$key from=$selectedTab")
                                         selectAppShellTab("members", directChildSwitch = true)
                                         retainedAppShellTabs = retainedAppShellTabs + "members"
@@ -7414,7 +7475,16 @@ private fun RaftAppShellReadyContent(
                                     SettingsDestinationStorage -> pager.openSettingsStoragePage(storeScope)
                                     SettingsDestinationReleaseNotes -> pager.openReleaseNotesPage(storeScope = storeScope)
                                     SettingsDestinationBilling -> pager.openSettingsBillingPage(storeScope)
-                                    SettingsDestinationComputers -> openComputersPage()
+                                    SettingsDestinationComputers -> {
+                                        if (!navRailActive) {
+                                            RaftProductEvents.navEntrySelected(
+                                                destination = RaftNavDestination.Computers,
+                                                surface = RaftNavSurface.MobileMore,
+                                                wasActive = false,
+                                            )
+                                        }
+                                        openComputersPage()
+                                    }
                                     SettingsDestinationAdministration -> pager.openSettingsAdministrationPage(storeScope)
                                     SettingsDestinationConnectedApps -> pager.openSettingsMarketplacePage(storeScope)
                                     SettingsDestinationHandsFeedback ->

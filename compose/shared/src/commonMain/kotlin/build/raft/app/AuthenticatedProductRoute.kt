@@ -3,6 +3,8 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import build.raft.app.base.Utils
+import build.raft.app.data.RaftProductEvents
+import build.raft.app.data.RaftProductPageView
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.resources.MR
@@ -44,6 +46,13 @@ internal enum class AuthenticatedRouteExemption(val pageName: String, val author
 internal abstract class AuthenticatedProductPager(
     private val authenticatedRoute: AuthenticatedProductRoute,
 ) : build.raft.app.base.BasePager() {
+    override fun productPageView(): RaftProductPageView? =
+        authenticatedProductPageView(
+            route = authenticatedRoute,
+            params = pageData.params,
+            consumeTaskThread = RaftProductEvents.recorder::consumeTaskThreadOpening,
+        )
+
     protected fun setAuthenticatedContent(content: @Composable () -> Unit) {
         setContent {
             AuthenticatedProductRouteEffect(this@AuthenticatedProductPager, authenticatedRoute)

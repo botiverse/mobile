@@ -80,6 +80,7 @@ object RaftIosHostHooks {
         installed = true
         if (unhandledExceptions != null) installUnhandledExceptionHook(unhandledExceptions)
         RaftPageRegistry.install()
+        installRaftIosProductEventsLifecycle()
         // Settings > Appearance > Theme: the app-scope stores are installed (RaftIosAppScopeMMKV)
         // before these hooks, so the stored choice applies before the first page composes.
         RaftAppAppearanceRuntime.onSystemDarkChanged(

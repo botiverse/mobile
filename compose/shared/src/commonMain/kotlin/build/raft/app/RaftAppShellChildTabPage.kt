@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import build.raft.app.base.Utils
+import build.raft.app.data.RaftProductPageView
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
@@ -14,6 +15,10 @@ import build.raft.app.compat.ui.LocalRaftPageActive
 
 @Page(RAFT_APP_SHELL_CHILD_TAB_PAGE, supportInLocal = true)
 internal class ComposeRaftAppShellChildTabPage : build.raft.app.base.BasePager() {
+    // Each shell tab is its own child page: it appears when its tab is selected on a visible shell.
+    override fun productPageView(): RaftProductPageView? =
+        appShellTabProductPageView(retainedAppShellSelectedTab(pageData.params.optString("tab")))
+
     override fun willInit() {
         super.willInit()
         setContent { RaftAppShellChildTabPageContent() }
