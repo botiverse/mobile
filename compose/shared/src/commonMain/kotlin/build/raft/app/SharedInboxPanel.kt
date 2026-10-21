@@ -542,9 +542,13 @@ internal fun SharedHomeActivityScreen(
     // (ActivityRefreshCoalesceWindowMillis) and supersedes a stale one instead of swallowing it.
     val entryRefreshEdge = remember { ActivityTabEntryRefreshEdge(initiallyActive = active) }
     LaunchedEffect(active) {
-        if (entryRefreshEdge.onActiveChanged(active)) {
-            bridge.log("shared_activity_entry_refresh source=active_edge")
-            activityStore.dispatch(SharedActivityIntent.Refresh)
+        when (entryRefreshEdge.onActiveChanged(active)) {
+            ActivityTabActiveEdge.Entered -> {
+                bridge.log("shared_activity_entry_refresh source=active_edge")
+                activityStore.dispatch(SharedActivityIntent.Refresh)
+            }
+            ActivityTabActiveEdge.Left -> activityStore.dispatch(SharedActivityIntent.SurfaceHidden)
+            ActivityTabActiveEdge.None -> Unit
         }
     }
     CompositionLocalProvider(LocalActivityAvatarSource provides activityAvatarSource) {
@@ -625,13 +629,20 @@ internal fun activityPageDidAppearShouldRefresh(routeVisibleTick: Int, active: B
 internal class ActivityTabEntryRefreshEdge(initiallyActive: Boolean) {
     private var wasActive = initiallyActive
 
-    /** Records [active]; true exactly when this is an entry (inactive -> active). */
-    fun onActiveChanged(active: Boolean): Boolean {
-        val entered = active && !wasActive
+    /** Records [active]: [ActivityTabActiveEdge.Entered] exactly on inactive -> active. */
+    fun onActiveChanged(active: Boolean): ActivityTabActiveEdge {
+        val edge =
+            when {
+                active && !wasActive -> ActivityTabActiveEdge.Entered
+                !active && wasActive -> ActivityTabActiveEdge.Left
+                else -> ActivityTabActiveEdge.None
+            }
         wasActive = active
-        return entered
+        return edge
     }
 }
+
+internal enum class ActivityTabActiveEdge { Entered, Left, None }
 
 /**
  * task #383: app-foreground resume arrives as the app-scope appLifecycle

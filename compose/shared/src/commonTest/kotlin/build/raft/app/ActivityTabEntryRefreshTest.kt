@@ -140,6 +140,77 @@ class ActivityTabEntryRefreshTest {
     }
 
     @Test
+    fun resumeOnTheVisibleActivityTabRefreshesExactlyOnce() = runTest {
+        val inbox = SlowInbox(latencyMillis = 1_000)
+        val (store, logs) = store(inbox, sessionReadMillis = 20)
+        val panel = Panel(store, initiallyActive = true)
+        panel.mount()
+        settle()
+        val before = inbox.started
+
+        panel.setActive(false) // app to background: the shell page disappears
+        advanceTimeBy(30_000)
+        runCurrent()
+        assertEquals(before, inbox.started, "nothing while in the background")
+        logs.clear()
+
+        // Resume, one frame: the shell's visible-destination Refresh, the active edge, the tick.
+        store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        panel.setActive(true)
+        panel.routeVisibleTick(tick = 2)
+        settle()
+
+        assertEquals(before + 1, inbox.started)
+        assertEquals(0, logs.count { "phase=abandoned" in it }, logs.joinToString("\n"))
+        assertEquals(2, logs.count { "phase=coalesced" in it }, logs.joinToString("\n"))
+    }
+
+    @Test
+    fun resumeDoesNotJoinALoadThatWasInFlightWhenTheAppWentToTheBackground() = runTest {
+        // The monotonic clock does not advance while the device sleeps, so a load stuck across a
+        // background can look younger than the join window on resume.
+        val inbox = SlowInbox(latencyMillis = 1_000)
+        val (store, logs) = store(inbox)
+        val panel = Panel(store, initiallyActive = true)
+        panel.mount()
+        settle()
+
+        inbox.latencyMillis = 30_000
+        store.dispatch(SharedActivityIntent.Refresh) // e.g. a realtime-triggered visible refresh
+        runCurrent()
+        assertEquals(2, inbox.started)
+        panel.setActive(false)
+        advanceTimeBy(500)
+        inbox.latencyMillis = 1_000
+        panel.setActive(true)
+        runCurrent()
+
+        assertEquals(3, inbox.started, logs.joinToString("\n"))
+        advanceTimeBy(1_001)
+        runCurrent()
+        assertEquals(listOf("channel-3"), store.state.value.items.map { it.channelId.value })
+    }
+
+    @Test
+    fun resumeWhileAnotherTabIsShownFiresNothing() = runTest {
+        val inbox = SlowInbox(latencyMillis = 1_000)
+        val (store, _) = store(inbox)
+        val panel = Panel(store, initiallyActive = false) // kept alive behind Home
+        panel.mount()
+        settle()
+        val before = inbox.started
+
+        // Background and resume with Home selected: Activity's active never changes.
+        panel.setActive(false)
+        panel.routeVisibleTick(tick = 2)
+        panel.routeVisibleTick(tick = 3)
+        settle()
+
+        assertEquals(before, inbox.started)
+    }
+
+    @Test
     fun aVisibleRefreshJoinsOnlyAFreshForegroundResetLoad() {
         val window = ActivityRefreshCoalesceWindowMillis
         val cases =
@@ -171,6 +242,12 @@ class ActivityTabEntryRefreshTest {
                 "pushed page over Activity" to
                     listOf(Step("activity"), Step("activity", parentVisible = false), Step("activity")),
                 "rail to Members and back" to listOf(Step("home"), Step("activity"), Step("members"), Step("activity")),
+                // App background/resume: the host lifecycle pauses the shell pager (Android
+                // Activity onPause, iOS ComposeUIViewController lifecycle), clearing parentVisible.
+                "background and resume on Activity" to
+                    listOf(Step("activity"), Step("activity", parentVisible = false), Step("activity")),
+                "background and resume on Home" to
+                    listOf(Step("home"), Step("home", parentVisible = false), Step("home")),
             )
         val expectedEntries =
             mapOf(
@@ -178,6 +255,8 @@ class ActivityTabEntryRefreshTest {
                 "cold start on Activity" to 1,
                 "pushed page over Activity" to 1,
                 "rail to Members and back" to 2,
+                "background and resume on Activity" to 1,
+                "background and resume on Home" to 0,
             )
         paths.forEach { (name, steps) ->
             fun activityActive(step: Step): Boolean =
@@ -186,7 +265,8 @@ class ActivityTabEntryRefreshTest {
                     placedActive = appShellActiveChildPagerTab(step.selectedTab) == "activity",
                 )
             val edge = ActivityTabEntryRefreshEdge(initiallyActive = activityActive(steps.first()))
-            val entries = steps.drop(1).count { step -> edge.onActiveChanged(activityActive(step)) }
+            val entries =
+                steps.drop(1).count { step -> edge.onActiveChanged(activityActive(step)) == ActivityTabActiveEdge.Entered }
             assertEquals(expectedEntries.getValue(name), entries, name)
         }
     }
@@ -206,7 +286,11 @@ class ActivityTabEntryRefreshTest {
 
         fun setActive(value: Boolean) {
             active = value
-            if (edge.onActiveChanged(value)) store.dispatch(SharedActivityIntent.Refresh)
+            when (edge.onActiveChanged(value)) {
+                ActivityTabActiveEdge.Entered -> store.dispatch(SharedActivityIntent.Refresh)
+                ActivityTabActiveEdge.Left -> store.dispatch(SharedActivityIntent.SurfaceHidden)
+                ActivityTabActiveEdge.None -> Unit
+            }
         }
 
         fun routeVisibleTick(tick: Int) {

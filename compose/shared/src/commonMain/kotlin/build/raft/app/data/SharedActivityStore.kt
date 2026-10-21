@@ -244,6 +244,7 @@ class SharedActivityStore internal constructor(
             is SharedActivityIntent.PrewarmVisibleReplyThreads -> prewarmVisibleReplyThreads(intent.markers)
             is SharedActivityIntent.PrewarmActivityTail -> prewarmActivityTail(intent.orderedMarkers)
             SharedActivityIntent.DetachPrewarmViewport -> prewarmVisibleReplyThreads(emptySet())
+            SharedActivityIntent.SurfaceHidden -> onSurfaceHidden()
             is SharedActivityIntent.ApplyRealtimeEvent -> {
                 if (intent.event is PerReceiverReadStateChanged) {
                     scope.launch { applyPerReceiverReadStateChanged(intent.event) }
@@ -266,6 +267,12 @@ class SharedActivityStore internal constructor(
             is SharedActivityIntent.ApplyRealtimeSummaryEvent ->
                 applyRealtimeSummaryEvent(intent.event, intent.activeConversationId)
             else -> error("acceptRealtime only accepts realtime intents")
+        }
+    }
+
+    private fun onSurfaceHidden() {
+        synchronized(realtimeOwnerLock) {
+            foregroundResetLoadStartedAtMillis = null
         }
     }
 
@@ -2806,6 +2813,13 @@ sealed interface SharedActivityIntent {
         val orderedMarkers: List<ActivityReplyThreadPrewarmMarker>
     ) : SharedActivityIntent
     data object DetachPrewarmViewport : SharedActivityIntent
+    /**
+     * The Activity surface stopped being visible (another tab, a pushed page, the app went to the
+     * background). A load already in flight then is never joined by the next entry's Refresh: it
+     * may have hung across the background, and the monotonic clock does not advance while the
+     * device sleeps, so its age alone cannot tell.
+     */
+    data object SurfaceHidden : SharedActivityIntent
     data class ApplyRealtimeEvent(
         val event: RealtimeEvent,
         val allowLocalPatch: Boolean = true
@@ -2836,6 +2850,7 @@ private fun SharedActivityIntent.activitySummarySource(): String =
         is SharedActivityIntent.PrewarmVisibleReplyThreads -> "prewarm_visible"
         is SharedActivityIntent.PrewarmActivityTail -> "prewarm_tail"
         SharedActivityIntent.DetachPrewarmViewport -> "prewarm_detach"
+        SharedActivityIntent.SurfaceHidden -> "surface_hidden"
         is SharedActivityIntent.ApplyRealtimeEvent -> "realtime"
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> "realtime_summary"
     }
@@ -2861,7 +2876,8 @@ private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
         is SharedActivityIntent.ApplyReadReceiptResult,
         is SharedActivityIntent.PrewarmVisibleReplyThreads,
         is SharedActivityIntent.PrewarmActivityTail,
-        SharedActivityIntent.DetachPrewarmViewport -> false
+        SharedActivityIntent.DetachPrewarmViewport,
+        SharedActivityIntent.SurfaceHidden -> false
     }
 
 private fun RealtimeEvent.refreshesActivity(): Boolean = affectsActivityContent()
