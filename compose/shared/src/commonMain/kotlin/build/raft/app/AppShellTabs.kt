@@ -17,28 +17,29 @@ internal fun appShellTabIcon(key: String): RaftLucideIconName =
         "tasks" -> RaftLucideIconName.SquareCheckBig
         "members" -> RaftLucideIconName.Users
         "settings" -> RaftLucideIconName.Settings
-        AppShellSearchActionKey -> RaftLucideIconName.Search
+        AppShellSearchTabKey -> RaftLucideIconName.Search
         else -> RaftLucideIconName.Circle
     }
 
 /**
  * Phone bottom bar (stdrc 2026-10-21): 主页 · 动态 · 任务 · 搜索 · 更多 in one full-width edge
- * bar. Search holds the slot left of More but stays an action ([AppShellSearchActionKey]): a tap opens
- * search over the current tab and it is never the selected item. More's root page is Settings;
+ * bar. Search is a tab ([AppShellSearchTabKey], stdrc option B): selecting it shows the kept-alive
+ * Search page, a tab root without Back, and the bar stays. More's root page is Settings;
  * Members is pushed from it (back returns to More). Members and Settings stay shell child pages
  * so the wide rail, deep links and old launch values still select them directly.
  */
 internal val AppShellPhoneBottomBarKeys: List<String> =
-    listOf("home", "activity", "tasks", AppShellSearchActionKey, "more")
+    listOf("home", "activity", "tasks", AppShellSearchTabKey, "more")
 
-/** The real tabs among [AppShellPhoneBottomBarKeys] (everything but the Search action). */
-internal val AppShellPhoneBottomTabKeys: List<String> = AppShellPhoneBottomBarKeys - AppShellSearchActionKey
+/** The tabs of [AppShellPhoneBottomBarKeys]; every slot is a real tab. */
+internal val AppShellPhoneBottomTabKeys: List<String> = AppShellPhoneBottomBarKeys
 
 /**
- * Bottom-bar action key for Search. It is not a tab: a tap opens the search page on top of
- * the current tab, which stays selected. Never a valid selected-tab value.
+ * The Search tab on the phone bar. Its page has no Back; a result opens a page with Back over
+ * the shell, and Back returns to the tab with its query, results and scroll. The wide rail keeps
+ * its own inline Search entry ([AppShellRailSearchKey]) instead.
  */
-internal const val AppShellSearchActionKey = "search"
+internal const val AppShellSearchTabKey = "search"
 
 /** Child pages pushed from the More (Settings) page; the bottom bar keeps More selected. */
 internal val AppShellMoreChildTabKeys: Set<String> = setOf("members")
@@ -69,6 +70,20 @@ internal fun appShellSettingsRootTab(selectedTab: String, navRailActive: Boolean
         navRailActive && selectedTab == "more" -> "settings"
         else -> null
     }
+
+/**
+ * The Search page's chrome under the navigation rule (stdrc 2026-10-21): as the phone Search tab
+ * root it has no Back and sits above the bottom bar; pushed (wide rail, channel search) it has
+ * Back and covers the bar. A result always opens a pushed page with Back over either.
+ */
+internal data class HomeSearchPageChrome(val showsBack: Boolean, val aboveBottomBar: Boolean)
+
+internal fun homeSearchPageChrome(tabRoot: Boolean): HomeSearchPageChrome =
+    HomeSearchPageChrome(showsBack = !tabRoot, aboveBottomBar = tabRoot)
+
+/** The wide rail lists Search as its inline entry, not a tab: a selected Search tab moves there. */
+internal fun appShellSearchTabMovesToRailSearch(selectedTab: String, navRailActive: Boolean): Boolean =
+    navRailActive && selectedTab == AppShellSearchTabKey
 
 /**
  * Activity unread on a tab icon is an attention dot, never a number (raft-design MobileNav /

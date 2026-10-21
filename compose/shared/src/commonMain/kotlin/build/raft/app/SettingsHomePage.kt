@@ -754,7 +754,7 @@ private val SearchMutedTextColor: Color get() = RaftColor.TextBlack.copy(alpha =
 // xxchan 2026-10-20: the phone bar is 主页 · 动态 · 任务 · 更多 (+ the Search action); Members and
 // Settings are pushed from More. They stay shell child pages so the wide rail, deep links and
 // old launch values keep selecting them directly.
-private val AppShellChildPageTabKeys = listOf("home", "activity", "tasks", "more", "members", "settings")
+private val AppShellChildPageTabKeys = listOf("home", "activity", "tasks", AppShellSearchTabKey, "more", "members", "settings")
 private val AppShellChildPagePrewarmOrder = listOf("settings", "tasks", "members")
 
 internal typealias AppShellChildTabRenderer = @Composable (tab: String, active: Boolean) -> Unit
@@ -1215,7 +1215,7 @@ private val bottomTabBarSmokeItems = listOf(
     RaftBottomTabItemPayload("home", "Home", RaftLucideIconName.House, selected = true),
     RaftBottomTabItemPayload("activity", "Activity", RaftLucideIconName.Activity, attentionDot = true),
     RaftBottomTabItemPayload("tasks", "Tasks", RaftLucideIconName.SquareCheckBig),
-    RaftBottomTabItemPayload(AppShellSearchActionKey, "Search", RaftLucideIconName.Search),
+    RaftBottomTabItemPayload(AppShellSearchTabKey, "Search", RaftLucideIconName.Search),
     RaftBottomTabItemPayload("more", "More", RaftLucideIconName.Ellipsis)
 )
 
@@ -1228,8 +1228,8 @@ internal const val AppShellRailSavedKey = "rail_saved"
 
 /**
  * The phone bottom bar (stdrc 2026-10-21): Home · Activity · Tasks · Search · More for
- * [selectedTab]. Search holds the slot left of More as an action and is never selected; a page pushed
- * from More (Members) and Settings itself keep More selected.
+ * [selectedTab]. Search is a tab left of More; a page pushed from More (Members) and Settings
+ * itself keep More selected.
  */
 internal fun appShellPhoneBottomTabs(
     selectedTab: String,
@@ -1250,7 +1250,7 @@ internal fun appShellPhoneBottomTabs(
             when (key) {
                 "home" -> homeLabel
                 "activity" -> activityLabel
-                AppShellSearchActionKey -> searchLabel
+                AppShellSearchTabKey -> searchLabel
                 "tasks" -> tasksLabel
                 "more" -> moreLabel
                 else -> key.uppercase()
@@ -1278,7 +1278,7 @@ internal fun appShellBottomTabs(
     labelFor: (String) -> String
 ): List<RaftBottomTabItemPayload> =
     orderedTabKeys.map { key ->
-        val selected = selectedKey == key && key != AppShellSearchActionKey
+        val selected = selectedKey == key
         RaftBottomTabItemPayload(
             key = key,
             label = labelFor(key),
@@ -1298,7 +1298,7 @@ internal fun appShellBottomTabs(
 // union keeps legacy clamping behavior unchanged while making the Slack keys first-class for
 // child-page lookup, tap normalization and retained-tab bookkeeping.
 private val retainedAppShellTabKeys =
-    listOf("home", "tasks", "members", "settings") + listOf("home", "dms", "activity", "more")
+    listOf("home", "tasks", "members", "settings") + listOf("home", "dms", "activity", "more", AppShellSearchTabKey)
 
 internal fun retainedAppShellSelectedTab(selectedTab: String): String =
     selectedTab.takeIf { it in retainedAppShellTabKeys } ?: "home"
@@ -1775,6 +1775,7 @@ internal fun appShellBottomTabPerformanceRoute(tab: String): String =
         "dms" -> "kuikly_dms"
         "activity" -> "kuikly_activity"
         "more" -> "kuikly_more"
+        AppShellSearchTabKey -> "kuikly_search"
         else -> "kuikly_home"
     }
 
@@ -2292,6 +2293,8 @@ private fun RaftAppShellReadyContent(
     // destination rendered INLINE in the AppShell middle pane — never a pushed secondary page
     // (the rail must stay). Narrow or flag-off keeps the legacy push path unchanged.
     var railInlineSecondaryDestination by remember { mutableStateOf<String?>(null) }
+    // The Search tab's result list position survives leaving and re-entering the tab.
+    val searchTabListState = rememberLazyListState()
     // task #13: once a rail surface exposes Activity (rail active or an inline destination is
     // covering the middle pane) the live tab must survive width transitions — narrowing must
     // not clamp a user-reached Activity selection back to Home.
@@ -5265,16 +5268,26 @@ private fun RaftAppShellReadyContent(
         }
     }
 
-    // xxchan 2026-10-20: the bar's Search action pushes the search page over the current tab
-    // (the tab stays selected; Back returns to it). The pushed page covers the bar, so a second
-    // tap cannot reach here while search is open; the guard only drops a duplicate push.
-    fun openSearchOverCurrentTab(source: String) {
-        if (retainedHomeSecondaryDestination(selectedHomeDestination) == HomeDestinationSearch) {
-            bridge.log("app_shell_search_open_skip reason=already_open source=$source tab=$selectedTab")
+    // stdrc 2026-10-21 (option B): Search is a phone tab. Opening search (the Home head's Search
+    // button) selects it like a bar tap; the wide rail keeps the pushed search page.
+    fun openSearchTab(source: String) {
+        val navRail =
+            raftAdaptiveNavRailActive(
+                desktopModeEnabled = desktopModeOnLargeScreen,
+                paneState = shellScope.adaptivePane
+            )
+        if (navRail) {
+            bridge.log("app_shell_search_open source=$source tab=$selectedTab mode=rail_page")
+            openHomeSecondaryDestination(HomeDestinationSearch)
             return
         }
-        bridge.log("app_shell_search_open source=$source tab=$selectedTab")
-        openHomeSecondaryDestination(HomeDestinationSearch)
+        bridge.log("app_shell_search_open source=$source tab=$selectedTab mode=tab")
+        if (shouldDismissHomeNotificationCenterForAppShellTabSelection(selectedTab, AppShellSearchTabKey)) {
+            homeFocusLossDismissEpoch += 1
+            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
+        }
+        selectAppShellTab(AppShellSearchTabKey, directChildSwitch = true)
+        retainedAppShellTabs = retainedAppShellTabs + AppShellSearchTabKey
     }
 
     val handleAppShellBack by rememberUpdatedState {
@@ -5976,6 +5989,14 @@ private fun RaftAppShellReadyContent(
     // stdrc 2026-10-21: Settings is the More tab's root on the phone bar and the pinned rail entry
     // on the wide layout; a selection made for the other layout moves to this layout's root.
     LaunchedEffect(selectedTab, navRailActive) {
+        if (appShellSearchTabMovesToRailSearch(selectedTab, navRailActive)) {
+            // The rail has no Search tab: a phone Search tab left open when the window widens
+            // becomes the rail's inline Search over Home.
+            bridge.log("app_shell_search_tab_to_rail from=$selectedTab")
+            selectAppShellTab("home", directChildSwitch = true)
+            railInlineSecondaryDestination = AppShellRailSearchKey
+            return@LaunchedEffect
+        }
         val root = appShellSettingsRootTab(selectedTab, navRailActive) ?: return@LaunchedEffect
         bridge.log("app_shell_settings_root from=$selectedTab to=$root navRail=$navRailActive")
         selectAppShellTab(root, directChildSwitch = true)
@@ -6373,10 +6394,6 @@ private fun RaftAppShellReadyContent(
 
     val onAppShellTabSelected: (String) -> Unit = onBottomTabSelected@{
                 prewarmAdmissionGate.invalidate("bottom_tab_tap:$it")
-                if (it == AppShellSearchActionKey) {
-                    openSearchOverCurrentTab(source = "bottom_bar")
-                    return@onBottomTabSelected
-                }
                 val nextTab = retainedAppShellSelectedTab(it)
                 when (
                     bottomTabTapTracker.onTap(
@@ -7111,7 +7128,7 @@ private fun RaftAppShellReadyContent(
                                     homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
                                 },
                                 onOpenSearch = {
-                                    openHomeSecondaryDestination(HomeDestinationSearch)
+                                    openSearchTab(source = "home_head")
                                 },
                                 onOpenActivity = {
                                     openHomeSecondaryDestination(HomeDestinationActivity)
@@ -7350,6 +7367,21 @@ private fun RaftAppShellReadyContent(
                         PerformanceSceneEffect(bridge, "kuikly_more", active = active)
                         settingsTabContent(active)
                     }
+                    // stdrc 2026-10-21 (option B): the phone Search tab. A tab root (no Back, the bar
+                    // stays); a result pushes its page over the shell and Back returns here with the
+                    // query, results and scroll kept (the tab stays composed like the others).
+                    val searchTabContent: @Composable (active: Boolean) -> Unit = { _ ->
+                        HomeSecondaryRouterContent(
+                            destination = HomeDestinationSearch,
+                            routeVisibleTick = pageVisibleTick,
+                            initialSearchFocusInput = true,
+                            adaptivePane = shellScope.adaptivePane,
+                            tabRoot = true,
+                            hostPager = pager,
+                            searchListState = searchTabListState,
+                            searchBottomContentPadding = appShellBottomContentInset,
+                        )
+                    }
                     val childTabRenderer: AppShellChildTabRenderer = { tab, active ->
                         val homeSummary = sharedHomeContentRenderSummary(homeState.content)
                         LaunchedEffect(tab, active, currentChildTab, readyServerId, homeSummary, homeState.homeRealtimeDirty) {
@@ -7368,6 +7400,7 @@ private fun RaftAppShellReadyContent(
                                 "dms" -> dmsTabContent(active)
                                 "activity" -> activityTabContent(active)
                                 "more" -> moreTabContent(active)
+                                AppShellSearchTabKey -> searchTabContent(active)
                                 else -> homeTabContent(active)
                             }
                         }
@@ -25391,8 +25424,7 @@ internal fun BottomTabBarSmokeContent() {
     val shellScope = rememberRaftAppShellScope()
     var selectedTab by remember { mutableStateOf("tasks") }
     val smokeItems = bottomTabBarSmokeItems.map { item -> item.copy(selected = item.key == selectedTab) }
-    // Search is an action: tapping it never moves the selection.
-    val onSmokeSelect: (String) -> Unit = { if (it != AppShellSearchActionKey) selectedTab = it }
+    val onSmokeSelect: (String) -> Unit = { selectedTab = it }
     Box(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
         Column(
             modifier = Modifier

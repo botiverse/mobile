@@ -174,9 +174,7 @@ final class RaftIosTabBarController: UIViewController {
 extension RaftIosTabBarController: UITabBarControllerDelegate {
     /// Shared owns the selection: every tap (including a re-tap of the selected tab) goes to the
     /// shell's tab handler and UIKit never switches on its own; the new selection arrives
-    /// through the published state. The Search item (stdrc 2026-10-21: a slot left of More) is
-    /// an action: the same call opens search over the current tab, and since this returns false
-    /// and shared never publishes Search as the selection, it is never the selected item.
+    /// through the published state. Search is an ordinary tab (stdrc 2026-10-21, option B).
     func tabBarController(
         _ tabBarController: UITabBarController,
         shouldSelect viewController: UIViewController

@@ -89,7 +89,7 @@ class RaftActivityTabTest {
         }
         assertEquals("more", appShellSettingsRootTab("settings", navRailActive = false))
         assertEquals("more", JSONObject().put("slockInitialTab", "more").appShellLaunchSelection().selectedTab)
-        // Search is an action, not a launch tab.
-        assertEquals("home", JSONObject().put("slockInitialTab", "search").appShellLaunchSelection().selectedTab)
+        // Search is a tab (stdrc option B), so a launch value can select it.
+        assertEquals("search", JSONObject().put("slockInitialTab", "search").appShellLaunchSelection().selectedTab)
     }
 }
