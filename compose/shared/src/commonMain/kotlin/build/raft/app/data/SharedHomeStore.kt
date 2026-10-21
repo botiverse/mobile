@@ -2958,7 +2958,7 @@ internal class SharedHomeStore(
                         previous.channelOrder.filterNot { it in regularChannelIds } +
                         knownChannelIds.filterNot { it in cleanedOrder || it in previous.channelOrder })
                         .distinct()
-                if (nextChannelOrder != previous.channelOrder) {
+                if (nextChannelOrder != previous.channelOrder || RaftSidebarSortMode.fromWireValue(previous.channelSortMode) != RaftSidebarSortMode.Manual) {
                     next = next.copy(
                         channelOrder = nextChannelOrder,
                         channelSortMode = RaftSidebarSortMode.Manual.wireValue
@@ -2976,7 +2976,7 @@ internal class SharedHomeStore(
                     (next.channelOrder.filterNot { it in jointChannelIds } + cleanedJoint +
                         jointChannelIds.filterNot { it in cleanedJoint })
                         .distinct()
-                if (nextChannelOrder != next.channelOrder) {
+                if (nextChannelOrder != next.channelOrder || RaftSidebarSortMode.fromWireValue(previous.jointChannelSortMode) != RaftSidebarSortMode.Manual) {
                     // Web keeps a separate Joint Channels sort mode; a manual
                     // joint reorder flips only that one.
                     next = next.copy(
@@ -2992,7 +2992,7 @@ internal class SharedHomeStore(
             if (cleanedDms.isNotEmpty()) {
                 val nextDmOrder =
                     (cleanedDms + previous.dmOrder.filterNot { it in cleanedDms }).distinct()
-                if (nextDmOrder != previous.dmOrder) {
+                if (nextDmOrder != previous.dmOrder || RaftSidebarSortMode.fromWireValue(previous.dmSortMode) != RaftSidebarSortMode.Manual) {
                     next = next.copy(
                         dmOrder = nextDmOrder,
                         dmSortMode = RaftSidebarSortMode.Manual.wireValue
@@ -3001,19 +3001,22 @@ internal class SharedHomeStore(
             }
         }
         if (intent.pinnedOrder != null) {
+            // The sort sheet orders the rows the Pinned section renders, keyed by row id: a
+            // channel's id, but a pinned agent/human is a typed `{kind, id: memberId}` ref
+            // whose row is its DM conversation (row id = the DM channel id) — or the member
+            // itself while no DM exists. Resolve every row id back to its pinned ref
+            // (web Sidebar.tsx resolvePinnedRefFromDragId) so DM rows keep their place
+            // instead of being dropped and re-appended in their old order.
             val currentPinned = previous.typedPinnedOrLegacy()
-            val pinnedIdSet = currentPinned.map { it.id }.toSet()
-            val cleanedPinned = intent.pinnedOrder.distinct().filter { it.isNotBlank() && it in pinnedIdSet }
-            if (cleanedPinned.isNotEmpty()) {
-                val nextPinnedOrder =
-                    (cleanedPinned + currentPinned.map { it.id }.filterNot { it in cleanedPinned }).distinct()
-                if (nextPinnedOrder != currentPinned.map { it.id }) {
-                    val byId = currentPinned.associateBy { it.id }
-                    next = next.copy(
-                        pinned = nextPinnedOrder.mapNotNull { byId[it] },
-                        pinnedOrder = nextPinnedOrder,
-                        pinnedSortMode = RaftSidebarSortMode.Manual.wireValue
-                    )
+            val requestedPinned =
+                intent.pinnedOrder
+                    .mapNotNull { rowId -> current.snapshot.resolvePinnedRefForRow(rowId, currentPinned) }
+                    .distinct()
+            if (requestedPinned.isNotEmpty()) {
+                val nextPinned = requestedPinned + currentPinned.filterNot { it in requestedPinned }
+                if (nextPinned != currentPinned || RaftSidebarSortMode.fromWireValue(previous.pinnedSortMode) != RaftSidebarSortMode.Manual) {
+                    next = next.withCanonicalTypedPinned(nextPinned)
+                        .copy(pinnedSortMode = RaftSidebarSortMode.Manual.wireValue)
                 }
             }
         }
@@ -4086,6 +4089,29 @@ private fun SettingsServerSidebarOrderSnapshot.legacyPinnedContains(target: Pinn
 private fun SettingsServerSidebarPinnedItem.matchesPinnedTarget(target: PinnedToggleTarget): Boolean =
     kind == target.item.kind && id == target.item.id ||
         kind == "channel" && id == target.conversationId
+
+/**
+ * The pinned ref behind a Pinned-section row id: a ref whose own id is [rowId] (a channel,
+ * or a member row shown before its DM exists), else the agent/human ref of the DM
+ * conversation [rowId] names. Null for a row that is not pinned.
+ */
+internal fun HomeSnapshot.resolvePinnedRefForRow(
+    rowId: String,
+    pinned: List<SettingsServerSidebarPinnedItem>
+): SettingsServerSidebarPinnedItem? {
+    val id = rowId.trim().takeIf { it.isNotBlank() } ?: return null
+    pinned.firstOrNull { it.id == id }?.let { return it }
+    val directMessage =
+        directMessages.firstOrNull { row -> row.threadId.value == id || row.channelId.value == id } ?: return null
+    val memberId = directMessage.presenceMemberId?.value?.takeIf { it.isNotBlank() } ?: return null
+    val kind =
+        when (directMessage.directMessagePeerType?.trim()?.lowercase()) {
+            "agent" -> "agent"
+            "human", "user" -> "human"
+            else -> null
+        }
+    return pinned.firstOrNull { ref -> ref.id == memberId && (kind == null || ref.kind == kind) }
+}
 
 private fun SettingsServerSidebarOrderSnapshot.withCanonicalTypedPinned(
     nextPinned: List<SettingsServerSidebarPinnedItem>
