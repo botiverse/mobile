@@ -4,7 +4,7 @@
 
 The standalone `feedback/` WebView remains the product feedback UI. On submit, the native host generates diagnostics and uploads them through the matching Hands app. The existing Web transport authenticates `/api/product-feedback/...` with the user session bearer held in `window.RaftFeedback.session.accessToken`; that bearer is kept in page memory only and is never written to a URL, Web Storage, log, or native diagnostics payload. The auth bootstrap and every runtime refresh are limited to the trusted feedback main document (exact origin/path/query); subframes and other navigations receive no session. The native host does not forward feedback-page console output to its logs. The WebView never receives a Hands client key, presign URL, local path, or diagnostics bytes. The diagnostics bridge receives only progress and a one-time controlled reference.
 
-This applies to Android WebView, iOS WKWebView, and OHOS ArkWeb. A host without the optional capability keeps the existing feedback submission flow.
+This applies to Android WebView and iOS WKWebView. A host without the optional capability keeps the existing feedback submission flow.
 
 ## Capability and bridge
 
@@ -40,7 +40,6 @@ The page ignores duplicate, stale, late, or mismatched events. Native origin/mai
 
 - **Android:** extend the existing AndroidX `WebMessageListener` and document-start host script. Upload/cancellation is owned by the Android activity/Hands client and fenced by request/session/WebView generation.
 - **iOS:** add `WKScriptMessageHandler` plus a document-start `WKUserScript` to `RaftSandboxWebView`; upload/cancellation is owned by the existing feedback bridge module and fenced by WebView generation.
-- **OHOS:** add ArkWeb JavaScript/native messaging to `RaftSandboxWebView.ets`; upload/cancellation is owned by `KRBridgeModule.ets` and fenced by render generation.
 
 ## Acceptance matrix
 
@@ -50,7 +49,7 @@ The page ignores duplicate, stale, late, or mismatched events. Native origin/mai
 - Auth bootstrap and token refresh run only in the trusted feedback main document; subframes, cross-origin pages, and path/query changes are fenced out. Feedback console output is not forwarded to native logs.
 - Failure never blocks ordinary feedback.
 - A `done` reference is one-time; late completion after cancel/close/account switch cannot create a second ticket.
-- Shared contract plus Android, iOS, and OHOS compile checks pass. Runtime staging preupload → create-ticket evidence is required separately per platform.
+- Shared contract plus Android and iOS compile checks pass. Runtime staging preupload → create-ticket evidence is required separately per platform.
 
 ## Staging server contract (f6d3e804, deploy 38157412327)
 
@@ -67,7 +66,7 @@ preupload and terminal events are implemented together. The legacy feedback
 flow remains available without that capability.
 
 Remaining work: shared request/binding validation and lifecycle state; native
-archive/preupload/progress/cancel on all three hosts; OHOS host messaging;
+archive/preupload/progress/cancel on both hosts;
 platform-specific bootstrap session metadata; compile and real staging receipts.
 Node tests execute the actual Android/iOS host scripts plus shared bootstrap to
 check legacy event delivery and capability absence. They do not establish native

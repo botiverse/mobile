@@ -114,8 +114,8 @@ test gate。产出 = 拆任务底稿。
 - notification/deep link 按第 3 节入口规则接线（命中已开窗口就投递，
   没有则按产品策略）。
 
-依赖顺序：Phase 2 → 3 → 4（1 与 2 可并行起步）。iOS/OHOS 不动
-（shared 侧分桶自然惠及未来的 iPad 多窗/OHOS 平板，但本 RFC 只做
+依赖顺序：Phase 2 → 3 → 4（1 与 2 可并行起步）。iOS 不动
+（shared 侧分桶自然惠及未来的 iPad 多窗，但本 RFC 只做
 Android 落地）。
 
 ## 5. MVP 验收（AD4 的"四个不串线"）

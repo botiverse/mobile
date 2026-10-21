@@ -71,7 +71,7 @@ replay is still tied to the original request and cannot authorize a different mi
 
 ## Scope and checks
 
-Only direct Thread→preceding AppShell navigation stacks are supported. Android/OHOS have no
+Only direct Thread→preceding AppShell navigation stacks are supported. Android has no
 implementation from this change. iOS does not advertise full A4 capability. The native editor guard
 is a state snapshot, not a monotonic edit revision. It does not detect
 an A→B→A history whose final native state is identical, and does not replace shared logical

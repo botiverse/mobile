@@ -61,9 +61,8 @@ Do not paste SSH private keys, GitHub tokens, `NPM_TOKEN`,
 | Mobile worktrees | `/Users/artin/AndroidStudioProjects/Slock-worktrees` | Local worktrees based on the mobile repo |
 | React / server source reference | External checkout via `SLOCK_SOURCE_REPO` | `github.com/botiverse/slock` (default branch `staging`) |
 
-The mobile repo vendors no KMP fork sources. HarmonyOS (OHOS) support is
-frozen: `1.14.x` is the last OHOS release and is built only from the
-`release/1.14.x` branch; `main` carries no OHOS app, bridge, scripts, or docs.
+The mobile repo vendors no KMP fork sources and targets Android and iOS only.
+HarmonyOS is not part of this repo; it is planned as a separate ArkTS rewrite.
 
 When API payloads or Socket.IO events are in question, use the TypeScript
 server source as the contract oracle. Mobile no longer vendors that repository

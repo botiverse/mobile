@@ -20,7 +20,7 @@ The first four capture typed UI states; they do not independently prove taps,
 keyboard behavior or networking. Follower capture taps its real header trigger.
 Report all visible differences; do not tune tolerances to make them pass.
 
-iOS/OHOS, physical devices, long-roster scroll, removal confirmation and
+iOS, physical devices, long-roster scroll, removal confirmation and
 remove/undo states are not covered by these five cases. Mahua owns this scoped
 comparison; unsupported variants remain pending, excluded from pass counts.
 

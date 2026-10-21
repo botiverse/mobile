@@ -2,6 +2,9 @@
 
 Date: 2026-05-23
 
+Status: historical snapshot. OHOS rows describe the since-removed HarmonyOS
+app (#3181); this repo now targets Android and iOS only.
+
 Scope: task #44, created from `#设置项专修` feedback that shared Settings
 routes can look present while rows/actions still do nothing. This audit checks
 the product Settings IA from task #45 against current KMP wiring.

@@ -2,7 +2,7 @@
 
 When a user submits feedback in the app, the app bundles its **local**
 diagnostics (a JSONL ring buffer it writes itself) and uploads them as Quiver
-feedback **attachments**. Android and HarmonyOS create a
+feedback **attachments**. Android creates a
 `raft-feedback-*.zip`; iOS returns a summary plus separate log attachment
 paths. Quiver only transports and stores those bytes — it does not define or
 parse their contents. The app/shared layer owns these formats.
@@ -19,7 +19,7 @@ quiver feedback show raft-android <ticketId>
 # 2. download the raw attachment (bytes as-is; Quiver does not unzip)
 quiver feedback download-attachment raft-android <ticketId> <attachmentId> -o diag.zip
 
-# 3. Android/HarmonyOS only: unzip locally
+# 3. Android only: unzip locally
 unzip diag.zip -d diag/
 ```
 
@@ -67,25 +67,9 @@ Name collisions are preserved with stable suffixes such as
 `raft-diagnostics-2.jsonl` and `raft-diagnostics-3.jsonl`; source bytes are
 never overwritten. Quiver receives each returned path as an attachment.
 
-## HarmonyOS ZIP layout
-
-This layout applies to feedback from OHOS builds up to 1.14.x (the frozen last
-OHOS release line, `release/1.14.x`); `main` no longer ships an OHOS app.
-
-HarmonyOS writes one `raft-feedback-*.zip`. It stages the summary and selected
-logs into a flat upload directory before compression, so session identity is
-encoded into each log entry name:
-
-```
-raft-diagnostics-summary.txt
-launch-<current-session>-raft-diagnostics.jsonl
-launch-<current-session>-raft-diagnostics.jsonl.1
-flat-raft-diagnostics.jsonl
-```
-
-Equal-name collisions use the same stable `-2`, `-3`, ... suffix rule. The
-temporary staged files are removed after ZIP creation, including partially
-copied targets when a copy fails.
+Legacy HarmonyOS builds (1.14.x and earlier) used a flat
+`raft-feedback-*.zip` layout; it is documented on the `release/1.14.*`
+branches.
 
 ## Local format boundary
 
@@ -101,7 +85,7 @@ existing tag/event vocabulary unless a separate versioned contract replaces it.
 ## Log line format
 
 Each diagnostics JSONL line is one JSON object. On Android these live under
-`app_logs/`; iOS and HarmonyOS use the paths described above:
+`app_logs/`; iOS uses the paths described above:
 
 ```json
 {"ts":"2026-07-08T14:16:33.386+08:00","level":"info","tag":"SlockKuikly",

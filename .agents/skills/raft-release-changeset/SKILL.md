@@ -40,8 +40,8 @@ version's directory. Detail: AGENTS.md "Versioned Mobile Changesets",
    These are the dominant values in `change-logs/*/changesets/` (`fixed`,
    `added`, `improved`, `changed`; `rollout: full`, `canary` for flagged
    rollouts); don't invent new ones.
-   `platforms` lists only platforms that ship the behaviour (no `ohos` on
-   trains cut from `main`).
+   `platforms` lists only platforms that ship the behaviour (`android`,
+   `ios`).
 4. Write what the user sees, not how: no class names, test lists, commit
    hashes, PR numbers in prose, or architecture narration.
 5. Ship it in the product PR. If the version was assigned after merge, open a

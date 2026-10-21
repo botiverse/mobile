@@ -201,6 +201,6 @@ AD2 can verify (no long-lived second writer).
 | migration forward-only (epoch / index / client-id namespace) | commonTest | schema |
 | SQLite transaction/index binding | **androidUnitTest + SQLDelight driver** | T9 / AD2 |
 
-Android compile & unit tests = the only hard CI gate (mobile policy); iOS/OHOS
+Android compile & unit tests = the only hard CI gate (mobile policy); iOS
 non-blocking + 30-min fix-forward. AD2 reviews the SQLDelight transaction/index +
 PK-road implementation on the P1 first commit (task #494).

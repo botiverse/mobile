@@ -10,9 +10,9 @@
 > from the same bug and originally disagreed with this section; it has been corrected to match, and
 > its lineage note points here.
 
-Injected script reaches the page at **document start** on all three platforms (Android
-`SlockSandboxWebViewRenderView`, iOS `WKUserScript(...AtDocumentStart...)`, OHOS
-`runJavaScriptOnDocumentStart`). That single fact produced five distinct defects on one feature, each
+Injected script reaches the page at **document start** on every platform the feature shipped on
+(Android `SlockSandboxWebViewRenderView`, iOS `WKUserScript(...AtDocumentStart...)`, and the
+since-removed OHOS app's `runJavaScriptOnDocumentStart`). That single fact produced five distinct defects on one feature, each
 of which passed CI and needed a device to find. They are listed in the order they were hit, because
 each hid the next.
 

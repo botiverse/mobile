@@ -2,6 +2,9 @@
 
 ## Status
 
+> **Historical:** Kuikly-era spec. Kuikly UI and the HarmonyOS (OHOS) app were
+> since removed (#3192, #3181); OHOS mentions below are kept for history.
+
 Post-cleaned after task #203.
 
 The mobile Thread launch-boundary work described here is implemented on local

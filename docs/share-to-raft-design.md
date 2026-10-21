@@ -1,7 +1,7 @@
-# Share to Raft: three-platform product and launch contract
+# Share to Raft: Android and iOS product and launch contract
 
 Status: shared foundation is on `main`; final shared launch/consume wiring is in
-follow-up. Android/OHOS/iOS system intake and physical runtime remain pending.
+follow-up. Android/iOS system intake and physical runtime remain pending.
 
 ## Product flow
 
@@ -22,7 +22,7 @@ The user gets one final content-and-recipient confirmation.
 
 The first implementation should use a bounded multi-select limit (recommended:
 9 recipients) and the existing composer attachment-count/size/MIME policies.
-The limit must be a shared product constant, not three platform-specific values.
+The limit must be a shared product constant, not per-platform values.
 
 ## Reused product owners
 
@@ -163,16 +163,6 @@ resolved destination's normal composer path before its message is sent.
   only the share token/intent.
 - Cold and warm `singleTop` launches must converge on the same store intent.
 
-### HarmonyOS / OHOS
-
-- Add the system `sendData` share skill and accepted UTD/MIME types to
-  `EntryAbility`.
-- Admit both `onCreate(want, ...)` and `onNewWant(want, ...)` through one
-  idempotent intake owner.
-- Copy incoming URI/file descriptors into the application sandbox before
-  releasing Want grants, then route only the token to the shared page.
-- Multi-window/Ability redelivery must not create duplicate envelopes or sends.
-
 ### iOS
 
 - Add a real Share Extension target; do not use responder-chain or private-API
@@ -222,7 +212,7 @@ Platform tests:
   payload where the OS permits it;
 - cold launch, warm launch, logged-out resume, cancel, process death, and TTL;
 - private URI/grant expiry after intake;
-- Android 12/14, physical iPhone Share Extension, and physical OHOS device;
+- Android 12/14 and physical iPhone Share Extension;
 - narrow/landscape/Dynamic Type, recipient overflow, attachment list scrolling,
   keyboard/focus, and accessibility labels;
 - recipient 1 succeeds / recipient 2 fails / retry sends only recipient 2.

@@ -5,8 +5,8 @@
 > `1.3.3-KBA-001` and SQLDelight `2.1.0-KBA-003` are consumed remotely, and the
 > `third_party/stately`, `third_party/sqliter` and `third_party/sqldelight`
 > submodules were removed (#3029, #3031 and the follow-up). The text below is
-> kept as the original design record. The OHOS consumers of this stack were
-> removed from `main` when OHOS was frozen at 1.14.x (see `release/1.14.x`).
+> kept as the original design record. Its OHOS consumers were removed with the
+> HarmonyOS app (#3181); this repo now builds Android and iOS only.
 
 ## Purpose
 

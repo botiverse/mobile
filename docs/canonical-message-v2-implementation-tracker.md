@@ -329,7 +329,7 @@ two owners have different authority and restore lifecycles.
 - parallel V2 DTO/ref/membership/overlay types;
 - complete exact manifest-v6 field ledger + stable constants while retaining the v5 reaction tripwire;
 - overlay store interface/table/queries;
-- `2.sqm`, `3.db`, and JDBC/Android/iOS/OHOS compatibility proofs;
+- `2.sqm`, `3.db`, and JDBC/Android/iOS compatibility proofs;
 - no production callsite; no V1 byte change.
 
 Existing tests remain green.

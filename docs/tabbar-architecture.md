@@ -5,11 +5,6 @@ Android and iOS, the shared contract that keeps them in sync, and the hit-testin
 anyone touching `RaftAppBottomTabBarHost` or the per-platform native tab bar
 views.
 
-HarmonyOS (OHOS) was frozen at 1.14.x and its host was removed from `main`
-(see `release/1.14.x`). Shared code may still carry the `OhosHdsImmersive`
-renderer value and `slockOhosHdsDockBlocker*` helpers; no host on `main` selects
-them.
-
 ## The one thing to understand first
 
 There is exactly **one** app shell (`compose_slock_app_shell`, a long-lived
@@ -42,7 +37,6 @@ explicitly opts into a native renderer.
 
 | param value                         | renderer            | who renders the bar                    |
 | ----------------------------------- | ------------------- | -------------------------------------- |
-| `ohosHdsImmersive` / `hdsImmersive` | `OhosHdsImmersive`  | legacy OHOS `HdsTabs` (no host on `main`) |
 | `iosLiquidGlass` / `iosNativeFloating` | `IosLiquidGlass` | iOS native `UITabBar` (Liquid Glass)   |
 | `androidFloating` / `androidNativeFloating` | `AndroidFloating` | shared Kuikly floating dock |
 | anything else / absent              | `SharedCompose`     | shared Compose `RaftBottomTabBar`     |
@@ -137,17 +131,10 @@ Different platforms need different tap containment:
 - **Android** `AndroidFloating` and `SharedCompose` are both shared Kuikly
   renderers. Their standard Compose hit testing consumes tab-item taps; there
   is no Android native tab-bar view or separate native touch path.
-- The former OHOS host needed a shared Compose tap blocker under its
-  transparent-hit-mode native dock; that history lives on `release/1.14.x`.
-
-## History / gotchas
-
-- OHOS-specific history (HDS dock restoration, ArkTS renames, dock-blocker
-  geometry mirroring) is preserved on `release/1.14.x`.
 
 ## Validation
 
 Shared logic is covered by `RaftAppShellTest` (host heights, content insets,
-z-index, dock-blocker rect). Native rendering (HDS material, UITabBar Liquid
-Glass, and real-device tap-through) **cannot** be asserted by unit tests or the
+z-index). Native rendering (UITabBar Liquid Glass and real-device
+tap-through) **cannot** be asserted by unit tests or the
 KMP CI — it requires an iOS simulator/device run.

@@ -2,6 +2,9 @@
 
 Date: 2026-05-26
 
+> **Historical:** OHOS mentions describe the since-removed HarmonyOS app (#3181);
+> this repo now targets Android and iOS only.
+
 ## Goal
 
 Android should stop carrying product visual theme/tokens/components that belong to

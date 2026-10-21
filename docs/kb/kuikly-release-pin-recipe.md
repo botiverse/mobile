@@ -4,7 +4,7 @@
 
 Owner: Mahua · Verified at: 2026-10-19 · Status: stale
 
-How to bump the immutable Kuikly release set (e.g. `2.28.0-raft.N` → `raft.N+1`) in this repo. The same recipe has been used for several consecutive bumps (#3025, #3073). HarmonyOS (OHOS) was removed from `main` after the 1.14.x freeze, so `main` bumps no longer touch an OHOS HAR, `oh-package` files or `ohpm`; OHOS pin work happens only on `release/1.14.x`.
+How to bump the immutable Kuikly release set (e.g. `2.28.0-raft.N` → `raft.N+1`) in this repo. The same recipe has been used for several consecutive bumps (#3025, #3073).
 
 ## 1. Bump the pin family atomically
 

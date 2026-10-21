@@ -24,9 +24,6 @@ This generates SQLDelight interfaces, runs focused shared local-store / Thread
 tests, and compiles `:androidApp` against `:shared` as a direct project
 dependency. The old shared-release wrapper task/script has been removed.
 
-HarmonyOS (OHOS) validation is no longer part of this gate: OHOS was frozen
-at 1.14.x and removed from `main` (it lives on `release/1.14.x`).
-
 ## Required Checklist
 
 Every KMP migration task that replaces native behavior must answer these items in its delivery note or task thread:

@@ -1,7 +1,7 @@
 # JetBrains Markdown parser
 
 This directory vendors the common Kotlin sources of JetBrains Markdown
-`0.7.5` so Android, iOS, and OHOS compile the same parser implementation.
+`0.7.5` so Android and iOS compile the same parser implementation.
 
 ## Frozen upstream
 
@@ -74,7 +74,6 @@ not change the parser grammar or lexer state machine.
    above, or copy those files from Botiverse fork commit
    `295290f8fa81365fd6cdb9e0ce2ca9a5b45c9018`.
 
-Build wiring lives in `compose/shared/build.gradle.kts` and
-`compose/shared/build.ohos.gradle.kts`. Neither build may also depend on a
-binary Markdown parser, because duplicate parser classes would make the
-compiled implementation ambiguous.
+Build wiring lives in `compose/shared/build.gradle.kts`. The build may not
+also depend on a binary Markdown parser, because duplicate parser classes
+would make the compiled implementation ambiguous.

@@ -11,8 +11,7 @@ required by the Mobile ruleset.
 
 ## Path groups
 
-HarmonyOS (OHOS) was frozen at 1.14.x and removed from `main`, so the planner
-no longer has an OHOS group; OHOS CI exists only on `release/1.14.x`.
+The planner has two platform groups, Android and iOS.
 
 | Changed paths | Selected platform groups | Notes |
 | --- | --- | --- |

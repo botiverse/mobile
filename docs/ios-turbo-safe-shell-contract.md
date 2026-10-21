@@ -4,7 +4,7 @@
 - Scope: iOS-only, default-off startup visual experiment
 - Authorization: documentation only
 - Not authorized by this document: implementation, feature enablement, Alpha,
-  rollout, publication, or Android/OHOS parity work
+  rollout, publication, or Android parity work
 - Evidence baseline: Raft Mobile `064a4eb71c1d28aa2a7faeb5048ceb2988ba8422`
   with Kuikly fork gitlink `0e101b7a9face423c38b081bd44ae10553afc656`
 
@@ -70,7 +70,7 @@ about every future Kuikly revision.
 1. Raft does not currently enable TurboDisplay in its iOS host.
    `compose/iosApp/iosApp/KuiklyExpand/KuiklyRenderViewController.m` implements
    neither `turboDisplayKey` nor `configureTurboDisplay`.
-2. Android, iOS, OHOS, and shared use the same product shell page name,
+2. Android, iOS, and shared use the same product shell page name,
    `compose_slock_app_shell`. A page name therefore cannot identify an account,
    API environment, server, route, artifact schema, or renderer generation.
 3. Kuikly derives its cache key from `pageName + turboDisplayKey`. Returning the
@@ -89,7 +89,7 @@ about every future Kuikly revision.
    That is candidate/file-existence truth, not validation, decode, attachment,
    confirmed display, or successful handoff truth.
 8. The audited native TurboDisplay implementation is iOS-specific. No Android
-   or OHOS behavior change is part of this contract.
+   behavior change is part of this contract.
 9. The current Kuikly cache file has no Raft safety envelope: no artifact
    manifest, checksum, policy/schema version, structural allowlist, TTL, size
    cap, or embedded identity metadata. Corrupt/truncated length paths can leave
@@ -761,7 +761,7 @@ V1 does not:
 - use `compose_slock_app_shell` as a complete product cache key;
 - permit interactive cached pages or product event replay;
 - retain an artifact as an offline, loading, empty, or error fallback;
-- change Android/OHOS product semantics;
+- change Android product semantics;
 - authorize contextual or personalized snapshots;
 - define performance thresholds, cache TTL/LRU/disk limits, exact V1 allowed
   node/prop resources, or rollout ownership before an implementation review;

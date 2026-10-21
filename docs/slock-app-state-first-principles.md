@@ -43,7 +43,7 @@ updates. They should not see whole pages rebuild, jump, flicker, or slowly
      local draft text while editing.
    - Business state, cache state, loading state, action pending state, and
      error/success feedback must live in commonMain stores/reducers.
-   - Android/OHOS hosts provide capabilities only: storage, network, router,
+   - Android/iOS hosts provide capabilities only: storage, network, router,
      notification, file picker, image preview, safe-area, and system APIs.
 
 4. **No-op writes must be skipped before state emission**

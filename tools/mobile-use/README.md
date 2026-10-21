@@ -27,9 +27,6 @@ The package is intentionally not tied to a single checkout. Defaults match the
 Raft Android/iOS apps, but every path and identifier can be overridden by CLI
 flags or environment variables.
 
-The former `harmony-use` (HarmonyOS/OHOS) CLI was removed when OHOS support was
-frozen at the 1.14.x line; it remains available on the `release/1.14.x` branch.
-
 ## Install
 
 From this repository:

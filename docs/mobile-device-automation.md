@@ -2,9 +2,6 @@
 
 This is the cross-platform command-line path for Slock mobile smoke work when an agent needs to launch the app, capture screenshots, tap coordinates, or scroll without using Android Studio or Xcode UI.
 
-HarmonyOS (OHOS) device automation was removed from `main` when OHOS was
-frozen at 1.14.x; the OHOS runbook and helpers live on `release/1.14.x`.
-
 Related docs:
 
 - `docs/android-emulator-setup.md` covers Android AVD lifecycle and raw `adb` equivalents.

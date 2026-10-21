@@ -35,6 +35,5 @@ embedded package is shaded or removed.
 ## Next Integration Step
 
 The fork is intentionally source-only in this commit. The next step should add a
-local Gradle module/publish script and wire `compose/shared` to the local fork,
-then add the Harmony smoke page back against the local artifact.
+local Gradle module/publish script and wire `compose/shared` to the local fork.
 

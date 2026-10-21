@@ -61,7 +61,6 @@ Be precise about what "120Hz support" means today:
 
 - **Android** — source merged (PR #3003); `preferredDisplayModeId` opt-in as described above. No full real-device frame-timing PASS receipt yet; treat as code-complete, evidence-pending.
 - **iOS** — source merged (PR #2989, `CADisableMinimumFrameDurationOnPhone`); same evidence-pending status for full real-device frame timing.
-- **OHOS** — never got a high-refresh opt-in; OHOS is frozen at 1.14.x (`release/1.14.x`) and no longer exists on `main`.
 
 ## 6. What is intentionally not covered
 
