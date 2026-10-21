@@ -6,6 +6,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.toArgb
+import build.raft.designsystem.tokens.RaftUiPalette
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -68,7 +70,18 @@ data class RaftNativeTabBarItem(
      * The host prefers it and falls back to [systemImageName] when the asset is missing.
      */
     val imageAssetName: String? = null,
+    /**
+     * Fill and text colour (0xAARRGGBB) of a numbered badge: the raft-ui unread count's pink
+     * `attention` sticker with ink figures, as on the Compose bar, rail and Home sidebar. The
+     * host tints `UITabBarItem.badgeColor` / badge text with them; the dot-only badge keeps the
+     * system look.
+     */
+    val countBadgeFillArgb: Long = RaftNativeTabBarCountBadgeFillArgb,
+    val countBadgeTextArgb: Long = RaftNativeTabBarCountBadgeTextArgb,
 )
+
+internal val RaftNativeTabBarCountBadgeFillArgb: Long = RaftUiPalette.attention.toArgb().toLong() and 0xFFFFFFFFL
+internal val RaftNativeTabBarCountBadgeTextArgb: Long = RaftUiPalette.stickerInk.toArgb().toLong() and 0xFFFFFFFFL
 
 /** Everything the host needs to render the bar. Exported to Swift. */
 data class RaftNativeTabBarState(

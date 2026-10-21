@@ -16,6 +16,10 @@ struct RaftIosTabBarItemSpec: Equatable {
     let searchAction: Bool
     /// Asset-catalog name of the tab's Lucide icon (the web's glyph); nil uses the SF Symbols.
     let imageAssetName: String?
+    /// Numbered badge colours (0xAARRGGBB) from shared: the raft-ui pink unread count with ink
+    /// figures. nil keeps the system badge look; the dot-only badge always does.
+    let countBadgeFillArgb: Int64?
+    let countBadgeTextArgb: Int64?
 
     init(
         key: String,
@@ -26,7 +30,9 @@ struct RaftIosTabBarItemSpec: Equatable {
         enabled: Bool,
         attentionDot: Bool = false,
         searchAction: Bool = false,
-        imageAssetName: String? = nil
+        imageAssetName: String? = nil,
+        countBadgeFillArgb: Int64? = nil,
+        countBadgeTextArgb: Int64? = nil
     ) {
         self.key = key
         self.title = title
@@ -36,6 +42,13 @@ struct RaftIosTabBarItemSpec: Equatable {
         self.enabled = enabled
         self.searchAction = searchAction
         self.imageAssetName = imageAssetName
+        self.countBadgeFillArgb = countBadgeFillArgb
+        self.countBadgeTextArgb = countBadgeTextArgb
+    }
+
+    /// The badge shows a number (not nothing, not the dot-only badge): it takes the count colours.
+    var showsCountBadge: Bool {
+        RaftIosTabBarItemMapping.isCountBadge(badgeValue)
     }
 }
 
@@ -60,6 +73,23 @@ enum RaftIosTabBarItemMapping {
             return attentionDot ? "" : nil
         }
         return trimmed
+    }
+
+    /// A numbered badge (the Activity unread count); nil and "" (the dot) are not.
+    static func isCountBadge(_ badgeValue: String?) -> Bool {
+        guard let value = badgeValue else { return false }
+        return !value.isEmpty
+    }
+
+    /// 0xAARRGGBB -> (red, green, blue, alpha) in 0...1.
+    static func rgba(fromArgb argb: Int64) -> (CGFloat, CGFloat, CGFloat, CGFloat) {
+        let value = UInt32(truncatingIfNeeded: argb)
+        return (
+            CGFloat((value >> 16) & 0xFF) / 255,
+            CGFloat((value >> 8) & 0xFF) / 255,
+            CGFloat(value & 0xFF) / 255,
+            CGFloat((value >> 24) & 0xFF) / 255
+        )
     }
 
     /// Tabs in shared order, first occurrence of a key wins, capped at `maximumTabCount`.
