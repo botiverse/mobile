@@ -20,6 +20,9 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
@@ -133,6 +136,16 @@ class ThreadComposerTextSelectionConnectedTest {
                 )
                 .putExtra(RaftCmpActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
         ActivityScenario.launch<RaftCmpActivity>(intent).use { scenario ->
+            // The fixture draws the composer edge to edge from the top of the window, so the draft's
+            // first line sits under the status bar on tall-inset devices (CI: y=119 under a 145px
+            // bar), and SystemUI, not the app, owns those touches. Hide the status bar for the
+            // test; awaitAppWindowOwnsPoint confirms the app owns each injected point.
+            scenario.onActivity { activity ->
+                WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
+                    systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    hide(WindowInsetsCompat.Type.statusBars())
+                }
+            }
             waitUntil({ "empty composer should attach" }) { scenario.raftFirstTextField()?.text == "" }
             scenario.awaitVisualInputHostReadyForEditorFocus("selection fixture composer") { activity ->
                 activity.raftHasTextField()
