@@ -120,6 +120,7 @@ internal fun authenticatedProductPageView(
         AuthenticatedProductRoute.ReleaseNotes -> RaftProductPageView(RaftPageRoute.ReleaseNotes)
         AuthenticatedProductRoute.ThreadMembers,
         AuthenticatedProductRoute.ChannelSettings,
+        AuthenticatedProductRoute.JointChannelConnections,
         AuthenticatedProductRoute.ThreadForwardBundle,
         AuthenticatedProductRoute.FilePreview -> null
     }
