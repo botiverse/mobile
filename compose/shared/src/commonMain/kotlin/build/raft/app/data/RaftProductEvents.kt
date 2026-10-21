@@ -68,6 +68,11 @@ object RaftProductEvents {
         recorder.client.setSignedOut()
     }
 
+    /** The user changed "Share usage data": ask `/product-events/config` again before the next batch. */
+    fun invalidateConsent() {
+        recorder.client.invalidateConsent()
+    }
+
     fun navEntrySelected(destination: RaftNavDestination?, surface: RaftNavSurface, wasActive: Boolean) {
         if (destination == null) return
         recorder.navEntrySelected(destination, surface, wasActive)

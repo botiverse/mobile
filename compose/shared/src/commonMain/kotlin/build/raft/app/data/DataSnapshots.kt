@@ -1272,8 +1272,26 @@ data class AccountSettingsSnapshot(
     val connectedAccounts: List<ConnectedAccountSnapshot>,
     val canEditProfile: Boolean = true,
     val canUploadAvatar: Boolean = true,
-    val canChangePassword: Boolean = true
+    val canChangePassword: Boolean = true,
+    /** Settings › Account "Share usage data"; null hides the row (flag off, or not loaded from the server). */
+    val usageData: AccountUsageDataSnapshot? = null
 )
+
+/**
+ * slock `packages/shared/src/productEvents.ts` `SHARE_USAGE_DATA_DEFAULT`: what "Share usage data" is
+ * for a user who has not chosen (`users.share_usage_data` null). The server gate
+ * (`productAnalyticsGate`) applies the same default.
+ */
+const val SHARE_USAGE_DATA_DEFAULT: Boolean = true
+
+/** The user's RFC-067 "Share usage data" choice as the server holds it. */
+data class AccountUsageDataSnapshot(
+    /** `users.shareUsageData`: true / false, or null when the user has never chosen. */
+    val choice: Boolean?
+) {
+    /** What the switch shows: the choice, or [SHARE_USAGE_DATA_DEFAULT] until there is one (web parity). */
+    val sharing: Boolean get() = choice ?: SHARE_USAGE_DATA_DEFAULT
+}
 
 data class AccountProfileSnapshot(
     val userId: String,

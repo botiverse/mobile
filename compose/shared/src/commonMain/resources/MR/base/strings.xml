@@ -144,6 +144,10 @@
     <string name="settings_account_logout">Log out</string>
     <string name="settings_account_logout_detail">Sign out on this device. Your account and data stay; you can sign back in any time.</string>
     <string name="settings_account_logout_confirm">Sign out on this device? Your account and data are kept; you can log back in any time.</string>
+    <string name="settings_usage_data_title">Share usage data</string>
+    <string name="settings_usage_data_description">Help improve Raft by sharing which pages and features you use. Never includes your messages or other content.</string>
+    <string name="settings_usage_data_learn_more">Learn more</string>
+    <string name="settings_usage_data_save_failed">Couldn\'t save this setting. Try again.</string>
     <string name="settings_mobile_title">Mobile</string>
     <string name="settings_mobile_subtitle">My message alignment</string>
     <string name="settings_computers_title">Computers</string>

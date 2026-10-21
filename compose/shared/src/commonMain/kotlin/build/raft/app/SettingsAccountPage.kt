@@ -3,6 +3,13 @@ package build.raft.app
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftListRowGroup
+import build.raft.designsystem.components.RaftListRowVariant
+import build.raft.designsystem.components.RaftSwitch
+import build.raft.designsystem.components.RaftTextLink
+import build.raft.designsystem.components.RaftTextLinkVariant
+import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.RaftCachedImage
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftBrutalActionButton
@@ -138,7 +145,11 @@ internal data class RaftSettingsAccountPayload(
     val canUploadAvatar: Boolean = true,
     val canChangePassword: Boolean = true,
     val saveInProgress: Boolean = false,
-    val saveErrorCode: String? = null
+    val saveErrorCode: String? = null,
+    /** "Share usage data" (Settings › Account on web); hidden while false. */
+    val usageDataVisible: Boolean = false,
+    val usageDataSharing: Boolean = true,
+    val usageDataSaving: Boolean = false
 )
 
 @Serializable
@@ -329,6 +340,11 @@ private fun handleStandaloneAccountAction(
     when (action) {
         "logout" -> dispatch(SharedSettingsIntent.Logout)
         "uploadAvatar" -> dispatch(SharedSettingsIntent.RequestAccountAvatarUpload)
+        SETTINGS_ACCOUNT_ACTION_SET_SHARE_USAGE_DATA ->
+            value?.toBooleanStrictOrNull()?.let { enabled ->
+                dispatch(SharedSettingsIntent.SetShareUsageData(enabled))
+            }
+        SETTINGS_ACCOUNT_ACTION_OPEN_USAGE_DATA_PRIVACY -> dispatch(SharedSettingsIntent.OpenShareUsageDataPrivacy)
         "connectProvider" ->
             value?.takeIf { it.isNotBlank() }?.let { providerId ->
                 dispatch(SharedSettingsIntent.ConnectAccountProvider(AccountProviderLinkStartRequest(providerId = providerId)))
@@ -384,8 +400,60 @@ internal fun SettingsAccountContent(
                 onPasswordChange
             )
         }
+        if (localizedPayload.usageDataVisible) {
+            item {
+                SettingsAccountUsageDataRow(
+                    sharing = localizedPayload.usageDataSharing,
+                    saving = localizedPayload.usageDataSaving,
+                    onEvent = onEvent
+                )
+            }
+        }
         item { SettingsLogoutAction(localizedPayload) { onEvent("logout", null) } }
         item { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+}
+
+internal const val SETTINGS_ACCOUNT_ACTION_SET_SHARE_USAGE_DATA = "setShareUsageData"
+internal const val SETTINGS_ACCOUNT_ACTION_OPEN_USAGE_DATA_PRIVACY = "openUsageDataPrivacy"
+
+/**
+ * Web `UsageDataSettingsCard` (slock `packages/web/src/components/settings/UsageDataSettings.tsx`): a
+ * plain setting row in an inset group, the switch its target; the description ends in "Learn more"
+ * (the privacy policy). The switch is disabled while a save runs; a failed save is a toast.
+ */
+@Composable
+private fun SettingsAccountUsageDataRow(
+    sharing: Boolean,
+    saving: Boolean,
+    onEvent: (String, String?) -> Unit
+) {
+    val title = stringResource(MR.strings.settings_usage_data_title)
+    RaftListRowGroup(Modifier.fillMaxWidth()) {
+        RaftListRow(
+            title = title,
+            variant = RaftListRowVariant.Plain,
+            description = stringResource(MR.strings.settings_usage_data_description),
+            wrapDescription = true,
+            trailing = {
+                RaftSwitch(
+                    checked = sharing,
+                    onCheckedChange = { checked ->
+                        onEvent(SETTINGS_ACCOUNT_ACTION_SET_SHARE_USAGE_DATA, checked.toString())
+                    },
+                    enabled = !saving,
+                    label = title
+                )
+            }
+        )
+        Box(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
+            RaftTextLink(
+                text = stringResource(MR.strings.settings_usage_data_learn_more),
+                onClick = { onEvent(SETTINGS_ACCOUNT_ACTION_OPEN_USAGE_DATA_PRIVACY, null) },
+                variant = RaftTextLinkVariant.Strong,
+                style = RaftTheme.typography.callout
+            )
+        }
     }
 }
 

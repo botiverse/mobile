@@ -334,6 +334,24 @@ class RealSettingsRepository(
         return accountResult.withConnectedAccountProviders(session.user.email)
     }
 
+    override suspend fun updateShareUsageData(enabled: Boolean): DataResult<AccountUsageDataSnapshot> {
+        sessionStore.readSession() ?: return authRequired()
+        return executeSettings(
+            emptyReason = EmptyReason.NoSettingsAvailable,
+            block = {
+                networkClient.updateSettingsAccount(
+                    DataRequestPriority.Foreground,
+                    buildSharedShareUsageDataUpdateBody(enabled)
+                )
+            },
+            errorTextDecoder = HomeNetworkResponse::settingsAccountRouteErrorTextOrNull,
+            mapper = { bodyText ->
+                parseSharedAccountUsageDataSnapshot(bodyText)
+                    ?: throw IllegalStateException("Share usage data response missing user")
+            }
+        )
+    }
+
     override suspend fun changeAccountPassword(request: AccountPasswordChangeRequest): DataResult<AccountSettingsSnapshot> {
         val session = sessionStore.readSession() ?: return authRequired()
         return executeSettings(
@@ -3131,6 +3149,18 @@ fun buildSharedAccountProfileUpdateBody(request: AccountProfileUpdateRequest): S
             email = request.email
         )
     )
+
+/**
+ * slock `routes/auth.ts` `PATCH /me` → `parseShareUsageData`: a boolean (null would mean "back to not
+ * chosen", which this client never sends).
+ */
+@Serializable
+data class ShareUsageDataUpdateRequestBody(
+    val shareUsageData: Boolean
+)
+
+fun buildSharedShareUsageDataUpdateBody(enabled: Boolean): String =
+    settingsRepositoryJson.encodeToString(ShareUsageDataUpdateRequestBody(shareUsageData = enabled))
 
 fun buildSharedAppearanceUpdateBody(request: SettingsAppearanceUpdateRequest): String =
     settingsRepositoryJson.encodeToString(

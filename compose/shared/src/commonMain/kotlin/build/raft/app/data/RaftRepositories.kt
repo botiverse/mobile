@@ -36,6 +36,12 @@ interface SettingsRepository {
     suspend fun changeAccountPassword(request: AccountPasswordChangeRequest): DataResult<AccountSettingsSnapshot>
     suspend fun uploadAccountAvatar(request: AccountAvatarUploadRequest): DataResult<AccountSettingsSnapshot>
     suspend fun startAccountProviderLink(request: AccountProviderLinkStartRequest): DataResult<AccountProviderLinkStartResult>
+    /**
+     * `PATCH /api/auth/me` `{ shareUsageData }` (RFC-067 "Share usage data"); the content is the choice the
+     * server now holds, read back from the returned user.
+     */
+    suspend fun updateShareUsageData(enabled: Boolean): DataResult<AccountUsageDataSnapshot> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
     suspend fun getConnectedApps(): DataResult<SettingsConnectedAppsSnapshot>
     suspend fun registerConnectedApp(
         request: SettingsConnectedAppRegisterRequest
