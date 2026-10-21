@@ -1577,7 +1577,6 @@
     <string name="home_action_close_chat">关闭会话</string>
     <string name="home_action_archive">归档</string>
     <string name="home_action_sort">排序</string>
-    <string name="home_action_save_sort">保存排序</string>
     <string name="home_sort_manual">手动</string>
     <string name="home_sort_recent">最近</string>
     <string name="home_sort_az">A-Z</string>

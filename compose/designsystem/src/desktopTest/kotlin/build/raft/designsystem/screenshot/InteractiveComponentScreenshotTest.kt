@@ -47,6 +47,7 @@ import build.raft.designsystem.components.RaftCheckboxRow
 import build.raft.designsystem.components.RaftCheckboxShape
 import build.raft.designsystem.components.RaftDialogHeader
 import build.raft.designsystem.components.RaftDialogSize
+import build.raft.designsystem.components.RaftDialogSheetSurface
 import build.raft.designsystem.components.RaftDialogSurface
 import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftField
@@ -692,6 +693,44 @@ class InteractiveComponentScreenshotTest {
                             RaftRadioRow("Acme", selected = false, onClick = {})
                         }
                     }
+                }
+            }
+        }
+
+    /**
+     * [RaftDialogSheetSurface]: a dialog with a long list on a phone (raft-ui Dialog "On a
+     * phone", 2026-10-21): × at the start, the title, the pink commit button at the end of a
+     * 56dp head with a seam, no footer; the list fills the rest. The window gives it 90% of
+     * its height; the fixture gives it a height.
+     */
+    @Test
+    fun dialogSheet() =
+        capture("dialog_sheet") {
+            Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.Top) {
+                Column(Modifier.width(358.dp)) {
+                    Caption("Sheet: commit enabled", Modifier.padding(bottom = 12.dp))
+                    RaftDialogSheetSurface(
+                        title = "Pinned",
+                        commitLabel = "Save",
+                        onCommit = {},
+                        onClose = {},
+                        modifier = Modifier.height(320.dp),
+                    ) {
+                        listOf("proj-uiux", "design", "launch-week", "Mahua").forEach { name ->
+                            RaftText(name, Modifier.padding(horizontal = 16.dp, vertical = 10.dp), style = RaftTheme.typography.callout)
+                        }
+                    }
+                }
+                Column(Modifier.width(358.dp)) {
+                    Caption("Commit disabled (while a row is held), long title", Modifier.padding(bottom = 12.dp))
+                    RaftDialogSheetSurface(
+                        title = "A long section title that does not fit the head",
+                        commitLabel = "Save",
+                        onCommit = {},
+                        onClose = {},
+                        commitEnabled = false,
+                        modifier = Modifier.height(320.dp),
+                    ) {}
                 }
             }
         }

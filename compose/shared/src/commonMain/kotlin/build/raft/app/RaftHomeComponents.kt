@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftDialogSheet
 import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.components.RaftBadge
@@ -569,7 +570,7 @@ data class RaftHomeShellLabels(
     val closeChat: String = "Close Chat",
     val archive: String = "Archive",
     val sortChannels: String = "Sort",
-    val saveSort: String = "Save sort",
+    val saveSort: String = "Save",
     val sortManual: String = "Manual",
     val sortRecent: String = "Recent",
     val sortAz: String = "A-Z",
@@ -622,7 +623,7 @@ data class RaftHomeShellLabels(
             closeChat = stringResource(MR.strings.home_action_close_chat),
             archive = stringResource(MR.strings.home_action_archive),
             sortChannels = stringResource(MR.strings.home_action_sort),
-            saveSort = stringResource(MR.strings.home_action_save_sort),
+            saveSort = stringResource(MR.strings.common_save),
             sortManual = stringResource(MR.strings.home_sort_manual),
             sortRecent = stringResource(MR.strings.home_sort_recent),
             sortAz = stringResource(MR.strings.home_sort_az),
@@ -3323,6 +3324,9 @@ private fun RaftStructuralHomeShellContent(
                     items = sortItems,
                     saveLabel = labels.saveSort,
                     onDismiss = { sortOverlaySection = null },
+                    cacheServerId = currentServerId,
+                    agentStatusResolver = agentStatusResolver,
+                    memberAvatarResolver = memberAvatarResolver,
                     onSave = { orderedIds ->
                         sortOverlaySection = null
                         val initialIds = sortItems.map { it.id }
@@ -6606,9 +6610,17 @@ private fun RaftSidebarSortOverlay(
     items: List<RaftHomeConversationItem>,
     saveLabel: String,
     onSave: (List<String>) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    cacheServerId: String? = null,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver
 ) {
-    var order by remember(items) { mutableStateOf(items.map { it.id }) }
+    // The sheet owns the order the person is building. A realtime tick (a new message, a
+    // presence change) hands in new item objects for the same rows: it must neither reset
+    // that order nor cancel a drag, so state is keyed on nothing and only reconciled by id.
+    val itemIds = remember(items) { items.map { it.id } }
+    var userOrder by remember { mutableStateOf(itemIds) }
+    val order = remember(userOrder, itemIds) { reconcileSidebarSortOrder(userOrder, itemIds) }
     val itemsById = remember(items) { items.associateBy { it.id } }
     val density = LocalDensity.current
     val edgeScrollZonePx = with(density) { RaftSortEdgeScrollZone.toPx() }
@@ -6624,19 +6636,19 @@ private fun RaftSidebarSortOverlay(
     // resolve a single drop target against the current visible-row layout, draw a
     // floating copy under the finger + an insertion line at the target, and
     // commit the reorder once on drop.
-    var draggedId by remember(items) { mutableStateOf<String?>(null) }
-    var draggedStartIndex by remember(items) { mutableStateOf(0) }
+    var draggedId by remember { mutableStateOf<String?>(null) }
+    var draggedStartIndex by remember { mutableStateOf(0) }
     // Height of the held row as laid out (a sidebar row grows with the font scale): its
     // placeholder keeps that slot and the floating copy is centred on the finger with it.
-    var draggedRowSizePx by remember(items) { mutableStateOf(0f) }
-    var pointerViewportY by remember(items) { mutableStateOf(0f) }
-    var targetIndex by remember(items) { mutableStateOf(-1) }
+    var draggedRowSizePx by remember { mutableStateOf(0f) }
+    var pointerViewportY by remember { mutableStateOf(0f) }
+    var targetIndex by remember { mutableStateOf(-1) }
     // Debounced copy of targetIndex that drives the live position numbers. The
     // raw target changes every frame under auto-scroll, which made the numbers
     // flicker wildly (device feedback: "dragging 6 kept becoming 13"). Numbers
     // only renumber after the target has been stable for a beat; the insertion
     // line and the actual drop keep using the raw, immediate target.
-    var settledTargetIndex by remember(items) { mutableStateOf(-1) }
+    var settledTargetIndex by remember { mutableStateOf(-1) }
     LaunchedEffect(draggedId, targetIndex) {
         if (draggedId == null) {
             settledTargetIndex = -1
@@ -6695,13 +6707,17 @@ private fun RaftSidebarSortOverlay(
                 .associate { (i, id) -> id to i + 1 }
         } ?: emptyMap()
 
-    RaftUnifiedDialog(
+    // raft-ui Dialog on a phone (2026-10-21): a long reorderable list is a 90% sheet with
+    // × at the start and the one commit button at the end of its head, no footer.
+    RaftDialogSheet(
+        onDismissRequest = { if (draggedId == null) onDismiss() },
         title = title,
-        onDismiss = onDismiss,
-        dismissEnabled = draggedId == null,
-        contentSpacing = 12.dp
+        commitLabel = saveLabel,
+        commitEnabled = draggedId == null,
+        onCommit = { onSave(order) },
+        closeLabel = stringResource(MR.strings.common_close)
     ) {
-        Box(modifier = Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 420.dp).clipToBounds()) {
+        Box(modifier = Modifier.fillMaxWidth().weight(1f).clipToBounds()) {
             // Container-level long-press drag: identify the row under the finger
             // at long-press, then track the finger. Because the gesture is on
             // the container it survives list scrolling and preview reordering.
@@ -6733,7 +6749,7 @@ private fun RaftSidebarSortOverlay(
                                     var changed = false
                                     if (active != null && targetIndex >= 0 && targetIndex != draggedStartIndex) {
                                         changed = true
-                                        order = order.moveItem(active, targetIndex)
+                                        userOrder = order.moveItem(active, targetIndex)
                                     }
                                     raftLogInfo(
                                         "SlockHomeSort",
@@ -6774,7 +6790,10 @@ private fun RaftSidebarSortOverlay(
                         HomeSidebarSortRow(
                             item = item,
                             position = position,
-                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                            cacheServerId = cacheServerId,
+                            agentStatusResolver = agentStatusResolver,
+                            memberAvatarResolver = memberAvatarResolver
                         )
                     }
                 }
@@ -6821,6 +6840,9 @@ private fun RaftSidebarSortOverlay(
                         item = item,
                         position = position,
                         held = true,
+                        cacheServerId = cacheServerId,
+                        agentStatusResolver = agentStatusResolver,
+                        memberAvatarResolver = memberAvatarResolver,
                         modifier =
                             Modifier
                                 .fillMaxWidth()
@@ -6841,14 +6863,19 @@ private fun RaftSidebarSortOverlay(
                 }
             }
         }
-        RaftModalFullWidthActionButton(
-            label = saveLabel,
-            icon = RaftLucideIconName.Check,
-            color = RaftColor.AccentPink,
-            enabled = draggedId == null,
-            onClick = { onSave(order) }
-        )
     }
+}
+
+/**
+ * The sheet's order against the rows currently in the section: keep the person's order for
+ * rows still there, drop rows that left, append rows that arrived (in section order).
+ */
+internal fun reconcileSidebarSortOrder(userOrder: List<String>, itemIds: List<String>): List<String> {
+    val present = itemIds.toSet()
+    val kept = userOrder.filter { it in present }
+    if (kept.size == itemIds.size) return kept
+    val keptSet = kept.toSet()
+    return kept + itemIds.filterNot { it in keptSet }
 }
 
 /**
@@ -6860,7 +6887,10 @@ private fun HomeSidebarSortRow(
     item: RaftHomeConversationItem,
     position: Int,
     modifier: Modifier = Modifier,
-    held: Boolean = false
+    held: Boolean = false,
+    cacheServerId: String? = null,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver
 ) {
     val isDirectMessage = item.isDirectMessageConversation()
     val pressSource = remember { MutableInteractionSource() }
@@ -6879,7 +6909,19 @@ private fun HomeSidebarSortRow(
             tone = if (item.joined || isDirectMessage) RaftRowTone.Default else RaftRowTone.Away,
             leading = {
                 if (isDirectMessage) {
-                    ChannelAvatar(null, item.avatarLabel, showPresence = false)
+                    // The sidebar DM row's avatar (HomeSidebarDirectMessageRow): the member's
+                    // real (pixel) avatar from the resolver/cache, the agent status pixel.
+                    val memberId = item.presenceMemberId
+                    val isAgent = item.peerType.equals("agent", ignoreCase = true)
+                    DirectMessageAvatar(
+                        agentMemberId = memberId?.takeIf { isAgent && it.isNotBlank() },
+                        agentStatusResolver = agentStatusResolver,
+                        avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, memberId),
+                        avatarLabel = item.name.ifBlank { item.avatarLabel },
+                        cacheSubject = raftMemberAvatarCacheSubject(item.peerType.homeDmPeerMemberKindOrNull(), memberId),
+                        cacheServerId = cacheServerId,
+                        fallbackFill = raftAvatarFallbackFill(if (isAgent) MemberKind.Agent else MemberKind.Human)
+                    )
                 } else {
                     HomeSidebarChannelGlyph(item.homeChannelSymbol())
                 }

@@ -1577,7 +1577,6 @@
     <string name="home_action_close_chat">Close Chat</string>
     <string name="home_action_archive">Archive</string>
     <string name="home_action_sort">Sort</string>
-    <string name="home_action_save_sort">Save sort</string>
     <string name="home_sort_manual">Manual</string>
     <string name="home_sort_recent">Recent</string>
     <string name="home_sort_az">A-Z</string>

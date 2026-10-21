@@ -1581,7 +1581,6 @@
     <string name="home_action_close_chat">チャットを閉じる</string>
     <string name="home_action_archive">アーカイブ</string>
     <string name="home_action_sort">並べ替え</string>
-    <string name="home_action_save_sort">並び順を保存</string>
     <string name="home_sort_manual">手動</string>
     <string name="home_sort_recent">最近</string>
     <string name="home_sort_az">A-Z</string>
