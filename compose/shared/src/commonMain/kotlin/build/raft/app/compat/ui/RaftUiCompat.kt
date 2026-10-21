@@ -2,7 +2,6 @@ package build.raft.app.compat.ui
 
 import build.raft.designsystem.gesture.LocalRaftBackSwipeActive
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -119,7 +118,7 @@ data class KeyboardParams(val height: Float, val duration: Float)
 fun Modifier.keyboardHeightChange(keyboardHeightChange: (KeyboardParams) -> Unit): Modifier =
     composed {
         val density = LocalDensity.current
-        val imeBottom = WindowInsets.ime.getBottom(density)
+        val imeBottom = raftImeBottomPx(density)
         val navigationBottom =
             if (raftKeyboardHeightExcludesNavigationBars) WindowInsets.navigationBars.getBottom(density) else 0
         val keyboardPx = (imeBottom - navigationBottom).coerceAtLeast(0)

@@ -13,6 +13,8 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.offset
+import build.raft.app.compat.ui.LocalRaftHostImeInsets
+import build.raft.app.compat.ui.raftImeBottomPx
 import build.raft.app.compat.ui.raftKeyboardHeightExcludesNavigationBars
 
 /*
@@ -65,12 +67,15 @@ internal fun Modifier.raftThreadComposerLiveKeyboardPadding(
 ): Modifier {
     val ime = WindowInsets.ime
     val navigationBars = WindowInsets.navigationBars
+    // The host's report wins whenever no platform animation drives WindowInsets.ime, so a keyboard
+    // that opens without an animation (Hands 1af517cc) still lifts the composer (RaftHostImeInsets).
+    val hostIme = LocalRaftHostImeInsets.current
     val padding =
-        remember(ime, navigationBars, bottomSafeArea, keyboardInsetExcludesBottomSafeArea) {
+        remember(ime, navigationBars, hostIme, bottomSafeArea, keyboardInsetExcludesBottomSafeArea) {
             Modifier.layout { measurable, constraints ->
                 val keyboardPx =
                     raftThreadKeyboardInsetPx(
-                        imeBottomPx = ime.getBottom(this),
+                        imeBottomPx = raftImeBottomPx(ime, hostIme, this),
                         navigationBottomPx = navigationBars.getBottom(this),
                         excludesNavigationBars = raftKeyboardHeightExcludesNavigationBars,
                     )

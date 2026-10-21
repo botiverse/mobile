@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import build.raft.app.resources.MR
+import build.raft.app.compat.ui.raftImeBottomPx
 import com.tencent.tmm.kmmresource.compose.stringResource
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
@@ -19,8 +20,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -261,9 +260,12 @@ internal val RaftAppShellBottomBarReturn: EnterTransition =
 /** The bar leaves at once when the keyboard opens: the keyboard is already covering it. */
 internal val RaftAppShellBottomBarLeave: ExitTransition = ExitTransition.None
 
-/** True while a software keyboard covers part of the window (`WindowInsets.ime`). */
+/**
+ * True while a software keyboard covers part of the window: `WindowInsets.ime`, or the host's own
+ * report when no platform animation drives it (see `RaftHostImeInsets`).
+ */
 @Composable
-internal fun raftImeVisible(): Boolean = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+internal fun raftImeVisible(): Boolean = raftImeBottomPx(LocalDensity.current) > 0
 
 // task #23/#45: the left navigation rail owns tab selection whenever the user's
 // desktop-mode setting is on and the window is in the dual-pane (flat, >=840dp)

@@ -28,6 +28,7 @@ import build.raft.app.data.parseRaftAvatarMountedRenderModel
 import coil3.compose.AsyncImagePainter
 import build.raft.app.compat.ui.rememberAsyncImageBitmap
 import build.raft.app.compat.ui.keyboardHeightChange
+import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import coil3.compose.rememberAsyncImagePainter
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -1338,9 +1339,13 @@ fun Modal(
         properties = raftModalDialogPropertiesWithoutScrim()
     ) {
         RaftModalDialogWindowEffect()
-        RaftInputFocusDismissHost { focusDismissModifier ->
-            Box(modifier = modifier.then(focusDismissModifier).fillMaxSize()) {
-                content()
+        // The dialog is its own window with its own keyboard animation; the host's IME report
+        // describes the activity window underneath (RaftHostImeInsets).
+        CompositionLocalProvider(LocalRaftHostImeInsets provides null) {
+            RaftInputFocusDismissHost { focusDismissModifier ->
+                Box(modifier = modifier.then(focusDismissModifier).fillMaxSize()) {
+                    content()
+                }
             }
         }
     }
