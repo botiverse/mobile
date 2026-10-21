@@ -94,7 +94,8 @@ class SharedThreadStoreReplyThreadDurableTest {
         assertTrue(payload.messages.isEmpty())
         assertTrue(payload.status != "content", payload.status)
         assertEquals(1, api.channelMessageCalls, "the ordinary network load ran")
-        assertEquals(listOf(ReplyRead(partition(ownerA), "thread-1", parent)), reader.replyReads)
+        // Task #18: nothing on disk -> read, bounded wait for the entry load, read again.
+        assertEquals(List(2) { ReplyRead(partition(ownerA), "thread-1", parent) }, reader.replyReads)
         scopeJob.cancelAndJoin()
     }
 

@@ -15,6 +15,7 @@ import build.raft.app.network.sync.ThreadDurableLastKnownFrame
 import build.raft.app.network.sync.ThreadDurableLastKnownReader
 import build.raft.app.network.sync.ThreadDurableReplyParent
 import build.raft.app.network.sync.TopLevelScopeRefV2
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -64,8 +65,9 @@ class SharedThreadStoreEnterBaselineAwaitTest {
         assertTrue(payload.durableLastKnown)
         assertEquals(listOf("baseline body"), payload.messages.map { it.body })
         assertEquals(listOf(partition(ownerA) to "channel-1"), loader.loads)
+        // Task #18: the fake load commits synchronously on launch, so the first read already sees it.
         assertEquals(listOf(partition(ownerA) to "channel-1"), reader.reads)
-        assertTrue(logs.any { "thread_enter_baseline_await" in it && "completed=true" in it }, logs.toString())
+        assertFalse(logs.any { "thread_enter_baseline_await" in it }, "already on disk at the first read: no wait")
         // The refresh ran too and failed offline — that is the one `messages/channel/` call the
         // refresh path makes; the baseline load itself fetches through the loader, which the fake
         // replaces with an in-memory commit (the real one is exercised in
@@ -93,10 +95,41 @@ class SharedThreadStoreEnterBaselineAwaitTest {
 
         val payload = store.state.value.payload
         assertEquals(listOf(partition(ownerA) to "channel-1"), loader.loads)
-        assertEquals(listOf(partition(ownerA) to "channel-1"), reader.reads)
+        // Task #18: one read before the wait (the disk had no frame yet) and one after it.
+        assertEquals(List(2) { partition(ownerA) to "channel-1" }, reader.reads)
         assertTrue(logs.any { "thread_enter_baseline_await" in it && "completed=true" in it }, logs.toString())
         assertFalse(payload.durableLastKnown)
         assertTrue(payload.status != "content" || payload.messages.isEmpty(), payload.status)
+        scope.cancel()
+    }
+
+    @Test
+    fun aFrameAlreadyOnDiskIsTheFirstFrameWithoutWaitingForTheLoad() = runBlocking {
+        // Task #18 (Hands e342666b): with a frame on disk the entry must not wait for the baseline
+        // load (on a real network it never finished inside the window). The load here never ends; the
+        // first frame is still the disk frame, nothing waited, and the load is left running.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val reader = MutableFakeReader()
+        reader.frames[partition(ownerA)] = frame("disk body")
+        val neverEnds = CompletableDeferred<Unit>()
+        val loader = SharedThreadStoreEnteredScopeTest.FakeLoader { _, _ -> neverEnds.await() }
+        val logs = mutableListOf<String>()
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource(reader = reader, loader = loader),
+                scope = scope,
+                diagnosticsLogger = logs::add,
+            )
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        val payload = store.state.value.payload
+        assertEquals("content", payload.status)
+        assertTrue(payload.durableLastKnown)
+        assertEquals(listOf("disk body"), payload.messages.map { it.body })
+        assertEquals(listOf(partition(ownerA) to "channel-1"), reader.reads)
+        assertFalse(logs.any { "thread_enter_baseline_await" in it }, logs.toString())
+        assertEquals(listOf(partition(ownerA) to "channel-1"), loader.loads)
+        assertFalse(neverEnds.isCompleted)
         scope.cancel()
     }
 

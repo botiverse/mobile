@@ -6630,6 +6630,36 @@ internal class SharedThreadStore(
         lastCompletedReadAt = null
     }
 
+    /** Task #390 / #18: no frame on disk yet — wait (bounded) for the entry's baseline load, then read again. */
+    private suspend fun awaitBaselineThenReadDurable(
+        threadId: String,
+        routeContextPayload: RaftThreadScreenPayload,
+        routeIdentity: ThreadRouteIdentity,
+        context: ReplyCacheProducerContext,
+    ): RaftThreadScreenPayload? {
+        enteredScopeSnapshotJob?.let { job ->
+            try {
+                val completed =
+                    withTimeoutOrNull(SharedThreadEnterBaselineAwaitMillis) { job.join() } != null
+                diagnosticsLogger?.invoke(
+                    "thread_enter_baseline_await threadId=$threadId completed=$completed"
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                diagnosticsLogger?.invoke(
+                    "thread_enter_baseline_await threadId=$threadId outcome=error " +
+                        "reason=${failure.message ?: failure::class.simpleName.orEmpty()}"
+                )
+            }
+        }
+        return dataSource.durableLastKnownPayloadIfCurrent(
+            routePayload = routeContextPayload,
+            routeIdentity = routeIdentity,
+            context = context,
+        )
+    }
+
     private suspend fun start(initialPayload: RaftThreadScreenPayload) {
         focusedOriginHydrationJob?.cancel()
         focusedOriginHydrationJob = null
@@ -6715,30 +6745,18 @@ internal class SharedThreadStore(
         // the disk read returns that snapshot and the entry fetches the channel exactly once;
         // when it does not, the read proceeds as before. The await only joins — a timeout leaves
         // the load running so nothing it wrote is rolled back.
+        // Task #18 (Hands e342666b): the wait applies only when the disk has NO frame yet. With a
+        // frame on disk the entry shows it at once and the load replaces it when it lands: on a real
+        // network the load never finished inside the window (51 of 51 waits timed out on 1.15.1), so
+        // every entry with local data showed the loading shell for an extra half second.
         val durableLastKnown =
             if (cached == null && current == null && threadId != null) {
                 producerContext?.let { context ->
-                    enteredScopeSnapshotJob?.let { job ->
-                        try {
-                            val completed =
-                                withTimeoutOrNull(SharedThreadEnterBaselineAwaitMillis) { job.join() } != null
-                            diagnosticsLogger?.invoke(
-                                "thread_enter_baseline_await threadId=$threadId completed=$completed"
-                            )
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (failure: Throwable) {
-                            diagnosticsLogger?.invoke(
-                                "thread_enter_baseline_await threadId=$threadId outcome=error " +
-                                    "reason=${failure.message ?: failure::class.simpleName.orEmpty()}"
-                            )
-                        }
-                    }
                     dataSource.durableLastKnownPayloadIfCurrent(
                         routePayload = routeContextPayload,
                         routeIdentity = routeIdentity,
                         context = context,
-                    )
+                    ) ?: awaitBaselineThenReadDurable(threadId, routeContextPayload, routeIdentity, context)
                 }
             } else {
                 null
