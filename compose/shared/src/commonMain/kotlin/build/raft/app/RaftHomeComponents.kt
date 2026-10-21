@@ -4670,10 +4670,13 @@ private fun HomeTitlebar(
             if (refreshing) {
                 RaftHeaderRefreshIndicator()
             }
+            // The bell's icon box ends on the content line (16dp), mirroring the server avatar on
+            // the left; its 44dp target reaches past it.
             HomeNotificationCenter(
                 notifications = notifications,
                 open = notificationCenterExpanded,
-                onToggle = onNotificationToggle
+                onToggle = onNotificationToggle,
+                modifier = Modifier.offset(x = HomeNotificationBellEdgeInset)
             )
         }
     }
@@ -4896,6 +4899,9 @@ private fun HomeNotificationCenter(
 private val HomeNotificationTriggerSize = 44.dp
 private val HomeNotificationBellIconSize = 20.dp
 private val HomeNotificationTriggerSlotSize = HomeNotificationTriggerSize + HomeSmallShadowOffset
+// From the trigger slot's end to the bell icon's: the shadow offset, then the icon centred in 44dp.
+internal val HomeNotificationBellEdgeInset =
+    HomeSmallShadowOffset + (HomeNotificationTriggerSize - HomeNotificationBellIconSize) / 2
 private val HomeNotificationPopoverTopGap = 4.dp
 internal fun homeNotificationPopoverTopOffset(topSafeArea: Dp): Dp =
     topSafeArea + RaftAppSize.PageHeaderHeight + HomeNotificationPopoverTopGap
