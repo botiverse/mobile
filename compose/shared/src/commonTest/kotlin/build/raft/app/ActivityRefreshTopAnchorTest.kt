@@ -1,6 +1,7 @@
 package build.raft.app
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -124,5 +125,60 @@ class ActivityRefreshTopAnchorTest {
         assertTrue(activityListParkedAtTop(0, 0))
         assertFalse(activityListParkedAtTop(0, 40))
         assertFalse(activityListParkedAtTop(3, 0))
+    }
+
+    @Test
+    fun `a list parked at the top follows new activity after the entry session retired`() {
+        // iOS 1.15.0: the reader had scrolled once (session retired) and was back at the top;
+        // new activity must keep them on the newest rows, not raise the pill.
+        val follow =
+            activityShouldAnchorTopOnCanonicalSnapshot(
+                entryOwnerArmed = false,
+                pullRefreshOwnsTop = false,
+                parkedAtTop = activityListParkedAtTop(0, 0),
+                scrollInProgress = false,
+                genuineTopUpdate = activityHasNewTopRow(cachedKeys, freshKeys),
+                followParkedTop = true,
+            )
+        assertTrue(follow)
+        fun followAt(index: Int, offset: Int, scrolling: Boolean) =
+            activityShouldAnchorTopOnCanonicalSnapshot(
+                entryOwnerArmed = false,
+                pullRefreshOwnsTop = false,
+                parkedAtTop = activityListParkedAtTop(index, offset),
+                scrollInProgress = scrolling,
+                genuineTopUpdate = true,
+                followParkedTop = true,
+            )
+        assertFalse(followAt(index = 4, offset = 0, scrolling = false), "a scrolled reader is never moved")
+        assertFalse(followAt(index = 0, offset = 30, scrolling = false), "first row partly scrolled away")
+        assertFalse(followAt(index = 0, offset = 0, scrolling = true), "a drag in progress is fenced")
+    }
+
+    @Test
+    fun `new top row keys are the rows that landed above the previous head`() {
+        assertEquals(setOf("n2", "n1"), activityNewTopRowKeys(cachedKeys, freshKeys))
+        assertEquals(setOf("c1"), activityNewTopRowKeys(cachedKeys, listOf("c1", "c3", "c2")))
+        assertEquals(setOf("n1"), activityNewTopRowKeys(cachedKeys, listOf("n1", "c2", "c1")))
+        assertEquals(emptySet(), activityNewTopRowKeys(cachedKeys, cachedKeys + "c0"))
+        assertEquals(emptySet(), activityNewTopRowKeys(cachedKeys, listOf("c2", "c1")))
+        assertEquals(emptySet(), activityNewTopRowKeys(emptyList(), freshKeys))
+    }
+
+    @Test
+    fun `the new activity pill shows only while a landed row is above the viewport`() {
+        // Conversation-list layout: PINNED label, 4 pinned rows, ALL CONVERSATIONS label, rest.
+        val lazyKeys =
+            listOf(
+                "activity-list-section:Pinned", "p1", "p2", "p3", "p4",
+                "activity-list-section:AllConversations", "n1", "c3", "c2", "c1",
+            )
+        val landed = setOf("n1")
+        assertFalse(activityNewRowsAboveViewport(landed, lazyKeys, firstVisibleItemIndex = 0), "list at the top")
+        assertFalse(activityNewRowsAboveViewport(landed, lazyKeys, firstVisibleItemIndex = 2), "row below, within or under the viewport")
+        assertFalse(activityNewRowsAboveViewport(landed, lazyKeys, firstVisibleItemIndex = 6), "row is the first visible item")
+        assertTrue(activityNewRowsAboveViewport(landed, lazyKeys, firstVisibleItemIndex = 8), "row scrolled past, above the viewport")
+        assertFalse(activityNewRowsAboveViewport(emptySet(), lazyKeys, firstVisibleItemIndex = 8))
+        assertTrue(activityNewRowsAboveViewport(landed, lazyKeys, firstVisibleItemIndex = 50), "index past the key list")
     }
 }

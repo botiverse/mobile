@@ -109,10 +109,12 @@ internal fun RaftTimestampDisplayScope(
 @Composable
 internal fun raftRelativeTimestampLabel(
     value: String?,
-    timeContext: RaftTimeContext? = null
+    timeContext: RaftTimeContext? = null,
+    clampFuture: Boolean = false,
 ): String {
     val effectiveContext = currentRaftTimeContext(timeContext)
-    return when (val label = resolveRaftRelativeTimeLabel(value, effectiveContext)) {
+    val resolved = resolveRaftRelativeTimeLabel(value, effectiveContext)
+    return when (val label = if (clampFuture) resolved.clampedFutureToNow() else resolved) {
         RaftRelativeTimeLabel.Empty -> ""
         RaftRelativeTimeLabel.Unknown -> stringResource(MR.strings.relative_time_unknown)
         is RaftRelativeTimeLabel.Literal -> label.value
@@ -141,6 +143,7 @@ internal fun RaftRelativeTimestampText(
     textAlign: TextAlign? = null,
     softWrap: Boolean = true,
     toggleEnabled: Boolean = true,
+    clampFuture: Boolean = false,
     onToggle: (RaftTimestampDisplayMode) -> Unit = {}
 ) {
     val effectiveContext = currentRaftTimeContext(timeContext)
@@ -148,7 +151,7 @@ internal fun RaftRelativeTimestampText(
     val displayState = LocalRaftTimestampDisplayState.current ?: remember { RaftTimestampDisplayState() }
     val resolvedMode =
         resolvedRaftTimestampDisplayMode(displayState.displayMode(displayGroup), value, effectiveContext)
-    val relativeLabel = raftRelativeTimestampLabel(value, effectiveContext)
+    val relativeLabel = raftRelativeTimestampLabel(value, effectiveContext, clampFuture)
     val absoluteLabel = raftAbsoluteTimestampLabel(value, effectiveContext)
     val displayLabel =
         if (resolvedMode == RaftTimestampDisplayMode.Absolute) {
@@ -242,6 +245,18 @@ internal fun nextRaftTimestampDisplayMode(
 private fun currentRaftTimeContext(timeContext: RaftTimeContext?): RaftTimeContext? =
     timeContext?.takeIf { it.nowEpochMillis != null }
         ?: LocalRaftTimeContextProvider.current?.current
+
+/**
+ * For timestamps of things that already happened (an Activity row's last message): a client
+ * clock running behind the server makes them look a little in the future ("in 1 minute").
+ * Any future delta reads as "now" instead, in every locale.
+ */
+internal fun RaftRelativeTimeLabel.clampedFutureToNow(): RaftRelativeTimeLabel =
+    if (this is RaftRelativeTimeLabel.Relative && value > 0) {
+        RaftRelativeTimeLabel.Relative(0, RaftRelativeTimeUnit.Minute)
+    } else {
+        this
+    }
 
 internal data class RaftRelativeTimeStringSelection(
     val resource: StringResource,
