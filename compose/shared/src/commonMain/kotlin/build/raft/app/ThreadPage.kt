@@ -2420,6 +2420,20 @@ internal fun RaftThreadScreenPayload.activeRealtimeRoomIds(): List<String> =
         .distinct()
         .toList()
 
+/**
+ * Task #14c: the rooms of [activeRealtimeRoomIds] that are this reply thread's own channel (never its parent
+ * channel; empty for a channel / DM page). The page keeps them joined after it closes
+ * ([build.raft.app.data.SharedRealtimeRoomLeaseRegistry.keepJoinedUntilClear]).
+ */
+internal fun RaftThreadScreenPayload.replyThreadRealtimeRoomIds(): Set<String> {
+    if (surfaceKind != RaftThreadSurfaceKind.ReplyThread) return emptySet()
+    val parent = parentChannelId?.trim()
+    return listOfNotNull(sourceThreadId, streamChannelId)
+        .map(String::trim)
+        .filter { it.isNotBlank() && it != parent }
+        .toSet()
+}
+
 internal fun RaftThreadScreenPayload.threadMessagePermalink(
     message: RaftThreadMessageItem,
     serverSlug: String?,
@@ -6715,6 +6729,10 @@ private fun SharedThreadRouteContentContent(
                 )
             }
         if (roomLeaseActive && owner != null) {
+            // Task #14c: the reply thread's own room stays joined after the page closes (the parent's does not).
+            payload.replyThreadRealtimeRoomIds().forEach { roomId ->
+                realtimeRoomLeaseRegistry.keepJoinedUntilClear(owner.serverId, roomId)
+            }
             realtimeEvents.applyRoomTransitions(realtimeRoomLeaseRegistry.acquire(owner, activeRoomIds))
         }
         onDispose {

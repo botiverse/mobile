@@ -36,6 +36,8 @@
     "reconnectError": "reconnect_error",
     "reconnectFailed": "reconnect_failed",
     "roomsJoined": "rooms:joined",
+    "channelJoined": "channel:joined",
+    "channelJoinDenied": "channel:join_denied",
     "syncResume": "sync:resume",
     "syncResumeResponse": "sync:resume:response",
     "joinChannel": "join:channel",

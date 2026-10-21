@@ -59,6 +59,8 @@ object GeneratedRealtimeContract {
         const val ReconnectError = "reconnect_error"
         const val ReconnectFailed = "reconnect_failed"
         const val RoomsJoined = "rooms:joined"
+        const val ChannelJoined = "channel:joined"
+        const val ChannelJoinDenied = "channel:join_denied"
         const val SyncResume = "sync:resume"
         const val SyncResumeResponse = "sync:resume:response"
         const val JoinChannel = "join:channel"

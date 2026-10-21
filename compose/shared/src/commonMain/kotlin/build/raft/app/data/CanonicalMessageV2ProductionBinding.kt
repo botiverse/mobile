@@ -10,6 +10,7 @@ import build.raft.app.network.sync.CanonicalMessageEnvelopeV2
 import build.raft.app.network.sync.CanonicalMessageV2IncrementalFrame
 import build.raft.app.network.sync.CanonicalMessageV2RetentionPolicy
 import build.raft.app.network.sync.CanonicalMessageV2ScopePoisoned
+import build.raft.app.network.sync.CanonicalMessageV2ThreadJoinConfirmed
 import build.raft.app.network.sync.ThreadDurablePageDirection
 import build.raft.app.network.sync.ThreadDurablePageExtender
 import build.raft.app.network.sync.ThreadDurableReplyParent
@@ -34,6 +35,7 @@ import build.raft.app.network.sync.decodeCanonicalMessageWire
 import build.raft.app.network.sync.toCanonicalMessageV2Envelope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -478,10 +480,11 @@ internal class CanonicalMessageV2RestSnapshotFetcher(
  * continuous — unless the user is not a member of the channel ([isKnownNonMember]: the server joins a
  * non-member's room asynchronously on open, so the page may miss messages that are never pushed either).
  * Any path that does not commit abandons the baseline. Task #14a: a reply-thread enter registers the same
- * baseline for its thread channel, naming the server-confirmed parent channel; it is known-non-member when the
- * directory says so for the thread OR its parent channel. Its commit always leaves the thread window
- * discontinuous (`thread_delivery_unconfirmed`: no per-thread delivery signal from the server), so the thread's
- * realtime replies stay display only while this page is still written.
+ * baseline for its thread channel, naming the server-confirmed parent channel and whether the directory says
+ * the user is not a member of the thread / of its parent channel. Task #14c: its commit makes the thread window
+ * continuous only under a public parent whose thread-room `channel:joined` arrived before the request (see
+ * [CanonicalMessageV2ProductionCanary]); otherwise its realtime replies stay display only while this page is
+ * still written.
  *
  * Task #14b: [persistReplyThreadPrewarmPage] writes the reply page the Activity prewarm already fetched,
  * through the same gates minus the baseline (see there).
@@ -551,11 +554,18 @@ internal class CanonicalMessageV2EnteredScopeLoader(
             log("in_flight")
             return
         }
-        // Registered before the fetch (hole A), for a reply thread too (task #14a).
-        fun nonMember() = isKnownNonMember(partition.serverId, scopeId) ||
-            (replyParentScopeId != null && isKnownNonMember(partition.serverId, replyParentScopeId))
+        // Registered before the fetch (hole A), for a reply thread too (task #14a). Task #14c: the thread's own
+        // membership and its parent's are separate (a thread join ack may lift the former, never the latter).
+        fun nonMember() = isKnownNonMember(partition.serverId, scopeId)
+        fun parentNonMember() = replyParentScopeId != null && isKnownNonMember(partition.serverId, replyParentScopeId)
         val baseline: CanonicalMessageV2EnterBaseline? =
-            canary.beginEnterBaseline(partition, scopeId, nonMember = nonMember(), replyParentScopeId = replyParentScopeId)
+            canary.beginEnterBaseline(
+                partition,
+                scopeId,
+                nonMember = nonMember(),
+                replyParentScopeId = replyParentScopeId,
+                parentNonMember = parentNonMember(),
+            )
         try {
             val expectedGeneration = generationEngine.partitionGeneration(partition)
             val frame = when (val fetched = fetch()) {
@@ -590,7 +600,12 @@ internal class CanonicalMessageV2EnteredScopeLoader(
                         val expectedKinds =
                             if (replyThread) CANONICAL_MESSAGE_V2_REPLY_THREAD_SCOPE_KINDS else CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS
                         if (baseline != null && frame.scope.scopeKind in expectedKinds) {
-                            canary.onEnterCommitted(baseline, frame, nonMemberAtCommit = nonMember())
+                            canary.onEnterCommitted(
+                                baseline,
+                                frame,
+                                nonMemberAtCommit = nonMember(),
+                                parentNonMemberAtCommit = parentNonMember(),
+                            )
                         } else {
                             canary.onExternalCommit(frame.scope)
                         }
@@ -807,12 +822,23 @@ internal class CanonicalMessageV2AdjacentPageWriter(
     override suspend fun beginLatestPageBaseline(
         partition: DurablePartitionKey,
         channelId: SyncScopeId,
+        replyParent: ThreadDurableReplyParent?,
     ): CanonicalMessageV2EnterBaseline? {
         require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
         if (channelId.isBlank() || channelId != channelId.trim()) return null
         if (!isEnabledForServer(partition.serverId)) return null
-        return canary.beginCatchUpBaseline(partition, channelId, nonMember = isKnownNonMember(partition.serverId, channelId))
+        if (replyParent != null && replyParent.parentChannelId == channelId) return null
+        return canary.beginCatchUpBaseline(
+            partition,
+            channelId,
+            nonMember = isKnownNonMember(partition.serverId, channelId),
+            replyParentScopeId = replyParent?.parentChannelId,
+            parentNonMember = replyParent != null && isKnownNonMember(partition.serverId, replyParent.parentChannelId),
+        )
     }
+
+    /** Task #14c: the canary's late-ack catch-up requests (see [CanonicalMessageV2ProductionCanary.threadJoinConfirmations]). */
+    override fun threadJoinConfirmations(): Flow<CanonicalMessageV2ThreadJoinConfirmed> = canary.threadJoinConfirmations
 
     override suspend fun abandonLatestPageBaseline(baseline: CanonicalMessageV2EnterBaseline) =
         canary.abandonEnterBaseline(baseline)
@@ -1003,7 +1029,9 @@ internal class CanonicalMessageV2AdjacentPageWriter(
      * connection had seen `rooms:joined`), the committed page is the window's new realtime baseline: frames
      * buffered during the fetch are replayed and the window is continuous again
      * ([CanonicalMessageV2ProductionCanary.onEnterCommitted]). Without one, #3008's external commit.
-     * The baseline is abandoned on every path that does not commit.
+     * The baseline is abandoned on every path that does not commit. Task #14c: a reply thread's catch-up passes the
+     * baseline [beginLatestPageBaseline] registered with the same parent; its commit follows the thread rule (the
+     * late-ack catch-up: [CanonicalMessageV2ProductionCanary.threadJoinConfirmations]).
      */
     override suspend fun applyLatestPageAfterBaseline(
         partition: DurablePartitionKey,
@@ -1031,9 +1059,10 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         stillCurrent: () -> Boolean,
     ) {
         require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
-        // A baseline is only ever for this exact top-level channel of this partition.
+        // A baseline is only ever for this exact channel of this partition, of the same scope family (task #14c: a
+        // reply thread's names the same parent channel).
         val ownBaseline = baseline?.takeIf {
-            replyParent == null && it.partition == partition && it.scopeId == channelId
+            it.partition == partition && it.scopeId == channelId && it.replyParentScopeId == replyParent?.parentChannelId
         }
         val kindLabel = if (replyParent != null) " scopeKind=thread" else ""
         fun log(outcome: String) {
@@ -1130,6 +1159,8 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                             ownBaseline,
                             frame,
                             nonMemberAtCommit = isKnownNonMember(partition.serverId, channelId),
+                            parentNonMemberAtCommit =
+                                replyParent != null && isKnownNonMember(partition.serverId, replyParent.parentChannelId),
                         )
                     } else {
                         canary.onExternalCommit(scope)

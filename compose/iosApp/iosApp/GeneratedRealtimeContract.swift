@@ -41,6 +41,8 @@ enum GeneratedRealtimeContract {
         static let reconnectError = "reconnect_error"
         static let reconnectFailed = "reconnect_failed"
         static let roomsJoined = "rooms:joined"
+        static let channelJoined = "channel:joined"
+        static let channelJoinDenied = "channel:join_denied"
         static let syncResume = "sync:resume"
         static let syncResumeResponse = "sync:resume:response"
         static let joinChannel = "join:channel"

@@ -3549,11 +3549,12 @@ private fun RaftAppShellReadyContent(
                 consumerId = "adaptive-handoff",
                 generation = selection.generation,
             )
-        val roomIds =
-            launchPayload
-                .toInitialPayloadOrNull(launchPayload.instanceId)
-                ?.activeRealtimeRoomIds()
-                .orEmpty()
+        val initialPayload = launchPayload.toInitialPayloadOrNull(launchPayload.instanceId)
+        val roomIds = initialPayload?.activeRealtimeRoomIds().orEmpty()
+        // Task #14c: a reply thread's own room stays joined after the detail closes (its parent's does not).
+        initialPayload?.replyThreadRealtimeRoomIds()?.forEach { roomId ->
+            adaptiveRoomLeaseRegistry.keepJoinedUntilClear(nextOwner.serverId, roomId)
+        }
         realtimeEvents.applyRoomTransitions(adaptiveRoomLeaseRegistry.acquire(nextOwner, roomIds))
         val previousOwner = adaptiveWorkspaceStore.snapshot().handoffRoomLeaseOwner
         adaptiveWorkspaceStore.update { current ->

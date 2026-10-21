@@ -99,6 +99,9 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
     private val roomsJoinedSubscription =
         client.observeRoomsJoined { context -> postRealtimeRoomsJoined(context) }
 
+    private val channelJoinAckSubscription =
+        client.observeChannelJoinAck { context, channelId, joined -> postRealtimeChannelJoinAck(context, channelId, joined) }
+
     private fun postPresenceTransportConnected(context: RealtimeSocketConnectionContext) {
         currentPresenceTransportEpoch = 0L
         val witness = context.witness
@@ -131,6 +134,36 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                 JSONObject()
                     .put(RaftRealtimeNotifyContract.KeyAction, RaftRealtimeNotifyContract.ActionRealtimeRoomsJoined)
                     .put(RaftRealtimeNotifyContract.KeyServerId, context.serverId.value)
+                    .put(RaftRealtimeNotifyContract.KeyAuthorityScopeLeaseId, witness.scopeLeaseId)
+                    .put(RaftRealtimeNotifyContract.KeyAuthorityPrincipalId, witness.principalId)
+                    .put(RaftRealtimeNotifyContract.KeyAuthorityAuthGeneration, witness.authGeneration)
+                    .put(RaftRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, witness.connectionFamilyId)
+                    .put(RaftRealtimeNotifyContract.KeyPresenceTransportEpoch, epoch)
+        )
+    }
+
+    /**
+     * Task #14c: the server's answer to a `join:channel` of this socket (`channel:joined` / `channel:join_denied`),
+     * with the same epoch as this socket's connected signal and frames; none if that signal was skipped.
+     */
+    private fun postRealtimeChannelJoinAck(context: RealtimeSocketConnectionContext, channelId: String, joined: Boolean) {
+        val epoch = currentPresenceTransportEpoch.takeIf { it > 0L } ?: return
+        val witness = context.witness
+        log("realtime_channel_join_ack serverId=${context.serverId.value} channelId=$channelId joined=$joined presenceEpoch=$epoch")
+        postAndroidAppScopeEvent(
+            eventName = RaftRealtimeNotifyContract.EventName,
+            eventData =
+                JSONObject()
+                    .put(
+                        RaftRealtimeNotifyContract.KeyAction,
+                        if (joined) {
+                            RaftRealtimeNotifyContract.ActionRealtimeChannelJoined
+                        } else {
+                            RaftRealtimeNotifyContract.ActionRealtimeChannelJoinDenied
+                        },
+                    )
+                    .put(RaftRealtimeNotifyContract.KeyServerId, context.serverId.value)
+                    .put(RaftRealtimeNotifyContract.KeyChannelId, channelId)
                     .put(RaftRealtimeNotifyContract.KeyAuthorityScopeLeaseId, witness.scopeLeaseId)
                     .put(RaftRealtimeNotifyContract.KeyAuthorityPrincipalId, witness.principalId)
                     .put(RaftRealtimeNotifyContract.KeyAuthorityAuthGeneration, witness.authGeneration)

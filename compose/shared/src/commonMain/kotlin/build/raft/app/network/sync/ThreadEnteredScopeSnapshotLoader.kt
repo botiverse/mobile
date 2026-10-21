@@ -1,5 +1,7 @@
 package build.raft.app.network.sync
 
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.serialization.json.JsonArray
 
 /**
@@ -141,14 +143,21 @@ internal fun interface ThreadDurablePageExtender {
 
     /**
      * Task #168 step 3: called BEFORE the gap catch-up fetches its latest page, for a top-level channel /
-     * DM. Returns the request-time realtime baseline to hand to [applyLatestPageAfterBaseline], or `null`
-     * when none can be registered (the catch-up then commits as before and the window is display only for
-     * realtime frames until the next enter).
+     * DM, or (task #14c, [replyParent] non-null) a reply thread. Returns the request-time realtime baseline to
+     * hand to [applyLatestPageAfterBaseline], or `null` when none can be registered (the catch-up then commits
+     * as before and the window is display only for realtime frames until the next enter).
      */
     suspend fun beginLatestPageBaseline(
         partition: DurablePartitionKey,
         channelId: SyncScopeId,
+        replyParent: ThreadDurableReplyParent?,
     ): CanonicalMessageV2EnterBaseline? = null
+
+    /**
+     * Task #14c: a late `channel:joined` of a reply thread whose enter committed discontinuous only for want of an
+     * earlier ack; the open page of that thread runs one gap catch-up. Hot, never replayed. Empty by default.
+     */
+    fun threadJoinConfirmations(): Flow<CanonicalMessageV2ThreadJoinConfirmed> = emptyFlow()
 
     /** Task #168 step 3: the catch-up of [baseline] will not commit (failed, stale, cancelled). Idempotent. */
     suspend fun abandonLatestPageBaseline(baseline: CanonicalMessageV2EnterBaseline) = Unit

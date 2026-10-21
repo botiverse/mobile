@@ -162,6 +162,77 @@ class ProcessRealtimeIngressCoordinatorTest {
         scope.cancel()
     }
 
+    /**
+     * Task #14c: the host's forwarded `channel:joined` / `channel:join_denied` (the exact envelope Android's
+     * AndroidAppScopeRealtimeHostContext and iOS's RaftIosRealtimeHost post) reaches shared with its witness-checked
+     * grant, the socket's epoch and the channel id; no channel id, no epoch or a stale witness is dropped.
+     */
+    @Test
+    fun aForwardedChannelJoinAckReachesSharedWithItsEpochAndChannelId() = runBlocking {
+        val auth = FakeAuthStore()
+        val registry =
+            RealtimeAuthorityRegistry(
+                KeyValueRealtimeAuthRevisionStore(InMemoryRaftKeyValueStore()),
+                processInstanceId = "process-ingress-test",
+            )
+        val provider = RealtimeAuthorityProvider(registry, auth, auth, { "env-test" })
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        provider.start(scope)
+        provider.registerScope("process-realtime-host", "process-owner")
+        auth.replace(session(), AuthSessionEvent.Authenticated(generation = 1))
+        val authority = assertNotNull(provider.authorityFlow("process-realtime-host").value)
+        val bus = FakeEventBus()
+        val acks = mutableListOf<List<Any>>()
+        val roomsJoined = mutableListOf<Long>()
+        ProcessRealtimeIngressCoordinator(
+            events = RaftRealtimeEvents(bus),
+            authorityProvider = provider,
+            authorityFlow = provider.authorityFlow("process-realtime-host"),
+            domainOwner =
+                SharedRealtimeDomainEventOwner(
+                    cursorStore = RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore()),
+                    runIfCurrentGrant = provider::runIfCurrentGrant,
+                    runWithCurrentMessageGrant = provider::runWithCurrentMessageGrant,
+                ),
+            authStore = auth,
+            environmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore()),
+            mapper = RealtimeEventMapper(),
+            nativeHost = FakeNativeHost(),
+            scope = scope,
+            onRoomsJoined = { _, epoch -> roomsJoined += epoch },
+            onChannelJoinAck = { grant, epoch, channelId, joined ->
+                acks += listOf(grant.connectionFamilyId, epoch, channelId, joined)
+            },
+        ).start()
+        yield()
+        fun ack(action: String, epoch: Long, channelId: String?): JsonObject {
+            var envelope = presenceTransportEnvelope(authority, epoch).withEntry(RaftRealtimeNotifyContract.KeyAction, action)
+            if (channelId != null) envelope = envelope.withEntry(RaftRealtimeNotifyContract.KeyChannelId, channelId)
+            return envelope
+        }
+        val family = authority.witness.connectionFamilyId
+
+        bus.post(RaftRealtimeNotifyContract.EventName, ack(RaftRealtimeNotifyContract.ActionRealtimeChannelJoined, 3L, "thread-1"))
+        bus.post(RaftRealtimeNotifyContract.EventName, ack(RaftRealtimeNotifyContract.ActionRealtimeChannelJoinDenied, 3L, "thread-2"))
+        yield()
+        assertEquals(listOf(listOf<Any>(family, 3L, "thread-1", true), listOf<Any>(family, 3L, "thread-2", false)), acks)
+
+        // Dropped: no channel id, a blank / padded one, no epoch, a stale witness.
+        bus.post(RaftRealtimeNotifyContract.EventName, ack(RaftRealtimeNotifyContract.ActionRealtimeChannelJoined, 3L, null))
+        bus.post(RaftRealtimeNotifyContract.EventName, ack(RaftRealtimeNotifyContract.ActionRealtimeChannelJoined, 3L, " "))
+        bus.post(RaftRealtimeNotifyContract.EventName, ack(RaftRealtimeNotifyContract.ActionRealtimeChannelJoined, 3L, " thread-1"))
+        bus.post(RaftRealtimeNotifyContract.EventName, ack(RaftRealtimeNotifyContract.ActionRealtimeChannelJoined, 0L, "thread-1"))
+        bus.post(
+            RaftRealtimeNotifyContract.EventName,
+            ack(RaftRealtimeNotifyContract.ActionRealtimeChannelJoined, 4L, "thread-1")
+                .withEntry(RaftRealtimeNotifyContract.KeyAuthorityConnectionFamilyId, "retired-family"),
+        )
+        yield()
+        assertEquals(2, acks.size, acks.toString())
+        assertTrue(roomsJoined.isEmpty(), "a join ack is never a rooms:joined")
+        scope.cancel()
+    }
+
     private fun eventEnvelope(
         authority: RealtimeScopeAuthority,
         eventName: String,
