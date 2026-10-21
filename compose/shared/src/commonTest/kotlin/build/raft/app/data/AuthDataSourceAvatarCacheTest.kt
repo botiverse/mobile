@@ -16,11 +16,8 @@ class AuthDataSourceAvatarCacheTest {
                     assertTrue(source.completeSocialLogin("google", "code") is SharedAuthResult.Success)
                 },
                 { source ->
-                    assertTrue(
-                        source.completeMobileOAuthLogin("code", "verifier") is SharedAuthResult.Success
-                    )
-                },
-                { source -> assertTrue(source.register("new@slock.ai", "password") is SharedAuthResult.Success) }
+                    assertTrue(source.completeAppLogin("code", "verifier") is SharedAuthResult.Success)
+                }
             )
 
         actions.forEach { action ->
@@ -73,7 +70,7 @@ class AuthDataSourceAvatarCacheTest {
                 environmentId = { "https://old.example/api/" }
             )
 
-        assertTrue(source.completeMobileOAuthLogin("code", "verifier") is SharedAuthResult.Success)
+        assertTrue(source.completeAppLogin("code", "verifier") is SharedAuthResult.Success)
 
         assertTrue(native.retiredOwners.isEmpty())
         assertTrue(metadata.clearedOwners.isEmpty())

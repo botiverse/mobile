@@ -287,16 +287,6 @@ if (googleServicesConfigFiles.any { it.isFile }) {
     logger.lifecycle("Firebase google-services.json not found; skipping Google Services Gradle plugin for this local build.")
 }
 
-val googleServerClientId =
-    providers.gradleProperty("SLOCK_GOOGLE_SERVER_CLIENT_ID")
-        .orElse(providers.environmentVariable("SLOCK_GOOGLE_SERVER_CLIENT_ID"))
-        .getOrElse("")
-        .replace("\\", "\\\\")
-        .replace("\"", "\\\"")
-
-        .replace("\\", "\\\\")
-        .replace("\"", "\\\"")
-
 fun raftBuildConfigString(name: String, fallback: String): String =
     providers.gradleProperty(name)
         .orElse(providers.environmentVariable(name))
@@ -634,7 +624,6 @@ android {
         buildConfigField("Boolean", "HANDS_DELTA_UPDATE_ENABLED", "false")
         buildConfigField("String", "HANDS_DELTA_APP_SLUG", "\"\"")
         buildConfigField("String", "HANDS_DELTA_CHANNEL", "\"\"")
-        buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"$googleServerClientId\"")
         buildConfigField("String", "OAUTH_CALLBACK_SCHEME", "\"raft\"")
         manifestPlaceholders["oauthCallbackScheme"] = "raft"
         buildConfigField("String", "BUILD_TIME", "\"${raftBuildTime()}\"")
@@ -846,9 +835,6 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material3.adaptive.navigation.suite)
     implementation(libs.androidx.recyclerview)
-    implementation(libs.androidx.credentials)
-    implementation(libs.androidx.credentials.play.services.auth)
-    implementation(libs.googleid)
     implementation(libs.okhttp)
     implementation(libs.gson)
     implementation(handsAndroidSdkCoordinate)

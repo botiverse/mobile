@@ -103,9 +103,7 @@ private val DeveloperRouteGroups =
             routes =
                 listOf(
                     DeveloperRouteItem("Login", LOGIN_PAGE, "Sign-in page"),
-                    DeveloperRouteItem("Register", REGISTER_PAGE, "Registration page"),
                     DeveloperRouteItem("Profile Setup", AUTH_PROFILE_SETUP_PAGE, "Required username and display-name setup"),
-                    DeveloperRouteItem("Forgot Password", FORGOT_PASSWORD_PAGE, "Password recovery page"),
                     DeveloperRouteItem("About", AUTH_ABOUT_PAGE, "Shared About, environment, and diagnostics page"),
                     DeveloperRouteItem("Choose Server", AUTH_CHOOSE_SERVER_PAGE, "Server picker page")
                 )

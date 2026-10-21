@@ -4166,50 +4166,6 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureAuthLoginInputsEmpty() {
-        captureKmpComponentCase(
-            caseId = "auth.login.inputs.empty",
-            pageName = "compose_auth_login_inputs",
-            pageData = JSONObject().put("visualFixture", "empty"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 4_500
-        )
-    }
-
-    @Test
-    fun captureAuthLoginInputsFilled() {
-        captureKmpComponentCase(
-            caseId = "auth.login.inputs.filled",
-            pageName = "compose_auth_login_inputs",
-            pageData = JSONObject().put("visualFixture", "filled"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 4_500
-        )
-    }
-
-    @Test
-    fun captureAuthLoginInputsInvalid() {
-        captureKmpComponentCase(
-            caseId = "auth.login.inputs.invalid",
-            pageName = "compose_auth_login_inputs",
-            pageData = JSONObject().put("visualFixture", "invalid"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 4_500
-        )
-    }
-
-    @Test
-    fun captureAuthLoginSigning() {
-        captureKmpComponentCase(
-            caseId = "screens.auth.login.signing",
-            pageName = "compose_auth_login_inputs",
-            pageData = JSONObject().put("visualFixture", "signing"),
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 4_500
-        )
-    }
-
-    @Test
     fun captureAuthLoginScreen() {
         captureKmpComponentCase(
             caseId = "screens.auth.login",
@@ -4220,34 +4176,10 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureAuthForgotPasswordScreen() {
-        captureKmpComponentCase(
-            caseId = "screens.auth.forgot-password",
-            pageName = RaftCmpActivity.PAGE_FORGOT_PASSWORD,
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 12_000
-        )
-    }
-
-    @Test
     fun captureAuthChooseServerScreen() {
         captureKmpComponentCase(
             caseId = "screens.auth.choose-server",
             pageName = "compose_auth_choose_server_visual",
-            crop = FULL_VIEWPORT_CROP,
-            settleMs = 4_500
-        )
-    }
-
-    @Test
-    fun captureAuthRegisterInputs() {
-        captureKmpComponentCase(
-            caseId = "components.auth.register.inputs",
-            pageName = "compose_auth_register_inputs",
-            pageData =
-                JSONObject()
-                    .put("registerEmail", "new@slock.ai")
-                    .put("registerPassword", "correct horse battery staple"),
             crop = FULL_VIEWPORT_CROP,
             settleMs = 4_500
         )

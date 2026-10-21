@@ -9,7 +9,6 @@ import shared
 let raftIosOAuthProviderIds = ["google", "github", "apple"]
 let raftIosOAuthProviders = raftIosOAuthProviderIds.joined(separator: ",")
 private let raftIosOAuthLoginPage = "compose_login"
-private let raftIosOAuthLegalPage = "compose_auth_legal_acceptance"
 private let raftIosOAuthChooseServerPage = "compose_auth_choose_server"
 private let raftIosOAuthAppShellPage = "compose_slock_app_shell"
 
@@ -51,30 +50,6 @@ final class RaftIosOAuthRouteStore: ObservableObject {
                 self.replace(
                     pageName: raftIosOAuthChooseServerPage,
                     pageData: ["pageName": raftIosOAuthChooseServerPage],
-                    shellInstanceId: shellInstanceId
-                )
-            case "legal_acceptance":
-                guard
-                    let provider = result.provider, !provider.isEmpty,
-                    let handoffCode = result.handoffCode, !handoffCode.isEmpty,
-                    let codeVerifier = result.codeVerifier, !codeVerifier.isEmpty
-                else {
-                    self.replaceWithLoginError(
-                        "Sign-in request expired. Try again.",
-                        shellInstanceId: shellInstanceId
-                    )
-                    return
-                }
-                self.replace(
-                    pageName: raftIosOAuthLegalPage,
-                    pageData: [
-                        "pageName": raftIosOAuthLegalPage,
-                        "slockAuthLegalProvider": provider,
-                        "slockAuthLegalPlatform": "ios",
-                        "slockAuthLegalCode": handoffCode,
-                        "slockAuthLegalCodeVerifier": codeVerifier,
-                        "slockReplaceCurrentPage": true,
-                    ],
                     shellInstanceId: shellInstanceId
                 )
             case "login_error":
@@ -220,7 +195,7 @@ final class RaftIosMobileOAuthHost: NSObject,
             guard let self else { return }
             let normalizedProvider = provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             let normalizedMode = mode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            guard raftIosOAuthProviderIds.contains(normalizedProvider), ["login", "link"].contains(normalizedMode) else {
+            guard raftIosOAuthProviderIds.contains(normalizedProvider), normalizedMode == "link" else {
                 completion(self.startError(code: "ios_mobile_oauth_invalid_request", message: "This sign-in provider is unavailable."))
                 return
             }
@@ -715,7 +690,7 @@ final class RaftIosMobileOAuthHost: NSObject,
                 self.activeAppleGeneration = nil
                 self.appleAuthorizationController = nil
                 self.presentationWindow = nil
-                if ["app_shell", "choose_server", "legal_acceptance", "settings_account"].contains(result.status) {
+                if ["app_shell", "choose_server", "settings_account"].contains(result.status) {
                     self.cacheAppleUserIdentifier(appleUserIdentifier)
                 }
                 RaftIosOAuthRouteStore.shared.apply(result)

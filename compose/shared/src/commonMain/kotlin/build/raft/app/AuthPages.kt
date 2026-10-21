@@ -19,8 +19,6 @@ import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SharedAuthRuntimeCapabilities
-import build.raft.app.data.MOBILE_LEGACY_LOGIN_APPLY_WINDOW_MS
-import build.raft.app.data.RaftMobileWebLoginGate
 import build.raft.app.data.SharedAuthRuntimeCapabilityStore
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsApiEnvironmentRequest
@@ -98,34 +96,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.RoundedCornerShape
 
 const val LOGIN_PAGE = "compose_login"
-const val REGISTER_PAGE = "compose_register"
 const val AUTH_PROFILE_SETUP_PAGE = "compose_auth_profile_setup"
-const val FORGOT_PASSWORD_PAGE = "compose_forgot_password"
-const val AUTH_LEGAL_ACCEPTANCE_PAGE = "compose_auth_legal_acceptance"
 const val AUTH_ABOUT_PAGE = "compose_auth_developer"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 internal const val AUTH_SOCIAL_PROVIDERS_KEY = "slockSocialAuthProviders"
 private const val AUTH_MESSAGE_KEY = "slockAuthMessage"
 internal const val AUTH_DESTINATION_KEY = "slockAuthDestination"
-/** Page data from hosts that implement browser web login next to the email/social login (Android, iOS). */
-internal const val AUTH_WEB_LOGIN_SUPPORTED_KEY = "slockWebLoginSupported"
 internal const val AUTH_DESTINATION_API_ENVIRONMENT = "apiEnvironment"
-private const val AUTH_LEGAL_PROVIDER_KEY = "slockAuthLegalProvider"
-private const val AUTH_LEGAL_PLATFORM_KEY = "slockAuthLegalPlatform"
-private const val AUTH_LEGAL_CODE_KEY = "slockAuthLegalCode"
-private const val AUTH_LEGAL_CODE_VERIFIER_KEY = "slockAuthLegalCodeVerifier"
-private const val AUTH_VISUAL_FIXTURE_KEY = "visualFixture"
-private const val AUTH_LOGIN_VISUAL_FIXTURE_SIGNING = "signing"
-private const val AUTH_LOGIN_VISUAL_FIXTURE_INVALID = "invalid"
-// Mirrors the react screens.auth.login.signing fill interactions
-// (packages/visual-testing/shared/sharedCases.json): same email and the same
-// 21-char password so both sides mask the same number of dots.
-private const val AUTH_LOGIN_VISUAL_SIGNING_EMAIL = "artin@raft.build"
-private const val AUTH_LOGIN_VISUAL_SIGNING_PASSWORD = "visual-sign-in-secret"
-private const val AUTH_REGISTER_VISUAL_EMAIL_KEY = "registerEmail"
-private const val AUTH_REGISTER_VISUAL_PASSWORD_KEY = "registerPassword"
-private const val AUTH_REGISTER_VISUAL_DEFAULT_EMAIL = "new@raft.build"
-private const val AUTH_REGISTER_VISUAL_DEFAULT_PASSWORD = "correct horse battery staple"
 private const val AUTH_PROFILE_SETUP_VISUAL_HANDLE_KEY = "profileSetupHandle"
 private const val AUTH_PROFILE_SETUP_VISUAL_DISPLAY_NAME_KEY = "profileSetupDisplayName"
 private const val AUTH_PROFILE_SETUP_VISUAL_DEFAULT_HANDLE = "new_designer"
@@ -133,13 +110,8 @@ private const val AUTH_PROFILE_SETUP_VISUAL_DEFAULT_DISPLAY_NAME = "New Designer
 internal const val AUTH_TERMS_URL = "https://raft.build/terms"
 internal const val AUTH_PRIVACY_URL = "https://raft.build/privacy"
 
-private val MobileHiddenSocialAuthProviders = emptySet<AuthProvider>()
-
 private fun Modifier.authPageStaticTextFocus(): Modifier =
     focusProperties { canFocus = false }
-
-private fun Set<AuthProvider>.visibleMobileSocialAuthProviders(): Set<AuthProvider> =
-    filterNot { provider -> provider in MobileHiddenSocialAuthProviders }.toSet()
 
 @Composable
 private fun rememberCurrentEnvironmentAuthDataSource(bridge: BridgeModule): SharedAuthDataSource {
@@ -175,13 +147,6 @@ private fun AuthErrorPresentation?.localizedMessage(): String? =
 internal fun AuthValidationError?.localizedMessage(): String? {
     val description =
         when (this) {
-            AuthValidationError.InvalidEmailFormat -> MR.strings.auth_validation_invalid_email.desc()
-            AuthValidationError.PasswordRequired -> MR.strings.auth_validation_password_required.desc()
-            AuthValidationError.PasswordTooShort ->
-                StringDesc.ResourceFormatted(
-                    MR.strings.auth_validation_password_min_length,
-                    listOf(AUTH_PASSWORD_MIN_LENGTH.toString())
-                )
             AuthValidationError.UsernameTooShort ->
                 StringDesc.ResourceFormatted(
                     MR.strings.auth_validation_username_min_length,
@@ -213,35 +178,11 @@ internal class ComposeLoginPage : build.raft.app.base.BasePager() {
     }
 }
 
-@Page(REGISTER_PAGE, supportInLocal = true)
-internal class ComposeRegisterPage : build.raft.app.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { RegisterScreen() }
-    }
-}
-
 @Page(AUTH_PROFILE_SETUP_PAGE, supportInLocal = true)
 internal class ComposeAuthProfileSetupPage : build.raft.app.base.BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { AuthProfileSetupScreen() }
-    }
-}
-
-@Page(FORGOT_PASSWORD_PAGE, supportInLocal = true)
-internal class ComposeForgotPasswordPage : build.raft.app.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { ForgotPasswordScreen() }
-    }
-}
-
-@Page(AUTH_LEGAL_ACCEPTANCE_PAGE, supportInLocal = true)
-internal class ComposeAuthLegalAcceptancePage : build.raft.app.base.BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { AuthLegalAcceptanceScreen() }
     }
 }
 
@@ -273,35 +214,13 @@ private fun LoginScreen() {
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val sharedStores = remember { RaftSharedStoreRegistry.get(bridge) }
     val authDataSource = rememberCurrentEnvironmentAuthDataSource(bridge)
-    val paramsSignature = pager.pageData.params.toString()
     // Seed host capabilities synchronously and observe subsequent host updates.
     rememberAuthRuntimeCapabilities(
         store = sharedStores.authRuntimeCapabilityStore,
         pageData = pager.pageData.params
     )
-    val authRuntimeCapabilities by sharedStores.authRuntimeCapabilityStore.state.collectAsState()
-    // Pre-auth flag: the cached answer renders at once. A fresh answer may switch the page only shortly after it
-    // opened and before the user touched it; otherwise it is just cached for the next login page.
-    // Follows the stored environment so a deployment saved from the sheet below is evaluated at once.
+    // Follows the stored environment so a deployment saved from the sheet below is used at once.
     val apiEnvironment by sharedStores.apiEnvironmentStore.state.collectAsState()
-    val apiBaseUrl = apiEnvironment.apiBaseUrl
-    var webLoginGateEnabled by remember(apiBaseUrl) { mutableStateOf(RaftMobileWebLoginGate.isEnabled(apiBaseUrl)) }
-    // Per server: inputs on the previous deployment must not keep a newly saved one's answer from applying.
-    var loginPageInteracted by remember(apiBaseUrl) { mutableStateOf(false) }
-    LaunchedEffect(apiBaseUrl, authRuntimeCapabilities.webLoginSupported) {
-        if (authRuntimeCapabilities.webLoginSupported && !authRuntimeCapabilities.webLoginOnly) {
-            val openedAt = TimeSource.Monotonic.markNow()
-            val enabled = RaftMobileWebLoginGate.refresh(apiBaseUrl)
-            if (
-                shouldApplyFreshLoginPageChoice(
-                    elapsedMs = openedAt.elapsedNow().inWholeMilliseconds,
-                    interacted = loginPageInteracted,
-                )
-            ) {
-                webLoginGateEnabled = enabled
-            }
-        }
-    }
     val settingsDataSource = rememberAuthSettingsDataSource(pager, bridge, sharedStores)
     var privateDeploymentVisible by remember { mutableStateOf(false) }
     PrivateDeploymentSheet(
@@ -310,247 +229,18 @@ private fun LoginScreen() {
         settingsDataSource = settingsDataSource,
         onDismiss = { privateDeploymentVisible = false },
     )
-    if (shouldUseWebLogin(authRuntimeCapabilities, webLoginGateEnabled)) {
-        WebLoginScreen(
-            pager,
-            bridge,
-            authDataSource,
-            onInteraction = { loginPageInteracted = true },
-            onOpenPrivateDeployment = { privateDeploymentVisible = true },
-            webUrl = apiEnvironment.webUrl,
-        )
-        return
-    }
-    val linkNavigator =
-        rememberRaftLinkNavigator(
-            pager = pager,
-            bridge = bridge,
-            routeScope = RaftInAppBrowserRouteScope.Unscoped,
-        )
-    val reducer = remember { LoginFormReducer() }
-    var state by remember { mutableStateOf(LoginFormState()) }
-    var emailFieldValue by remember { mutableStateOf(TextFieldValue(state.email)) }
-    var passwordFieldValue by remember { mutableStateOf(TextFieldValue(state.password)) }
-    var errorPresentation by remember { mutableStateOf<AuthErrorPresentation?>(null) }
-    var pendingLogin by remember { mutableStateOf<PendingLogin?>(null) }
-    var pendingSocialAuth by remember { mutableStateOf<PendingSocialAuth?>(null) }
-    var socialSubmittingProvider by remember { mutableStateOf<AuthProvider?>(null) }
-    val socialProviders = remember(authRuntimeCapabilities) {
-        authRuntimeCapabilities.socialAuthProviders(
-            applePlatformSupported = raftPlatformSupportsAppleSignIn()
-        )
-    }
-    val routeMessage = remember(paramsSignature) {
-        pager.pageData.params.optString(AUTH_MESSAGE_KEY).takeIf { it.isNotBlank() }
-    }
-
-    LaunchedEffect(pendingLogin) {
-        val effect = pendingLogin ?: return@LaunchedEffect
-        val result =
-            runCatchingPreservingCancellation { authDataSource.login(effect.email, effect.password) }
-                .getOrNull()
-        pendingLogin = null
-        if (result == null) {
-            state = state.copy(submitting = false, errorMessage = null)
-            errorPresentation = AuthErrorPresentation.Static(MR.strings.auth_error_login_setup.desc())
-            return@LaunchedEffect
-        }
-        when (result) {
-            is SharedAuthResult.Success -> {
-                when (authDataSource.postAuthSessionReadback(result.data)) {
-                    PostAuthSessionReadback.Ready -> {
-                        state = state.copy(submitting = false, errorMessage = null)
-                        errorPresentation = null
-                        val destination = postAuthRouteDestination(result.data)
-                        authDataSource.logDiagnostics(
-                            "auth_post_success_route page=${destination.pageName} source=login " +
-                                "serversCount=${result.data.servers.size} " +
-                                "selectedServer=${!result.data.selectedServerId.isNullOrBlank()}"
-                        )
-                        pager.openPostAuthRoute(result.data)
-                    }
-                    PostAuthSessionReadback.Missing ->
-                        state = state.copy(
-                            submitting = false,
-                            errorMessage = null
-                        ).also {
-                            errorPresentation =
-                                AuthErrorPresentation.Static(MR.strings.auth_error_local_session_setup.desc())
-                        }
-                }
-            }
-            is SharedAuthResult.Failure -> {
-                state = state.copy(submitting = false, errorMessage = null)
-                errorPresentation = AuthErrorPresentation.Dynamic(result.message)
-            }
-            SharedAuthResult.Unauthenticated -> {
-                state = state.copy(submitting = false, errorMessage = null)
-                errorPresentation = AuthErrorPresentation.Static(MR.strings.auth_error_login_failed.desc())
-            }
-        }
-    }
-
-    LaunchedEffect(pendingSocialAuth) {
-        val effect = pendingSocialAuth ?: return@LaunchedEffect
-        val providerId = effect.provider.providerId()
-        val response = runCatching { bridge.socialAuth(providerId) }.getOrNull()
-        pendingSocialAuth = null
-        socialSubmittingProvider = null
-        val code = response?.optString("code").orEmpty().toIntOrNull()
-        if (code == 0 || response?.optString("status") == "error") {
-            state = state.copy(
-                submitting = false,
-                errorMessage = null
-            )
-            errorPresentation =
-                response?.optString("message")
-                    .takeUnless { it.isNullOrBlank() }
-                    ?.let(AuthErrorPresentation::Dynamic)
-                    ?: AuthErrorPresentation.Static(
-                        StringDesc.ResourceFormatted(
-                            MR.strings.auth_error_provider_unavailable,
-                            listOf(effect.provider.providerDisplayName())
-                        )
-                    )
-        } else {
-            state = state.copy(submitting = false, errorMessage = null)
-            errorPresentation = null
-        }
-    }
-
-    fun submitLogin(emailValue: String = state.email, passwordValue: String = state.password) {
-        raftLogDebug(
-            "SlockAuth",
-            "login_submit_entry surface=auth_page emailLength=${emailValue.length} passwordPresent=${passwordValue.isNotBlank()}"
-        )
-        if (
-            isLoginSubmitInFlight(
-                submitting = state.submitting,
-                pendingLogin = pendingLogin != null,
-                socialSubmitting = socialSubmittingProvider != null
-            )
-        ) {
-            raftLogDebug("SlockAuth", "login_submit_skip surface=auth_page reason=in_flight")
-            return
-        }
-        errorPresentation = null
-        val update = reducer.reduce(state.copy(email = emailValue, password = passwordValue), LoginFormEvent.Submit)
-        raftLogDebug(
-            "SlockAuth",
-            "login_submit_reduce surface=auth_page emailError=${update.state.emailFormatError != null} passwordError=${update.state.passwordError != null} effect=${update.effect.loginEffectName()}"
-        )
-        state = update.state
-        when (val effect = update.effect) {
-            is LoginFormEffect.SubmitLogin -> {
-                pendingLogin = PendingLogin(
-                    nonce = (pendingLogin?.nonce ?: 0) + 1,
-                    email = effect.email,
-                    password = effect.password
-                )
-            }
-            LoginFormEffect.FocusEmail -> Unit
-            LoginFormEffect.FocusPassword -> Unit
-            null -> Unit
-        }
-    }
-
-    LoginContent(
-        email = emailFieldValue,
-        password = passwordFieldValue,
-        submitting = state.submitting,
-        errorMessage = errorPresentation.localizedMessage() ?: state.errorMessage ?: routeMessage,
-        emailError = state.emailFormatError.localizedMessage(),
-        passwordError = state.passwordError.localizedMessage(),
-        socialProviders = socialProviders,
-        socialSubmittingProvider = socialSubmittingProvider,
-        onEmailChange = { nextValue ->
-            loginPageInteracted = true
-            applyAuthTextFieldValue(
-                nextValue = nextValue,
-                updateOwner = { emailFieldValue = it },
-                projectText = {
-                    errorPresentation = null
-                    state = reducer.reduce(state, LoginFormEvent.EmailChanged(it)).state
-                },
-            )
-        },
-        onPasswordChange = { nextValue ->
-            loginPageInteracted = true
-            applyAuthTextFieldValue(
-                nextValue = nextValue,
-                updateOwner = { passwordFieldValue = it },
-                projectText = {
-                    errorPresentation = null
-                    state = reducer.reduce(state, LoginFormEvent.PasswordChanged(it)).state
-                },
-            )
-        },
-        onSubmit = {
-            loginPageInteracted = true
-            submitLogin()
-        },
-        onSubmitValues = { emailValue, passwordValue ->
-            loginPageInteracted = true
-            submitLogin(emailValue, passwordValue)
-        },
-        onSocialSignIn = { provider ->
-            loginPageInteracted = true
-            state = state.copy(submitting = false, errorMessage = null)
-            errorPresentation = null
-            socialSubmittingProvider = provider
-            pendingSocialAuth =
-                PendingSocialAuth(
-                    nonce = (pendingSocialAuth?.nonce ?: 0) + 1,
-                    provider = provider
-                )
-        },
-        onForgotPassword = { pager.openAuthPage(FORGOT_PASSWORD_PAGE) },
-        onCreateAccount = { pager.openAuthPage(REGISTER_PAGE) },
-        onOpenTerms = { linkNavigator.open(AUTH_TERMS_URL) },
-        onOpenPrivacy = { linkNavigator.open(AUTH_PRIVACY_URL) },
-        onOpenDiagnostics = { pager.openAuthPage(AUTH_ABOUT_PAGE) },
-        // Same entry as the web login (#2996): the API environment editor, whose save checks the server version.
+    WebLoginScreen(
+        pager,
+        bridge,
+        authDataSource,
         onOpenPrivateDeployment = { privateDeploymentVisible = true },
+        webUrl = apiEnvironment.webUrl,
     )
 }
-
-/** A fresh pre-auth answer replaces the visible login page only within the window and before any user input. */
-internal fun shouldApplyFreshLoginPageChoice(elapsedMs: Long, interacted: Boolean): Boolean =
-    !interacted && elapsedMs <= MOBILE_LEGACY_LOGIN_APPLY_WINDOW_MS
-
-/**
- * Browser web login when the host offers only that, or when it implements it and the pre-auth
- * `mobile_legacy_login_v0` flag is not on (Android, iOS); otherwise email/social login.
- */
-internal fun shouldUseWebLogin(capabilities: SharedAuthRuntimeCapabilities, webLoginGateEnabled: Boolean): Boolean =
-    capabilities.webLoginOnly || (capabilities.webLoginSupported && webLoginGateEnabled)
-
-private data class PendingLogin(
-    val nonce: Int,
-    val email: String,
-    val password: String
-)
-
-private data class PendingSocialAuth(
-    val nonce: Int,
-    val provider: AuthProvider
-)
-
-private data class PendingRegister(
-    val nonce: Int,
-    val email: String,
-    val password: String
-)
-
 private data class PendingProfileSetup(
     val nonce: Int,
     val handle: String,
     val displayName: String
-)
-
-private data class PendingForgotPassword(
-    val nonce: Int,
-    val email: String
 )
 
 /**
@@ -565,255 +255,6 @@ internal fun applyAuthTextFieldValue(
 ) {
     updateOwner(nextValue)
     projectText(nextValue.text)
-}
-
-private data class PendingMobileOAuthLegalAcceptance(
-    val nonce: Int,
-    val code: String,
-    val codeVerifier: String
-)
-
-@Composable
-private fun AuthLegalAcceptanceScreen() {
-    val pager = LocalActivity.current.getPager() as Pager
-    rememberKmmResourceLocaleSeed(pager)
-    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val sharedStores = remember { RaftSharedStoreRegistry.get(bridge) }
-    val authDataSource = rememberCurrentEnvironmentAuthDataSource(bridge)
-    rememberAuthRuntimeCapabilities(
-        store = sharedStores.authRuntimeCapabilityStore,
-        pageData = pager.pageData.params
-    )
-    val linkNavigator =
-        rememberRaftLinkNavigator(
-            pager = pager,
-            bridge = bridge,
-            routeScope = RaftInAppBrowserRouteScope.Unscoped,
-        )
-    val paramsSignature = pager.pageData.params.toString()
-    val providerId = remember(paramsSignature) {
-        pager.pageData.params.optString(AUTH_LEGAL_PROVIDER_KEY).ifBlank { AuthProvider.Google.providerId() }
-    }
-    val platform = remember(paramsSignature) {
-        pager.pageData.params.optString(AUTH_LEGAL_PLATFORM_KEY).ifBlank { "android" }
-    }
-    val code = remember(paramsSignature) { pager.pageData.params.optString(AUTH_LEGAL_CODE_KEY) }
-    val codeVerifier = remember(paramsSignature) { pager.pageData.params.optString(AUTH_LEGAL_CODE_VERIFIER_KEY) }
-    var accepted by remember { mutableStateOf(false) }
-    var submitting by remember { mutableStateOf(false) }
-    var errorPresentation by remember {
-        mutableStateOf<AuthErrorPresentation?>(
-            if (code.isBlank() || codeVerifier.isBlank()) {
-                AuthErrorPresentation.Static(MR.strings.auth_error_request_expired.desc())
-            } else {
-                null
-            }
-        )
-    }
-    var pending by remember { mutableStateOf<PendingMobileOAuthLegalAcceptance?>(null) }
-    val providerName = remember(providerId) { providerId.mobileOAuthProviderDisplayName() }
-    val providerCancelledMessage =
-        remember(providerName) {
-            StringDesc.ResourceFormatted(
-                MR.strings.auth_provider_cancelled,
-                listOf(providerName)
-            )
-        }.localized()
-
-    LaunchedEffect(pending) {
-        val effect = pending ?: return@LaunchedEffect
-        val result =
-            runCatchingPreservingCancellation {
-                authDataSource.completeMobileOAuthLogin(
-                    code = effect.code,
-                    codeVerifier = effect.codeVerifier,
-                    platform = platform,
-                    acceptLegalTerms = true
-                )
-            }.getOrNull()
-        pending = null
-        if (result == null) {
-            submitting = false
-            errorPresentation =
-                AuthErrorPresentation.Static(
-                    StringDesc.ResourceFormatted(
-                        MR.strings.auth_error_provider_setup,
-                        listOf(providerName)
-                    )
-                )
-            return@LaunchedEffect
-        }
-        when (result) {
-            is SharedAuthResult.Success -> {
-                submitting = false
-                errorPresentation = null
-                val destination = postAuthRouteDestination(result.data)
-                authDataSource.logDiagnostics(
-                    "auth_post_success_route page=${destination.pageName} source=mobile_oauth_legal " +
-                        "serversCount=${result.data.servers.size} " +
-                        "selectedServer=${!result.data.selectedServerId.isNullOrBlank()}"
-                )
-                pager.openPostAuthRoute(result.data)
-            }
-            is SharedAuthResult.Failure -> {
-                submitting = false
-                errorPresentation = AuthErrorPresentation.Dynamic(result.message)
-            }
-            SharedAuthResult.Unauthenticated -> {
-                submitting = false
-                errorPresentation =
-                    AuthErrorPresentation.Static(
-                        StringDesc.ResourceFormatted(
-                            MR.strings.auth_error_provider_failed,
-                            listOf(providerName)
-                        )
-                    )
-            }
-        }
-    }
-
-    AuthLegalAcceptanceContent(
-        providerName = providerName,
-        accepted = accepted,
-        submitting = submitting,
-        errorMessage = errorPresentation.localizedMessage(),
-        canSubmit = code.isNotBlank() && codeVerifier.isNotBlank(),
-        onAcceptedChange = { accepted = it },
-        onContinue = {
-            if (submitting || !accepted || code.isBlank() || codeVerifier.isBlank()) return@AuthLegalAcceptanceContent
-            submitting = true
-            errorPresentation = null
-            pending =
-                PendingMobileOAuthLegalAcceptance(
-                    nonce = (pending?.nonce ?: 0) + 1,
-                    code = code,
-                    codeVerifier = codeVerifier
-                )
-        },
-        onBackToSignIn = {
-            pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
-                LOGIN_PAGE,
-                loginPageData(
-                    replaceCurrent = true,
-                    message = providerCancelledMessage
-                )
-            )
-        },
-        onOpenTerms = { linkNavigator.open(AUTH_TERMS_URL) },
-        onOpenPrivacy = { linkNavigator.open(AUTH_PRIVACY_URL) }
-    )
-}
-
-@Composable
-private fun RegisterScreen() {
-    val pager = LocalActivity.current.getPager() as Pager
-    rememberKmmResourceLocaleSeed(pager)
-    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val authDataSource = rememberCurrentEnvironmentAuthDataSource(bridge)
-    val reducer = remember { CreateAccountFormReducer() }
-    var state by remember { mutableStateOf(CreateAccountFormState()) }
-    var emailFieldValue by remember { mutableStateOf(TextFieldValue(state.email)) }
-    var passwordFieldValue by remember { mutableStateOf(TextFieldValue(state.password)) }
-    var errorPresentation by remember { mutableStateOf<AuthErrorPresentation?>(null) }
-    var pendingRegister by remember { mutableStateOf<PendingRegister?>(null) }
-
-    LaunchedEffect(pendingRegister) {
-        val effect = pendingRegister ?: return@LaunchedEffect
-        val result =
-            runCatchingPreservingCancellation {
-                authDataSource.register(
-                    email = effect.email,
-                    password = effect.password
-                )
-            }.getOrNull()
-        pendingRegister = null
-        if (result == null) {
-            state = state.copy(submitting = false, errorMessage = null)
-            errorPresentation = AuthErrorPresentation.Static(MR.strings.auth_error_register_setup.desc())
-            return@LaunchedEffect
-        }
-        when (result) {
-            is SharedAuthResult.Success -> {
-                when (authDataSource.postAuthSessionReadback(result.data)) {
-                    PostAuthSessionReadback.Ready -> {
-                        state = state.copy(submitting = false, errorMessage = null)
-                        errorPresentation = null
-                        val destination = postAuthRouteDestination(result.data)
-                        authDataSource.logDiagnostics(
-                            "auth_post_success_route page=${destination.pageName} source=register " +
-                                "serversCount=${result.data.servers.size} " +
-                                "selectedServer=${!result.data.selectedServerId.isNullOrBlank()}"
-                        )
-                        pager.openPostAuthRoute(result.data)
-                    }
-                    PostAuthSessionReadback.Missing ->
-                        state = state.copy(
-                            submitting = false,
-                            errorMessage = null
-                        ).also {
-                            errorPresentation =
-                                AuthErrorPresentation.Static(MR.strings.auth_error_local_session_setup.desc())
-                        }
-                }
-            }
-            is SharedAuthResult.Failure -> {
-                state = state.copy(submitting = false, errorMessage = null)
-                errorPresentation = AuthErrorPresentation.Dynamic(result.message)
-            }
-            SharedAuthResult.Unauthenticated -> {
-                state = state.copy(submitting = false, errorMessage = null)
-                errorPresentation = AuthErrorPresentation.Static(MR.strings.auth_error_register_failed.desc())
-            }
-        }
-    }
-
-    RegisterContent(
-        email = emailFieldValue,
-        password = passwordFieldValue,
-        submitting = state.submitting,
-        errorMessage = errorPresentation.localizedMessage() ?: state.errorMessage,
-        emailError = state.emailFormatError.localizedMessage(),
-        passwordError = state.passwordError.localizedMessage(),
-        onEmailChange = { nextValue ->
-            applyAuthTextFieldValue(
-                nextValue = nextValue,
-                updateOwner = { emailFieldValue = it },
-                projectText = {
-                    errorPresentation = null
-                    state = reducer.reduce(state, CreateAccountFormEvent.EmailChanged(it)).state
-                },
-            )
-        },
-        onPasswordChange = { nextValue ->
-            applyAuthTextFieldValue(
-                nextValue = nextValue,
-                updateOwner = { passwordFieldValue = it },
-                projectText = {
-                    errorPresentation = null
-                    state = reducer.reduce(state, CreateAccountFormEvent.PasswordChanged(it)).state
-                },
-            )
-        },
-        onSubmit = {
-            errorPresentation = null
-            val update = reducer.reduce(state, CreateAccountFormEvent.Submit)
-            state = update.state
-            when (val effect = update.effect) {
-                is CreateAccountFormEffect.SubmitCreateAccount -> {
-                    pendingRegister = PendingRegister(
-                        nonce = (pendingRegister?.nonce ?: 0) + 1,
-                        email = effect.email,
-                        password = effect.password
-                    )
-                }
-                CreateAccountFormEffect.FocusEmail -> Unit
-                CreateAccountFormEffect.FocusPassword -> Unit
-                null -> Unit
-            }
-        },
-        onBackToSignIn = { pager.closeAuthSubPage() },
-        onOpenDiagnostics = { pager.openAuthPage(AUTH_ABOUT_PAGE) }
-    )
 }
 
 @Composable
@@ -921,84 +362,6 @@ private fun AuthProfileSetupScreen() {
                 null -> Unit
             }
         },
-        onOpenDiagnostics = { pager.openAuthPage(AUTH_ABOUT_PAGE) }
-    )
-}
-
-@Composable
-private fun ForgotPasswordScreen() {
-    val pager = LocalActivity.current.getPager() as Pager
-    rememberKmmResourceLocaleSeed(pager)
-    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val authDataSource = rememberCurrentEnvironmentAuthDataSource(bridge)
-    val reducer = remember { ForgotPasswordFormReducer() }
-    var state by remember { mutableStateOf(ForgotPasswordFormState()) }
-    var emailFieldValue by remember { mutableStateOf(TextFieldValue(state.email)) }
-    var errorPresentation by remember { mutableStateOf<AuthErrorPresentation?>(null) }
-    var pendingForgotPassword by remember { mutableStateOf<PendingForgotPassword?>(null) }
-
-    LaunchedEffect(pendingForgotPassword) {
-        val effect = pendingForgotPassword ?: return@LaunchedEffect
-        val result =
-            runCatchingPreservingCancellation { authDataSource.forgotPassword(effect.email) }
-                .getOrNull()
-        pendingForgotPassword = null
-        if (result == null) {
-            state = state.copy(submitting = false, sent = false, errorMessage = null)
-            errorPresentation = AuthErrorPresentation.Static(MR.strings.auth_error_password_reset_setup.desc())
-            return@LaunchedEffect
-        }
-        state =
-            when (result) {
-                is SharedAuthResult.Success ->
-                    state.copy(submitting = false, sent = true, errorMessage = null)
-                is SharedAuthResult.Failure -> {
-                    errorPresentation = AuthErrorPresentation.Dynamic(result.message)
-                    state.copy(submitting = false, sent = false, errorMessage = null)
-                }
-                SharedAuthResult.Unauthenticated -> {
-                    errorPresentation = AuthErrorPresentation.Static(MR.strings.auth_error_password_reset_failed.desc())
-                    state.copy(submitting = false, sent = false, errorMessage = null)
-                }
-            }
-        if (result is SharedAuthResult.Success) {
-            errorPresentation = null
-        }
-    }
-
-    ForgotPasswordContent(
-        email = emailFieldValue,
-        sending = state.submitting,
-        sent = state.sent,
-        errorMessage = errorPresentation.localizedMessage() ?: state.errorMessage,
-        emailError = state.emailFormatError.localizedMessage(),
-        onEmailChange = { nextValue ->
-            applyAuthTextFieldValue(
-                nextValue = nextValue,
-                updateOwner = { emailFieldValue = it },
-                projectText = {
-                    errorPresentation = null
-                    state = reducer.reduce(state, ForgotPasswordFormEvent.EmailChanged(it)).state
-                },
-            )
-        },
-        onSubmit = {
-            errorPresentation = null
-            val update = reducer.reduce(state, ForgotPasswordFormEvent.Submit)
-            state = update.state
-            when (val effect = update.effect) {
-                is ForgotPasswordFormEffect.SubmitForgotPassword -> {
-                    pendingForgotPassword =
-                        PendingForgotPassword(
-                            nonce = (pendingForgotPassword?.nonce ?: 0) + 1,
-                            email = effect.email
-                        )
-                }
-                ForgotPasswordFormEffect.FocusEmail -> Unit
-                null -> Unit
-            }
-        },
-        onBackToSignIn = { pager.closeAuthSubPage() },
         onOpenDiagnostics = { pager.openAuthPage(AUTH_ABOUT_PAGE) }
     )
 }
@@ -1374,66 +737,6 @@ private val AuthDiagnosticsEmailPattern =
     Regex("""\b([A-Za-z0-9._%+-]{2})[A-Za-z0-9._%+-]*(@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b""")
 
 @Composable
-internal fun AuthLoginInputsVisualScreen() {
-    val pager = LocalActivity.current.getPager() as Pager
-    // visualFixture "signing" renders the in-flight sign-in state: filled
-    // fields that stay white/enabled (task #372) plus the submit button as
-    // "Signing in…" at the 50%-alpha disabled look, with the google+github
-    // social section pinned to match the react case's /auth/providers stub.
-    // Any other value keeps the pre-existing default render used by the
-    // empty/filled/invalid captures.
-    val signing =
-        pager.pageData.params.optString(AUTH_VISUAL_FIXTURE_KEY) == AUTH_LOGIN_VISUAL_FIXTURE_SIGNING
-    val invalid =
-        pager.pageData.params.optString(AUTH_VISUAL_FIXTURE_KEY) == AUTH_LOGIN_VISUAL_FIXTURE_INVALID
-    val email =
-        when {
-            invalid -> "invalid-email"
-            signing -> AUTH_LOGIN_VISUAL_SIGNING_EMAIL
-            else -> "artin@slock.test"
-        }
-    val emailError =
-        if (invalid) {
-            LoginFormReducer()
-                .reduce(LoginFormState(email = email, password = "password"), LoginFormEvent.Submit)
-                .state
-                .emailFormatError
-                .localizedMessage()
-        } else {
-            null
-        }
-    LoginContent(
-        email = TextFieldValue(email),
-        password = TextFieldValue(if (signing) AUTH_LOGIN_VISUAL_SIGNING_PASSWORD else "password"),
-        submitting = signing,
-        errorMessage = null,
-        emailError = emailError,
-        socialProviders = if (signing) setOf(AuthProvider.Google, AuthProvider.GitHub) else emptySet(),
-        onEmailChange = {},
-        onPasswordChange = {},
-        onSubmit = {},
-        onForgotPassword = {},
-        onCreateAccount = {}
-    )
-}
-
-@Composable
-internal fun AuthRegisterInputsVisualScreen() {
-    val pager = LocalActivity.current.getPager() as Pager
-    val params = pager.pageData.params
-    RegisterContent(
-        email = TextFieldValue(params.optString(AUTH_REGISTER_VISUAL_EMAIL_KEY).ifBlank { AUTH_REGISTER_VISUAL_DEFAULT_EMAIL }),
-        password = TextFieldValue(params.optString(AUTH_REGISTER_VISUAL_PASSWORD_KEY).ifBlank { AUTH_REGISTER_VISUAL_DEFAULT_PASSWORD }),
-        submitting = false,
-        errorMessage = null,
-        onEmailChange = {},
-        onPasswordChange = {},
-        onSubmit = {},
-        onBackToSignIn = {}
-    )
-}
-
-@Composable
 internal fun AuthProfileSetupVisualScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val params = pager.pageData.params
@@ -1452,314 +755,6 @@ internal fun AuthProfileSetupVisualScreen() {
         onDisplayNameChange = {},
         onSubmit = {}
     )
-}
-
-@Composable
-internal fun AuthForgotPasswordSentVisualScreen() {
-    ForgotPasswordContent(
-        email = TextFieldValue("visual.reset@raft.build"),
-        sending = false,
-        sent = true,
-        errorMessage = null,
-        onEmailChange = {},
-        onSubmit = {},
-        onBackToSignIn = {}
-    )
-}
-
-@Composable
-internal fun LoginContent(
-    email: TextFieldValue,
-    password: TextFieldValue,
-    submitting: Boolean,
-    errorMessage: String?,
-    emailError: String? = null,
-    passwordError: String? = null,
-    socialProviders: Set<AuthProvider> = emptySet(),
-    socialSubmittingProvider: AuthProvider? = null,
-    onEmailChange: (TextFieldValue) -> Unit,
-    onPasswordChange: (TextFieldValue) -> Unit,
-    onSubmit: () -> Unit,
-    onSubmitValues: (String, String) -> Unit = { _, _ -> onSubmit() },
-    onSocialSignIn: (AuthProvider) -> Unit = {},
-    onForgotPassword: () -> Unit,
-    onCreateAccount: () -> Unit,
-    onOpenTerms: () -> Unit = {},
-    onOpenPrivacy: () -> Unit = {},
-    onOpenDiagnostics: () -> Unit = {},
-    onOpenPrivateDeployment: () -> Unit = {},
-) {
-    val emailFocusRequester = remember { FocusRequester() }
-    val passwordFocusRequester = remember { FocusRequester() }
-    val visibleSocialProviders = remember(socialProviders) { socialProviders.visibleMobileSocialAuthProviders() }
-    val formBusy = submitting || socialSubmittingProvider != null
-    val canSubmit = canSubmitLoginForm(email.text, password.text, formBusy, emailError)
-    val submitCurrentDraft = {
-        when (val decision = resolveLoginDraftSubmit(email.text, password.text, formBusy)) {
-            is LoginDraftSubmitDecision.Forward ->
-                onSubmitValues(decision.email, decision.password)
-            LoginDraftSubmitDecision.IgnoreBusy -> Unit
-        }
-    }
-    AuthScaffold(
-        onDiagnosticsShortcut = onOpenDiagnostics,
-        contentScrollable = true
-    ) {
-        AuthCenterMark()
-        Text(
-            text = stringResource(MR.strings.auth_title_sign_in),
-            style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack,
-            modifier = Modifier.authPageStaticTextFocus()
-        )
-        AuthFormColumn {
-            // React parity (LoginPage.tsx): the inputs are never disabled while a
-            // sign-in request is in flight — they stay white/black-bordered and
-            // editable; only the submit button dims. Gating them on !formBusy
-            // grayed the whole form during signing (task #372). Double-submit
-            // stays impossible: the button disables itself and
-            // resolveLoginDraftSubmit ignores submits while formBusy.
-            AuthTextField(
-                value = email,
-                onValueChange = onEmailChange,
-                // React parity: LoginPage.tsx labels are plain "Email"/"Password"
-                // (no pink required asterisk).
-                label = stringResource(MR.strings.auth_label_email),
-                modifier =
-                    Modifier.onPreviewKeyEvent { event ->
-                        if (event.type == KeyEventType.KeyDown && event.key == Key.Tab && !event.isShiftPressed) {
-                            passwordFocusRequester.requestFocus()
-                            true
-                        } else {
-                            false
-                        }
-                    },
-                isError = !emailError.isNullOrBlank(),
-                errorText = emailError,
-                focusRequester = emailFocusRequester,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
-                keyboardActions = KeyboardActions(onNext = { passwordFocusRequester.requestFocus() })
-            )
-            AuthTextField(
-                value = password,
-                onValueChange = onPasswordChange,
-                label = stringResource(MR.strings.auth_label_password),
-                modifier =
-                    Modifier.onPreviewKeyEvent { event ->
-                        if (event.type == KeyEventType.KeyDown && event.key == Key.Tab && event.isShiftPressed) {
-                            emailFocusRequester.requestFocus()
-                            true
-                        } else {
-                            false
-                        }
-                    },
-                isError = !passwordError.isNullOrBlank(),
-                errorText = passwordError,
-                focusRequester = passwordFocusRequester,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { submitCurrentDraft() })
-            )
-            AuthError(errorMessage)
-            // React parity (LoginPage.tsx): Sign In stays full pink + black text
-            // even with an empty form (validation happens on submit) and only
-            // dims to the 50%-alpha look while busy — gating enabled on
-            // canSubmit sent the button into the generic disabled palette
-            // (#FFD8E5 + white text = unreadable white-on-white, task #372).
-            AuthActionButton(
-                text =
-                    if (submitting) {
-                        stringResource(MR.strings.auth_state_signing_in)
-                    } else {
-                        stringResource(MR.strings.auth_action_sign_in)
-                    },
-                onClick = submitCurrentDraft,
-                tone = AuthButtonTone.Pink,
-                enabled = !formBusy,
-                loading = submitting,
-                preserveDisabledVisual = true
-            )
-            if (visibleSocialProviders.isNotEmpty()) {
-                AuthDivider()
-                // React parity (LoginPage.tsx SocialProviderButton): social buttons
-                // are never disabled by an in-flight email/password sign-in — react
-                // keeps them full-opacity and clickable (tapping one abandons the
-                // pending login; onSocialSignIn resets submitting here too). They
-                // only dim during Android's own in-app "Opening …" social flow,
-                // a state react never renders because it redirects instead.
-                val socialEnabled = socialSubmittingProvider == null
-                if (AuthProvider.Google in visibleSocialProviders) {
-                    AuthActionButton(
-                        text =
-                            if (socialSubmittingProvider == AuthProvider.Google) {
-                                StringDesc.ResourceFormatted(
-                                    MR.strings.auth_action_opening_provider,
-                                    listOf(AuthProvider.Google.providerDisplayName())
-                                ).localized()
-                            } else {
-                                StringDesc.ResourceFormatted(
-                                    MR.strings.auth_action_continue_with_provider,
-                                    listOf(AuthProvider.Google.providerDisplayName())
-                                ).localized()
-                            },
-                        onClick = { onSocialSignIn(AuthProvider.Google) },
-                        tone = AuthButtonTone.White,
-                        enabled = socialEnabled,
-                        loading = socialSubmittingProvider == AuthProvider.Google,
-                        preserveDisabledVisual = true,
-                        leadingContent = { AuthProviderIcon(AuthProvider.Google) }
-                    )
-                }
-                if (AuthProvider.GitHub in visibleSocialProviders) {
-                    AuthActionButton(
-                        text =
-                            if (socialSubmittingProvider == AuthProvider.GitHub) {
-                                StringDesc.ResourceFormatted(
-                                    MR.strings.auth_action_opening_provider,
-                                    listOf(AuthProvider.GitHub.providerDisplayName())
-                                ).localized()
-                            } else {
-                                StringDesc.ResourceFormatted(
-                                    MR.strings.auth_action_continue_with_provider,
-                                    listOf(AuthProvider.GitHub.providerDisplayName())
-                                ).localized()
-                            },
-                        onClick = { onSocialSignIn(AuthProvider.GitHub) },
-                        tone = AuthButtonTone.Black,
-                        enabled = socialEnabled,
-                        loading = socialSubmittingProvider == AuthProvider.GitHub,
-                        preserveDisabledVisual = true,
-                        leadingContent = { AuthProviderIcon(AuthProvider.GitHub) }
-                    )
-                }
-                if (AuthProvider.Apple in visibleSocialProviders) {
-                    AuthActionButton(
-                        text =
-                            if (socialSubmittingProvider == AuthProvider.Apple) {
-                                StringDesc.ResourceFormatted(
-                                    MR.strings.auth_action_opening_provider,
-                                    listOf(AuthProvider.Apple.providerDisplayName())
-                                ).localized()
-                            } else {
-                                StringDesc.ResourceFormatted(
-                                    MR.strings.auth_action_continue_with_provider,
-                                    listOf(AuthProvider.Apple.providerDisplayName())
-                                ).localized()
-                            },
-                        onClick = { onSocialSignIn(AuthProvider.Apple) },
-                        tone = AuthButtonTone.Black,
-                        enabled = socialEnabled,
-                        loading = socialSubmittingProvider == AuthProvider.Apple,
-                        preserveDisabledVisual = true,
-                        leadingContent = { AuthProviderIcon(AuthProvider.Apple) }
-                    )
-                }
-            }
-            AuthLegalNotice(
-                onOpenTerms = onOpenTerms,
-                onOpenPrivacy = onOpenPrivacy
-            )
-            AuthTextLink(stringResource(MR.strings.auth_link_forgot_password)) { onForgotPassword() }
-            AuthInlineAction(
-                stringResource(MR.strings.auth_prompt_no_account),
-                stringResource(MR.strings.auth_action_create_one)
-            ) { onCreateAccount() }
-            AuthTextLink(stringResource(MR.strings.auth_web_login_private_entry)) { onOpenPrivateDeployment() }
-        }
-    }
-}
-
-@Composable
-internal fun RegisterContent(
-    email: TextFieldValue,
-    password: TextFieldValue,
-    submitting: Boolean,
-    errorMessage: String?,
-    emailError: String? = null,
-    passwordError: String? = null,
-    onEmailChange: (TextFieldValue) -> Unit,
-    onPasswordChange: (TextFieldValue) -> Unit,
-    onSubmit: () -> Unit,
-    onBackToSignIn: () -> Unit,
-    onOpenDiagnostics: () -> Unit = {}
-) {
-    var termsAccepted by remember { mutableStateOf(false) }
-    val emailFocusRequester = remember { FocusRequester() }
-    val passwordFocusRequester = remember { FocusRequester() }
-    val canSubmit =
-        canSubmitRegisterForm(
-            email = email.text,
-            password = password.text,
-            termsAccepted = termsAccepted,
-            formBusy = submitting,
-            emailFormatError = emailError,
-            passwordError = passwordError
-        )
-    val submitIfAllowed = {
-        if (canSubmit) {
-            onSubmit()
-        }
-    }
-    AuthScaffold(
-        onDiagnosticsShortcut = onOpenDiagnostics,
-        contentScrollable = true
-    ) {
-        AuthCenterMark()
-        Text(
-            text = stringResource(MR.strings.auth_title_create_account),
-            style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack,
-            modifier = Modifier.authPageStaticTextFocus()
-        )
-        AuthFormColumn {
-            // React parity (RegisterPage.tsx): the inputs are never disabled while
-            // the create-account request is in flight — only the legal checkbox
-            // and submit button get disabled={loading} (task #372).
-            AuthTextField(
-                email,
-                onEmailChange,
-                stringResource(MR.strings.auth_label_email),
-                isError = !emailError.isNullOrBlank(),
-                errorText = emailError,
-                focusRequester = emailFocusRequester,
-                forceFocused = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
-                keyboardActions = KeyboardActions(onNext = { passwordFocusRequester.requestFocus() })
-            )
-            AuthTextField(
-                password,
-                onPasswordChange,
-                stringResource(MR.strings.auth_label_password),
-                placeholder = stringResource(MR.strings.auth_password_min_length),
-                isError = !passwordError.isNullOrBlank(),
-                errorText = passwordError,
-                focusRequester = passwordFocusRequester,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { submitIfAllowed() })
-            )
-            AuthTermsAgreement(termsAccepted, { termsAccepted = it })
-            AuthError(errorMessage)
-            AuthActionButton(
-                text =
-                    if (submitting) {
-                        stringResource(MR.strings.auth_state_creating_account)
-                    } else {
-                        stringResource(MR.strings.auth_action_create_account)
-                    },
-                onClick = submitIfAllowed,
-                tone = AuthButtonTone.Pink,
-                enabled = canSubmit,
-                loading = submitting,
-                // Disabled renders as the react disabled:opacity-50 look (50%-alpha
-                // pink + black) instead of the white-on-white generic palette.
-                preserveDisabledVisual = true,
-                variant = AuthActionButtonVariant.Large
-            )
-            AuthInlineAction(
-                stringResource(MR.strings.auth_prompt_already_have_account),
-                stringResource(MR.strings.auth_action_sign_in)
-            ) { onBackToSignIn() }
-        }
-    }
 }
 
 @Composable
@@ -1850,181 +845,6 @@ internal fun AuthProfileSetupContent(
 }
 
 @Composable
-internal fun ForgotPasswordContent(
-    email: TextFieldValue,
-    sending: Boolean,
-    sent: Boolean,
-    errorMessage: String?,
-    emailError: String? = null,
-    onEmailChange: (TextFieldValue) -> Unit,
-    onSubmit: () -> Unit,
-    onBackToSignIn: () -> Unit,
-    onOpenDiagnostics: () -> Unit = {}
-) {
-    AuthScaffold(
-        onDiagnosticsShortcut = onOpenDiagnostics,
-        contentScrollable = true
-    ) {
-        AuthCenterMark()
-        Text(
-            text = stringResource(MR.strings.auth_title_reset_password),
-            style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack,
-            modifier = Modifier.authPageStaticTextFocus()
-        )
-        Text(
-            text = stringResource(MR.strings.auth_hint_reset_password),
-            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextMutedGray),
-            color = RaftColor.TextMutedGray,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.authPageStaticTextFocus()
-        )
-        AuthFormColumn {
-            AuthTextField(
-                value = email,
-                onValueChange = onEmailChange,
-                label = stringResource(MR.strings.auth_label_email),
-                // React parity (ForgotPasswordPage.tsx): the email input stays
-                // enabled while the reset request is in flight (task #372).
-                // After `sent`, react swaps to a page without the input at all,
-                // so the grayed disabled field remains mobile's stand-in.
-                enabled = !sent,
-                isError = !emailError.isNullOrBlank(),
-                errorText = emailError,
-                forceFocused = !sent,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { onSubmit() })
-            )
-            AuthError(errorMessage)
-            if (sent) {
-                val resetEmail = email.text.ifBlank { stringResource(MR.strings.auth_fallback_your_email) }
-                AuthSuccessNotice(
-                    title = stringResource(MR.strings.auth_check_email_title),
-                    detail =
-                        StringDesc.ResourceFormatted(
-                            MR.strings.auth_notice_password_reset_sent,
-                            listOf(resetEmail)
-                        ).localized()
-                )
-            }
-            AuthActionButton(
-                text =
-                    if (sending) {
-                        stringResource(MR.strings.auth_state_sending)
-                    } else {
-                        stringResource(MR.strings.auth_action_send_reset_link)
-                    },
-                onClick = onSubmit,
-                tone = AuthButtonTone.Pink,
-                enabled = email.text.isNotBlank() && emailError == null && !sent,
-                loading = sending,
-                preserveDisabledVisual = true
-            )
-            AuthTextLink(stringResource(MR.strings.auth_link_back_to_sign_in)) { onBackToSignIn() }
-        }
-    }
-}
-
-@Composable
-private fun AuthLegalAcceptanceContent(
-    providerName: String,
-    accepted: Boolean,
-    submitting: Boolean,
-    errorMessage: String?,
-    canSubmit: Boolean,
-    onAcceptedChange: (Boolean) -> Unit,
-    onContinue: () -> Unit,
-    onBackToSignIn: () -> Unit,
-    onOpenTerms: () -> Unit,
-    onOpenPrivacy: () -> Unit
-) {
-    AuthScaffold(contentScrollable = true) {
-        AuthCenterMark()
-        Text(
-            text =
-                StringDesc.ResourceFormatted(
-                    MR.strings.auth_title_provider_sign_in,
-                    listOf(providerName)
-                ).localized(),
-            style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack,
-            modifier = Modifier.authPageStaticTextFocus()
-        )
-        Text(
-            text = stringResource(MR.strings.auth_hint_legal_acceptance),
-            style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextMutedGray),
-            color = RaftColor.TextMutedGray,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().authPageStaticTextFocus()
-        )
-        AuthFormColumn {
-            AuthTermsAgreement(accepted, onAcceptedChange)
-            AuthLegalNotice(onOpenTerms = onOpenTerms, onOpenPrivacy = onOpenPrivacy)
-            AuthError(errorMessage)
-            AuthActionButton(
-                text =
-                    if (submitting) {
-                        stringResource(MR.strings.auth_state_continuing)
-                    } else {
-                        stringResource(MR.strings.auth_action_continue)
-                    },
-                onClick = onContinue,
-                tone = AuthButtonTone.Pink,
-                enabled = canSubmit && accepted && !submitting,
-                loading = submitting,
-                preserveDisabledVisual = true,
-                variant = AuthActionButtonVariant.Large
-            )
-            AuthTextLink(stringResource(MR.strings.auth_link_back_to_sign_in)) { onBackToSignIn() }
-        }
-    }
-}
-
-@Composable
-internal fun AuthLegalNotice(
-    onOpenTerms: () -> Unit,
-    onOpenPrivacy: () -> Unit
-) {
-    val linkStyles = TextLinkStyles(style = AuthLegalNoticeLinkStyle.toSpanStyle())
-    val prefix = stringResource(MR.strings.auth_legal_notice_prefix)
-    val terms = stringResource(MR.strings.auth_link_terms_of_service)
-    val connector = stringResource(MR.strings.auth_legal_notice_connector)
-    val privacy = stringResource(MR.strings.auth_link_privacy_policy)
-    val suffix = stringResource(MR.strings.auth_legal_notice_suffix)
-    val text =
-        buildAnnotatedString {
-            append(prefix)
-            withLink(
-                LinkAnnotation.Clickable(
-                    tag = "auth-terms",
-                    styles = linkStyles,
-                    linkInteractionListener = LinkInteractionListener { onOpenTerms() }
-                )
-            ) {
-                append(terms)
-            }
-            append(authLegalConnectorText(connector))
-            withLink(
-                LinkAnnotation.Clickable(
-                    tag = "auth-privacy",
-                    styles = linkStyles,
-                    linkInteractionListener = LinkInteractionListener { onOpenPrivacy() }
-                )
-            ) {
-                append(privacy)
-            }
-            append(suffix)
-        }
-    Text(
-        text = text,
-        style = AuthLegalNoticeTextStyle,
-        color = AuthLegalNoticeTextColor,
-        textAlign = TextAlign.Center,
-        modifier = Modifier.fillMaxWidth().authPageStaticTextFocus()
-    )
-}
-
-@Composable
 internal fun AuthTermsAgreement(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
@@ -2112,60 +932,11 @@ internal fun authTermsAgreementText(
 // the last policy word to the following connector and sentence at layout time.
 internal fun authLegalConnectorText(connector: String): String = connector.replace('\u00A0', ' ')
 
-private val AuthLegalNoticeTextColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.60f)
-// Task #179: getter, not val -- a captured style would keep the face active at class-init and
-// ignore the Settings font option.
-private val AuthLegalNoticeTextStyle: TextStyle
-    get() = RaftType.Body.copy(fontSize = 12.sp, lineHeight = 16.sp, color = AuthLegalNoticeTextColor)
-private val AuthLegalNoticeLinkStyle: TextStyle
-    get() = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextBlack, textDecoration = TextDecoration.Underline)
 private val AuthTermsTextColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.70f)
 private val AuthTermsTextStyle: TextStyle
     get() = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = AuthTermsTextColor)
 private val AuthTermsLinkStyle: TextStyle
     get() = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextBlack, textDecoration = TextDecoration.Underline)
-
-@Composable
-private fun LoginContentPreview() {
-    LoginContent(
-        email = TextFieldValue("artin@raft.build"),
-        password = TextFieldValue("password"),
-        submitting = false,
-        errorMessage = null,
-        onEmailChange = {},
-        onPasswordChange = {},
-        onSubmit = {},
-        onForgotPassword = {},
-        onCreateAccount = {}
-    )
-}
-
-@Composable
-private fun RegisterStatesPreview() {
-    RegisterContent(
-        email = TextFieldValue("new@raft.build"),
-        password = TextFieldValue("password"),
-        submitting = false,
-        errorMessage = null,
-        onEmailChange = {},
-        onPasswordChange = {},
-        onSubmit = {},
-        onBackToSignIn = {}
-    )
-}
-
-@Composable
-private fun ForgotPasswordSuccessPreview() {
-    ForgotPasswordContent(
-        email = TextFieldValue("very.long.email.address+team@raft.build"),
-        sending = false,
-        sent = true,
-        errorMessage = null,
-        onEmailChange = {},
-        onSubmit = {},
-        onBackToSignIn = {}
-    )
-}
 
 internal fun Pager.openAuthPage(pageName: String, destination: String? = null) {
     val pageData =
@@ -2225,36 +996,12 @@ internal data class AuthRouteDestination(
     val pageData: JSONObject
 )
 
-private suspend fun SharedAuthDataSource.postAuthSessionReadback(
-    expected: StoredAuthSession
-): PostAuthSessionReadback {
-    val readback =
-        runCatchingPreservingCancellation { currentSession() }
-            .getOrElse {
-                logDiagnostics("auth_post_success_readback_result result=failure stage=session_readback")
-                return PostAuthSessionReadback.Missing
-            }
-    val ready =
-        readback is SharedAuthResult.Success &&
-            readback.data.isSamePostAuthSession(expected)
-    logDiagnostics(
-        "auth_post_success_readback_result result=${if (ready) "success" else "missing"} " +
-            "hasSession=${readback is SharedAuthResult.Success}"
-    )
-    return if (ready) PostAuthSessionReadback.Ready else PostAuthSessionReadback.Missing
-}
-
 internal fun StoredAuthSession.isSamePostAuthSession(
     expected: StoredAuthSession
 ): Boolean =
     user.id == expected.user.id &&
         accessToken == expected.accessToken &&
         refreshToken == expected.refreshToken
-
-private enum class PostAuthSessionReadback {
-    Ready,
-    Missing
-}
 
 internal fun loginPageData(
     replaceCurrent: Boolean = false,
@@ -2287,10 +1034,6 @@ internal fun JSONObject.authRouteMessage(): String? =
 internal fun SharedAuthRuntimeCapabilityStore.seedFromAuthPageData(
     pageData: JSONObject
 ): SharedAuthRuntimeCapabilities {
-    seedWebLoginOnly(if (pageData.has("slockWebLoginOnly")) pageData.optBoolean("slockWebLoginOnly", false) else null)
-    seedWebLoginSupported(
-        if (pageData.has(AUTH_WEB_LOGIN_SUPPORTED_KEY)) pageData.optBoolean(AUTH_WEB_LOGIN_SUPPORTED_KEY, false) else null
-    )
     return seedSocialProviders(
         if (pageData.has(AUTH_SOCIAL_PROVIDERS_KEY)) {
             pageData.optString(AUTH_SOCIAL_PROVIDERS_KEY)
@@ -2313,47 +1056,3 @@ internal fun rememberAuthRuntimeCapabilities(
     }
 }
 
-private fun Pager.closeAuthSubPage() {
-    acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
-}
-
-internal fun SharedAuthRuntimeCapabilities.socialAuthProviders(
-    applePlatformSupported: Boolean
-): Set<AuthProvider> {
-    val hostProviders = socialProviderIds
-        .mapNotNull { raw ->
-            when (raw.trim().lowercase()) {
-                AuthProvider.Google.providerId() -> AuthProvider.Google
-                AuthProvider.GitHub.providerId() -> AuthProvider.GitHub
-                AuthProvider.Apple.providerId() -> AuthProvider.Apple
-                else -> null
-            }
-        }
-        .toSet()
-    // Apple is always available on iOS, including the first cold-start composition.
-    // Neither a missing/stale provider probe nor legacy local overrides control it.
-    // Native authorization and server credential validation still run when selected.
-    return if (applePlatformSupported) hostProviders + AuthProvider.Apple else hostProviders - AuthProvider.Apple
-}
-
-private fun AuthProvider.providerId(): String =
-    when (this) {
-        AuthProvider.Google -> "google"
-        AuthProvider.GitHub -> "github"
-        AuthProvider.Apple -> "apple"
-    }
-
-private fun AuthProvider.providerDisplayName(): String =
-    when (this) {
-        AuthProvider.Google -> "Google"
-        AuthProvider.GitHub -> "GitHub"
-        AuthProvider.Apple -> "Apple"
-    }
-
-private fun String.mobileOAuthProviderDisplayName(): String =
-    when (trim().lowercase()) {
-        AuthProvider.Google.providerId() -> AuthProvider.Google.providerDisplayName()
-        AuthProvider.GitHub.providerId() -> AuthProvider.GitHub.providerDisplayName()
-        AuthProvider.Apple.providerId() -> AuthProvider.Apple.providerDisplayName()
-        else -> "Social"
-    }

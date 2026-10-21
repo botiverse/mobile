@@ -2252,26 +2252,6 @@ class RealtimeRepositoryTest {
         override suspend fun fetchSocialAuthProviders(platform: String): AuthApiResult<Set<String>> =
             AuthApiResult.Failure(404)
 
-        override suspend fun startMobileOAuth(
-            provider: String,
-            mode: String,
-            platform: String,
-            appEnv: String,
-            returnUri: String,
-            codeChallenge: String,
-            authorization: String?
-        ): AuthApiResult<AuthMobileOAuthStartResponse> =
-            AuthApiResult.Failure(404)
-
-        override suspend fun completeMobileOAuth(
-            code: String,
-            codeVerifier: String,
-            platform: String,
-            acceptLegalTerms: Boolean,
-            authorization: String?
-        ): AuthApiResult<AuthLoginResponse> =
-            AuthApiResult.Failure(404)
-
         override suspend fun startMobileOAuthLink(
             provider: String,
             returnUri: String,
@@ -2286,12 +2266,6 @@ class RealtimeRepositoryTest {
             codeVerifier: String,
             authorization: String
         ): AuthApiResult<AuthMobileOAuthLinkCompleteResponse> =
-            AuthApiResult.Failure(404)
-
-        override suspend fun register(email: String, password: String): AuthApiResult<AuthLoginResponse> =
-            AuthApiResult.Failure(404)
-
-        override suspend fun forgotPassword(email: String): AuthApiResult<Unit> =
             AuthApiResult.Failure(404)
 
         override suspend fun resendVerification(authorization: String): AuthApiResult<Unit> =

@@ -14,7 +14,6 @@ const val RAFT_IOS_MOBILE_OAUTH_MMKV_NAMESPACE = "slockIosMobileOAuth"
 internal const val RAFT_MOBILE_OAUTH_COMPLETION_EVENT = "slockMobileOAuthCompletion"
 
 private const val IOS_MOBILE_OAUTH_LOG_TAG = "SlockIosOAuth"
-private const val IOS_MOBILE_OAUTH_LOGIN_MODE = "login"
 private const val IOS_MOBILE_OAUTH_LINK_MODE = "link"
 private const val IOS_MOBILE_OAUTH_RELEASE_RETURN_URI = "raft://oauth/callback"
 private const val IOS_MOBILE_OAUTH_DEBUG_RETURN_URI = "raft-debug://oauth/callback"
@@ -25,7 +24,8 @@ private const val IOS_MOBILE_OAUTH_CLOCK_SKEW_MILLIS = 60L * 1000L
 
 private val IosBrowserOAuthProviders = setOf("google", "github")
 private val IosMobileOAuthProviders = IosBrowserOAuthProviders + "apple"
-private val IosMobileOAuthModes = setOf(IOS_MOBILE_OAUTH_LOGIN_MODE, IOS_MOBILE_OAUTH_LINK_MODE)
+/** Provider linking (Settings -> Account) is the only mode; sign-in goes through the browser web login. */
+private val IosMobileOAuthModes = setOf(IOS_MOBILE_OAUTH_LINK_MODE)
 private val IosMobileOAuthPkceValue = Regex("^[A-Za-z0-9_-]{43,128}$")
 
 /** Swift-facing start result. Authorization URLs and PKCE material are never logged. */
@@ -39,16 +39,11 @@ data class RaftIosMobileOAuthStartResult(
     val message: String? = null,
 )
 
-/**
- * Swift-facing terminal result. `handoffCode` and `codeVerifier` are populated only for the
- * existing shared legal-acceptance route and must stay in-process.
- */
+/** Swift-facing terminal result. */
 data class RaftIosMobileOAuthCompletionResult(
     val status: String,
     val message: String? = null,
     val provider: String? = null,
-    val handoffCode: String? = null,
-    val codeVerifier: String? = null,
     val generation: String? = null,
 )
 
@@ -166,13 +161,6 @@ internal sealed interface IosNativeAppleAuthorizationOutcome {
     data object Unauthenticated : IosNativeAppleAuthorizationOutcome
 }
 
-internal sealed interface IosMobileOAuthLoginOutcome {
-    data class Success(val selectedServerId: String?) : IosMobileOAuthLoginOutcome
-    data class LegalAcceptanceRequired(val message: String) : IosMobileOAuthLoginOutcome
-    data class Failure(val message: String) : IosMobileOAuthLoginOutcome
-    data object Unauthenticated : IosMobileOAuthLoginOutcome
-}
-
 internal sealed interface IosMobileOAuthLinkOutcome {
     data object Success : IosMobileOAuthLinkOutcome
     data class Failure(val message: String) : IosMobileOAuthLinkOutcome
@@ -181,14 +169,6 @@ internal sealed interface IosMobileOAuthLinkOutcome {
 
 internal interface IosMobileOAuthRuntime {
     val environmentKey: String
-
-    suspend fun startBrowserLogin(
-        provider: String,
-        platform: String,
-        appEnv: String,
-        returnUri: String,
-        codeChallenge: String,
-    ): IosMobileOAuthStartOutcome
 
     suspend fun startBrowserLink(
         provider: String,
@@ -211,12 +191,6 @@ internal interface IosMobileOAuthRuntime {
         identityToken: String,
     ): IosNativeAppleAuthorizationOutcome
 
-    suspend fun completeLogin(
-        code: String,
-        codeVerifier: String,
-        platform: String,
-    ): IosMobileOAuthLoginOutcome
-
     suspend fun completeLink(
         provider: String,
         code: String,
@@ -230,21 +204,6 @@ private class SharedIosMobileOAuthRuntime(
     private val authDataSource = provider.createAuthDataSourceForCurrentEnvironment()
 
     override val environmentKey: String = provider.apiEnvironmentStore.current().key
-
-    override suspend fun startBrowserLogin(
-        provider: String,
-        platform: String,
-        appEnv: String,
-        returnUri: String,
-        codeChallenge: String,
-    ): IosMobileOAuthStartOutcome =
-        authDataSource.startMobileOAuthLogin(
-            provider = provider,
-            platform = platform,
-            appEnv = appEnv,
-            returnUri = returnUri,
-            codeChallenge = codeChallenge,
-        ).toIosStartOutcome()
 
     override suspend fun startBrowserLink(
         provider: String,
@@ -263,19 +222,11 @@ private class SharedIosMobileOAuthRuntime(
         returnUri: String,
         codeChallenge: String,
     ): IosNativeAppleStartOutcome =
-        (if (mode == IOS_MOBILE_OAUTH_LOGIN_MODE) {
-            authDataSource.startNativeAppleMobileOAuthLogin(
-                appEnv = appEnv,
-                returnUri = returnUri,
-                codeChallenge = codeChallenge,
-            )
-        } else {
-            authDataSource.startNativeAppleMobileOAuthLink(
-                appEnv = appEnv,
-                returnUri = returnUri,
-                codeChallenge = codeChallenge,
-            )
-        }).toIosNativeAppleStartOutcome()
+        authDataSource.startNativeAppleMobileOAuthLink(
+            appEnv = appEnv,
+            returnUri = returnUri,
+            codeChallenge = codeChallenge,
+        ).toIosNativeAppleStartOutcome()
 
     override suspend fun authorizeNativeApple(
         mode: String,
@@ -284,45 +235,12 @@ private class SharedIosMobileOAuthRuntime(
         authorizationCode: String,
         identityToken: String,
     ): IosNativeAppleAuthorizationOutcome =
-        (if (mode == IOS_MOBILE_OAUTH_LOGIN_MODE) {
-            authDataSource.authorizeNativeAppleMobileOAuthLogin(
-                requestId = requestId,
-                requestToken = requestToken,
-                authorizationCode = authorizationCode,
-                identityToken = identityToken,
-            )
-        } else {
-            authDataSource.authorizeNativeAppleMobileOAuthLink(
-                requestId = requestId,
-                requestToken = requestToken,
-                authorizationCode = authorizationCode,
-                identityToken = identityToken,
-            )
-        }).toIosNativeAppleAuthorizationOutcome()
-
-    override suspend fun completeLogin(
-        code: String,
-        codeVerifier: String,
-        platform: String,
-    ): IosMobileOAuthLoginOutcome =
-        when (
-            val result =
-                authDataSource.completeMobileOAuthLogin(
-                    code = code,
-                    codeVerifier = codeVerifier,
-                    platform = platform,
-                )
-        ) {
-            is SharedAuthResult.Success ->
-                IosMobileOAuthLoginOutcome.Success(result.data.selectedServerId)
-            is SharedAuthResult.Failure ->
-                if (result.code == SharedAuthErrorCode.LegalAcceptanceRequired) {
-                    IosMobileOAuthLoginOutcome.LegalAcceptanceRequired(result.message)
-                } else {
-                    IosMobileOAuthLoginOutcome.Failure(result.message)
-                }
-            SharedAuthResult.Unauthenticated -> IosMobileOAuthLoginOutcome.Unauthenticated
-        }
+        authDataSource.authorizeNativeAppleMobileOAuthLink(
+            requestId = requestId,
+            requestToken = requestToken,
+            authorizationCode = authorizationCode,
+            identityToken = identityToken,
+        ).toIosNativeAppleAuthorizationOutcome()
 
     override suspend fun completeLink(
         provider: String,
@@ -477,21 +395,11 @@ internal class IosMobileOAuthCoordinator(
             }
             val outcome =
                 runCatchingPreservingCancellation {
-                    if (normalizedMode == IOS_MOBILE_OAUTH_LOGIN_MODE) {
-                        runtime.startBrowserLogin(
-                            provider = normalizedProvider,
-                            platform = "ios",
-                            appEnv = environmentKey,
-                            returnUri = returnUri,
-                            codeChallenge = codeChallenge,
-                        )
-                    } else {
-                        runtime.startBrowserLink(
-                            provider = normalizedProvider,
-                            returnUri = returnUri,
-                            codeChallenge = codeChallenge,
-                        )
-                    }
+                    runtime.startBrowserLink(
+                        provider = normalizedProvider,
+                        returnUri = returnUri,
+                        codeChallenge = codeChallenge,
+                    )
                 }.getOrElse {
                     return@withLock startError(
                         code = "ios_mobile_oauth_start_failed",
@@ -705,8 +613,6 @@ internal class IosMobileOAuthCoordinator(
                                     pending,
                                     iosMobileOAuthActionFailedMessage(pending.provider, pending.mode),
                                 )
-                            } else if (pending.mode == IOS_MOBILE_OAUTH_LOGIN_MODE) {
-                                completeLogin(runtime, pending, response.handoffCode)
                             } else {
                                 completeLink(runtime, pending, response.handoffCode)
                             }
@@ -772,11 +678,7 @@ internal class IosMobileOAuthCoordinator(
                     }
                     val terminal =
                         runCatchingPreservingCancellation {
-                            if (pending.mode == IOS_MOBILE_OAUTH_LOGIN_MODE) {
-                                completeLogin(runtime, pending, admission.code)
-                            } else {
-                                completeLink(runtime, pending, admission.code)
-                            }
+                            completeLink(runtime, pending, admission.code)
                         }.getOrElse {
                             errorCompletion(
                                 pending,
@@ -803,37 +705,6 @@ internal class IosMobileOAuthCoordinator(
                 pending,
                 iosMobileOAuthProviderErrorMessage(pending.provider, pending.mode, error),
             )
-        }
-
-    private suspend fun completeLogin(
-        runtime: IosMobileOAuthRuntime,
-        pending: IosMobileOAuthPendingRequest,
-        code: String,
-    ): RaftIosMobileOAuthCompletionResult =
-        when (
-            val outcome =
-                runtime.completeLogin(
-                    code = code,
-                    codeVerifier = pending.codeVerifier,
-                    platform = "ios",
-                )
-        ) {
-            is IosMobileOAuthLoginOutcome.Success ->
-                RaftIosMobileOAuthCompletionResult(
-                    status = if (outcome.selectedServerId.isNullOrBlank()) "choose_server" else "app_shell",
-                    provider = pending.provider,
-                )
-            is IosMobileOAuthLoginOutcome.LegalAcceptanceRequired ->
-                RaftIosMobileOAuthCompletionResult(
-                    status = "legal_acceptance",
-                    provider = pending.provider,
-                    handoffCode = code,
-                    codeVerifier = pending.codeVerifier,
-                )
-            is IosMobileOAuthLoginOutcome.Failure ->
-                errorCompletion(pending, outcome.message)
-            IosMobileOAuthLoginOutcome.Unauthenticated ->
-                errorCompletion(pending, iosMobileOAuthActionFailedMessage(pending.provider, pending.mode))
         }
 
     private suspend fun completeLink(

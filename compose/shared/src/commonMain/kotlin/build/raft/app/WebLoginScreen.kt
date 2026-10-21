@@ -34,7 +34,6 @@ internal fun WebLoginScreen(
     pager: Pager,
     bridge: BridgeModule,
     auth: SharedAuthDataSource,
-    onInteraction: () -> Unit = {},
     onOpenPrivateDeployment: () -> Unit = {},
     webUrl: String = "",
 ) {
@@ -89,10 +88,7 @@ internal fun WebLoginScreen(
             )
             AuthTermsAgreement(
                 checked = consentAccepted,
-                onCheckedChange = {
-                    onInteraction()
-                    consentAccepted = it
-                },
+                onCheckedChange = { consentAccepted = it },
                 onOpenTerms = { linkNavigator.open(AUTH_TERMS_URL) },
                 onOpenPrivacy = { linkNavigator.open(AUTH_PRIVACY_URL) },
             )
@@ -102,7 +98,6 @@ internal fun WebLoginScreen(
                 enabled = consentAccepted && !starting,
                 loading = starting,
                 onClick = {
-                    onInteraction()
                     startWebLoginWithConsent(consentAccepted, starting) {
                         starting = true
                         failed = false

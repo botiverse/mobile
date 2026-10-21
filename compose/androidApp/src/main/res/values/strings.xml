@@ -492,7 +492,6 @@
     <string name="provider_no_handoff_code_toast">%1$s did not return a handoff code</string>
     <string name="provider_linked_toast">%1$s account linked.</string>
     <string name="provider_link_sign_in_again_toast">Sign in again to link %1$s.</string>
-    <string name="provider_sign_in_failed_toast">%1$s sign-in failed. Try again.</string>
     <string name="attachment_no_app_toast">No app can open this attachment</string>
     <string name="attachment_open_failed_toast">Unable to open attachment</string>
     <string name="attachment_open_with_chooser_title">Open with</string>

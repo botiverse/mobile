@@ -904,15 +904,6 @@ internal class BridgeModule : Module() {
         callNativeMethod(SYNC_DESKTOP_SHORTCUTS, methodArgs, null)
     }
 
-    suspend fun socialAuth(provider: String): JSONObject? =
-        suspendCoroutine { continuation ->
-            val methodArgs = JSONObject()
-            methodArgs.put("provider", provider)
-            callNativeMethod(SOCIAL_AUTH, methodArgs) {
-                continuation.resume(it)
-            }
-        }
-
     suspend fun motionCapability(command: JSONObject): JSONObject? =
         suspendCoroutine { continuation ->
             callNativeMethod(MOTION_CAPABILITY, command) {
@@ -1450,7 +1441,6 @@ internal class BridgeModule : Module() {
         const val CURRENT_TIMESTAMP = "currentTimestamp"
         const val DATE_FORMATTER = "dateFormatter"
         const val REPORT_REALTIME = "reportRealTime"
-        const val SOCIAL_AUTH = "socialAuth"
         const val MOTION_CAPABILITY = "motionCapability"
         const val MOTION_EVENT = "slockMotionEvent"
         const val REPORT_PAGE_COST_TIME_FOR_CACHE = "reportPageCostTimeForCache"

@@ -405,14 +405,6 @@ class MainActivityLaunchTest {
     }
 
     @Test
-    fun mobileOAuthLoginErrorPageDataReturnsToSocialLogin() {
-        val pageData = mobileOAuthLoginErrorPageData("account_conflict")
-
-        assertEquals("account_conflict", pageData.getString("slockAuthMessage"))
-        assertEquals("google,github", pageData.getString("slockSocialAuthProviders"))
-    }
-
-    @Test
     fun androidOAuthCallbackRoutesTypedConflictCodesThroughTheSharedMapper() {
         // Source-wiring regression. The Android callback used to hand the raw
         // query value straight to the toast, so `account_conflict` reached the

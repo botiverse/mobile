@@ -55,7 +55,6 @@ class RaftNetworkRequestLifetimeCoordinatorTest {
         for (url in listOf(
             "https://api.raft.build/api/auth/app-login/complete",
             "https://raft.example.com/custom/api/auth/app-login/complete",
-            "https://api.raft.build/api/auth/mobile/oauth/complete",
         )) {
             assertEquals(RaftNetworkMethodClass.ProcessMutation, raftNetworkMethodClass("POST", url, serverScoped = false), url)
         }

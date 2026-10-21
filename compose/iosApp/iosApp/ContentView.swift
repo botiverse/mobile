@@ -47,8 +47,6 @@ struct ContentView: View {
         var data = destination.pageData
         data["pageName"] = destination.pageName
         data["slockSocialAuthProviders"] = raftIosOAuthProviders
-        // Browser web login is available; the shared gate decides whether it replaces the login page.
-        data["slockWebLoginSupported"] = true
         // Shell identity contract (shared/RaftShellStoreLaunch.kt). A blank or
         // absent slockShellInstanceId falls back to Legacy anyway, so injecting
         // "legacy-app-shell" for the single-window path is byte-equivalent.

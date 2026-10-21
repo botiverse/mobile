@@ -491,7 +491,6 @@
     <string name="provider_no_handoff_code_toast">%1$s 未返回交接码</string>
     <string name="provider_linked_toast">已关联 %1$s 账号。</string>
     <string name="provider_link_sign_in_again_toast">请重新登录以关联 %1$s。</string>
-    <string name="provider_sign_in_failed_toast">%1$s 登录失败，请重试。</string>
     <string name="attachment_no_app_toast">没有应用可以打开此附件</string>
     <string name="attachment_open_failed_toast">无法打开附件</string>
     <string name="attachment_open_with_chooser_title">打开方式</string>

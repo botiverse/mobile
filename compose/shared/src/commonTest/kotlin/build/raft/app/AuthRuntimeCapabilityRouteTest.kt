@@ -59,49 +59,4 @@ class AuthRuntimeCapabilityRouteTest {
         store.seedFromAuthPageData(JSONObject().put(AUTH_SOCIAL_PROVIDERS_KEY, ""))
         assertEquals(emptySet(), store.current().socialProviderIds)
     }
-
-    @Test
-    fun iosAppleIsAvailableBeforeHostSeedOrProviderProbe() {
-        val store = SharedAuthRuntimeCapabilityStore()
-        assertEquals(setOf(AuthProvider.Apple), store.current().socialAuthProviders(true))
-
-        store.seedFromAuthPageData(loginPageData(replaceCurrent = true))
-        assertEquals(setOf(AuthProvider.Apple), store.current().socialAuthProviders(true))
-    }
-
-    @Test
-    fun appleAvailabilityDependsOnlyOnPlatformAcrossLegacyConfigurationStates() {
-        for (host in listOf("", "google,github", "google,github,apple")) {
-            for (backend in listOf(null, emptySet(), setOf("google", "github"), setOf("apple"))) {
-                for (override in listOf(false, true)) {
-                    val store = SharedAuthRuntimeCapabilityStore()
-                    store.seedSocialProviders(host)
-                    if (backend != null) store.setBackendEnabledSocialProviders(backend)
-                    store.setLocalAppleSignInOverride(override)
-                    val others = if (host.isEmpty()) emptySet() else setOf(AuthProvider.Google, AuthProvider.GitHub)
-                    val context = "host=$host backend=$backend override=$override"
-                    assertEquals(others + AuthProvider.Apple, store.current().socialAuthProviders(true), context)
-                    assertEquals(others, store.current().socialAuthProviders(false), context)
-                }
-            }
-        }
-    }
-
-    @Test
-    fun hostRefreshAndLogoutCannotRemoveIosApple() {
-        val store = SharedAuthRuntimeCapabilityStore()
-        store.seedSocialProviders("google,github,apple")
-        store.setBackendEnabledSocialProviders(setOf("apple"))
-        store.setLocalAppleSignInOverride(true)
-
-        store.setBackendEnabledSocialProviders(emptySet())
-        store.setLocalAppleSignInOverride(false)
-        store.seedSocialProviders("google")
-        store.seedFromAuthPageData(loginPageData(replaceCurrent = true))
-        assertEquals(setOf(AuthProvider.Google, AuthProvider.Apple), store.current().socialAuthProviders(true))
-
-        store.seedSocialProviders("")
-        assertEquals(setOf(AuthProvider.Apple), store.current().socialAuthProviders(true))
-        assertEquals(emptySet(), store.current().socialAuthProviders(false))
-    }
 }

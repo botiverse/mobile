@@ -8,13 +8,40 @@ import kotlin.test.assertTrue
 
 class IosMobileOAuthCoordinatorTest {
     @Test
-    fun loginStartBindsIosPlatformProductionReturnAndPendingGeneration() = runBlocking {
+    fun loginModeIsRejectedBeforeNetworkOrPendingState() = runBlocking {
+        val runtime = FakeRuntime(environmentKey = "production")
+        val fixture = fixture(runtime)
+
+        val browser = fixture.coordinator.startBrowser(
+            provider = "github",
+            mode = "login",
+            generation = "generation-1",
+            codeVerifier = Verifier,
+            codeChallenge = Challenge,
+        )
+        val nativeApple = fixture.coordinator.startNativeApple(
+            mode = "login",
+            generation = "generation-2",
+            codeVerifier = Verifier,
+            codeChallenge = Challenge,
+        )
+
+        assertEquals("error", browser.status)
+        assertEquals("ios_mobile_oauth_invalid_request", browser.errorCode)
+        assertEquals("error", nativeApple.status)
+        assertNull(runtime.startedBrowserLinkReturnUri)
+        assertNull(runtime.startedNativeApple)
+        assertNull(fixture.pendingStore.read())
+    }
+
+    @Test
+    fun linkStartBindsProductionReturnAndPendingGeneration() = runBlocking {
         val runtime = FakeRuntime(environmentKey = "production")
         val fixture = fixture(runtime)
 
         val result = fixture.coordinator.startBrowser(
             provider = "github",
-            mode = "login",
+            mode = "link",
             generation = "generation-1",
             codeVerifier = Verifier,
             codeChallenge = Challenge,
@@ -24,9 +51,7 @@ class IosMobileOAuthCoordinatorTest {
         assertEquals(202, result.code)
         assertEquals("browser", result.presentation)
         assertEquals("raft", result.callbackScheme)
-        assertEquals("ios", runtime.startedLogin?.platform)
-        assertEquals("production", runtime.startedLogin?.appEnv)
-        assertEquals("raft://oauth/callback", runtime.startedLogin?.returnUri)
+        assertEquals("raft://oauth/callback", runtime.startedBrowserLinkReturnUri)
         assertEquals("generation-1", fixture.pendingStore.read()?.generation)
         assertEquals(Verifier, fixture.pendingStore.read()?.codeVerifier)
     }
@@ -38,7 +63,7 @@ class IosMobileOAuthCoordinatorTest {
 
         val result = fixture.coordinator.startBrowser(
             provider = "apple",
-            mode = "login",
+            mode = "link",
             generation = "apple-browser-generation",
             codeVerifier = Verifier,
             codeChallenge = Challenge,
@@ -46,7 +71,7 @@ class IosMobileOAuthCoordinatorTest {
 
         assertEquals("error", result.status)
         assertNull(result.authorizationUrl)
-        assertNull(runtime.startedLogin)
+        assertNull(runtime.startedBrowserLinkReturnUri)
         assertNull(runtime.startedNativeApple)
         assertNull(fixture.pendingStore.read())
     }
@@ -59,7 +84,7 @@ class IosMobileOAuthCoordinatorTest {
 
             val result = fixture.coordinator.startBrowser(
                 provider = "google",
-                mode = "login",
+                mode = "link",
                 generation = "generation-$environmentKey",
                 codeVerifier = Verifier,
                 codeChallenge = Challenge,
@@ -67,8 +92,8 @@ class IosMobileOAuthCoordinatorTest {
 
             assertEquals("started", result.status, environmentKey)
             assertEquals("raft-debug", result.callbackScheme, environmentKey)
-            assertEquals("raft-debug://oauth/callback", runtime.startedLogin?.returnUri, environmentKey)
-            assertEquals(environmentKey, runtime.startedLogin?.appEnv, environmentKey)
+            assertEquals("raft-debug://oauth/callback", runtime.startedBrowserLinkReturnUri, environmentKey)
+            assertEquals(environmentKey, fixture.pendingStore.read()?.environmentKey, environmentKey)
         }
     }
 
@@ -113,44 +138,11 @@ class IosMobileOAuthCoordinatorTest {
     }
 
     @Test
-    fun appleLoginUsesNativeCredentialAuthorizationAndNeverReturnsABrowserUrl() = runBlocking {
-        val runtime = FakeRuntime(environmentKey = "production")
-        val fixture = fixture(runtime)
-
-        val start = fixture.coordinator.startNativeApple(
-            mode = "login",
-            generation = "apple-generation",
-            codeVerifier = Verifier,
-            codeChallenge = Challenge,
-        )
-        val pendingAfterStart = fixture.pendingStore.read()
-        val completion = fixture.coordinator.completeNativeApple(
-            generation = "apple-generation",
-            authorizationCode = "apple-authorization-code",
-            identityToken = "apple-identity-token",
-        )
-
-        assertEquals("started", start.status)
-        assertEquals("native_apple", start.presentation)
-        assertNull(start.authorizationUrl)
-        assertEquals("login", runtime.startedNativeApple?.mode)
-        assertEquals("native-request-token", pendingAfterStart?.requestToken)
-        assertEquals("native-request-1", runtime.authorizedNativeApple?.requestId)
-        assertEquals("native-request-token", runtime.authorizedNativeApple?.requestToken)
-        assertEquals("apple-authorization-code", runtime.authorizedNativeApple?.authorizationCode)
-        assertEquals("apple-identity-token", runtime.authorizedNativeApple?.identityToken)
-        assertEquals("choose_server", completion.status)
-        assertEquals("apple-handoff", runtime.completedLogin?.code)
-        assertEquals("apple", completion.provider)
-        assertNull(fixture.pendingStore.read())
-    }
-
-    @Test
     fun nativeAppleRejectsWebCallbacksAndStaleCredentialGenerationsWithoutConsumingPending() = runBlocking {
         val runtime = FakeRuntime(environmentKey = "production")
         val fixture = fixture(runtime)
         fixture.coordinator.startNativeApple(
-            mode = "login",
+            mode = "link",
             generation = "native-generation",
             codeVerifier = Verifier,
             codeChallenge = Challenge,
@@ -179,7 +171,7 @@ class IosMobileOAuthCoordinatorTest {
             authorizationCode = "exact-code",
             identityToken = "exact-token",
         )
-        assertEquals("choose_server", exact.status)
+        assertEquals("settings_account", exact.status)
         assertEquals("exact-code", runtime.authorizedNativeApple?.authorizationCode)
         assertNull(fixture.pendingStore.read())
     }
@@ -190,7 +182,7 @@ class IosMobileOAuthCoordinatorTest {
         val runtime = FakeRuntime(environmentKey = "production")
         val fixture = fixture(runtime, nowMillis = { nowMillis })
         fixture.coordinator.startNativeApple(
-            mode = "login",
+            mode = "link",
             generation = "native-expired",
             codeVerifier = Verifier,
             codeChallenge = Challenge,
@@ -202,13 +194,13 @@ class IosMobileOAuthCoordinatorTest {
             authorizationCode = "expired-code",
             identityToken = "expired-token",
         )
-        assertEquals("login_error", expired.status)
+        assertEquals("settings_account", expired.status)
         assertTrue(expired.message.orEmpty().contains("expired", ignoreCase = true))
         assertNull(runtime.authorizedNativeApple)
 
         nowMillis = 1_000L
         fixture.coordinator.startNativeApple(
-            mode = "login",
+            mode = "link",
             generation = "native-environment",
             codeVerifier = Verifier,
             codeChallenge = Challenge,
@@ -219,7 +211,7 @@ class IosMobileOAuthCoordinatorTest {
             authorizationCode = "environment-code",
             identityToken = "environment-token",
         )
-        assertEquals("login_error", wrongEnvironment.status)
+        assertEquals("settings_account", wrongEnvironment.status)
         assertTrue(wrongEnvironment.message.orEmpty().contains("environment", ignoreCase = true))
         assertNull(runtime.authorizedNativeApple)
         assertNull(fixture.pendingStore.read())
@@ -252,29 +244,10 @@ class IosMobileOAuthCoordinatorTest {
     }
 
     @Test
-    fun successfulLoginCallbacksRouteByCanonicalSelectedServerState() = runBlocking {
-        listOf(null to "choose_server", "server-1" to "app_shell").forEach { (selectedServerId, expectedStatus) ->
-            val runtime = FakeRuntime(environmentKey = "production").apply {
-                loginOutcome = IosMobileOAuthLoginOutcome.Success(selectedServerId)
-            }
-            val fixture = fixture(runtime)
-            fixture.startLogin()
-
-            val result = fixture.coordinator.complete(fixture.callback(code = "handoff-$expectedStatus"))
-
-            assertEquals(expectedStatus, result.status)
-            assertEquals("handoff-$expectedStatus", runtime.completedLogin?.code)
-            assertEquals(Verifier, runtime.completedLogin?.codeVerifier)
-            assertEquals("ios", runtime.completedLogin?.platform)
-            assertNull(fixture.pendingStore.read())
-        }
-    }
-
-    @Test
     fun canonicalServerCallbackMayOmitProviderAndMode() = runBlocking {
         val runtime = FakeRuntime(environmentKey = "production")
         val fixture = fixture(runtime)
-        fixture.startLogin()
+        fixture.startLink()
 
         val result = fixture.coordinator.complete(
             fixture.callback(
@@ -284,8 +257,8 @@ class IosMobileOAuthCoordinatorTest {
             )
         )
 
-        assertEquals("choose_server", result.status)
-        assertEquals("server-handoff", runtime.completedLogin?.code)
+        assertEquals("settings_account", result.status)
+        assertEquals("server-handoff", runtime.completedLink?.code)
         assertNull(fixture.pendingStore.read())
     }
 
@@ -293,18 +266,18 @@ class IosMobileOAuthCoordinatorTest {
     fun staleGenerationAndProviderMismatchAreIgnoredWithoutDestroyingCurrentRequest() = runBlocking {
         val runtime = FakeRuntime(environmentKey = "production")
         val fixture = fixture(runtime)
-        fixture.startLogin()
+        fixture.startLink()
         val mismatches = listOf(
             fixture.callback(code = "handoff-old", expectedGeneration = "generation-old"),
             fixture.callback(code = "handoff-wrong-provider", provider = "github"),
-            fixture.callback(code = "handoff-wrong-mode", mode = "link"),
+            fixture.callback(code = "handoff-wrong-mode", mode = "login"),
         )
 
         mismatches.forEach { callback ->
             assertEquals("ignored", fixture.coordinator.complete(callback).status)
             assertEquals("generation-1", fixture.pendingStore.read()?.generation)
         }
-        assertEquals(0, runtime.loginCompleteCount)
+        assertEquals(0, runtime.linkCompleteCount)
     }
 
     @Test
@@ -312,14 +285,14 @@ class IosMobileOAuthCoordinatorTest {
         var nowMillis = 1_000L
         val runtime = FakeRuntime(environmentKey = "production")
         val fixture = fixture(runtime, nowMillis = { nowMillis })
-        fixture.startLogin()
+        fixture.startLink()
         nowMillis += 10L * 60L * 1000L
 
         val result = fixture.coordinator.complete(fixture.callback(code = "expired-handoff"))
 
-        assertEquals("login_error", result.status)
+        assertEquals("settings_account", result.status)
         assertTrue(result.message.orEmpty().contains("expired", ignoreCase = true))
-        assertEquals(0, runtime.loginCompleteCount)
+        assertEquals(0, runtime.linkCompleteCount)
         assertNull(fixture.pendingStore.read())
     }
 
@@ -328,7 +301,7 @@ class IosMobileOAuthCoordinatorTest {
         fun message(error: String, provider: String = "google"): String =
             iosMobileOAuthProviderErrorMessage(
                 provider = provider,
-                mode = "login",
+                mode = "link",
                 error = error,
                 accountConflictMessage = { providerName -> "password_then_settings:$providerName" },
                 providerConflictMessage = { providerName -> "other_user:$providerName" },
@@ -337,23 +310,6 @@ class IosMobileOAuthCoordinatorTest {
         assertEquals("password_then_settings:Google", message("account_conflict"))
         assertEquals("other_user:Google", message("provider_conflict"))
         assertEquals("password_then_settings:Social", message("account_conflict", "unexpected"))
-    }
-
-    @Test
-    fun legalAcceptanceKeepsCredentialsOnlyInTheInProcessRouteResult() = runBlocking {
-        val runtime = FakeRuntime(environmentKey = "production").apply {
-            loginOutcome = IosMobileOAuthLoginOutcome.LegalAcceptanceRequired("accept terms")
-        }
-        val fixture = fixture(runtime)
-        fixture.startLogin()
-
-        val result = fixture.coordinator.complete(fixture.callback(code = "legal-handoff"))
-
-        assertEquals("legal_acceptance", result.status)
-        assertEquals("google", result.provider)
-        assertEquals("legal-handoff", result.handoffCode)
-        assertEquals(Verifier, result.codeVerifier)
-        assertNull(fixture.pendingStore.read())
     }
 
     @Test
@@ -389,26 +345,26 @@ class IosMobileOAuthCoordinatorTest {
     fun duplicateCallbackCompletesAtMostOnce() = runBlocking {
         val runtime = FakeRuntime(environmentKey = "production")
         val fixture = fixture(runtime)
-        fixture.startLogin()
+        fixture.startLink()
         val callback = fixture.callback(code = "one-time-handoff")
 
-        assertEquals("choose_server", fixture.coordinator.complete(callback).status)
+        assertEquals("settings_account", fixture.coordinator.complete(callback).status)
         assertEquals("ignored", fixture.coordinator.complete(callback).status)
-        assertEquals(1, runtime.loginCompleteCount)
+        assertEquals(1, runtime.linkCompleteCount)
     }
 
     @Test
     fun environmentChangeFailsClosedBeforeCompletion() = runBlocking {
         val runtime = FakeRuntime(environmentKey = "production")
         val fixture = fixture(runtime)
-        fixture.startLogin()
+        fixture.startLink()
         runtime.environmentKey = "staging"
 
         val result = fixture.coordinator.complete(fixture.callback(code = "wrong-environment-handoff"))
 
-        assertEquals("login_error", result.status)
+        assertEquals("settings_account", result.status)
         assertTrue(result.message.orEmpty().contains("environment", ignoreCase = true))
-        assertEquals(0, runtime.loginCompleteCount)
+        assertEquals(0, runtime.linkCompleteCount)
         assertNull(fixture.pendingStore.read())
     }
 
@@ -424,7 +380,7 @@ class IosMobileOAuthCoordinatorTest {
         )
         val start = coordinator.startBrowser(
             provider = "google",
-            mode = "login",
+            mode = "link",
             generation = "generation-1",
             codeVerifier = Verifier,
             codeChallenge = Challenge,
@@ -449,7 +405,7 @@ class IosMobileOAuthCoordinatorTest {
         assertEquals("generation-1", retry.generation)
         assertEquals("generation-1", pendingStore.read()?.generation)
         val cancelled = coordinator.cancel(retry.generation.orEmpty(), "runtime_not_ready")
-        assertEquals("login_error", cancelled.status)
+        assertEquals("settings_account", cancelled.status)
         assertTrue(cancelled.message.orEmpty().contains("still starting", ignoreCase = true))
         assertNull(pendingStore.read())
     }
@@ -467,7 +423,7 @@ class IosMobileOAuthCoordinatorTest {
             )
         val start =
             coordinator.startNativeApple(
-                mode = "login",
+                mode = "link",
                 generation = "native-retry-generation",
                 codeVerifier = Verifier,
                 codeChallenge = Challenge,
@@ -493,7 +449,7 @@ class IosMobileOAuthCoordinatorTest {
                 authorizationCode = "native-retry-code",
                 identityToken = "native-retry-token",
             )
-        assertEquals("choose_server", completed.status)
+        assertEquals("settings_account", completed.status)
         assertEquals("native-retry-code", runtime.authorizedNativeApple?.authorizationCode)
         assertEquals("native-retry-token", runtime.authorizedNativeApple?.identityToken)
         assertNull(pendingStore.read())
@@ -503,12 +459,12 @@ class IosMobileOAuthCoordinatorTest {
     fun cancellationOnlyOwnsItsExactGeneration() = runBlocking {
         val runtime = FakeRuntime(environmentKey = "production")
         val fixture = fixture(runtime)
-        fixture.startLogin()
+        fixture.startLink()
 
         assertEquals("ignored", fixture.coordinator.cancel("generation-old", "provider_cancelled").status)
         assertEquals("generation-1", fixture.pendingStore.read()?.generation)
         val cancelled = fixture.coordinator.cancel("generation-1", "provider_cancelled")
-        assertEquals("login_error", cancelled.status)
+        assertEquals("settings_account", cancelled.status)
         assertTrue(cancelled.message.orEmpty().contains("cancelled", ignoreCase = true))
         assertNull(fixture.pendingStore.read())
     }
@@ -532,10 +488,10 @@ class IosMobileOAuthCoordinatorTest {
         val pendingStore: IosMobileOAuthPendingStore,
         val coordinator: IosMobileOAuthCoordinator,
     ) {
-        suspend fun startLogin() {
+        suspend fun startLink() {
             val result = coordinator.startBrowser(
                 provider = "google",
-                mode = "login",
+                mode = "link",
                 generation = "generation-1",
                 codeVerifier = Verifier,
                 codeChallenge = Challenge,
@@ -545,7 +501,7 @@ class IosMobileOAuthCoordinatorTest {
 
         fun callback(
             provider: String? = "google",
-            mode: String? = "login",
+            mode: String? = "link",
             code: String? = "handoff",
             error: String? = null,
             expectedGeneration: String? = "generation-1",
@@ -565,20 +521,6 @@ class IosMobileOAuthCoordinatorTest {
     private class FakeRuntime(
         override var environmentKey: String,
     ) : IosMobileOAuthRuntime {
-        data class LoginStart(
-            val provider: String,
-            val platform: String,
-            val appEnv: String,
-            val returnUri: String,
-            val codeChallenge: String,
-        )
-
-        data class LoginComplete(
-            val code: String,
-            val codeVerifier: String,
-            val platform: String,
-        )
-
         data class LinkComplete(
             val provider: String,
             val code: String,
@@ -600,27 +542,13 @@ class IosMobileOAuthCoordinatorTest {
             val identityToken: String,
         )
 
-        var startedLogin: LoginStart? = null
         var startedBrowserLinkReturnUri: String? = null
         var startedNativeApple: NativeAppleStart? = null
         var authorizedNativeApple: NativeAppleAuthorize? = null
-        var completedLogin: LoginComplete? = null
         var completedLink: LinkComplete? = null
-        var loginCompleteCount = 0
-        var loginOutcome: IosMobileOAuthLoginOutcome = IosMobileOAuthLoginOutcome.Success(null)
+        var linkCompleteCount = 0
         var linkOutcome: IosMobileOAuthLinkOutcome = IosMobileOAuthLinkOutcome.Success
         var nativeAppleAuthorizationOutcome: IosNativeAppleAuthorizationOutcome? = null
-
-        override suspend fun startBrowserLogin(
-            provider: String,
-            platform: String,
-            appEnv: String,
-            returnUri: String,
-            codeChallenge: String,
-        ): IosMobileOAuthStartOutcome {
-            startedLogin = LoginStart(provider, platform, appEnv, returnUri, codeChallenge)
-            return IosMobileOAuthStartOutcome.Success(startResponse(returnUri))
-        }
 
         override suspend fun startBrowserLink(
             provider: String,
@@ -674,21 +602,12 @@ class IosMobileOAuthCoordinatorTest {
                 )
         }
 
-        override suspend fun completeLogin(
-            code: String,
-            codeVerifier: String,
-            platform: String,
-        ): IosMobileOAuthLoginOutcome {
-            loginCompleteCount += 1
-            completedLogin = LoginComplete(code, codeVerifier, platform)
-            return loginOutcome
-        }
-
         override suspend fun completeLink(
             provider: String,
             code: String,
             codeVerifier: String,
         ): IosMobileOAuthLinkOutcome {
+            linkCompleteCount += 1
             completedLink = LinkComplete(provider, code, codeVerifier)
             return linkOutcome
         }
