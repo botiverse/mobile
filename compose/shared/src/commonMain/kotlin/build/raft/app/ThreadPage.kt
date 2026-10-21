@@ -3454,20 +3454,6 @@ internal fun resolveThreadMarkdownTagDisplayLabel(
         else -> threadMarkdownTagDisplayLabel(tag.label)
     }
 
-internal fun RaftThreadScreenPayload.resolveMarkdownTagDisplayLabel(tag: ThreadMarkdownTag): String =
-    when (tag.kind) {
-        ThreadMarkdownTagKind.UserMention ->
-            findMarkdownMentionMember(tag)
-                ?.displayName
-                ?.trim()
-                ?.removePrefix("@")
-                ?.takeIf { it.isNotBlank() }
-                ?.let { "@$it" }
-                ?: threadMarkdownTagDisplayLabel(tag.label)
-        ThreadMarkdownTagKind.DirectMessageThread -> threadMarkdownTagDisplayLabel(tag.label)
-        else -> threadMarkdownTagDisplayLabel(tag.label)
-    }
-
 internal fun List<String>.toKnownMarkdownChannelNameSet(): Set<String> =
     mapNotNull { it.trim().takeIf { name -> name.isNotBlank() }?.lowercase() }
         .toSet()
