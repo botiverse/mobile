@@ -113,12 +113,22 @@ private fun HomeSnapshot.clearHomeChannelUnread(channelId: ChannelId): HomeSnaps
     fun HomeChannelRow.clearIfMatched(): HomeChannelRow {
         if (!matchesLocalHomeChannel(channelId)) return this
         removedUnread += unreadCount
-        return copy(unreadCount = 0, unreadCountKnown = true, firstUnreadMessageId = null)
+        return copy(
+            unreadCount = 0,
+            unreadCountKnown = true,
+            firstUnreadMessageId = null,
+            mentionCount = 0
+        )
     }
     fun HomeDirectMessageRow.clearIfMatched(): HomeDirectMessageRow {
         if (!matchesLocalHomeChannel(channelId)) return this
         removedUnread += unreadCount
-        return copy(unreadCount = 0, unreadCountKnown = true, firstUnreadMessageId = null)
+        return copy(
+            unreadCount = 0,
+            unreadCountKnown = true,
+            firstUnreadMessageId = null,
+            mentionCount = 0
+        )
     }
     val nextChannels = channels.map { it.clearIfMatched() }
     val nextDirectMessages = directMessages.map { it.clearIfMatched() }

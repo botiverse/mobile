@@ -1622,7 +1622,7 @@ private fun actualHostProbeHomeDataSource(
                     HomeNetworkResponse(code = 200, bodyText = "[]")
 
                 override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse =
-                    HomeNetworkResponse(code = 200, bodyText = "{}")
+                    HomeNetworkResponse(code = 200, bodyText = """{"channels":{},"threadUnread":{}}""")
 
                 override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse =
                     HomeNetworkResponse(code = 200, bodyText = "[]")

@@ -35,6 +35,8 @@ import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.SyncResumeResponse
+import build.raft.app.model.ThreadUpdated
+import build.raft.app.model.mentionsUser
 import build.raft.app.model.messageStreamChannelId
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -203,6 +205,8 @@ internal class SharedHomeStore(
     // Process read predictions and local realtime message patches are concurrent producers.
     // Own both read/transform/publish sequences here so neither can publish from a stale state.
     private val readProjectionOwnerLock = SynchronizedObject()
+    // A reply into a thread Home does not know reloads the summary once per window (web followedThreadsRefresh).
+    private val followedThreadUnreadRefresh = HomeCoalescedRefresh(scope = scope) { refreshFollowedThreadUnread() }
 
     fun snapshotFor(serverId: ServerId): HomeSnapshot? =
         (_state.value.content as? SharedHomeContentState.Content)
@@ -385,6 +389,7 @@ internal class SharedHomeStore(
         conversationIdentityRevisionByServer.clear()
         conversationIdentityStates.value = emptyMap()
         hiddenHomeSnapshotDirty = false
+        followedThreadUnreadRefresh.cancel()
         synchronized(readProjectionOwnerLock) {
             readPredictionRevisions = emptyMap()
         }
@@ -632,6 +637,9 @@ internal class SharedHomeStore(
                 val currentServerId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
                 reconcileNotificationAuthority(authStore.readSession(), intent.serverId)
                 supersedeServerDrawerRequest(ServerId(intent.serverId))
+                // A pending followed-thread reload belongs to the server being left; its result
+                // would be dropped anyway, so don't spend the request.
+                if (intent.serverId != currentServerId) followedThreadUnreadRefresh.cancel()
                 val nextSwitch =
                     if (intent.serverId == currentServerId) {
                         _state.value.serverSwitchState.refresh()
@@ -1017,7 +1025,8 @@ internal class SharedHomeStore(
                         memberId = memberId,
                         channelId = scope.scopeId,
                         version = scope.readStateVersion,
-                        maxReadSeq = scope.maxReadSeq
+                        maxReadSeq = scope.maxReadSeq,
+                        unreadCount = scope.unreadCount
                     )
                 )
             diagnosticsLogger(
@@ -1241,6 +1250,7 @@ internal class SharedHomeStore(
         val current = _state.value
         val content = current.content as? SharedHomeContentState.Content ?: return false
         if (content.baseSnapshot.server.id != serverId) return false
+        if (event is ThreadUpdated) return applyThreadUpdatedLocally(event)
         val startedAt = kotlin.time.TimeSource.Monotonic.markNow()
         val messagePatch =
             when (event) {
@@ -1296,6 +1306,55 @@ internal class SharedHomeStore(
                 "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
         )
         return changed
+    }
+
+    /** Web `socketBridge.ts` `threadUpdated` for the sidebar mark; caller holds [readProjectionOwnerLock]. */
+    private fun applyThreadUpdatedLocally(event: ThreadUpdated): Boolean {
+        val current = _state.value
+        val content = current.content as? SharedHomeContentState.Content ?: return false
+        return when (content.baseSnapshot.decideThreadReply(event, current.selectedConversationId)) {
+            HomeThreadReplyDecision.Ignore -> false
+            HomeThreadReplyDecision.Refresh -> {
+                diagnosticsLogger("home_followed_thread_refresh_request threadId=${event.threadChannelId.value}")
+                followedThreadUnreadRefresh.request()
+                false
+            }
+            HomeThreadReplyDecision.Bump -> applyHomeSnapshotLocally { it.withFollowedThreadReply(event) }
+        }
+    }
+
+    /** One `channels/unread?summary=1` read that replaces only the followed-thread mark. */
+    private suspend fun refreshFollowedThreadUnread() {
+        val content = _state.value.content as? SharedHomeContentState.Content ?: return
+        val serverId = content.baseSnapshot.server.id
+        val accountId = content.baseSnapshot.currentMember.id
+        val result =
+            try {
+                dataSource.channelUnreadSummary(serverId, DataRequestPriority.Background)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                diagnosticsLogger(
+                    "home_followed_thread_refresh result=exception errorType=${throwable.safeHomeStoreDiagnosticsType()}"
+                )
+                return
+            }
+        val summary = (result as? DataResult.Content)?.data
+        if (summary == null) {
+            diagnosticsLogger("home_followed_thread_refresh result=unavailable")
+            return
+        }
+        val changed =
+            synchronized(readProjectionOwnerLock) {
+                val now = _state.value.content as? SharedHomeContentState.Content ?: return@synchronized false
+                if (now.baseSnapshot.server.id != serverId || now.baseSnapshot.currentMember.id != accountId) {
+                    return@synchronized false
+                }
+                applyHomeSnapshotLocally { it.withFollowedThreadUnread(summary.followedThreadUnread) }
+            }
+        diagnosticsLogger(
+            "home_followed_thread_refresh result=content threads=${summary.followedThreadUnread.size} changed=$changed"
+        )
     }
 
     private suspend fun applyRealtimeRefresh(event: RealtimeRefreshRequired) {
@@ -2438,6 +2497,7 @@ internal class SharedHomeStore(
             unreadTotal = prior.unreadTotal,
             unreadSource = prior.unreadSource,
             serverUnreadCounts = prior.serverUnreadCounts,
+            followedThreadUnread = prior.followedThreadUnread,
         )
     }
 
@@ -3221,7 +3281,8 @@ internal class SharedHomeStore(
             pinUpdateFailureCallback("Unable to mark conversation read: home not loaded")
             return
         }
-        if (target.unreadCount <= 0) return
+        // A mention-only row (count 0, web `mentionFlags`) is still worth a read: it clears the @.
+        if (target.unreadCount <= 0 && target.mentionCount <= 0) return
         val coordinator = readReceiptCoordinator
         val owner =
             readReceiptOwnerFactory?.invoke(
@@ -4119,7 +4180,7 @@ private fun SharedHomeState.toSharedHomeStateDiagnosticsSummary(): String =
         append(appBadgeCount.isStale)
     }
 
-private data class HomeRealtimeMessagePatch(
+internal data class HomeRealtimeMessagePatch(
     val messages: List<Message>,
     val incrementUnread: Boolean
 )
@@ -4191,7 +4252,7 @@ private data class HomeRealtimeDirectMessageRowPatch(
     val unreadIncrement: Int
 )
 
-private fun HomeSnapshot.withRealtimeMessages(
+internal fun HomeSnapshot.withRealtimeMessages(
     patch: HomeRealtimeMessagePatch,
     activeConversationId: String?
 ): HomeSnapshot {
@@ -4332,8 +4393,12 @@ private fun ConversationSummary.withRealtimePreview(
                 }
         }
     val unreadIncrement = unreadCandidates.size
+    // Web projects `hasMention` from the unread messages it holds: an unread one that mentions the user.
+    val mentioned = unreadCandidates.any { message -> message.mentions.mentionsUser(currentMemberId) }
     val next =
         copy(
+            mentionCount = if (mentioned) maxOf(mentionCount, 1) else mentionCount,
+            mentionCountKnown = mentionCountKnown || mentioned,
             lastMessageId = latest.id,
             lastMessageSeq = latest.seq ?: lastMessageSeq,
             lastMessagePreview = latest.body,
@@ -4360,11 +4425,12 @@ private fun SharedHomeContentState.toSharedHomeContentDiagnosticsSummary(): Stri
                 "refreshing=$contentRefreshing,unread=${snapshot.unreadTotal}:${snapshot.unreadSource})"
     }
 
-private fun HomeSnapshot.withConversationUnread(
+internal fun HomeSnapshot.withConversationUnread(
     conversationId: String,
     unreadCount: Int
 ): HomeSnapshot {
     var delta = 0
+    // Web `clearUnread`: reading a conversation drops its count and its mention flag together.
     fun HomeChannelRow.updated(): HomeChannelRow {
         if (!matchesHomeConversation(conversationId)) return this
         val nextUnread = unreadCount.coerceAtLeast(0)
@@ -4372,7 +4438,8 @@ private fun HomeSnapshot.withConversationUnread(
         return copy(
             unreadCount = nextUnread,
             unreadCountKnown = true,
-            firstUnreadMessageId = if (nextUnread > 0) firstUnreadMessageId else null
+            firstUnreadMessageId = if (nextUnread > 0) firstUnreadMessageId else null,
+            mentionCount = if (nextUnread > 0) mentionCount else 0
         )
     }
     fun HomeDirectMessageRow.updated(): HomeDirectMessageRow {
@@ -4382,19 +4449,28 @@ private fun HomeSnapshot.withConversationUnread(
         return copy(
             unreadCount = nextUnread,
             unreadCountKnown = true,
-            firstUnreadMessageId = if (nextUnread > 0) firstUnreadMessageId else null
+            firstUnreadMessageId = if (nextUnread > 0) firstUnreadMessageId else null,
+            mentionCount = if (nextUnread > 0) mentionCount else 0
         )
     }
     val nextChannels = channels.map { it.updated() }
     val nextDirectMessages = directMessages.map { it.updated() }
+    // A read of a followed thread (its id is the conversation id) clears its part of the parent mark.
+    val nextThreads =
+        if (unreadCount <= 0) {
+            followedThreadUnread - conversationId
+        } else {
+            followedThreadUnread
+        }
     if (delta == 0) {
-        return copy(channels = nextChannels, directMessages = nextDirectMessages)
+        return copy(channels = nextChannels, directMessages = nextDirectMessages, followedThreadUnread = nextThreads)
     }
     val nextUnreadTotal = (unreadTotal + delta).coerceAtLeast(0)
     val nextServerUnreadCount = (server.unreadCount + delta).coerceAtLeast(0)
     return copy(
         channels = nextChannels,
         directMessages = nextDirectMessages,
+        followedThreadUnread = nextThreads,
         server = server.copy(unreadCount = nextServerUnreadCount),
         unreadTotal = nextUnreadTotal,
         serverUnreadCounts = serverUnreadCounts + (server.id.value to nextServerUnreadCount)
@@ -4414,7 +4490,7 @@ private fun <T> List<T>.replaceAt(index: Int, value: T): List<T> {
     return updated
 }
 
-private fun HomeSnapshot.withPerReceiverReadState(update: PerReceiverReadStateUpdate): HomeSnapshot {
+internal fun HomeSnapshot.withPerReceiverReadState(update: PerReceiverReadStateUpdate): HomeSnapshot {
     fun HomeChannelRow.updated(): HomeChannelRow {
         if (!matchesHomeConversation(update.channelId.value)) return this
         val nextReadSeq = update.maxReadSeq ?: return this
@@ -4427,10 +4503,14 @@ private fun HomeSnapshot.withPerReceiverReadState(update: PerReceiverReadStateUp
     }
     val nextChannels = channels.map { it.updated() }
     val nextDirectMessages = directMessages.map { it.updated() }
-    return copy(
-        channels = nextChannels,
-        directMessages = nextDirectMessages
-    )
+    val withRows =
+        copy(
+            channels = nextChannels,
+            directMessages = nextDirectMessages
+        )
+    // Web `applyReadStateUpdate` -> `applyServerThreadUnread`: a thread scope's server count lowers the mark.
+    val serverUnread = update.unreadCount ?: return withRows
+    return withRows.withFollowedThreadServerUnread(update.channelId, serverUnread)
 }
 
 private fun HomeSnapshot.withoutHomeConversation(conversationId: String): HomeSnapshot {

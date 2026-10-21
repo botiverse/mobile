@@ -129,6 +129,13 @@ const val ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY: String = "activity_overview_web_v0
  */
 const val ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY: String = "activity_conversation_list_v0"
 
+/**
+ * Followed-thread unread on the Home channel rows: the `[thread] N` segment and the thread @ mark. The
+ * same per-server key the web reads (slock `packages/web/src/store/serverFeatureFlags.ts`
+ * `THREAD_UNREAD_BADGE_FLAG_KEY`, default off), so both clients show the mark together.
+ */
+const val THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY: String = "thread_unread_badge_v0"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
@@ -149,6 +156,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     RUNTIME_FORM_V2_FEATURE_FLAG_KEY,
     ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY,
     ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY,
+    THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY,
 )
 
 /**

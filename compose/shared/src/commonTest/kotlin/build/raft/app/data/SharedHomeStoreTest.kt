@@ -4205,7 +4205,7 @@ class SharedHomeStoreTest {
             val body =
                 when (name) {
                     "channels", "dms", "summary" -> "[]"
-                    else -> "{}"
+                    else -> EMPTY_CHANNEL_UNREAD_SUMMARY_BODY
                 }
             return HomeNetworkResponse(code = 200, bodyText = body)
         }
@@ -4244,7 +4244,7 @@ class SharedHomeStoreTest {
             HomeNetworkResponse(code = 200, bodyText = "[]")
 
         override suspend fun channelUnreadCounts(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
-            HomeNetworkResponse(code = 200, bodyText = "{}")
+            HomeNetworkResponse(code = 200, bodyText = EMPTY_CHANNEL_UNREAD_SUMMARY_BODY)
 
         override suspend fun serverUnreadSummary(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = "[]")
@@ -4308,7 +4308,7 @@ class SharedHomeStoreTest {
 
         override suspend fun channelUnreadCounts(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
             calls += "unread:${serverId.value}"
-            return HomeNetworkResponse(code = 200, bodyText = """{"${serverId.value}-channel":1}""")
+            return HomeNetworkResponse(code = 200, bodyText = channelUnreadSummaryBody(mapOf("${serverId.value}-channel" to 1)))
         }
 
         override suspend fun serverUnreadSummary(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
@@ -4393,7 +4393,7 @@ class SharedHomeStoreTest {
         }
 
         override suspend fun channelUnreadCounts(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
-            return responseOrThrow("""{"${serverId.value}-channel":1}""")
+            return responseOrThrow(channelUnreadSummaryBody(mapOf("${serverId.value}-channel" to 1)))
         }
 
         override suspend fun serverUnreadSummary(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
@@ -4452,7 +4452,7 @@ class SharedHomeStoreTest {
 
         override suspend fun channelUnreadCounts(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
             calls += "unread:${serverId.value}"
-            return HomeNetworkResponse(code = 200, bodyText = """{"${serverId.value}-channel":1}""")
+            return HomeNetworkResponse(code = 200, bodyText = channelUnreadSummaryBody(mapOf("${serverId.value}-channel" to 1)))
         }
 
         override suspend fun serverUnreadSummary(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {

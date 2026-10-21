@@ -17,7 +17,7 @@ private suspend fun RaftNetworkClient.channelUnreadCounts(
     priority: DataRequestPriority,
     serverId: ServerId
 ): HomeNetworkResponse =
-    request(priority, "channels/unread", serverIdOverride = serverId)
+    request(priority, "channels/unread", query = CHANNEL_UNREAD_SUMMARY_QUERY, serverIdOverride = serverId)
 
 private suspend fun RaftNetworkClient.markChannelReadToSeq(
     priority: DataRequestPriority,
@@ -71,7 +71,7 @@ class RealReadReceiptRepository(
             source = "read_unread_counts",
             mapper = { bodyText ->
                 parseChannelUnreadSnapshot(bodyText, context.server)
-                    ?: throw IllegalStateException("Unread counts response missing channel map")
+                    ?: throw IllegalStateException("Unread summary response missing channels/threadUnread")
             }
         )
     }

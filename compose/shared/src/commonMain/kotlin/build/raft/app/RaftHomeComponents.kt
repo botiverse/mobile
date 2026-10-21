@@ -389,13 +389,14 @@ data class RaftHomeConversationItem(
     val guestVisible: Boolean = false,
     /**
      * An unread message here mentions the user (web unread summary `hasMention`, or a followed
-     * thread's): the row's yellow @ sticker. Home does not load that summary yet, so production
-     * rows leave it false; fixtures set it.
+     * thread's): the row's yellow @ sticker. Projected from the Home store's row `mentionCount`
+     * and [build.raft.app.data.HomeSnapshot.followedThreadUnread].
      */
     val mentioned: Boolean = false,
     /**
      * Followed threads under this channel with new replies (web `threadUnread[channelId].count`):
-     * the row's `[thread] N` segment. Not loaded by Home yet; production rows leave it 0.
+     * the row's `[thread] N` segment. Projected from the Home store's followed-thread unread when
+     * the server enables `thread_unread_badge_v0`; 0 otherwise.
      */
     val followedThreadUnreadCount: Int = 0
 )
