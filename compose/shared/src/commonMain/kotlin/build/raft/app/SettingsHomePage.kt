@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftPickerTriggerButton
 import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.RaftReadOnlyField
@@ -51,7 +52,7 @@ import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalCard
 import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftBrutalListRow
-import build.raft.app.components.RaftAnchoredToolbarChip
+import build.raft.app.components.RaftAnchoredPickerTrigger
 import build.raft.app.components.RaftBrutalReadOnlyField
 import build.raft.app.components.RaftBrutalSearchField
 import build.raft.app.components.RaftBrutalSelectField
@@ -69,7 +70,6 @@ import build.raft.app.components.SharedHomeSearchEditorOwner
 import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.RaftLinkButton
 import build.raft.app.components.RaftSwitchButton
-import build.raft.app.components.RaftToolbarChip
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.raftDisabledActionBackgroundFor
@@ -745,7 +745,6 @@ internal fun appShellChildPageGlassStyle(bottomTabBarOverlaysContent: Boolean): 
 private val AppShellNotificationLaunchJson = Json { ignoreUnknownKeys = true }
 private val SearchControlsHorizontalPadding = 16.dp
 private val SearchMessagesHorizontalPadding = 16.dp
-private val SearchControlShadowOffset = 2.dp
 private val SavedSelectedRowShadowOffset = 2.dp
 private val SavedUnsaveHitTargetSize = 44.dp
 private val SearchPopoverBorderColor: Color get() = RaftColor.BorderBlack
@@ -21968,9 +21967,8 @@ private fun SharedHomeSearchFilters(
     val sortActive = state.sort != SearchSort.Relevance
     val scopeLabel = stringResource(MR.strings.search_filter_scope)
     val channelLabel = stringResource(MR.strings.search_filter_channel)
-    // raft-ui PickerTriggerButton: an applied filter is the cyan `--info-soft` wash
-    // (web `appliedFilterProps`).
-    val appliedFill = RaftColor.InfoSoft
+    // raft-ui PickerTriggerButton: an applied filter (web `appliedFilterProps`) is the
+    // `info-soft` wash.
     SharedHomeSearchControlsBlock {
         val backSwipeRowState = rememberLazyListState()
         val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
@@ -21984,64 +21982,44 @@ private fun SharedHomeSearchFilters(
                 item(key = "search-filter-${filter.id}") {
                     when (filter) {
                         HomeSearchFilter.Sender ->
-                            RaftAnchoredToolbarChip(
+                            RaftAnchoredPickerTrigger(
                                 label = state.localizedSenderFilterLabel(),
                                 anchorIdentity = "search_filter:sender",
-                                active = senderActive,
-                                enabled = true,
-                                uppercase = !senderActive,
+                                hasValue = senderActive,
                                 iconName = RaftLucideIconName.CircleUser,
-                                activeBackgroundColor = appliedFill,
-                                activeShadowOffset = SearchControlShadowOffset,
-                                reserveActiveShadowSpace = true,
                                 onAnchorChanged = senderAnchorChanged,
                                 onClick = { anchor ->
                                     onOpenFilter("sender", anchor)
                                 }
                             )
                         HomeSearchFilter.Scope ->
-                            RaftAnchoredToolbarChip(
+                            RaftAnchoredPickerTrigger(
                                 label = if (scopeActive) "$scopeLabel ${state.selectedScopes.size}" else scopeLabel,
                                 anchorIdentity = "search_filter:scope",
-                                active = scopeActive,
-                                enabled = true,
-                                uppercase = !scopeActive,
+                                hasValue = scopeActive,
                                 iconName = RaftLucideIconName.AtSign,
-                                activeBackgroundColor = appliedFill,
-                                activeShadowOffset = SearchControlShadowOffset,
-                                reserveActiveShadowSpace = true,
                                 onAnchorChanged = scopeAnchorChanged,
                                 onClick = { anchor ->
                                     onOpenFilter("scope", anchor)
                                 }
                             )
                         HomeSearchFilter.Channel ->
-                            RaftAnchoredToolbarChip(
+                            RaftAnchoredPickerTrigger(
                                 label = selectedChannel?.label ?: channelLabel,
                                 anchorIdentity = "search_filter:channel",
-                                active = channelActive,
-                                enabled = true,
-                                uppercase = selectedChannel == null,
+                                hasValue = channelActive,
                                 iconName = selectedChannel?.iconName ?: RaftLucideIconName.Hash,
-                                activeBackgroundColor = appliedFill,
-                                activeShadowOffset = SearchControlShadowOffset,
-                                reserveActiveShadowSpace = true,
                                 onAnchorChanged = channelAnchorChanged,
                                 onClick = { anchor ->
                                     onOpenFilter("channel", anchor)
                                 }
                             )
                         HomeSearchFilter.Time ->
-                            RaftAnchoredToolbarChip(
+                            RaftAnchoredPickerTrigger(
                                 label = state.timeRange.localizedSearchLabel(),
                                 anchorIdentity = "search_filter:time",
-                                active = timeActive,
-                                enabled = true,
-                                uppercase = false,
+                                hasValue = timeActive,
                                 iconName = RaftLucideIconName.Calendar,
-                                activeBackgroundColor = appliedFill,
-                                activeShadowOffset = SearchControlShadowOffset,
-                                reserveActiveShadowSpace = true,
                                 onAnchorChanged = timeAnchorChanged,
                                 onClick = { anchor ->
                                     onOpenFilter("time", anchor)
@@ -22051,16 +22029,11 @@ private fun SharedHomeSearchFilters(
                 }
             }
             item {
-                RaftAnchoredToolbarChip(
+                RaftAnchoredPickerTrigger(
                     label = state.sort.localizedSearchLabel(),
                     anchorIdentity = "search_filter:sort",
-                    active = sortActive,
-                    enabled = true,
-                    uppercase = false,
+                    hasValue = sortActive,
                     iconName = RaftLucideIconName.ArrowUpDown,
-                    activeBackgroundColor = appliedFill,
-                    activeShadowOffset = SearchControlShadowOffset,
-                    reserveActiveShadowSpace = true,
                     onAnchorChanged = sortAnchorChanged,
                     onClick = { anchor ->
                         onOpenFilter("sort", anchor)
@@ -22069,13 +22042,9 @@ private fun SharedHomeSearchFilters(
             }
             if (hasActiveFilters) {
                 item {
-                    RaftToolbarChip(
-                        label = stringResource(MR.strings.search_filter_clear_all),
-                        active = false,
-                        enabled = true,
-                        uppercase = false,
-                        activeShadowOffset = SearchControlShadowOffset,
-                        reserveActiveShadowSpace = true,
+                    RaftPickerTriggerButton(
+                        text = stringResource(MR.strings.search_filter_clear_all),
+                        showIndicator = false,
                         onClick = { onIntent(SharedHomeSearchSavedIntent.ClearSearchFilters) }
                     )
                 }

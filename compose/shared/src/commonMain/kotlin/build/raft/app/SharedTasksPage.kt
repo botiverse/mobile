@@ -16,7 +16,7 @@ import build.raft.app.markdown.RaftTaskStatusPixel
 import build.raft.app.markdown.RaftTaskStatusPixelStyle
 import build.raft.app.markdown.raftTaskStatusColor
 import build.raft.app.markdown.raftTaskStatusSoft
-import build.raft.app.components.RaftAnchoredToolbarChip
+import build.raft.app.components.RaftAnchoredPickerTrigger
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftToolbarChip
 import build.raft.app.data.KeyValueTasksViewPreferenceRepository
@@ -1097,24 +1097,21 @@ private fun SharedTasksToolbar(
     val creatorLabel = stringResource(MR.strings.tasks_chip_creator)
     val assigneeLabel = stringResource(MR.strings.tasks_chip_assignee)
     val channelChip: @Composable () -> Unit = {
-        RaftAnchoredToolbarChip(
+        RaftAnchoredPickerTrigger(
             label = if (selectedChannels.isEmpty()) channelLabel else "$channelLabel · ${selectedChannels.size}",
             anchorIdentity = "tasks_filter:channel",
             iconName = RaftLucideIconName.Hash,
-            // react filter chips are Title case (no uppercase transform) — task #373.
-            uppercase = false,
-            active = openFilterId == "channel" || selectedChannels.isNotEmpty(),
+            hasValue = openFilterId == "channel" || selectedChannels.isNotEmpty(),
             enabled = channelOptions.isNotEmpty(),
             onClick = onChannelChipClick
         )
     }
     val creatorChip: @Composable () -> Unit = {
-        RaftAnchoredToolbarChip(
+        RaftAnchoredPickerTrigger(
             label = if (selectedCreatorIds.isEmpty()) creatorLabel else "$creatorLabel · ${selectedCreatorIds.size}",
             anchorIdentity = "tasks_filter:creator",
             iconName = RaftLucideIconName.CircleUser,
-            uppercase = false,
-            active = openFilterId == "creator" || selectedCreatorIds.isNotEmpty(),
+            hasValue = openFilterId == "creator" || selectedCreatorIds.isNotEmpty(),
             // Web leaves identity filters interactive while their server directory is
             // loading; the popover can open empty and populate without changing chips.
             enabled = true,
@@ -1122,12 +1119,11 @@ private fun SharedTasksToolbar(
         )
     }
     val assigneeChip: @Composable () -> Unit = {
-        RaftAnchoredToolbarChip(
+        RaftAnchoredPickerTrigger(
             label = if (selectedAssigneeIds.isEmpty()) assigneeLabel else "$assigneeLabel · ${selectedAssigneeIds.size}",
             anchorIdentity = "tasks_filter:assignee",
             iconName = RaftLucideIconName.User,
-            uppercase = false,
-            active = openFilterId == "assignee" || selectedAssigneeIds.isNotEmpty(),
+            hasValue = openFilterId == "assignee" || selectedAssigneeIds.isNotEmpty(),
             // Web always exposes the localized Unassigned sentinel, even when the
             // currently loaded task set contains no member identities.
             enabled = true,

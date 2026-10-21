@@ -1,6 +1,12 @@
 package build.raft.app.components
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -10,11 +16,17 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.RaftColor
 import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLiveRootAnchorRef
 import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftPopoverAnchor
+import build.raft.app.RaftPopoverAnchorResolver
+import build.raft.app.RaftPopoverLocalPoint
+import build.raft.app.raftCaptureLiveRootAnchor
 import build.raft.app.raftArgbHex
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButtonSize
+import build.raft.designsystem.components.RaftPickerTriggerButton
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
 
@@ -90,3 +102,43 @@ internal fun raftIconButtonSizeFor(size: Dp): RaftIconButtonSize =
         size >= 28.dp -> RaftIconButtonSize.Sm
         else -> RaftIconButtonSize.Xs
     }
+
+/**
+ * A filter trigger in a toolbar filter row (Search, Tasks): the design-system
+ * [RaftPickerTriggerButton] (32dp, control radius, `line-seam` ring at rest, `info-soft` once
+ * [hasValue]) that opens its popover from its bottom-start corner. [onClick] receives the live
+ * anchor; [onAnchorChanged] hands the popover a resolver that follows the trigger.
+ */
+@Composable
+internal fun RaftAnchoredPickerTrigger(
+    label: String,
+    onClick: (RaftPopoverAnchor) -> Unit,
+    anchorIdentity: Any,
+    modifier: Modifier = Modifier,
+    iconName: RaftLucideIconName? = null,
+    hasValue: Boolean = false,
+    enabled: Boolean = true,
+    onAnchorChanged: ((RaftPopoverAnchorResolver) -> Unit)? = null
+) {
+    val currentOnAnchorChanged by rememberUpdatedState(onAnchorChanged)
+    val anchor = remember(anchorIdentity) { RaftLiveRootAnchorRef(identity = anchorIdentity) }
+    val anchorResolver = remember(anchor) { anchor.resolver(RaftPopoverLocalPoint.BottomStart) }
+    var resolverNotified by remember(anchorResolver) { mutableStateOf(false) }
+    Box(
+        modifier =
+            modifier.raftCaptureLiveRootAnchor(anchor) {
+                if (!resolverNotified) {
+                    resolverNotified = true
+                    currentOnAnchorChanged?.invoke(anchorResolver)
+                }
+            }
+    ) {
+        RaftPickerTriggerButton(
+            text = label,
+            onClick = { anchor.resolve(RaftPopoverLocalPoint.BottomStart)?.let(onClick) },
+            hasValue = hasValue,
+            enabled = enabled,
+            leadingIcon = iconName?.let { name -> { RaftSlotIcon(name) } }
+        )
+    }
+}
