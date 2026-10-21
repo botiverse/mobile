@@ -12,10 +12,13 @@ internal data class AgentControlsRecordedRequest(
     val bodyText: String?
 )
 
-/** Answers `METHOD path` from a script; anything unscripted is a 404. */
-internal class ScriptedAgentControlsNetworkClient(
-    private val script: MutableMap<String, ArrayDeque<HomeNetworkResponse>> = mutableMapOf()
-) : RaftNetworkClient {
+/**
+ * Answers `METHOD path` from a script, in order; the last scripted answer repeats.
+ * Anything unscripted is a 404.
+ */
+internal class ScriptedAgentControlsNetworkClient : RaftNetworkClient {
+    private val script = mutableMapOf<String, MutableList<HomeNetworkResponse>>()
+    private val served = mutableMapOf<String, Int>()
     val requests = mutableListOf<AgentControlsRecordedRequest>()
 
     fun respond(method: String, path: String, code: Int, body: String) {
@@ -25,7 +28,7 @@ internal class ScriptedAgentControlsNetworkClient(
             } else {
                 HomeNetworkResponse(code = code, bodyText = null, errorBodyText = body)
             }
-        script.getOrPut("$method $path") { ArrayDeque() }.addLast(response)
+        script.getOrPut("$method $path") { mutableListOf() }.add(response)
     }
 
     override suspend fun request(
@@ -37,7 +40,10 @@ internal class ScriptedAgentControlsNetworkClient(
         bodyText: String?
     ): HomeNetworkResponse {
         requests += AgentControlsRecordedRequest(priority, method, path, bodyText)
-        val queue = script["$method $path"] ?: return HomeNetworkResponse(code = 404, bodyText = null)
-        return if (queue.size > 1) queue.removeFirst() else queue.first()
+        val key = "$method $path"
+        val answers = script[key] ?: return HomeNetworkResponse(code = 404, bodyText = null)
+        val index = served[key] ?: 0
+        served[key] = index + 1
+        return answers[minOf(index, answers.lastIndex)]
     }
 }

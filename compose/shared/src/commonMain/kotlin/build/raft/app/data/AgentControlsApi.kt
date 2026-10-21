@@ -163,7 +163,7 @@ internal fun channelResumeAllAgentsRequestBody(prompt: String, agentIds: List<St
 /** The one shared request boundary for the agent remote controls. */
 internal class RaftAgentControlsApi(
     private val networkClient: RaftNetworkClient
-) : ChannelSosDataSource {
+) : ChannelSosDataSource, AgentMigrationDataSource {
     override suspend fun stopAll(channelId: ChannelId): DataResult<ChannelStopAllAgentsResult> =
         send(
             priority = DataRequestPriority.Foreground,
@@ -193,6 +193,51 @@ internal class RaftAgentControlsApi(
             method = "POST",
             bodyText = "{}",
             parse = ::parseSharedAgentTurnInterruptOutcome
+        )
+
+    override suspend fun migrationStatus(
+        agentId: MemberId,
+        priority: DataRequestPriority
+    ): DataResult<AgentMigrationStatusSnapshot> =
+        send(
+            priority = priority,
+            path = "agents/${agentId.value}/migration",
+            parse = ::parseSharedAgentMigrationStatus
+        )
+
+    override suspend fun startMigration(agentId: MemberId, target: AgentMigrationTarget): DataResult<String> =
+        send(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/migrate",
+            method = "POST",
+            bodyText = agentMigrationStartRequestBody(target),
+            parse = ::parseSharedAgentMigrationStart
+        )
+
+    override suspend fun cancelMigration(
+        agentId: MemberId,
+        migrationRef: String,
+        expectedRevision: Int
+    ): DataResult<Unit> =
+        send(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/migration/cancel",
+            method = "POST",
+            bodyText = agentMigrationRevisionRequestBody(migrationRef, expectedRevision),
+            parse = { Unit }
+        )
+
+    override suspend fun confirmHostedMigration(
+        agentId: MemberId,
+        migrationRef: String,
+        expectedRevision: Int
+    ): DataResult<Unit> =
+        send(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/migration/confirm-hosted",
+            method = "POST",
+            bodyText = agentMigrationRevisionRequestBody(migrationRef, expectedRevision),
+            parse = { Unit }
         )
 
     private suspend fun <T> send(

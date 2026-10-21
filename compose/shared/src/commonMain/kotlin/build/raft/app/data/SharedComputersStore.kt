@@ -143,6 +143,16 @@ class SharedComputersStore internal constructor(
             .map { state -> state.selectComputerPickerSlice(serverId) }
             .distinctUntilChanged()
 
+    /** The server's machines as the migration section names and targets them. */
+    internal fun migrationComputersFlow(serverId: String?): Flow<List<build.raft.app.AgentMigrationComputer>> =
+        state
+            .map { state ->
+                state.selectComputerServerSlice(serverId).machines.map {
+                    build.raft.app.AgentMigrationComputer(id = it.id, name = it.name, isComputer = it.isComputer)
+                }
+            }
+            .distinctUntilChanged()
+
     internal fun dispatch(intent: SharedComputersIntent) {
         when (intent) {
             is SharedComputersIntent.EnsureComputerPicker ->

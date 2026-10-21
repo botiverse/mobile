@@ -38,6 +38,11 @@ import build.raft.app.components.RaftUiSelectionPopover
 import build.raft.app.components.RaftUiSelectionOption
 import build.raft.app.components.TabPager
 import build.raft.app.components.TabPagerGesturePolicy
+import build.raft.app.data.AGENT_MIGRATION_FEATURE_FLAG_KEY
+import build.raft.app.data.AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY
+import build.raft.app.data.AgentMigrationIntent
+import build.raft.app.data.AgentMigrationState
+import build.raft.app.data.AgentMigrationStore
 import build.raft.app.data.AgentTurnStopFeedback
 import build.raft.app.data.AgentTurnStopIntent
 import build.raft.app.data.AgentTurnStopState
@@ -3757,6 +3762,10 @@ internal fun MemberDetailPageContent(
         remember(provider, routeScope) {
             provider.agentControlsApi?.let { api -> AgentTurnStopStore(api::interruptTurn, routeScope) }
         }
+    val agentMigrationStore =
+        remember(provider, routeScope) {
+            provider.agentControlsApi?.let { api -> AgentMigrationStore(api, routeScope) }
+        }
     val memberIdentity = payload.identity
     val activeServerId by provider.selectedServerStore.currentServerId.collectAsState()
     var routeState by remember(memberIdentity) {
@@ -3853,6 +3862,10 @@ internal fun MemberDetailPageContent(
     // distinguishes "store has not answered" (render nothing) from "answered, machine absent"
     // ("no computer assigned") -- web collapses the two and flashes the latter on every open.
     val computersState by provider.computersStore.state.collectAsState()
+    val migrationComputers by
+        remember(provider.computersStore, statusLookupServerId) {
+            provider.computersStore.migrationComputersFlow(statusLookupServerId)
+        }.collectAsState(emptyList())
     val machineStatusRow: (String?) -> MembersMachineStatusRow =
         remember(computersState, statusLookupServerId) {
             // selectComputerServerSlice normalises the key; indexing serverSlices directly
@@ -4361,7 +4374,24 @@ internal fun MemberDetailPageContent(
                         externalSetupServerUrl = provider.apiEnvironmentStore.current().webUrl,
                         remoteControls = MembersAgentRemoteControls(
                             serverRole = current.server.role,
-                            turnStopStore = agentTurnStopStore
+                            turnStopStore = agentTurnStopStore,
+                            migration =
+                                agentMigrationStore?.let { store ->
+                                    val flags = provider.serverFeatureFlags
+                                    MembersAgentMigrationBinding(
+                                        store = store,
+                                        enabled =
+                                            remember(flags, current.server.id, serverFeatureFlagRevision) {
+                                                flags?.isEnabled(current.server.id, AGENT_MIGRATION_FEATURE_FLAG_KEY) == true
+                                            },
+                                        hostedAvailable =
+                                            remember(flags, current.server.id, serverFeatureFlagRevision) {
+                                                flags?.isEnabled(current.server.id, AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY) == true
+                                            },
+                                        computers = migrationComputers,
+                                        onAgentPlacementChanged = { localAgentDetailRefreshKey += 1 }
+                                    )
+                                }
                         ),
                         agentProfileEditAuthority = agentProfileEditAuthority,
                         canViewPrivateAgentSurfaces = { _, detail ->
@@ -5723,7 +5753,18 @@ private class MembersAgentDetailCallbacks(
 internal class MembersAgentRemoteControls(
     /** The viewer's role on the agent's server; mirrors the server capability matrix. */
     val serverRole: String?,
-    val turnStopStore: AgentTurnStopStore?
+    val turnStopStore: AgentTurnStopStore?,
+    val migration: MembersAgentMigrationBinding? = null
+)
+
+/** The migration section's store and page-level inputs (web AgentMigrationSection). */
+internal class MembersAgentMigrationBinding(
+    val store: AgentMigrationStore,
+    /** The server's `agent_migration_v0` gate. */
+    val enabled: Boolean,
+    val hostedAvailable: Boolean,
+    val computers: List<AgentMigrationComputer>,
+    val onAgentPlacementChanged: () -> Unit
 )
 
 @Composable
@@ -5901,6 +5942,19 @@ private fun MembersDetailContent(
             onUnavailableAction(turnStopMessages.getValue(feedback))
         }
         turnStopStore?.dispatch(AgentTurnStopIntent.ConsumeFeedback)
+    }
+    // Web AgentDetailPanel mounts AgentMigrationSection for people who can manage a
+    // non-external agent that has a computer (cloud agents keep it only for their arrival,
+    // which mobile does not show).
+    val migrationBinding = remoteControls?.migration
+    val migrationVisible =
+        migrationBinding != null && migrationBinding.enabled && canManage && !isExternalAgent &&
+            !detail?.summary?.machineId.isNullOrBlank()
+    val fallbackMigrationState = remember { MutableStateFlow(AgentMigrationState()) }
+    val migrationState by (migrationBinding?.store?.state ?: fallbackMigrationState).collectAsState()
+    DisposableEffect(member.id.value, migrationVisible, migrationBinding?.store) {
+        if (migrationVisible) migrationBinding?.store?.dispatch(AgentMigrationIntent.Watch(member.id))
+        onDispose { migrationBinding?.store?.dispatch(AgentMigrationIntent.StopWatching) }
     }
     val scope = rememberCoroutineScope()
     val pager = LocalActivity.current.getPager() as Pager
@@ -6591,6 +6645,31 @@ private fun MembersDetailContent(
                                         )
                                         MembersAgentDetailTab.Activity -> Unit
                                     }
+                                }
+                            }
+                            if (
+                                pageTab == MembersAgentDetailTab.Profile &&
+                                migrationVisible &&
+                                migrationBinding != null &&
+                                migrationState.agentId == member.id
+                            ) {
+                                item(key = "member-detail-${member.id.value}-migration") {
+                                    AgentMigrationSection(
+                                        state = migrationState,
+                                        inputs =
+                                            AgentMigrationSectionInputs(
+                                                sourceMachineId = detail?.summary?.machineId,
+                                                computers = migrationBinding.computers,
+                                                hostedAvailable = migrationBinding.hostedAvailable,
+                                                onIntent = migrationBinding.store::dispatch,
+                                                onCopy = onCopyAgentIssueReference,
+                                                formatTimestamp = { value ->
+                                                    build.raft.app.model.formatRaftTimestampLabel(value, timeContext).takeIf { it.isNotBlank() }
+                                                },
+                                                onAgentPlacementChanged = migrationBinding.onAgentPlacementChanged
+                                            ),
+                                        modifier = Modifier.padding(horizontal = MembersPageInset)
+                                    )
                                 }
                             }
                             item(key = "member-detail-${member.id.value}-bottom-spacer") {
