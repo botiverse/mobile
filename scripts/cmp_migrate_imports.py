@@ -32,8 +32,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
-# Source roots that compile into :shared / :androidApp. ohosArm64Main and jsMain are not compiled
-# by any target any more and are left untouched.
+# Source roots that compile into :shared / :androidApp. jsMain is not compiled by any target any
+# more and is left untouched.
 ROOTS = [
     "compose/shared/src/commonMain",
     "compose/shared/src/commonTest",

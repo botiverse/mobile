@@ -54,7 +54,6 @@ require(
 version_catalog = read("compose/gradle/libs.versions.toml")
 require("com.tencent.kuikly-open" not in version_catalog, "version catalog re-added a Kuikly UI artifact")
 require("kuiklyAndroid" not in version_catalog, "version catalog re-added the Kuikly Android pin")
-require("kuiklyOhos" not in version_catalog, "OHOS catalog pin must stay removed")
 
 for gradle_path in sorted((ROOT / "compose").rglob("*.gradle.kts")):
     rel_parts = gradle_path.relative_to(ROOT / "compose").parts

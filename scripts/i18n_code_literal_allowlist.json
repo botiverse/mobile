@@ -62,11 +62,6 @@
   },
   {
     "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
-    "literal": "Harmony smoke preview",
-    "reason": "internal bottom-tab smoke preview label"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
     "literal": "Edge",
     "reason": "internal bottom-tab smoke variant label"
   },
@@ -125,11 +120,6 @@
     "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftLucideIconGalleryPage.kt",
     "literal": "Lucide Icons",
     "reason": "internal generated icon gallery heading"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftLucideIconGalleryPage.kt",
-    "literal": "${names.size} icons · generated OHOS paths",
-    "reason": "internal generated icon gallery diagnostic copy"
   },
   {
     "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftModalPointerBarrierVisualPage.kt",
