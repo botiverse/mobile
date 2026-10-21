@@ -220,9 +220,7 @@ private extension RaftIosTabBarItemSpec {
             enabled: item.enabled,
             attentionDot: item.attentionDot,
             searchAction: item.searchAction,
-            imageAssetName: item.imageAssetName,
-            countBadgeFillArgb: item.countBadgeFillArgb,
-            countBadgeTextArgb: item.countBadgeTextArgb
+            imageAssetName: item.imageAssetName
         )
     }
 }
@@ -330,26 +328,9 @@ private final class RaftIosTabSlotViewController: UIViewController {
         if item.badgeValue != spec.badgeValue {
             item.badgeValue = spec.badgeValue
         }
-        // The Activity count wears the raft-ui pink unread sticker with ink figures (as on the
-        // Compose bar and the rail); the dot-only badge keeps the system red.
-        if spec.showsCountBadge, let fill = spec.countBadgeFillArgb, let ink = spec.countBadgeTextArgb {
-            item.badgeColor = Self.color(fromArgb: fill)
-            let attributes: [NSAttributedString.Key: Any] = [.foregroundColor: Self.color(fromArgb: ink)]
-            item.setBadgeTextAttributes(attributes, for: .normal)
-            item.setBadgeTextAttributes(attributes, for: .selected)
-        } else {
-            item.badgeColor = nil
-            item.setBadgeTextAttributes(nil, for: .normal)
-            item.setBadgeTextAttributes(nil, for: .selected)
-        }
         if item.isEnabled != spec.enabled {
             item.isEnabled = spec.enabled
         }
-    }
-
-    private static func color(fromArgb argb: Int64) -> UIColor {
-        let (red, green, blue, alpha) = RaftIosTabBarItemMapping.rgba(fromArgb: argb)
-        return UIColor(red: red, green: green, blue: blue, alpha: alpha)
     }
 
     private static func symbol(_ names: [String]) -> UIImage? {

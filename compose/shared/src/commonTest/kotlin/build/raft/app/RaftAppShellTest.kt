@@ -1432,8 +1432,7 @@ class RaftAppShellTest {
         )
         assertEquals(RaftLucideIconName.Search, tabs[3].iconName)
         assertEquals(RaftLucideIconName.Ellipsis, tabs[4].iconName)
-        // Only Activity carries a number (its unread count, artin 2026-10-21).
-        assertEquals(listOf(0, 7, 0, 0, 0), tabs.map { it.badgeCount })
+        assertEquals(listOf(0, 0, 0, 0, 0), tabs.map { it.badgeCount })
         // Settings is More's root and Members is pushed from it: More stays the selected tab.
         listOf("members", "settings", "more").forEach { selected ->
             assertEquals(listOf(false, false, false, false, true), build(selected).map { it.selected }, "selected=$selected")

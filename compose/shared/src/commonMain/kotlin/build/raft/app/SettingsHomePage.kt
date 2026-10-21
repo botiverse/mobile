@@ -1225,7 +1225,7 @@ private val settingsPageVisualPayload: RaftSharedSettingsPayload
 
 private val bottomTabBarSmokeItems = listOf(
     RaftBottomTabItemPayload("home", "Home", RaftLucideIconName.House, selected = true),
-    RaftBottomTabItemPayload("activity", "Activity", RaftLucideIconName.Activity, badgeCount = 3),
+    RaftBottomTabItemPayload("activity", "Activity", RaftLucideIconName.Activity, attentionDot = true),
     RaftBottomTabItemPayload("tasks", "Tasks", RaftLucideIconName.SquareCheckBig),
     RaftBottomTabItemPayload(AppShellSearchTabKey, "Search", RaftLucideIconName.Search),
     RaftBottomTabItemPayload("more", "More", RaftLucideIconName.Ellipsis)
@@ -1278,9 +1278,9 @@ internal fun appShellPhoneBottomTabs(
  * This list is the single source of truth for every bottom-bar renderer, including the
  * host-drawn iOS UITabBar (RaftNativeTabBarBridge): a key added to the ordered tab keys
  * appears there with its label and icon. The Search action key is never selected. Activity
- * unread is the pink unread count, hidden while Activity is the selected tab
- * ([appShellActivityTabBadgeCount]); More wears an attention dot when Settings has something
- * new ([appShellMoreTabShowsDot]); no other tab carries a number.
+ * unread is an attention dot, hidden while Activity is the selected tab
+ * ([appShellActivityTabShowsDot]); More wears the same dot when Settings has something new
+ * ([appShellMoreTabShowsDot]); tabs carry no numbers.
  */
 internal fun appShellBottomTabs(
     selectedKey: String,
@@ -1296,8 +1296,12 @@ internal fun appShellBottomTabs(
             label = labelFor(key),
             iconName = appShellTabIcon(key),
             selected = selected,
-            badgeCount = if (key == "activity") appShellActivityTabBadgeCount(activityUnreadCount, selected) else 0,
-            attentionDot = key == "more" && appShellMoreTabShowsDot(moreAttention, selected),
+            attentionDot =
+                when (key) {
+                    "activity" -> appShellActivityTabShowsDot(activityUnreadCount, selected)
+                    "more" -> appShellMoreTabShowsDot(moreAttention, selected)
+                    else -> false
+                }
         )
     }
 

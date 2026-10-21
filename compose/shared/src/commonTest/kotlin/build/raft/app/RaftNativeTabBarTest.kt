@@ -92,13 +92,9 @@ class RaftNativeTabBarTest {
             )
         assertEquals(listOf("home", "activity", "tasks", AppShellSearchTabKey, "more"), state.items.map { it.key })
         val byKey = state.items.associateBy { it.key }
-        // Activity unread is a capped number (pink count), not a dot; no other tab has one.
-        assertFalse(byKey.getValue("activity").attentionDot)
-        assertEquals(120, byKey.getValue("activity").badgeCount)
-        assertEquals("99+", byKey.getValue("activity").badgeValue)
-        assertEquals(0xFFFF99C3L, byKey.getValue("activity").countBadgeFillArgb)
-        assertEquals(0xFF141111L, byKey.getValue("activity").countBadgeTextArgb)
-        assertEquals(listOf("activity"), state.items.filter { it.badgeValue != null }.map { it.key })
+        assertTrue(byKey.getValue("activity").attentionDot)
+        assertEquals(0, byKey.getValue("activity").badgeCount)
+        assertNull(byKey.getValue("activity").badgeValue)
         assertFalse(byKey.getValue("tasks").attentionDot)
         // Search sits directly left of More as an ordinary tab (stdrc option B).
         val search = state.items[3]
@@ -115,10 +111,9 @@ class RaftNativeTabBarTest {
                 visible = true,
             )
         assertEquals(AppShellSearchTabKey, onSearch.selectedKey)
-        // The selected Activity tab carries neither the count nor a dot.
+        // The selected Activity tab never carries the dot.
         val onActivity = raftNativeTabBarState(fiveTabs(selectedKey = "activity", activityUnreadCount = 3), visible = true)
         assertFalse(onActivity.items.single { it.key == "activity" }.attentionDot)
-        assertNull(onActivity.items.single { it.key == "activity" }.badgeValue)
     }
 
     @Test
