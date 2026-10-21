@@ -808,6 +808,11 @@ internal open class RaftCmpActivity :
             if (Build.VERSION.SDK_INT >= 30) RaftHostImeInsets() else null
     private var imeAnimationGeneration = 0
     private val runningImeAnimations = HashSet<WindowInsetsAnimation>()
+    // Hands 1af517cc: a 356ms composer lag matched one IME animation whose frames seemed to carry
+    // no keyboard height. One summary line per IME animation proves or disproves that on device.
+    private var imeTracePreparedAtMs = 0L
+    private var imeTraceProgressFrames = 0
+    private var imeTraceMaxProgressImePx = 0
     private var cmpFirstFrameListener: ViewTreeObserver.OnDrawListener? = null
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
     private var pendingThreadCameraCapture: PendingThreadCameraCapture? = null
@@ -2788,6 +2793,11 @@ internal open class RaftCmpActivity :
                         ) {
                     override fun onPrepare(animation: WindowInsetsAnimation) {
                         if (animation.typeMask and WindowInsets.Type.ime() == 0) return
+                        if (runningImeAnimations.isEmpty()) {
+                            imeTracePreparedAtMs = SystemClock.uptimeMillis()
+                            imeTraceProgressFrames = 0
+                            imeTraceMaxProgressImePx = 0
+                        }
                         runningImeAnimations += animation
                         state.imeAnimationRunning = true
                         expireAfter(IME_ANIMATION_START_GRACE_MILLIS)
@@ -2814,12 +2824,27 @@ internal open class RaftCmpActivity :
                     override fun onProgress(
                             insets: WindowInsets,
                             runningAnimations: MutableList<WindowInsetsAnimation>,
-                    ): WindowInsets = insets
+                    ): WindowInsets {
+                        if (runningAnimations.any { it.typeMask and WindowInsets.Type.ime() != 0 }) {
+                            imeTraceProgressFrames++
+                            imeTraceMaxProgressImePx =
+                                    maxOf(imeTraceMaxProgressImePx, insets.getInsets(WindowInsets.Type.ime()).bottom)
+                        }
+                        return insets
+                    }
 
                     override fun onEnd(animation: WindowInsetsAnimation) {
                         if (animation.typeMask and WindowInsets.Type.ime() == 0) return
                         runningImeAnimations -= animation
                         if (runningImeAnimations.isNotEmpty()) return
+                        RaftAppLog.w(
+                                "SlockIme",
+                                "ime_animation_end durationMs=${animation.durationMillis} " +
+                                        "elapsedMs=${SystemClock.uptimeMillis() - imeTracePreparedAtMs} " +
+                                        "progressFrames=$imeTraceProgressFrames " +
+                                        "maxProgressImePx=$imeTraceMaxProgressImePx " +
+                                        "windowImePx=${state.imeBottomPx} timedOut=${!state.imeAnimationRunning}",
+                        )
                         imeAnimationGeneration++
                         state.imeAnimationRunning = false
                     }
