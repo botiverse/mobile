@@ -15,8 +15,8 @@ import build.raft.app.data.RaftLocalPreferenceStore
 import build.raft.app.data.RaftSharedKeyValueStoreProvider
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.shared.AndroidRealtimeKeepAliveController
-import com.google.gson.Gson
 import com.tencent.mmkv.MMKV
+import kotlinx.serialization.json.Json
 
 class AndroidMMKVKeyValueStore(
     context: Context,
@@ -47,7 +47,9 @@ class AndroidMMKVKeyValueStore(
 }
 
 internal object AndroidAppScopeMMKV {
-    private val gson = Gson()
+    // Decode with the generated serializer (same format the shared AuthSessionStore writes);
+    // reflective Gson binding breaks once R8 renames StoredAuthSession's fields.
+    private val authSessionJson = Json { ignoreUnknownKeys = true }
 
     @Volatile
     private var initialized = false
@@ -154,7 +156,7 @@ internal object AndroidAppScopeMMKV {
         val session =
             encodedSession
                 ?.takeIf { it.isNotBlank() }
-                ?.let { runCatching { gson.fromJson(it, StoredAuthSession::class.java) }.getOrNull() }
+                ?.let { runCatching { authSessionJson.decodeFromString(StoredAuthSession.serializer(), it) }.getOrNull() }
         RaftAndroidLocalDiagnostics.updateUserContext(
             context = context.applicationContext,
             userId = session?.user?.id,
