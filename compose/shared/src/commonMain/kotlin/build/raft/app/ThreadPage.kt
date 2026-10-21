@@ -6347,10 +6347,7 @@ private fun SharedThreadRouteContentContent(
         }
     }
     val selectedMessageBodyFontSize = messageBodyFontSizeState.selectedKey(messageBodyOwnerKey)
-    val resolvedMessageBodyTextStyle =
-        remember(selectedMessageBodyFontSize) {
-            raftMessageBodyTextStyle(selectedMessageBodyFontSize)
-        }
+    val resolvedMessageBodyTextStyle = rememberRaftMessageBodyTextStyle(selectedMessageBodyFontSize)
     var replyCacheProvenanceOwner by remember(initialThreadInstanceKey) {
         mutableStateOf<ReplyCacheProvenance?>(null)
     }
@@ -31948,10 +31945,7 @@ private fun ThreadForwardBundleScreen() {
         }
     }
     val selectedMessageBodyFontSize = messageBodyFontSizeState.selectedKey(messageBodyOwnerKey)
-    val resolvedMessageBodyTextStyle =
-        remember(selectedMessageBodyFontSize) {
-            raftMessageBodyTextStyle(selectedMessageBodyFontSize)
-        }
+    val resolvedMessageBodyTextStyle = rememberRaftMessageBodyTextStyle(selectedMessageBodyFontSize)
     val repository =
         if (routeOwner != null && route != null && routeOwner.serverId == route.serverId.value) {
             remember(sharedStores, authStore, routeOwner, authorityGateway) {
