@@ -483,8 +483,13 @@ internal fun SharedHomeActivityScreen(
             sharedHomeStore?.supplementConversationIdentity(snapshot, dmPeerNames = state.dmPeerNames)
         }
     }
+    // Task #60: the app-shell Activity tab stays composed (keep-alive) while another tab is
+    // selected, and it still receives every shell pageDidAppear tick. Refreshing then cost a
+    // Foreground-lane inbox load plus a full Activity/Home identity republish on every return
+    // from background for a list nobody sees; the `active` edge below refreshes it on entry.
+    val latestActive by rememberUpdatedState(active)
     LaunchedEffect(routeVisibleTick) {
-        if (activityPageDidAppearShouldRefresh(routeVisibleTick)) {
+        if (activityPageDidAppearShouldRefresh(routeVisibleTick, active = latestActive)) {
             activityStore.dispatch(SharedActivityIntent.Refresh)
         }
     }
@@ -578,8 +583,8 @@ internal fun resolveActivityStableOrderEnabled(
             ),
     ).finalEffective
 
-internal fun activityPageDidAppearShouldRefresh(routeVisibleTick: Int): Boolean =
-    routeVisibleTick > 0
+internal fun activityPageDidAppearShouldRefresh(routeVisibleTick: Int, active: Boolean = true): Boolean =
+    routeVisibleTick > 0 && active
 
 /**
  * task #383: app-foreground resume arrives as the app-scope appLifecycle
