@@ -1740,7 +1740,7 @@
     <string name="settings_mobile_multi_shell_host">Multiple app windows</string>
     <string name="settings_mobile_desktop_mode">Desktop mode on large screens</string>
     <string name="settings_mobile_desktop_mode_detail">On large screens, show the left navigation rail with the list and detail side by side. Turn off to keep the single-pane mobile layout with the bottom tab bar.</string>
-    <string name="settings_mobile_multi_shell_host_detail">Open different workspaces in separate Android app windows. Existing windows remain open until you close them.</string>
+    <string name="settings_mobile_multi_shell_host_detail">Open different workspaces in separate app windows. Existing windows remain open until you close them.</string>
     <string name="settings_mobile_server_drawer">Multi-server Home drawer</string>
     <string name="settings_mobile_server_drawer_detail">Use the new multi-server left drawer on Home. Turn this off to keep the current server switcher popover.</string>
     <string name="settings_mobile_new_message_menu">New message menu</string>
