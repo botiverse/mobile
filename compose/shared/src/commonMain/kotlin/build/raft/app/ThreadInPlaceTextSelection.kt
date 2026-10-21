@@ -246,16 +246,38 @@ internal class ThreadInPlaceSelectionMenuRequest(
     val copySelection: () -> Unit,
     val selectAll: () -> Unit,
     val dismiss: () -> Unit,
+    /** Read inside the menu so it switches between full and partial as the handles move. */
+    val coversAll: () -> Boolean = { true },
 )
 
 /**
- * The Compact menu in selection context: same message actions as the long-press menu, plus
- * Select All; Copy reads "Copy selection"; the Select tool and the More chevron are hidden.
+ * The Compact menu in selection context (artin, 2026-10-21):
+ * - the whole message selected (the long-press default): every message action, reactions
+ *   included, and Copy copies the message;
+ * - part of the message selected: only Copy (the selected text), Reply and Select All, since
+ *   reactions and the other tools act on the whole message, not on the picked text.
+ * The Select tool and the More chevron are hidden in both.
  */
 internal fun threadInPlaceSelectionMenuAvailability(
     messageMenu: ThreadNewMessageMenuActionAvailability,
+    coversAll: Boolean = true,
 ): ThreadNewMessageMenuActionAvailability =
-    messageMenu.copy(copy = true, more = false, selectionContext = true)
+    if (coversAll) {
+        messageMenu.copy(copy = true, more = false, selectionContext = true, partialSelection = false)
+    } else {
+        ThreadNewMessageMenuActionAvailability(
+            reactions = false,
+            copy = true,
+            reply = messageMenu.reply,
+            forward = false,
+            save = false,
+            translate = false,
+            select = false,
+            more = false,
+            selectionContext = true,
+            partialSelection = true,
+        )
+    }
 
 @Stable
 internal class ThreadInPlaceSelectionController(
@@ -439,6 +461,15 @@ internal fun ThreadInPlaceSelectableBody(
             controller.clear()
         }
     }
+    // Long-press starts on a word; the default is the whole message, so widen it once when a
+    // selection appears. Later handle drags are left alone (that is how a partial pick is made).
+    val hasSelection = controller.hasSelection
+    LaunchedEffect(controller, hasSelection) {
+        if (hasSelection && !threadInPlaceSelectionCoversAll(controller.selectedTexts(), controller.selectableTexts())) {
+            diagnosticsLogger("thread_in_place_selection_default_select_all messageId=${controller.messageId}")
+            controller.selectAll()
+        }
+    }
     val backOwner =
         threadInPlaceSelectionBackOwner(
             hasSelection = controller.hasSelection,
@@ -482,6 +513,9 @@ internal fun ThreadInPlaceSelectableBody(
                     dismiss = {
                         diagnosticsLogger("thread_in_place_selection_menu_action messageId=${controller.messageId}")
                         controller.clear()
+                    },
+                    coversAll = {
+                        threadInPlaceSelectionCoversAll(controller.selectedTexts(), controller.selectableTexts())
                     }
                 )
             }
