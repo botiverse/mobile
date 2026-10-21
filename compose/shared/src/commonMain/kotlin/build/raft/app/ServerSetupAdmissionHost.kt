@@ -164,7 +164,9 @@ internal fun rememberServerSetupAdmissionHost(
 
     val retry = { refreshEpoch += 1 }
     val memoryKey = ServerSetupAdmissionMemory.key(environmentId, accountId, serverId)
-    val previouslyAllowed = remember(memoryKey) { ServerSetupAdmissionMemory.contains(memoryKey) }
+    // Read on every composition, not remembered: after a Blocked result forgets the server, a
+    // retry's Loading must not show Home again.
+    val previouslyAllowed = ServerSetupAdmissionMemory.contains(memoryKey)
     LaunchedEffect(memoryKey, featureDecision, state) {
         ServerSetupAdmissionMemory.record(memoryKey, serverSetupAllowsHome(featureDecision, state), state)
     }
