@@ -50,6 +50,8 @@ import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import build.raft.designsystem.components.RaftWorkspaceButton
+import build.raft.designsystem.components.RaftWorkspaceButtonDefaults
 import androidx.compose.ui.use
 import build.raft.designsystem.components.LocalRaftPulseClock
 import build.raft.designsystem.components.LocalRaftTooltipTouchTimer
@@ -696,4 +698,56 @@ class RaftDisplaySemanticsTest {
             assertFalse(clock!!.running, "the loop stops when no skeleton is shown")
         }
     }
+
+    private fun androidx.compose.ui.test.ComposeUiTest.setWorkspaceButtonContent(name: String, width: Int = 360) {
+        setContent(
+            themed {
+                Row(Modifier.width(width.dp)) {
+                    RaftWorkspaceButton(
+                        name = name,
+                        onClick = {},
+                        modifier = Modifier.testTag("button"),
+                        avatar = { Box(Modifier.size(RaftWorkspaceButtonDefaults.AvatarSize).testTag("avatar")) },
+                    )
+                }
+            },
+        )
+    }
+
+    /** raft-ui WorkspaceButton: the on-frame md button, avatar 8dp before the name. */
+    @Test
+    fun aWorkspaceButtonIsTheOnFrameButtonWithItsAvatar8dpBeforeTheName() =
+        runComposeUiTest {
+            setWorkspaceButtonContent("Acme")
+            val d = density.density
+            assertEquals(36f, boundsOf("button").height / d, 0.5f)
+            assertEquals(27f, boundsOf("avatar").width / d, 0.5f)
+            assertEquals(11.5f, (boundsOf("avatar").left - boundsOf("button").left) / d, 0.5f)
+            assertEquals(8f, (textBounds("Acme").left - boundsOf("avatar").right) / d, 0.5f)
+            // 4dp gap, the 16dp chevron, then the inset.
+            assertEquals(31.5f, (boundsOf("button").right - textBounds("Acme").right) / d, 0.5f)
+        }
+
+    /** A long name stops at 200dp; the chevron keeps its room. */
+    @Test
+    fun aWorkspaceButtonCapsItsNameAt200dpAndKeepsTheChevron() =
+        runComposeUiTest {
+            val long = "The Long Name Of A Server That Does Not Fit Anywhere"
+            setWorkspaceButtonContent(long)
+            val d = density.density
+            assertEquals(200f, textBounds(long).width / d, 0.5f)
+            assertEquals(31.5f, (boundsOf("button").right - textBounds(long).right) / d, 0.5f)
+        }
+
+    /** In a narrow bar the name shrinks; the avatar and the chevron keep their size. */
+    @Test
+    fun aNarrowWorkspaceButtonShrinksFromTheName() =
+        runComposeUiTest {
+            val long = "The Long Name Of A Server That Does Not Fit Anywhere"
+            setWorkspaceButtonContent(long, width = 160)
+            val d = density.density
+            assertEquals(160f, boundsOf("button").width / d, 0.5f)
+            assertEquals(27f, boundsOf("avatar").width / d, 0.5f)
+            assertEquals(31.5f, (boundsOf("button").right - textBounds(long).right) / d, 0.5f)
+        }
 }
