@@ -3,6 +3,7 @@ package build.raft.app.compat.pager
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -52,10 +53,6 @@ class RaftPagerHostPageSwapTest {
     private fun args(conversation: String) =
         RaftCmpPageArgs("probe", JsonObject(mapOf("conversation" to JsonPrimitive(conversation))))
 
-    // Quarantined 2026-10-21: passes alone but on CI, inside the full shared suite, the first page
-    // never composes (line 80, even after 5s of virtual time) — a cross-test isolation problem,
-    // not the pager fix. Tracked in #proj-mobile:6e20b1c8; re-enable once isolated.
-    @org.junit.Ignore("Fails only inside the full shared suite on CI; isolation issue under investigation")
     @Test
     fun newPageArgsRenderTheNewPageNotThePreviousPagesState() {
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
@@ -80,6 +77,11 @@ class RaftPagerHostPageSwapTest {
 
         // The list tap: same host slot, new page args.
         current = args("channel-push-test")
+        // A state write from the test thread only recomposes once a snapshot apply notification is
+        // sent. GlobalSnapshotManager is process-wide and started once, on the first Compose test's
+        // main-thread dispatcher; Robolectric resets that looper between tests, so inside the full
+        // suite nothing would send it (passes alone, fails in the suite). Send it explicitly.
+        Snapshot.sendApplyNotifications()
         settleUntil { rendered.lastOrNull() == "channel-push-test" }
         assertEquals("channel-push-test", rendered.lastOrNull(), "after switching, rendered=$rendered")
     }
