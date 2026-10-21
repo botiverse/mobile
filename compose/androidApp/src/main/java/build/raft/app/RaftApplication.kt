@@ -26,6 +26,7 @@ import android.content.res.Configuration
 import build.raft.app.data.installAndroidAppScopeEventBus
 import build.raft.app.network.installAndroidNetworkKmmReusedHttp2RecoveryAtStartup
 import build.raft.app.network.installAndroidNetworkKmmAppIdentity
+import build.raft.app.network.installAndroidRaftUserAgentDevice
 import build.raft.app.network.installAndroidRaftNetworkTransportAtStartup
 import build.raft.app.push.AndroidPushRegistration
 import kotlinx.coroutines.runBlocking
@@ -57,6 +58,9 @@ class RaftApplication : Application() {
             buildNumber = BuildConfig.VERSION_CODE.toString(),
             buildType = BuildConfig.BUILD_TYPE
         )
+        // Phone vs tablet in the User-Agent (`Mobile` on phones): the server's product-event
+        // `$device_type` comes from it.
+        installAndroidRaftUserAgentDevice(this)
         runCatching {
             installAndroidRaftNetworkTransportAtStartup(this)
         }.onSuccess { diagnostics ->
