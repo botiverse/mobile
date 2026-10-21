@@ -541,8 +541,8 @@ internal val ThreadNewMessageMenuToolOrder =
     )
 
 /**
- * The Compact menu shown for an in-place text selection: Select All takes the Select slot and
- * leads the row, Copy ("Copy selection") copies the selection; the row keeps six slots.
+ * The Compact menu for a partial in-place text selection: Select All leads, Copy ("Copy
+ * selection") copies the selection; only the enabled tools (Select All, Copy, Reply) are shown.
  */
 internal val ThreadNewMessageMenuSelectionToolOrder =
     listOf(
@@ -625,8 +625,10 @@ internal data class ThreadNewMessageMenuActionAvailability(
     val taskStatus: Boolean = false,
     val taskDone: Boolean = false,
     val convertToTask: Boolean = false,
-    /** Shown for an in-place text selection: Copy copies the selection and Select All appears. */
-    val selectionContext: Boolean = false
+    /** Shown for an in-place text selection: Copy copies the selection. */
+    val selectionContext: Boolean = false,
+    /** The in-place selection covers only part of the message: Copy reads "Copy selection" and Select All appears. */
+    val partialSelection: Boolean = false
 ) {
     fun enabled(tool: ThreadNewMessageMenuTool): Boolean =
         when (tool) {
@@ -642,11 +644,20 @@ internal data class ThreadNewMessageMenuActionAvailability(
             ThreadNewMessageMenuTool.FollowThread -> followThread
             ThreadNewMessageMenuTool.TaskStatus -> taskStatus
             ThreadNewMessageMenuTool.ConvertToTask -> convertToTask
-            ThreadNewMessageMenuTool.SelectAll -> selectionContext
+            ThreadNewMessageMenuTool.SelectAll -> selectionContext && partialSelection
         }
 
     fun primaryTools(): List<ThreadNewMessageMenuTool> =
-        if (selectionContext) ThreadNewMessageMenuSelectionToolOrder else ThreadNewMessageMenuToolOrder
+        when {
+            // Part of the message selected: only the tools that act on the picked text.
+            selectionContext && partialSelection -> ThreadNewMessageMenuSelectionToolOrder.filter(::enabled)
+            // Whole message selected: the long-press row without the Select tool.
+            selectionContext -> ThreadNewMessageMenuToolOrder - ThreadNewMessageMenuTool.Select
+            else -> ThreadNewMessageMenuToolOrder
+        }
+
+    /** Reactions apply to the whole message, so a partial selection drops the reaction row. */
+    fun showsReactionRow(): Boolean = !(selectionContext && partialSelection)
 
     fun secondaryTools(): List<ThreadNewMessageMenuTool> =
         ThreadNewMessageMenuSecondaryToolOrder.filter(::enabled)
@@ -22158,7 +22169,10 @@ private fun ThreadMessagesListContent(
                     val actions = compactMenuMessageActions(message, replyMetadata, close = request.dismiss)
                     ThreadNewMessageMenuChrome(
                         availability =
-                            threadInPlaceSelectionMenuAvailability(compactMenuAvailability(message, replyMetadata)),
+                            threadInPlaceSelectionMenuAvailability(
+                                compactMenuAvailability(message, replyMetadata),
+                                coversAll = request.coversAll()
+                            ),
                         onReact = actions.onReact,
                         onCopy = request.copySelection,
                         onReply = actions.tools.onReply,
@@ -25689,23 +25703,25 @@ internal fun ThreadNewMessageMenuChrome(
                     .raftLookOverlaySurface()
                     .padding(horizontal = 8.dp, vertical = ThreadNewMessageMenuVerticalPadding)
         ) {
-            ThreadMessageReactionRow(
-                reactionAtlasImage = LocalThreadReactionAtlasImage.current,
-                onReact = onReact,
-                rowHeight = ThreadNewMessageMenuReactionRowHeight,
-                buttonSize = ThreadNewMessageMenuReactionButtonSize,
-                glyphSize = ThreadNewMessageMenuReactionGlyphSize,
-                horizontalPadding = ThreadNewMessageMenuReactionHorizontalPadding,
-                enabled = availability.reactions,
-                horizontalArrangement = Arrangement.SpaceBetween
-            )
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(RaftAppStroke.Thin)
-                        .background(RaftColor.BorderHairline)
-            )
+            if (availability.showsReactionRow()) {
+                ThreadMessageReactionRow(
+                    reactionAtlasImage = LocalThreadReactionAtlasImage.current,
+                    onReact = onReact,
+                    rowHeight = ThreadNewMessageMenuReactionRowHeight,
+                    buttonSize = ThreadNewMessageMenuReactionButtonSize,
+                    glyphSize = ThreadNewMessageMenuReactionGlyphSize,
+                    horizontalPadding = ThreadNewMessageMenuReactionHorizontalPadding,
+                    enabled = availability.reactions,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                )
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(RaftAppStroke.Thin)
+                            .background(RaftColor.BorderHairline)
+                )
+            }
             ThreadNewMessageMenuToolRow(
                 tools = availability.primaryTools(),
                 callbacks = callbacks,
@@ -25739,7 +25755,7 @@ internal fun ThreadNewMessageMenuTool.compactLabelResource(
 ): StringResource =
     when (this) {
         ThreadNewMessageMenuTool.Copy ->
-            if (availability.selectionContext) {
+            if (availability.selectionContext && availability.partialSelection) {
                 MR.strings.thread_text_selection_copy_selection
             } else {
                 MR.strings.thread_action_copy_markdown

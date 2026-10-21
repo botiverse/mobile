@@ -293,17 +293,22 @@ class ThreadInPlaceTextSelectionTest {
     }
 
     private val messageMenu = ThreadNewMessageMenuActionAvailability()
-    private val selectionMenu = threadInPlaceSelectionMenuAvailability(messageMenu)
+    private val fullSelectionMenu = threadInPlaceSelectionMenuAvailability(messageMenu, coversAll = true)
+    private val partialSelectionMenu = threadInPlaceSelectionMenuAvailability(messageMenu, coversAll = false)
 
     @Test
-    fun copyToolKeySwitchesToCopySelectionOnlyWithASelection() {
+    fun copyReadsCopySelectionOnlyForAPartialSelection() {
         assertEquals(
             MR.strings.thread_action_copy_markdown,
             ThreadNewMessageMenuTool.Copy.compactLabelResource(messageMenu)
         )
         assertEquals(
+            MR.strings.thread_action_copy_markdown,
+            ThreadNewMessageMenuTool.Copy.compactLabelResource(fullSelectionMenu)
+        )
+        assertEquals(
             MR.strings.thread_text_selection_copy_selection,
-            ThreadNewMessageMenuTool.Copy.compactLabelResource(selectionMenu)
+            ThreadNewMessageMenuTool.Copy.compactLabelResource(partialSelectionMenu)
         )
     }
 
@@ -312,41 +317,64 @@ class ThreadInPlaceTextSelectionTest {
         assertTrue(ThreadNewMessageMenuTool.Select in messageMenu.primaryTools())
         assertTrue(messageMenu.enabled(ThreadNewMessageMenuTool.Select))
 
-        assertFalse(ThreadNewMessageMenuTool.Select in selectionMenu.primaryTools())
-        assertFalse(ThreadNewMessageMenuTool.Select in selectionMenu.secondaryTools())
-        assertFalse(selectionMenu.enabled(ThreadNewMessageMenuTool.Select))
+        for (menu in listOf(fullSelectionMenu, partialSelectionMenu)) {
+            assertFalse(ThreadNewMessageMenuTool.Select in menu.primaryTools())
+            assertFalse(ThreadNewMessageMenuTool.Select in menu.secondaryTools())
+            assertFalse(menu.enabled(ThreadNewMessageMenuTool.Select))
+        }
     }
 
     @Test
-    fun selectionMenuLeadsWithSelectAllAndKeepsTheMessageTools() {
+    fun wholeMessageSelectionShowsTheFullMenuWithReactions() {
         assertEquals(
             listOf(
-                ThreadNewMessageMenuTool.SelectAll,
                 ThreadNewMessageMenuTool.Copy,
                 ThreadNewMessageMenuTool.Reply,
                 ThreadNewMessageMenuTool.Forward,
                 ThreadNewMessageMenuTool.Save,
                 ThreadNewMessageMenuTool.Translate
             ),
-            selectionMenu.primaryTools()
+            fullSelectionMenu.primaryTools()
         )
-        assertTrue(selectionMenu.enabled(ThreadNewMessageMenuTool.SelectAll))
-        assertEquals(
-            MR.strings.thread_text_selection_select_all,
-            ThreadNewMessageMenuTool.SelectAll.compactLabelResource(selectionMenu)
-        )
-        assertFalse(selectionMenu.more)
-        assertTrue(selectionMenu.copy)
+        assertTrue(fullSelectionMenu.showsReactionRow())
+        assertTrue(fullSelectionMenu.reactions)
+        assertFalse(fullSelectionMenu.enabled(ThreadNewMessageMenuTool.SelectAll))
+        assertFalse(fullSelectionMenu.more)
+        // Secondary tools that apply to the message stay available.
+        val withLink = threadInPlaceSelectionMenuAvailability(messageMenu.copy(copyLink = true), coversAll = true)
+        assertTrue(ThreadNewMessageMenuTool.CopyLink in withLink.secondaryTools())
         // Outside a selection the long-press menu is unchanged.
         assertEquals(ThreadNewMessageMenuToolOrder, messageMenu.primaryTools())
+        assertTrue(messageMenu.showsReactionRow())
         assertFalse(messageMenu.enabled(ThreadNewMessageMenuTool.SelectAll))
-        // Secondary tools that apply to the message stay available in selection context.
-        val withLink = threadInPlaceSelectionMenuAvailability(messageMenu.copy(copyLink = true))
-        assertTrue(ThreadNewMessageMenuTool.CopyLink in withLink.secondaryTools())
     }
 
     @Test
-    fun selectAllAndCopyRouteToTheSelectionCallbacks() {
+    fun partialSelectionKeepsOnlySelectAllCopyAndReply() {
+        assertEquals(
+            listOf(ThreadNewMessageMenuTool.SelectAll, ThreadNewMessageMenuTool.Copy, ThreadNewMessageMenuTool.Reply),
+            partialSelectionMenu.primaryTools()
+        )
+        assertFalse(partialSelectionMenu.showsReactionRow())
+        assertFalse(partialSelectionMenu.reactions)
+        assertEquals(
+            MR.strings.thread_text_selection_select_all,
+            ThreadNewMessageMenuTool.SelectAll.compactLabelResource(partialSelectionMenu)
+        )
+        // Whole-message tools never reach a partial selection, not even on the second row.
+        val busy =
+            threadInPlaceSelectionMenuAvailability(
+                messageMenu.copy(copyLink = true, addReaction = true, followThread = true, convertToTask = true),
+                coversAll = false
+            )
+        assertEquals(emptyList(), busy.secondaryTools())
+        // A message that cannot be replied to keeps Copy and Select All only.
+        val noReply = threadInPlaceSelectionMenuAvailability(messageMenu.copy(reply = false), coversAll = false)
+        assertEquals(listOf(ThreadNewMessageMenuTool.SelectAll, ThreadNewMessageMenuTool.Copy), noReply.primaryTools())
+    }
+
+    @Test
+    fun partialSelectionToolsRouteToTheSelectionCallbacks() {
         val routed = mutableListOf<String>()
         val callbacks =
             ThreadNewMessageMenuToolCallbacks(
@@ -358,8 +386,8 @@ class ThreadInPlaceTextSelectionTest {
                 onSelect = { routed += "select" },
                 onSelectAll = { routed += "select_all" }
             )
-        selectionMenu.primaryTools().forEach { it.dispatch(callbacks) }
-        assertEquals(listOf("select_all", "copy_selection", "reply", "forward", "save", "translate"), routed)
+        partialSelectionMenu.primaryTools().forEach { it.dispatch(callbacks) }
+        assertEquals(listOf("select_all", "copy_selection", "reply"), routed)
     }
 
     @Test
