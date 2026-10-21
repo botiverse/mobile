@@ -49,7 +49,7 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun defaultOnKeyReadsOnWithoutAnExplicitServerDecision() = runBlocking {
-        for (doh in listOf(MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY)) {
+        for (doh in listOf(MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY, RUNTIME_FORM_V2_FEATURE_FLAG_KEY)) {
         // Unresolved (no evaluation yet, no stored value) and no server at all: ON.
         val idle = SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[]}""")))
         assertTrue(idle.isEnabled(server, doh))
@@ -79,7 +79,7 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun defaultOnKeyFollowsAnExplicitServerDecision() = runBlocking {
-        for (doh in listOf(MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY)) {
+        for (doh in listOf(MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY, RUNTIME_FORM_V2_FEATURE_FLAG_KEY)) {
         for (reason in listOf("kill_switch", "flag_disabled", "default", "platform_rule")) {
             val flags =
                 SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[{"key":"$doh","enabled":false,"reason":"$reason"}]}""")))
