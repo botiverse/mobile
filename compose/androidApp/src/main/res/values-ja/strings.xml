@@ -504,4 +504,12 @@
     <string name="raft_background_connection_channel_description">Google Play 開発者サービスのないデバイスで、Raft がメッセージ通知のためにバックグラウンドで接続を維持している間に表示されます。</string>
     <string name="raft_background_connection_notification_title">Raft がメッセージを受信中</string>
     <string name="raft_background_connection_notification_text">メッセージ通知のために接続を維持しています。</string>
+    <string name="raft_download_channel_name">ダウンロード</string>
+    <string name="raft_download_channel_description">添付ファイルのダウンロードの進行状況と完了のお知らせ。</string>
+    <string name="raft_download_notification_downloading">%1$s をダウンロード中</string>
+    <string name="raft_download_notification_more">%1$d 件のダウンロードを実行中</string>
+    <string name="raft_download_notification_completed">%1$s をダウンロードしました</string>
+    <string name="raft_download_notification_failed">%1$s をダウンロードできませんでした</string>
+    <string name="raft_download_notification_tap_open">タップして開く</string>
+    <string name="raft_download_notification_tap_retry">Raft を開いてもう一度お試しください</string>
 </resources>

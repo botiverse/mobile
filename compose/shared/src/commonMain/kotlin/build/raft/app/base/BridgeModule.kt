@@ -556,6 +556,7 @@ internal class BridgeModule : Module() {
         owner: AttachmentOwnerLease,
         mimeType: String? = null,
         downloadId: String? = null,
+        retainAfterPageDestroyed: Boolean = false,
         onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)? = null
     ): JSONObject? = saveAttachmentWithNativeMethod(
         methodName = SAVE_ATTACHMENT,
@@ -565,6 +566,7 @@ internal class BridgeModule : Module() {
         owner = owner,
         mimeType = mimeType,
         downloadId = downloadId,
+        retainAfterPageDestroyed = retainAfterPageDestroyed,
         onProgress = onProgress
     )
 
@@ -584,6 +586,7 @@ internal class BridgeModule : Module() {
         owner = owner,
         mimeType = mimeType,
         downloadId = downloadId,
+        retainAfterPageDestroyed = false,
         onProgress = onProgress
     )
 
@@ -595,6 +598,7 @@ internal class BridgeModule : Module() {
         owner: AttachmentOwnerLease,
         mimeType: String?,
         downloadId: String?,
+        retainAfterPageDestroyed: Boolean,
         onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)?
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
@@ -631,7 +635,8 @@ internal class BridgeModule : Module() {
                         callbackRef?.let { removeCallback(it) }
                         continuation.resume(payload)
                     },
-                    syncCall = false
+                    syncCall = false,
+                    retainAfterDetach = retainAfterPageDestroyed
                 )
             callbackRef = result.callbackRef
             continuation.invokeOnCancellation {
@@ -688,6 +693,26 @@ internal class BridgeModule : Module() {
                 )
             }
         }
+    }
+
+    /**
+     * Non-suspending control for app-scoped downloads (the download centre), safe after the page
+     * that started the download is destroyed: the common coordinator is controlled directly and
+     * the native host is told fire-and-forget.
+     */
+    fun attachmentDownloadControlDetached(
+        downloadId: String,
+        owner: AttachmentOwnerLease,
+        expectedAttemptToken: String?,
+        expectedRecordVersion: Long?,
+        action: String
+    ) {
+        AttachmentDownloadCoordinator.control(
+            downloadId = downloadId,
+            expectedAttemptToken = expectedAttemptToken,
+            action = action
+        )
+        requestAttachmentDownloadControl(downloadId, owner, expectedAttemptToken, expectedRecordVersion, action, callback = null)
     }
 
     private fun requestAttachmentDownloadControl(

@@ -8,6 +8,8 @@
     <!-- No-Play-services background connection (RaftBackgroundConnectionService). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
+    <!-- Download centre: keeps a user-started attachment download alive in the background. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <queries>
@@ -50,6 +52,10 @@
             android:name=".shared.RaftBackgroundConnectionService"
             android:exported="false"
             android:foregroundServiceType="remoteMessaging" />
+        <service
+            android:name=".shared.RaftDownloadForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <!-- Page host: every page renders on Compose Multiplatform (RaftCmpRouter /
              RaftPageRegistry). adjustResize so Compose receives IME insets on every API level. -->

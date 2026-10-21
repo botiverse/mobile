@@ -2812,4 +2812,17 @@
     <string name="message_delegated_sent_by_deleted_in_body">（由已删除的助理代发）</string>
     <string name="message_delegated_preview_sender">%1$s（由 %2$s 代发）</string>
     <string name="message_delegated_preview_sender_deleted">%1$s（由已删除的助理代发）</string>
+    <string name="download_center_title">下载</string>
+    <string name="download_center_entry">下载</string>
+    <string name="download_center_entry_detail">已下载的文件，以及仍在后台进行的下载。</string>
+    <string name="download_center_empty">你下载的文件会显示在这里。</string>
+    <string name="download_center_clear_finished">清除已结束</string>
+    <string name="download_center_status_failed">失败</string>
+    <string name="download_center_status_interrupted">已中断</string>
+    <string name="download_center_status_cancelled">已取消</string>
+    <string name="download_center_status_saving">正在保存到下载</string>
+    <string name="download_center_retry_unavailable">请打开对应消息重新下载。</string>
+    <string name="download_center_progress_bytes">%1$s / %2$s</string>
+    <string name="file_preview_download_background_hint">可以离开此页面，下载会继续。可在 设置 › 存储 › 下载 中查看。</string>
+    <string name="file_preview_download_completed_hint">已保存。可在 设置 › 存储 › 下载 中找到。</string>
 </resources>

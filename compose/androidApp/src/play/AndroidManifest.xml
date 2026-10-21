@@ -19,9 +19,16 @@
     <uses-permission
         android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
         tools:node="remove" />
+    <!-- The download centre's dataSync foreground service: Play builds post plain download notifications. -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+        tools:node="remove" />
     <application>
         <service
             android:name="build.raft.app.shared.RaftBackgroundConnectionService"
+            tools:node="remove" />
+        <service
+            android:name="build.raft.app.shared.RaftDownloadForegroundService"
             tools:node="remove" />
     </application>
 </manifest>

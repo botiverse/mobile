@@ -42,6 +42,12 @@ abstract class Module {
 
     private val liveCallbacks = HashSet<CallbackRef>()
 
+    /**
+     * Callbacks of app-scoped work (the download centre) that must keep receiving results after
+     * the page is destroyed. [detach] leaves them; [removeCallback] or the final result drops them.
+     */
+    private val retainedCallbacks = HashSet<CallbackRef>()
+
     /** Set once the owning page is destroyed: native results arriving later are dropped. */
     private var detached = false
 
@@ -74,6 +80,7 @@ abstract class Module {
         param: Any?,
         callback: CallbackFn? = null,
         syncCall: Boolean = false,
+        retainAfterDetach: Boolean = false,
     ): ReturnValue {
         val transport = pager?.host?.bridgeTransport
         if (transport == null) {
@@ -86,11 +93,18 @@ abstract class Module {
             raftLogWarn("RaftModuleCompat", "sync_call_async module=${moduleName()} method=$methodName")
         }
         val ref: CallbackRef? = callback?.let { "cb-${callbackSequence.incrementAndGet()}" }
-        if (ref != null && !detached) liveCallbacks.add(ref)
+        if (ref != null) {
+            if (retainAfterDetach) retainedCallbacks.add(ref) else if (!detached) liveCallbacks.add(ref)
+        }
         transport.call(methodName, param?.toString().orEmpty(), if (callback == null) null else { result ->
             moduleCallbackScope.launch {
-                if (ref == null || detached || ref !in liveCallbacks) return@launch
-                if (!keepCallbackAlive) liveCallbacks.remove(ref)
+                if (ref == null) return@launch
+                val retained = ref in retainedCallbacks
+                if (!retained && (detached || ref !in liveCallbacks)) return@launch
+                if (!keepCallbackAlive) {
+                    liveCallbacks.remove(ref)
+                    retainedCallbacks.remove(ref)
+                }
                 callback(result?.let { text -> runCatching { JSONObject(text) }.getOrNull() })
             }
         })
@@ -106,6 +120,7 @@ abstract class Module {
 
     fun removeCallback(callbackRef: CallbackRef) {
         liveCallbacks.remove(callbackRef)
+        retainedCallbacks.remove(callbackRef)
     }
 }
 

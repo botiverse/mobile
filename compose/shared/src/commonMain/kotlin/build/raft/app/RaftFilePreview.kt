@@ -2,6 +2,11 @@ package build.raft.app
 
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerSize
+import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.designsystem.components.RaftCard
+import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.gesture.raftBackSwipePagingDrag
 import build.raft.app.base.BridgeAttachmentDownloadProgress
@@ -40,6 +45,12 @@ import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadApiResult
 import build.raft.kuiklybase.datetime.Clock
+import build.raft.app.downloads.RaftBridgeSaveAttachmentTask
+import build.raft.app.downloads.RaftDownloadCenterProcess
+import build.raft.app.downloads.RaftDownloadDescriptor
+import build.raft.app.downloads.RaftDownloadOutcome
+import build.raft.app.downloads.RaftDownloadStatus
+import build.raft.app.downloads.raftDownloadCenterEntryId
 import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.model.MemberId
@@ -87,7 +98,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import build.raft.app.compat.ui.rememberAsyncImageBitmap
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -140,6 +150,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -2024,6 +2035,19 @@ private fun RaftFilePreviewStandalonePageContent() {
                 "elapsedMs=${activeDownloadStartedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L}"
         )
     }
+    // Download centre row of this attachment (selector: only this row recomposes the page).
+    val downloadCenter = RaftDownloadCenterProcess.center
+    val centerEntryId =
+        attachmentOwner?.let { owner ->
+            raftDownloadCenterEntryId(owner.principalKey.value, attachmentCacheId, attachmentCacheFileName)
+        }
+    val centerEntry by remember(centerEntryId) {
+        centerEntryId?.let(downloadCenter::entry) ?: flowOf(null)
+    }.collectAsState(initial = null)
+    // A download this page did not start (or started before it was reopened) is still running
+    // in the centre: show its progress and controls instead of a second Download button.
+    val centerOwnsActiveDownload =
+        centerEntry?.status?.isActive == true && activeAttachmentOperation == null && downloadStatus == "idle"
     fun setAttachmentCommentsState(next: ThreadAttachmentCommentsDialogState) {
         attachmentCommentsState =
             attachmentCommentsState
@@ -2375,6 +2399,20 @@ private fun RaftFilePreviewStandalonePageContent() {
             observedFor = observedPublicDownloadQuery,
             observedState = publicDownloadState
         )
+    var centerObservedActive by remember(centerEntryId) { mutableStateOf(false) }
+    LaunchedEffect(centerEntryId, centerEntry?.status) {
+        val status = centerEntry?.status ?: return@LaunchedEffect
+        if (status.isActive) {
+            if (!centerObservedActive) centerObservedActive = true
+        } else if (centerObservedActive) {
+            centerObservedActive = false
+            // A centre-owned download finished while this page was open: re-read the
+            // committed copy so Open/Install replaces Download.
+            if (status == RaftDownloadStatus.Completed) {
+                publicDownloadQuery?.let { refreshPublicDownloadState(it) }
+            }
+        }
+    }
     suspend fun resolveRemoteExternalUrl(
         currentPayload: RaftFilePreviewPayload
     ): String? {
@@ -2576,6 +2614,46 @@ private fun RaftFilePreviewStandalonePageContent() {
                     downloadId = downloadId,
                     onProgress = progressCallback
                 )
+            } else if (trackProgress) {
+                // Download centre (artin 10-21): the transfer is owned by the app-scoped centre,
+                // so leaving this page no longer cancels it. This page only awaits the outcome.
+                val outcome =
+                    RaftDownloadCenterProcess.center.start(
+                        descriptor =
+                            RaftDownloadDescriptor(
+                                id = raftDownloadCenterEntryId(
+                                    ownerKey = operation.owner.principalKey.value,
+                                    attachmentId = currentPayload.attachmentCacheId(),
+                                    fileName = currentPayload.attachmentCacheFileName()
+                                ),
+                                ownerKey = operation.owner.principalKey.value,
+                                attachmentId = currentPayload.attachmentCacheId(),
+                                fileName = currentPayload.attachmentCacheFileName(),
+                                mimeType = currentPayload.externalMimeType
+                            ),
+                        task =
+                            RaftBridgeSaveAttachmentTask(
+                                bridge = bridge,
+                                owner = operation.owner,
+                                attachmentId = currentPayload.attachmentCacheId(),
+                                fileName = currentPayload.attachmentCacheFileName(),
+                                mimeType = currentPayload.externalMimeType,
+                                initialUrl = externalUrl.orEmpty(),
+                                downloadIdForAttempt = { attempt ->
+                                    val base = downloadId ?: currentPayload.filePreviewDownloadId()
+                                    if (attempt <= 1) base else "$base:retry$attempt"
+                                },
+                                resolveUrl = {
+                                    runCatching { resolveRemoteExternalUrl(currentPayload) }.getOrNull()
+                                        ?: currentPayload.externalUrl?.takeIf { it.isNotBlank() }
+                                },
+                                onPageProgress = progressCallback
+                            )
+                    ).await()
+                JSONObject().apply {
+                    put("status", outcome.hostStatus)
+                    (outcome as? RaftDownloadOutcome.Failed)?.message?.let { put("message", it) }
+                }
             } else {
                 bridge.saveAttachment(
                     url = externalUrl.orEmpty(),
@@ -2841,6 +2919,29 @@ private fun RaftFilePreviewStandalonePageContent() {
         operationJob.start()
     }
     fun requestDownloadControl(action: String) {
+        val centerId = centerEntryId
+        if (centerId != null && downloadCenter.isActive(centerId) &&
+            (centerOwnsActiveDownload || externalOperation == "download")
+        ) {
+            when (action) {
+                "pause" -> {
+                    if (!centerOwnsActiveDownload) downloadStatus = "paused"
+                    downloadCenter.pause(centerId)
+                }
+                "resume" -> {
+                    if (!centerOwnsActiveDownload) downloadStatus = "downloading"
+                    downloadCenter.resume(centerId)
+                }
+                "stop" -> {
+                    if (!centerOwnsActiveDownload) {
+                        downloadStatus = "idle"
+                        downloadMessage = downloadStopped
+                    }
+                    downloadCenter.cancel(centerId)
+                }
+            }
+            return
+        }
         val downloadId = activeDownloadId ?: return
         val operation = activeAttachmentOperation ?: return
         if (!raftAttachmentDownloadControlAllowed(downloadProgress, action)) {
@@ -3598,7 +3699,22 @@ private fun RaftFilePreviewStandalonePageContent() {
             }
         }
     }
-    val downloadUiState = raftFilePreviewDownloadUiState(visiblePublicDownloadState, downloadStatus)
+    // The centre's row stands in for this page's own progress when the centre owns the run.
+    val centerActiveEntry = centerEntry?.takeIf { centerOwnsActiveDownload }
+    val shownDownloadStatus =
+        when (centerActiveEntry?.status) {
+            RaftDownloadStatus.Paused -> "paused"
+            RaftDownloadStatus.Downloading -> "downloading"
+            else -> downloadStatus
+        }
+    val downloadView =
+        centerActiveEntry?.toFilePreviewDownloadView()
+            ?: raftFilePreviewDownloadView(
+                status = downloadStatus,
+                progress = downloadProgress,
+                errorMessage = downloadMessage.ifBlank { null }
+            )
+    val downloadUiState = raftFilePreviewDownloadUiState(visiblePublicDownloadState, shownDownloadStatus)
     val downloadActive = downloadUiState == RaftFilePreviewDownloadUiState.Downloading
     RaftFilePreviewPageScaffold(
         title = if (composerImageEditMode) stringResource(MR.strings.file_preview_editor_title) else payload.previewHeaderTitle(),
@@ -3794,15 +3910,16 @@ private fun RaftFilePreviewStandalonePageContent() {
                             null
                         },
                     downloadStatusLabel =
-                        when (downloadStatus) {
+                        when (shownDownloadStatus) {
                             "downloading", "paused" ->
-                                raftFilePreviewLocalizedActiveDownloadStatusLabel(downloadProgress, downloadStatus)
+                                raftFilePreviewLocalizedActiveDownloadStatusLabel(downloadProgress, shownDownloadStatus)
                             "failed" -> downloadMessage.ifBlank { downloadFailed }
                             else -> null
                         },
                     downloadInProgress = downloadActive,
-                    downloadPaused = downloadStatus == "paused",
-                    downloadProgressPercent = downloadProgress?.percent,
+                    downloadPaused = shownDownloadStatus == "paused",
+                    downloadProgressPercent = downloadView.percent ?: downloadProgress?.percent,
+                    downloadView = downloadView,
                     downloadState = downloadUiState,
                     primaryActionEnabled = primaryActionEnabled,
                     onDownload =
@@ -7577,6 +7694,7 @@ internal fun RaftFilePreviewPayloadContent(
     downloadInProgress: Boolean = false,
     downloadPaused: Boolean = false,
     downloadProgressPercent: Int? = null,
+    downloadView: RaftFilePreviewDownloadView? = null,
     downloadState: RaftFilePreviewDownloadUiState? = RaftFilePreviewDownloadUiState.NotDownloaded,
     primaryActionEnabled: Boolean = true,
     onDownload: (() -> Unit)? = null,
@@ -7614,6 +7732,7 @@ internal fun RaftFilePreviewPayloadContent(
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
                 progressPercent = downloadProgressPercent,
+                downloadView = downloadView,
                 downloadPaused = downloadPaused,
                 onToggleDownload = onToggleDownload,
                 onStopDownload = onStopDownload,
@@ -7638,6 +7757,7 @@ internal fun RaftFilePreviewPayloadContent(
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
                 progressPercent = downloadProgressPercent,
+                downloadView = downloadView,
                 downloadPaused = downloadPaused,
                 onToggleDownload = onToggleDownload,
                 onStopDownload = onStopDownload,
@@ -7657,6 +7777,7 @@ internal fun RaftFilePreviewPayloadContent(
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
                 progressPercent = downloadProgressPercent,
+                downloadView = downloadView,
                 downloadPaused = downloadPaused,
                 onToggleDownload = onToggleDownload,
                 onStopDownload = onStopDownload,
@@ -7697,6 +7818,7 @@ internal fun RaftFilePreviewPayloadContent(
                         statusLabel = downloadStatusLabel,
                         showProgress = downloadInProgress,
                         progressPercent = downloadProgressPercent,
+                        downloadView = downloadView,
                         downloadPaused = downloadPaused,
                         onToggleDownload = onToggleDownload,
                         onStopDownload = onStopDownload,
@@ -7721,6 +7843,7 @@ internal fun RaftFilePreviewPayloadContent(
                         statusLabel = downloadStatusLabel,
                         showProgress = downloadInProgress,
                         progressPercent = downloadProgressPercent,
+                        downloadView = downloadView,
                         secondaryActionLabel =
                             onExternalBrowserOpen?.let { stringResource(MR.strings.file_preview_action_open_in_browser) },
                         secondaryActionIcon = RaftLucideIconName.ExternalLink,
@@ -7750,6 +7873,7 @@ internal fun RaftFilePreviewPayloadContent(
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
                 progressPercent = downloadProgressPercent,
+                downloadView = downloadView,
                 downloadPaused = downloadPaused,
                 onToggleDownload = onToggleDownload,
                 onStopDownload = onStopDownload,
@@ -7804,6 +7928,7 @@ internal fun RaftFilePreviewPayloadContent(
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
                 progressPercent = downloadProgressPercent,
+                downloadView = downloadView,
                 downloadPaused = downloadPaused,
                 onToggleDownload = onToggleDownload,
                 onStopDownload = onStopDownload,
@@ -7845,10 +7970,16 @@ internal fun RaftFilePreviewPayloadContent(
                 iconName = raftFilePreviewFileIconName(payload),
                 name = payload.name.ifBlank { payload.path.ifBlank { fallbackFile } },
                 meta = payload.meta,
-                message = raftFilePreviewUnsupportedFileMessage(payload, downloadable = onDownload != null).localized(),
+                message =
+                    if (downloadState == RaftFilePreviewDownloadUiState.Downloaded && onDownload != null) {
+                        stringResource(MR.strings.file_preview_download_completed_hint)
+                    } else {
+                        raftFilePreviewUnsupportedFileMessage(payload, downloadable = onDownload != null).localized()
+                    },
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
                 progressPercent = downloadProgressPercent,
+                downloadView = downloadView,
                 secondaryActionLabel =
                     onExternalBrowserOpen?.let { stringResource(MR.strings.file_preview_action_open_in_browser) },
                 secondaryActionIcon = RaftLucideIconName.ExternalLink,
@@ -9629,6 +9760,7 @@ internal fun RaftFilePreviewGenericCard(
     statusLabel: String? = null,
     showProgress: Boolean = false,
     progressPercent: Int? = null,
+    downloadView: RaftFilePreviewDownloadView? = null,
     actionLabel: String? = null,
     actionIcon: RaftLucideIconName? = null,
     actionEnabled: Boolean = true,
@@ -9642,132 +9774,43 @@ internal fun RaftFilePreviewGenericCard(
     onStopDownload: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    Column(
+    val view =
+        downloadView
+            ?: RaftFilePreviewDownloadView(
+                phase =
+                    when {
+                        showProgress && downloadPaused -> RaftFilePreviewDownloadPhase.Paused
+                        showProgress -> RaftFilePreviewDownloadPhase.Active
+                        else -> RaftFilePreviewDownloadPhase.Idle
+                    },
+                percent = progressPercent
+            )
+    // A failure keeps its words: the status label carries the host's message.
+    val shown =
+        if (view.phase == RaftFilePreviewDownloadPhase.Failed && view.errorMessage == null) {
+            view.copy(errorMessage = statusLabel)
+        } else {
+            view
+        }
+    RaftFilePreviewFileDownloadCard(
+        iconName = iconName,
+        name = name,
+        meta = meta,
+        message = message,
+        view = shown,
+        actionLabel = actionLabel,
+        actionIcon = actionIcon,
+        actionEnabled = actionEnabled,
+        onAction = onAction,
+        secondaryActionLabel = secondaryActionLabel,
+        secondaryActionIcon = secondaryActionIcon,
+        secondaryActionEnabled = secondaryActionEnabled,
+        onSecondaryAction = onSecondaryAction,
+        onPause = onToggleDownload.takeIf { !downloadPaused },
+        onResume = onToggleDownload.takeIf { downloadPaused },
+        onCancel = onStopDownload,
         modifier = modifier
-            .raftSquareCorners()
-            .background(RaftColor.SurfaceWhite)
-            .padding(RaftAppSpacing.Xl),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        RaftLucideIcon(iconName, modifier = Modifier.size(72.dp), color = raftLegacyIconInk())
-        Box(modifier = Modifier.height(RaftAppSpacing.Md))
-        Text(
-            text = name.ifBlank { stringResource(MR.strings.file_preview_fallback_file) },
-            style = RaftType.Input.copy(fontSize = 18.sp, lineHeight = 22.sp),
-            color = RaftColor.TextBlack,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center
-        )
-        if (meta.isNotBlank()) {
-            Box(modifier = Modifier.height(4.dp))
-            Text(
-                text = meta,
-                style = RaftType.Body,
-                color = RaftColor.TextMutedGray,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center
-            )
-        }
-        Box(modifier = Modifier.height(RaftAppSpacing.Md))
-        Text(
-            text = message,
-            style = RaftType.Body,
-            color = RaftColor.TextMutedGray,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center
-        )
-        if (showProgress) {
-            Box(modifier = Modifier.height(RaftAppSpacing.Md))
-            RaftFilePreviewDownloadStatusBar(
-                statusLabel =
-                    statusLabel
-                        ?: raftFilePreviewLocalizedActiveDownloadStatusLabel(
-                            progress = RaftFilePreviewInitialDownloadProgress.copy(percent = progressPercent),
-                            status = if (downloadPaused) "paused" else "downloading"
-                        ),
-                showProgress = true,
-                progressPercent = progressPercent,
-                downloadPaused = downloadPaused,
-                onToggleDownload = onToggleDownload,
-                onStopDownload = onStopDownload
-            )
-        } else if (statusLabel != null) {
-            Box(modifier = Modifier.height(RaftAppSpacing.Sm))
-            Text(
-                text = statusLabel,
-                style = RaftType.Caption,
-                color = RaftColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center
-            )
-        }
-        if (!showProgress && actionLabel != null && onAction != null) {
-            Box(modifier = Modifier.height(RaftAppSpacing.Lg))
-            RaftBrutalActionButton(
-                label = actionLabel,
-                onClick = onAction,
-                enabled = actionEnabled,
-                leadingIcon = actionIcon,
-                minWidth = 132.dp,
-                minHeight = 40.dp
-            )
-        }
-        if (!showProgress && secondaryActionLabel != null && onSecondaryAction != null) {
-            Box(modifier = Modifier.height(RaftAppSpacing.Sm))
-            RaftBrutalActionButton(
-                label = secondaryActionLabel,
-                onClick = onSecondaryAction,
-                enabled = secondaryActionEnabled,
-                leadingIcon = secondaryActionIcon,
-                minWidth = 132.dp,
-                minHeight = 40.dp
-            )
-        }
-    }
-}
-
-@Composable
-private fun RaftFilePreviewProgressBar(progressPercent: Int?) {
-    val percent = progressPercent?.coerceIn(0, 100)
-    if (percent == null) {
-        LinearProgressIndicator(
-            modifier = Modifier.fillMaxWidth().height(4.dp),
-            color = RaftColor.AccentCyan,
-            trackColor = RaftColor.SurfaceCream
-        )
-        return
-    }
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(8.dp)
-                .background(RaftColor.SurfaceCream)
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
-    ) {
-        if (percent > 0) {
-            Box(
-                modifier =
-                    Modifier
-                        .weight(percent.toFloat())
-                        .fillMaxSize()
-                        .background(RaftColor.AccentCyan)
-            )
-        }
-        if (percent < 100) {
-            Box(
-                modifier =
-                    Modifier
-                        .weight((100 - percent).toFloat())
-                        .fillMaxSize()
-            )
-        }
-    }
+    )
 }
 
 @Composable
@@ -9775,6 +9818,7 @@ private fun RaftFilePreviewDownloadStatusOverlay(
     statusLabel: String?,
     showProgress: Boolean,
     progressPercent: Int?,
+    downloadView: RaftFilePreviewDownloadView? = null,
     downloadPaused: Boolean = false,
     onToggleDownload: (() -> Unit)? = null,
     onStopDownload: (() -> Unit)? = null,
@@ -9785,14 +9829,10 @@ private fun RaftFilePreviewDownloadStatusOverlay(
         content()
         if (statusLabel != null || showProgress) {
             RaftFilePreviewDownloadStatusBar(
-                statusLabel =
-                    statusLabel
-                        ?: raftFilePreviewLocalizedActiveDownloadStatusLabel(
-                            progress = null,
-                            status = if (downloadPaused) "paused" else "downloading"
-                        ),
+                statusLabel = statusLabel,
                 showProgress = showProgress,
                 progressPercent = progressPercent,
+                downloadView = downloadView,
                 downloadPaused = downloadPaused,
                 onToggleDownload = onToggleDownload,
                 onStopDownload = onStopDownload,
@@ -9802,75 +9842,49 @@ private fun RaftFilePreviewDownloadStatusOverlay(
     }
 }
 
+/** The download status over a previewable file: a design-system card at the bottom. */
 @Composable
 private fun RaftFilePreviewDownloadStatusBar(
-    statusLabel: String,
+    statusLabel: String?,
     showProgress: Boolean,
     progressPercent: Int?,
+    downloadView: RaftFilePreviewDownloadView? = null,
     downloadPaused: Boolean = false,
     onToggleDownload: (() -> Unit)? = null,
     onStopDownload: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .background(RaftColor.SurfaceWhite)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                .padding(RaftAppSpacing.Md),
-        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
-    ) {
-        Text(
-            text = statusLabel,
-            style = RaftType.Caption,
-            color = RaftColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        if (showProgress) {
-            RaftFilePreviewProgressBar(progressPercent = progressPercent)
-        }
-        if (showProgress && onToggleDownload != null && onStopDownload != null) {
-            RaftFilePreviewDownloadControls(
-                paused = downloadPaused,
-                onToggle = onToggleDownload,
-                onStop = onStopDownload
+    val view =
+        downloadView
+            ?: RaftFilePreviewDownloadView(
+                phase =
+                    when {
+                        showProgress && downloadPaused -> RaftFilePreviewDownloadPhase.Paused
+                        showProgress -> RaftFilePreviewDownloadPhase.Active
+                        else -> RaftFilePreviewDownloadPhase.Failed
+                    },
+                percent = progressPercent
             )
+    RaftDesignSystemTheme {
+        Box(modifier.fillMaxWidth().padding(12.dp)) {
+            if (showProgress && view.inProgress) {
+                RaftCard(Modifier.fillMaxWidth()) {
+                    RaftFilePreviewDownloadProgressBlock(
+                        view = view,
+                        onPause = onToggleDownload.takeIf { !downloadPaused },
+                        onResume = onToggleDownload.takeIf { downloadPaused },
+                        onCancel = onStopDownload
+                    )
+                }
+            } else if (statusLabel != null) {
+                RaftBanner(
+                    description = view.errorMessage ?: statusLabel,
+                    status = RaftBannerStatus.Warning,
+                    size = RaftBannerSize.Sm,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
-    }
-}
-
-@Composable
-private fun RaftFilePreviewDownloadControls(
-    paused: Boolean,
-    onToggle: () -> Unit,
-    onStop: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RaftBrutalActionButton(
-            label =
-                stringResource(
-                    if (paused) MR.strings.file_preview_download_resume else MR.strings.file_preview_download_pause
-                ),
-            onClick = onToggle,
-            leadingIcon = if (paused) RaftLucideIconName.Play else RaftLucideIconName.Pause,
-            minWidth = 92.dp,
-            minHeight = 34.dp,
-            textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
-        )
-        RaftBrutalActionButton(
-            label = stringResource(MR.strings.common_stop),
-            onClick = onStop,
-            leadingIcon = RaftLucideIconName.Square,
-            minWidth = 82.dp,
-            minHeight = 34.dp,
-            textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
-        )
     }
 }
 

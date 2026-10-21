@@ -505,4 +505,12 @@
     <string name="raft_background_connection_channel_description">Shown while Raft keeps its connection open in the background to deliver message notifications without Google Play services.</string>
     <string name="raft_background_connection_notification_title">Raft is receiving messages</string>
     <string name="raft_background_connection_notification_text">Keeping the connection open for message notifications.</string>
+    <string name="raft_download_channel_name">Downloads</string>
+    <string name="raft_download_channel_description">Progress of attachment downloads, and when they finish.</string>
+    <string name="raft_download_notification_downloading">Downloading %1$s</string>
+    <string name="raft_download_notification_more">%1$d downloads in progress</string>
+    <string name="raft_download_notification_completed">Downloaded %1$s</string>
+    <string name="raft_download_notification_failed">Couldn\u2019t download %1$s</string>
+    <string name="raft_download_notification_tap_open">Tap to open</string>
+    <string name="raft_download_notification_tap_retry">Open Raft to try again</string>
 </resources>
