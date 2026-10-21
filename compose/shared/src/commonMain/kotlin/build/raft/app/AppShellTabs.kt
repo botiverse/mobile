@@ -135,23 +135,25 @@ internal fun appShellMoreTabShowsDot(attention: Set<RaftMoreAttention>, selected
 internal val AppShellRailTabKeys: List<String> = listOf("home", "activity", "tasks", "members")
 
 /**
- * task #49: the wide-screen rail lists its entries in the web LeftRail order — Search, Chat
- * (Home, with DMs beside it), Activity, Tasks, Members. Entries the web rail does not have keep
- * their relative order after these. Settings stays pinned to the rail bottom separately.
+ * The wide-screen rail keeps the phone bar's destinations in the phone bar's order (nav spec
+ * 2026-10-21 §5, raft-design responsive.md: "keeps the phone's destinations in the phone's
+ * order"): Home (with DMs beside it), Activity, Tasks, Search, then Members, which the phone
+ * reaches through More. More's own page is the Settings entry pinned to the rail bottom.
+ * Entries not listed keep their relative order after these.
  */
-internal val AppShellRailWebOrder: List<String> =
+internal val AppShellRailOrder: List<String> =
     listOf(
-        AppShellRailSearchKey,
         "home",
         "dms",
         "activity",
         "tasks",
+        AppShellRailSearchKey,
         "members",
     )
 
-internal fun <T> List<T>.orderedLikeWebRail(key: (T) -> String): List<T> =
+internal fun <T> List<T>.orderedLikePhoneBar(key: (T) -> String): List<T> =
     sortedBy { item ->
-        AppShellRailWebOrder.indexOf(key(item)).let { if (it < 0) AppShellRailWebOrder.size else it }
+        AppShellRailOrder.indexOf(key(item)).let { if (it < 0) AppShellRailOrder.size else it }
     }
 
 /** Where a conversation search's "Search all" shows its query in the app shell. */

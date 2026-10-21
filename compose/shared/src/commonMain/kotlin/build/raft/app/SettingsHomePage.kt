@@ -6615,8 +6615,8 @@ private fun RaftAppShellReadyContent(
                             }
                         val railItems =
                             (appShellRailTabItems + railSearchItem)
-                                // task #49: same order as the web LeftRail.
-                                .orderedLikeWebRail { it.key }
+                                // Nav spec §5: the phone bar's order (Search after Tasks).
+                                .orderedLikePhoneBar { it.key }
                         RaftNavigationRailTabBar(
                             items = railItems,
                             onSelect = { key ->
