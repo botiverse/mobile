@@ -25,7 +25,7 @@ class ThreadMessageMenuParityTest {
         val capabilities = capabilities(message())
 
         assertTrue(capabilities.quickReactions)
-        assertTrue(capabilities.addReaction)
+        assertFalse(capabilities.addReaction, "web's message menu has no Add reaction row")
         assertTrue(capabilities.forward)
         assertTrue(capabilities.selectMessage)
         assertTrue(capabilities.reply)
@@ -44,7 +44,8 @@ class ThreadMessageMenuParityTest {
 
         assertFalse(capabilities.forward)
         assertFalse(capabilities.selectMessage)
-        assertTrue(capabilities.addReaction, "guests keep reactions like web")
+        assertTrue(capabilities.quickReactions, "guests keep reactions like web")
+        assertFalse(capabilities.addReaction)
     }
 
     @Test
@@ -205,7 +206,6 @@ class ThreadMessageMenuParityTest {
 
         assertEquals(
             listOf(
-                ThreadNewMessageMenuTool.AddReaction,
                 ThreadNewMessageMenuTool.CopyLink,
                 ThreadNewMessageMenuTool.FollowThread,
                 ThreadNewMessageMenuTool.ConvertToTask
