@@ -14,6 +14,7 @@ import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextInputSelection
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.text.TextRange
@@ -78,6 +79,42 @@ class RaftTextFieldStateUiTest {
             waitForIdle()
             assertEquals("abc", value)
             assertEquals("abc", field.editableText())
+        }
+
+    /** Handle drags move the selection without touching the text: the owner follows, nothing reverts it. */
+    @Test
+    fun selectionOnlyChangesReachTheOwnerAndStay() =
+        runComposeUiTest {
+            val text = "alpha beta gamma"
+            var value by mutableStateOf(TextFieldValue(text, TextRange(text.length)))
+            show {
+                RaftTextarea(value = value, onValueChange = { value = it }, inputModifier = Modifier.testTag(tag))
+            }
+            val field = onNodeWithTag(tag)
+            listOf(TextRange(6, 10), TextRange(6, 16), TextRange(0, 16), TextRange(0, 8)).forEach { range ->
+                field.performTextInputSelection(range)
+                waitForIdle()
+                assertEquals(range, value.selection, "owner follows $range")
+                assertEquals(range, field.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange], "editor keeps $range")
+                assertEquals(text, value.text)
+            }
+        }
+
+    @Test
+    fun aStringOwnersFieldKeepsItsSelection() =
+        runComposeUiTest {
+            var value by mutableStateOf("alpha beta gamma")
+            var changes = 0
+            show {
+                RaftTextField(value = value, onValueChange = { changes++; value = it }, modifier = Modifier.testTag(tag))
+            }
+            val field = onNodeWithTag(tag)
+            field.performTextInputSelection(TextRange(6, 10))
+            waitForIdle()
+            field.performTextInputSelection(TextRange(0, 16))
+            waitForIdle()
+            assertEquals(TextRange(0, 16), field.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
+            assertEquals(0, changes, "a String owner hears about text only")
         }
 
     @Test

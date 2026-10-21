@@ -123,6 +123,40 @@ class RaftTextFieldSyncTest {
     }
 
     @Test
+    fun handleDragSelectionChangesReachTheOwnerAndAreNeverReverted() {
+        // A double tap selects "beta", then the end handle extends it, the start handle extends it
+        // further, and the end handle shrinks it back; each frame the owner answers with the value.
+        val text = "alpha beta gamma"
+        val h = Harness(TextFieldValue(text, TextRange(text.length)), compareSelection = true)
+        var owner = h.editor
+        listOf(TextRange(6, 10), TextRange(6, 13), TextRange(6, 16), TextRange(0, 16), TextRange(0, 8)).forEach { range ->
+            h.editor = TextFieldValue(text, range)
+            assertEquals(Outcome.Reported, h.reconcile(owner), "selection $range")
+            owner = h.reports.last()
+            assertEquals(Outcome.Idle, h.reconcile(owner), "selection $range")
+        }
+        assertEquals(listOf(TextRange(6, 10), TextRange(6, 13), TextRange(6, 16), TextRange(0, 16), TextRange(0, 8)), h.reports.map { it.selection })
+        assertEquals(emptyList(), h.writes)
+        assertEquals(TextRange(0, 8), h.editor.selection)
+    }
+
+    @Test
+    fun aDragFasterThanTheOwnerIsStillNotReverted() {
+        // The handle moves again before the owner has answered the previous move.
+        val text = "alpha beta gamma"
+        val h = Harness(TextFieldValue(text, TextRange(6, 10)), compareSelection = true)
+        val stale = h.editor
+        listOf(TextRange(6, 12), TextRange(6, 14), TextRange(6, 16)).forEach { range ->
+            h.editor = TextFieldValue(text, range)
+            assertEquals(Outcome.Reported, h.reconcile(stale), "selection $range")
+        }
+        // The owner catches up with the last move.
+        assertEquals(Outcome.Idle, h.reconcile(h.reports.last()))
+        assertEquals(emptyList(), h.writes)
+        assertEquals(TextRange(6, 16), h.editor.selection)
+    }
+
+    @Test
     fun ownEditsAreNotEchoedAndPushesAreNotReported() {
         val h = Harness(committed(""), compareSelection = true)
         // Draft restore with the caret after "Hi".
