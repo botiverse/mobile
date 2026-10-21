@@ -263,6 +263,8 @@ internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         is PerReceiverNotificationPrefsChanged,
         is PerReceiverPinnedChanged -> true
         is MemberPresenceUpdated -> false
+        // A web restart's result only concerns the open computer detail page (settings store).
+        is build.raft.app.model.ComputerRestartDone -> false
         is RealtimeRefreshRequired ->
             this.scope == RealtimeRefreshScope.Home ||
                 this.scope == RealtimeRefreshScope.ChannelMembers ||

@@ -83,6 +83,8 @@ object GeneratedRealtimeContract {
         const val MachineUpdated = "machine:updated"
         const val ComputerUpgradeProgress = "computer:upgrade:progress"
         const val ComputerUpgradeDone = "computer:upgrade:done"
+        const val MachineUpgradeRequest = "machine:upgrade-request"
+        const val ComputerRestartDone = "computer:restart:done"
         const val DaemonStatus = "daemon:status"
         const val ServerMemberAdded = "server:member-added"
         const val ServerMemberUpdated = "server:member-updated"
@@ -116,6 +118,8 @@ object GeneratedRealtimeContract {
             MachineUpdated,
             ComputerUpgradeProgress,
             ComputerUpgradeDone,
+            MachineUpgradeRequest,
+            ComputerRestartDone,
             DaemonStatus,
             ServerMemberAdded,
             ServerMemberUpdated,

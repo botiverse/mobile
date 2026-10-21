@@ -95,6 +95,12 @@ interface RaftComputersApi {
         provider: String
     ): HomeNetworkResponse = error("runtimeAccountUsage is not implemented")
     suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse
+    /**
+     * `POST servers/:id/machines/:machineId/computer/:action` with `action` `restart` (body `{}`) or
+     * `upgrade` (body `{targetVersion}`); slock packages/server/src/routes/servers.ts.
+     */
+    suspend fun controlComputer(serverId: ServerId, machineId: String, action: String, body: String): HomeNetworkResponse =
+        error("controlComputer is not implemented")
 }
 
 internal class RaftComputersNetworkApi(
@@ -146,6 +152,15 @@ internal class RaftComputersNetworkApi(
             path = "servers/${serverId.value}/machines/${machineId.trim()}/rotate-key",
             method = "POST",
             serverIdOverride = serverId
+        )
+
+    override suspend fun controlComputer(serverId: ServerId, machineId: String, action: String, body: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "servers/${serverId.value}/machines/${machineId.trim()}/computer/${action.trim()}",
+            method = "POST",
+            serverIdOverride = serverId,
+            bodyText = body
         )
 
     override suspend fun machineWorkspaces(serverId: ServerId, machineId: String): HomeNetworkResponse =
@@ -256,8 +271,15 @@ internal class RaftComputersApiClient(
             "computers_list_contract_mismatch",
             ComputersListResponseDto.serializer()
         ) { wire ->
+            val releaseNotes = wire.latestComputerReleaseNotes?.toSnapshot()
             ComputerListSummary(
-                machines = wire.machines.mapNotNull { it.toSummary() },
+                machines =
+                    wire.machines.mapNotNull { dto ->
+                        dto.toSummary()?.copy(
+                            latestComputerVersion = wire.latestComputerVersion,
+                            latestComputerReleaseNotes = releaseNotes
+                        )
+                    },
                 machineCount = wire.machines.size,
                 latestDaemonVersion = wire.latestDaemonVersion,
                 latestComputerVersion = wire.latestComputerVersion,
@@ -289,6 +311,29 @@ internal class RaftComputersApiClient(
 
     suspend fun deleteMachine(serverId: ServerId, machineId: String): DataResult<ComputerCommandResult> =
         transport.deleteMachine(serverId, machineId).mapComputersCommand("computer_delete_contract_mismatch")
+
+    /** Restart a managed Computer's service; the result arrives later as `computer:restart:done`. */
+    suspend fun restartComputer(serverId: ServerId, machineId: String): DataResult<ComputerRestartSummary> {
+        val response = transport.controlComputer(serverId, machineId, COMPUTER_CONTROL_RESTART, buildComputerRestartBody())
+        if (!response.isSuccessful) return response.toComputerControlError()
+        return response.mapComputersBody("computer_restart_contract_mismatch", ComputerRestartResponseDto.serializer()) { wire ->
+            if (!wire.ok) null else ComputerRestartSummary(requestId = wire.requestId?.takeIf { it.isNotBlank() }, queued = wire.queued)
+        }
+    }
+
+    /** Remote upgrade v2: record one upgrade request for [targetVersion]; the reconnect settles it. */
+    suspend fun upgradeComputer(
+        serverId: ServerId,
+        machineId: String,
+        targetVersion: String
+    ): DataResult<SettingsComputerUpgradeRequestSnapshot> {
+        val response =
+            transport.controlComputer(serverId, machineId, COMPUTER_CONTROL_UPGRADE, buildComputerUpgradeBody(targetVersion))
+        if (!response.isSuccessful) return response.toComputerControlError()
+        return response.mapComputersBody("computer_upgrade_contract_mismatch", ComputerUpgradeResponseDto.serializer()) { wire ->
+            wire.upgradeRequest?.toSnapshot()
+        }
+    }
 
     suspend fun rotateMachineKey(serverId: ServerId, machineId: String): DataResult<ComputerApiKeyRotationSummary> =
         transport.rotateMachineKey(serverId, machineId).mapComputersBody(
@@ -435,8 +480,19 @@ internal data class ComputerSummary(
     /** Active agents assigned to the machine. */
     val agentCount: Int = 0,
     /** The server's policy-aware upgrade decision; null for raw daemons / older servers. */
-    val computerUpgradeAvailable: Boolean? = null
+    val computerUpgradeAvailable: Boolean? = null,
+    val computerBroadcastPolicy: SettingsComputerBroadcastPolicySnapshot? = null,
+    val upgradeRequest: SettingsComputerUpgradeRequestSnapshot? = null,
+    val remoteUpgradeSupported: Boolean? = null,
+    val versionGate: SettingsComputerVersionGateSnapshot? = null,
+    /** List-level `latestComputerVersion`, copied onto each row by [RaftComputersApiClient.machines]. */
+    val latestComputerVersion: String? = null,
+    /** List-level `latestComputerReleaseNotes`, copied onto each row by [RaftComputersApiClient.machines]. */
+    val latestComputerReleaseNotes: SettingsComputerReleaseNotesSnapshot? = null
 )
+
+/** `POST …/computer/restart` accepted: [requestId] correlates the later `computer:restart:done`. */
+internal data class ComputerRestartSummary(val requestId: String?, val queued: Boolean)
 
 internal data class ComputerRegistrationSummary(val machine: ComputerSummary, val apiKey: String, val apiKeyPrefix: String)
 internal data class ComputerApiKeyRotationSummary(val apiKeyPrefix: String)
@@ -583,7 +639,10 @@ private fun HomeNetworkResponse.mapComputersCommand(contractCode: String): DataR
 private data class ComputersListResponseDto(
     val machines: List<ComputerDto>,
     val latestDaemonVersion: String? = null,
-    val latestComputerVersion: String? = null
+    val latestComputerVersion: String? = null,
+    // Display-only notes for exactly `latestComputerVersion` (routes/servers.ts GET /:id/machines,
+    // services/computerVersionService.ts getLatestComputerReleaseNotes).
+    val latestComputerReleaseNotes: ComputerReleaseNotesDto? = null
 )
 
 @Serializable
@@ -607,8 +666,94 @@ private data class ComputerDto(
     val userId: String? = null,
     val computerAttachedByCurrentUser: Boolean = false,
     val agentCount: Int = 0,
-    val computerUpgradeAvailable: Boolean? = null
+    val computerUpgradeAvailable: Boolean? = null,
+    // GET /:id/machines in routes/servers.ts: managed Computers carry the policy projection, the latest
+    // upgrade request and remoteUpgradeSupported; every row carries the version floor verdict.
+    val computerBroadcastPolicy: ComputerBroadcastPolicyDto? = null,
+    val upgradeRequest: ComputerUpgradeRequestDto? = null,
+    val remoteUpgradeSupported: Boolean? = null,
+    val versionGate: ComputerVersionGateDto? = null
 )
+
+@Serializable
+private data class ComputerBroadcastPolicyDto(
+    val eligibility: String? = null,
+    val targetVersion: String? = null,
+    val policyRevision: String? = null,
+    val reasonCode: String? = null
+) {
+    fun toSnapshot(): SettingsComputerBroadcastPolicySnapshot? {
+        val value = eligibility?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        return SettingsComputerBroadcastPolicySnapshot(
+            eligibility = value,
+            targetVersion = targetVersion?.trim()?.takeIf { it.isNotBlank() },
+            policyRevision = policyRevision,
+            reasonCode = reasonCode
+        )
+    }
+}
+
+@Serializable
+private data class ComputerUpgradeRequestDto(
+    val id: String? = null,
+    val targetVersion: String? = null,
+    val requestedAt: String? = null,
+    val state: String? = null,
+    val observedVersion: String? = null,
+    val reason: String? = null,
+    val resolvedAt: String? = null
+) {
+    fun toSnapshot(): SettingsComputerUpgradeRequestSnapshot? {
+        val requestId = id?.takeIf { it.isNotBlank() } ?: return null
+        val target = targetVersion?.takeIf { it.isNotBlank() } ?: return null
+        return SettingsComputerUpgradeRequestSnapshot(
+            id = requestId,
+            targetVersion = target,
+            requestedAt = requestedAt.orEmpty(),
+            state = state?.takeIf { it.isNotBlank() } ?: "pending",
+            observedVersion = observedVersion,
+            reason = reason,
+            resolvedAt = resolvedAt
+        )
+    }
+}
+
+@Serializable
+private data class ComputerVersionGateDto(
+    val reason: String? = null,
+    val minVersion: String? = null,
+    val enforcedAt: String? = null,
+    val enforced: Boolean = false
+) {
+    fun toSnapshot(): SettingsComputerVersionGateSnapshot? {
+        val gateReason = reason?.takeIf { it.isNotBlank() } ?: return null
+        return SettingsComputerVersionGateSnapshot(
+            reason = gateReason,
+            minVersion = minVersion.orEmpty(),
+            enforcedAt = enforcedAt,
+            enforced = enforced
+        )
+    }
+}
+
+/** packages/shared/src/computerReleaseNotes.ts `ComputerReleaseNotes`: `{version, en?, "zh-CN"?}`. */
+@Serializable
+private data class ComputerReleaseNotesDto(
+    val version: String? = null,
+    val en: String? = null,
+    @SerialName("zh-CN") val zhCn: String? = null
+) {
+    // Same validation as the shared `normalizeComputerReleaseNotes`: a bounded version and at
+    // least one non-empty locale within the per-locale cap.
+    fun toSnapshot(): SettingsComputerReleaseNotesSnapshot? {
+        val cleanVersion = version?.trim()?.takeIf { it.isNotBlank() && it.length <= 64 } ?: return null
+        fun String?.note(): String? = this?.trim()?.takeIf { it.isNotBlank() && it.length <= 16_000 }
+        val english = en.note()
+        val chinese = zhCn.note()
+        if (english == null && chinese == null) return null
+        return SettingsComputerReleaseNotesSnapshot(version = cleanVersion, en = english, zhCn = chinese)
+    }
+}
 
 /**
  * Server returns the raw `machines` row for `PATCH /machines/:id` (it does NOT
@@ -670,7 +815,11 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         creatorUserId = userId?.trim()?.takeIf { it.isNotBlank() },
         attachedByCurrentUser = computerAttachedByCurrentUser,
         agentCount = agentCount.coerceAtLeast(0),
-        computerUpgradeAvailable = computerUpgradeAvailable
+        computerUpgradeAvailable = computerUpgradeAvailable,
+        computerBroadcastPolicy = computerBroadcastPolicy?.toSnapshot(),
+        upgradeRequest = upgradeRequest?.toSnapshot(),
+        remoteUpgradeSupported = remoteUpgradeSupported,
+        versionGate = versionGate?.toSnapshot()
     )
 }
 
@@ -1296,6 +1445,54 @@ private fun String.isPropertyPointerTo(properties: Set<String>): Boolean =
 
 @Serializable
 private data class ComputerCommandResponseDto(val ok: Boolean)
+
+internal const val COMPUTER_CONTROL_RESTART = "restart"
+internal const val COMPUTER_CONTROL_UPGRADE = "upgrade"
+
+/** `POST …/computer/restart` takes no fields: the route rejects a `targetVersion` for restart. */
+@Serializable
+internal class ComputerRestartBody
+
+/** `POST …/computer/upgrade` body: the exact `targetVersion` the user consented to. */
+@Serializable
+internal data class ComputerUpgradeBody(val targetVersion: String)
+
+internal fun buildComputerRestartBody(): String = computersApiJson.encodeToString(ComputerRestartBody.serializer(), ComputerRestartBody())
+
+internal fun buildComputerUpgradeBody(targetVersion: String): String =
+    computersApiJson.encodeToString(ComputerUpgradeBody.serializer(), ComputerUpgradeBody(targetVersion = targetVersion.trim()))
+
+/** `{ ok, action, requestId, operationId? }`, or `{ ok, action, requestId, queued: true }` with 202. */
+@Serializable
+private data class ComputerRestartResponseDto(
+    val ok: Boolean = false,
+    val requestId: String? = null,
+    val queued: Boolean = false
+)
+
+/** `{ upgradeRequest }` with 201 (created) or 200 (an equal pending request already exists). */
+@Serializable
+private data class ComputerUpgradeResponseDto(val upgradeRequest: ComputerUpgradeRequestDto? = null)
+
+/** Computer control refusals carry a machine-readable `code` (`computer_offline`, `remote_upgrade_disabled`, …). */
+@Serializable
+private data class ComputerControlErrorDto(val error: String? = null, val code: String? = null)
+
+/**
+ * A refused restart/upgrade keeps the server's `code` (the page picks its copy from it, never from the
+ * English `error`); a refusal without one falls back to the status mapping of the other Computer routes.
+ */
+private fun <T> HomeNetworkResponse.toComputerControlError(): DataResult<T> {
+    val payload = bodyText?.takeIf { it.isNotBlank() } ?: errorBodyText?.takeIf { it.isNotBlank() }
+    val wire =
+        payload?.let {
+            runCatching { computersApiJson.decodeFromString(ComputerControlErrorDto.serializer(), it) }.getOrNull()
+        }
+    val code = wire?.code?.trim()?.takeIf { it.isNotBlank() } ?: return toComputersDataError()
+    return DataResult.Error(
+        ScreenError(code = code, retryable = this.code >= 500, serverMessage = wire.error?.takeIf { it.isNotBlank() })
+    )
+}
 
 @Serializable
 internal data class RegisterComputerBody(val name: String)

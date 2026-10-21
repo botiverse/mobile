@@ -1386,7 +1386,78 @@ data class SettingsComputerSnapshot(
      * The server's policy-aware `computerUpgradeAvailable` decision, only ever true for a managed
      * Computer (web `shouldShowComputerUpgradeIndicator`); raw daemons never claim an update.
      */
-    val upgradeAvailable: Boolean = false
+    val upgradeAvailable: Boolean = false,
+    /** Server `computerBroadcastPolicy` (managed Computers only): the one authority for the upgrade target. */
+    val broadcastPolicy: SettingsComputerBroadcastPolicySnapshot? = null,
+    /** Server `upgradeRequest`: the latest web upgrade request for this machine (remote upgrade v2). */
+    val upgradeRequest: SettingsComputerUpgradeRequestSnapshot? = null,
+    /** Server `remoteUpgradeSupported`: only true may be upgraded from the web; null = version unknown. */
+    val remoteUpgradeSupported: Boolean? = null,
+    /** Server `versionGate`: the version floor verdict; null = at or above the floor (or not reported). */
+    val versionGate: SettingsComputerVersionGateSnapshot? = null,
+    /** The list's `latestComputerVersion` (artifact hint), carried on each row for the detail page. */
+    val latestComputerVersion: String? = null,
+    /** The list's `latestComputerReleaseNotes` (notes for exactly [latestComputerVersion]), carried on each row. */
+    val latestComputerReleaseNotes: SettingsComputerReleaseNotesSnapshot? = null
+)
+
+/**
+ * `computerBroadcastPolicy` of a `GET servers/:id/machines` row (slock
+ * packages/server/src/services/computerBroadcastPolicyService.ts `projectComputerBroadcastPolicyDecision`).
+ */
+data class SettingsComputerBroadcastPolicySnapshot(
+    /** `eligible` or `no_broadcast`. */
+    val eligibility: String,
+    val targetVersion: String? = null,
+    val policyRevision: String? = null,
+    val reasonCode: String? = null
+) {
+    val eligible: Boolean get() = eligibility == "eligible"
+}
+
+/**
+ * `upgradeRequest` of a machines row and of `POST …/computer/upgrade` (slock
+ * packages/server/src/services/computerUpgradeRequestService.ts `projectComputerUpgradeRequest`).
+ */
+data class SettingsComputerUpgradeRequestSnapshot(
+    val id: String,
+    val targetVersion: String,
+    val requestedAt: String,
+    /** `pending`, `done`, `failed` or `no_response`. */
+    val state: String,
+    val observedVersion: String? = null,
+    val reason: String? = null,
+    val resolvedAt: String? = null
+)
+
+/** `versionGate` of a machines row (slock packages/shared/src/index.ts `ComputerVersionGate`). */
+data class SettingsComputerVersionGateSnapshot(
+    /** `computer_version_unsupported` or `computer_version_unknown`. */
+    val reason: String,
+    val minVersion: String,
+    val enforcedAt: String? = null,
+    val enforced: Boolean = false
+)
+
+/**
+ * `latestComputerReleaseNotes` of `GET servers/:id/machines` (slock packages/shared/src/computerReleaseNotes.ts):
+ * markdown notes for [version] in the published locales (`en`, `zh-CN`).
+ */
+data class SettingsComputerReleaseNotesSnapshot(
+    val version: String,
+    val en: String? = null,
+    val zhCn: String? = null
+)
+
+/**
+ * What the computer detail page needs to write the `raft-computer` terminal commands (web
+ * `getComputerCommands(serverSlug, deploymentEnv, serverUrl)`): the server slug, the deployment
+ * (`production`, `staging`, or `slockdev` for a custom developer environment) and its server URL.
+ */
+data class SettingsComputerCommandContext(
+    val serverSlug: String,
+    val deploymentEnv: String,
+    val serverUrl: String? = null
 )
 
 data class SettingsComputerDetailSnapshot(
@@ -1405,7 +1476,9 @@ data class SettingsComputerDetailSnapshot(
     /** Rename / description: creator, attaching user, or the `editMachines` capability (owner/admin). */
     val canEditMachine: Boolean = false,
     /** Delete: creator, attaching user, or the `removeMachines` capability (owner/admin). */
-    val canRemoveMachine: Boolean = false
+    val canRemoveMachine: Boolean = false,
+    /** For the terminal commands the page offers; null while the session has no server slug. */
+    val commandContext: SettingsComputerCommandContext? = null
 )
 
 data class SettingsSectionErrorSnapshot(

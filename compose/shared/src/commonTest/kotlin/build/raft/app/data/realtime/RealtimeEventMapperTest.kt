@@ -4,6 +4,7 @@ import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.TaskWireDto
 import build.raft.app.data.toTaskSummary
 import build.raft.app.model.AgentStatus
+import build.raft.app.model.ComputerRestartDone
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.Heartbeat
@@ -959,6 +960,44 @@ class RealtimeEventMapperTest {
         assertEquals(RealtimeRefreshScope.Machines, doneRefresh.scope)
         assertEquals(RealtimeSocketEvents.ComputerUpgradeDone, doneRefresh.reason)
         assertEquals("machine-1", doneRefresh.subjectId)
+    }
+
+    @Test
+    fun computerRestartDoneCarriesTheRelayedResult() {
+        // slock services/agentOrchestrator.ts relays the Computer's frame with the machine id added:
+        // `emit(msg.type, { machineId, ...msg })`.
+        val mapper = RealtimeEventMapper()
+
+        val failed =
+            mapper.map(
+                RealtimeSocketEvents.ComputerRestartDone,
+                """{"machineId":"machine-1","type":"computer:restart:done","requestId":"op-dispatch-1","ok":false,"error":"control_busy"}"""
+            )
+        val ok =
+            mapper.map(
+                RealtimeSocketEvents.ComputerRestartDone,
+                """{"machineId":"machine-1","type":"computer:restart:done","requestId":"op-dispatch-2","ok":true}"""
+            )
+
+        assertEquals(ComputerRestartDone("machine-1", "op-dispatch-1", ok = false, error = "control_busy"), failed)
+        assertEquals(ComputerRestartDone("machine-1", "op-dispatch-2", ok = true, error = null), ok)
+        assertNull(mapper.map(RealtimeSocketEvents.ComputerRestartDone, """{"requestId":"op-dispatch-3","ok":true}"""))
+        assertTrue(RealtimeSocketEvents.ComputerRestartDone in RealtimeSocketEvents.ServerWireEvents)
+    }
+
+    @Test
+    fun machineUpgradeRequestRefreshesMachinesScope() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.MachineUpgradeRequest,
+                """{"machineId":"machine-1","upgradeRequest":{"id":"req-1","targetVersion":"1.0.50","requestedAt":"2026-10-21T01:00:00.000Z","state":"done","observedVersion":"1.0.50","reason":null,"resolvedAt":"2026-10-21T01:03:00.000Z"}}"""
+            )
+
+        val refresh = assertIs<RealtimeRefreshRequired>(event)
+        assertEquals(RealtimeRefreshScope.Machines, refresh.scope)
+        assertEquals(RealtimeSocketEvents.MachineUpgradeRequest, refresh.reason)
+        assertEquals("machine-1", refresh.subjectId)
+        assertTrue(RealtimeSocketEvents.MachineUpgradeRequest in RealtimeSocketEvents.ServerWireEvents)
     }
 
     @Test

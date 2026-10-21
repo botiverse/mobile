@@ -65,6 +65,8 @@ enum GeneratedRealtimeContract {
         static let machineUpdated = "machine:updated"
         static let computerUpgradeProgress = "computer:upgrade:progress"
         static let computerUpgradeDone = "computer:upgrade:done"
+        static let machineUpgradeRequest = "machine:upgrade-request"
+        static let computerRestartDone = "computer:restart:done"
         static let daemonStatus = "daemon:status"
         static let serverMemberAdded = "server:member-added"
         static let serverMemberUpdated = "server:member-updated"

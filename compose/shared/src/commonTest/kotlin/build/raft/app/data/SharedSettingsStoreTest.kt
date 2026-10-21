@@ -3218,6 +3218,19 @@ class SharedSettingsStoreTest {
             return rotateComputerKeyResult
         }
 
+        var restartComputerResult: DataResult<SettingsComputerRestartResult> = DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        var upgradeComputerResult: DataResult<SettingsComputerUpgradeRequestSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+        override suspend fun restartComputer(machineId: String): DataResult<SettingsComputerRestartResult> {
+            calls += "restartComputer:$machineId"
+            return restartComputerResult
+        }
+
+        override suspend fun upgradeComputer(request: SettingsComputerUpgradeRequest): DataResult<SettingsComputerUpgradeRequestSnapshot> {
+            calls += "upgradeComputer:${request.machineId}:${request.targetVersion}"
+            return upgradeComputerResult
+        }
+
         override suspend fun getComputerRuntimeModels(
             machineId: String,
             runtime: String

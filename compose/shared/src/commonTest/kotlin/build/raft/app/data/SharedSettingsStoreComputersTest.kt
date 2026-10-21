@@ -5,6 +5,8 @@ import build.raft.app.data.SharedSettingsStoreTest.FakeSettingsRepository
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
+import build.raft.app.model.ComputerRestartDone
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -183,6 +185,87 @@ class SharedSettingsStoreComputersTest {
         assertEquals(SharedSettingsEffect.OpenComputer("machine-new"), list.state.value.effect)
         assertTrue("computerDetail:machine-new" !in repository.calls, "the list store must not load the detail: ${repository.calls}")
     }
+
+    @Test
+    fun restartShowsProgressUntilTheComputerReportsDoneThenClears() = runTest {
+        val repository = detailRepository()
+        repository.restartComputerResult = DataResult.Content(SettingsComputerRestartResult("m-1", requestId = "op-1"))
+        val detail = store(repository, standalone = true)
+        detail.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.ComputerDetail, "m-1"))
+
+        detail.accept(SharedSettingsIntent.RestartComputer("m-1"))
+        assertEquals(SettingsComputerRestartProgress("m-1", requestId = "op-1"), detail.state.value.computerControl.restart)
+        // A second tap while the restart runs sends nothing.
+        detail.accept(SharedSettingsIntent.RestartComputer("m-1"))
+        assertEquals(1, repository.calls.count { it == "restartComputer:m-1" })
+
+        repository.calls.clear()
+        detail.accept(SharedSettingsIntent.ApplyRealtimeEvent("server-1", ComputerRestartDone("m-1", "op-1", ok = true)))
+        assertEquals(SettingsComputerRestartProgress("m-1", requestId = "op-1", done = true), detail.state.value.computerControl.restart)
+        assertTrue("computerDetail:m-1" in repository.calls, "a finished restart reloads the machine: ${repository.calls}")
+
+        advanceTimeBy(COMPUTER_RESTART_DONE_DISPLAY_MILLIS + 1)
+        assertNull(detail.state.value.computerControl.restart)
+    }
+
+    @Test
+    fun restartWithoutAnAnswerTimesOutAndARefusalFailsAtOnce() = runTest {
+        val repository = detailRepository()
+        repository.restartComputerResult = DataResult.Content(SettingsComputerRestartResult("m-1", requestId = "op-1"))
+        val detail = store(repository, standalone = true)
+        detail.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.ComputerDetail, "m-1"))
+
+        detail.accept(SharedSettingsIntent.RestartComputer("m-1"))
+        advanceTimeBy(COMPUTER_RESTART_TIMEOUT_MILLIS + 1)
+        assertEquals(COMPUTER_RESTART_TIMED_OUT, detail.state.value.computerControl.restart?.errorCode)
+        advanceTimeBy(COMPUTER_RESTART_ERROR_DISPLAY_MILLIS + 1)
+        assertNull(detail.state.value.computerControl.restart)
+
+        repository.restartComputerResult = DataResult.Error(ScreenError("computer_offline", retryable = false))
+        detail.accept(SharedSettingsIntent.RestartComputer("m-1"))
+        val refused = detail.state.value.computerControl.restart
+        assertEquals("computer_offline", refused?.errorCode)
+        assertEquals(true, refused?.failed)
+        // A done frame for another request leaves it alone.
+        detail.accept(SharedSettingsIntent.ApplyRealtimeEvent("server-1", ComputerRestartDone("m-2", "op-9", ok = true)))
+        assertEquals(refused, detail.state.value.computerControl.restart)
+    }
+
+    @Test
+    fun upgradeKeepsTheAcceptedRequestOrTheRefusalWithItsAvailabilityKey() = runTest {
+        val repository = detailRepository()
+        val pending =
+            SettingsComputerUpgradeRequestSnapshot(id = "req-2", targetVersion = "1.0.50", requestedAt = "2026-10-21T01:00:00.000Z", state = "pending")
+        repository.upgradeComputerResult = DataResult.Content(pending)
+        val detail = store(repository, standalone = true)
+        detail.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.ComputerDetail, "m-1"))
+
+        detail.accept(SharedSettingsIntent.UpgradeComputer("m-1", "1.0.50"))
+        assertEquals(pending, detail.state.value.computerControl.upgradeAccepted?.request)
+        assertNull(detail.state.value.computerControl.upgradeSubmitting)
+        assertTrue("upgradeComputer:m-1:1.0.50" in repository.calls)
+
+        repository.upgradeComputerResult = DataResult.Error(ScreenError("remote_upgrade_disabled", retryable = false))
+        detail.accept(SharedSettingsIntent.UpgradeComputer("m-1", "1.0.50"))
+        val refusal = detail.state.value.computerControl.upgradeRefusal
+        assertEquals("remote_upgrade_disabled", refusal?.code)
+        assertEquals(settingsComputerUpgradeAvailabilityKey(machine("m-1", "Studio")), refusal?.availabilityKey)
+    }
+
+    @Test
+    fun copyingACommandEmitsTheCopyEffect() = runTest {
+        val detail = store(detailRepository(), standalone = true)
+
+        detail.accept(SharedSettingsIntent.CopyComputerCommand(" raft-computer status "))
+
+        assertEquals(SharedSettingsEffect.CopyText("raft-computer status"), detail.state.value.effect)
+    }
+
+    private fun detailRepository() =
+        FakeSettingsRepository(
+            computerDetailResult =
+                DataResult.Content(SettingsComputerDetailSnapshot(machine("m-1", "Studio"), emptyList(), emptyList(), emptyList()))
+        )
 
     private fun kotlinx.coroutines.test.TestScope.store(
         repository: FakeSettingsRepository,

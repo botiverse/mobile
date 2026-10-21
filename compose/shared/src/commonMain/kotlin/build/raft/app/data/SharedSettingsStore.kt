@@ -4,6 +4,7 @@ import build.raft.app.KmmResourceLocaleRuntime
 import build.raft.app.RaftLucideIconName
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
+import build.raft.app.model.ComputerRestartDone
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerNotificationPreferencesChanged
 import build.raft.app.model.RealtimeRefreshRequired
@@ -74,6 +75,8 @@ data class SharedSettingsState(
     val refreshingDestinations: Set<SharedSettingsDestination> = emptySet(),
     val routeErrorCode: String? = null,
     val actionState: SharedSettingsActionState? = null,
+    /** Restart / upgrade of the open managed Computer (web machineStore's per-machine operation state). */
+    val computerControl: SettingsComputerControlState = SettingsComputerControlState(),
     val effect: SharedSettingsEffect? = null
 )
 
@@ -337,6 +340,69 @@ data class SharedSettingsActionState(
     val emptyReason: EmptyReason? = null
 )
 
+/**
+ * Client-side progress of the Computer controls on the detail page, the way web `machineStore` keeps
+ * `computerOperationProgress`, `computerUpgradeSubmitting` and `computerUpgradeAccepted`. Never a server
+ * fact: the machines row (`upgradeRequest`, status, version) stays the authority.
+ */
+data class SettingsComputerControlState(
+    val restart: SettingsComputerRestartProgress? = null,
+    /** The machine whose Upgrade POST is in flight, and its target. */
+    val upgradeSubmitting: SettingsComputerUpgradeRequest? = null,
+    /** The upgrade request the server accepted for this page's click (kept until the row settles it). */
+    val upgradeAccepted: SettingsComputerAcceptedUpgrade? = null,
+    /** The last refused Upgrade click; it holds only while [SettingsComputerUpgradeRefusal.availabilityKey] matches. */
+    val upgradeRefusal: SettingsComputerUpgradeRefusal? = null
+)
+
+/** A web restart: in flight until `computer:restart:done` (or the 60 s safety timeout), then briefly done. */
+data class SettingsComputerRestartProgress(
+    val machineId: String,
+    val requestId: String? = null,
+    val done: Boolean = false,
+    /** A machine-readable failure: a route `code`, `restart_timed_out`, or the Computer's own error. */
+    val errorCode: String? = null
+) {
+    val failed: Boolean get() = done && errorCode != null
+}
+
+data class SettingsComputerAcceptedUpgrade(
+    val machineId: String,
+    val request: SettingsComputerUpgradeRequestSnapshot,
+    val acceptedAtMillis: Long
+)
+
+data class SettingsComputerUpgradeRefusal(
+    val machineId: String,
+    val availabilityKey: String,
+    /** The route's `code` (`remote_upgrade_disabled`, `computer_remote_upgrade_unsupported`, …). */
+    val code: String?
+)
+
+/**
+ * Everything that decides whether the one-click upgrade is offered (web MachineDetailPanel
+ * `upgradeAvailabilityKey`): a refused click holds only while none of these change.
+ */
+fun settingsComputerUpgradeAvailabilityKey(computer: SettingsComputerSnapshot): String =
+    listOf(
+        computer.id,
+        computer.computerVersion.orEmpty(),
+        computer.remoteUpgradeSupported?.toString().orEmpty(),
+        computer.upgradeAvailable.toString(),
+        computer.broadcastPolicy?.eligibility.orEmpty(),
+        computer.broadcastPolicy?.reasonCode.orEmpty(),
+        computer.broadcastPolicy?.policyRevision.orEmpty(),
+        computer.broadcastPolicy?.targetVersion.orEmpty()
+    ).joinToString("|")
+
+/** The public guide to installing and connecting Raft Computer (web `COMPUTER_INSTALL_DOCS_URL`). */
+internal const val COMPUTER_INSTALL_DOCS_URL = "https://docs.raft.build/features/server/computers/#connecting-a-computer"
+
+internal const val COMPUTER_RESTART_TIMEOUT_MILLIS = 60_000L
+internal const val COMPUTER_RESTART_DONE_DISPLAY_MILLIS = 3_000L
+internal const val COMPUTER_RESTART_ERROR_DISPLAY_MILLIS = 4_000L
+internal const val COMPUTER_RESTART_TIMED_OUT = "restart_timed_out"
+
 internal fun SharedSettingsActionState.errorPresentationOrNull(): ErrorPresentation? =
     screenError?.errorPresentation()
         ?: permissionBlocker?.errorPresentation()
@@ -391,6 +457,14 @@ sealed interface SharedSettingsIntent {
     data class UpdateComputerDescription(val request: SettingsComputerDescriptionUpdateRequest) : SharedSettingsIntent
     data class DeleteComputer(val machineId: String) : SharedSettingsIntent
     data class RotateComputerKey(val machineId: String) : SharedSettingsIntent
+    /** Remote restart of a managed Computer (online only); progress lands in [SharedSettingsState.computerControl]. */
+    data class RestartComputer(val machineId: String) : SharedSettingsIntent
+    /** Remote upgrade v2 to the policy's exact [targetVersion]. */
+    data class UpgradeComputer(val machineId: String, val targetVersion: String) : SharedSettingsIntent
+    /** Copies one of the computer detail page's terminal commands. */
+    data class CopyComputerCommand(val command: String) : SharedSettingsIntent
+    /** Opens the public Raft Computer install guide ([COMPUTER_INSTALL_DOCS_URL]). */
+    data object OpenComputerInstallGuide : SharedSettingsIntent
     data class RegisterComputer(val request: SettingsComputerRegisterRequest) : SharedSettingsIntent
     data object ShowAddComputerDialog : SharedSettingsIntent
     data object DismissAddComputerDialog : SharedSettingsIntent
@@ -773,7 +847,7 @@ class SharedSettingsDataSource(
                 is DataResult.Error -> DataResult.Error(sharedComputer.error)
                 is DataResult.NoPermission -> DataResult.NoPermission(sharedComputer.blocker)
                 null -> settingsRepository?.getComputerDetail(machineId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
-            }.withComputerManageGate(session)
+            }.withComputerManageGate(session).withComputerCommandContext(computerCommandContext(session))
         if (result is DataResult.Content && serverId != null) {
             refreshServerMembersForSettingsStatus(serverId, force = forceComputers)
         }
@@ -818,6 +892,33 @@ class SharedSettingsDataSource(
 
     suspend fun rotateComputerKey(machineId: String): DataResult<SettingsComputerKeyRotationResult> =
         settingsRepository?.rotateComputerKey(machineId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun restartComputer(machineId: String): DataResult<SettingsComputerRestartResult> =
+        settingsRepository?.restartComputer(machineId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun upgradeComputer(request: SettingsComputerUpgradeRequest): DataResult<SettingsComputerUpgradeRequestSnapshot> =
+        settingsRepository?.upgradeComputer(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    /**
+     * Web `getComputerCommands(serverSlug, deploymentEnv, getServerUrl())`: the session's server slug,
+     * the deployment of the selected API environment (a custom developer environment is the web's
+     * `slockdev`) and its server origin.
+     */
+    private fun computerCommandContext(session: StoredAuthSession?): SettingsComputerCommandContext? {
+        val slug = session.currentServerSlugForSettings()?.trim()?.trimStart('/')?.takeIf { it.isNotBlank() } ?: return null
+        val environment = apiEnvironmentStore?.current() ?: SharedApiEnvironmentStore.Production
+        val deploymentEnv =
+            when (environment.key) {
+                SharedApiEnvironmentStore.Production.key -> "production"
+                SharedApiEnvironmentStore.Staging.key -> "staging"
+                else -> "slockdev"
+            }
+        return SettingsComputerCommandContext(
+            serverSlug = slug,
+            deploymentEnv = deploymentEnv,
+            serverUrl = environment.socketBaseUrl.trim().trimEnd('/').takeIf { it.isNotBlank() }
+        )
+    }
 
     suspend fun registerComputer(request: SettingsComputerRegisterRequest): DataResult<SettingsComputerRegistrationResult> =
         settingsRepository?.registerComputer(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -1982,6 +2083,7 @@ class SharedSettingsStore(
     private var loadJob: Job? = null
     private val pendingMachineRealtimeIds = LinkedHashSet<String>()
     private var machineRealtimeDrainActive = false
+    private var computerRestartGeneration = 0L
     private var diagnosticsRefreshJob: Job? = null
     private var diagnosticsRefreshToken: Long = 0L
     private var authOwnerObservationJob: Job? = null
@@ -2198,6 +2300,14 @@ class SharedSettingsStore(
                     dataSource.deleteComputer(intent.machineId).applyComputerDeleteActionResult(COMPUTER_ACTION_DELETE, intent.machineId)
                 }
             }
+            is SharedSettingsIntent.RestartComputer -> restartComputer(intent.machineId)
+            is SharedSettingsIntent.UpgradeComputer -> upgradeComputer(intent.machineId, intent.targetVersion)
+            is SharedSettingsIntent.CopyComputerCommand -> {
+                val command = intent.command.trim().takeIf { it.isNotBlank() } ?: return
+                _state.value = _state.value.copy(effect = SharedSettingsEffect.CopyText(command))
+            }
+            SharedSettingsIntent.OpenComputerInstallGuide ->
+                _state.value = _state.value.copy(effect = SharedSettingsEffect.OpenUrl(COMPUTER_INSTALL_DOCS_URL))
             is SharedSettingsIntent.RotateComputerKey -> {
                 runAction(COMPUTER_ACTION_ROTATE_KEY, intent.machineId) {
                     dataSource.rotateComputerKey(intent.machineId).applyComputerRotateKeyActionResult(COMPUTER_ACTION_ROTATE_KEY, intent.machineId)
@@ -2842,6 +2952,10 @@ class SharedSettingsStore(
             }
             return
         }
+        if (event is ComputerRestartDone) {
+            applyComputerRestartDone(event)
+            return
+        }
         if (event !is RealtimeRefreshRequired) return
         if (event.scope != RealtimeRefreshScope.Machines) return
         if (event.serverId?.value != null && event.serverId.value != serverId) return
@@ -3058,6 +3172,122 @@ class SharedSettingsStore(
                     ),
                 effect = null
             )
+    }
+
+    private fun updateComputerControl(transform: SettingsComputerControlState.() -> SettingsComputerControlState) {
+        _state.value = _state.value.copy(computerControl = _state.value.computerControl.transform())
+    }
+
+    /**
+     * Web `handleComputerRestart`: enter the restart progress before the POST returns, keep it until
+     * `computer:restart:done` (or [COMPUTER_RESTART_TIMEOUT_MILLIS]), then show the outcome briefly.
+     */
+    private suspend fun restartComputer(machineId: String) {
+        val id = machineId.trim().takeIf { it.isNotBlank() } ?: return
+        val current = _state.value.computerControl.restart
+        if (current != null && current.machineId == id && !current.done) return
+        val generation = ++computerRestartGeneration
+        updateComputerControl { copy(restart = SettingsComputerRestartProgress(machineId = id)) }
+        diagnosticsLogger("settings_computer_restart_start machineId=$id")
+        scope.launch {
+            delay(COMPUTER_RESTART_TIMEOUT_MILLIS)
+            val progress = _state.value.computerControl.restart
+            if (generation == computerRestartGeneration && progress != null && !progress.done) {
+                finishComputerRestart(generation, progress.copy(done = true, errorCode = COMPUTER_RESTART_TIMED_OUT))
+            }
+        }
+        when (val result = dataSource.restartComputer(id)) {
+            is DataResult.Content -> {
+                val progress = _state.value.computerControl.restart
+                if (generation == computerRestartGeneration && progress != null && !progress.done) {
+                    updateComputerControl { copy(restart = progress.copy(requestId = result.data.requestId)) }
+                }
+            }
+            is DataResult.Error -> failComputerRestart(generation, result.error.code)
+            is DataResult.NoPermission -> failComputerRestart(generation, result.blocker.code)
+            is DataResult.Empty -> failComputerRestart(generation, "settings_unavailable")
+        }
+    }
+
+    private fun failComputerRestart(generation: Long, code: String) {
+        val progress = _state.value.computerControl.restart ?: return
+        if (generation != computerRestartGeneration || progress.done) return
+        diagnosticsLogger("settings_computer_restart_failed machineId=${progress.machineId} code=$code")
+        finishComputerRestart(generation, progress.copy(done = true, errorCode = code))
+    }
+
+    /** Shows the finished restart, then drops it so the buttons come back (web: 3 s done, 4 s error). */
+    private fun finishComputerRestart(generation: Long, finished: SettingsComputerRestartProgress) {
+        updateComputerControl { copy(restart = finished) }
+        scope.launch {
+            delay(if (finished.errorCode != null) COMPUTER_RESTART_ERROR_DISPLAY_MILLIS else COMPUTER_RESTART_DONE_DISPLAY_MILLIS)
+            if (generation == computerRestartGeneration && _state.value.computerControl.restart == finished) {
+                updateComputerControl { copy(restart = null) }
+            }
+        }
+    }
+
+    /** `computer:restart:done` for the restart this page started; a success reloads the machine. */
+    private suspend fun applyComputerRestartDone(event: ComputerRestartDone) {
+        val progress = _state.value.computerControl.restart
+        if (progress != null && progress.machineId == event.machineId && !progress.done &&
+            (progress.requestId == null || progress.requestId == event.requestId)
+        ) {
+            diagnosticsLogger("settings_computer_restart_done machineId=${event.machineId} ok=${event.ok}")
+            finishComputerRestart(
+                computerRestartGeneration,
+                progress.copy(requestId = event.requestId, done = true, errorCode = if (event.ok) null else event.error ?: "restart_failed")
+            )
+        }
+        if (event.ok &&
+            _state.value.route.destination == SharedSettingsDestination.ComputerDetail &&
+            _state.value.route.itemId == event.machineId
+        ) {
+            dataSource.loadComputerDetail(event.machineId, forceComputers = true)
+                .applyToState(SharedSettingsDestination.ComputerDetail) { copy(computerDetail = it) }
+        }
+    }
+
+    /**
+     * Web `handleRemoteUpgradeV2`: one POST per click, the accepted request kept until the machines row
+     * settles it, a refusal kept (by its availability key) so the card can offer the commands instead.
+     */
+    private suspend fun upgradeComputer(machineId: String, targetVersion: String) {
+        val id = machineId.trim().takeIf { it.isNotBlank() } ?: return
+        val target = targetVersion.trim().takeIf { it.isNotBlank() } ?: return
+        if (_state.value.computerControl.upgradeSubmitting?.machineId == id) return
+        val availabilityKey =
+            (_state.value.computerDetail as? ScreenLoadState.Content)?.data?.computer
+                ?.takeIf { it.id == id }
+                ?.let(::settingsComputerUpgradeAvailabilityKey)
+        val request = SettingsComputerUpgradeRequest(machineId = id, targetVersion = target)
+        updateComputerControl { copy(upgradeSubmitting = request, upgradeRefusal = null) }
+        diagnosticsLogger("settings_computer_upgrade_start machineId=$id target=$target")
+        val result = dataSource.upgradeComputer(request)
+        when (result) {
+            is DataResult.Content ->
+                updateComputerControl {
+                    copy(upgradeAccepted = SettingsComputerAcceptedUpgrade(id, result.data, nowMillis()))
+                }
+            else -> {
+                val code =
+                    when (result) {
+                        is DataResult.Error -> result.error.code
+                        is DataResult.NoPermission -> result.blocker.code
+                        else -> null
+                    }
+                diagnosticsLogger("settings_computer_upgrade_refused machineId=$id code=${code ?: "none"}")
+                if (availabilityKey != null) {
+                    updateComputerControl { copy(upgradeRefusal = SettingsComputerUpgradeRefusal(id, availabilityKey, code)) }
+                }
+            }
+        }
+        // Hold the in-flight state until the refreshed row (with the server's pending request) lands.
+        if (_state.value.route.destination == SharedSettingsDestination.ComputerDetail && _state.value.route.itemId == id) {
+            dataSource.loadComputerDetail(id, forceComputers = true)
+                .applyToState(SharedSettingsDestination.ComputerDetail) { copy(computerDetail = it) }
+        }
+        updateComputerControl { copy(upgradeSubmitting = null) }
     }
 
     private suspend fun runAction(
@@ -3827,6 +4057,10 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.DeleteComputer,
             is SharedSettingsIntent.RotateComputerKey,
             is SharedSettingsIntent.RegisterComputer,
+            is SharedSettingsIntent.RestartComputer,
+            is SharedSettingsIntent.UpgradeComputer,
+            is SharedSettingsIntent.CopyComputerCommand,
+            SharedSettingsIntent.OpenComputerInstallGuide,
             SharedSettingsIntent.ShowAddComputerDialog,
             SharedSettingsIntent.DismissAddComputerDialog,
             is SharedSettingsIntent.SetAddComputerStep,
@@ -3868,6 +4102,11 @@ private fun DataResult<SettingsComputersSnapshot>.withAddComputerGate(
         is DataResult.Error -> this
         is DataResult.NoPermission -> this
     }
+
+private fun DataResult<SettingsComputerDetailSnapshot>.withComputerCommandContext(
+    context: SettingsComputerCommandContext?
+): DataResult<SettingsComputerDetailSnapshot> =
+    if (this is DataResult.Content && context != null) DataResult.Content(data.copy(commandContext = context)) else this
 
 private fun DataResult<SettingsComputerDetailSnapshot>.withComputerManageGate(
     session: StoredAuthSession?
