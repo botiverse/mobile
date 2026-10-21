@@ -804,6 +804,7 @@ private fun ActivityConversationTime(item: InboxItem, timeContext: RaftTimeConte
         color = RaftTheme.colors.foregroundHint,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
+        clampFuture = true,
         modifier = Modifier.widthIn(max = 96.dp),
     )
 }

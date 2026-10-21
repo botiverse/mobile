@@ -2107,6 +2107,7 @@ private fun SharedActivityRow(
                     color = RaftColor.ForegroundHint,
                     maxLines = 1,
                     softWrap = false,
+                    clampFuture = true,
                     modifier = Modifier.padding(top = 1.dp, end = if (showDone) 44.dp else 0.dp)
                 )
             }
