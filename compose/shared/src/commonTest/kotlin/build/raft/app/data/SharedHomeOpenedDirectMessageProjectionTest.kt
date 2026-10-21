@@ -207,7 +207,7 @@ class SharedHomeOpenedDirectMessageProjectionTest {
             HomeNetworkResponse(200, "[]")
 
         override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse =
-            HomeNetworkResponse(200, "{}")
+            HomeNetworkResponse(200, EMPTY_CHANNEL_UNREAD_SUMMARY_BODY)
 
         override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse =
             HomeNetworkResponse(200, "[]")

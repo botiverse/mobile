@@ -492,7 +492,25 @@ data class Message(
     val randomId: String? = null,
     /** Canonical numeric creation time used for ordering; never derived from localized display text. */
     @Transient val createdAtEpochMillis: Long? = null,
+    /** Wire `mentions` of `message:*` emits; empty when the payload carried none. */
+    val mentions: List<MessageMention> = emptyList(),
 )
+
+/**
+ * One `mentions[]` entry of a message payload (botiverse/slock `packages/web/src/store/messageStore.ts`
+ * `MessageMention`: `{ type: "user" | "agent" | "external"; id; name; displayName? }`; server
+ * `messageRealtimeProducerRegistry.ts` lists `mentions` among the `message:new` payload keys).
+ */
+@Serializable
+data class MessageMention(
+    val type: String,
+    val id: String,
+    val name: String = "",
+)
+
+/** Web `mentionsCurrentUser`: a `user` mention of the signed-in human. */
+fun List<MessageMention>.mentionsUser(userId: String): Boolean =
+    userId.isNotBlank() && any { it.type == "user" && it.id == userId }
 
 @Serializable
 data class ForwardMessageBundle(
@@ -691,6 +709,8 @@ data class ThreadUpdated(
     val latestReply: ReplyPreview? = null,
     /** Existing replies SyncCore v1 producer envelope; validated again against local identity by the domain host. */
     val syncCoreReplyWindow: build.raft.app.network.sync.ThreadRepliesSyncWindowEnvelope? = null,
+    /** `latestReply.mentions` (the reply is the full message payload); feeds Home's thread @ mark. */
+    val latestReplyMentions: List<MessageMention> = emptyList(),
 ) : RealtimeEvent
 
 @Serializable

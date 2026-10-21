@@ -568,7 +568,7 @@ class ChannelRepositoryDataSourceTest {
                     mapOf(
                         "channels" to """[{"id":"channel-1","name":"general","type":"channel","joined":true}]""",
                         "channels/dm" to """[]""",
-                        "channels/unread" to """{"channel-1":4}""",
+                        "channels/unread" to channelUnreadSummaryBody(mapOf("channel-1" to 4)),
                         "servers/unread-summary" to """[{"serverId":"server-1","unreadCount":12}]"""
                     )
             )

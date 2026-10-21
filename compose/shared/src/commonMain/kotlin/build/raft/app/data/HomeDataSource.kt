@@ -35,8 +35,6 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.builtins.MapSerializer
-import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import kotlin.time.TimeSource
 
@@ -66,6 +64,12 @@ class SharedHomeDataSource(
         val changed: Boolean,
         val directMessages: List<ConversationSummary> = emptyList()
     )
+
+    /** `channels/unread?summary=1` for [serverId] alone (Home's followed-thread reconcile). */
+    suspend fun channelUnreadSummary(
+        serverId: ServerId,
+        priority: DataRequestPriority
+    ): DataResult<ChannelUnreadSummary> = typedApi.channelUnreadSummary(serverId, priority)
 
     suspend fun currentSessionSnapshot(): DataResult<build.raft.app.model.SessionSnapshot> {
         val session = sessionStore.readSession()
@@ -478,8 +482,9 @@ private fun String?.versionSegmentsOrNull(): List<Int>? {
  *
  * Transport implementations may be platform-specific, but the typed client
  * below documents the canonical response roots: channels and DMs are root
- * arrays, unread counts are a root object, and server unread summary is a root
- * array. Guessed wrappers such as `items` or `data` are contract mismatches.
+ * arrays, the unread summary (`channels/unread?summary=1`) is a root object
+ * `{channels, threadUnread}`, and server unread summary is a root array.
+ * Guessed wrappers such as `items` or `data` are contract mismatches.
  */
 interface RaftHomeApi {
     suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse
@@ -505,6 +510,10 @@ data class HomeNetworkPayload(
     val channels: List<HomeChannelWireDto>,
     val directMessages: List<HomeDirectMessageWireDto>,
     val unreadCounts: Map<ChannelId, Int>,
+    /** `channels/unread?summary=1` scopes whose unread messages mention the user (`hasMention`). */
+    val mentionedChannelIds: Set<ChannelId> = emptySet(),
+    /** Followed threads with unread replies from the same summary, keyed by thread channel id value. */
+    val followedThreadUnread: Map<String, HomeFollowedThreadUnread> = emptyMap(),
     val serverUnreadSummary: List<ServerUnreadSummaryDto>,
     /**
      * True when `/servers/unread-summary` itself completed and decoded. This
@@ -571,7 +580,7 @@ internal class RaftHomeApiClient(
                 requestHomeSection(
                     category = "channel_unread_counts",
                     contractCode = "home_unread_counts_contract_mismatch",
-                    serializer = MapSerializer(String.serializer(), Int.serializer()),
+                    serializer = ChannelUnreadSummaryWireDto.serializer(),
                     errorTextDecoder = HomeNetworkResponse::homeUnreadCountsRouteErrorTextOrNull
                 ) {
                     transport.channelUnreadCounts(serverId, priority)
@@ -617,9 +626,8 @@ internal class RaftHomeApiClient(
         val unreadEnrichmentAvailable =
             unreadCountsResult is DataResult.Content && serverUnreadSummaryResult is DataResult.Content
         val serverUnreadSummaryAvailable = serverUnreadSummaryResult is DataResult.Content
-        val unreadCounts =
-            (unreadCountsResult as? DataResult.Content)?.data?.mapKeys { (key, _) -> ChannelId(key) }
-                ?: emptyMap()
+        val unreadSummary = (unreadCountsResult as? DataResult.Content)?.data?.toChannelUnreadSummary()
+        val unreadCounts = unreadSummary?.unreadCounts ?: emptyMap()
         val serverUnreadSummary =
             (serverUnreadSummaryResult as? DataResult.Content)?.data
                 ?: emptyList()
@@ -630,12 +638,39 @@ internal class RaftHomeApiClient(
                 channels = channels,
                 directMessages = directMessages,
                 unreadCounts = unreadCounts,
+                mentionedChannelIds = unreadSummary?.mentionedChannelIds ?: emptySet(),
+                followedThreadUnread = unreadSummary?.followedThreadUnread ?: emptyMap(),
                 serverUnreadSummary = serverUnreadSummary,
                 serverUnreadSummaryAvailable = serverUnreadSummaryAvailable,
                 unreadEnrichmentAvailable = unreadEnrichmentAvailable
             )
         )
     }
+
+    /**
+     * `channels/unread?summary=1` alone: Home's followed-thread reconcile after a reply into a thread the
+     * snapshot does not know yet (web `followedThreadsRefresh`).
+     */
+    suspend fun channelUnreadSummary(
+        serverId: ServerId,
+        priority: DataRequestPriority
+    ): DataResult<ChannelUnreadSummary> =
+        when (
+            val result =
+                requestHomeSection(
+                    category = "channel_unread_counts",
+                    contractCode = "home_unread_counts_contract_mismatch",
+                    serializer = ChannelUnreadSummaryWireDto.serializer(),
+                    errorTextDecoder = HomeNetworkResponse::homeUnreadCountsRouteErrorTextOrNull
+                ) {
+                    transport.channelUnreadCounts(serverId, priority)
+                }
+        ) {
+            is DataResult.Content -> DataResult.Content(result.data.toChannelUnreadSummary())
+            is DataResult.Empty -> DataResult.Empty(result.reason)
+            is DataResult.Error -> DataResult.Error(result.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
+        }
 
     /**
      * Awaits an auxiliary (non-canonical) home section without ever letting it

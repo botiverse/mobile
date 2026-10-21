@@ -42,7 +42,7 @@ class HomeDataSourceTest {
                         HomeNetworkResponse(code = 200, bodyText = "[]")
 
                     override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse =
-                        HomeNetworkResponse(code = 200, bodyText = "{}")
+                        HomeNetworkResponse(code = 200, bodyText = EMPTY_CHANNEL_UNREAD_SUMMARY_BODY)
 
                     override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse =
                         HomeNetworkResponse(code = 200, bodyText = "[]")
@@ -675,24 +675,29 @@ class HomeDataSourceTest {
     // these asserted the whole Home returned Error on a guessed unread wrapper.
     @Test
     fun guessedUnreadCountWrapperIsRejectedWithoutBlockingCanonicalHome() = runBlocking {
-        val source =
-            SharedHomeDataSource(
-                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                api = FakeHomeApi(unreadCountsBody = """[{"channelId":"channel-1","unreadCount":1}]"""),
-                parseHome = { payload, session ->
-                    // Guessed array shape rejected → not mis-accepted as unread data.
-                    assertEquals(emptyMap(), payload.unreadCounts)
-                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
-                }
+        // A guessed array, and the bare `{[channelId]: number}` map Home no longer asks for: neither is
+        // the `?summary=1` shape, so neither may reach the payload as unread data.
+        for (body in listOf("""[{"channelId":"channel-1","unreadCount":1}]""", """{"channel-1":1}""")) {
+            val source =
+                SharedHomeDataSource(
+                    sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                    api = FakeHomeApi(unreadCountsBody = body),
+                    parseHome = { payload, session ->
+                        assertEquals(emptyMap(), payload.unreadCounts, body)
+                        assertEquals(emptySet(), payload.mentionedChannelIds, body)
+                        assertFalse(payload.unreadEnrichmentAvailable, body)
+                        DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
+                    }
+                )
+
+            val result = source.loadHome(priority = DataRequestPriority.Visible)
+
+            assertTrue(
+                result is DataResult.Content,
+                "canonical Home must load even when the unread-counts wire shape is rejected: $body"
             )
-
-        val result = source.loadHome(priority = DataRequestPriority.Visible)
-
-        assertTrue(
-            result is DataResult.Content,
-            "canonical Home must load even when the unread-counts wire shape is rejected"
-        )
-        assertEquals(1, result.data.channels.size)
+            assertEquals(1, result.data.channels.size)
+        }
     }
 
     @Test
@@ -883,7 +888,7 @@ class HomeDataSourceTest {
         override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse {
             if (hangCounts) return neverCompletes.await()
             if (errorCounts) throw RuntimeException("simulated channel_unread_counts failure")
-            return ok("{}")
+            return ok(EMPTY_CHANNEL_UNREAD_SUMMARY_BODY)
         }
 
         override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse {
@@ -898,7 +903,8 @@ class HomeDataSourceTest {
     private class CancellingUnreadHomeApi : RaftHomeApi {
         override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse = ok("[]")
         override suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse = ok("[]")
-        override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse = ok("{}")
+        override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse =
+            ok(EMPTY_CHANNEL_UNREAD_SUMMARY_BODY)
 
         override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse {
             // Simulates the in-flight unread request being cancelled — exactly what
@@ -912,7 +918,7 @@ class HomeDataSourceTest {
     private class FakeHomeApi(
         private val channelsBody: String = "[]",
         private val directMessagesBody: String = "[]",
-        private val unreadCountsBody: String = "{}",
+        private val unreadCountsBody: String = EMPTY_CHANNEL_UNREAD_SUMMARY_BODY,
         private val serverUnreadSummaryBody: String = "[]"
     ) : RaftHomeApi {
         var calls: Int = 0
@@ -952,7 +958,7 @@ class HomeDataSourceTest {
             calls += "channel_unread_counts"
             unreadCountsStarted.complete(Unit)
             channelsStarted.await()
-            return ok("{}")
+            return ok(EMPTY_CHANNEL_UNREAD_SUMMARY_BODY)
         }
 
         override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse {
@@ -1145,7 +1151,7 @@ class HomeDataSourceTest {
             val body =
                 when (name) {
                     "channels", "dms", "summary" -> "[]"
-                    else -> "{}"
+                    else -> EMPTY_CHANNEL_UNREAD_SUMMARY_BODY
                 }
             return HomeNetworkResponse(code = 200, bodyText = body)
         }

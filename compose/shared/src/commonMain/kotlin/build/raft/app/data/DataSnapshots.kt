@@ -526,7 +526,14 @@ data class HomeSnapshot(
      * order has not been loaded for this snapshot yet; the visual layer
      * falls back to "no pinned items" until a non-null value arrives.
      */
-    val sidebarOrder: SettingsServerSidebarOrderSnapshot? = null
+    val sidebarOrder: SettingsServerSidebarOrderSnapshot? = null,
+    /**
+     * Followed threads with unread replies, keyed by thread channel id value (`channels/unread?summary=1`
+     * entries that carry `parentChannelId`). Folded per parent channel into the Home row's
+     * `[thread] N` segment and thread @ mark; kept current by `thread:updated` and read-state events.
+     */
+    // String keys: JSON map keys must be primitive, and HomeSnapshot is persisted.
+    val followedThreadUnread: Map<String, HomeFollowedThreadUnread> = emptyMap()
 )
 
 data class ServerListSnapshot(

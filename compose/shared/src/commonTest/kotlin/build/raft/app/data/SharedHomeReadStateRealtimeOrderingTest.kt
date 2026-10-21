@@ -156,7 +156,7 @@ class SharedHomeReadStateRealtimeOrderingTest {
             HomeNetworkResponse(code = 200, bodyText = "[]")
 
         override suspend fun channelUnreadCounts(serverId: ServerId, priority: DataRequestPriority) =
-            HomeNetworkResponse(code = 200, bodyText = "{}")
+            HomeNetworkResponse(code = 200, bodyText = EMPTY_CHANNEL_UNREAD_SUMMARY_BODY)
 
         override suspend fun serverUnreadSummary(serverId: ServerId, priority: DataRequestPriority) =
             HomeNetworkResponse(code = 200, bodyText = "[]")

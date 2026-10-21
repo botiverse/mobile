@@ -1,43 +1,12 @@
 package build.raft.app.data
 
 import build.raft.app.model.ChannelId
-import build.raft.app.model.ServerId
-import build.raft.app.model.ServerSummary
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class UnreadParserTest {
-    @Test
-    fun parsesChannelUnreadCountsFromChannelsRouteContract() {
-        val snapshot =
-            parseChannelUnreadSnapshot(
-                bodyText = """
-                    {
-                      "channel-1": 7,
-                      "dm-1": 3
-                    }
-                """.trimIndent(),
-                server = ServerSummary(id = ServerId("server-1"), name = "Slock")
-            )
-
-        requireNotNull(snapshot)
-        assertEquals(10, snapshot.totalUnreadCount)
-        assertEquals(10, snapshot.server.unreadCount)
-        assertEquals(7, snapshot.unreadCounts[ChannelId("channel-1")])
-        assertEquals(3, snapshot.unreadCounts[ChannelId("dm-1")])
-    }
-
-    @Test
-    fun rejectsWrappedChannelUnreadCounts() {
-        val snapshot =
-            parseChannelUnreadSnapshot(
-                bodyText = """{"channels":{"channel-1":7}}""",
-                server = ServerSummary(id = ServerId("server-1"), name = "Slock")
-            )
-
-        assertNull(snapshot)
-    }
+    // `channels/unread?summary=1` parsing lives in ChannelUnreadSummaryParserTest.
 
     @Test
     fun parsesReadAllReceiptFromChannelsRouteContract() {

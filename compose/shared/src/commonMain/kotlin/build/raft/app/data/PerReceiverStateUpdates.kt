@@ -10,7 +10,9 @@ data class PerReceiverReadStateUpdate(
     val memberId: MemberId,
     val channelId: ChannelId,
     val version: Long,
-    val maxReadSeq: Long?
+    val maxReadSeq: Long?,
+    /** The scope's server-side unread after this read (`read_state:updated` `unreadCount`), when sent. */
+    val unreadCount: Int? = null
 )
 
 data class PerReceiverNotificationPrefsUpdate(

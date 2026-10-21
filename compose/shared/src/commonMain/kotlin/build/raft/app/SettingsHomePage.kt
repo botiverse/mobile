@@ -225,6 +225,10 @@ import build.raft.app.data.displayRowHints
 import build.raft.app.data.SharedHomeDataSource
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.HomeConversationRow
+import build.raft.app.data.HomeChannelRow
+import build.raft.app.data.HomeParentThreadUnread
+import build.raft.app.data.THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
+import build.raft.app.data.foldThreadUnreadByParent
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.HomeServerDrawerState
 import build.raft.app.data.SharedHomeIntent
@@ -7045,6 +7049,17 @@ private fun RaftAppShellReadyContent(
                                 readyServerId = readyServerId
                             )
                         val homeListPositionServerId = readyServerId ?: homeListServerId
+                        // thread_unread_badge_v0, read per server like the web `useServerFeatureFlag`.
+                        val homeFeatureFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
+                        val homeThreadUnreadBadgeEnabled =
+                            remember(homeListServerId, homeFeatureFlagRevision) {
+                                val flagServerId = homeListServerId?.takeIf { it.isNotBlank() }
+                                flagServerId != null &&
+                                    sharedStores.serverFeatureFlags.isEnabled(
+                                        ServerId(flagServerId),
+                                        THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
+                                    )
+                            }
                         val prefersChineseCommunity =
                             localePreferenceStore.readLocaleSync() == AppLocale.SimplifiedChinese
                         PerformanceSceneEffect(bridge, "kuikly_home", active = active)
@@ -7071,6 +7086,7 @@ private fun RaftAppShellReadyContent(
                                 homeServerAvatarEnabled = homeServerAvatarEnabled,
                                 // The phone bar (not the wide rail) carries Search and Activity.
                                 searchAndActivityInBottomBar = !navRailActive,
+                                threadUnreadBadgeEnabled = homeThreadUnreadBadgeEnabled,
                                 onIntent = { intent ->
                                     prewarmAdmissionGate.invalidate("home_intent:${intent::class.simpleName}")
                                     if (intent is SharedHomeIntent.SelectServer) {
@@ -19611,6 +19627,8 @@ private fun SharedHomeScreen(
     homeServerAvatarEnabled: Boolean = false,
     /** The phone bottom bar is on screen: the list drops its Search / Activity rows. */
     searchAndActivityInBottomBar: Boolean = false,
+    /** Server flag `thread_unread_badge_v0`: channel rows show followed-thread unread (web parity). */
+    threadUnreadBadgeEnabled: Boolean = false,
     onIntent: (SharedHomeIntent) -> Unit,
     onNotificationDismiss: (String) -> Unit = { id -> onIntent(SharedHomeIntent.DismissNotification(id)) },
     onAppUpdateOpen: (() -> Unit)? = null,
@@ -19877,12 +19895,22 @@ private fun SharedHomeScreen(
                 }
             val conversationDirectoryProjections by conversationDirectoryFlow.collectAsState(emptyMap())
             val restoredRowHints = current.displayRowHints()
+            // Store-owned followed-thread unread, folded per parent channel; gated like the web sidebar.
+            val threadUnreadByParent =
+                remember(snapshot.followedThreadUnread, threadUnreadBadgeEnabled) {
+                    if (threadUnreadBadgeEnabled) {
+                        snapshot.followedThreadUnread.foldThreadUnreadByParent()
+                    } else {
+                        emptyMap<ChannelId, HomeParentThreadUnread>()
+                    }
+                }
             val conversationRowProjector =
-                remember(conversationDirectoryProjections, draftProjection, restoredRowHints) {
+                remember(conversationDirectoryProjections, draftProjection, restoredRowHints, threadUnreadByParent) {
                     SharedHomeConversationRowProjector(
                         directoryProjections = conversationDirectoryProjections,
                         draftProjection = draftProjection,
-                        restoredRowHints = restoredRowHints
+                        restoredRowHints = restoredRowHints,
+                        threadUnreadByParent = threadUnreadByParent
                     )
                 }
             val servers =
@@ -24084,22 +24112,40 @@ internal data class SharedHomeConversationRowSeed(
     val fallbackActivityMuted: Boolean = false,
     val fallbackActivityMuteSupported: Boolean = false,
     val fallbackBridgeProvider: String? = null,
-    val fallbackGuestVisible: Boolean = false
+    val fallbackGuestVisible: Boolean = false,
+    /** Unread summary `hasMention` (or a followed thread's), carried by the store. */
+    val mentioned: Boolean = false,
+    /** Followed threads under this channel with new replies, carried by the store. */
+    val followedThreadUnreadCount: Int = 0
 )
 
 internal data class SharedHomeConversationRowProjector(
     val directoryProjections: Map<String, SharedConversationDirectoryProjection> = emptyMap(),
     val draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     /** task #166: cold-start hints from [SharedHomeContentState.Content.displayRowHints]. */
-    val restoredRowHints: Map<String, HomeRowRestoredHint> = emptyMap()
+    val restoredRowHints: Map<String, HomeRowRestoredHint> = emptyMap(),
+    /**
+     * [HomeSnapshot.followedThreadUnread] folded per parent channel. Empty when the server gates the
+     * thread mark off (web `thread_unread_badge_v0`), which hides both the count and the thread's @.
+     */
+    val threadUnreadByParent: Map<ChannelId, HomeParentThreadUnread> = emptyMap()
 ) {
-    fun project(conversation: HomeConversationRow): RaftHomeConversationItem =
-        project(
-            conversation.toSharedHomeConversationRowSeed().withRestoredHint(
-                // A known count (read prediction, realtime) is newer than anything restored.
-                restoredRowHints[conversation.threadId.value]?.takeIf { !conversation.unreadCountKnown }
-            )
+    fun project(conversation: HomeConversationRow): RaftHomeConversationItem {
+        // Only channel rows carry the followed-thread segment (web `SidebarChannelItem`).
+        val threadUnread =
+            if (conversation is HomeChannelRow) threadUnreadByParent[conversation.channelId] else null
+        return project(
+            conversation.toSharedHomeConversationRowSeed()
+                .copy(
+                    mentioned = conversation.mentionCount > 0 || threadUnread?.hasMention == true,
+                    followedThreadUnreadCount = threadUnread?.count ?: 0
+                )
+                .withRestoredHint(
+                    // A known count (read prediction, realtime) is newer than anything restored.
+                    restoredRowHints[conversation.threadId.value]?.takeIf { !conversation.unreadCountKnown }
+                )
         )
+    }
 
     fun project(seed: SharedHomeConversationRowSeed): RaftHomeConversationItem =
         seed.toSharedHomeConversationItem(
@@ -24242,7 +24288,9 @@ private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
         bridgeProvider = directoryProjection?.bridgeProvider ?: fallbackBridgeProvider,
         // The Home row seed is the canonical channel row; a directory projection from a
         // sparse source (inbox) never carries guestVisible, so it may only add, not clear.
-        guestVisible = fallbackGuestVisible || directoryProjection?.guestVisible == true
+        guestVisible = fallbackGuestVisible || directoryProjection?.guestVisible == true,
+        mentioned = mentioned,
+        followedThreadUnreadCount = followedThreadUnreadCount
     )
 }
 

@@ -30,7 +30,7 @@ import kotlinx.serialization.json.Json
  *
  *   GET /api/.../channels      -> Array<Channel>             (channelService.listChannels)
  *   GET /api/.../channels/dm   -> Array<DMChannel>           (channelService.listDMChannels)
- *   GET /api/.../channels/unread -> Record<channelId, number> (channelService.getUnreadCounts)
+ *   GET /api/.../channels/unread?summary=1 -> { channels, threadUnread } (channelService.getUnreadSummary)
  *
  * See packages/server/src/services/channelService.ts for the source of truth.
  */
@@ -248,8 +248,9 @@ fun parseRaftHome(
     }
 
     val unreadCounts = payload.unreadCounts
-    val channelsWithUnread = channels.applyChannelUnreadCounts(unreadCounts)
-    val dmsWithUnread = directMessages.applyDirectMessageUnreadCounts(unreadCounts)
+    val mentioned = payload.mentionedChannelIds
+    val channelsWithUnread = channels.applyChannelUnreadCounts(unreadCounts, mentioned)
+    val dmsWithUnread = directMessages.applyDirectMessageUnreadCounts(unreadCounts, mentioned)
     val channelUnreadTotal = channelsWithUnread.sumOf { it.unreadCount } + dmsWithUnread.sumOf { it.unreadCount }
     val serverUnreadTotal =
         payload.serverUnreadSummary
@@ -289,6 +290,7 @@ fun parseRaftHome(
             serverActivityUnreadCounts = serverActivityUnreadCounts,
             serverPushMutedByServer = serverPushMutedByServer,
             serverUnreadSummaryAvailable = payload.serverUnreadSummaryAvailable,
+            followedThreadUnread = payload.followedThreadUnread,
             // task #831: carry unread availability through so the Store keeps
             // prior badges instead of clobbering them to zero when the unread
             // endpoints were unavailable.
@@ -504,20 +506,42 @@ private fun HomeDirectMessageWireDto.toPeerMemberProfile(
     )
 }
 
+// A summary entry sets both the exact count and the mention flag (`hasMention` rides as mentionCount 0/1,
+// the same encoding the Activity rows use); a scope the summary did not report keeps both unknown.
 private fun List<HomeChannelRow>.applyChannelUnreadCounts(
-    counts: Map<ChannelId, Int>
+    counts: Map<ChannelId, Int>,
+    mentioned: Set<ChannelId>
 ): List<HomeChannelRow> =
     map { conversation ->
         val count = counts[conversation.channelId]
-        if (count == null) conversation else conversation.copy(unreadCount = count, unreadCountKnown = true)
+        if (count == null) {
+            conversation
+        } else {
+            conversation.copy(
+                unreadCount = count,
+                unreadCountKnown = true,
+                mentionCount = if (conversation.channelId in mentioned) 1 else 0,
+                mentionCountKnown = true
+            )
+        }
     }
 
 private fun List<HomeDirectMessageRow>.applyDirectMessageUnreadCounts(
-    counts: Map<ChannelId, Int>
+    counts: Map<ChannelId, Int>,
+    mentioned: Set<ChannelId>
 ): List<HomeDirectMessageRow> =
     map { conversation ->
         val count = counts[conversation.channelId]
-        if (count == null) conversation else conversation.copy(unreadCount = count, unreadCountKnown = true)
+        if (count == null) {
+            conversation
+        } else {
+            conversation.copy(
+                unreadCount = count,
+                unreadCountKnown = true,
+                mentionCount = if (conversation.channelId in mentioned) 1 else 0,
+                mentionCountKnown = true
+            )
+        }
     }
 
 private fun List<HomeChannelRow>.dedupeHomeChannels(): List<HomeChannelRow> {

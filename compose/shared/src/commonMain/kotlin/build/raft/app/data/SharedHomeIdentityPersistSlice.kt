@@ -116,7 +116,9 @@ internal fun HomeSnapshot.pruneForHomeIdentityPersist(): HomeSnapshot =
         directMessages = directMessages.map { it.pruneForHomeIdentityPersist() },
         unreadTotal = 0,
         unreadSource = AppBadgeSource.UNKNOWN,
-        serverUnreadCounts = emptyMap()
+        serverUnreadCounts = emptyMap(),
+        // Unread-bearing like the row counts: the identity cache never restores a thread mark.
+        followedThreadUnread = emptyMap()
     )
 
 private fun HomeChannelRow.pruneForHomeIdentityPersist(): HomeChannelRow =

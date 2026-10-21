@@ -35,7 +35,7 @@ private suspend fun RaftNetworkClient.directMessages(
     request(priority, "channels/dm", serverIdOverride = serverId)
 
 private suspend fun RaftNetworkClient.channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse =
-    request(priority, "channels/unread")
+    request(priority, "channels/unread", query = CHANNEL_UNREAD_SUMMARY_QUERY)
 
 private suspend fun RaftNetworkClient.serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse =
     request(priority, "servers/unread-summary")
@@ -416,7 +416,12 @@ internal class NetworkRaftHomeApi(
         networkClient.request(priority, "channels/dm", serverIdOverride = serverId)
 
     override suspend fun channelUnreadCounts(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
-        networkClient.request(priority, "channels/unread", serverIdOverride = serverId)
+        networkClient.request(
+            priority,
+            "channels/unread",
+            query = CHANNEL_UNREAD_SUMMARY_QUERY,
+            serverIdOverride = serverId
+        )
 
     override suspend fun serverUnreadSummary(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
         networkClient.request(priority, "servers/unread-summary", serverIdOverride = serverId)

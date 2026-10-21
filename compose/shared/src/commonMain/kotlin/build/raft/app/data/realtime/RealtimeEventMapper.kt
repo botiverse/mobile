@@ -37,6 +37,7 @@ import build.raft.app.model.MessageCommentRef
 import build.raft.app.model.MessageConversationContext
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageReaction
+import build.raft.app.model.MessageMention
 import build.raft.app.model.MessageNew
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.MessageType
@@ -406,6 +407,16 @@ private data class MessageWireDto(
     val conversationContext: ConversationContextWireDto? = null,
     /** Slack-bridge external sender attribution (present iff senderType=external_projection). */
     val externalAuthor: WireExternalAuthor? = null,
+    /** `MessageMention[]` (web `messageStore.ts`); null/absent on producers that omit it. */
+    val mentions: List<MessageMentionWireDto>? = null,
+)
+
+/** One `mentions[]` entry: `{ type: "user" | "agent" | "external"; id; name; displayName? }`. */
+@Serializable
+private data class MessageMentionWireDto(
+    val type: String = "",
+    val id: String = "",
+    val name: String = "",
 )
 
 /**
@@ -530,6 +541,8 @@ private data class ThreadLatestReplyDto(
     val senderAvatarUrl: String? = null,
     val createdAt: String = "",
     val messageType: String? = null,
+    /** The reply is the enriched message payload, so it carries `mentions` like `message:new`. */
+    val mentions: List<MessageMentionWireDto>? = null,
 )
 
 @Serializable
@@ -781,8 +794,16 @@ private fun MessageWireDto.toDomain(diagnostics: (String) -> Unit): Message? {
         forwardBundle = forwardBundle.toForwardMessageBundle() ?: actionMetadata.toForwardMessageBundle(),
         conversationContext = conversationContext?.toDomain(),
         externalAuthor = resolvedExternalAuthor,
+        mentions = mentions.toDomainMentions(),
     )
 }
+
+private fun List<MessageMentionWireDto>?.toDomainMentions(): List<MessageMention> =
+    orEmpty().mapNotNull { mention ->
+        val type = mention.type.trim()
+        val id = mention.id.trim()
+        if (type.isEmpty() || id.isEmpty()) null else MessageMention(type = type, id = id, name = mention.name)
+    }
 
 // Kind strings parse through the #417 contract: unknown values become null
 // (never a guessed Channel), and the whole context is dropped when it says
@@ -883,6 +904,7 @@ private fun ThreadUpdatedDto.toDomain(): ThreadUpdated? {
         firstUnreadMessageId = firstUnreadMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
         latestReply = latestReply?.toReplyPreview(),
         syncCoreReplyWindow = syncCoreReplyWindow?.toDomain(),
+        latestReplyMentions = latestReply?.mentions.toDomainMentions(),
     )
 }
 
