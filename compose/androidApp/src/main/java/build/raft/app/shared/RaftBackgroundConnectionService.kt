@@ -26,8 +26,9 @@ import java.util.concurrent.atomic.AtomicInteger
  * Type `remoteMessaging` (API 34+, FOREGROUND_SERVICE_REMOTE_MESSAGING): receiving messages from a server
  * for the user; `dataSync` is time-limited on Android 15 and the wrong category.
  *
- * Started by [AndroidRealtimeKeepAliveController] only while the app is visible (activity resume, or a
- * Settings change made in the app), which every Android version allows; it then stays up in the background
+ * Started by [AndroidRealtimeKeepAliveController] while the app is visible (activity resume, or a Settings
+ * change made in the app) or as it leaves the foreground (inside Android's foreground-to-background grace),
+ * which every Android version allows; it then stays up in the background
  * until sign-out, the preference is turned off, or Play services shows up.
  */
 class RaftBackgroundConnectionService : Service() {
@@ -51,11 +52,18 @@ class RaftBackgroundConnectionService : Service() {
                 decision = decision,
             )
         if (outcome is RaftBackgroundConnectionPolicy.StartCommandOutcome.StopWithoutForeground) {
-            // A sticky restart lands in a fresh process: only the UI opens the realtime connection, so there is
-            // nothing to keep alive. Stop before startForeground (a restart is not a foreground-service start).
+            // A sticky restart lands in a fresh process: only the UI opens the realtime connection (the shared
+            // realtime authority that grants it lives in the UI-hosted store), so there is nothing to keep alive
+            // even when a session is stored. Stop before startForeground (a restart is not a foreground-service
+            // start); the next activity resume or background transition requests the service again.
+            // has_session is the in-memory realtime owner, stored_session the persisted sign-in.
+            val storedSession =
+                runCatching { AndroidRealtimeSessionAvailability.hasStoredRealtimeSession(applicationContext) }
+                    .getOrDefault(false)
             RaftAppLog.w(
                 LOG_TAG,
-                "background_connection_service_restart_stop has_session=$hasSession decision=$decision"
+                "background_connection_service_restart_stop has_session=$hasSession stored_session=$storedSession " +
+                    "decision=$decision"
             )
             stopSelf(startId)
             return START_NOT_STICKY
@@ -69,14 +77,14 @@ class RaftBackgroundConnectionService : Service() {
             return START_NOT_STICKY
         }
         if (outcome is RaftBackgroundConnectionPolicy.StartCommandOutcome.PromoteThenStop) {
-            RaftAppLog.i(LOG_TAG, "background_connection_service_start_then_stop reason=${outcome.reason}")
+            RaftAppLog.w(LOG_TAG, "background_connection_service_start_then_stop reason=${outcome.reason}")
             if (stopSelfResult(startId)) {
                 running = false
             }
             return START_NOT_STICKY
         }
         running = true
-        RaftAppLog.i(
+        RaftAppLog.w(
             LOG_TAG,
             "background_connection_service_started restart=$systemRestart has_session=$hasSession " +
                 "source=${intent?.getStringExtra(EXTRA_SOURCE).orEmpty()}"
@@ -130,7 +138,7 @@ class RaftBackgroundConnectionService : Service() {
         running = false
         pendingStarts.set(0)
         stopQueued = false
-        RaftAppLog.i(LOG_TAG, "background_connection_service_destroyed")
+        RaftAppLog.w(LOG_TAG, "background_connection_service_destroyed")
         super.onDestroy()
     }
 
@@ -177,7 +185,10 @@ class RaftBackgroundConnectionService : Service() {
                 true
             }.getOrDefault(false).also { declared = it }
 
-        /** Must be called while the app is visible: background starts are refused on Android 12+. */
+        /**
+         * Must be called while the app is visible or has just left the foreground: other background starts are
+         * refused on Android 12+ (the request then fails and is logged).
+         */
         internal fun start(context: Context, source: String) {
             val appContext = context.applicationContext
             pendingStarts.incrementAndGet()
@@ -222,14 +233,14 @@ class RaftBackgroundConnectionService : Service() {
                                 "errorType=${error::class.simpleName ?: "unknown"}"
                         )
                     }.isSuccess
-                RaftAppLog.i(LOG_TAG, "background_connection_service_stop_pending reason=$reason requested=$requested")
+                RaftAppLog.w(LOG_TAG, "background_connection_service_stop_pending reason=$reason requested=$requested")
                 return
             }
             runCatching {
                 appContext.stopService(Intent(appContext, RaftBackgroundConnectionService::class.java))
             }
             if (wasRunning) {
-                RaftAppLog.i(LOG_TAG, "background_connection_service_stop reason=$reason")
+                RaftAppLog.w(LOG_TAG, "background_connection_service_stop reason=$reason")
             }
         }
 

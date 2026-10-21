@@ -110,6 +110,37 @@ internal object RaftBackgroundConnectionPolicy {
     fun shouldEnableBackgroundKeepAlive(fallbackApplies: Boolean, decision: Decision): Boolean =
         !fallbackApplies || decision == Decision.Run
 
+    internal sealed interface BackgroundTransitionAction {
+        /** Nothing to do: a Play services device, or the service is already up (or stopped) as it should be. */
+        data object None : BackgroundTransitionAction
+
+        /** The service should run but is not up: request it now, inside the foreground-to-background grace. */
+        data object RequestStart : BackgroundTransitionAction
+
+        data class Stop(val reason: String) : BackgroundTransitionAction
+    }
+
+    /**
+     * The app just left the foreground (last activity stopped). This is the last moment Android 12+ still
+     * lets the app start a foreground service, and the moment the service starts to matter, so the decision is
+     * re-read from storage here: it catches every input that changed after the last activity resume (sign-in
+     * or session restore finishing after resume, a server switch racing the resume-time start, a service the
+     * system stopped). Play services devices are never touched.
+     */
+    fun backgroundTransitionAction(
+        fallbackApplies: Boolean,
+        decision: Decision,
+        serviceActive: Boolean,
+        stopQueued: Boolean,
+    ): BackgroundTransitionAction =
+        when {
+            !fallbackApplies -> BackgroundTransitionAction.None
+            decision is Decision.Stop ->
+                if (serviceActive) BackgroundTransitionAction.Stop(decision.reason) else BackgroundTransitionAction.None
+            serviceActive && !stopQueued -> BackgroundTransitionAction.None
+            else -> BackgroundTransitionAction.RequestStart
+        }
+
     private val TerminalStopReasons =
         setOf(
             "logout",

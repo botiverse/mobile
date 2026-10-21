@@ -102,6 +102,77 @@ internal object AndroidRealtimeKeepAliveController {
         )
     }
 
+    /**
+     * The process just went to the background (its last started activity stopped). Activity resume used to be
+     * the only place the service was requested, so any input that became true after that resume (sign-in or
+     * session restore completing, a server switch racing the resume-time start, a service the system had
+     * stopped) left a no-Play-services device without the service, and the OS froze or killed the process
+     * once it was hidden. Re-evaluate here, still inside Android's foreground-to-background start grace.
+     */
+    fun onAppBackgrounded(context: Context) {
+        val appContext = context.applicationContext
+        runCatching {
+            backgroundTransitionHandler(appContext).onAppBackgrounded()
+        }.onFailure { error ->
+            RaftAppLog.w(
+                LOG_TAG,
+                "background_transition_failed errorType=${error::class.simpleName ?: "unknown"} " +
+                    "message=${error.message.orEmpty()}"
+            )
+        }
+    }
+
+    private fun backgroundTransitionHandler(appContext: Context): BackgroundTransitionHandler =
+        BackgroundTransitionHandler(
+            fallbackApplies = { noPlayServicesFallbackApplies(appContext) },
+            decision = { currentBackgroundConnectionDecision(appContext) },
+            serviceActive = { RaftBackgroundConnectionService.active },
+            stopQueued = { RaftBackgroundConnectionService.stopQueued },
+            requestStart = { source ->
+                AndroidAppScopeRealtimeOwner.enableBackgroundKeepAlive(context = appContext, source = source)
+                RaftAppLog.w(LOG_TAG, "background_connection_service_request source=$source")
+                RaftBackgroundConnectionService.start(appContext, source)
+            },
+            requestStop = { reason ->
+                AndroidAppScopeRealtimeOwner.disableBackgroundKeepAlive(reason)
+                RaftBackgroundConnectionService.stop(appContext, reason)
+            },
+            log = { message -> RaftAppLog.w(LOG_TAG, message) },
+        )
+
+    /** Background-transition wiring with its platform calls injected (unit-tested without Android). */
+    internal class BackgroundTransitionHandler(
+        private val fallbackApplies: () -> Boolean,
+        private val decision: () -> RaftBackgroundConnectionPolicy.Decision,
+        private val serviceActive: () -> Boolean,
+        private val stopQueued: () -> Boolean,
+        private val requestStart: (source: String) -> Unit,
+        private val requestStop: (reason: String) -> Unit,
+        private val log: (String) -> Unit,
+    ) {
+        fun onAppBackgrounded() {
+            // Play services devices: read nothing else, change nothing.
+            if (!fallbackApplies()) return
+            val current = decision()
+            val action =
+                RaftBackgroundConnectionPolicy.backgroundTransitionAction(
+                    fallbackApplies = true,
+                    decision = current,
+                    serviceActive = serviceActive(),
+                    stopQueued = stopQueued(),
+                )
+            log("background_transition decision=$current action=$action")
+            when (action) {
+                RaftBackgroundConnectionPolicy.BackgroundTransitionAction.None -> Unit
+                RaftBackgroundConnectionPolicy.BackgroundTransitionAction.RequestStart ->
+                    requestStart(SOURCE_APP_BACKGROUND)
+                is RaftBackgroundConnectionPolicy.BackgroundTransitionAction.Stop -> requestStop(action.reason)
+            }
+        }
+    }
+
+    internal const val SOURCE_APP_BACKGROUND = "app_background"
+
     /** Called from activity resume: re-reads inputs that can change while the app was away. */
     fun onHostResumed(context: Context) {
         val appContext = context.applicationContext
@@ -151,7 +222,9 @@ internal object AndroidRealtimeKeepAliveController {
         when (decision) {
             RaftBackgroundConnectionPolicy.Decision.Run -> {
                 if (RaftBackgroundConnectionService.active && !RaftBackgroundConnectionService.stopQueued) return
-                RaftAppLog.i(LOG_TAG, "background_connection_service_request source=$source")
+                // warn level: RaftAppLog.i is dropped in release builds, and this is the line that proves the
+                // service was requested when reading a feedback diagnostics zip.
+                RaftAppLog.w(LOG_TAG, "background_connection_service_request source=$source")
                 RaftBackgroundConnectionService.start(context, source)
             }
             is RaftBackgroundConnectionPolicy.Decision.Stop ->
