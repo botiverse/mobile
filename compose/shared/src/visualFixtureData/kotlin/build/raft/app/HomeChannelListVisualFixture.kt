@@ -17,7 +17,7 @@ private fun HomeChannelListRow.text(key: String): String = this[key] as String
 
 private fun HomeChannelListRow.textOrNull(key: String): String? = this[key] as String?
 
-private fun HomeChannelListRow.count(key: String): Int = this[key] as Int
+private fun HomeChannelListRow.number(key: String): Int = this[key] as Int
 
 private fun HomeChannelListRow.flag(key: String): Boolean = this[key] as Boolean
 
@@ -29,9 +29,9 @@ internal fun homeChannelListChannel(row: HomeChannelListRow): RaftHomeConversati
         name = row.text("name"),
         kind = if (type == JointChannelKindWireValue) JointChannelKindWireValue else "channel",
         channelType = type.takeIf { it == "private" },
-        unreadCount = row.count("unread"),
+        unreadCount = row.number("unread"),
         mentioned = row.flag("mention"),
-        followedThreadUnreadCount = row.count("followedThreadsWithNewReplies"),
+        followedThreadUnreadCount = row.number("followedThreadsWithNewReplies"),
         hasDraft = row.flag("draft"),
         activityMuted = row.flag("muted"),
         activityMuteSupported = true
@@ -44,7 +44,7 @@ internal fun homeChannelListDirectMessage(row: HomeChannelListRow): RaftHomeConv
         id = row.text("id"),
         name = row.text("name"),
         kind = RaftThreadSurfaceKind.DirectMessage,
-        unreadCount = row.count("unread"),
+        unreadCount = row.number("unread"),
         avatarLabel = row.text("avatarLabel"),
         peerType = if (isAgent) "agent" else "human",
         presenceMemberId = row.text("peerId")
