@@ -49,6 +49,8 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsComputerAgentSnapshot
+import build.raft.app.data.SettingsComputerControlState
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.SettingsComputerDescriptionUpdateRequest
 import build.raft.app.data.SettingsComputerDetailSnapshot
 import build.raft.app.data.SettingsComputerRenameRequest
@@ -75,6 +77,7 @@ import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftDescriptionList
 import build.raft.designsystem.components.RaftDescriptionListDirection
 import build.raft.designsystem.components.RaftDialog
@@ -451,6 +454,7 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                 onRetry = ::refresh,
                 onIntent = settingsViewModel::dispatch,
                 agentStatusResolver = agentStatusResolver,
+                computerControl = settingsState.computerControl,
                 onOpenAgent = { agent ->
                     val serverId = currentServerId
                     val pageData =
@@ -484,6 +488,8 @@ internal fun RaftSettingsComputerDetailContent(
     onOpenAgent: (SettingsComputerAgentSnapshot) -> Unit,
     /** Live agent activity for the agent rows (the members store); empty in fixtures. */
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    /** Restart / upgrade progress of the open Computer (the settings store's `computerControl`). */
+    computerControl: SettingsComputerControlState = SettingsComputerControlState(),
 ) {
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         when (model) {
@@ -511,7 +517,16 @@ internal fun RaftSettingsComputerDetailContent(
                     )
                 }
             is RaftComputerDetailModel.Content ->
-                RaftComputerDetailBody(model, actionState, refreshErrorCode, bottomContentPadding, agentStatusResolver, onIntent, onOpenAgent)
+                RaftComputerDetailBody(
+                    model = model,
+                    actionState = actionState,
+                    computerControl = computerControl,
+                    refreshErrorCode = refreshErrorCode,
+                    bottomContentPadding = bottomContentPadding,
+                    agentStatusResolver = agentStatusResolver,
+                    onIntent = onIntent,
+                    onOpenAgent = onOpenAgent,
+                )
         }
     }
 }
@@ -520,6 +535,7 @@ internal fun RaftSettingsComputerDetailContent(
 private fun RaftComputerDetailBody(
     model: RaftComputerDetailModel.Content,
     actionState: SharedSettingsActionState?,
+    computerControl: SettingsComputerControlState,
     refreshErrorCode: String?,
     bottomContentPadding: Dp,
     agentStatusResolver: RaftAgentStatusResolver,
@@ -533,8 +549,23 @@ private fun RaftComputerDetailBody(
     val canRemove = model.canRemove
     val currentAction = actionState?.takeIf { it.itemId == machineId }
     var confirmDelete by remember(machineId) { mutableStateOf(false) }
+    val nowMillis = LocalRaftTimeContextProvider.current?.current?.nowEpochMillis ?: defaultNowMillis()
+    val upgrade = raftComputerUpgradeModel(snapshot.computer, computerControl, nowMillis)
+    val controls =
+        RaftComputerControlsContext(
+            computer = snapshot.computer,
+            upgrade = upgrade,
+            restart = computerControl.restart,
+            canManage = snapshot.canManageMachines,
+            commandContext = snapshot.commandContext,
+            onRestart = { onIntent(SharedSettingsIntent.RestartComputer(machineId)) },
+            onUpgrade = { version -> onIntent(SharedSettingsIntent.UpgradeComputer(machineId, version)) },
+            onCopy = { command -> onIntent(SharedSettingsIntent.CopyComputerCommand(command)) },
+            onOpenInstallGuide = { onIntent(SharedSettingsIntent.OpenComputerInstallGuide) },
+        )
     LazyColumn(Modifier.fillMaxSize()) {
         item(key = "header") { RaftComputerDetailHeader(computer) }
+        item(key = "version-notice") { RaftComputerVersionNotice(controls) }
         refreshErrorCode?.let { code -> item(key = "refresh-error") { RaftComputersRefreshErrorBanner(code) } }
         currentAction
             ?.takeIf { !it.inProgress && it.hasComputerActionError() }
@@ -599,8 +630,14 @@ private fun RaftComputerDetailBody(
                         mono = true,
                     )
                 }
+                // Web: an offline Computer's version row links the notes of the version it can move to.
+                upgrade.releaseNotes?.takeIf { !snapshot.computer.online }?.let { notes ->
+                    Spacer(Modifier.height(8.dp))
+                    RaftComputerReleaseNotesLink(notes)
+                }
             }
         }
+        item(key = "connection") { RaftComputerConnectionSection(controls) }
         item(key = "agents") { RaftComputerAgentsSection(snapshot, agentStatusResolver, onOpenAgent) }
         item(key = "workspaces") {
             RaftComputerWorkspacesSection(
@@ -611,29 +648,31 @@ private fun RaftComputerDetailBody(
             )
         }
         // Like the web, key rotation is not offered here.
-        if (canRemove) {
+        if (snapshot.canManageMachines) {
             item(key = "actions") {
                 RaftSection(title = stringResource(MR.strings.settings_computers_section_actions)) {
-                    val deleting = actionState?.let { it.action == COMPUTER_ACTION_DELETE && it.itemId == machineId && it.inProgress } == true
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        RaftText(
-                            stringResource(MR.strings.settings_computers_delete_title),
-                            style = RaftTheme.typography.callout.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
-                            color = RaftTheme.colors.foreground,
-                        )
-                        RaftText(
-                            stringResource(MR.strings.settings_computers_delete_detail),
-                            style = RaftTheme.typography.footnote,
-                            color = RaftTheme.colors.foregroundMuted,
-                        )
-                        RaftButton(
-                            text = stringResource(MR.strings.settings_computers_delete_action),
-                            onClick = { confirmDelete = true },
-                            variant = RaftButtonVariant.Danger,
-                            loading = deleting,
-                            loadingLabel = stringResource(MR.strings.settings_computers_delete_busy),
-                            leadingIcon = { RaftComputersIcon(RaftLucideIconName.Trash2) },
-                        )
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        // Remote restart / upgrade: managed Computers only, and only online (an offline
+                        // Computer's way back is the connection section's recovery commands).
+                        if (snapshot.computer.isComputer && snapshot.computer.online) RaftComputerServiceCard(controls)
+                        if (snapshot.computer.isComputer) RaftComputerRecoveryGuideCard(controls)
+                        if (canRemove) {
+                            val deleting =
+                                actionState?.let { it.action == COMPUTER_ACTION_DELETE && it.itemId == machineId && it.inProgress } == true
+                            RaftCard(
+                                title = stringResource(MR.strings.settings_computers_delete_title),
+                                description = stringResource(MR.strings.settings_computers_delete_detail),
+                            ) {
+                                RaftButton(
+                                    text = stringResource(MR.strings.settings_computers_delete_action),
+                                    onClick = { confirmDelete = true },
+                                    variant = RaftButtonVariant.Danger,
+                                    loading = deleting,
+                                    loadingLabel = stringResource(MR.strings.settings_computers_delete_busy),
+                                    leadingIcon = { RaftComputersIcon(RaftLucideIconName.Trash2) },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1097,7 +1136,7 @@ internal fun RaftComputersTheme(content: @Composable () -> Unit) {
 
 /** A Lucide icon in the enclosing design-system slot's ink. */
 @Composable
-private fun RaftComputersIcon(name: RaftLucideIconName, size: Dp = 16.dp) {
+internal fun RaftComputersIcon(name: RaftLucideIconName, size: Dp = 16.dp) {
     val ink = LocalRaftContentColor.current.takeIf { it.isSpecified } ?: RaftTheme.colors.foreground
     RaftLucideIcon(name, modifier = Modifier.size(size), color = raftArgbHex(ink))
 }
