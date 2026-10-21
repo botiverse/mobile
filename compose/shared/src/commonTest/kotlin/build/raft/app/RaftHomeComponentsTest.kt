@@ -1658,7 +1658,7 @@ class RaftHomeComponentsTest {
     @Test
     fun homeLazyItemCountIncludesVisibleSectionsAndRows() {
         assertEquals(
-            14,
+            12,
             homeLazyItemCount(
                 channelsCount = 3,
                 jointCount = 0,
@@ -1669,7 +1669,7 @@ class RaftHomeComponentsTest {
             )
         )
         assertEquals(
-            9,
+            7,
             homeLazyItemCount(
                 channelsCount = 3,
                 jointCount = 0,
@@ -1680,7 +1680,7 @@ class RaftHomeComponentsTest {
             )
         )
         assertEquals(
-            17,
+            15,
             homeLazyItemCount(
                 channelsCount = 0,
                 jointCount = 0,
@@ -1698,7 +1698,7 @@ class RaftHomeComponentsTest {
     @Test
     fun homeLazyItemCountTracksChannelAndJointSectionsIndependently() {
         assertEquals(
-            15,
+            12,
             homeLazyItemCount(
                 channelsCount = 3,
                 jointCount = 2,
@@ -1709,7 +1709,7 @@ class RaftHomeComponentsTest {
             )
         )
         assertEquals(
-            16,
+            13,
             homeLazyItemCount(
                 channelsCount = 3,
                 jointCount = 2,

@@ -222,6 +222,10 @@ private val HomeListHorizontalPadding = RaftAppSpacing.Md
 // add only `pl-2` inside their highlight. Rows therefore sit 8dp from the edge so their icon
 // lines up under the section chevron (16dp), not 8dp past it.
 private val HomeListRowHorizontalPadding = RaftAppSpacing.Sm
+// Web phone Sidebar.tsx scroller `pt-1` (the Home head stays on screen, so not `pt-2`).
+private val HomeListTopPadding = RaftAppSpacing.Xs
+// Web `SidebarSectionDescription` `py-1.5`.
+private val HomeSidebarSectionEmptyHintPaddingVertical = 6.dp
 // #372 React parity: the post-sign-in loading state shows skeleton rows
 // under the CHANNELS / DIRECT MESSAGES section headers (4 + 3 rows in the
 // React app) instead of a bare shell.
@@ -2387,7 +2391,9 @@ private fun RaftStructuralHomeShellContent(
                                         },
                                 // Rows keep their own 1dp margins (raft-ui SidebarItem `my-px`).
                             ) {
-                                item { Spacer(Modifier.height(RaftAppSpacing.Md)) }
+                                // Web phone Home (Sidebar.tsx `px-2 pt-1`): the list starts 4dp under the
+                                // header; the first row's own 1dp margin puts its box 5dp down.
+                                item { Spacer(Modifier.height(HomeListTopPadding)) }
                                 // Jasper 2026-10-20: with the phone bar on screen, Search and Activity
                                 // live there (Search action, Activity tab); only Saved stays here. Wide
                                 // layouts without the bar keep both rows.
@@ -2435,10 +2441,11 @@ private fun RaftStructuralHomeShellContent(
                             // Sections render in web's normalized sectionOrder: system and
                             // custom sections interleave (web Sidebar.tsx renders every block
                             // with CSS `order = sectionOrder.indexOf(id)`); empty sections hide.
+                            // No spacer between blocks: as on the web, a section header's own
+                            // `pt-4` and the row above's 1dp margin are the whole gap.
                             displayedSidebarSections.forEach { sidebarSection ->
                                 when (sidebarSection) {
                                     RaftHomeSidebarSection.Pinned -> {
-                                        item { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
                                         item {
                                             HomeSidebarSectionHeader(
                                                 title = labels.pinned,
@@ -2469,7 +2476,7 @@ private fun RaftStructuralHomeShellContent(
                                         }
                                         if (pinnedExpanded && displayedPinned.isEmpty()) {
                                             item(key = "pinned-empty:$currentServerId") {
-                                                HomeSidebarSectionEmptyHint(labels.pinnedSectionEmpty, Modifier.padding(horizontal = HomeListHorizontalPadding))
+                                                HomeSidebarSectionEmptyHint(labels.pinnedSectionEmpty, Modifier.padding(horizontal = HomeListRowHorizontalPadding))
                                             }
                                         }
                                         if (pinnedExpanded) {
@@ -2584,7 +2591,6 @@ private fun RaftStructuralHomeShellContent(
                                     }
 
                                     RaftHomeSidebarSection.JointChannels -> {
-                                        item { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
                                         item {
                                             HomeSidebarSectionHeader(
                                                 title = labels.jointChannels,
@@ -2615,7 +2621,7 @@ private fun RaftStructuralHomeShellContent(
                                         }
                                         if (jointChannelsExpanded && displayedJointChannels.isEmpty()) {
                                             item(key = "joint-empty:$currentServerId") {
-                                                HomeSidebarSectionEmptyHint(labels.jointChannelsEmpty, Modifier.padding(horizontal = HomeListHorizontalPadding))
+                                                HomeSidebarSectionEmptyHint(labels.jointChannelsEmpty, Modifier.padding(horizontal = HomeListRowHorizontalPadding))
                                             }
                                         }
                                         if (jointChannelsExpanded) {
@@ -2647,7 +2653,6 @@ private fun RaftStructuralHomeShellContent(
                                     }
 
                                     RaftHomeSidebarSection.Channels -> {
-                                        item { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
                                         item {
                                             HomeSidebarSectionHeader(
                                                 title = labels.channels,
@@ -2713,7 +2718,6 @@ private fun RaftStructuralHomeShellContent(
                                     }
 
                                     RaftHomeSidebarSection.DirectMessages -> {
-                                        item { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
                                         item {
                                             HomeSidebarSectionHeader(
                                                 title = labels.directMessages,
@@ -2744,7 +2748,7 @@ private fun RaftStructuralHomeShellContent(
                                         }
                                         if (directMessagesExpanded && displayedDirectMessages.isEmpty() && !showLoadingSkeletons) {
                                             item(key = "dms-empty:$currentServerId") {
-                                                HomeSidebarSectionEmptyHint(labels.sectionEmpty, Modifier.padding(horizontal = HomeListHorizontalPadding))
+                                                HomeSidebarSectionEmptyHint(labels.sectionEmpty, Modifier.padding(horizontal = HomeListRowHorizontalPadding))
                                             }
                                         }
                                         if (directMessagesExpanded) {
@@ -2791,9 +2795,6 @@ private fun RaftStructuralHomeShellContent(
                                         val sectionRows = sidebarSection.rows
                                         val customSection = sectionRows.section
                                         val customSectionExpanded = customSection.id !in collapsedCustomSectionIds
-                                        item(key = "custom-section-spacer:$currentServerId:${customSection.id}") {
-                                            Spacer(Modifier.height(RaftAppSpacing.Xs))
-                                        }
                                         item(key = "custom-section-header:$currentServerId:${customSection.id}") {
                                             HomeSidebarSectionHeader(
                                                 title = customSection.name,
@@ -2827,7 +2828,7 @@ private fun RaftStructuralHomeShellContent(
                                         }
                                         if (customSectionExpanded && sectionRows.items.isEmpty()) {
                                             item(key = "custom-section-empty:$currentServerId:${customSection.id}") {
-                                                HomeSidebarSectionEmptyHint(labels.sectionEmpty, Modifier.padding(horizontal = HomeListHorizontalPadding))
+                                                HomeSidebarSectionEmptyHint(labels.sectionEmpty, Modifier.padding(horizontal = HomeListRowHorizontalPadding))
                                             }
                                         }
                                         if (customSectionExpanded) {
@@ -3467,13 +3468,11 @@ internal fun homeLazyItemCount(
             1 + // search
             1 + // activity
             1 + // saved
-            1 + // section spacer
             1 + // channels header
-            1 + // section spacer
             1 + // direct messages header
             1 // bottom spacer
-    val jointSectionItems = if (jointCount > 0) 2 else 0 // spacer + header
-    val pinnedSectionItems = if (pinnedCount > 0) 2 else 0 // header + (rows below); rows counted conditionally
+    val jointSectionItems = if (jointCount > 0) 1 else 0 // header
+    val pinnedSectionItems = if (pinnedCount > 0) 1 else 0 // header; rows counted conditionally
     return fixedItems +
         jointSectionItems +
         pinnedSectionItems +
@@ -3732,14 +3731,17 @@ data class RaftHomeSectionCreateRequest(
     val insertBeforeSectionId: String? = null
 )
 
-/** Web `SidebarSectionDescription` hint under an empty, expanded section. */
+/**
+ * Web `SidebarSectionDescription` hint under an empty, expanded section: `px-2 py-1.5` inside
+ * the list's `px-2`, so its words start under the section chevron (16dp from the edge).
+ */
 @Composable
 private fun HomeSidebarSectionEmptyHint(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
         style = RaftType.Caption,
         color = RaftColor.TextMutedGray,
-        modifier = modifier.fillMaxWidth().padding(start = RaftAppSpacing.Lg, top = RaftAppSpacing.Xs, bottom = RaftAppSpacing.Xs)
+        modifier = modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Sm, vertical = HomeSidebarSectionEmptyHintPaddingVertical)
     )
 }
 

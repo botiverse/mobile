@@ -412,7 +412,11 @@ android {
     }
     // AGP 9 removed the library-level defaultConfig.targetSdk; it only ever applied to this
     // module's tests and lint, which keep 34.
-    testOptions { targetSdk = 34 }
+    testOptions {
+        targetSdk = 34
+        // Robolectric Compose tests (HomeSidebarWebMetricsTest) render moko strings and fonts.
+        unitTests.isIncludeAndroidResources = true
+    }
     lint { targetSdk = 34 }
     sourceSets {
         named("main") {
