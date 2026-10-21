@@ -48,7 +48,8 @@ import kotlin.test.assertTrue
  * The loader / reader / writer are faked here; they are exercised in
  * `CanonicalMessageV2ReplyThreadDurableTest` and on SQLite in the reply-thread round trip.
  *
- * Every store runs on the test's own `runBlocking` event loop (see `SharedThreadStoreDurableOlderPagingTest`).
+ * Every store - including the data source's message / payload stores - runs on the test's own `runBlocking`
+ * event loop (see `SharedThreadStoreDurableOlderPagingTest` and [dataSource]).
  */
 class SharedThreadStoreReplyThreadDurableTest {
     @Test
@@ -58,7 +59,7 @@ class SharedThreadStoreReplyThreadDurableTest {
         val scope = CoroutineScope(coroutineContext + scopeJob)
         val api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true)
         val reader = FakeReader(replyFrame(count = 40))
-        val store = SharedThreadStore(dataSource(api, reader = reader, logs = logs), scope = scope)
+        val store = SharedThreadStore(dataSource(api, scope, reader = reader, logs = logs), scope = scope)
         store.accept(SharedThreadIntent.Start(replyRoute()))
 
         val standIn = store.state.value.payload
@@ -86,7 +87,7 @@ class SharedThreadStoreReplyThreadDurableTest {
         val scope = CoroutineScope(coroutineContext + scopeJob)
         val api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true)
         val reader = FakeReader(frame = null)
-        val store = SharedThreadStore(dataSource(api, reader = reader), scope = scope)
+        val store = SharedThreadStore(dataSource(api, scope, reader = reader), scope = scope)
         store.accept(SharedThreadIntent.Start(replyRoute()))
 
         val payload = store.state.value.payload
@@ -108,7 +109,7 @@ class SharedThreadStoreReplyThreadDurableTest {
         val reader = FakeReader(replyFrame(count = 40))
         val store =
             SharedThreadStore(
-                dataSource(SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true), reader = reader),
+                dataSource(SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true), scope, reader = reader),
                 scope = scope,
             )
         store.accept(SharedThreadIntent.Start(replyRoute().copy(parentChannelId = null)))
@@ -123,7 +124,7 @@ class SharedThreadStoreReplyThreadDurableTest {
         val scopeJob = SupervisorJob()
         val scope = CoroutineScope(coroutineContext + scopeJob)
         val loader = FakeLoader()
-        val store = SharedThreadStore(dataSource(SharedThreadStoreTest.FakeThreadApi(), loader = loader), scope = scope)
+        val store = SharedThreadStore(dataSource(SharedThreadStoreTest.FakeThreadApi(), scope, loader = loader), scope = scope)
         store.accept(SharedThreadIntent.Start(replyRoute()))
         withTimeout(5_000L) { while (loader.replyLoads.isEmpty()) yield() }
         assertEquals(listOf(ReplyRead(partition(ownerA), "thread-1", parent)), loader.replyLoads)
@@ -135,7 +136,7 @@ class SharedThreadStoreReplyThreadDurableTest {
         val twinJob = SupervisorJob()
         val twinScope = CoroutineScope(coroutineContext + twinJob)
         val twinLoader = FakeLoader()
-        SharedThreadStore(dataSource(SharedThreadStoreTest.FakeThreadApi(), loader = twinLoader), scope = twinScope)
+        SharedThreadStore(dataSource(SharedThreadStoreTest.FakeThreadApi(), twinScope, loader = twinLoader), scope = twinScope)
             .accept(SharedThreadIntent.Start(replyRoute().copy(parentChannelId = null)))
         repeat(10) { yield() }
         assertTrue(twinLoader.replyLoads.isEmpty() && twinLoader.topLevelLoads.isEmpty(), twinLoader.replyLoads.toString())
@@ -145,7 +146,7 @@ class SharedThreadStoreReplyThreadDurableTest {
     @Test
     fun replyThreadPagesAreOfferedToTheExtenderWithTheRoutesParent() = runBlocking {
         val extender = RecordingExtender()
-        val dataSource = dataSource(SharedThreadStoreTest.FakeThreadApi(), extender = extender)
+        val dataSource = dataSource(SharedThreadStoreTest.FakeThreadApi(), storeScope = null, extender = extender)
         val context = assertNotNull(dataSource.captureReplyCacheProducerContext())
         val raw = RawMessagePage(messages = JsonArray(emptyList()), requestedLimit = 30)
         val route = replyRoute().resolveThreadRouteIdentity()
@@ -208,7 +209,7 @@ class SharedThreadStoreReplyThreadDurableTest {
         val api = SharedThreadStoreTest.FakeThreadApi()
         api.catchUpResponseCodes.addLast(catchUpCode)
         val extender = RecordingExtender()
-        val store = SharedThreadStore(dataSource(api, extender = extender, logs = logs), scope = scope, diagnosticsLogger = logs::add)
+        val store = SharedThreadStore(dataSource(api, scope, extender = extender, logs = logs), scope = scope, diagnosticsLogger = logs::add)
         store.accept(SharedThreadIntent.Start(replyRoute()))
         repeat(20) { yield() }
         if (close) store.clear()
@@ -308,8 +309,16 @@ class SharedThreadStoreReplyThreadDurableTest {
         }
     }
 
+    /**
+     * [storeScope] confines the data source's own message / payload stores (parent-context lookups,
+     * reply-access flights) to the test's `runBlocking` event loop. Their defaults launch on
+     * `Dispatchers.Default`, where `fetchParent` logs into [logs] - a plain list the test thread
+     * iterates - and calls the unsynchronized fake API: a `ConcurrentModificationException` that
+     * only shows when the full suite loads the machine. `null` only for tests that start no store.
+     */
     private fun dataSource(
         api: SharedThreadStoreTest.FakeThreadApi,
+        storeScope: CoroutineScope?,
         reader: ThreadDurableLastKnownReader? = null,
         loader: ThreadEnteredScopeSnapshotLoader? = null,
         extender: ThreadDurablePageExtender? = null,
@@ -317,6 +326,8 @@ class SharedThreadStoreReplyThreadDurableTest {
     ): SharedThreadDataSource =
         SharedThreadDataSource(
             networkApi = api,
+            messageStore = storeScope?.let { SharedThreadMessageStore(scope = it) },
+            payloadStore = storeScope?.let { SharedThreadPayloadStore(scope = it) },
             sessionStore = InMemoryRaftAuthSessionStore(ownerA.session),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             replyCacheIdentityAuthority = { ownerA },
