@@ -101,6 +101,21 @@ class RaftAdaptiveWorkspaceTest {
     }
 
     @Test
+    fun halfFoldedWideWindowHostsTheDetailLikeTheShellRail() {
+        // The shell turns the rail on from the same DualPane pane state; the workspace must agree,
+        // or a half-open foldable shows the rail over a single list that pushes every conversation.
+        val pane = widePane().copy(posture = RaftAdaptivePanePosture.HalfFolded)
+        val state =
+            initialState()
+                .reduce(RaftAdaptiveWorkspaceIntent.WindowChanged(pane))
+                .reduce(RaftAdaptiveWorkspaceIntent.OpenDetail(detailIdentity("thread-a")))
+
+        assertEquals(RaftAdaptivePaneLayout.DualPane, state.pane.layout)
+        assertEquals(RaftAdaptiveWorkspacePresentation.Split, state.presentation)
+        assertTrue(raftAdaptiveNavRailActive(desktopModeEnabled = true, paneState = pane))
+    }
+
+    @Test
     fun closeAndLateCallbacksAreGenerationFencedAcrossRapidReplacement() {
         val first =
             initialState()

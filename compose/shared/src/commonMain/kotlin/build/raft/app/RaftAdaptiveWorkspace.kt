@@ -357,14 +357,14 @@ internal fun RaftAdaptiveWorkspaceState.acceptsDetailCallback(
 internal fun Long.nextAdaptiveGeneration(): Long =
     also { check(it < Long.MAX_VALUE) { "Adaptive workspace generation exhausted" } } + 1L
 
+/**
+ * Unknown posture means "no window facts yet": a DualPane claim without them stays compact.
+ * A half-folded window is judged by its width like any other (task #180, [reduceRaftAdaptivePane]):
+ * demoting it here left the rail on (the shell reads the pane state) over a one-pane workspace,
+ * so a wide half-open foldable showed the rail beside a phone list that pushed every conversation.
+ */
 private fun RaftAdaptivePaneState.withConservativeAdaptiveLayout(): RaftAdaptivePaneState =
-    if (
-        (
-            posture == RaftAdaptivePanePosture.Unknown ||
-                posture == RaftAdaptivePanePosture.HalfFolded
-        ) &&
-        layout == RaftAdaptivePaneLayout.DualPane
-    ) {
+    if (posture == RaftAdaptivePanePosture.Unknown && layout == RaftAdaptivePaneLayout.DualPane) {
         copy(layout = RaftAdaptivePaneLayout.Compact)
     } else {
         this
