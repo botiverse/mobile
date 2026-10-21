@@ -3,6 +3,10 @@ package build.raft.app
 import android.os.Build
 import java.text.BreakIterator
 import java.util.Locale
+import build.raft.app.components.RaftPullToRefreshStyle
+
+internal actual fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle =
+    RaftPullToRefreshStyle.Material
 
 internal actual fun raftPlatformUsesNativeLucideIconRotation(): Boolean = true
 
