@@ -102,6 +102,9 @@ import build.raft.designsystem.components.raftInsetFocusOutline
 import build.raft.designsystem.components.raftPressOverlay
 import build.raft.designsystem.components.raftPressOverlayColor
 import build.raft.designsystem.components.RaftPressSurface
+import build.raft.designsystem.components.RaftProgressBar
+import build.raft.designsystem.components.RaftProgressBarSize
+import build.raft.designsystem.components.RaftProgressBarVariant
 import build.raft.designsystem.components.raftSticker
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftAppearance
@@ -536,6 +539,25 @@ class DisplayComponentScreenshotTest {
                         RaftListRowSkeleton(divider = index > 0)
                     }
                 }
+            }
+        }
+
+    /** Determinate sizes, header, warning, complete (success fill) and a frozen indeterminate bar. */
+    @Test
+    fun progressBar() =
+        capture("progress_bar") {
+            Column(Modifier.width(320.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                RaftProgressBar(value = 0f, size = RaftProgressBarSize.Sm, contentDescription = "Empty")
+                RaftProgressBar(value = 0.42f, label = "Downloading design-crop.png", valueText = "42%")
+                RaftProgressBar(value = 0.08f, size = RaftProgressBarSize.Lg, contentDescription = "Started")
+                RaftProgressBar(
+                    value = 0.93f,
+                    variant = RaftProgressBarVariant.Warning,
+                    label = "Agent hours this month",
+                    valueText = "93 / 100",
+                )
+                RaftProgressBar(value = 1f, label = "Downloaded", valueText = "100%")
+                RaftProgressBar(value = null, label = "Waiting for the server", animated = false)
             }
         }
 
