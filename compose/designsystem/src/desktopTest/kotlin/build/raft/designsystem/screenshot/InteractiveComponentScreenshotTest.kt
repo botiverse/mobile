@@ -47,6 +47,7 @@ import build.raft.designsystem.components.RaftCheckboxRow
 import build.raft.designsystem.components.RaftCheckboxShape
 import build.raft.designsystem.components.RaftDialogHeader
 import build.raft.designsystem.components.RaftDialogSize
+import build.raft.designsystem.components.RaftDialogSheetCenteredSurface
 import build.raft.designsystem.components.RaftDialogSheetSurface
 import build.raft.designsystem.components.RaftDialogSurface
 import build.raft.designsystem.components.RaftDropdownMenu
@@ -692,6 +693,30 @@ class InteractiveComponentScreenshotTest {
                             RaftRadioRow("Raft Labs", selected = true, onClick = {})
                             RaftRadioRow("Acme", selected = false, onClick = {})
                         }
+                    }
+                }
+            }
+        }
+
+    /**
+     * [RaftDialogSheetCenteredSurface]: the same dialog on a tablet or a large screen (raft-ui:
+     * "On a desktop and a tablet every dialog stays centered"): the title with × at its end,
+     * the list, and a footer with a ghost Cancel and the commit button.
+     */
+    @Test
+    fun dialogSheetCentered() =
+        capture("dialog_sheet_centered") {
+            Column {
+                Caption("Tablet / large screen: centred, Cancel + commit in the footer", Modifier.padding(bottom = 12.dp))
+                RaftDialogSheetCenteredSurface(
+                    title = "Pinned",
+                    commitLabel = "Save",
+                    onCommit = {},
+                    onClose = {},
+                    modifier = Modifier.width(448.dp),
+                ) {
+                    listOf("proj-uiux", "design", "launch-week", "Mahua").forEach { name ->
+                        RaftText(name, Modifier.padding(horizontal = 20.dp, vertical = 10.dp), style = RaftTheme.typography.callout)
                     }
                 }
             }

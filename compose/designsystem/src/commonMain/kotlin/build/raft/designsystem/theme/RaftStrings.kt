@@ -15,6 +15,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
  *         close = stringResource(MR.strings.common_close),
  *         clear = stringResource(MR.strings.common_clear),
  *         loading = stringResource(MR.strings.common_loading),
+ *         cancel = stringResource(MR.strings.common_cancel),
  *     ),
  * ) { content() }
  * ```
@@ -32,6 +33,8 @@ data class RaftStrings(
     val clear: String = "Clear",
     /** A busy button's and a spinner's name (raft-ui `loadingLabel`). */
     val loading: String = "Loading",
+    /** The ghost Cancel of a dialog's footer ([build.raft.designsystem.components.RaftDialogSheet] centred). */
+    val cancel: String = "Cancel",
 )
 
 /** The enclosing [RaftStrings]; English outside any provider (so outside [RaftTheme] too). */
