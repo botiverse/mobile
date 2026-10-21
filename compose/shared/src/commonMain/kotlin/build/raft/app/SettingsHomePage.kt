@@ -11384,7 +11384,8 @@ private fun SettingsPushStatusCard(
                     SettingsNotificationDivider()
                     RaftBackgroundConnectionBatteryRow(backgroundConnection)
                 }
-            } else {
+                SettingsNotificationDivider()
+            } else if (raftPlatformSupportsBackgroundRealtime()) {
                 SettingsNotificationToggleRow(
                     title = stringResource(MR.strings.settings_notifications_background_realtime_title),
                     detail = stringResource(MR.strings.settings_notifications_background_realtime_detail, raftPlatformProductName()),
@@ -11392,8 +11393,8 @@ private fun SettingsPushStatusCard(
                     enabled = !foregroundKeepAliveBusy,
                     onCheckedChange = onForegroundKeepAlivePreferenceChange
                 )
+                SettingsNotificationDivider()
             }
-            SettingsNotificationDivider()
             SettingsNotificationToggleRow(
                 title = stringResource(MR.strings.settings_notifications_offline_computers_title),
                 detail = stringResource(MR.strings.settings_notifications_offline_computers_detail),
