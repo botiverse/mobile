@@ -10018,6 +10018,164 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun lateCompletionOfATimedOutPrewarmCannotOverwriteTheOpensOwnFetch() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val payloadStore =
+            SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, prewarmJoinTimeoutMillis = 100L)
+        val repository = foregroundGateReplyRepository()
+        val logs = ConcurrentTestLogBuffer()
+        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-join-late", logs::add)
+        val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
+        val stale = contentPayloadForRoute(base = route, body = "stale prewarm body", id = "reply-stale", channelId = "thread-m1")
+        val fetchStarted = CompletableDeferred<Unit>()
+        val releaseStale = CompletableDeferred<Unit>()
+        val ownerScopeId = dataSource.threadPayloadOwnerScopeIdForTest()
+        val slowPrewarm =
+            async {
+                payloadStore.prewarm("server-1", "thread-m1", ownerScopeId) {
+                    fetchStarted.complete(Unit)
+                    releaseStale.await()
+                    DataResult.Content(stale)
+                }
+            }
+        fetchStarted.await()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        withTimeout(10_000L) { store.accept(SharedThreadIntent.Start(route)) }
+        assertEquals("reply body", store.state.value.payload.messages.single().body)
+        assertTrue(logs.any { it == "thread_refresh_reuse_prewarm threadId=thread-m1 outcome=own_fetch reason=join_timeout" })
+
+        // The detached prewarm now completes with OLDER content under the same generation.
+        releaseStale.complete(Unit)
+        slowPrewarm.await()
+
+        assertEquals("reply body", dataSource.cachedPayload("thread-m1")?.messages?.single()?.body)
+        assertNull(payloadStore.joinOrConsumePrewarm("server-1", "thread-m1", ownerScopeId))
+        val nextScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val nextLogs = ConcurrentTestLogBuffer()
+        val nextStore = SharedThreadStore(dataSource = dataSource, scope = nextScope, diagnosticsLogger = nextLogs::add)
+        withTimeout(10_000L) { nextStore.accept(SharedThreadIntent.Start(route)) }
+        assertEquals("reply body", nextStore.state.value.payload.messages.single().body)
+        assertFalse(nextLogs.any { "outcome=consumed_ready" in it }, "the next open must not consume the stale prewarm")
+        nextScope.cancel()
+        scope.cancel()
+        appScope.cancel()
+    }
+
+    @Test
+    fun threadRestartReleasesThePreviousForegroundLease() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+        val repository = foregroundGateReplyRepository()
+        repository.getReplyThreadStarted = CompletableDeferred()
+        repository.releaseGetReplyThread = CompletableDeferred()
+        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-gate-restart")
+        val gate = payloadStore.foregroundLoadGate
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val logs = ConcurrentTestLogBuffer()
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+
+        // accept (not dispatch): the first Start is NOT cancelled, so only the restart path can release it.
+        val first = async { store.accept(SharedThreadIntent.Start(replyPayload(parentMessageId = "m1", threadId = "thread-m1"))) }
+        withTimeout(10_000L) { repository.getReplyThreadStarted?.await() }
+        assertEquals(1, gate.activeCount())
+        val second = async { store.accept(SharedThreadIntent.Start(replyPayload(parentMessageId = "m2", threadId = "thread-m2"))) }
+        withTimeout(10_000L) {
+            while (!logs.any { it.startsWith("thread_foreground_load_acquired threadId=thread-m2 ") }) delay(5L)
+        }
+
+        assertEquals(1, gate.activeCount(), "a restart must release the previous route's lease")
+        assertTrue(logs.any { it.startsWith("thread_foreground_load_released reason=restarted ") })
+        repository.releaseGetReplyThread?.complete(Unit)
+        withTimeout(10_000L) {
+            first.await()
+            second.await()
+        }
+        assertEquals(0, gate.activeCount())
+        scope.cancel()
+        appScope.cancel()
+    }
+
+    @Test
+    fun activityTabOpenThatCachedTheThreadDropsItsQueuedPrewarm() = runBlocking {
+        val run = activityTabOpenWithQueuedPrewarm(openFails = false)
+        assertEquals(0, run.prewarmCalls, "the queued prewarm must not run for the opened, cached thread")
+        assertEquals(run.requestsAfterOpen, run.finalRequests, "the queued prewarm must not re-fetch the opened thread")
+        assertTrue(run.logs.any { it.startsWith("activity_reply_prewarm_result result=skipped reason=foreground_open_owns_load ") })
+    }
+
+    @Test
+    fun activityTabOpenThatFailedLeavesItsQueuedPrewarmToRun() = runBlocking {
+        // Twin: same route, same queue, same tap; the open's load fails, so nothing is cached.
+        val run = activityTabOpenWithQueuedPrewarm(openFails = true)
+        // (Its repository request may be answered by the data source's remembered failed lookup, so the
+        // observable is that the prewarm itself ran, not the request count.)
+        assertEquals(1, run.prewarmCalls, "the prewarm must still run")
+        assertFalse(run.logs.any { "result=skipped" in it })
+    }
+
+    private class ActivityTabOpenRun(
+        val requestsAfterOpen: Int,
+        val finalRequests: Int,
+        val prewarmCalls: Int,
+        val logs: ConcurrentTestLogBuffer,
+    )
+
+    private suspend fun activityTabOpenWithQueuedPrewarm(openFails: Boolean): ActivityTabOpenRun {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+        val repository = foregroundGateReplyRepository()
+        if (openFails) repository.threadResult = DataResult.Error(ScreenError(code = "thread_network", retryable = true))
+        val logs = ConcurrentTestLogBuffer()
+        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-activity-tab-$openFails", logs::add)
+        val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val prewarmCalls = kotlinx.atomicfu.atomic(0)
+        val activity =
+            build.raft.app.data.activityStore(
+                scope = activityScope,
+                foregroundLoadGate = payloadStore.foregroundLoadGate,
+                replyThreadFreshnessLedger = payloadStore.freshnessLedger,
+                prewarmReplyThread = { marker ->
+                    prewarmCalls.incrementAndGet()
+                    dataSource.prewarmReplyThread(marker)
+                },
+                replyThreadContentCached = dataSource::hasCurrentReplyThreadContent,
+                diagnosticsLogger = logs::add
+            )
+        // Another open holds the gate, so the row's prewarm is queued (the device timeline).
+        val blocker =
+            payloadStore.foregroundLoadGate.acquire(
+                build.raft.app.data.SharedForegroundThreadKey(serverId = "server-1", threadId = "thread-blocker")
+            )
+        activity.dispatch(
+            SharedActivityIntent.PrewarmVisibleReplyThreads(
+                setOf(ActivityReplyThreadPrewarmMarker(ActivityReplyThreadPrewarmKey("server-1", "channel-1", "m1", "thread-m1")))
+            )
+        )
+        withTimeout(10_000L) { while (!logs.any { it.startsWith("activity_reply_prewarm_deferred ") }) delay(5L) }
+        delay(20L) // the tap lands strictly after the prewarm was queued
+
+        // The same payload shape the Activity tab launches (home_open_thread_launch source=activity_tab).
+        val route = activityReplyPayload(ConversationKind.Channel, "channel-1", "m1", "thread-m1")
+        assertEquals("thread-m1", route.sourceThreadId)
+        assertEquals("channel-1", route.parentChannelId)
+        assertEquals("m1", route.parentMessageId)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        withTimeout(10_000L) { store.accept(SharedThreadIntent.Start(route)) }
+        val requestsAfterOpen = repository.getReplyThreadRequests.size
+        assertTrue(requestsAfterOpen >= 1)
+
+        blocker.release()
+        withTimeout(10_000L) { while (!logs.any { it.startsWith("activity_reply_prewarm_result ") }) delay(5L) }
+        val finalRequests = repository.getReplyThreadRequests.size
+        activityScope.cancel()
+        scope.cancel()
+        appScope.cancel()
+        return ActivityTabOpenRun(requestsAfterOpen, finalRequests, prewarmCalls.value, logs)
+    }
+
+    @Test
     fun replyThreadStartJoinsActivityPrewarmAndHydratesParentAfterGraceTimeout() = runBlocking {
         val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)

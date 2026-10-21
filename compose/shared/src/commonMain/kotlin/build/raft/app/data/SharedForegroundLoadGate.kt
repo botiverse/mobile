@@ -96,7 +96,7 @@ internal class SharedForegroundLoadGate(
     fun activeCount(): Int = synchronized(lock) { pruneExpiredLocked(nowMillis()); leases.value.size }
 
     /**
-     * True when a foreground open of this thread was acquired at or after [sinceMillis]: that open
+     * True when a foreground open of this thread was acquired strictly after [sinceMillis]: that open
      * owns its own load (or joins an in-flight prewarm), so a prewarm queued before it is redundant.
      */
     fun foregroundOpenedSince(
@@ -108,7 +108,7 @@ internal class SharedForegroundLoadGate(
     ): Boolean =
         synchronized(lock) {
             recentOpens.any { lease ->
-                lease.acquiredAtMillis >= sinceMillis &&
+                lease.acquiredAtMillis > sinceMillis &&
                     lease.thread?.matches(serverId, threadId, parentChannelId, parentMessageId) == true
             }
         }

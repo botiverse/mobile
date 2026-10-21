@@ -1477,7 +1477,20 @@ internal class SharedThreadPayloadStore(
             if (inFlight != null) {
                 val joined =
                     withTimeoutOrNull(prewarmJoinTimeoutMillis.coerceAtLeast(1L)) { inFlight.await() }
-                        ?: return SharedThreadPrewarmJoin(null, SharedThreadPrewarmJoinOutcome.JoinTimedOut)
+                if (joined == null) {
+                    // The caller now fetches for itself under this same generation. Detach (do not
+                    // cancel) the slow prewarm, exactly like [promoteQueuedPrewarm] does, so its late
+                    // completion fails the `prewarmInFlight[key] === currentJob` commit guard instead
+                    // of overwriting the newer own-fetch entry and marking itself ready.
+                    prewarmMutex.withLock {
+                        if (prewarmInFlight[key] === inFlight) {
+                            prewarmInFlight.remove(key)
+                            prewarmInFlightGenerations.remove(key)
+                            prewarmFetchStartedGenerations.remove(key)
+                        }
+                    }
+                    return SharedThreadPrewarmJoin(null, SharedThreadPrewarmJoinOutcome.JoinTimedOut)
+                }
                 outcome = SharedThreadPrewarmJoinOutcome.JoinedInFlight
                 joined
             } else if (lookup.failure != null) {
@@ -2383,6 +2396,19 @@ internal class SharedThreadDataSource(
                     ownerScopeId
                 )
             }
+
+    /**
+     * True when the shared memory cache holds this reply thread's content at its CURRENT freshness
+     * generation, i.e. a foreground open already loaded it and nothing has changed since. Activity
+     * prewarm uses it to drop only a queued prewarm whose work is genuinely done.
+     */
+    internal suspend fun hasCurrentReplyThreadContent(marker: ActivityReplyThreadPrewarmMarker): Boolean {
+        val key = marker.key
+        if (key.serverId.isBlank() || key.threadChannelId.isBlank()) return false
+        val provenance = readReplyResolutionScope()?.provenance ?: return false
+        if (provenance.serverId != key.serverId) return false
+        return cachedPayloadIfCurrent(key.threadChannelId, provenance) != null
+    }
 
     internal fun cachedPayloadIfCurrent(
         threadId: String,

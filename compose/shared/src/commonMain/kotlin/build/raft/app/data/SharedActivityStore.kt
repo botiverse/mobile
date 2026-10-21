@@ -94,6 +94,11 @@ class SharedActivityStore internal constructor(
     private var prewarmReplyThread: suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit> = {
         DataResult.Empty(EmptyReason.NoMessages)
     },
+    /**
+     * True when the shared thread cache already holds this reply thread's content at its current
+     * freshness generation. Only then may a queued prewarm be dropped because the user opened it.
+     */
+    private var replyThreadContentCached: suspend (ActivityReplyThreadPrewarmMarker) -> Boolean = { false },
     private var replyThreadFreshnessLedger: SharedThreadFreshnessLedger = SharedThreadFreshnessLedger(),
     // Shared with every visible thread page (owned by SharedThreadPayloadStore): while one is loading
     // its first content, reply prewarm does not START new loads.
@@ -186,6 +191,7 @@ class SharedActivityStore internal constructor(
         tasksDataStore: SharedTasksDataStore? = this.tasksDataStore,
         channelRepository: ChannelRepository? = this.channelRepository,
         prewarmReplyThread: (suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit>)? = null,
+        replyThreadContentCached: (suspend (ActivityReplyThreadPrewarmMarker) -> Boolean)? = null,
         replyThreadFreshnessLedger: SharedThreadFreshnessLedger? = null,
         foregroundLoadGate: SharedForegroundLoadGate? = null,
         persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = this.persistSlices,
@@ -207,6 +213,9 @@ class SharedActivityStore internal constructor(
         this.channelRepository = channelRepository
         if (prewarmReplyThread != null) {
             this.prewarmReplyThread = prewarmReplyThread
+        }
+        if (replyThreadContentCached != null) {
+            this.replyThreadContentCached = replyThreadContentCached
         }
         if (replyThreadFreshnessLedger != null) {
             this.replyThreadFreshnessLedger = replyThreadFreshnessLedger
@@ -370,7 +379,7 @@ class SharedActivityStore internal constructor(
                     val result =
                         replyPrewarmSemaphore.withPermit {
                             awaitForegroundLoadIdle(key)
-                            if (foregroundOpenedSince(key, enqueuedAtMillis)) return@withPermit null
+                            if (foregroundOpenOwnsLoad(marker, enqueuedAtMillis)) return@withPermit null
                             synchronized(replyPrewarmOwnerLock) { replyPrewarmFetchingCount += 1 }
                             try {
                                 prewarmReplyThread(marker)
@@ -381,8 +390,8 @@ class SharedActivityStore internal constructor(
                     if (activeReplyPrewarmMarker(key)?.contentGeneration !== marker.contentGeneration) return@launch
                     when (result) {
                         null -> {
-                            // The user opened this thread while its prewarm was still queued: the open
-                            // owns that load (its result lands in the shared thread cache), so a second
+                            // The user opened this thread while its prewarm was still queued and that
+                            // open left the thread's current content in the shared cache, so a second
                             // identical request afterwards would be pure waste.
                             val accepted =
                                 synchronized(replyPrewarmOwnerLock) {
@@ -539,14 +548,23 @@ class SharedActivityStore internal constructor(
         )
     }
 
-    private fun foregroundOpenedSince(key: ActivityReplyThreadPrewarmKey, sinceMillis: Long): Boolean =
-        foregroundLoadGate.foregroundOpenedSince(
-            sinceMillis = sinceMillis,
-            serverId = key.serverId,
-            threadId = key.threadChannelId,
-            parentChannelId = key.parentChannelId,
-            parentMessageId = key.parentMessageId,
-        )
+    /**
+     * Drop a queued prewarm only when BOTH hold: the user opened this thread after it was queued, and
+     * the shared cache now has that thread's current content. An open that failed or closed before
+     * loading leaves no current entry, so the prewarm runs normally.
+     */
+    private suspend fun foregroundOpenOwnsLoad(marker: ActivityReplyThreadPrewarmMarker, sinceMillis: Long): Boolean {
+        val key = marker.key
+        val opened =
+            foregroundLoadGate.foregroundOpenedSince(
+                sinceMillis = sinceMillis,
+                serverId = key.serverId,
+                threadId = key.threadChannelId,
+                parentChannelId = key.parentChannelId,
+                parentMessageId = key.parentMessageId,
+            )
+        return opened && replyThreadContentCached(marker)
+    }
 
     /** Registered prewarms that have not started loading (waiting on the semaphore or the gate). */
     private fun queuedReplyPrewarmCount(): Int =

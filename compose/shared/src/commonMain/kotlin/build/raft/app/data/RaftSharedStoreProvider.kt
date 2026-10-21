@@ -1615,6 +1615,7 @@ internal class RaftSharedStoreProvider private constructor(
         memberRepository: MemberRepository? = null,
         channelRepository: ChannelRepository? = null,
         prewarmReplyThread: (suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit>)? = null,
+        replyThreadContentCached: (suspend (ActivityReplyThreadPrewarmMarker) -> Boolean)? = null,
         onUnreadCountsChanged: (() -> Unit)? = null,
         diagnosticsLogger: ((String) -> Unit)? = null
     ): SharedActivityStore {
@@ -1634,6 +1635,7 @@ internal class RaftSharedStoreProvider private constructor(
                     readReceiptOwnerFactory = ::readReceiptOwner,
                     readStateV1Canary = processReadStateV1Canary,
                     prewarmReplyThread = prewarmReplyThread,
+                    replyThreadContentCached = replyThreadContentCached,
                     replyThreadFreshnessLedger = threadPayloadStore.freshnessLedger,
                     foregroundLoadGate = threadPayloadStore.foregroundLoadGate,
                     onUnreadCountsChanged = onUnreadCountsChanged,
@@ -1659,6 +1661,7 @@ internal class RaftSharedStoreProvider private constructor(
                 readStateV1Canary = processReadStateV1Canary,
                 persistSlices = listOf(activityPersistSlice),
                 prewarmReplyThread = prewarmReplyThread ?: { DataResult.Empty(EmptyReason.NoMessages) },
+                replyThreadContentCached = replyThreadContentCached ?: { false },
                 replyThreadFreshnessLedger = threadPayloadStore.freshnessLedger,
                 foregroundLoadGate = threadPayloadStore.foregroundLoadGate,
                 onUnreadCountsChanged = onUnreadCountsChanged ?: {},

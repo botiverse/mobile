@@ -4396,29 +4396,62 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun queuedReplyPrewarmIsDroppedWhenTheUserOpensThatThread() = runBlocking {
+    fun queuedReplyPrewarmIsDroppedWhenTheUserOpenedThatThreadAndItsContentIsCached() = runBlocking {
+        val calls = queuedPrewarmAfterTappedOpen(tappedContentCached = true)
+        // Negative twin in the same queue: the untapped row still prewarms.
+        assertEquals(listOf(keyedMarker("other").key), calls.prewarmed)
+        assertTrue(
+            calls.logs.any {
+                it.startsWith("activity_reply_prewarm_result result=skipped reason=foreground_open_owns_load ") &&
+                    it.contains("threadChannelId=${keyedMarker("tapped").key.threadChannelId}")
+            },
+            calls.logs.toString()
+        )
+        // Same generation is settled: a later viewport pass does not re-issue it.
+        assertEquals(listOf(keyedMarker("other").key), calls.prewarmedAfterSecondPass)
+    }
+
+    @Test
+    fun queuedReplyPrewarmStillRunsWhenTheTappedOpenLeftNoCachedContent() = runBlocking {
+        // Twin: identical queue, identical tap; the open failed / closed before loading.
+        val calls = queuedPrewarmAfterTappedOpen(tappedContentCached = false)
+        assertEquals(
+            setOf(keyedMarker("tapped").key, keyedMarker("other").key),
+            calls.prewarmed.toSet()
+        )
+        assertTrue(calls.logs.none { it.contains("result=skipped") }, calls.logs.toString())
+    }
+
+    private class QueuedPrewarmRun(
+        val prewarmed: List<ActivityReplyThreadPrewarmKey>,
+        val prewarmedAfterSecondPass: List<ActivityReplyThreadPrewarmKey>,
+        val logs: List<String>,
+    )
+
+    private suspend fun queuedPrewarmAfterTappedOpen(tappedContentCached: Boolean): QueuedPrewarmRun {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         var now = 1_000L
         val gate = SharedForegroundLoadGate(nowMillis = { now })
         val calls = mutableListOf<ActivityReplyThreadPrewarmKey>()
         val logs = mutableListOf<String>()
+        val tapped = keyedMarker("tapped")
+        val other = keyedMarker("other")
         val store =
             activityStore(
                 scope = scope,
                 foregroundLoadGate = gate,
+                replyThreadContentCached = { marker -> tappedContentCached && marker.key == tapped.key },
                 prewarmReplyThread = { marker ->
                     synchronized(logs) { calls += marker.key }
                     DataResult.Content(Unit)
                 },
                 diagnosticsLogger = { line -> synchronized(logs) { logs += line } }
             )
-        val tapped = keyedMarker("tapped")
-        val other = keyedMarker("other")
         val earlierOpen = gate.acquire(SharedForegroundThreadKey(serverId = "server-1", threadId = "thread-earlier"))
         store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(tapped, other)))
         assertEquals(emptyList(), synchronized(logs) { calls.toList() })
 
-        // The user taps the queued row: that open owns the identical load.
+        // The user taps the queued row after it was queued.
         now = 2_000L
         val tappedOpen =
             gate.acquire(
@@ -4434,21 +4467,12 @@ class SharedActivityStoreTest {
 
         withTimeout(5_000L) { while (synchronized(logs) { calls.isEmpty() }) delay(5L) }
         delay(50L)
-        // Negative twin in the same queue: the untapped row still prewarms.
-        assertEquals(listOf(other.key), synchronized(logs) { calls.toList() })
-        assertTrue(
-            synchronized(logs) {
-                logs.any {
-                    it.startsWith("activity_reply_prewarm_result result=skipped reason=foreground_open_owns_load ") &&
-                        it.contains("threadChannelId=${tapped.key.threadChannelId}")
-                }
-            },
-            synchronized(logs) { logs.toString() }
-        )
-        // Same generation is settled: a later viewport pass does not re-issue it.
+        val prewarmed = synchronized(logs) { calls.toList() }
         store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(tapped, other)))
-        assertEquals(listOf(other.key), synchronized(logs) { calls.toList() })
+        delay(20L)
+        val afterSecondPass = synchronized(logs) { calls.toList() }
         scope.cancel()
+        return QueuedPrewarmRun(prewarmed, afterSecondPass, synchronized(logs) { logs.toList() })
     }
 
     private fun replyPrewarmMarker(): ActivityReplyThreadPrewarmMarker =
