@@ -62,6 +62,9 @@ import kotlin.test.assertTrue
 private const val SharedActivityReplyPrewarmConcurrencyForTest = 2
 
 class SharedActivityStoreTest {
+    // atomicfu `synchronized` (Kotlin/Native) only locks a SynchronizedObject, never a plain list.
+    private val testLogsLock = SynchronizedObject()
+
     @Test
     fun flagOffActivityFinalStateCheckpointAndEffectTraceMatchLegacy() = runBlocking {
         val legacyScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -4311,10 +4314,10 @@ class SharedActivityStoreTest {
                 scope = scope,
                 foregroundLoadGate = gate,
                 prewarmReplyThread = { marker ->
-                    synchronized(logs) { calls += marker.key }
+                    synchronized(testLogsLock) { calls += marker.key }
                     DataResult.Content(Unit)
                 },
-                diagnosticsLogger = { line -> synchronized(logs) { logs += line } }
+                diagnosticsLogger = { line -> synchronized(testLogsLock) { logs += line } }
             )
         val open = gate.acquire(SharedForegroundThreadKey(serverId = "server-1", threadId = "thread-opened"))
         val marker = keyedMarker("queued")
@@ -4322,18 +4325,18 @@ class SharedActivityStoreTest {
         store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
         delay(50L)
 
-        assertEquals(emptyList(), synchronized(logs) { calls.toList() }, "prewarm must not start during a foreground open")
+        assertEquals(emptyList(), synchronized(testLogsLock) { calls.toList() }, "prewarm must not start during a foreground open")
         assertTrue(
-            synchronized(logs) { logs.any { it.startsWith("activity_reply_prewarm_deferred reason=foreground_open queued=1 ") } },
-            synchronized(logs) { logs.toString() }
+            synchronized(testLogsLock) { logs.any { it.startsWith("activity_reply_prewarm_deferred reason=foreground_open queued=1 ") } },
+            synchronized(testLogsLock) { logs.toString() }
         )
 
         assertTrue(open.release())
-        withTimeout(5_000L) { while (synchronized(logs) { calls.isEmpty() }) delay(5L) }
-        assertEquals(listOf(marker.key), synchronized(logs) { calls.toList() })
+        withTimeout(5_000L) { while (synchronized(testLogsLock) { calls.isEmpty() }) delay(5L) }
+        assertEquals(listOf(marker.key), synchronized(testLogsLock) { calls.toList() })
         assertTrue(
-            synchronized(logs) { logs.any { it.startsWith("activity_reply_prewarm_resumed reason=released ") } },
-            synchronized(logs) { logs.toString() }
+            synchronized(testLogsLock) { logs.any { it.startsWith("activity_reply_prewarm_resumed reason=released ") } },
+            synchronized(testLogsLock) { logs.toString() }
         )
         scope.cancel()
     }
@@ -4373,24 +4376,24 @@ class SharedActivityStoreTest {
                 scope = scope,
                 foregroundLoadGate = gate,
                 prewarmReplyThread = { marker ->
-                    synchronized(logs) { calls += marker.key }
+                    synchronized(testLogsLock) { calls += marker.key }
                     DataResult.Content(Unit)
                 },
-                diagnosticsLogger = { line -> synchronized(logs) { logs += line } }
+                diagnosticsLogger = { line -> synchronized(testLogsLock) { logs += line } }
             )
         // A lost release: the lease is never released by its owner.
         gate.acquire(SharedForegroundThreadKey(serverId = "server-1", threadId = "thread-leaked"))
         val marker = keyedMarker("after-leak")
 
         store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(marker)))
-        assertEquals(emptyList(), synchronized(logs) { calls.toList() })
+        assertEquals(emptyList(), synchronized(testLogsLock) { calls.toList() })
 
-        withTimeout(5_000L) { while (synchronized(logs) { calls.isEmpty() }) delay(5L) }
-        assertEquals(listOf(marker.key), synchronized(logs) { calls.toList() })
+        withTimeout(5_000L) { while (synchronized(testLogsLock) { calls.isEmpty() }) delay(5L) }
+        assertEquals(listOf(marker.key), synchronized(testLogsLock) { calls.toList() })
         assertEquals(0, gate.activeCount())
         assertTrue(
-            synchronized(logs) { logs.any { it.startsWith("activity_reply_prewarm_resumed reason=timeout ") } },
-            synchronized(logs) { logs.toString() }
+            synchronized(testLogsLock) { logs.any { it.startsWith("activity_reply_prewarm_resumed reason=timeout ") } },
+            synchronized(testLogsLock) { logs.toString() }
         )
         scope.cancel()
     }
@@ -4442,14 +4445,14 @@ class SharedActivityStoreTest {
                 foregroundLoadGate = gate,
                 replyThreadContentCached = { marker -> tappedContentCached && marker.key == tapped.key },
                 prewarmReplyThread = { marker ->
-                    synchronized(logs) { calls += marker.key }
+                    synchronized(testLogsLock) { calls += marker.key }
                     DataResult.Content(Unit)
                 },
-                diagnosticsLogger = { line -> synchronized(logs) { logs += line } }
+                diagnosticsLogger = { line -> synchronized(testLogsLock) { logs += line } }
             )
         val earlierOpen = gate.acquire(SharedForegroundThreadKey(serverId = "server-1", threadId = "thread-earlier"))
         store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(tapped, other)))
-        assertEquals(emptyList(), synchronized(logs) { calls.toList() })
+        assertEquals(emptyList(), synchronized(testLogsLock) { calls.toList() })
 
         // The user taps the queued row after it was queued.
         now = 2_000L
@@ -4465,14 +4468,14 @@ class SharedActivityStoreTest {
         earlierOpen.release()
         tappedOpen.release()
 
-        withTimeout(5_000L) { while (synchronized(logs) { calls.isEmpty() }) delay(5L) }
+        withTimeout(5_000L) { while (synchronized(testLogsLock) { calls.isEmpty() }) delay(5L) }
         delay(50L)
-        val prewarmed = synchronized(logs) { calls.toList() }
+        val prewarmed = synchronized(testLogsLock) { calls.toList() }
         store.dispatch(SharedActivityIntent.PrewarmVisibleReplyThreads(setOf(tapped, other)))
         delay(20L)
-        val afterSecondPass = synchronized(logs) { calls.toList() }
+        val afterSecondPass = synchronized(testLogsLock) { calls.toList() }
         scope.cancel()
-        return QueuedPrewarmRun(prewarmed, afterSecondPass, synchronized(logs) { logs.toList() })
+        return QueuedPrewarmRun(prewarmed, afterSecondPass, synchronized(testLogsLock) { logs.toList() })
     }
 
     private fun replyPrewarmMarker(): ActivityReplyThreadPrewarmMarker =
