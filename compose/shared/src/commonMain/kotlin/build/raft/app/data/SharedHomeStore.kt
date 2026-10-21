@@ -637,6 +637,9 @@ internal class SharedHomeStore(
                 val currentServerId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
                 reconcileNotificationAuthority(authStore.readSession(), intent.serverId)
                 supersedeServerDrawerRequest(ServerId(intent.serverId))
+                // A pending followed-thread reload belongs to the server being left; its result
+                // would be dropped anyway, so don't spend the request.
+                if (intent.serverId != currentServerId) followedThreadUnreadRefresh.cancel()
                 val nextSwitch =
                     if (intent.serverId == currentServerId) {
                         _state.value.serverSwitchState.refresh()
