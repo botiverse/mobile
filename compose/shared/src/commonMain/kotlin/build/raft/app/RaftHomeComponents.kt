@@ -242,10 +242,6 @@ private val HomeServerSwitcherDragHandleWidth = 32.dp
 internal val HomeServerSwitcherDragHandleIconName = RaftLucideIconName.GripVertical
 private const val HomeServerSwitcherMaxVisibleRows = 6
 private const val HomeServerBadgeTiltDegrees = -2f
-private val HomeServerBadgeHorizontalInset = 14.dp
-private val HomeServerBadgeVerticalInset = 6.dp
-private val HomeServerBadgeContentGap = 6.dp
-private val HomeServerBadgeChevronSize = 16.dp
 internal val HomeServerIdentityNameChevronGap = 4.dp
 internal val HomeServerPublicPageGlobeGap = 4.dp
 internal val HomeServerPublicPageGlobeSize = 13.dp
@@ -4653,33 +4649,15 @@ private fun HomeTitlebar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            if (serverIdentity == null) {
-                Box(modifier = Modifier.clickable(onClick = onServerBadgeClick)) {
-                    RaftLogoBadge(
-                        text = serverName,
-                        showDropdown = true,
-                        tilted = true,
-                        unread = hasOtherServerUnread,
-                        publicPageLive = serverPublicPageLive,
-                        textStyle = RaftType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 24.sp)
-                    )
-                }
-                val blankModifier =
-                    if (onBlankClick != null) {
-                        Modifier.weight(1f).height(RaftAppSize.PageHeaderContentHeight)
-                            // Blank header space: an affordance-less tap target, so no press wash.
-                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onBlankClick)
-                    } else {
-                        Modifier.weight(1f)
-                    }
-                Spacer(blankModifier)
-            } else {
-                HomeServerIdentityCluster(
-                    server = serverIdentity,
-                    onClick = onServerBadgeClick,
-                    modifier = Modifier.weight(1f)
-                )
-            }
+            // The header always shows the identity cluster (avatar tile, name, chevron). Before
+            // the server identity loads (cold start, fixtures) it is built from the name alone.
+            HomeServerIdentityCluster(
+                server = homeTitlebarServerIdentity(serverIdentity, serverName, serverPublicPageLive),
+                unread = hasOtherServerUnread,
+                onClick = onServerBadgeClick,
+                onBlankClick = onBlankClick,
+                modifier = Modifier.weight(1f)
+            )
             if (refreshing) {
                 RaftHeaderRefreshIndicator()
             }
@@ -4692,11 +4670,24 @@ private fun HomeTitlebar(
     }
 }
 
+/**
+ * The server shown in the Home head: the loaded identity, or (before it loads) an item built from
+ * [serverName] so the head keeps the same avatar tile + name + chevron instead of another badge.
+ */
+internal fun homeTitlebarServerIdentity(
+    serverIdentity: RaftServerSwitcherItem?,
+    serverName: String,
+    serverPublicPageLive: Boolean
+): RaftServerSwitcherItem =
+    serverIdentity ?: RaftServerSwitcherItem(name = serverName, publicPageLive = serverPublicPageLive)
+
 @Composable
 private fun HomeServerIdentityCluster(
     server: RaftServerSwitcherItem,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    unread: Boolean = false,
+    onBlankClick: (() -> Unit)? = null
 ) {
     // The caller hands this cluster the header's remaining width (weight). Only the
     // avatar + name + chevron is the switcher: the free space to its right must not be a
@@ -4704,7 +4695,21 @@ private fun HomeServerIdentityCluster(
     val pressSource = remember { MutableInteractionSource() }
     val pressed = pressSource.collectIsPressedAsState().value
     Box(
-        modifier = modifier.height(RaftAppSize.PageHeaderContentHeight),
+        modifier =
+            modifier
+                .height(RaftAppSize.PageHeaderContentHeight)
+                .then(
+                    if (onBlankClick != null) {
+                        // Blank header space: an affordance-less tap target, so no press wash.
+                        Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onBlankClick
+                        )
+                    } else {
+                        Modifier
+                    }
+                ),
         contentAlignment = Alignment.CenterStart
     ) {
     Row(
@@ -4717,7 +4722,11 @@ private fun HomeServerIdentityCluster(
             .clickable(interactionSource = pressSource, indication = null, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        ServerSwitcherAvatarTile(server)
+        Box {
+            ServerSwitcherAvatarTile(server)
+            // Another server has unread activity.
+            if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
+        }
         Spacer(Modifier.width(8.dp))
         Text(
             text = server.name,
@@ -4738,82 +4747,6 @@ private fun HomeServerIdentityCluster(
             color = RaftColor.TextBlackArgb
         )
     }
-    }
-}
-
-@Composable
-private fun RaftLogoBadge(
-    text: String,
-    modifier: Modifier = Modifier,
-    showDropdown: Boolean = false,
-    tilted: Boolean = true,
-    unread: Boolean = false,
-    publicPageLive: Boolean = false,
-    textStyle: TextStyle = RaftType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 24.sp)
-) {
-    if (tilted) {
-        RaftTiltedLogoBadge(
-            text = text,
-            modifier = modifier,
-            showDropdown = showDropdown,
-            unread = unread,
-            publicPageLive = publicPageLive,
-            textStyle = textStyle
-        )
-        return
-    }
-
-    Box(modifier = modifier) {
-        androidx.compose.foundation.layout.Row(
-            modifier = Modifier
-                .background(RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker))
-                .border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker))
-                .padding(horizontal = 16.dp, vertical = RaftAppSpacing.Sm),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text, color = RaftColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 260.dp))
-            if (showDropdown) {
-                Spacer(Modifier.width(RaftAppSpacing.Xs))
-                RaftLucideIcon(RaftLucideIconName.ChevronDown, Modifier.size(18.dp), color = RaftColor.BrandYellowArgb)
-            }
-        }
-    }
-}
-
-@Composable
-private fun RaftTiltedLogoBadge(
-    text: String,
-    modifier: Modifier = Modifier,
-    showDropdown: Boolean = false,
-    unread: Boolean = false,
-    publicPageLive: Boolean = false,
-    textStyle: TextStyle = RaftType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 24.sp)
-) {
-    key(text, showDropdown, publicPageLive) {
-        RaftTiltedBadgeSurface(modifier = modifier) {
-            androidx.compose.foundation.layout.Row(
-                modifier = Modifier.padding(
-                    horizontal = HomeServerBadgeHorizontalInset,
-                    vertical = HomeServerBadgeVerticalInset
-                ),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text, color = RaftColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
-                if (publicPageLive) {
-                    Spacer(Modifier.width(HomeServerBadgeContentGap))
-                    RaftPublicPageGlobe(live = true, size = HomeServerPublicPageGlobeSize, color = RaftColor.BrandYellowArgb)
-                }
-                if (showDropdown) {
-                    Spacer(Modifier.width(HomeServerBadgeContentGap))
-                    RaftLucideIcon(
-                        RaftLucideIconName.ChevronDown,
-                        Modifier.size(HomeServerBadgeChevronSize),
-                        color = RaftColor.BrandYellowArgb
-                    )
-                }
-            }
-            if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
-        }
     }
 }
 
