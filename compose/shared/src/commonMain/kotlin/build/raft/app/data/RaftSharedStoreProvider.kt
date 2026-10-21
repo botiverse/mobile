@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.toJointConnectionsDurableRecord
+import build.raft.app.toJointConnectionsSnapshot
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loader
 import build.raft.app.host.HostCapabilities
 import build.raft.app.SharedThreadComposerDraftPersistSlice
@@ -447,6 +449,52 @@ internal class RaftSharedStoreProvider private constructor(
     private val realtimeAuthorityRegistrations = RaftShellScopedStoreCache<String>()
     private val shellAgentDetailStores = RaftShellScopedStoreCache<SharedAgentDetailStore>()
     private val shellComputersStores = RaftShellScopedStoreCache<SharedComputersStore>()
+
+    /** Durable machine lists shared by every shell's computers store (data-layer plan step 5). */
+    private val computersDurableStore by lazy {
+        RaftKeyedDurableSnapshotStore(
+            storage = SqlDelightRaftDurableRowStorage(sqlDatabase, RaftComputersSnapshotScope),
+            serializer = RaftComputersDurableRecord.serializer(),
+            label = "server_computers",
+            logger = sharedInfoLogger("SlockComputers", "computers_durable"),
+        )
+    }
+
+    /** Joint channel Connected-servers pages (data-layer plan step 5): memory + durable. */
+    internal val jointConnectionsCache: build.raft.app.RaftJointConnectionsCache by lazy {
+        RaftKeyedSnapshotCache(
+            durable =
+                RaftKeyedDurableSnapshotStore(
+                    storage = SqlDelightRaftDurableRowStorage(sqlDatabase, build.raft.app.RaftJointConnectionsSnapshotScope),
+                    serializer = build.raft.app.RaftJointConnectionsDurableRecord.serializer(),
+                    label = "joint_connections",
+                    maxRowsPerServer = JointConnectionsMaxPerServer,
+                    maxRowsPerAccount = JointConnectionsMaxPerAccount,
+                    maxRows = JointConnectionsMaxRows,
+                    logger = sharedInfoLogger("SlockJointConnections", "joint_connections_durable"),
+                ),
+            toDurable = { snapshot -> snapshot.toJointConnectionsDurableRecord() },
+            fromDurable = { record -> record.toJointConnectionsSnapshot() },
+            maxPerServer = JointConnectionsMaxPerServer,
+        )
+    }
+
+    /** Agent detail pages (data-layer plan step 5): memory-only, per-server LRU. */
+    internal val agentDetailCache: RaftAgentDetailCache = RaftKeyedSnapshotCache()
+
+    /**
+     * The process auth binding (environment, account) right now, for synchronous first-frame cache
+     * reads; null before the binding is known.
+     */
+    internal fun currentAccountBindingOrNull(): Pair<String, String>? =
+        replyCacheAuthContext.value?.let { context ->
+            val environment = context.environmentId.trim().trimEnd('/').takeIf { it.isNotBlank() }
+            val account = context.accountId.trim().takeIf { it.isNotBlank() }
+            if (environment == null || account == null) null else environment to account
+        }
+
+    private fun allComputersStores(): List<SharedComputersStore> =
+        shellComputersStores.entries().map { (_, store) -> store }.distinct()
     private val shellCreateAgentFormStores = RaftShellScopedStoreCache<SharedCreateAgentFormStore>()
     private val shellCreateAgentFormOwnerJobs = RaftShellScopedStoreCache<Job>()
     private val shellAuthLoginGenerations = RaftShellScopedStoreCache<SharedAuthLoginGeneration>()
@@ -733,6 +781,12 @@ internal class RaftSharedStoreProvider private constructor(
                     // Durable rosters (data-layer plan step 3): same lifetime; the epoch bump inside
                     // fences any roster write still in flight.
                     serverMembersDurableStore.clearAllAsync()
+                    // Step 5 caches: machines, joint connections, agent details.
+                    computersDurableStore.clearAllAsync()
+                    threadSendScope.launch {
+                        jointConnectionsCache.clearAll()
+                        agentDetailCache.clearAll()
+                    }
                     // Reply previews are message content: same lifetime (page keys are also
                     // principal-scoped, so a successor never reads them in the meantime).
                     threadDurableLastKnownReader.replyWindowCache?.clearAll()
@@ -787,6 +841,12 @@ internal class RaftSharedStoreProvider private constructor(
                 allServerMembersStores().forEach { store -> store.dropServer(ServerId(grant.serverId)) }
                 // Step 4: the server's conversation identities (names, avatars, DM peers) in every shell.
                 shellConversationIdentityHubs.entries().forEach { (_, hub) -> hub.dropServer(grant.serverId) }
+                // Step 5: machines, joint connections and agent details of that server.
+                val lostAccountId = replyCacheAuthContext.value?.accountId
+                allComputersStores().forEach { store -> store.dropServer(grant.serverId) }
+                if (allComputersStores().isEmpty()) computersDurableStore.evictServer(grant.serverId, lostAccountId)
+                jointConnectionsCache.dropServer(grant.serverId, lostAccountId)
+                agentDetailCache.dropServer(grant.serverId, lostAccountId)
                 threadDurableAccessEvictor.evictServerPartition(
                     grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
                 )
@@ -977,6 +1037,15 @@ internal class RaftSharedStoreProvider private constructor(
      */
     internal fun currentNavigationStoreScope(scope: RaftShellStoreScope): RaftShellStoreScope =
         childNavigationStoreScope(scope, selectedServerStores.get(scope))
+
+    /**
+     * Synchronous first-frame read of the shell's selected server without creating a selection
+     * store: the live selection when the shell has one, else the scope's bootstrap server.
+     */
+    internal fun currentSelectedServerIdOrNull(scope: RaftShellStoreScope): String? =
+        (selectedServerStores.get(scope)?.currentServerId?.value ?: scope.initialServerId)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
 
     fun selectedServerStore(scope: RaftShellStoreScope): SelectedServerStore =
         selectedServerStores.getOrPut(scope) {
@@ -1302,7 +1371,8 @@ internal class RaftSharedStoreProvider private constructor(
                 computersApiClient = RaftComputersApiClient(RaftComputersNetworkApi(networkClient(scope))),
                 scope = threadSendScope,
                 logger = sharedInfoLogger("SlockComputers", "shell_computers"),
-                ownerProvider = { computersOwner(scope) }
+                ownerProvider = { computersOwner(scope) },
+                durableStore = computersDurableStore
             )
         }
 
@@ -3787,3 +3857,8 @@ private fun SharedConversationIdentityHub.applyPendingCandidatesFor(context: Pro
         accountId = context.accountId,
         authGeneration = context.authorityGeneration,
     )
+
+/** Joint connections cache caps (data-layer plan step 5, Tenny rule 3). */
+private const val JointConnectionsMaxPerServer = 32
+private const val JointConnectionsMaxPerAccount = 64
+private const val JointConnectionsMaxRows = 128

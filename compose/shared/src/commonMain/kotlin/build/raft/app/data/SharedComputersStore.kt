@@ -1,7 +1,10 @@
 package build.raft.app.data
 
 import build.raft.app.SharedCreateAgentMachineOption
+import build.raft.app.isConversationAccessLost
 import build.raft.app.model.ServerId
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -12,9 +15,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.Serializable
 import kotlin.time.TimeSource
 
 internal enum class SharedComputersLoadStatus {
@@ -50,7 +55,14 @@ internal data class SharedComputersServerSlice(
     val status: SharedComputersLoadStatus = SharedComputersLoadStatus.Idle,
     val hasSnapshot: Boolean = false,
     val refreshing: Boolean = false,
-    val error: ScreenError? = null
+    val error: ScreenError? = null,
+    /**
+     * Painted from the durable row (cold start / first visit after a memory eviction): shown with
+     * no spinner, but not yet validated, so the next non-forced ensure still goes to the network.
+     */
+    val seededFromDurable: Boolean = false,
+    /** The last Add Computer gate the settings page computed for this server (first-frame seed). */
+    val canAddComputer: Boolean? = null
 ) {
     val errorCode: String?
         get() = error?.code
@@ -90,6 +102,21 @@ interface SharedSettingsComputersSource {
         machineId: String,
         force: Boolean = false
     ): DataResult<SettingsComputerSnapshot>
+
+    /**
+     * Cache-first read for a page open: the in-memory (or durable, on a cold start) machine list of
+     * [serverId] without any network call, or null when nothing is cached for this account.
+     */
+    suspend fun cachedSettingsComputersForServer(serverId: String): DataResult<SettingsComputersSnapshot>? = null
+
+    /** Remembers the Add Computer gate so the next first frame starts with the right action. */
+    fun recordAddComputerGate(serverId: String, canAddComputer: Boolean) = Unit
+
+    /** The last machine page loaded for [machineId] on [serverId] under the current account. */
+    fun cachedSettingsComputerDetail(serverId: String, machineId: String): SettingsComputerDetailSnapshot? = null
+
+    /** Records (or, with null, forgets: deleted / lost access) one machine page. */
+    fun recordSettingsComputerDetail(serverId: String, machineId: String, detail: SettingsComputerDetailSnapshot?) = Unit
 }
 
 internal fun SharedComputersState.selectComputerServerSlice(serverId: String?): SharedComputersServerSlice {
@@ -128,13 +155,22 @@ class SharedComputersStore internal constructor(
     private val logger: (String) -> Unit = {},
     private val ownerProvider: suspend () -> SharedComputersOwner? = {
         SharedComputersOwner("test-environment", "test-account", "test-session")
-    }
+    },
+    /** Durable last-known machine lists (data-layer plan step 5); null keeps the store memory-only. */
+    private val durableStore: RaftKeyedDurableSnapshotStore<RaftComputersDurableRecord>? = null,
+    /** Per-store memory cap: least recently used servers leave first and re-seed from disk. */
+    private val maxServers: Int = DefaultMaxServers
 ) : SharedSettingsComputersSource {
     private val mutex = Mutex()
     private val _state = MutableStateFlow(SharedComputersState())
     internal val state: StateFlow<SharedComputersState> = _state.asStateFlow()
     private val loads = mutableMapOf<String, Deferred<DataResult<ComputerListSummary>>>()
     private val generations = mutableMapOf<String, Long>()
+    private val serverRecency = mutableListOf<String>()
+
+    // Memory-only machine pages (workspaces / agents sections), LRU, cleared with the owner.
+    private val detailCache = linkedMapOf<Pair<String, String>, SettingsComputerDetailSnapshot>()
+    private var detailCacheOwner: SharedComputersOwner? = null
     private var currentOwner: SharedComputersOwner? = null
     private var nextGeneration: Long = 0L
 
@@ -238,10 +274,12 @@ class SharedComputersStore internal constructor(
             logger("store_load domain=computers serverId=$normalizedServerId result=skip reason=owner_missing")
             return
         }
+        hydrateFromDurable(owner, normalizedServerId)
+        val durableEpoch = durableStore?.epoch ?: 0L
         val deferred = mutex.withLock {
             installOwnerLocked(owner)
             val current = _state.value.selectComputerServerSlice(normalizedServerId)
-            if (!force && current.hasSnapshot) {
+            if (!force && current.hasSnapshot && !current.seededFromDurable) {
                 logger("shared_computers_skip serverId=$normalizedServerId reason=snapshot_available")
                 logger(
                     "store_load domain=computers serverId=$normalizedServerId result=skip reason=snapshot_available " +
@@ -291,7 +329,8 @@ class SharedComputersStore internal constructor(
                     owner = owner,
                     serverId = normalizedServerId,
                     generation = generation,
-                    result = result
+                    result = result,
+                    durableEpoch = durableEpoch
                 )
                 logger(
                     "store_load domain=computers serverId=$normalizedServerId result=${result.logOutcome()} " +
@@ -308,14 +347,15 @@ class SharedComputersStore internal constructor(
         owner: SharedComputersOwner,
         serverId: String,
         generation: Long,
-        result: DataResult<ComputerListSummary>
+        result: DataResult<ComputerListSummary>,
+        durableEpoch: Long
     ) {
         val publicationOwner =
             runCatchingPreservingCancellation { ownerProvider() }.getOrNull()
-        mutex.withLock {
+        val durableWrite = mutex.withLock {
             if (currentOwner != owner || generations[serverId] != generation) {
                 logger("shared_computers_drop serverId=$serverId reason=stale_generation generation=$generation")
-                return@withLock
+                return@withLock null
             }
             if (publicationOwner != owner) {
                 if (publicationOwner == null) {
@@ -324,10 +364,21 @@ class SharedComputersStore internal constructor(
                     installOwnerLocked(publicationOwner)
                 }
                 logger("shared_computers_drop serverId=$serverId reason=owner_changed generation=$generation")
-                return@withLock
+                return@withLock null
             }
             loads.remove(serverId)
             val current = _state.value.selectComputerServerSlice(serverId)
+            if (result.isConversationAccessLost()) {
+                // Tenny rule 2: the account lost the server's machine list (non-auth 403 / 404).
+                // Nothing cached may paint again; the page shows the terminal state.
+                removeServerLocked(serverId)
+                setServerSliceLocked(
+                    serverId,
+                    SharedComputersServerSlice().withComputersFailure(result.toComputersScreenError())
+                )
+                logger("shared_computers_result serverId=$serverId result=access_lost")
+                return@withLock ComputersDurableWrite.Evict
+            }
             val next =
                 when (result) {
                     is DataResult.Content ->
@@ -338,24 +389,144 @@ class SharedComputersStore internal constructor(
                             latestDaemonVersion = result.data.latestDaemonVersion,
                             latestComputerVersion = result.data.latestComputerVersion,
                             status = SharedComputersLoadStatus.Loaded,
-                            hasSnapshot = true
+                            hasSnapshot = true,
+                            canAddComputer = current.canAddComputer
                         )
                     is DataResult.Empty ->
                         SharedComputersServerSlice(
                             status = SharedComputersLoadStatus.Loaded,
-                            hasSnapshot = true
+                            hasSnapshot = true,
+                            canAddComputer = current.canAddComputer
                         )
                     is DataResult.Error -> current.withComputersFailure(result.error)
-                    is DataResult.NoPermission ->
-                        current.withComputersFailure(
-                            ScreenError(
-                                code = result.blocker.code,
-                                retryable = false,
-                                serverMessage = result.blocker.serverMessage
-                            )
-                        )
+                    is DataResult.NoPermission -> current.withComputersFailure(result.toComputersScreenError())
                 }
             setServerSliceLocked(serverId, next)
+            if (next.hasSnapshot && (result is DataResult.Content || result is DataResult.Empty)) {
+                ComputersDurableWrite.Write(next.toDurableRecord())
+            } else {
+                null
+            }
+        }
+        val store = durableStore ?: return
+        val key = owner.durableKey(serverId) ?: return
+        when (durableWrite) {
+            is ComputersDurableWrite.Write -> store.write(key, durableWrite.record, durableEpoch)
+            ComputersDurableWrite.Evict -> store.evict(key)
+            null -> Unit
+        }
+    }
+
+    /**
+     * Cold start / first visit: paint [serverId]'s machines from the durable row when memory has
+     * none. The seeded slice is Loaded (no spinner) but [SharedComputersServerSlice.seededFromDurable],
+     * so the next ensure still validates it once against the network.
+     */
+    private suspend fun hydrateFromDurable(owner: SharedComputersOwner, serverId: String) {
+        val store = durableStore ?: return
+        if (_state.value.owner == owner && _state.value.selectComputerServerSlice(serverId).hasSnapshot) return
+        val key = owner.durableKey(serverId) ?: return
+        val record = store.read(key) ?: return
+        mutex.withLock {
+            installOwnerLocked(owner)
+            if (_state.value.selectComputerServerSlice(serverId).hasSnapshot) return@withLock
+            setServerSliceLocked(serverId, record.toServerSlice())
+            logger("shared_computers_durable_seed serverId=$serverId machines=${record.machines.size}")
+        }
+    }
+
+    override suspend fun cachedSettingsComputersForServer(serverId: String): DataResult<SettingsComputersSnapshot>? {
+        val normalizedServerId = serverId.normalizedComputerServerId() ?: return null
+        val owner = ownerProvider() ?: return null
+        hydrateFromDurable(owner, normalizedServerId)
+        return mutex.withLock {
+            if (currentOwner != owner) return@withLock null
+            _state.value.selectComputerServerSlice(normalizedServerId)
+                .takeIf { it.hasSnapshot }
+                ?.toSettingsComputersResult()
+        }
+    }
+
+    /** Synchronous first-frame read: the machine list currently held in memory for [serverId]. */
+    internal fun currentSettingsComputers(serverId: String?): SettingsComputersSnapshot? {
+        val slice = _state.value.selectComputerServerSlice(serverId).takeIf { it.hasSnapshot } ?: return null
+        return (slice.toSettingsComputersResult() as? DataResult.Content)?.data?.let { snapshot ->
+            val canAdd = slice.canAddComputer ?: false
+            snapshot.copy(
+                canAddComputer = canAdd,
+                addComputerUnavailableReason = if (canAdd) null else "server_admin_required"
+            )
+        }
+    }
+
+    override fun recordAddComputerGate(serverId: String, canAddComputer: Boolean) {
+        val normalizedServerId = serverId.normalizedComputerServerId() ?: return
+        _state.update { state ->
+            val current = state.serverSlices[normalizedServerId]
+            if (current == null || current.canAddComputer == canAddComputer) {
+                state
+            } else {
+                state.copy(serverSlices = state.serverSlices + (normalizedServerId to current.copy(canAddComputer = canAddComputer)))
+            }
+        }
+    }
+
+    override fun cachedSettingsComputerDetail(serverId: String, machineId: String): SettingsComputerDetailSnapshot? {
+        val key = detailKey(serverId, machineId) ?: return null
+        return synchronizedDetail {
+            if (detailCacheOwner == null || detailCacheOwner != _state.value.owner) return@synchronizedDetail null
+            detailCache.remove(key)?.also { detailCache[key] = it }
+        }
+    }
+
+    override fun recordSettingsComputerDetail(serverId: String, machineId: String, detail: SettingsComputerDetailSnapshot?) {
+        val key = detailKey(serverId, machineId) ?: return
+        synchronizedDetail {
+            val owner = _state.value.owner
+            if (detailCacheOwner != owner) {
+                detailCache.clear()
+                detailCacheOwner = owner
+            }
+            detailCache.remove(key)
+            if (detail != null && owner != null && detail.computer.id.trim() == key.second) {
+                detailCache[key] = detail
+                while (detailCache.size > MaxCachedDetails) {
+                    detailCache.remove(detailCache.keys.first())
+                }
+            }
+        }
+    }
+
+    private fun detailKey(serverId: String, machineId: String): Pair<String, String>? {
+        val server = serverId.normalizedComputerServerId() ?: return null
+        val machine = machineId.trim().takeIf { it.isNotBlank() } ?: return null
+        return server to machine
+    }
+
+    private val detailLock = SynchronizedObject()
+
+    private fun <R> synchronizedDetail(block: () -> R): R = synchronized(detailLock) { block() }
+
+    /**
+     * Lost access to [serverId] (removed from the server / server deleted): its machines leave
+     * memory and the account's durable row.
+     */
+    internal suspend fun dropServer(serverId: String) {
+        val normalizedServerId = serverId.normalizedComputerServerId() ?: return
+        val owner = mutex.withLock {
+            removeServerLocked(normalizedServerId)
+            currentOwner
+        }
+        durableStore?.evictServer(normalizedServerId, owner?.accountId)
+    }
+
+    private fun removeServerLocked(serverId: String) {
+        synchronizedDetail { detailCache.keys.removeAll { it.first == serverId } }
+        loads.remove(serverId)
+        generations.remove(serverId)
+        serverRecency.remove(serverId)
+        if (serverId in _state.value.serverSlices) {
+            _state.value = _state.value.copy(serverSlices = _state.value.serverSlices - serverId)
         }
     }
 
@@ -376,6 +547,7 @@ class SharedComputersStore internal constructor(
         currentOwner = owner
         loads.clear()
         generations.clear()
+        serverRecency.clear()
         _state.value = SharedComputersState(owner = owner)
     }
 
@@ -383,6 +555,7 @@ class SharedComputersStore internal constructor(
         currentOwner = null
         loads.clear()
         generations.clear()
+        serverRecency.clear()
         _state.value = SharedComputersState()
     }
 
@@ -395,9 +568,156 @@ class SharedComputersStore internal constructor(
     }
 
     private fun setServerSliceLocked(serverId: String, slice: SharedComputersServerSlice) {
-        _state.value = _state.value.copy(serverSlices = _state.value.serverSlices + (serverId to slice))
+        serverRecency.remove(serverId)
+        serverRecency += serverId
+        var slices = _state.value.serverSlices + (serverId to slice)
+        val cap = maxServers.coerceAtLeast(1)
+        while (serverRecency.size > cap) {
+            val victim = serverRecency.firstOrNull { it != serverId && it !in loads } ?: break
+            serverRecency.remove(victim)
+            generations.remove(victim)
+            slices = slices - victim
+        }
+        _state.value = _state.value.copy(serverSlices = slices)
+    }
+
+    private sealed interface ComputersDurableWrite {
+        data class Write(val record: RaftComputersDurableRecord) : ComputersDurableWrite
+
+        data object Evict : ComputersDurableWrite
+    }
+
+    internal companion object {
+        const val DefaultMaxServers = 16
+        const val MaxCachedDetails = 32
     }
 }
+
+private fun DataResult<*>.toComputersScreenError(): ScreenError =
+    when (this) {
+        is DataResult.Error -> error
+        is DataResult.NoPermission ->
+            ScreenError(code = blocker.code, retryable = false, serverMessage = blocker.serverMessage)
+        else -> ScreenError(code = "computers_unavailable", retryable = true)
+    }
+
+private fun SharedComputersOwner.durableKey(serverId: String): RaftDurableSnapshotKey? =
+    RaftDurableSnapshotKey(environmentId = environmentId, accountId = accountId, serverId = serverId)
+        .takeIf { it.rowId != null }
+
+/** Persisted scope name: keep the spelling stable across releases. */
+internal const val RaftComputersSnapshotScope = "raft_server_computers_v1"
+
+/**
+ * One server's machine list as persisted. Only the fields the list / detail header paint; upgrade
+ * policy, version gates and release notes come back with the background refresh.
+ */
+@Serializable
+internal data class RaftComputersDurableRecord(
+    val machines: List<RaftDurableComputer>,
+    val machineCount: Int = 0,
+    val onlineCount: Int = 0,
+    val latestDaemonVersion: String? = null,
+    val latestComputerVersion: String? = null,
+    val canAddComputer: Boolean? = null,
+    val savedAtMs: Long = 0L
+)
+
+@Serializable
+internal data class RaftDurableComputer(
+    val id: String,
+    val name: String,
+    val status: String = "",
+    val statusVersion: Long = 0L,
+    val apiKeyPrefix: String? = null,
+    val runtimes: List<String> = emptyList(),
+    val daemonVersion: String? = null,
+    val computerVersion: String? = null,
+    val isComputer: Boolean = false,
+    val hostname: String? = null,
+    val os: String? = null,
+    val description: String? = null,
+    val lastHeartbeat: String? = null,
+    val createdAt: String? = null,
+    val creatorUserId: String? = null,
+    val attachedByCurrentUser: Boolean = false,
+    val agentCount: Int = 0,
+    val computerUpgradeAvailable: Boolean? = null,
+    val remoteUpgradeSupported: Boolean? = null,
+    val latestComputerVersion: String? = null
+)
+
+private fun SharedComputersServerSlice.toDurableRecord(): RaftComputersDurableRecord =
+    RaftComputersDurableRecord(
+        machines =
+            machines.map { machine ->
+                RaftDurableComputer(
+                    id = machine.id,
+                    name = machine.name,
+                    status = machine.status.wire,
+                    statusVersion = machine.statusVersion,
+                    apiKeyPrefix = machine.apiKeyPrefix,
+                    runtimes = machine.runtimes,
+                    daemonVersion = machine.daemonVersion,
+                    computerVersion = machine.computerVersion,
+                    isComputer = machine.isComputer,
+                    hostname = machine.hostname,
+                    os = machine.os,
+                    description = machine.description,
+                    lastHeartbeat = machine.lastHeartbeat,
+                    createdAt = machine.createdAt,
+                    creatorUserId = machine.creatorUserId,
+                    attachedByCurrentUser = machine.attachedByCurrentUser,
+                    agentCount = machine.agentCount,
+                    computerUpgradeAvailable = machine.computerUpgradeAvailable,
+                    remoteUpgradeSupported = machine.remoteUpgradeSupported,
+                    latestComputerVersion = machine.latestComputerVersion
+                )
+            },
+        machineCount = machineCount,
+        onlineCount = onlineCount,
+        latestDaemonVersion = latestDaemonVersion,
+        latestComputerVersion = latestComputerVersion,
+        canAddComputer = canAddComputer,
+        savedAtMs = defaultNowMillis()
+    )
+
+private fun RaftComputersDurableRecord.toServerSlice(): SharedComputersServerSlice =
+    SharedComputersServerSlice(
+        machines =
+            machines.map { machine ->
+                ComputerSummary(
+                    id = machine.id,
+                    name = machine.name,
+                    status = ComputerStatus.fromWire(machine.status),
+                    statusVersion = machine.statusVersion,
+                    apiKeyPrefix = machine.apiKeyPrefix,
+                    runtimes = machine.runtimes,
+                    daemonVersion = machine.daemonVersion,
+                    computerVersion = machine.computerVersion,
+                    isComputer = machine.isComputer,
+                    hostname = machine.hostname,
+                    os = machine.os,
+                    description = machine.description,
+                    lastHeartbeat = machine.lastHeartbeat,
+                    createdAt = machine.createdAt,
+                    creatorUserId = machine.creatorUserId,
+                    attachedByCurrentUser = machine.attachedByCurrentUser,
+                    agentCount = machine.agentCount,
+                    computerUpgradeAvailable = machine.computerUpgradeAvailable,
+                    remoteUpgradeSupported = machine.remoteUpgradeSupported,
+                    latestComputerVersion = machine.latestComputerVersion
+                )
+            },
+        machineCount = machineCount,
+        onlineCount = onlineCount,
+        latestDaemonVersion = latestDaemonVersion,
+        latestComputerVersion = latestComputerVersion,
+        status = SharedComputersLoadStatus.Loaded,
+        hasSnapshot = true,
+        seededFromDurable = true,
+        canAddComputer = canAddComputer
+    )
 
 private fun DataResult<ComputerListSummary>.logOutcome(): String =
     when (this) {

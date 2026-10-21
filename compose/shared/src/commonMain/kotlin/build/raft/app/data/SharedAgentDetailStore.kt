@@ -53,6 +53,12 @@ internal data class SharedAgentDetailState(
     val agentActivityVersions: Map<MemberId, Long> = emptyMap(),
     val agentActivitySeq: Map<MemberId, Long> = emptyMap(),
     val detailLoadStatus: SharedAgentDetailLoadStatus = SharedAgentDetailLoadStatus.Idle,
+    /**
+     * [detail] is the agent's last canonical response replayed from the process cache (data-layer
+     * plan step 5) and the background refresh has not answered yet: paint it, but grant no profile
+     * edit authority until a fresh response replaces it.
+     */
+    val detailFromCache: Boolean = false,
     val detailError: ScreenError? = null,
     val detailPermissionBlocker: PermissionBlocker? = null,
     val lifecycleActionInFlight: String? = null,
@@ -157,7 +163,9 @@ internal sealed interface SharedAgentDetailIntent {
         val serverId: ServerId? = null,
         val preserveSequencedActivity: Boolean = true,
         val owner: SharedAgentDetailOwner? = null,
-        val profileGeneration: Long = 0L
+        val profileGeneration: Long = 0L,
+        /** Replayed from the process cache, not a fresh response (see [SharedAgentDetailState.detailFromCache]). */
+        val fromCache: Boolean = false
     ) : SharedAgentDetailIntent
     data class ApplyRuntimeConfigProjection(
         val owner: SharedAgentDetailOwner,
@@ -310,6 +318,7 @@ internal class SharedAgentDetailStore(
                         runtimeConfigProjection = projection,
                         agentActivityLogs = nextActivityLogs,
                         detailLoadStatus = SharedAgentDetailLoadStatus.Content,
+                        detailFromCache = intent.fromCache,
                         detailError = null,
                         detailPermissionBlocker = null
                     )
@@ -922,3 +931,28 @@ private fun String.memberComputerIdOrNull(): String? =
 
 private const val MemberComputerBadgePrefix = "computer:"
 private const val MemberComputerIdBadgePrefix = "computer-id:"
+
+/**
+ * One agent's last canonical detail response (data-layer plan step 5), with the route facts the
+ * page needs to paint it: the server it was loaded on and the viewer.
+ */
+internal data class RaftCachedAgentDetail(
+    val server: build.raft.app.model.ServerSummary,
+    val currentUserId: String?,
+    val detail: AgentDetailSnapshot
+)
+
+/**
+ * Process agent-detail cache: memory-only (the detail graph carries runtime config and activity
+ * that are revalidated on every open anyway), keyed environment + account + server + agent,
+ * capped per server.
+ */
+internal typealias RaftAgentDetailCache = RaftKeyedSnapshotCache<RaftCachedAgentDetail, Unit>
+
+internal fun SharedAgentDetailOwner.agentDetailCacheKey(agentId: MemberId): RaftDurableSnapshotKey =
+    RaftDurableSnapshotKey(
+        environmentId = environmentId,
+        accountId = accountId,
+        serverId = serverId.value,
+        entityId = agentId.value
+    )

@@ -146,6 +146,7 @@ import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SelectedServerStore
 import build.raft.app.data.sharedAgentDetailOwner
+import build.raft.app.data.agentDetailCacheKey
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.model.AgentProfile
@@ -2718,6 +2719,13 @@ internal data class MemberDetailLoadPlan(
     val keepCachedContentOnFailure: Boolean
 )
 
+/**
+ * A refresh proving the account can no longer read the agent: gone (Empty / 404) or a non-auth
+ * 403. The cached detail is evicted and the page shows the terminal state (Tenny rule 2).
+ */
+internal fun DataResult<*>.isAgentDetailAccessLost(): Boolean =
+    this is DataResult.Empty || isConversationAccessLost()
+
 internal fun memberDetailLoadPlan(hasCachedDetail: Boolean): MemberDetailLoadPlan =
     if (hasCachedDetail) {
         MemberDetailLoadPlan(
@@ -3016,8 +3024,25 @@ private class MemberDetailRouteProvider(
     val computersOwner: suspend () -> SharedComputersOwner? = { null },
     val serverFeatureFlags: build.raft.app.data.SharedServerFeatureFlags? = null,
     val activityOverviewRepository: build.raft.app.data.AgentActivityOverviewRepository? = null,
-    val agentControlsApi: RaftAgentControlsApi? = null
+    val agentControlsApi: RaftAgentControlsApi? = null,
+    /** Data-layer plan step 5: last canonical agent details, keyed by account + server + agent. */
+    val agentDetailCache: build.raft.app.data.RaftAgentDetailCache? = null,
+    /** Synchronous (environment, account) of the process auth binding, for first-frame reads. */
+    val accountBinding: () -> Pair<String, String>? = { null }
 ) {
+    /**
+     * First-frame read of [memberId]'s cached canonical detail on [serverId] for the bound account,
+     * without suspending; null when nothing is cached or the account is not known yet.
+     */
+    fun peekCachedAgentDetail(memberId: MemberId, serverId: ServerId?): Pair<SharedAgentDetailOwner, build.raft.app.data.RaftCachedAgentDetail>? {
+        val cache = agentDetailCache ?: return null
+        val (environmentId, accountId) = accountBinding() ?: return null
+        val owner = sharedAgentDetailOwner(environmentId, accountId, serverId) ?: return null
+        val cached = cache.peek(owner.agentDetailCacheKey(memberId)) ?: return null
+        if (cached.detail.agentId != memberId || cached.server.id.value.trim() != owner.serverId.value) return null
+        return owner to cached
+    }
+
     /** The identity the shared network client currently authenticates as (task #137 usage reads). */
     suspend fun currentRuntimeAccountUsageOwner(): SharedComputersOwner? = computersOwner()
 
@@ -3100,7 +3125,8 @@ private class MemberDetailRouteProvider(
         identity: MemberDetailIdentity,
         agentOwner: SharedAgentDetailOwner? = null,
         agentProfileGeneration: Long = 0L,
-        isCurrentRequest: () -> Boolean = { true }
+        isCurrentRequest: () -> Boolean = { true },
+        hasCachedAgentDetail: Boolean = false
     ): MemberDetailRouteState {
         val session = authStore.readSession()
         val serverId = session?.currentServerId
@@ -3128,7 +3154,8 @@ private class MemberDetailRouteProvider(
                             session.user.id,
                             agentOwner,
                             agentProfileGeneration,
-                            isCurrentRequest
+                            isCurrentRequest,
+                            hasCachedDetail = hasCachedAgentDetail
                         )
                     MemberDetailAccessMode.RemoteProfileOnly -> {
                         val sourceServerId = checkNotNull(identity.sourceServerId)
@@ -3215,14 +3242,32 @@ private class MemberDetailRouteProvider(
         currentUserId: String?,
         owner: SharedAgentDetailOwner?,
         profileGeneration: Long,
-        isCurrentRequest: () -> Boolean
+        isCurrentRequest: () -> Boolean,
+        hasCachedDetail: Boolean = false
     ): MemberDetailRouteState {
-        // Agent profile content is deliberately cold-loaded. A roster seed has no revision or
-        // canonical runtime authority and may never be kept as if it were a successful response.
-        val loadPlan = memberDetailLoadPlan(hasCachedDetail = false)
+        // A roster seed has no revision or canonical runtime authority and is never kept as if it
+        // were a successful response. Only a cached canonical response for this account + server
+        // + agent (data-layer plan step 5) makes this a background refresh.
+        val loadPlan = memberDetailLoadPlan(hasCachedDetail = hasCachedDetail)
         val presenceRequest =
             serverMembersStore.beginAgentDetailPresenceProjection(server.id, selectedId)
+        val cacheTicket = agentDetailCache?.ticket()
         val detailResult = memberRepository.getAgentDetail(loadPlan.priority, selectedId)
+        // Tenny rule 1: the answer is the requesting account's data for this agent even when the
+        // page moved on (server switch); the cache keeps it under that key. Rule 2: lost access
+        // (non-auth 403 / 404 / gone) evicts it.
+        if (owner != null && agentDetailCache != null && cacheTicket != null) {
+            val cacheKey = owner.agentDetailCacheKey(selectedId)
+            when {
+                detailResult is DataResult.Content && detailResult.data.agentId == selectedId ->
+                    agentDetailCache.write(
+                        cacheKey,
+                        build.raft.app.data.RaftCachedAgentDetail(server, currentUserId, detailResult.data),
+                        cacheTicket
+                    )
+                detailResult.isAgentDetailAccessLost() -> agentDetailCache.evict(cacheKey)
+            }
+        }
         if (
             !isCurrentRequest() ||
             owner == null ||
@@ -3230,6 +3275,9 @@ private class MemberDetailRouteProvider(
         ) {
             return MemberDetailRouteState.Error("member_request_stale")
         }
+        // Lost access is terminal even over a cached page: the evicted detail must not stay.
+        val failurePlan =
+            if (detailResult.isAgentDetailAccessLost()) memberDetailLoadPlan(hasCachedDetail = false) else loadPlan
         return when (detailResult) {
             is DataResult.Content -> {
                 agentDetailStore.dispatch(
@@ -3261,7 +3309,7 @@ private class MemberDetailRouteProvider(
                     selectedId = selectedId,
                     server = server,
                     currentUserId = currentUserId,
-                    resolution = memberDetailFailureResolution(loadPlan, MemberDetailFailureKind.Empty),
+                    resolution = memberDetailFailureResolution(failurePlan, MemberDetailFailureKind.Empty),
                     resultLabel = "empty"
                 )
             }
@@ -3271,7 +3319,7 @@ private class MemberDetailRouteProvider(
                     server = server,
                     currentUserId = currentUserId,
                     resolution = memberDetailFailureResolution(
-                        loadPlan,
+                        failurePlan,
                         MemberDetailFailureKind.Error,
                         detailResult.error.code
                     ),
@@ -3286,7 +3334,7 @@ private class MemberDetailRouteProvider(
                     server = server,
                     currentUserId = currentUserId,
                     resolution = memberDetailFailureResolution(
-                        loadPlan,
+                        failurePlan,
                         MemberDetailFailureKind.NoPermission,
                         detailResult.blocker.code
                     ),
@@ -3628,16 +3676,9 @@ private fun rememberMemberDetailRouteProvider(
             RaftComputersNetworkApi(networkClient)
         )
     }
-    val computersStore = remember(computersApiClient, scope) {
-        SharedComputersStore(
-            computersApiClient = computersApiClient,
-            scope = scope,
-            logger = { message -> bridge.log("member_detail_$message") },
-            ownerProvider = {
-                sharedStores.computersOwner(storeScope)
-            }
-        )
-    }
+    // Data-layer plan step 5: the shell's owner-fenced, durable machine cache (no route-local copy),
+    // so the agent's computer link / status paint from cache on the first frame.
+    val computersStore = remember(sharedStores, storeScope) { sharedStores.computersStore(storeScope) }
     val agentsApiClient = remember(networkClient) {
         build.raft.app.data.RaftAgentsApiClient(
             transport = build.raft.app.data.RaftAgentsNetworkApi(networkClient),
@@ -3727,10 +3768,61 @@ private fun rememberMemberDetailRouteProvider(
             runtimeAccountUsageStore = runtimeAccountUsageStore,
             serverFeatureFlags = sharedStores.serverFeatureFlags,
             activityOverviewRepository = activityOverviewRepository,
-            agentControlsApi = agentControlsApi
+            agentControlsApi = agentControlsApi,
+            agentDetailCache = sharedStores.agentDetailCache,
+            accountBinding = { sharedStores.currentAccountBindingOrNull() }
         )
     }
 }
+
+/**
+ * First frame of an agent detail route: when the bound account has a cached canonical detail for
+ * the agent on the active server, seed the shell's detail store with it (flagged as a cache replay)
+ * and start in the Agent state instead of the spinner.
+ */
+private fun MemberDetailRouteProvider.seedCachedAgentDetailRoute(
+    identity: MemberDetailIdentity?,
+    activeServerId: String?
+): MemberDetailRouteState? {
+    identity ?: return null
+    if (identity.kind != MemberKind.Agent) return null
+    if (identity.memberDetailAccessMode(activeServerId) != MemberDetailAccessMode.LocalFull) return null
+    val serverId = membersAgentProfileRequestServerId(identity, activeServerId) ?: return null
+    val (owner, cached) = peekCachedAgentDetail(identity.memberId, serverId) ?: return null
+    agentDetailStore.seedCachedAgentDetail(identity.memberId, owner, profileGeneration = 0L, cached = cached)
+    return MemberDetailRouteState.Agent(server = cached.server, currentUserId = cached.currentUserId)
+}
+
+/** Replays [cached] into the store as [agentId]'s detail under [owner] / [profileGeneration]. */
+internal fun SharedAgentDetailStore.seedCachedAgentDetail(
+    agentId: MemberId,
+    owner: SharedAgentDetailOwner,
+    profileGeneration: Long,
+    cached: build.raft.app.data.RaftCachedAgentDetail
+) {
+    dispatch(SharedAgentDetailIntent.SelectMember(agentId, owner, profileGeneration))
+    dispatch(
+        SharedAgentDetailIntent.SetDetail(
+            agentId = agentId,
+            detail = cached.detail,
+            serverId = cached.server.id,
+            owner = owner,
+            profileGeneration = profileGeneration,
+            fromCache = true
+        )
+    )
+}
+
+/** The route already paints this agent's cached detail: a refresh must not blank it. */
+private fun MemberDetailRouteState.isCachedAgentDetailRoute(
+    identity: MemberDetailIdentity,
+    agentDetailState: SharedAgentDetailState
+): Boolean =
+    this is MemberDetailRouteState.Agent &&
+        identity.kind == MemberKind.Agent &&
+        agentDetailState.agentId == identity.memberId &&
+        agentDetailState.detailServerId == server.id &&
+        agentDetailState.detail?.agentId == identity.memberId
 
 @Composable
 internal fun MemberDetailPageContent(
@@ -3798,7 +3890,8 @@ internal fun MemberDetailPageContent(
                 activeServerId = provider.selectedServerStore.currentServerId.value,
                 agentDetailState = provider.agentDetailStore.state.value,
                 serverMembersState = provider.serverMembersStore.state.value
-            ) ?: MemberDetailRouteState.Loading
+            ) ?: provider.seedCachedAgentDetailRoute(memberIdentity, provider.selectedServerStore.currentServerId.value)
+                ?: MemberDetailRouteState.Loading
         )
     }
     var localAgentDetailRefreshKey by remember { mutableStateOf(0) }
@@ -4002,7 +4095,10 @@ internal fun MemberDetailPageContent(
             routeState = MemberDetailRouteState.Error("member_identity_missing")
             return@LaunchedEffect
         }
-        if (memberIdentity.kind == MemberKind.Agent || routeState !is MemberDetailRouteState.Human) {
+        if (
+            (memberIdentity.kind == MemberKind.Agent || routeState !is MemberDetailRouteState.Human) &&
+            !routeState.isCachedAgentDetailRoute(memberIdentity, provider.agentDetailStore.state.value)
+        ) {
             routeState = MemberDetailRouteState.Loading
         }
         val generation = agentProfileRequestGeneration + 1L
@@ -4028,22 +4124,38 @@ internal fun MemberDetailPageContent(
                     generation = generation
                 )
             }
+        var hasCachedAgentDetail = false
         if (memberIdentity.kind == MemberKind.Agent) {
             if (requestOwner == null) {
                 routeState = MemberDetailRouteState.Error("member_request_stale")
                 return@LaunchedEffect
             }
-            // Remove roster-derived seeds before the canonical request. They are useful for list
-            // rows, but have neither a profile revision nor runtime-config authority.
-            provider.agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
-            provider.agentDetailStore.dispatch(
-                SharedAgentDetailIntent.SelectMember(memberIdentity.memberId, requestOwner, generation)
-            )
-            provider.agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailLoading(memberIdentity.memberId))
+            // Data-layer plan step 5: this account's last canonical answer for the agent on this
+            // server paints at once (no spinner, no edit authority) while the request refreshes it.
+            val cached =
+                if (memberIdentity.memberDetailAccessMode(activeServerId) == MemberDetailAccessMode.LocalFull) {
+                    provider.agentDetailCache?.peek(requestOwner.agentDetailCacheKey(memberIdentity.memberId))
+                        ?.takeIf { it.detail.agentId == memberIdentity.memberId && it.server.id == requestOwner.serverId }
+                } else {
+                    null
+                }
+            if (cached != null) {
+                hasCachedAgentDetail = true
+                provider.agentDetailStore.seedCachedAgentDetail(memberIdentity.memberId, requestOwner, generation, cached)
+                routeState = MemberDetailRouteState.Agent(server = cached.server, currentUserId = cached.currentUserId)
+            } else {
+                // Remove roster-derived seeds before the canonical request. They are useful for list
+                // rows, but have neither a profile revision nor runtime-config authority.
+                provider.agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
+                provider.agentDetailStore.dispatch(
+                    SharedAgentDetailIntent.SelectMember(memberIdentity.memberId, requestOwner, generation)
+                )
+                provider.agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailLoading(memberIdentity.memberId))
+            }
         }
-        val loaded = provider.loadMember(memberIdentity, requestOwner, generation) {
+        val loaded = provider.loadMember(memberIdentity, requestOwner, generation, {
             requestFence?.matches(memberIdentity, activeServerId, agentProfileRequestGeneration) == true
-        }
+        }, hasCachedAgentDetail = hasCachedAgentDetail)
         if (requestFence != null &&
             !requestFence.matches(memberIdentity, activeServerId, agentProfileRequestGeneration)
         ) {
@@ -4221,6 +4333,7 @@ internal fun MemberDetailPageContent(
                         agentDetailStoreState.detailOwner
                             ?.takeIf { owner ->
                                 selectedAgentDetailStoreStateMatches &&
+                                    !agentDetailStoreState.detailFromCache &&
                                     owner.serverId == current.server.id &&
                                     agentDetailStoreState.detailProfileGeneration == agentProfileRequestGeneration
                             }

@@ -13,10 +13,16 @@ import build.raft.app.data.JOINT_TARGET_SERVER_INVALID
 import build.raft.app.data.JointChannelConnections
 import build.raft.app.data.JointServerSlugIssue
 import build.raft.app.data.PermissionBlocker
+import build.raft.app.data.RaftDurableSnapshotKey
+import build.raft.app.data.RaftKeyedSnapshotCache
 import build.raft.app.data.RealJointChannelRepository
 import build.raft.app.data.ScreenError
+import build.raft.app.data.JointChannelServer
+import build.raft.app.data.JointChannelServerPlan
+import build.raft.app.data.isAuthSessionBlocker
 import build.raft.app.data.jointServerSlugIssue
 import build.raft.app.data.parseJointInvitedPeopleText
+import build.raft.app.model.ChannelId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -24,6 +30,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
 
 /** A failed joint call: the existing error pipeline input, keeping the server's code and text. */
 internal sealed interface JointChannelFailure {
@@ -151,16 +158,51 @@ internal class RealJointChannelConnectionsDataSource(
         RealJointChannelRepository(networkClient) { logger("joint_connections $it") }
 }
 
+/** The process joint-connections cache (data-layer plan step 5). */
+internal typealias RaftJointConnectionsCache = RaftKeyedSnapshotCache<JointChannelConnectionsSnapshot, RaftJointConnectionsDurableRecord>
+
+/** One page's slot in the process cache: environment + account + server + channel. */
+internal class JointChannelConnectionsCacheSlot(
+    val cache: RaftJointConnectionsCache,
+    val key: RaftDurableSnapshotKey,
+)
+
+internal fun jointChannelConnectionsCacheSlot(
+    cache: RaftJointConnectionsCache?,
+    owner: AuthenticatedRouteOwner,
+    route: ChannelSettingsRoute,
+): JointChannelConnectionsCacheSlot? {
+    cache ?: return null
+    if (owner.serverId.trim() != route.serverId.value.trim()) return null
+    val key =
+        RaftDurableSnapshotKey(
+            environmentId = owner.environmentId,
+            accountId = owner.accountId,
+            serverId = owner.serverId,
+            entityId = route.channelId.value,
+        )
+    return key.rowId?.let { JointChannelConnectionsCacheSlot(cache, key) }
+}
+
 /**
  * MVI store of a joint channel's Connected servers page: the server list, the
  * "Channel connection invitation" form and Resend Invite. One mutation runs at a time; a
  * failure keeps the loaded list and attaches the error to the action that failed.
+ *
+ * Cache-first (data-layer plan step 5): with a [cacheSlot] the first state is the cached list
+ * (memory, or the durable row on a cold start), the page refreshes once in the background and
+ * writes the answer back; a 403 / 404 evicts the entry and the page shows the terminal error.
  */
 internal class JointChannelConnectionsStore(
     private val dataSource: JointChannelConnectionsDataSource,
     private val scope: CoroutineScope,
+    private val cacheSlot: JointChannelConnectionsCacheSlot? = null,
 ) {
-    private val mutableState = MutableStateFlow(JointChannelConnectionsState())
+    private val mutableState =
+        MutableStateFlow(
+            cacheSlot?.cache?.peek(cacheSlot.key)?.let { cached -> JointChannelConnectionsState().withSnapshot(cached) }
+                ?: JointChannelConnectionsState()
+        )
     val state: StateFlow<JointChannelConnectionsState> = mutableState.asStateFlow()
 
     private var loadGeneration = 0L
@@ -199,28 +241,54 @@ internal class JointChannelConnectionsStore(
             }
         loadJob =
             scope.launch {
-                val result = runCall { dataSource.load() }
+                val slot = cacheSlot
+                if (slot != null && mutableState.value.connections == null) {
+                    // Cold start: the durable row paints before the network answers.
+                    slot.cache.read(slot.key)?.let { cached ->
+                        if (generation == loadGeneration && mutableState.value.connections == null) {
+                            mutableState.value = mutableState.value.withSnapshot(cached).copy(refreshing = true)
+                        }
+                    }
+                }
+                val ticket = slot?.cache?.ticket()
+                var result = runCall { dataSource.load() }
+                if (result.jointFailureCodeOrNull() == AUTHENTICATED_ROUTE_AUTHORITY_CHANGED) {
+                    // A token refresh rotated the session mid-request: same account, ask once more.
+                    // After a server switch / sign-out the capture fails again without a request.
+                    result = runCall { dataSource.load() }
+                }
+                // Tenny rule 1: the answer is this account's data for this channel even when the
+                // page moved on; it is cached regardless of the page generation.
+                if (slot != null && ticket != null) {
+                    when {
+                        result is DataResult.Content -> slot.cache.write(slot.key, result.data, ticket)
+                        result.isJointConnectionsAccessLost() -> slot.cache.evict(slot.key)
+                    }
+                }
                 if (generation != loadGeneration) return@launch
                 val previous = mutableState.value
                 mutableState.value =
                     when (result) {
-                        is DataResult.Content ->
-                            previous.copy(
-                                status = JointChannelConnectionsLoadStatus.Content,
-                                connections = result.data.connections,
-                                canFederate = result.data.canFederate,
-                                refreshing = false,
-                                loadFailure = null,
-                            )
+                        is DataResult.Content -> previous.withSnapshot(result.data)
                         else -> {
                             val failure = result.toJointChannelFailure()
-                            if (previous.connections != null && failure?.code != AUTHENTICATED_ROUTE_AUTHORITY_CHANGED) {
-                                previous.copy(refreshing = false, loadFailure = failure)
-                            } else {
-                                JointChannelConnectionsState(
-                                    status = JointChannelConnectionsLoadStatus.Error,
-                                    loadFailure = failure,
-                                )
+                            when {
+                                // Lost access (403 / 404): nothing cached may stay on screen.
+                                result.isJointConnectionsAccessLost() ->
+                                    JointChannelConnectionsState(
+                                        status = JointChannelConnectionsLoadStatus.Error,
+                                        loadFailure = failure,
+                                    )
+                                // A token refresh / server switch overtook the request: the shown
+                                // list is still this account's, keep it without an error.
+                                previous.connections != null && failure?.code == AUTHENTICATED_ROUTE_AUTHORITY_CHANGED ->
+                                    previous.copy(refreshing = false)
+                                previous.connections != null -> previous.copy(refreshing = false, loadFailure = failure)
+                                else ->
+                                    JointChannelConnectionsState(
+                                        status = JointChannelConnectionsLoadStatus.Error,
+                                        loadFailure = failure,
+                                    )
                             }
                         }
                     }
@@ -258,6 +326,11 @@ internal class JointChannelConnectionsStore(
         launchAction {
             val result = runCall { dataSource.invite(slug, people) }
             val previous = mutableState.value
+            if (result is DataResult.Content && result.data.channelId == connections.channelId) {
+                cacheSlot?.let { slot ->
+                    slot.cache.write(slot.key, JointChannelConnectionsSnapshot(result.data, previous.canFederate), slot.cache.ticket())
+                }
+            }
             mutableState.value =
                 when (result) {
                     is DataResult.Content ->
@@ -305,6 +378,96 @@ internal class JointChannelConnectionsStore(
         loadJob = null
         actionJob = null
     }
+}
+
+private fun DataResult<*>.jointFailureCodeOrNull(): String? = (this as? DataResult.Error)?.error?.code
+
+private fun JointChannelConnectionsState.withSnapshot(snapshot: JointChannelConnectionsSnapshot): JointChannelConnectionsState =
+    copy(
+        status = JointChannelConnectionsLoadStatus.Content,
+        connections = snapshot.connections,
+        canFederate = snapshot.canFederate,
+        refreshing = false,
+        loadFailure = null,
+    )
+
+/** A validation proving the account can no longer read the channel: non-auth 403, or 404. */
+internal fun DataResult<*>.isJointConnectionsAccessLost(): Boolean =
+    when (this) {
+        is DataResult.NoPermission -> !blocker.isAuthSessionBlocker()
+        is DataResult.Error -> error.code == "joint_http_404" || error.code == "http_404"
+        else -> false
+    }
+
+/** Persisted scope name: keep the spelling stable across releases. */
+internal const val RaftJointConnectionsSnapshotScope = "raft_joint_connections_v1"
+
+@Serializable
+internal data class RaftJointConnectionsDurableRecord(
+    val channelId: String,
+    val channelName: String,
+    val isJoint: Boolean,
+    val archived: Boolean,
+    val servers: List<RaftJointConnectionsDurableServer>,
+    val hasCurrentServerPendingInvites: Boolean,
+    val canFederate: Boolean,
+)
+
+@Serializable
+internal data class RaftJointConnectionsDurableServer(
+    val serverId: String,
+    val name: String,
+    val slug: String,
+    val active: Boolean,
+    val isCurrentServer: Boolean,
+    val plan: String? = null,
+)
+
+internal fun JointChannelConnectionsSnapshot.toJointConnectionsDurableRecord(): RaftJointConnectionsDurableRecord =
+    RaftJointConnectionsDurableRecord(
+        channelId = connections.channelId.value,
+        channelName = connections.channelName,
+        isJoint = connections.isJoint,
+        archived = connections.archived,
+        servers =
+            connections.servers.map { server ->
+                RaftJointConnectionsDurableServer(
+                    serverId = server.serverId,
+                    name = server.name,
+                    slug = server.slug,
+                    active = server.active,
+                    isCurrentServer = server.isCurrentServer,
+                    plan = server.plan?.name,
+                )
+            },
+        hasCurrentServerPendingInvites = connections.hasCurrentServerPendingInvites,
+        canFederate = canFederate,
+    )
+
+internal fun RaftJointConnectionsDurableRecord.toJointConnectionsSnapshot(): JointChannelConnectionsSnapshot? {
+    val id = channelId.trim().takeIf { it.isNotBlank() } ?: return null
+    return JointChannelConnectionsSnapshot(
+        connections =
+            JointChannelConnections(
+                channelId = ChannelId(id),
+                channelName = channelName,
+                isJoint = isJoint,
+                archived = archived,
+                servers =
+                    servers.map { server ->
+                        JointChannelServer(
+                            serverId = server.serverId,
+                            name = server.name,
+                            slug = server.slug,
+                            active = server.active,
+                            isCurrentServer = server.isCurrentServer,
+                            plan = JointChannelServerPlan.entries.firstOrNull { it.name == server.plan },
+                        )
+                    },
+                hasCurrentServerPendingInvites = hasCurrentServerPendingInvites,
+            ),
+        canFederate = canFederate,
+    )
 }
 
 private suspend fun <T> runCall(call: suspend () -> DataResult<T>): DataResult<T> =
