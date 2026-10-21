@@ -97,11 +97,27 @@ internal fun activityNewRowsAboveViewport(
     newRowKeys: Set<String>,
     lazyItemKeys: List<String>,
     firstVisibleItemIndex: Int,
-): Boolean {
-    if (newRowKeys.isEmpty() || firstVisibleItemIndex <= 0) return false
+): Boolean = activityNewRowsAboveViewportCount(newRowKeys, lazyItemKeys, firstVisibleItemIndex) > 0
+
+/**
+ * The pill's count (web `thread.newUpdates`, artin 2026-10-21): how many of [newRowKeys] are laid
+ * out above the first visible LazyColumn item. [newRowKeys] holds only rows not seen yet
+ * ([activityUnseenNewRowKeys]).
+ */
+internal fun activityNewRowsAboveViewportCount(
+    newRowKeys: Set<String>,
+    lazyItemKeys: List<String>,
+    firstVisibleItemIndex: Int,
+): Int {
+    if (newRowKeys.isEmpty() || firstVisibleItemIndex <= 0) return 0
     val end = minOf(firstVisibleItemIndex, lazyItemKeys.size)
+    var count = 0
     for (index in 0 until end) {
-        if (lazyItemKeys[index] in newRowKeys) return true
+        if (lazyItemKeys[index] in newRowKeys) count += 1
     }
-    return false
+    return count
 }
+
+/** A landed row the reader has scrolled into view is seen: it no longer counts for the pill. */
+internal fun activityUnseenNewRowKeys(newRowKeys: Set<String>, visibleItemKeys: Set<String>): Set<String> =
+    if (newRowKeys.isEmpty() || visibleItemKeys.none { it in newRowKeys }) newRowKeys else newRowKeys - visibleItemKeys
