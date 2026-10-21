@@ -270,6 +270,49 @@ def check_no_layout_direction_flip(sources: dict[str, str]) -> None:
             )
 
 
+CONDITIONAL_STATE_ROOTS = (
+    "compose/designsystem/src/commonMain/kotlin",
+    "compose/shared/src/commonMain/kotlin",
+)
+CONDITIONAL_INTERACTION_STATE = re.compile(
+    r"(&&|\|\||\?:)\s*\(?\s*!?\s*"
+    r"(raftIs(Pressed|Hovered|Focused)\s*\(|[\w.\[\]()]*\bcollectIs\w+AsState\s*\()"
+)
+
+
+def check_no_conditional_interaction_state(sources: dict[str, str]) -> None:
+    """Incident: 1.15.0 (11500007) release crash on launch (CMP 1.12.2 / Kotlin 2.4 / R8).
+
+    `ClassCastException: RaftButtonKt$$ExternalSyntheticLambda9 cannot be cast to
+    MutableState` in `collectIsPressedAsState` <- `raftIsPressed` <- `RaftButtonBox`.
+    `raftIsPressed/Hovered/Focused` and `collectIs*AsState` `remember` state; placed on the
+    right of `&&` / `||` / `?:` they run conditionally, so the remembered slots change when
+    `enabled` flips and a slot reads back the wrong object. Hoist the call to a local first.
+    """
+    for name, text in sources.items():
+        match = CONDITIONAL_INTERACTION_STATE.search(text)
+        if match:
+            line = text.count("\n", 0, match.start()) + 1
+            raise Violation(
+                f"conditional composable state: {name}:{line} calls "
+                f"{match.group(2).strip()}...) behind a short-circuit operator; hoist it "
+                "to an unconditional `val isPressed = raftIsPressed(source)` first"
+            )
+
+
+def _conditional_state_sources(root: Path) -> dict[str, str]:
+    sources: dict[str, str] = {}
+    for rel in CONDITIONAL_STATE_ROOTS:
+        base = root / rel
+        if not base.is_dir():
+            raise Violation(f"conditional composable state: missing source root {rel}")
+        for path in sorted(base.rglob("*.kt")):
+            sources[str(path.relative_to(root))] = path.read_text(encoding="utf-8")
+    if not any("raftIsPressed(" in text for text in sources.values()):
+        raise Violation("conditional composable state: scan never reached raftIsPressed")
+    return sources
+
+
 def check_notification_action_handlers(bridge: str, activity: str) -> None:
     """Incident: task #361 (permission banner permanently wrong on Android)."""
     for action in NOTIFICATION_ACTIONS:
@@ -1095,6 +1138,7 @@ def run(root: Path) -> None:
             VENDOR_PARAGRAPH: read(VENDOR_PARAGRAPH),
         }
     )
+    check_no_conditional_interaction_state(_conditional_state_sources(root))
     check_notification_action_handlers(read(BRIDGE_AUTH), read(ANDROID_ACTIVITY))
     check_auth_authority_changed_i18n(
         {locale: read(path) for locale, path in AUTH_STRINGS.items()}
@@ -1583,6 +1627,23 @@ fun anotherCase() = Unit
         pass
     else:
         raise SystemExit("self-test: layout-direction checker accepted a violation")
+
+    check_no_conditional_interaction_state(
+        {"f": "val isPressed = raftIsPressed(source)\nval pressed = active && (isPressed || isHovered)"}
+    )
+    for bad in (
+        "val pressed = active && (raftIsPressed(source) || raftIsHovered(source))",
+        "val p = raftIsPressed(source) || raftIsHovered(source)",
+        "focused += link.enabled &&\n    raftIsFocused(sources[i])",
+        "val p = enabled && interactionSource.collectIsPressedAsState().value",
+        "val f = enabled && !raftIsFocused(source)",
+    ):
+        try:
+            check_no_conditional_interaction_state({"f": bad})
+        except Violation:
+            pass
+        else:
+            raise SystemExit(f"self-test: conditional-state checker accepted {bad!r}")
 
     good_bridge = "".join(f'put("action", "{a}")\n' for a in NOTIFICATION_ACTIONS)
     good_activity = "".join(f'"{a}" -> handle()\n' for a in NOTIFICATION_ACTIONS)

@@ -232,11 +232,14 @@ private fun RaftButtonBox(
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val active = enabled && !loading
     // raft-ui shows the same overlay on `hover:` and `active:`.
-    val pressed = active && (raftIsPressed(source) || raftIsHovered(source))
+    val isPressed = raftIsPressed(source)
+    val isHovered = raftIsHovered(source)
+    val pressed = active && (isPressed || isHovered)
     // `focus-visible:shadow-focus`. raft-ui keeps a loading button focusable but
     // `aria-disabled`: the clickable stays enabled (so focus stays on it when it turns busy),
     // drops the tap while busy, and semantics say disabled, so no click action is offered.
-    val focused = enabled && raftIsFocused(source)
+    val isFocused = raftIsFocused(source)
+    val focused = enabled && isFocused
     val shape = RoundedCornerShape(RaftRadius.Control)
     Box(
         modifier =
@@ -415,7 +418,8 @@ fun RaftIconButton(
     val box = if (onFrame) 36.dp else size.box
     val glyph = if (onFrame) 20.dp else size.glyph
     val description = contentDescription
-    if (description == null) LocalRaftMisuse.current("RaftIconButton needs a name: pass tooltip or contentDescription")
+    val misuse = LocalRaftMisuse.current
+    if (description == null) misuse("RaftIconButton needs a name: pass tooltip or contentDescription")
     val button: @Composable (Modifier) -> Unit = { outer ->
         RaftButtonBox(
             look = look,

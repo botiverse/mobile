@@ -86,7 +86,8 @@ internal val LocalRaftHoveredPreview = staticCompositionLocalOf { false }
 @Composable
 internal fun raftIsPressed(interactionSource: InteractionSource): Boolean {
     val pressed = interactionSource.collectIsPressedAsState().value
-    return pressed || LocalRaftPressedPreview.current
+    val preview = LocalRaftPressedPreview.current
+    return pressed || preview
 }
 
 /**
@@ -96,7 +97,8 @@ internal fun raftIsPressed(interactionSource: InteractionSource): Boolean {
 @Composable
 internal fun raftIsHovered(interactionSource: InteractionSource): Boolean {
     val hovered = interactionSource.collectIsHoveredAsState().value
-    return hovered || LocalRaftHoveredPreview.current
+    val preview = LocalRaftHoveredPreview.current
+    return hovered || preview
 }
 
 /**
@@ -107,7 +109,8 @@ internal fun raftIsHovered(interactionSource: InteractionSource): Boolean {
 @Composable
 internal fun raftIsFocused(interactionSource: InteractionSource): Boolean {
     val focused = interactionSource.collectIsFocusedAsState().value
-    return focused || LocalRaftFocusedPreview.current
+    val preview = LocalRaftFocusedPreview.current
+    return focused || preview
 }
 
 /**

@@ -117,8 +117,10 @@ fun RaftTextLink(
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val colors = RaftTheme.colors
-    val look = raftTextLinkLook(variant, enabled, active = enabled && raftIsPressed(source), colors)
-    val focused = enabled && raftIsFocused(source)
+    val isPressed = raftIsPressed(source)
+    val look = raftTextLinkLook(variant, enabled, active = enabled && isPressed, colors)
+    val isFocused = raftIsFocused(source)
+    val focused = enabled && isFocused
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     BasicText(
         text = text,
@@ -219,9 +221,11 @@ internal fun RaftLinkedText(
     val focused = ArrayList<Boolean>(links.size)
     links.forEachIndexed { i, link ->
         key(i) {
-            val active = link.enabled && raftIsPressed(sources[i])
+            val isPressed = raftIsPressed(sources[i])
+            val active = link.enabled && isPressed
             looks += raftTextLinkLook(link.variant, link.enabled, active, colors)
-            focused += link.enabled && raftIsFocused(sources[i])
+            val isFocused = raftIsFocused(sources[i])
+            focused += link.enabled && isFocused
         }
     }
     val display =

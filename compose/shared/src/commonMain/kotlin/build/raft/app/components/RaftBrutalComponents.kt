@@ -1647,24 +1647,24 @@ internal fun RaftBrutalIconButton(
             iconSize = iconSize,
             iconSpinning = iconSpinning
         )
-        return
-    }
-    RaftIconButton(
-        onClick = onClick,
-        tooltip = tooltip,
-        modifier = modifier,
-        variant = raftIconButtonVariantFor(backgroundColor),
-        size = raftIconButtonSizeFor(size),
-        enabled = enabled,
-        onLongClick = onLongClick,
-        longClickLabel = longClickLabel
-    ) {
-        // An explicit ink stays (media controls on a scrim); the legacy black follows the variant.
-        val explicitInk = iconColor.takeIf { enabled && it != RaftLegacyIconInkArgb }
-        if (explicitInk != null) {
-            RaftLucideIcon(iconName, color = explicitInk, modifier = Modifier.fillMaxSize(), spinning = iconSpinning)
-        } else {
-            RaftSlotIcon(iconName, spinning = iconSpinning)
+    } else {
+        RaftIconButton(
+            onClick = onClick,
+            tooltip = tooltip,
+            modifier = modifier,
+            variant = raftIconButtonVariantFor(backgroundColor),
+            size = raftIconButtonSizeFor(size),
+            enabled = enabled,
+            onLongClick = onLongClick,
+            longClickLabel = longClickLabel
+        ) {
+            // An explicit ink stays (media controls on a scrim); the legacy black follows the variant.
+            val explicitInk = iconColor.takeIf { enabled && it != RaftLegacyIconInkArgb }
+            if (explicitInk != null) {
+                RaftLucideIcon(iconName, color = explicitInk, modifier = Modifier.fillMaxSize(), spinning = iconSpinning)
+            } else {
+                RaftSlotIcon(iconName, spinning = iconSpinning)
+            }
         }
     }
 }

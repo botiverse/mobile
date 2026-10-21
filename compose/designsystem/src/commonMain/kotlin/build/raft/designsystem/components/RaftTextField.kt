@@ -155,7 +155,8 @@ fun RaftTextField(
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val look = raftFieldBoxLook(enabled, invalid, RaftTheme.colors, readOnly)
-    val focused = enabled && raftIsFocused(source)
+    val isFocused = raftIsFocused(source)
+    val focused = enabled && isFocused
     val field = LocalRaftFieldState.current
     BasicTextField(
         value = value,
@@ -199,7 +200,8 @@ fun RaftTextField(
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val look = raftFieldBoxLook(enabled, invalid, RaftTheme.colors, readOnly)
-    val focused = enabled && raftIsFocused(source)
+    val isFocused = raftIsFocused(source)
+    val focused = enabled && isFocused
     val field = LocalRaftFieldState.current
     BasicTextField(
         value = value,
@@ -252,7 +254,8 @@ fun RaftTextarea(
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val look = raftFieldBoxLook(enabled, invalid, RaftTheme.colors, readOnly)
-    val focused = enabled && raftIsFocused(source)
+    val isFocused = raftIsFocused(source)
+    val focused = enabled && isFocused
     val field = LocalRaftFieldState.current
     RaftTextareaGroup(modifier, count = value.length, limit = limit, invalid = invalid && enabled) {
         BasicTextField(
@@ -301,7 +304,8 @@ fun RaftTextarea(
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val look = raftFieldBoxLook(enabled, invalid, RaftTheme.colors, readOnly)
-    val focused = enabled && raftIsFocused(source)
+    val isFocused = raftIsFocused(source)
+    val focused = enabled && isFocused
     val field = LocalRaftFieldState.current
     RaftTextareaGroup(modifier, count = value.text.length, limit = limit, invalid = invalid && enabled) {
         BasicTextField(
@@ -405,9 +409,9 @@ private fun raftFieldTextStyle(color: Color): TextStyle = RaftTheme.typography.f
 @Composable
 private fun Modifier.raftFieldChrome(look: RaftFieldBoxLook, focused: Boolean): Modifier {
     val shape = RoundedCornerShape(RaftRadius.Control)
-    val ring =
-        focused &&
-            (LocalInputModeManager.current.inputMode == InputMode.Keyboard || LocalRaftFocusedPreview.current)
+    val keyboardMode = LocalInputModeManager.current.inputMode == InputMode.Keyboard
+    val focusedPreview = LocalRaftFocusedPreview.current
+    val ring = focused && (keyboardMode || focusedPreview)
     return this
         .raftFocusRing(ring, RaftRadius.Control, RaftTheme.colors)
         .background(look.fill, shape)
@@ -515,8 +519,11 @@ fun RaftTextFieldAction(
 ) {
     val colors = RaftTheme.colors
     val source = interactionSource ?: remember { MutableInteractionSource() }
-    val active = enabled && (raftIsPressed(source) || raftIsHovered(source))
-    val focused = enabled && raftIsFocused(source)
+    val isPressed = raftIsPressed(source)
+    val isHovered = raftIsHovered(source)
+    val active = enabled && (isPressed || isHovered)
+    val isFocused = raftIsFocused(source)
+    val focused = enabled && isFocused
     val ink =
         when {
             !enabled -> colors.foregroundDisabled

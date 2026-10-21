@@ -107,8 +107,10 @@ fun RaftSelectTrigger(
     val colors = RaftTheme.colors
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val look = raftSelectTriggerLook(enabled, invalid, value != null, colors)
-    val pressed = enabled && raftIsPressed(source)
-    val focused = enabled && raftIsFocused(source)
+    val isPressed = raftIsPressed(source)
+    val pressed = enabled && isPressed
+    val isFocused = raftIsFocused(source)
+    val focused = enabled && isFocused
     val shape = RoundedCornerShape(RaftRadius.Control)
     val field = LocalRaftFieldState.current
     val base = if (field.inField) RaftTheme.typography.field else RaftTheme.typography.subhead
@@ -278,8 +280,10 @@ fun RaftPickerTriggerButton(
     val colors = RaftTheme.colors
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val look = raftPickerTriggerLook(hasValue, invalid, enabled, colors)
-    val pressed = enabled && raftIsPressed(source)
-    val focused = enabled && raftIsFocused(source)
+    val isPressed = raftIsPressed(source)
+    val pressed = enabled && isPressed
+    val isFocused = raftIsFocused(source)
+    val focused = enabled && isFocused
     val shape = RoundedCornerShape(RaftRadius.Control)
     Row(
         modifier

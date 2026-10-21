@@ -5004,22 +5004,22 @@ private fun ComposerSendButton(
             iconSpinning = true,
             onClick = onClick
         )
-        return
+    } else {
+        RaftBrutalIconButton(
+            iconName = icon,
+            onClick = onClick,
+            contentDescription = contentDescription,
+            enabled = enabled,
+            backgroundColor = RaftColor.AccentPink,
+            disabledBackgroundColor = ThreadComposerDisabledSendBackground,
+            disabledAlpha = 1f,
+            disabledBorderColor = ThreadComposerDisabledSendBorder,
+            disabledShadowColor = ThreadComposerDisabledSendShadow,
+            disabledIconColor = ThreadComposerDisabledSendIconArgb,
+            size = ThreadComposerIconButtonSize,
+            iconSize = ThreadComposerIconSize
+        )
     }
-    RaftBrutalIconButton(
-        iconName = icon,
-        onClick = onClick,
-        contentDescription = contentDescription,
-        enabled = enabled,
-        backgroundColor = RaftColor.AccentPink,
-        disabledBackgroundColor = ThreadComposerDisabledSendBackground,
-        disabledAlpha = 1f,
-        disabledBorderColor = ThreadComposerDisabledSendBorder,
-        disabledShadowColor = ThreadComposerDisabledSendShadow,
-        disabledIconColor = ThreadComposerDisabledSendIconArgb,
-        size = ThreadComposerIconButtonSize,
-        iconSize = ThreadComposerIconSize
-    )
 }
 
 internal fun threadComposerVisibleLeftActionGapDp(): Float =

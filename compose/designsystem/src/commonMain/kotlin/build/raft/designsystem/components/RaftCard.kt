@@ -145,8 +145,10 @@ fun RaftCard(
     val shape = RoundedCornerShape(look.radius)
     val clickable = variant == RaftCardVariant.Option && onClick != null
     val source = interactionSource ?: remember { MutableInteractionSource() }
-    val pressed = clickable && enabled && raftIsPressed(source)
-    val focused = clickable && enabled && raftIsFocused(source)
+    val isPressed = raftIsPressed(source)
+    val pressed = clickable && enabled && isPressed
+    val isFocused = raftIsFocused(source)
+    val focused = clickable && enabled && isFocused
     CompositionLocalProvider(LocalRaftContentColor provides colors.foreground, LocalRaftSurfaceColor provides colors.layerCard) {
         Column(
             modifier

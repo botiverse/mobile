@@ -169,8 +169,10 @@ fun RaftMessageImageFrame(
     val radius = if (single) RaftRadius.Container else RaftRadius.Control
     val shape = RoundedCornerShape(radius)
     val source = remember { MutableInteractionSource() }
-    val pressed = onClick != null && raftIsPressed(source)
-    val focused = onClick != null && raftIsFocused(source)
+    val isPressed = raftIsPressed(source)
+    val pressed = onClick != null && isPressed
+    val isFocused = raftIsFocused(source)
+    val focused = onClick != null && isFocused
     Box(
         modifier
             .then(if (pending) Modifier.alpha(RaftMessageImageGalleryDefaults.PendingAlpha) else Modifier)
