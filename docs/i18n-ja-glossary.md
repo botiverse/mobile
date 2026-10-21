@@ -38,6 +38,8 @@ new product concept gets a Japanese rendering.
 | Join / Leave (channel, server) | 参加 / 退出 | |
 | Sign in / Sign out | ログイン / ログアウト | One pair everywhere; never サインイン |
 | Connected accounts | 連携アカウント | |
+| Assistant (personal) | アシスタント | Web `assistant.*` catalog term |
+| Sent by (assistant, on the owner's behalf) | 〜が代理送信 | "sent by Friday" = 「Friday が代理送信」; deleted = 「削除済みのアシスタントが代理送信」 (RFC 077) |
 | Connected Apps | 連携アプリ | OAuth surface |
 | Marketplace | マーケットプレイス | |
 | Built-in | 組み込み | |

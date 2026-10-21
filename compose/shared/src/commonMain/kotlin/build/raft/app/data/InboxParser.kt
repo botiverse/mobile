@@ -70,6 +70,9 @@ private data class WireInboxItem(
     val latestActivitySenderId: String? = null,
     val latestActivitySenderName: String? = null,
     val latestActivityMessageId: String? = null,
+    // RFC 077 (`withLatestDelegatedBy`, channels.ts GET /inbox): the assistant that sent the
+    // row's latest message (thread: `latestActivityMessageId`, else `lastMessageId`).
+    val latestDelegatedBy: WireDelegatedBy? = null,
     val lastActivityAt: String? = null,
     val lastReplyAt: String? = null,
     val replyCount: Int = 0,
@@ -303,6 +306,7 @@ private fun WireInboxItem.toChannelOrDmDomain(diagnostics: (String) -> Unit): In
         latestActivitySeq = latestActivitySeq?.takeIf(::isCanonicalActivitySeq),
         doneFrontierSeq = doneFrontierSeq,
         firstMentionMessageId = firstMentionMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        latestDelegatedBy = latestDelegatedBy.toMessageDelegatedBy(),
     )
 }
 
@@ -334,6 +338,7 @@ private fun WireInboxItem.toThreadDomain(diagnostics: (String) -> Unit): InboxIt
         latestActivityAt = lastActivityAt ?: lastReplyAt,
         latestActivitySenderName = latestActivitySenderName,
         latestActivitySenderId = latestActivitySenderId,
+        latestDelegatedBy = latestDelegatedBy.toMessageDelegatedBy(),
         latestActivitySenderKind =
             latestActivitySenderType.toSenderKind(
                 source = "inbox_latest_activity_sender",
@@ -523,6 +528,8 @@ private data class WireSearchResult(
     val content: String,
     val snippet: String,
     val createdAt: String,
+    /** RFC 077 `searchService.ts` `MessageSearchResult.delegatedBy`. */
+    val delegatedBy: WireDelegatedBy? = null,
 )
 
 @Serializable
@@ -580,6 +587,7 @@ private fun WireSearchResult.toInboxItem(diagnostics: (String) -> Unit): InboxIt
         parentChannelKind = parseConversationKindOrNull(parentChannelType),
         parentMessageId = parentMessageId?.let(::MessageId),
         parentMessagePreview = parentMessageContent,
+        latestDelegatedBy = delegatedBy.toMessageDelegatedBy(),
     )
 }
 

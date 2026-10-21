@@ -2802,4 +2802,10 @@
     <string name="agent_migration_hosted_skip_over_budget">クラウドのサイズまたはファイル数の上限を超過</string>
     <string name="agent_migration_hosted_skip_provider_rejected">クラウドが拒否</string>
     <string name="raft_pro_upgrade">アップグレード</string>
+    <string name="message_delegated_sent_by">%1$s が代理送信</string>
+    <string name="message_delegated_sent_by_in_body">（%1$s が代理送信）</string>
+    <string name="message_delegated_sent_by_deleted">削除済みのアシスタントが代理送信</string>
+    <string name="message_delegated_sent_by_deleted_in_body">（削除済みのアシスタントが代理送信）</string>
+    <string name="message_delegated_preview_sender">%1$s（%2$s が代理送信）</string>
+    <string name="message_delegated_preview_sender_deleted">%1$s（削除済みのアシスタントが代理送信）</string>
 </resources>

@@ -13763,7 +13763,10 @@ private fun RaftThreadMessageItem.mergeRealtimeUpdate(
                 else -> update.reactions.ifEmpty { reactions }
             },
         attachments = mergeAttachmentCommentMetadata(update.attachments),
-        commentRef = update.commentRef ?: commentRef
+        commentRef = update.commentRef ?: commentRef,
+        // Every message row carries `delegatedBy`; a later row wins (the assistant may since
+        // have been deleted), a sparse patch without it keeps the label.
+        delegatedBy = update.delegatedBy ?: delegatedBy
     )
 }
 
@@ -14192,6 +14195,7 @@ internal fun RaftThreadMessageItem.toMessage(
         deliveryState = deliveryState.toMessageDeliveryState(),
         task = taskSummary,
         externalAuthor = if (authorMemberKind == MemberKind.External) externalAuthor else null,
+        delegatedBy = if (authorMemberKind == MemberKind.Human) delegatedBy else null,
         replyCount = replyCount,
         unreadReplyCount = unreadReplyCount,
         firstUnreadReplyMessageId = firstUnreadReplyMessageId?.let(::MessageId),
@@ -14333,6 +14337,7 @@ internal fun Message.toRaftThreadMessageItem(currentUserId: String?): RaftThread
         avatarLabel = author.avatarLabel,
         avatarWireValue = resolvedAvatar.effectiveAvatarWireValue,
         externalAuthor = externalAuthor,
+        delegatedBy = delegatedBy,
         senderMembershipStatus =
             senderMembershipStatus?.takeIf { it.isNotBlank() }
                 ?: author.membershipStatus?.takeIf { it.isNotBlank() },

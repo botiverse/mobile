@@ -206,11 +206,14 @@ import build.raft.app.model.AgentStatus
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ExternalMessageAuthor
+import build.raft.app.model.MessageDelegatedBy
+import build.raft.app.model.delegatedGroupKey
 import build.raft.app.model.ForwardMessageAttachment
 import build.raft.app.model.ForwardMessageBundle
 import build.raft.app.model.ForwardMessageItem
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
+import build.raft.app.model.agentAvatarFallbackWireValue
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Presence
@@ -343,11 +346,16 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import build.raft.designsystem.components.RaftAvatarBadgeBox
+import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.RaftMessageDelegatedAvatar
+import build.raft.designsystem.components.RaftMessageDelegatedAvatarDefaults
 import build.raft.designsystem.components.RaftMessageImageDimensions
 import build.raft.designsystem.components.RaftMessageImageFit
 import build.raft.designsystem.components.RaftMessageImageGallery
@@ -2921,6 +2929,8 @@ internal data class RaftThreadMessageItem(
     val avatarWireValue: String? = null,
     /** Slack-bridge external sender attribution (senderType=external_projection). */
     val externalAuthor: ExternalMessageAuthor? = null,
+    /** RFC 077: the assistant that sent this message for its (human) author. */
+    val delegatedBy: MessageDelegatedBy? = null,
     val senderMembershipStatus: String? = null,
     val authorDeletedAt: String? = null,
     val timestampLabel: String = "",
@@ -23169,14 +23179,16 @@ internal fun RaftThreadMessageItem.threadActionCard(): ThreadActionCard? =
 internal data class ThreadCompactAuthorSignature(
     val isSystemMessage: Boolean,
     val authorIdentityKey: String,
-    val timestampLabel: String
+    val timestampLabel: String,
+    val delegatedGroupKey: String = ""
 )
 
 internal fun RaftThreadMessageItem.threadCompactAuthorSignature(): ThreadCompactAuthorSignature =
     ThreadCompactAuthorSignature(
         isSystemMessage = isSystemMessage(),
         authorIdentityKey = authorIdentityKey(),
-        timestampLabel = timestampLabel
+        timestampLabel = timestampLabel,
+        delegatedGroupKey = delegatedBy.delegatedGroupKey()
     )
 
 internal fun RaftThreadScreenPayload.threadActionMessage(
@@ -24761,8 +24773,18 @@ private fun ThreadQuotedPermalinkCard(
                             style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp),
                             color = RaftColor.TextBlack,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
+                        // RFC 077 (web QuoteCardContent): "(sent by Friday)" after the author,
+                        // words only, no face.
+                        state.item.delegatedBy?.let { delegatedBy ->
+                            ThreadMessageDelegatedByLabel(
+                                delegatedBy = delegatedBy,
+                                placement = DelegatedLabelPlacement.InBody,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                        }
                         Text(
                             text = state.item.timestampLabel,
                             style = RaftType.Caption,
@@ -25356,24 +25378,27 @@ private fun ThreadMessageCardContent(
                     }
                 )
     ) {
+        // raft-ui MessageItem `--mi-row-fill`: one value for the row wash and for the parts that
+        // paint the row's surface around themselves (the assistant face's ring).
+        val rowFill =
+            // raft-ui MessageItem: a checked multi-select row washes info-soft.
+            if (shareSelectionActive && selectedForShare) {
+                RaftColor.InfoSoft
+            } else if (popupOpen) {
+                // raft-ui MessageItem `data-popup-open:bg-fill-pressed`: the row
+                // under an open context menu stays pressed.
+                RaftColor.FillPressed
+            } else {
+                threadMessageFocusHighlightColor(focusAlpha)
+            }
+        val rowSurface = rowFill.compositeOver(RaftColor.Canvas)
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     // raft-ui `MessageItem` root: the row wash spans the whole
                     // row and the content sits at px-2 py-2 inside it.
-                    .background(
-                        // raft-ui MessageItem: a checked multi-select row washes info-soft.
-                        if (shareSelectionActive && selectedForShare) {
-                            RaftColor.InfoSoft
-                        } else if (popupOpen) {
-                            // raft-ui MessageItem `data-popup-open:bg-fill-pressed`: the row
-                            // under an open context menu stays pressed.
-                            RaftColor.FillPressed
-                        } else {
-                            threadMessageFocusHighlightColor(focusAlpha)
-                        }
-                    )
+                    .background(rowFill)
                     .padding(horizontal = outerPadding, vertical = RaftAppSpacing.Sm),
             verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
         ) {
@@ -25412,6 +25437,8 @@ private fun ThreadMessageCardContent(
                         status = agentStatus,
                         statusPulsing = { !isMessageListScrolling() },
                         muted = authorBadgeLabel != null,
+                        delegatedBy = message.delegatedBy,
+                        delegatedSurface = rowSurface,
                         onClick = { openAuthorProfile("avatar") },
                         onLongPress = { onMentionAuthor(message) }
                     )
@@ -25509,6 +25536,15 @@ private fun ThreadMessageCardContent(
                                             description = description,
                                             rootAnchor = subtitleAnchor,
                                             onClick = handleSubtitleClick,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+                                    }
+                                    // RFC 077: "sent by Friday" after the sender cluster, before
+                                    // the time (web MessageItem DelegatedByLabel).
+                                    message.delegatedBy?.let { delegatedBy ->
+                                        ThreadMessageDelegatedByLabel(
+                                            delegatedBy = delegatedBy,
+                                            placement = DelegatedLabelPlacement.Header,
                                             modifier = Modifier.weight(1f, fill = false)
                                         )
                                     }
@@ -25693,6 +25729,17 @@ private fun ThreadMessageCardContent(
                                 }
                             }
                         }
+                        // RFC 077: a continuation row has no header, so "(sent by Friday)" ends
+                        // its text instead, without the face (web MessageItem continuation).
+                        val delegatedBy = message.delegatedBy
+                        if (delegatedBy != null && !showAuthorChrome) {
+                            Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
+                                ThreadMessageDelegatedByLabel(
+                                    delegatedBy = delegatedBy,
+                                    placement = DelegatedLabelPlacement.InBody
+                                )
+                            }
+                        }
                         if (actionCard == null) {
                             translation?.indicator?.let { indicator ->
                                 Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
@@ -25797,6 +25844,8 @@ private fun ThreadMessageCardContent(
                         status = agentStatus,
                         statusPulsing = { !isMessageListScrolling() },
                         muted = authorBadgeLabel != null,
+                        delegatedBy = message.delegatedBy,
+                        delegatedSurface = rowSurface,
                         onClick = { openAuthorProfile("avatar") },
                         onLongPress = { onMentionAuthor(message) }
                     )
@@ -28235,6 +28284,9 @@ private fun RaftThreadMessageItem.isCompactContinuationBefore(
     if (isSystemMessage() || next.isSystemMessage()) return false
     val identityKey = authorIdentityKey()
     if (identityKey.isBlank() || identityKey != next.authorIdentityKey()) return false
+    // Web messageGrouping `isSameSender`: a message the author's assistant sent for them never
+    // continues their own run, and runs from different assistants stay apart.
+    if (delegatedBy.delegatedGroupKey() != next.delegatedBy.delegatedGroupKey()) return false
 
     val currentEpochMillis = parseThreadMessageEpochMillisOrNull(localOffsetMinutes)
     val nextEpochMillis = next.parseThreadMessageEpochMillisOrNull(localOffsetMinutes)
@@ -30164,6 +30216,8 @@ private fun ThreadMessageAvatarSlot(
     statusPulsing: () -> Boolean = { true },
     muted: Boolean = false,
     external: Boolean = false,
+    delegatedBy: MessageDelegatedBy? = null,
+    delegatedSurface: Color = RaftColor.Canvas,
     onClick: () -> Unit,
     onLongPress: () -> Unit = {}
 ) {
@@ -30188,6 +30242,8 @@ private fun ThreadMessageAvatarSlot(
                         statusPulsing = statusPulsing,
                         muted = muted,
                         external = external,
+                        delegatedBy = delegatedBy,
+                        delegatedSurface = delegatedSurface,
                         onClick = onClick,
                         onLongPress = onLongPress
                     )
@@ -30227,6 +30283,8 @@ private fun ThreadMessageAvatar(
     statusPulsing: () -> Boolean = { true },
     muted: Boolean = false,
     external: Boolean = false,
+    delegatedBy: MessageDelegatedBy? = null,
+    delegatedSurface: Color = RaftColor.Canvas,
     onClick: () -> Unit,
     onLongPress: () -> Unit = {}
 ) {
@@ -30261,35 +30319,71 @@ private fun ThreadMessageAvatar(
                 },
         contentAlignment = Alignment.Center
     ) {
-        RaftAvatarWithStatus(
-            statusColor = if (muted) null else status?.color,
-            avatarSize = 36.dp,
-            statusPulsing = status?.pulsing == true && statusPulsing()
-        ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                if (external && avatarSource == null) {
-                    ThreadExternalAuthorAvatarFallback(muted = muted)
-                } else {
-                RaftAppAvatar(
-                    avatarWireValue = avatarSource,
-                    label = avatarLabel,
-                    diagnostics = avatarDiagnostics,
-                    modifier = if (muted) Modifier.alpha(0.62f) else Modifier,
-                    avatarSize = 36.dp,
-                    cacheSubject = cacheSubject,
-                    fallbackFill = avatarFill
-                )
-                }
-                if (muted) {
-                    Box(
-                        modifier =
-                            Modifier
-                                .fillMaxSize()
-                                .background(RaftColor.EmptyStateGray.copy(alpha = 0.38f), RoundedCornerShape(RaftAppRadius.Sticker))
+        val avatarWithStatus: @Composable () -> Unit = {
+            RaftAvatarWithStatus(
+                // The assistant's face takes the corner a presence light would (raft-ui
+                // MessageItemDelegatedAvatar; only on a person's avatar).
+                statusColor = if (muted || delegatedBy != null) null else status?.color,
+                avatarSize = 36.dp,
+                statusPulsing = status?.pulsing == true && statusPulsing()
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    if (external && avatarSource == null) {
+                        ThreadExternalAuthorAvatarFallback(muted = muted)
+                    } else {
+                    RaftAppAvatar(
+                        avatarWireValue = avatarSource,
+                        label = avatarLabel,
+                        diagnostics = avatarDiagnostics,
+                        modifier = if (muted) Modifier.alpha(0.62f) else Modifier,
+                        avatarSize = 36.dp,
+                        cacheSubject = cacheSubject,
+                        fallbackFill = avatarFill
                     )
+                    }
+                    if (muted) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .background(RaftColor.EmptyStateGray.copy(alpha = 0.38f), RoundedCornerShape(RaftAppRadius.Sticker))
+                        )
+                    }
                 }
             }
         }
+        if (delegatedBy == null) {
+            avatarWithStatus()
+        } else {
+            RaftAvatarBadgeBox(
+                size = RaftAvatarSize.Md,
+                badge = { ThreadMessageDelegatedFace(delegatedBy, delegatedSurface) }
+            ) { avatarWithStatus() }
+        }
+    }
+}
+
+/**
+ * RFC 077: the face of the assistant that sent the message, on its owner's avatar (raft-ui
+ * `MessageItemDelegatedAvatar` via [RaftMessageDelegatedAvatar]): the assistant's 2xs avatar,
+ * or the default agent face once the assistant is deleted (grayed and faded).
+ */
+@Composable
+private fun ThreadMessageDelegatedFace(delegatedBy: MessageDelegatedBy, surface: Color) {
+    RaftMessageDelegatedAvatar(
+        deleted = delegatedBy.deleted,
+        surfaceColor = surface,
+        dark = RaftAppThemeState.isDark
+    ) {
+        RaftAppAvatar(
+            avatarWireValue =
+                delegatedBy.avatarUrl?.takeIf { !delegatedBy.deleted && it.isNotBlank() }
+                    ?: agentAvatarFallbackWireValue(delegatedBy.id),
+            label = delegatedBy.name,
+            avatarSize = RaftMessageDelegatedAvatarDefaults.Size,
+            cacheSubject = raftMemberAvatarCacheSubject(MemberKind.Agent, delegatedBy.id),
+            fallbackFill = raftAvatarFallbackFill(MemberKind.Agent)
+        )
     }
 }
 

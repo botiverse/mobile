@@ -24,7 +24,9 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.Heartbeat
+import build.raft.app.data.WireDelegatedBy
 import build.raft.app.data.WireExternalAuthor
+import build.raft.app.data.toMessageDelegatedBy
 import build.raft.app.data.toExternalMessageAuthor
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -409,6 +411,8 @@ private data class MessageWireDto(
     val externalAuthor: WireExternalAuthor? = null,
     /** `MessageMention[]` (web `messageStore.ts`); null/absent on producers that omit it. */
     val mentions: List<MessageMentionWireDto>? = null,
+    /** RFC 077 `DelegatedByLabel | null` (`messageRealtimeProducerRegistry.ts` lists `delegatedBy`). */
+    val delegatedBy: WireDelegatedBy? = null,
 )
 
 /** One `mentions[]` entry: `{ type: "user" | "agent" | "external"; id; name; displayName? }`. */
@@ -794,6 +798,7 @@ private fun MessageWireDto.toDomain(diagnostics: (String) -> Unit): Message? {
         forwardBundle = forwardBundle.toForwardMessageBundle() ?: actionMetadata.toForwardMessageBundle(),
         conversationContext = conversationContext?.toDomain(),
         externalAuthor = resolvedExternalAuthor,
+        delegatedBy = delegatedBy.toMessageDelegatedBy(authorKind),
         mentions = mentions.toDomainMentions(),
     )
 }

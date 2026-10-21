@@ -121,6 +121,8 @@ internal data class WireMessage(
     val forwardBundle: WireForwardMessageBundle? = null,
     /** Slack-bridge external sender attribution (present iff senderType=external_projection). */
     val externalAuthor: WireExternalAuthor? = null,
+    /** RFC 077 `DelegatedByLabel | null`: the assistant that sent it for the sender. */
+    val delegatedBy: WireDelegatedBy? = null,
 )
 
 @Serializable
@@ -317,6 +319,7 @@ private fun WireMessage.toMessageItem(
         avatarLabel = resolvedName.toRaftAvatarLabel(),
         avatarWireValue = resolvedExternalAuthor?.avatarUrl,
         externalAuthor = resolvedExternalAuthor,
+        delegatedBy = delegatedBy.toMessageDelegatedBy(authorKind),
         senderMembershipStatus = senderMembershipStatus?.takeIf { it.isNotBlank() },
         timestampLabel = createdAt.orEmpty(),
         createdAtEpochMillis = parseRaftTimestampEpochMillisOrNull(createdAt),

@@ -40,6 +40,12 @@ data class InboxItem(
     val latestActivitySenderId: String? = null,
     val latestActivitySenderKind: MemberKind? = null,
     val latestActivitySenderAvatarWireValue: String? = null,
+    /**
+     * RFC 077: the assistant that sent this row's latest message for its sender — wire
+     * `latestDelegatedBy` on Activity rows, `delegatedBy` on search hits. Previews show it as
+     * text next to the sender ("Alice (sent by Friday)"), never as a face.
+     */
+    val latestDelegatedBy: MessageDelegatedBy? = null,
     val replyCount: Int = 0,
     /** Bounded server-derived latest replies; never a second message authority. */
     val latestReplies: List<ReplyPreview> = emptyList(),

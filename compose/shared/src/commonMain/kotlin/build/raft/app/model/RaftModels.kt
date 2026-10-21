@@ -188,6 +188,26 @@ enum class MemberKind {
 }
 
 /**
+ * RFC 077: the personal assistant that sent a message for its owner (the
+ * message's `senderType=user` sender). Projection of the server's
+ * `DelegatedByLabel` the same way web `delegatedMessage.ts` `readDelegatedBy`
+ * reads it: [name] is the display name, falling back to the handle; a label with
+ * no name left reads as [deleted] so "sent by" never goes blank.
+ */
+@Serializable
+data class MessageDelegatedBy(
+    /** The assistant's agent id; also the grouping key ([delegatedGroupKey]). */
+    val id: String,
+    val name: String,
+    val avatarUrl: String? = null,
+    /** The assistant has been deleted: "sent by a deleted assistant". */
+    val deleted: Boolean = false,
+)
+
+/** Web `delegatedGroupKey`: a delegated message never continues its sender's own run. */
+fun MessageDelegatedBy?.delegatedGroupKey(): String = this?.id.orEmpty()
+
+/**
  * Immutable, human-facing attribution frozen on a `senderType=external_projection`
  * message (Web parity: `ExternalMessageAuthorProjection` in
  * `packages/shared/src/externalProjection.ts`). It is display/search data only —
@@ -489,6 +509,8 @@ data class Message(
     val conversationContext: MessageConversationContext? = null,
     /** Set when `author.kind == MemberKind.External` (senderType=external_projection). */
     val externalAuthor: ExternalMessageAuthor? = null,
+    /** RFC 077: set when the sender's assistant sent this message for them (wire `delegatedBy`). */
+    val delegatedBy: MessageDelegatedBy? = null,
     val randomId: String? = null,
     /** Canonical numeric creation time used for ordering; never derived from localized display text. */
     @Transient val createdAtEpochMillis: Long? = null,

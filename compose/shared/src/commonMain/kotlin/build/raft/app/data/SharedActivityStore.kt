@@ -767,6 +767,8 @@ class SharedActivityStore internal constructor(
                 latestActivitySenderId = message.author.id.value,
                 latestActivitySenderKind = message.author.kind,
                 latestActivitySenderAvatarWireValue = message.author.avatar?.wireValue ?: message.author.avatarUrl,
+                // Web inboxStore receiveThreadReply: `latestDelegatedBy` follows the new message.
+                latestDelegatedBy = message.delegatedBy,
                 replyCount = existing.replyCount + 1,
                 latestActivitySeq = incomingSeq ?: existing.latestActivitySeq,
                 // Keep the Done/read overlay marker in step with the patched row
@@ -1840,6 +1842,7 @@ class SharedActivityStore internal constructor(
             latestActivitySenderId = current.latestActivitySenderId,
             latestActivitySenderKind = current.latestActivitySenderKind,
             latestActivitySenderAvatarWireValue = current.latestActivitySenderAvatarWireValue,
+            latestDelegatedBy = current.latestDelegatedBy,
             replyCount = current.replyCount,
             unreadCount = current.unreadCount,
             firstUnreadMessageId = current.firstUnreadMessageId

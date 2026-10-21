@@ -127,6 +127,8 @@ private data class MessagesWireMessage(
     val forwardBundle: WireForwardMessageBundle? = null,
     /** Slack-bridge external sender attribution (present iff senderType=external_projection). */
     val externalAuthor: WireExternalAuthor? = null,
+    /** RFC 077 `DelegatedByLabel | null`: the assistant that sent it for the sender. */
+    val delegatedBy: WireDelegatedBy? = null,
 )
 
 @Serializable
@@ -502,6 +504,7 @@ private fun MessagesWireMessage.toDomain(
         updatedAtLabel = updatedAt.ifBlank { null },
         commentRef = commentRef?.toDomain(),
         externalAuthor = resolvedExternalAuthor,
+        delegatedBy = delegatedBy.toMessageDelegatedBy(authorKind),
     )
 }
 

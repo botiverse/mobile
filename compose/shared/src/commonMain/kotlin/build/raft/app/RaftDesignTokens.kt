@@ -72,6 +72,7 @@ internal object RaftColor {
     // follow light/dark through [RaftAppThemeState]; the solid "sticker" fills are the same
     // colour in both modes, so they read straight from the palette.
     // Text and icon ink ladder.
+    val ForegroundMuted: Color get() = RaftAppThemeState.colors.foregroundMuted
     val ForegroundHint: Color get() = RaftAppThemeState.colors.foregroundHint
     val ForegroundDisabled: Color get() = RaftAppThemeState.colors.foregroundDisabled
     val ForegroundInverse: Color get() = RaftAppThemeState.colors.foregroundInverse
