@@ -44,7 +44,8 @@ object RaftRadius {
 object RaftStroke {
     val Hairline = 1.dp
     val Control = 1.5.dp
-    val Field = 1.dp
+    // raft-ui 0.18: inputs, selects and textareas share the control stroke again.
+    val Field = 1.5.dp
     val Strong = 2.dp
 }
 
