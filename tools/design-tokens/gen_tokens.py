@@ -14,6 +14,9 @@ Cascade, matching how the Web build resolves these files:
   2. foundation.css and web `:root.dark` are unlayered, so they beat any
      @theme declaration of the same name. Inside them, the more specific
      theme selector wins (:where(:root) < .light / .dark < web :root.dark).
+  3. An `@property` that nothing declares computes to its initial-value.
+Only colour tokens are emitted; Tailwind's non-colour namespaces (spacing,
+radius, text...) are skipped, and an unresolvable colour fails the run.
 
 Colour maths follows CSS Color 4: oklch -> OKLab -> LMS -> XYZ-D65 -> linear
 sRGB (unclamped); color-mix(in srgb-linear) interpolates premultiplied in
@@ -136,7 +139,7 @@ def declarations(body: str) -> list[tuple[str, str]]:
     return [(m.group(1), " ".join(m.group(2).split())) for m in DECL_RE.finditer("".join(flat))]
 
 
-# Selector -> {theme: rank inside the unlayered tier}. raft-ui 0.7.1 has one
+# Selector -> {theme: rank inside the unlayered tier}. raft-ui 0.7.1 .. 0.18.0 have one
 # "raft" family: the root element carries `.light` or `.dark` (System resolves
 # to one of them), so `.light` / `.dark` match at class specificity and beat
 # the zero-specificity `:where(:root)` defaults. Equal ranks resolve by source
@@ -154,9 +157,43 @@ def _norm_selector(prelude: str) -> str:
     return " ".join(prelude.replace("\n", " ").split())
 
 
+# Tailwind theme namespaces that never hold a colour (spacing, sizes, radii,
+# type, motion...). Names in them are not emitted and not resolved on their
+# own, so a non-colour value such as `--spacing-icon-inset: var(--icon-inset)`
+# cannot fail the run. A colour token that references one is still resolved
+# (and fails closed) through var().
+NON_COLOUR_NAMESPACES = (
+    "--spacing-", "--radius-", "--text-", "--font-", "--leading-", "--tracking-",
+    "--breakpoint-", "--container-", "--blur-", "--perspective-", "--ease-",
+    "--animate-", "--aspect-", "--shadow-", "--inset-shadow-", "--drop-shadow-",
+)
+
+PROPERTY_RE = re.compile(r"@property\s+(--[A-Za-z0-9_-]+)")
+
+
+def registered_properties(sources: dict[str, str]) -> dict[str, dict[str, str]]:
+    """`@property --x { syntax; inherits; initial-value }` rules from every source."""
+    out = {}
+    for css in sources.values():
+        for prelude, body in top_level_blocks(strip_comments(css)):
+            m = PROPERTY_RE.fullmatch(_norm_selector(prelude))
+            if m:
+                descriptors = {}
+                for decl in body.split(";"):
+                    key, sep, val = decl.partition(":")
+                    if sep:
+                        descriptors[key.strip()] = " ".join(val.split())
+                out[m.group(1)] = descriptors
+    return out
+
+
 def collect(sources: dict[str, str]) -> dict[str, dict[str, str]]:
     """Resolve the cascade to raw declared values per theme."""
-    themed_layer: dict[str, str] = {}
+    # A registered custom property that nothing declares computes to its
+    # initial-value (raft-ui 0.18 registers `--icon-inset: 0px`); seed those first.
+    themed_layer: dict[str, str] = {
+        name: d["initial-value"] for name, d in registered_properties(sources).items() if "initial-value" in d
+    }
     for key in ("tailwind", "raftUiStyles", "web"):
         for prelude, body in top_level_blocks(strip_comments(sources[key])):
             if re.fullmatch(r"@theme(\s+(default|inline|static|reference))*", _norm_selector(prelude)):
@@ -424,6 +461,8 @@ def resolve_all(sources: dict[str, str]) -> tuple[dict[str, dict[str, tuple[int,
         r = Resolver(values)
         colours = {}
         for name in sorted(values):
+            if name.startswith(NON_COLOUR_NAMESPACES):
+                continue
             c = r.token(name)
             if c is not None:
                 colours[name] = c.paint()
@@ -556,6 +595,8 @@ def browser_css(sources: dict[str, str]) -> str:
     `theme` layer, foundation.css and web `:root.dark` unlayered. Chrome then
     does selector matching, var() resolution, colour maths and painting."""
     out = ["@layer theme;"]
+    for name, d in registered_properties(sources).items():
+        out.append(f"@property {name} {{ {''.join(f'{k}: {v};' for k, v in d.items())} }}")
     for key in ("tailwind", "raftUiStyles", "web"):
         for prelude, body in top_level_blocks(strip_comments(sources[key])):
             if re.fullmatch(r"@theme(\s+(default|inline|static|reference))*", _norm_selector(prelude)):
@@ -631,6 +672,23 @@ def self_test() -> None:
     assert toks["raftDark"]["--line-field"] == (0xEE, 0xEE, 0xEE, 255), "var() resolves per theme"
     assert "--code" not in toks["raftLight"] and toks["raftDark"]["--code"] == (10, 12, 16, 255)
     assert {"--fg", "--code", "--seam", "--line-field"} <= themed, themed
+    # Non-colour namespaces are skipped (even when they reference an unknown var);
+    # an @property initial-value stands in for an undeclared registered property;
+    # a colour token on an undefined var still fails closed.
+    srcs["raftUiStyles"] += (
+        "\n@theme inline { --spacing-gap: var(--undeclared); --spacing-inset: var(--inset); --color-tint: var(--tint); }"
+        '\n@property --inset { syntax: "<length>"; inherits: false; initial-value: 0px; }'
+        '\n@property --tint { syntax: "<color>"; inherits: false; initial-value: #123456; }'
+    )
+    toks, _ = resolve_all(srcs)
+    assert "--spacing-gap" not in toks["raftLight"] and "--inset" not in toks["raftLight"]
+    assert toks["raftDark"]["--tint"] == (0x12, 0x34, 0x56, 255)  # --color-tint folds into it
+    srcs["raftUiStyles"] += "\n@theme { --color-broken: var(--undeclared); }"
+    try:
+        resolve_all(srcs)
+        raise AssertionError("colour token on an undefined var accepted")
+    except TokenError:
+        pass
     assert kotlin_name("--color-brutal-yellow-400") == "brutalYellow400"
     assert kotlin_name("--foreground-muted") == "foregroundMuted"
     assert over((0, 0, 0, 128), (255, 255, 255)) == (127, 127, 127)

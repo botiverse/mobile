@@ -4,6 +4,7 @@
 @import "./components/timeline/timeline.css";
 @import "./components/steps/steps.css";
 @import "./components/steps/otter-indicator.css";
+@import "./components/virtual-list/styles/virtual-list.css";
 
 /* `dark:` follows the nearest explicit mode class, and before hydration the
    system preference. A `.light` island inside a dark page re-enters light
@@ -22,6 +23,26 @@
     }
   }
 }
+
+/* Focus indicators show only after keyboard navigation
+   (design/foundations/states.md#focus). installInputModality, which
+   ThemeProvider runs, keeps `data-input-modality` on the root: "pointer" after
+   a click or a tap, "keyboard" after a navigation key. While it says "pointer"
+   the focus ring is empty; with no attribute at all (no script, or the tracker
+   not installed) every ring shows. Each selector outranks a scope that declares
+   --focus-ring in foundation.css: a mode class on the root, the system-dark
+   fallback (:root:not(.light):not(.dark)), and a light or dark island. */
+:root[data-input-modality="pointer"],
+:root[data-input-modality="pointer"]:not(.light):not(.dark),
+:root[data-input-modality="pointer"] :is(.light, .dark) {
+  --focus-ring: 0 0 transparent;
+}
+
+/* The same gate for a focus indicator not drawn with --focus-ring (an outline,
+   an inset ring): it matches unless the last input was a pointer. Stack it on
+   the state, `focus-visible:keyboard:outline-2`. Anchored on the element's own
+   class, so it costs WebKit no ancestor dependency on unrelated elements. */
+@custom-variant keyboard (&:not(:where(:root[data-input-modality="pointer"] *)));
 
 @theme {
   --color-black: oklch(0 0 0);
@@ -55,7 +76,9 @@
 
   /* Raft Design System type styles (size / line-height / weight). Grotesk is
      what people say; pair the mono styles with `font-mono` for what machines
-     write (ids, times, counts, events, code). */
+     write (ids, times, counts, events, code). These are the phone values; the
+     desktop block below the theme sets the working sizes again on a desktop
+     (from 768px with a mouse or trackpad). */
   --text-hero: 40px;
   --text-hero--line-height: 44px;
   --text-hero--font-weight: 700;
@@ -89,6 +112,11 @@
   --text-mono-meta--line-height: 16px;
   --text-mono-code: 13px;
   --text-mono-code--line-height: 20px;
+  /* The label of a 32px control: a Button at `md`, a panel action, a filter
+     trigger. Its own style, because on a phone it is footnote's 13px and on a
+     desktop it is 14px, where footnote drops to 12. */
+  --text-control: 13px;
+  --text-control--line-height: 18px;
 
   /* Deprecated utility names, kept until raft-ui 1.0 (see codemods/token-names.mjs). */
   --color-brutal-yellow: var(--palette-yellow-400);
@@ -101,6 +129,43 @@
   --color-brutal-red: var(--palette-red-400);
   --color-brutal-stone: var(--palette-stone-400);
   --color-brutal-cream: var(--palette-cream-200);
+}
+
+/* Desktop type: from 768px (Tailwind's `md`, where the desktop layout begins)
+   with a mouse or trackpad, the same query as the desktop metrics in
+   foundation.css. Feishu's PC scale, 14/22 for reading, 12px for notes (on an
+   18px line, see typography.md), 16/24 for titles. A phone, and a touch
+   screen at any width, keep the theme's values, Feishu's mobile scale. The
+   type utilities read these variables (`font-size: var(--text-body)`), so
+   every component follows without a breakpoint of its own. This block comes
+   after Tailwind's theme output, so it also wins over an app's own `@theme`
+   values for these names: an app that changes one sets it inside this query
+   as well. Hero, display, title and label stay as they are: setup pages and
+   the phone tab bar. */
+@layer theme {
+  @media (width >= 48rem) and (pointer: fine) {
+    :root,
+    :host {
+      --text-headline: 16px;
+      --text-headline--line-height: 24px;
+      --text-body: 14px;
+      --text-body--line-height: 22px;
+      --text-subhead: 14px;
+      --text-subhead--line-height: 22px;
+      --text-callout: 14px;
+      --text-callout--line-height: 22px;
+      --text-footnote: 12px;
+      --text-footnote--line-height: 18px;
+      --text-caption: 12px;
+      --text-caption--line-height: 18px;
+      --text-mono-meta: 12px;
+      --text-mono-meta--line-height: 18px;
+      --text-mono-code: 13px;
+      --text-mono-code--line-height: 20px;
+      --text-control: 14px;
+      --text-control--line-height: 22px;
+    }
+  }
 }
 
 @theme inline {
@@ -116,6 +181,7 @@
   --color-layer-sidebar: var(--layer-sidebar);
   --color-layer-popover: var(--layer-popover);
   --color-layer-backdrop: var(--layer-backdrop);
+  --color-layer-backdrop-nested: var(--layer-backdrop-nested);
   --color-layer-card: var(--layer-card);
   --color-layer-hud: var(--layer-hud);
   --color-foreground-on-hud: var(--foreground-on-hud);
@@ -217,6 +283,9 @@
   --color-foreground-on-frame-active: var(--foreground-on-frame-active);
   --color-fill-frame-pressed: var(--fill-frame-pressed);
   --color-fill-pressed: var(--fill-pressed);
+  --color-fill-row-hover: var(--fill-row-hover);
+  --color-fill-message-hover: var(--fill-message-hover);
+  --color-fill-row-open: var(--fill-row-open);
   --color-layer-code: var(--layer-code);
   --color-foreground-link: var(--foreground-link);
   --color-sticker-ink: var(--sticker-ink);
@@ -286,6 +355,46 @@
   --text-card-title: var(--card-title-font-size);
   --text-card-title--line-height: var(--card-title-line-height);
   --font-weight-card-title: var(--card-title-font-weight);
+  /* ─── Control metric axis ───────────────────────────────────────────────────
+     The height of a default control: 44px on a phone and on a touch screen,
+     32px from 768px with a mouse or trackpad (Feishu's PC default). The
+     tokens switch in foundation.css, so a recipe writes `h-control` /
+     `size-control` and never a breakpoint. A button at this height keeps a 44px hit area with
+     `after:-inset-y-control-hit`, which is 0 on a phone.
+
+     Consumers: `Input`, `InputGroup`, `SelectTrigger`,
+     `ComboboxControl`, `ComboboxChips`, `ComboboxSelect`, `PanelAction`, and
+     Button at `lg`, `xl` (`h-control-cta`) and `icon-lg` (`size-control-icon`
+     for its icon). */
+  --spacing-control: var(--control-height);
+  --spacing-control-cta: var(--control-height-cta);
+  --spacing-control-icon: var(--control-icon-size);
+  --spacing-control-hit: var(--control-hit-inset);
+  /* ─── Option metric axis ────────────────────────────────────────────────────
+     An option in a popup list (a Select, Combobox or ComboboxSelect option, a
+     menu item) is as tall as its content, with the same space above and below
+     its text whatever that content is (design/patterns/forms.md#option-height).
+     `py-option-inset` is that space: what a 36px row leaves around one line of the
+     option's own type (`1lh`, so 7px around a 22px line, 8px around 20px, 6px
+     around 24px). One line is exactly 36px; a second line, wrapped or a
+     description, adds its own height and nothing else. `min-h-option` is the
+     floor for an option with no text line, such as an empty one.
+
+     Consumers: `SelectItem`, `ComboboxItem`, the menu items of `DropdownMenu`
+     and `ContextMenu`, and `.r-combobox-select__option` (which writes the same
+     calc in its CSS). */
+  --spacing-option: 2.25rem;
+  --spacing-option-inset: calc((2.25rem - 1lh) / 2);
+  /* ─── Icon inset ────────────────────────────────────────────────────────────
+     How far a frameless icon button's icon box sits inside its edge:
+     (button - icon) / 2. 7px for a 32px button with an 18px icon, 11px for a
+     44px one with a 22px icon. The button declares it (`--icon-inset`, see
+     lib/head-edges.ts) and a head pulls its first and last child outward by
+     it (`-ml-icon-inset`, `-mr-icon-inset`), so the icon box, not the button,
+     lands on the head's content margin at every button size
+     (design/foundations/alignment.md#the-ends-of-a-header). A shape or text
+     declares nothing and stays on the margin. */
+  --spacing-icon-inset: var(--icon-inset);
 
   /* Deprecated utility names, kept until raft-ui 1.0 (see codemods/token-names.mjs). */
   --color-foreground-strong: var(--foreground);
@@ -351,6 +460,14 @@
   --shadow-raft-focus: var(--focus-ring);
 }
 
+/* Not inherited, so a wrapper never takes its button's inset: only the element
+   that declares it moves. */
+@property --icon-inset {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
 *,
 ::before,
 ::after {
@@ -360,6 +477,53 @@
 
 body {
   position: relative;
+}
+
+/* Browser autofill paints its own fill over a field (Chrome's pale blue,
+   Safari's yellow), so a filled-in login form showed fields that matched no
+   other field (design/foundations/states.md#autofill). The browser sets that
+   fill !important, so it can't be overridden; delaying the transition into it
+   keeps the field on its own surface, and the text keeps the field's ink.
+   box-shadow keeps the fields' own transition (the focus ring). The delay
+   also holds the field's own background while it stays autofilled: switching
+   light and dark mode then keeps the old surface until the field is edited. */
+input:-webkit-autofill,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: var(--foreground);
+  caret-color: var(--foreground);
+  transition:
+    background-color 0s 600000s,
+    color 0s 600000s,
+    box-shadow 90ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+input:-webkit-autofill:disabled,
+textarea:-webkit-autofill:disabled {
+  -webkit-text-fill-color: var(--foreground-disabled);
+}
+
+/* The passages comments are on, painted with the CSS Custom Highlight API so
+   the document's DOM is never changed (setCommentHighlights registers the
+   ranges; design/patterns/comments.md). Every commented passage gets the soft
+   yellow of a highlight and a 2px yellow underline; the passage of the open
+   discussion gets the full yellow with ink type, like a search hit, in both
+   modes. `--brand-400` is the `brand` role (what `bg-brand` paints):
+   `--color-brand` is an inline theme value and emits no variable. */
+::highlight(raft-comment) {
+  background-color: light-dark(
+    color-mix(in oklch, var(--brand-400) 35%, transparent),
+    color-mix(in oklch, var(--brand-400) 22%, transparent)
+  );
+  text-decoration-line: underline;
+  text-decoration-color: var(--brand-400);
+  text-decoration-thickness: 2px;
+}
+
+::highlight(raft-comment-active) {
+  background-color: var(--brand-400);
+  color: var(--sticker-ink);
+  text-decoration-line: none;
 }
 
 @utility image-transparency-bg {
@@ -384,6 +548,18 @@ body {
    sticker-pressed (12% ink in both modes). */
 @utility press-overlay {
   background-image: linear-gradient(var(--fill-pressed), var(--fill-pressed));
+}
+
+/* A row laid over a solid surface (a list row on a card, a file row) hovers
+   with the lighter row step, as an overlay too, so press (press-overlay)
+   replaces it instead of stacking on it. */
+@utility row-hover-overlay {
+  background-image: linear-gradient(var(--fill-row-hover), var(--fill-row-hover));
+}
+
+/* The same row with its menu open: fill-row-open, as an overlay. */
+@utility row-open-overlay {
+  background-image: linear-gradient(var(--fill-row-open), var(--fill-row-open));
 }
 
 @utility press-overlay-sticker {

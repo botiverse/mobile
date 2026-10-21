@@ -11,7 +11,10 @@
                  hairline < seam < strong for line
      layer = places on the elevation ladder; fill = neutral interaction fills
      (resting/hover/active/disabled surfaces): fill-muted and fill-strong are
-     opaque, the -pressed overlays are translucent ink laid over a surface.
+     opaque, the -pressed and -hover overlays are translucent ink laid over a
+     surface (a row hovers with fill-row-hover or fill-message-hover, and a
+     row with its menu open takes fill-row-open, all lighter than any
+     selection tint; press keeps fill-pressed).
    Families:  {family}(-{slot})
      family = brand | attention | info | success | warning | danger | inactive
      slot   = -strong (deep shade: readable text, rings) > bare (solid fill)
@@ -20,8 +23,9 @@
               | -hover / -active (derived interaction pair, opt-in per family;
                 an opted-in family always gets both)
    Washes:    ink-{alpha%} (2..40) — neutral overlays, hairlines, hover fills.
-   Opacity rule: layer tokens are opaque in every theme, except -backdrop (an
-   overlay by contract); among fills only the -pressed overlays are translucent.
+   Opacity rule: layer tokens are opaque in every theme, except the two
+   backdrops (overlays by contract); among fills only the -pressed and -hover
+   overlays are translucent.
    Interaction fills: transparent resting → ink-N directly; solid family fill →
    the family's -hover/-active pair; neutral or tinted surface → step up its ladder.
    Escape hatches: ink ramp for one-off washes; inline oklch() literals for
@@ -157,6 +161,7 @@
   --layer-sidebar: oklch(0.986 0.0154 86.42);
   --layer-popover: oklch(1 0 0);
   --layer-backdrop: oklch(0 0 0 / 0.651);
+  --layer-backdrop-nested: oklch(0 0 0 / 0.4);
   --layer-card: oklch(1 0 0);
   --layer-hud: oklch(0.2634 0.0093 294.92);
   --layer-frame: oklch(0.8829 0.1623 91.9);
@@ -166,6 +171,19 @@
   --fill-strong: oklch(0.936 0.0006 17.62);
   --fill-frame-pressed: oklch(0.1813 0.005 17.62 / 0.122);
   --fill-pressed: oklch(0.1813 0.005 17.62 / 0.078);
+  /* Hover on a whole row (sidebar, list, inbox, search result, table, file row):
+     one perceptible step (OKLab dE about 2.8 in both modes), below every
+     selection tint, so text keeps its contrast. */
+  --fill-row-hover: oklch(0.1813 0.005 17.62 / 0.04);
+  /* Hover on a message: the lightest perceptible step (OKLab dE about 2.1 in
+     both modes), because a message is a large block someone reads with the
+     pointer resting on it. */
+  --fill-message-hover: oklch(0.1813 0.005 17.62 / 0.03);
+  /* Any row with its menu open (right-click, its menu button, press and hold):
+     one step over a hover (OKLab dE 3.4 to 4.3 on every row surface), because on
+     a phone, which has no hover, it is the only sign of which row the menu acts
+     on. Still under info-soft and brand-soft on every surface. */
+  --fill-row-open: oklch(0.1813 0.005 17.62 / 0.05);
   --line-strong: oklch(0.1813 0.005 17.62);
   --line-seam: oklch(0.1813 0.005 17.62 / 0.451);
   --line-hairline: oklch(0.1813 0.005 17.62 / 0.149);
@@ -263,6 +281,9 @@
   --elevation-float:
     0 1px 0 oklch(0.1813 0.005 17.62 / 0.039), 0 12px 32px -12px oklch(0.1813 0.005 17.62 / 0.322);
   --elevation-sticker: 4px 4px 0 oklch(0.1813 0.005 17.62);
+  /* The focus indicator. It shows only after keyboard navigation: styles.css
+     empties it while the root carries data-input-modality="pointer", which
+     installInputModality sets after a click or a tap. */
   --focus-ring: 0 0 0 2px oklch(1 0 0), 0 0 0 4px oklch(0.1813 0.005 17.62);
   --field-font-size: 16px;
   --field-font-weight: 400;
@@ -270,6 +291,17 @@
   --card-title-font-size: 16px;
   --card-title-font-weight: 600;
   --card-title-line-height: 24px;
+  /* A default control: a field, a Button at lg, an icon button at icon-lg. A
+     finger's 44px on a phone, Feishu's 32px on a desktop. */
+  --control-height: 44px;
+  /* The full-width call to action across a sign-in, sign-up or setup form
+     (Button xl). */
+  --control-height-cta: 52px;
+  /* The icon in a control-height icon button. */
+  --control-icon-size: 22px;
+  /* How far a control-height button's hit area reaches past its top and bottom,
+     to keep 44px. */
+  --control-hit-inset: 0px;
   --sticker-ink: oklch(0.1813 0.005 17.62);
   --sticker-paper: oklch(1 0 0);
   --sticker-edge: oklch(0.1813 0.005 17.62 / 0);
@@ -300,6 +332,7 @@
   --layer-sidebar: oklch(0.1582 0.0041 106.86);
   --layer-popover: oklch(0.2802 0.0036 106.63);
   --layer-backdrop: oklch(0 0 0 / 0.6);
+  --layer-backdrop-nested: oklch(0 0 0 / 0.4);
   --layer-card: oklch(0.2596 0.0037 106.65);
   --layer-hud: oklch(0.2802 0.0036 106.63);
   --layer-frame: oklch(0.1582 0.0041 106.86);
@@ -309,6 +342,9 @@
   --fill-strong: oklch(0.3474 0.0051 106.66);
   --fill-frame-pressed: oklch(0.9843 0.004 106.47 / 0.078);
   --fill-pressed: oklch(0.9843 0.004 106.47 / 0.078);
+  --fill-row-hover: oklch(0.9843 0.004 106.47 / 0.03);
+  --fill-message-hover: oklch(0.9843 0.004 106.47 / 0.022);
+  --fill-row-open: oklch(0.9843 0.004 106.47 / 0.04);
   --line-strong: oklch(0.9211 0.004 106.48);
   --line-seam: oklch(0.9843 0.004 106.47 / 0.259);
   --line-hairline: oklch(0.9843 0.004 106.47 / 0.102);
@@ -380,6 +416,7 @@
     --layer-sidebar: oklch(0.1582 0.0041 106.86);
     --layer-popover: oklch(0.2802 0.0036 106.63);
     --layer-backdrop: oklch(0 0 0 / 0.6);
+    --layer-backdrop-nested: oklch(0 0 0 / 0.4);
     --layer-card: oklch(0.2596 0.0037 106.65);
     --layer-hud: oklch(0.2802 0.0036 106.63);
     --layer-frame: oklch(0.1582 0.0041 106.86);
@@ -389,6 +426,9 @@
     --fill-strong: oklch(0.3474 0.0051 106.66);
     --fill-frame-pressed: oklch(0.9843 0.004 106.47 / 0.078);
     --fill-pressed: oklch(0.9843 0.004 106.47 / 0.078);
+    --fill-row-hover: oklch(0.9843 0.004 106.47 / 0.03);
+    --fill-message-hover: oklch(0.9843 0.004 106.47 / 0.022);
+    --fill-row-open: oklch(0.9843 0.004 106.47 / 0.04);
     --line-strong: oklch(0.9211 0.004 106.48);
     --line-seam: oklch(0.9843 0.004 106.47 / 0.259);
     --line-hairline: oklch(0.9843 0.004 106.47 / 0.102);
@@ -620,4 +660,22 @@
   --secondary-800: var(--palette-stone-800);
   --secondary-900: var(--palette-stone-900);
   --secondary-950: var(--palette-stone-950);
+}
+
+/* Desktop: from 768px (Tailwind's `md`, where the desktop layout begins)
+   with a mouse or trackpad. The metrics that follow Feishu's PC specs. A
+   phone, and a touch screen at any width, keep the values above. The same
+   query as the desktop type in styles.css. */
+@media (width >= 48rem) and (pointer: fine) {
+  :where(:root),
+  .light {
+    --field-font-size: 14px;
+    --field-line-height: 22px;
+    --card-title-font-size: 14px;
+    --card-title-line-height: 22px;
+    --control-height: 32px;
+    --control-height-cta: 40px;
+    --control-icon-size: 18px;
+    --control-hit-inset: 6px;
+  }
 }

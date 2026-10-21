@@ -14,7 +14,9 @@ Web palette change becomes a reviewable diff here instead of silent drift (task 
 Generated Kotlin:
 
 - `RaftUiPalette` — theme-invariant colours: raw ramps (`brutalYellow400`), brand colours from Web `index.css` (`brutalYellow` = `#FFD440`), state solids (`warning`) and the Tailwind palette (`gray400`).
-- `RaftUiThemeColors.Brutal` / `.ElegantLight` / `.ElegantDark` — colours that change with the Web theme (`foreground`, `line`, `layerCanvas`, `primaryHover`...), including tokens derived from themed ones through `var()` or `color-mix()`.
+- `RaftUiThemeColors.RaftLight` / `.RaftDark` — colours that change with the Web theme (`foreground`, `line`, `layerCanvas`, `fillRowHover`...), including tokens derived from themed ones through `var()` or `color-mix()`.
+
+Only colours are emitted. Names in Tailwind's non-colour namespaces (`--spacing-*`, `--radius-*`, `--text-*`, `--font-*`, `--shadow-*`... see `NON_COLOUR_NAMESPACES`) are skipped without being resolved, and any other value that is not a colour (a length, a shadow) is dropped. A colour that cannot be resolved (undefined `var()`, unsupported syntax) still fails the run.
 
 Names drop the leading `--` and `color-` and are camel-cased (`--foreground-muted` → `foregroundMuted`).
 
@@ -30,12 +32,12 @@ python3 tools/design-tokens/gen_tokens.py --self-test  # CI: colour maths, casca
 
 1. Read the versions in `slock/packages/web/package.json` and `pnpm-lock.yaml` (`@botiverse/raft-ui`, `tailwindcss`) at the target slock commit.
 2. Replace the files under `source/` (`npm pack @botiverse/raft-ui@<v>` (the package was `raft-ui` up to 0.6), `npm pack tailwindcss@<v>`, `git show <commit>:packages/web/src/index.css`), rename the version directories, and update `manifest.json` (paths, origins, `slockCommit`, sha256).
-3. `python3 tools/design-tokens/gen_tokens.py`, then regenerate the oracle (see the header of `capture_chrome_oracle.mjs`), then `--check`.
+3. `python3 tools/design-tokens/gen_tokens.py`, then regenerate the oracle (see the header of `capture_chrome_oracle.mjs`), then `--check`. Capture with the same Chromium as the current oracle (its `chromium` field; pass it via `CHROMIUM_PATH`), so the oracle diff shows only token changes.
 4. Review the Kotlin diff: every changed colour is a visible change on mobile.
 
 ## How the cascade is resolved
 
-Matches the Web build: every `@theme` block (Tailwind, then raft-ui `styles.css`, then Web `index.css`) lands in Tailwind's `theme` layer and the last declaration wins; raft-ui `foundation.css` and Web `:root.dark` are unlayered and beat any `@theme` value of the same name. Inside them the more specific theme selector wins (default < `[data-theme="elegant"]` < `[data-theme="elegant"].dark`). Colours use CSS Color 4 maths and are clipped per channel, as Chrome paints them. The oracle checks all of this against Chromium itself.
+Matches the Web build: every `@theme` block (Tailwind, then raft-ui `styles.css`, then Web `index.css`) lands in Tailwind's `theme` layer and the last declaration wins; raft-ui `foundation.css` and Web `:root.dark` are unlayered and beat any `@theme` value of the same name. Inside them the more specific theme selector wins (`:where(:root)` < `.light` / `.dark` < Web `:root.dark`). A custom property registered with `@property` and declared nowhere takes its `initial-value` (raft-ui 0.18 registers `--icon-inset: 0px`). Colours use CSS Color 4 maths and are clipped per channel, as Chrome paints them. The oracle checks all of this against Chromium itself.
 
 ## Aligned with Web
 
