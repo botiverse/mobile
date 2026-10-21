@@ -256,6 +256,24 @@ private data class ReplyThreadHeaderProjectionInput(
             ?: contentPayload.threadHeaderFallbackDisplayModel()
 }
 
+/**
+ * Header display with the known-entity candidate tier. Precedence: the accepted directory
+ * projection (hub, includes destination canonical detail) > the page's own loaded title >
+ * [knownCandidate] (in-memory Home/hub row matched to this route's account+server+id) > the
+ * generic fallback. A candidate therefore only fills the first frames before canonical state
+ * exists and can never override it.
+ */
+internal fun ThreadHeaderProjectionInput.displayModelWithKnownCandidate(
+    projection: SharedConversationDirectoryProjection?,
+    contentPayload: RaftThreadScreenPayload,
+    knownCandidate: SharedConversationDirectoryProjection?,
+): ThreadHeaderDisplayModel {
+    val accepted = projection?.takeIf(::acceptsForDisplay)
+    if (accepted != null) return displayModel(accepted, contentPayload)
+    if (contentPayload.loadedConversationHeaderTitleOrNull() != null) return displayModel(null, contentPayload)
+    return displayModel(knownCandidate?.takeIf(::acceptsForDisplay), contentPayload)
+}
+
 internal fun RaftThreadScreenPayload.threadHeaderFallbackDisplayModel(): ThreadHeaderDisplayModel {
     return when (surfaceKind) {
         RaftThreadSurfaceKind.DirectMessage -> {

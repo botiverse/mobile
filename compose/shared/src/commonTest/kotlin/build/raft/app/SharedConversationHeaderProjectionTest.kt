@@ -134,6 +134,84 @@ class SharedConversationHeaderProjectionTest {
         assertEquals("@Cindy", input.displayModel(exactParent, payload).subtitle)
     }
 
+    @Test
+    fun channelHeaderPaintsKnownHomeRowOnFirstFrame() {
+        val loading = channelLaunchPayload()
+        val input = loading.threadHeaderProjectionRoutePayload().threadHeaderProjectionInput()
+        val known = channelProjection("channel-1", setOf("channel-1"), "channel", "general").copy(subtitle = "Ship it")
+
+        val display = input.displayModelWithKnownCandidate(projection = null, contentPayload = loading, knownCandidate = known)
+
+        assertEquals("general", display.title)
+        assertEquals("Ship it", display.subtitle)
+    }
+
+    @Test
+    fun canonicalChannelStateReplacesKnownCandidate() {
+        val known = channelProjection("channel-1", setOf("channel-1"), "channel", "general (stale)")
+        val loaded = channelLaunchPayload().copy(status = "content", title = "general", subtitle = "Fresh topic")
+        val input = loaded.threadHeaderProjectionRoutePayload().threadHeaderProjectionInput()
+        val canonicalProjection = known.copy(title = "general (canonical)")
+
+        val fromLoadedPayload = input.displayModelWithKnownCandidate(null, loaded, known)
+        val fromCanonicalProjection = input.displayModelWithKnownCandidate(canonicalProjection, loaded, known)
+
+        assertEquals("general", fromLoadedPayload.title)
+        assertEquals("Fresh topic", fromLoadedPayload.subtitle)
+        assertEquals("general (canonical)", fromCanonicalProjection.title)
+    }
+
+    @Test
+    fun knownCandidateOfAnotherSurfaceIsIgnoredAndNoCandidateKeepsPlaceholder() {
+        val loading = channelLaunchPayload()
+        val input = loading.threadHeaderProjectionRoutePayload().threadHeaderProjectionInput()
+        val dmRow =
+            channelProjection("channel-1", setOf("channel-1"), "dm", "Cindy").copy(
+                conversationKind = ConversationKind.DirectMessage,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage
+            )
+
+        listOf(dmRow, null).forEach { candidate ->
+            val display = input.displayModelWithKnownCandidate(null, loading, candidate)
+            assertEquals(threadHeaderFallbackTitle(RaftThreadSurfaceKind.Channel), display.title, "candidate=$candidate")
+            assertNull(display.subtitle)
+        }
+    }
+
+    @Test
+    fun directMessageHeaderPaintsKnownPeerOnFirstFrame() {
+        val loading =
+            channelLaunchPayload().copy(
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                channelKind = "dm",
+                streamChannelId = "dm-1",
+                sourceThreadId = "dm-1"
+            )
+        val input = loading.threadHeaderProjectionRoutePayload().threadHeaderProjectionInput()
+        val known =
+            channelProjection("dm-1", setOf("dm-1"), "dm", "Cindy").copy(
+                conversationKind = ConversationKind.DirectMessage,
+                surfaceKind = RaftThreadSurfaceKind.DirectMessage,
+                avatarWireValue = "pixel:cindy"
+            )
+
+        val display = input.displayModelWithKnownCandidate(null, loading, known)
+
+        assertEquals("Cindy", display.title)
+        assertEquals("pixel:cindy", display.dmPeerAvatarWireValue)
+    }
+
+    private fun channelLaunchPayload(): RaftThreadScreenPayload =
+        RaftThreadScreenPayload(
+            instanceId = "channel-1",
+            title = "",
+            status = "loading",
+            surfaceKind = RaftThreadSurfaceKind.Channel,
+            channelKind = "channel",
+            sourceThreadId = "channel-1",
+            streamChannelId = "channel-1"
+        )
+
     private fun activityReplyThreadPayload(subtitle: String): RaftThreadScreenPayload =
         RaftThreadScreenPayload(
             instanceId = "activity-thread-1",

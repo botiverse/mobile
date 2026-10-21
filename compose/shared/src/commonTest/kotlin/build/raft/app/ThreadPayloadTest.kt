@@ -6751,8 +6751,9 @@ class ThreadPayloadTest {
         val message = payload.messages.first()
         assertEquals(
             "@Android Developer",
-            payload.resolveMarkdownTagDisplayLabel(
-                ThreadMarkdownTag("@agent_android", ThreadMarkdownTagKind.UserMention)
+            resolveThreadMarkdownTagDisplayLabel(
+                ThreadMarkdownTag("@agent_android", ThreadMarkdownTagKind.UserMention),
+                threadMarkdownMentionDisplayLabels(payload.members, emptyList())
             )
         )
         assertEquals("Android Developer", payload.resolveTaskAssigneeDisplayName(message.taskAssigneeName))

@@ -10,6 +10,8 @@ import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.gesture.raftBackSwipeRegion
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY
+import build.raft.app.data.KnownEntityScope
+import build.raft.app.data.RaftKnownEntityResolver
 import build.raft.app.data.RAFT_SHELL_OVERLAY_REQUEST_EVENT
 import build.raft.app.data.RAFT_SHELL_OVERLAY_RESULT_EVENT
 import build.raft.app.data.SHELL_OVERLAY_SELECTED_ID
@@ -2744,6 +2746,20 @@ internal fun threadHeaderInitialProjectionMap(
         .toMap()
 }
 
+/** The known-entity candidate for the header's lookup ids, only if it is display-valid. */
+internal fun threadHeaderKnownCandidate(
+    resolver: RaftKnownEntityResolver,
+    accountId: String?,
+    serverId: ServerId?,
+    input: ThreadHeaderProjectionInput
+): SharedConversationDirectoryProjection? {
+    val account = accountId?.takeIf { it.isNotBlank() } ?: return null
+    val server = serverId ?: return null
+    return resolver
+        .conversation(KnownEntityScope(accountId = account, serverId = server), input.lookupIds)
+        ?.takeIf(input::acceptsForDisplay)
+}
+
 internal class ThreadHeaderProjectionStateOwner(
     private val input: ThreadHeaderProjectionInput,
     initialProjections: Map<String, SharedConversationDirectoryProjection>
@@ -3386,17 +3402,55 @@ private fun RaftThreadScreenPayload.resolveMarkdownMentionOpenTarget(
     )
 }
 
-internal fun RaftThreadScreenPayload.resolveMarkdownTagDisplayLabel(tag: ThreadMarkdownTag): String =
+/**
+ * Mention lookup key -> "@Display Name" for every member the page already knows: channel members
+ * first, then the server directory (non-joined members are still mentionable and must not render
+ * as a raw handle).
+ */
+internal fun threadMarkdownMentionDisplayLabels(
+    members: List<RaftThreadMemberItem>,
+    memberCandidates: List<RaftThreadMemberItem>
+): ThreadMarkdownMentionDisplayLabels =
+    ThreadMarkdownMentionDisplayLabels(
+        (members + memberCandidates).mapNotNull { member ->
+            val name = member.displayName.trim().removePrefix("@").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            ThreadMarkdownMentionDisplayLabel(
+                id = member.id,
+                handle = member.handle,
+                displayName = member.displayName,
+                label = "@$name"
+            )
+        }
+    )
+
+internal data class ThreadMarkdownMentionDisplayLabel(
+    val id: String,
+    val handle: String,
+    val displayName: String,
+    val label: String
+)
+
+/** Equality-comparable, so a same-content member refresh does not invalidate markdown token plans. */
+internal data class ThreadMarkdownMentionDisplayLabels(
+    private val entries: List<ThreadMarkdownMentionDisplayLabel>
+) {
+    fun labelFor(tag: ThreadMarkdownTag): String? {
+        val key = tag.label.normalizedThreadMentionLookupKey()
+        if (key.isBlank()) return null
+        return entries.firstOrNull { entry ->
+            entry.id.equals(key, ignoreCase = true) ||
+                entry.handle.removePrefix("@").equals(key, ignoreCase = true) ||
+                entry.displayName.equals(key, ignoreCase = true)
+        }?.label
+    }
+}
+
+internal fun resolveThreadMarkdownTagDisplayLabel(
+    tag: ThreadMarkdownTag,
+    labels: ThreadMarkdownMentionDisplayLabels
+): String =
     when (tag.kind) {
-        ThreadMarkdownTagKind.UserMention ->
-            findMarkdownMentionMember(tag)
-                ?.displayName
-                ?.trim()
-                ?.removePrefix("@")
-                ?.takeIf { it.isNotBlank() }
-                ?.let { "@$it" }
-                ?: threadMarkdownTagDisplayLabel(tag.label)
-        ThreadMarkdownTagKind.DirectMessageThread -> threadMarkdownTagDisplayLabel(tag.label)
+        ThreadMarkdownTagKind.UserMention -> labels.labelFor(tag) ?: threadMarkdownTagDisplayLabel(tag.label)
         else -> threadMarkdownTagDisplayLabel(tag.label)
     }
 
@@ -6506,6 +6560,27 @@ private fun SharedThreadRouteContentContent(
                 serverId = headerProjectionServerId?.value,
             )
         }
+    // First-frame header: whatever the app already holds in memory for this exact
+    // account+server+conversation (Home sidebar row, identity hub). Canonical state still wins;
+    // see displayModelWithKnownCandidate.
+    val knownEntityResolver = remember(sharedStores, storeScope) { sharedStores.knownEntityResolver(storeScope) }
+    val knownEntityAccountId =
+        currentSession?.user?.id ?: sharedStores.currentAuthenticatedRouteOwner(storeScope)?.accountId
+    val knownHeaderCandidate =
+        remember(
+            knownEntityResolver,
+            knownEntityAccountId,
+            headerProjectionServerId,
+            headerProjectionInput,
+            sharedHomeState.content
+        ) {
+            threadHeaderKnownCandidate(
+                resolver = knownEntityResolver,
+                accountId = knownEntityAccountId,
+                serverId = headerProjectionServerId,
+                input = headerProjectionInput
+            )
+        }
     val initialDirectoryConversationProjections =
         remember(
             conversationIdentityProvider,
@@ -6674,8 +6749,13 @@ private fun SharedThreadRouteContentContent(
     val headerServerPublicPageLive =
         currentSession?.servers?.firstOrNull { it.id == headerProjectionServerId?.value }?.publicPageLive == true
     val headerDisplayModel =
-        remember(headerProjectionInput, stableHeaderProjection, payload, headerServerPublicPageLive) {
-            headerProjectionInput.displayModel(stableHeaderProjection, payload)
+        remember(headerProjectionInput, stableHeaderProjection, payload, headerServerPublicPageLive, knownHeaderCandidate) {
+            headerProjectionInput
+                .displayModelWithKnownCandidate(
+                    projection = stableHeaderProjection,
+                    contentPayload = payload,
+                    knownCandidate = knownHeaderCandidate
+                )
                 .copy(serverPublicPageLive = headerServerPublicPageLive)
         }
     val activityMuteState =
@@ -7743,7 +7823,11 @@ private fun SharedThreadRouteContentContent(
         } else {
             MutableStateFlow(SharedServerMembersEntry(serverId = threadMembersServerId?.value.orEmpty()))
         }
-    }.collectAsState(SharedServerMembersEntry(serverId = threadMembersServerId?.value.orEmpty()))
+    }.collectAsState(
+        // First frame: the directory already in memory, so @mentions paint names, not handles.
+        threadMembersServerId?.let { serverId -> serverMembersStore?.currentServerMembersEntry(serverId) }
+            ?: SharedServerMembersEntry(serverId = threadMembersServerId?.value.orEmpty())
+    )
     LaunchedEffect(selectedThreadTab, serverMembersStore, threadMembersServerId) {
         val store = serverMembersStore ?: return@LaunchedEffect
         val serverId = threadMembersServerId ?: return@LaunchedEffect
@@ -7780,10 +7864,14 @@ private fun SharedThreadRouteContentContent(
             )
         }
     }.collectAsState(
-        SharedServerChannelMembersSlice(
-            serverId = threadMembersServerId?.value,
-            channelId = threadMembersChannelId?.value.orEmpty()
-        )
+        if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
+            serverMembersStore.currentChannelMemberSlice(threadMembersServerId, threadMembersChannelId)
+        } else {
+            SharedServerChannelMembersSlice(
+                serverId = threadMembersServerId?.value,
+                channelId = threadMembersChannelId?.value.orEmpty()
+            )
+        }
     )
     val threadMembersProjection =
         remember(baseRenderedPayload, threadChannelMembersSlice, threadServerMembersEntry, threadMembersServerId) {
@@ -15434,9 +15522,15 @@ private fun ThreadPageContentContent(
                 knownTaskNumbers = knownMarkdownTaskNumbers
             )
         }
+    // Keyed on the resolved label index (equality), not on the member lists' identity: a
+    // same-content member refresh keeps the lambda, so token plans are not recomputed.
+    val markdownMentionLabels =
+        remember(payload.members, payload.memberCandidates) {
+            threadMarkdownMentionDisplayLabels(payload.members, payload.memberCandidates)
+        }
     val resolveMarkdownTagLabel =
-        remember(payload.members) {
-            { tag: ThreadMarkdownTag -> payload.resolveMarkdownTagDisplayLabel(tag) }
+        remember(markdownMentionLabels) {
+            { tag: ThreadMarkdownTag -> resolveThreadMarkdownTagDisplayLabel(tag, markdownMentionLabels) }
         }
     val timelineRenderConfig =
         remember(

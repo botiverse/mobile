@@ -920,7 +920,8 @@ internal fun ThreadMessageVisualScreenContent() {
                     ),
                     resolveMarkdownTagLabel =
                         remember(payload.members) {
-                            { tag: ThreadMarkdownTag -> payload.resolveMarkdownTagDisplayLabel(tag) }
+                            val labels = threadMarkdownMentionDisplayLabels(payload.members, emptyList())
+                            ({ tag: ThreadMarkdownTag -> resolveThreadMarkdownTagDisplayLabel(tag, labels) })
                         },
                     taskOpenEnabled = payload.showTaskOpenActions,
                     taskStatusActionsEnabled = payload.showTaskStatusActions,

@@ -159,6 +159,8 @@ internal class SharedHomeStore(
     private val conversationIdentityStates =
         MutableStateFlow<Map<String, SharedConversationDirectoryState>>(emptyMap())
     private val conversationIdentityAccountByServer = linkedMapOf<String, String>()
+    /** Published copy of [conversationIdentityAccountByServer] for synchronous off-store reads. */
+    private val conversationIdentityOwners = MutableStateFlow<Map<String, String>>(emptyMap())
     private val conversationIdentityRevisionByServer = linkedMapOf<String, Long>()
 
     private var loadJob: Job? = null
@@ -388,6 +390,7 @@ internal class SharedHomeStore(
         conversationIdentityAccountByServer.clear()
         conversationIdentityRevisionByServer.clear()
         conversationIdentityStates.value = emptyMap()
+        conversationIdentityOwners.value = emptyMap()
         hiddenHomeSnapshotDirty = false
         followedThreadUnreadRefresh.cancel()
         synchronized(readProjectionOwnerLock) {
@@ -525,6 +528,21 @@ internal class SharedHomeStore(
         id: String
     ): SharedConversationDirectoryProjection? =
         conversationIdentityStates.value[serverId.value]?.resolve(id)
+
+    /**
+     * Owner-checked candidate lookup for [RaftKnownEntityResolver]: the in-memory Home/Activity
+     * row for [id], only when this store collected [serverId]'s directory for [accountId].
+     * Every server visited in this process keeps its rows, so switching back paints at once.
+     */
+    fun knownConversationCandidate(
+        accountId: String,
+        serverId: ServerId,
+        id: String
+    ): SharedConversationDirectoryProjection? {
+        val account = accountId.trim().takeIf { it.isNotBlank() } ?: return null
+        if (conversationIdentityOwners.value[serverId.value] != account) return null
+        return resolveProjection(serverId, id)
+    }
 
     suspend fun accept(intent: SharedHomeIntent) {
         withStateDiagnosticsContext(intent) {
@@ -3749,6 +3767,7 @@ internal class SharedHomeStore(
         conversationIdentityRevisionByServer.remove(serverKey)
         conversationIdentityStates.value = conversationIdentityStates.value - serverKey
         conversationIdentityAccountByServer[serverKey] = normalizedAccountId
+        conversationIdentityOwners.value = conversationIdentityOwners.value + (serverKey to normalizedAccountId)
         return true
     }
 

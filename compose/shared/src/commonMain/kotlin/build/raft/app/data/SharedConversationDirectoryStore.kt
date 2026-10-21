@@ -240,6 +240,18 @@ internal class SharedConversationIdentityHub(
     override fun resolveProjection(serverId: ServerId, id: String): SharedConversationDirectoryProjection? =
         state.value[serverId.value]?.resolve(id)
 
+    /** [resolveProjection], but only while the hub is bound to [accountId]. */
+    fun resolveProjectionFor(
+        accountId: String,
+        serverId: ServerId,
+        id: String
+    ): SharedConversationDirectoryProjection? {
+        val account = accountId.trim().takeIf { it.isNotBlank() } ?: return null
+        val bound = synchronized(lock) { binding?.accountId }
+        if (bound != account) return null
+        return resolveProjection(serverId, id)
+    }
+
     private fun admitBinding(authority: SharedConversationIdentityAuthority): Boolean {
         val environment = authority.environmentId.trim().trimEnd('/')
         val account = authority.accountId.trim()

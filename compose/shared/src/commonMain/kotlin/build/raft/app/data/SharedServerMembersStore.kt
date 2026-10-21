@@ -612,6 +612,29 @@ class SharedServerMembersStore internal constructor(
             .distinctUntilChanged()
     }
 
+    /** The value [serverMembersEntryFlow] (server-keyed) emits first; seeds a page's first frame. */
+    fun currentServerMembersEntry(serverId: ServerId): SharedServerMembersEntry {
+        val entry =
+            _state.value.entryFor(serverId)?.visibleDirectoryEntry()
+                ?: return SharedServerMembersEntry(serverId = serverId.value.trim())
+        val facts = presenceFactsNow(serverId)
+        return if (facts.isEmpty()) entry else entry.copy(members = entry.members.withServerMemberPresenceFacts(facts))
+    }
+
+    /** The value [channelMemberSliceFlow] (server-keyed) emits first; seeds a page's first frame. */
+    fun currentChannelMemberSlice(
+        serverId: ServerId,
+        channelId: ChannelId
+    ): SharedServerChannelMembersSlice {
+        val binding =
+            currentChannelMembersOwner(serverId)
+                ?: return SharedServerChannelMembersSlice(
+                    serverId = serverId.value.trim(),
+                    channelId = channelId.value.trim()
+                )
+        return _state.value.channelMemberSlice(binding, channelId)
+    }
+
     fun currentServerMembers(serverId: ServerId): List<MemberProfile> =
         _state.value.entryFor(serverId)?.visibleDirectoryMembers().orEmpty()
             .withServerMemberPresenceFacts(presenceFactsNow(serverId))
