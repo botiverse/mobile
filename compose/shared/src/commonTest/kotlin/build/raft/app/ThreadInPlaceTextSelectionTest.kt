@@ -411,4 +411,35 @@ class ThreadInPlaceTextSelectionTest {
         // …but what rows and the popup hold is the same reference, so rows are not invalidated.
         assertTrue(before === host.selectionMenu.menu)
     }
+
+    @Test
+    fun partialSelectionReplyQuotesOnlyThePickedText() {
+        // Two blocks of a partial pick: each line becomes a Markdown quote line.
+        assertEquals(
+            "> Second paragraph.\n> first item",
+            threadInPlaceSelectionReplyQuote(
+                selectedTexts = listOf("", "Second paragraph.", "", "first item", "", ""),
+                selectableTexts = renderedNodes
+            )
+        )
+        // Part of a single block.
+        assertEquals(
+            "> paragraph",
+            threadInPlaceSelectionReplyQuote(listOf("paragraph", "", "", "", "", ""), renderedNodes)
+        )
+    }
+
+    @Test
+    fun wholeOrEmptySelectionReplyAddsNoQuote() {
+        assertEquals(null, threadInPlaceSelectionReplyQuote(renderedNodes, renderedNodes))
+        assertEquals(null, threadInPlaceSelectionReplyQuote(emptyList(), renderedNodes))
+        assertEquals(null, threadInPlaceSelectionReplyQuote(listOf("   ", "", "", "", "", ""), renderedNodes))
+    }
+
+    @Test
+    fun partialSelectionReplyQuoteAppendsAfterAnExistingDraft() {
+        val quote = threadInPlaceSelectionReplyQuote(listOf("", "Second paragraph.", "", "", "", ""), renderedNodes)!!
+        assertEquals("> Second paragraph.\n\n", appendThreadQuoteToComposer("", quote))
+        assertEquals("draft\n\n> Second paragraph.\n\n", appendThreadQuoteToComposer("draft\n", quote))
+    }
 }

@@ -22,6 +22,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -1398,6 +1399,15 @@ internal class SharedThreadComposerDraftPersistSlice(
     private val stagedUploadedAttachmentsByDraftKey =
         mutableMapOf<String, List<SharedThreadComposerAttachment>>()
     private val fallbackDraftSourceKeyByCurrentKey = mutableMapOf<String, String>()
+    /**
+     * Reply-quote handoff, keyed by parent message id: Reply on a partial text selection stages
+     * the quote here before opening the reply page, and that page's composer takes it once its
+     * reply draft key exists (the thread channel may still be resolving at open time). Memory
+     * only and outside the reducer, so it needs no transition snapshot.
+     */
+    private val stagedReplyQuotesByParentMessageId = MutableStateFlow<Map<String, List<String>>>(emptyMap())
+    val stagedReplyQuotesState: StateFlow<Map<String, List<String>>> =
+        stagedReplyQuotesByParentMessageId.asStateFlow()
     /** Single re-entrant lock for every slice-local map and the shared active-record projection. */
     private val stateLock = reentrantLock()
     /** Secondary write ordering lock; always acquired after [stateLock]. */
@@ -1677,6 +1687,7 @@ internal class SharedThreadComposerDraftPersistSlice(
                     schedulePendingWrite(key, next)
                 }
             is SharedThreadComposerDraftIntent.InsertMention,
+            is SharedThreadComposerDraftIntent.AppendQuote,
             is SharedThreadComposerDraftIntent.RestoreAfterFailure,
             is SharedThreadComposerDraftIntent.AddUploadedAttachments,
             is SharedThreadComposerDraftIntent.MarkAttachmentsFailed,
@@ -1977,6 +1988,31 @@ internal class SharedThreadComposerDraftPersistSlice(
         return result
     }
 
+    fun stageReplyQuote(parentMessageId: String, quote: String) {
+        val parent = parentMessageId.takeIf { it.isNotBlank() } ?: return
+        if (quote.isBlank()) return
+        stagedReplyQuotesByParentMessageId.update { staged ->
+            staged + (parent to (staged[parent].orEmpty() + quote))
+        }
+    }
+
+    /** Takes the quotes staged for the reply thread [draftKey] belongs to; empty for root drafts. */
+    fun consumeStagedReplyQuotes(draftKey: String?): List<String> {
+        val parent =
+            draftKey
+                ?.takeIf { it.isNotBlank() }
+                ?.let(persistence::recordForKey)
+                ?.takeUnless { it.isRootComposer }
+                ?.parentMessageId
+                ?: return emptyList()
+        var taken = emptyList<String>()
+        stagedReplyQuotesByParentMessageId.update { staged ->
+            taken = staged[parent].orEmpty()
+            staged - parent
+        }
+        return taken
+    }
+
     private fun consumeStagedUploadedAttachments(draftKey: String?): List<SharedThreadComposerAttachment> {
         val key = draftKey?.takeIf { it.isNotBlank() } ?: return emptyList()
         return stateLock.withLock { stagedUploadedAttachmentsByDraftKey.remove(key).orEmpty() }
@@ -2241,6 +2277,7 @@ private fun SharedThreadComposerDraftIntent.toThreadComposerDraftIntentDiagnosti
         is SharedThreadComposerDraftIntent.Change -> "Change"
         is SharedThreadComposerDraftIntent.SetOriginalImage -> "SetOriginalImage"
         is SharedThreadComposerDraftIntent.InsertMention -> "InsertMention"
+        is SharedThreadComposerDraftIntent.AppendQuote -> "AppendQuote"
         SharedThreadComposerDraftIntent.Flush -> "Flush"
         is SharedThreadComposerDraftIntent.BeginSend -> "BeginSend"
         is SharedThreadComposerDraftIntent.RestoreAfterFailure -> "RestoreAfterFailure"
@@ -2281,6 +2318,8 @@ internal sealed interface SharedThreadComposerDraftIntent {
     data class Change(val seedText: String? = null, val seedAsTask: Boolean? = null) : SharedThreadComposerDraftIntent
     data class SetOriginalImage(val enabled: Boolean) : SharedThreadComposerDraftIntent
     data class InsertMention(val handle: String) : SharedThreadComposerDraftIntent
+    /** Appends a Markdown quote after the current draft (Reply on a partial text selection). */
+    data class AppendQuote(val quote: String) : SharedThreadComposerDraftIntent
     data object Flush : SharedThreadComposerDraftIntent
     data object BeginSend : SharedThreadComposerDraftIntent
     data class RestoreAfterFailure(
@@ -2493,6 +2532,29 @@ internal class SharedThreadComposerDraftStore(
                     sending = false,
                     failureLabel = null
                 )
+            is SharedThreadComposerDraftIntent.AppendQuote -> {
+                val nextText = appendThreadQuoteToComposer(current.seedText, intent.quote)
+                if (nextText == current.seedText) {
+                    current
+                } else {
+                    current.copy(
+                        seedText = nextText,
+                        syncNonce = current.syncNonce + 1,
+                        editorCommandNonce = current.editorCommandNonce + 1,
+                        editorCommand =
+                            ThreadComposerEditorCommand(
+                                id = current.editorCommandNonce + 1,
+                                kind = ThreadComposerEditorCommandKind.Replace,
+                                text = nextText,
+                                asTask = current.seedAsTask,
+                                expectedText = current.seedText,
+                                expectedAsTask = current.seedAsTask,
+                            ),
+                        sending = false,
+                        failureLabel = null
+                    )
+                }
+            }
             SharedThreadComposerDraftIntent.Flush ->
                 current.copy(persistBoundaryNonce = current.persistBoundaryNonce + 1)
             SharedThreadComposerDraftIntent.BeginSend ->
