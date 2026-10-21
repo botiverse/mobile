@@ -663,7 +663,10 @@ android {
             matchingFallbacks += listOf("debug")
         }
         release {
-            isMinifyEnabled = false
+            // R8 (code shrinking + optimization) and resource shrinking; keep rules live in
+            // proguard-rules.pro. `play` inherits this via initWith(release).
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

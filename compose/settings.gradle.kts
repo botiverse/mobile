@@ -1,6 +1,15 @@
 pluginManagement {
     // The D8 8.10.24 pin (D8 8.13.19 from AGP 8.13.2 truncated a high argument register in
     // MembersAgentProfileTab) is gone: AGP 9.1 cannot dex with an 8.x R8. AGP 9.1.1 ships R8 9.1.
+    // R8 9.1.31 (bundled by AGP 9.1.1) and the latest 9.1 patch (9.1.57) both emit
+    // unverifiable code when minifying the very large RaftAppShellReadyContent composable: a
+    // parallel move overwrites a >255 register holding an object with an int, then
+    // move-object reads it -> VerifyError at Home launch. R8 9.5.28 verifies cleanly
+    // (`cmd package compile -m verify`). This also replaces D8 for debug/alpha dexing.
+    buildscript {
+        repositories { google(); mavenCentral() }
+        dependencies { classpath("com.android.tools:r8:9.5.28") }
+    }
 
     fun org.gradle.api.artifacts.dsl.RepositoryHandler.raftArtifactsKuiklyBase() {
         maven {
