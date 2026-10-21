@@ -18988,7 +18988,9 @@ private fun ThreadMessagesListContent(
                 // Take viewport ownership through the controller, not a bare scroll: with intent
                 // left at FollowingLatest, the next composer_inset_relayout replays
                 // Mutation.InsetChange and yanks the restored viewport back to bottom. Anchored
-                // (ExactOffset) makes later relayouts re-assert this message+offset instead.
+                // (ExactOffset) makes later relayouts re-assert this message+offset instead
+                // (forward list only; a reversed list keeps its rendered position, see
+                // resolveThreadComposerInsetViewportAction).
                 // Offset contract: anchor.messageOffsetPx is the captured LazyList item.offset
                 // (viewport-relative, negative when scrolled above the top edge). The command
                 // executor runs scrollToItem(index, -target.offset), so the event must carry the
@@ -21161,6 +21163,18 @@ private fun ThreadMessagesListContent(
             )
         val layoutDecision = resolveThreadComposerLayoutBottomAnchor(layoutState)
         val layoutChanged = threadComposerLayoutChanged(layoutState)
+        // Only the parked-bottom path replays the controller intent; the focused-tail path
+        // dispatches its own RenderedBottom anchor below.
+        val insetViewportAction =
+            if (layoutDecision.shouldAnchor && !layoutDecision.anchorFocusedTailAtRenderedBottom) {
+                resolveThreadComposerInsetViewportAction(
+                    reverseLayout = listState.reverse,
+                    intent = viewportControllerState.intent,
+                    tailAtRenderedBottom = listState.isLatestItemAtRenderedBottom(latestItemIndex)
+                )
+            } else {
+                null
+            }
         publishImeTailDrawProbe("decision")
         if (layoutChanged || layoutState.pendingLayoutChange) {
             val anchoredIntent = viewportControllerState.intent as? LazyViewportIntent.Anchored
@@ -21185,13 +21199,17 @@ private fun ThreadMessagesListContent(
                     "userGeneration=${focusedAnchorStartUserScrollGeneration ?: -1}->${userScrollGeneration.value} " +
                     "viewportIntent=${viewportControllerState.intent.threadViewportIntentDiagnosticName()} " +
                     "viewportPlacement=${anchoredIntent?.placement?.name ?: "none"} " +
+                    "insetAction=${insetViewportAction?.diagnosticName ?: "none"} " +
                     listState.threadViewportGeometryDiagnostics(focusedTargetItemIndex)
             )
         }
         lastComposerKeyboardInsetDp = composerKeyboardInsetDp
         lastThreadViewportHeightDp = measuredThreadViewportHeightDp
         pendingComposerLayoutBottomAnchor = layoutDecision.pendingLayoutChange
-        if (!layoutDecision.shouldAnchor) {
+        if (
+            !layoutDecision.shouldAnchor ||
+            insetViewportAction == ThreadComposerInsetViewportAction.KeepRenderedPosition
+        ) {
             pendingKeyboardBottomAnchor = false
             return@LaunchedEffect
         }
@@ -21220,7 +21238,11 @@ private fun ThreadMessagesListContent(
                 )
             )
         } else {
-            dispatchViewportEvent(LazyViewportEvent.ContentMutated(LazyViewportMutation.InsetChange))
+            // Parked-bottom owner. On a reversed list a stale Anchored intent is retired to
+            // FollowingLatest rather than replayed (replaying top-aligns / centres the row).
+            (insetViewportAction ?: ThreadComposerInsetViewportAction.ReplayIntent)
+                .viewportEvent()
+                ?.let(dispatchViewportEvent)
         }
         val insetCommandId = viewportControllerState.pendingCommand?.id
         val pixelProbeThreadInstanceKey = threadInstanceKey
@@ -23681,6 +23703,47 @@ internal fun resolveThreadComposerLayoutBottomAnchor(
                 (state.focusedActiveTailAnchorCanCorrectLayout || state.focusedTailAnchorCanCorrectLayout)
     )
 }
+
+/**
+ * What the parked-bottom composer correction (keyboard / composer resize, intent owner: the
+ * parked tail, fenced by `allowBottomAutoAnchor`) does with the viewport controller.
+ *
+ * A reversed list keeps its bottom edge fixed while the viewport shrinks, so the rows already
+ * ride up with the keyboard. Replaying an `Anchored` intent there re-applies a top-relative
+ * placement (`Focused` top-aligns or centres the row, `ExactOffset` restores the old
+ * top offset) once the inset settles: the visible "moves up, then snaps to top-aligned" jump.
+ */
+internal enum class ThreadComposerInsetViewportAction(val diagnosticName: String) {
+    /** `ContentMutated(InsetChange)`: replay the current intent (forward list, FollowingLatest, ...). */
+    ReplayIntent("replay_intent"),
+
+    /** The tail is parked at the rendered bottom: retire the stale anchor to `FollowingLatest`. */
+    FollowLatest("follow_latest"),
+
+    /** Mid-history reversed list: the rendered position already kept the anchor; do nothing. */
+    KeepRenderedPosition("keep_rendered_position")
+}
+
+/** The controller event for [this] action; `null` leaves the viewport untouched. */
+internal fun ThreadComposerInsetViewportAction.viewportEvent(): LazyViewportEvent? =
+    when (this) {
+        ThreadComposerInsetViewportAction.ReplayIntent ->
+            LazyViewportEvent.ContentMutated(LazyViewportMutation.InsetChange)
+        ThreadComposerInsetViewportAction.FollowLatest ->
+            LazyViewportEvent.FollowLatest(canOverrideUserDragging = false)
+        ThreadComposerInsetViewportAction.KeepRenderedPosition -> null
+    }
+
+internal fun resolveThreadComposerInsetViewportAction(
+    reverseLayout: Boolean,
+    intent: LazyViewportIntent,
+    tailAtRenderedBottom: Boolean
+): ThreadComposerInsetViewportAction =
+    when {
+        !reverseLayout || intent !is LazyViewportIntent.Anchored -> ThreadComposerInsetViewportAction.ReplayIntent
+        tailAtRenderedBottom -> ThreadComposerInsetViewportAction.FollowLatest
+        else -> ThreadComposerInsetViewportAction.KeepRenderedPosition
+    }
 
 internal data class ThreadFocusedAnchorPlacementState(
     val identity: String?,
