@@ -60,12 +60,18 @@ internal class SharedRealtimeRoomLeaseRegistry(
 
     /**
      * Task #14c: reply-thread rooms a page asked to keep ([keepJoinedUntilClear]). Their last release sends no
-     * `leave:channel`; only [clearServer] / [clear] (sign-out, server switch) may leave them.
+     * `leave:channel` while they are among the [MAX_RETAINED_THREAD_ROOMS] most recently released; [clearServer] /
+     * [clear] (shell scope release) leave them like any other room.
      */
     private val keptUntilClear = mutableSetOf<RoomKey>()
 
-    /** Task #14c: [keptUntilClear] rooms whose last lease was released: still joined, owned by nobody. */
-    private val retainedAfterRelease = mutableSetOf<RoomKey>()
+    /**
+     * Task #14c: [keptUntilClear] rooms whose last lease was released: still joined, owned by nobody. Oldest
+     * release first. Bounded: the hosts rejoin every joined room on reconnect and never drop one on their own, so
+     * without a bound every thread opened in the shell would stay joined (and its replies keep arriving) for its
+     * whole life. The oldest one is left when a newer one is retained (that thread's acks are void from then on).
+     */
+    private val retainedAfterRelease = LinkedHashSet<RoomKey>()
 
     init {
         require(shellInstanceId.isNotBlank()) { "Room lease registry requires a shell id" }
@@ -126,7 +132,8 @@ internal class SharedRealtimeRoomLeaseRegistry(
 
     /**
      * Task #14c: the page of reply thread [roomId] keeps that room joined after its last lease is released, until
-     * [clearServer] / [clear] (or a reconnect, which drops every room server-side). A thread room is never in the
+     * it is no longer among the [MAX_RETAINED_THREAD_ROOMS] most recently released kept rooms, or [clearServer] /
+     * [clear]. (A reconnect does not end it: the hosts rejoin every joined room.) A thread room is never in the
      * connect-time join, and the conversation directory may wrongly read it as non-member, so leaving it on page
      * close stopped its replies and voided its join acks for the realtime offline cache
      * ([build.raft.app.network.sync.CanonicalMessageV2ProductionCanary.noteRoomLeft]) for the rest of the process.
@@ -162,7 +169,14 @@ internal class SharedRealtimeRoomLeaseRegistry(
             if (owners.isEmpty()) {
                 ownersByRoom -= key
                 if (!teardown && key in keptUntilClear) {
+                    retainedAfterRelease -= key
                     retainedAfterRelease += key
+                    while (retainedAfterRelease.size > MAX_RETAINED_THREAD_ROOMS) {
+                        val oldest = retainedAfterRelease.first()
+                        retainedAfterRelease -= oldest
+                        keptUntilClear -= oldest
+                        leaveIfAllowedLocked(oldest, transitions)
+                    }
                 } else {
                     leaveIfAllowedLocked(key, transitions)
                 }
@@ -213,3 +227,6 @@ internal fun realtimeRoomLeaveAllowed(
     val projection = identity?.resolveProjection(ServerId(serverId), roomId) ?: return false
     return !projection.joined
 }
+
+/** Task #14c: how many released reply-thread rooms [SharedRealtimeRoomLeaseRegistry] keeps joined. */
+internal const val MAX_RETAINED_THREAD_ROOMS: Int = 8

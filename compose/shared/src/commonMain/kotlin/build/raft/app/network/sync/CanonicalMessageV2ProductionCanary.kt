@@ -333,9 +333,10 @@ private sealed interface CanonicalMessageV2AppendResult {
  *   processed after a leave may answer a join sent BEFORE it (join → ack in flight → leave → reopen → the old
  *   ack confirms a room the socket left, while the new join is still pending). Therefore a page never leaves
  *   its reply-thread room on close ([build.raft.app.data.SharedRealtimeRoomLeaseRegistry.keepJoinedUntilClear]):
- *   the room stays joined until the connection drops (a reconnect drops every room; the host rejoins and the
- *   server acks on the new epoch) or the registry is cleared for the server / shell (sign-out, server switch),
- *   which still leaves it and notes it here. A leave of the PARENT channel's room (still left on page close when
+ *   the room stays joined (across reconnects: the host rejoins every joined room and the server acks again on the
+ *   new epoch) until it falls out of the registry's most recently released
+ *   [build.raft.app.data.MAX_RETAINED_THREAD_ROOMS] kept rooms, or the registry is cleared for the shell scope;
+ *   either still leaves it and notes it here (that thread's acks are void from then on). A leave of the PARENT channel's room (still left on page close when
  *   the directory says the user is not a member of it, #2994) ends the thread's continuity as before
  *   (`room_left`), but does not void the thread room's acks.
  *   Late-ack catch-up. A page's own `join:channel` is answered while its enter fetch is in flight, so the first

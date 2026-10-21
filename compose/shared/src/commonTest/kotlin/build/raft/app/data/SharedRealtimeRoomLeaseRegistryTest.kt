@@ -142,6 +142,32 @@ class SharedRealtimeRoomLeaseRegistryTest {
     }
 
     @Test
+    fun onlyTheMostRecentlyReleasedKeptThreadRoomsStayJoined() {
+        val left = mutableListOf<String>()
+        val registry = SharedRealtimeRoomLeaseRegistry("shell-a", onLeave = { _, roomId -> left += roomId }) { _, _ -> true }
+        val page = owner("thread-pager-1", generation = 1)
+        // Release MAX kept thread rooms: all stay joined.
+        (1..MAX_RETAINED_THREAD_ROOMS).forEach { n ->
+            registry.keepJoinedUntilClear("server-a", "thread-$n")
+            registry.acquire(page, listOf("thread-$n"))
+            assertTrue(registry.release(page).isEmpty(), "thread-$n is within the bound")
+        }
+        // Reopening thread-1 makes it the most recent again.
+        registry.acquire(page, listOf("thread-1"))
+        assertTrue(registry.release(page).isEmpty())
+        assertTrue(left.isEmpty())
+        // One more: the oldest release (thread-2, not the reopened thread-1) is left, exactly once.
+        val next = "thread-${MAX_RETAINED_THREAD_ROOMS + 1}"
+        registry.keepJoinedUntilClear("server-a", next)
+        registry.acquire(page, listOf(next))
+        assertEquals(listOf(leave("thread-2")), registry.release(page))
+        assertEquals(listOf("thread-2"), left)
+        // The evicted room lost its mark: a later lease of it is an ordinary room again.
+        registry.acquire(page, listOf("thread-2"))
+        assertEquals(listOf(leave("thread-2")), registry.release(page))
+    }
+
+    @Test
     fun aKeptThreadRoomIsLeftByServerAndShellTeardownOpenOrClosed() {
         val left = mutableListOf<String>()
         val registry = SharedRealtimeRoomLeaseRegistry("shell-a", onLeave = { _, roomId -> left += roomId }) { _, _ -> true }
