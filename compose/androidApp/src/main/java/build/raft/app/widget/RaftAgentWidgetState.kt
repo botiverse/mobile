@@ -29,10 +29,18 @@ data class RaftAgentWidgetState(
         get() = staleReason?.let { "Last refresh failed: $it" } ?: statusLabel
 }
 
+/** The row's status dot, one per colour of the app's agent status dot (RaftAgentStatusDotKind). */
 enum class RaftAgentWidgetTone {
+    /** Online / idle: lime. */
     Active,
+    /** Kept so a widget cache written before 1.15.2 still reads; drawn like [Active]. */
     Idle,
+    /** Working / thinking: yellow. */
+    Working,
+    /** External agent outside its online window: cyan. */
+    External,
     Error,
+    /** Offline, disconnected or unknown: gray. */
     Offline
 }
 

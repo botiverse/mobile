@@ -3,6 +3,9 @@ package build.raft.app.widget
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.MainActivity
 import build.raft.app.R
+import build.raft.app.RaftAgentStatusDotKind
+import build.raft.app.raftAgentStatusDotKind
+import build.raft.app.model.ExternalAgentRuntimeId
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.core.data.network.RealRaftNetworkClientFactory
@@ -167,12 +170,16 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
             val name: String,
             val detail: String,
             val status: AgentStatus?,
+            /** The wire value the status came from (`activity ?: status`), for the app's dot mapping. */
+            val statusWireValue: String?,
+            val external: Boolean,
+            val lastSeenAt: String?,
             val avatarWireValue: String?,
             val latestAt: String?,
             val sourceIndex: Int
         ) {
             val hasSignal: Boolean
-                get() = detail.isNotBlank() || status != null
+                get() = status != null || detail != "Offline"
 
             val sortKey: String
                 get() =
@@ -209,7 +216,9 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                             ?: status?.label
                             ?: runtime
                             ?: item.optString("description").takeIf { it.isNotBlank() }
-                            ?: "Online"
+                            // Unknown status: say so, as the gray dot does (was "Online", which
+                            // also made every agent count as live).
+                            ?: "Offline"
                     val latestAt =
                         item.optString("updatedAt").takeIf { it.isNotBlank() }
                             ?: item.optString("activityAt").takeIf { it.isNotBlank() }
@@ -222,6 +231,9 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                             name = name,
                             detail = detail,
                             status = status,
+                            statusWireValue = activity ?: statusValue,
+                            external = runtime == ExternalAgentRuntimeId || item.optBoolean("external", false),
+                            lastSeenAt = item.optString("lastSeenAt").takeIf { it.isNotBlank() },
                             avatarWireValue = item.optString("avatarUrl").takeIf { it.isNotBlank() }
                                 ?: "pixel:robot",
                             latestAt = latestAt,
@@ -263,13 +275,19 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                 .ifBlank { this }
 
         private suspend fun AgentWidgetSummary.toWidgetRow(context: Context): RaftAgentWidgetRow {
+            // The app's dot mapping, so the widget never shows a colour the app would not.
             val tone =
-                when (status) {
-                    AgentStatus.Working, AgentStatus.Thinking, AgentStatus.Online -> RaftAgentWidgetTone.Active
-                    AgentStatus.Idle -> RaftAgentWidgetTone.Idle
-                    AgentStatus.Error -> RaftAgentWidgetTone.Error
-                    AgentStatus.Disconnected, AgentStatus.Offline, null ->
-                        if (status == null && detail.isNotBlank()) RaftAgentWidgetTone.Active else RaftAgentWidgetTone.Offline
+                when (raftAgentStatusDotKind(
+                        statusWireValue,
+                        external = external,
+                        lastSeenAt = lastSeenAt,
+                        nowEpochMillis = System.currentTimeMillis(),
+                    )) {
+                    RaftAgentStatusDotKind.Lime -> RaftAgentWidgetTone.Active
+                    RaftAgentStatusDotKind.Yellow -> RaftAgentWidgetTone.Working
+                    RaftAgentStatusDotKind.Cyan -> RaftAgentWidgetTone.External
+                    RaftAgentStatusDotKind.Orange -> RaftAgentWidgetTone.Error
+                    RaftAgentStatusDotKind.Gray -> RaftAgentWidgetTone.Offline
                 }
             return RaftAgentWidgetRow(
                 name = name,
@@ -370,8 +388,10 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
         private val RaftAgentWidgetTone.drawableRes: Int
             get() =
                 when (this) {
-                    RaftAgentWidgetTone.Active -> R.drawable.raft_widget_status_dot_active
-                    RaftAgentWidgetTone.Idle -> R.drawable.raft_widget_status_dot_idle
+                    RaftAgentWidgetTone.Active,
+                    RaftAgentWidgetTone.Idle -> R.drawable.raft_widget_status_dot_active
+                    RaftAgentWidgetTone.Working -> R.drawable.raft_widget_status_dot_working
+                    RaftAgentWidgetTone.External -> R.drawable.raft_widget_status_dot_external
                     RaftAgentWidgetTone.Error -> R.drawable.raft_widget_status_dot_error
                     RaftAgentWidgetTone.Offline -> R.drawable.raft_widget_status_dot_offline
                 }
