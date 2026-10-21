@@ -3997,7 +3997,13 @@ private fun RaftAppShellReadyContent(
         } else {
             appShellServerMembersStore.serverMembersEntryFlow(serverId)
         }
-    }.collectAsState(SharedServerMembersEntry(serverId = readyServerId.orEmpty()))
+    }.collectAsState(
+        remember(appShellServerMembersStore, readyServerId) {
+            readyServerId?.takeIf { it.isNotBlank() }
+                ?.let { appShellServerMembersStore.currentServerMembersEntry(ServerId(it)) }
+                ?: SharedServerMembersEntry(serverId = readyServerId.orEmpty())
+        }
+    )
     LaunchedEffect(readySession?.qaBootstrap?.ticketDigest, homeState.content) {
         if (
             readySession?.qaBootstrap != null &&
@@ -5632,6 +5638,22 @@ private fun RaftAppShellReadyContent(
                     // roster cache; otherwise updated fields (e.g. avatarUrl) stay stale
                     // until process restart. Agents/Machines scopes already refresh through
                     // their own projections, so only ServerMembers pays for a roster refetch.
+                    if (
+                        event.scope == build.raft.app.model.RealtimeRefreshScope.ServerMembers &&
+                        (
+                            event.reason == build.raft.app.data.realtime.RealtimeSocketEvents.ServerMemberLeft ||
+                                event.reason == build.raft.app.data.realtime.RealtimeSocketEvents.ServerMemberRemoved
+                            )
+                    ) {
+                        // Data-layer plan step 3 (Tenny rule 2): a member who left / was removed
+                        // leaves the cached roster (memory + durable) at once, before the refetch.
+                        event.memberId?.value?.takeIf { it.isNotBlank() }?.let { memberId ->
+                            appShellServerMembersStore.removeMember(
+                                serverId = build.raft.app.model.ServerId(serverId),
+                                memberId = build.raft.app.model.MemberId(memberId)
+                            )
+                        }
+                    }
                     if (event.scope == build.raft.app.model.RealtimeRefreshScope.ServerMembers) {
                         appShellCoroutineScope.launch {
                             appShellServerMembersStore.refreshMembers(

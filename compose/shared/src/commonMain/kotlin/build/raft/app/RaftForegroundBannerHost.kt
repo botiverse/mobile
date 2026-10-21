@@ -590,7 +590,11 @@ private fun RaftForegroundBannerAvatar(
         remember(serverMembersStore, currentServerId, banner.senderMemberId) {
             serverMembersStore?.memberProfileFlow(currentServerId, banner.senderMemberId) ?: flowOf(null)
         }
-    val profile by profileFlow.collectAsState(null)
+    val profile by profileFlow.collectAsState(
+        remember(serverMembersStore, currentServerId, banner.senderMemberId) {
+            currentServerId?.let { serverId -> serverMembersStore?.currentMemberProfile(serverId, banner.senderMemberId) }
+        }
+    )
     val memberAvatarWireValue = profile?.explicitForegroundBannerAvatarWireValue()
     val avatarLabel = profile?.raftAvatarName()?.takeIf { it.isNotBlank() } ?: banner.avatarLabel
     RaftAppAvatar(

@@ -2361,7 +2361,15 @@ internal fun MembersPageContent(
         } else {
             serverMembersStore.serverMembersEntryFlow(ServerId(cleanServerId))
         }
-    }.collectAsState(SharedServerMembersEntry(serverId = serverId))
+    }.collectAsState(
+        // Data-layer plan step 3: first frame = the roster already cached (memory or durable seed),
+        // never an empty list that the flow fills a frame later.
+        remember(serverMembersStore, serverId) {
+            serverId.trim().takeIf { it.isNotBlank() }
+                ?.let { serverMembersStore.currentServerMembersEntry(ServerId(it)) }
+                ?: SharedServerMembersEntry(serverId = serverId)
+        }
+    )
     val localMembers =
         remember(serverMembersEntry.members, optimisticMembers) {
             val merged = LinkedHashMap<String, MemberProfile>()

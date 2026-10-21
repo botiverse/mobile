@@ -91,6 +91,22 @@ internal class RaftMemberAvatarRefStore(
         }
     }
 
+    /**
+     * Removes [serverId]'s references (the account lost access to the server: removed from it or the
+     * server was deleted; data-layer plan, Tenny rule 2).
+     */
+    fun forgetServer(serverId: String?) {
+        val serverKey = serverId?.trim()?.takeIf { it.isNotEmpty() } ?: return
+        synchronized(lock) {
+            loadedByServerId[serverKey] = RaftMemberAvatarRefPage()
+            runCatching {
+                store.putString(serverKeyFor(serverKey), null)
+                val index = indexedServerIdsLocked()
+                if (serverKey in index) writeIndexLocked(index - serverKey)
+            }
+        }
+    }
+
     /** Removes every stored reference (auth session ended). */
     fun clearAll() {
         synchronized(lock) {
