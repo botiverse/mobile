@@ -200,7 +200,8 @@ private extension RaftIosTabBarItemSpec {
             badgeValue: item.badgeValue,
             enabled: item.enabled,
             attentionDot: item.attentionDot,
-            searchAction: item.searchAction
+            searchAction: item.searchAction,
+            imageAssetName: item.imageAssetName
         )
     }
 }
@@ -290,13 +291,21 @@ private final class RaftIosTabSlotViewController: UIViewController {
         }
         item.accessibilityLabel = spec.title
         item.accessibilityIdentifier = "raft-tab-\(spec.key)"
-        item.image = Self.symbol(RaftIosTabBarItemMapping.imageNameCandidates(preferred: spec.systemImageName))
-        item.selectedImage = Self.symbol(
-            RaftIosTabBarItemMapping.imageNameCandidates(
-                preferred: spec.selectedSystemImageName,
-                fallback: spec.systemImageName
+        // The web's Lucide glyph (template asset, tinted by the bar) when the app ships it;
+        // Lucide has no filled variants, so selection is the tint alone. SF Symbols otherwise.
+        if let assetName = spec.imageAssetName,
+           let asset = UIImage(named: assetName)?.withRenderingMode(.alwaysTemplate) {
+            item.image = asset
+            item.selectedImage = asset
+        } else {
+            item.image = Self.symbol(RaftIosTabBarItemMapping.imageNameCandidates(preferred: spec.systemImageName))
+            item.selectedImage = Self.symbol(
+                RaftIosTabBarItemMapping.imageNameCandidates(
+                    preferred: spec.selectedSystemImageName,
+                    fallback: spec.systemImageName
+                )
             )
-        )
+        }
         if item.badgeValue != spec.badgeValue {
             item.badgeValue = spec.badgeValue
         }

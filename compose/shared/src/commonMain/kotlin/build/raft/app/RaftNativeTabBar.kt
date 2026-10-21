@@ -62,6 +62,12 @@ data class RaftNativeTabBarItem(
      * host's item mapping stays source-compatible.
      */
     val searchAction: Boolean = false,
+    /**
+     * The tab's Lucide icon as an iOS asset-catalog name ("lucide-house"), the same glyph the
+     * web and the Compose bar draw (artin 2026-10-21: the SF Symbols did not match the web).
+     * The host prefers it and falls back to [systemImageName] when the asset is missing.
+     */
+    val imageAssetName: String? = null,
 )
 
 /** Everything the host needs to render the bar. Exported to Swift. */
@@ -262,8 +268,12 @@ internal fun raftNativeTabBarItem(item: RaftBottomTabItemPayload): RaftNativeTab
         badgeValue = raftNativeTabBarBadgeValue(badgeCount),
         enabled = item.enabled,
         attentionDot = item.attentionDot && badgeCount == 0,
+        imageAssetName = raftNativeTabBarImageAssetName(item.iconName),
     )
 }
+
+/** iOS asset-catalog name of a tab's Lucide icon (`Assets.xcassets/lucide-<wire name>.imageset`). */
+internal fun raftNativeTabBarImageAssetName(icon: RaftLucideIconName): String = "lucide-${icon.wireName}"
 
 /** Same cap as the Home sidebar badges: null at 0, "99+" from 100. */
 internal fun raftNativeTabBarBadgeValue(count: Int): String? = formatHomeSidebarBadgeCount(count)

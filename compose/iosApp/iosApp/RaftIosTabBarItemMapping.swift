@@ -14,6 +14,8 @@ struct RaftIosTabBarItemSpec: Equatable {
     let enabled: Bool
     /// The Search action (never the selected item; a tap opens search over the current tab).
     let searchAction: Bool
+    /// Asset-catalog name of the tab's Lucide icon (the web's glyph); nil uses the SF Symbols.
+    let imageAssetName: String?
 
     init(
         key: String,
@@ -23,7 +25,8 @@ struct RaftIosTabBarItemSpec: Equatable {
         badgeValue: String?,
         enabled: Bool,
         attentionDot: Bool = false,
-        searchAction: Bool = false
+        searchAction: Bool = false,
+        imageAssetName: String? = nil
     ) {
         self.key = key
         self.title = title
@@ -32,6 +35,7 @@ struct RaftIosTabBarItemSpec: Equatable {
         self.badgeValue = RaftIosTabBarItemMapping.badgeValue(fromShared: badgeValue, attentionDot: attentionDot)
         self.enabled = enabled
         self.searchAction = searchAction
+        self.imageAssetName = imageAssetName
     }
 }
 
