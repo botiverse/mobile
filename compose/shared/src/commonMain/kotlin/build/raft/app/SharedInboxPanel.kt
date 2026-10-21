@@ -2186,6 +2186,8 @@ private fun SharedActivityRow(
                     maxLines = 1,
                     softWrap = false,
                     clampFuture = true,
+                    // Web InboxItemTimestamp is plain text: a tap near the time opens the row.
+                    toggleEnabled = false,
                     modifier = Modifier.padding(top = 1.dp, end = if (showDone) 44.dp else 0.dp)
                 )
             }
