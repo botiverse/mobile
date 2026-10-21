@@ -194,6 +194,8 @@ import build.raft.app.data.authLossTokenFingerprint
 import build.raft.app.data.canonicalServerMembersMentionHandle
 import build.raft.app.data.convertMessageToCanonicalTask
 import build.raft.app.data.isSupportedCommitAction
+import build.raft.app.data.isFeedbackSubmitAction
+import build.raft.app.data.PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
 import build.raft.app.data.isSubmittableChannelName
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.data.messageBodyFontSizeOwnerKey
@@ -7684,6 +7686,17 @@ private fun SharedThreadRouteContentContent(
     val memberSuggestionScopeChannelId = memberSuggestionScopePayload.threadComposerMentionScopeChannelId()
     val memberSuggestionScopedMentions = memberSuggestionScopePayload.threadComposerMemberScopedMentions()
     val currentServerId = currentSession?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
+    // `feedback:submit` cards open the Feedback WebView only where the viewing server has
+    // `product_feedback_multi_app` on; follow the flag live as its evaluation lands.
+    val featureFlagSnapshotRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
+    val feedbackCardEntryEnabled =
+        remember(featureFlagSnapshotRevision, currentServerId) {
+            currentServerId != null &&
+                sharedStores.serverFeatureFlags.isEnabled(
+                    ServerId(currentServerId),
+                    PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
+                )
+        }
     val taskProjectionOwnerIdentity =
         remember(sharedStores.apiEnvironmentStore, currentSession?.user?.id) {
             currentSession?.user?.id
@@ -10967,6 +10980,7 @@ private fun SharedThreadRouteContentContent(
                 LocalRaftMarkdownRenderConfig provides
                     RaftMarkdownRenderConfig(singleParagraphLightPath = singleParagraphLightPathEnabled),
                 LocalThreadReverseLayout provides threadReverseLayoutEnabled,
+                LocalThreadFeedbackCardEntryEnabled provides feedbackCardEntryEnabled,
                 LocalThreadMessagePointerSessionKey provides threadPointerSessionKey,
                 LocalThreadMessageLongPressGestureOwnerStore provides
                     threadMessageLongPressGestureOwnerStore,
@@ -11557,6 +11571,27 @@ private fun SharedThreadRouteContentContent(
                         renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)?.threadActionCard()
                     if (actionCard == null) {
                         bridge.toast(actionUnavailableLabel)
+                        return@ThreadPageContent
+                    }
+                    if (actionCard.isFeedbackSubmitAction()) {
+                        val feedbackCardEntry =
+                            raftFeedbackCardEntryOrNull(
+                                messageId = itemId,
+                                card = actionCard,
+                                viewingServerId = currentServerId,
+                                productFeedbackMultiAppEnabled =
+                                    currentServerId != null &&
+                                        sharedStores.serverFeatureFlags.isEnabled(
+                                            ServerId(currentServerId),
+                                            PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
+                                        )
+                            )
+                        if (feedbackCardEntry == null) {
+                            bridge.toast(actionUnsupportedLabel)
+                        } else {
+                            bridge.log("thread_feedback_card_open messageId=$itemId")
+                            pager.openSettingsFeedbackWebViewPage(storeScope, feedbackCardEntry)
+                        }
                         return@ThreadPageContent
                     }
                     if (!actionCard.isSupportedCommitAction()) {
@@ -26147,7 +26182,12 @@ private fun ThreadActionCardView(
             RaftBrutalActionButton(
                 label = if (pending) renderCopy.pendingLabel else renderCopy.verb,
                 onClick = onCommit,
-                enabled = !pending && card.isSupportedCommitAction(),
+                enabled =
+                    !pending &&
+                        (
+                            card.isSupportedCommitAction() ||
+                                card.opensFeedbackCardEntry(LocalThreadFeedbackCardEntryEnabled.current)
+                        ),
                 backgroundColor = RaftColor.AccentPink,
                 disabledBackgroundColor = RaftColor.SurfaceCream,
                 minWidth = 0.dp,
@@ -29491,6 +29531,9 @@ private fun threadDisplayReactionEmoji(emoji: String): String =
 // via recomposition once the long-lived root finishes decoding — it must never
 // harden into a permanent raw-emoji fallback.
 internal val LocalThreadReactionAtlasImage = compositionLocalOf<ImageBitmap?> { null }
+
+/** Whether the viewing server lets `feedback:submit` cards open the Feedback WebView. */
+internal val LocalThreadFeedbackCardEntryEnabled = compositionLocalOf { false }
 
 @Composable
 internal fun ThreadReactionAtlasProvider(content: @Composable () -> Unit) {
