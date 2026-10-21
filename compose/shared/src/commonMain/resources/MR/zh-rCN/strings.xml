@@ -1650,6 +1650,8 @@
     <string name="search_section_messages">消息</string>
     <string name="search_action_load_more_results">加载更多结果</string>
     <string name="search_filter_scope">范围</string>
+    <string name="search_scope_in_channel">在 %1$s 中</string>
+    <string name="search_scope_expand_all">全部</string>
     <string name="search_filter_from">发送者</string>
     <string name="search_filter_from_value">发送者：%1$s</string>
     <string name="search_filter_from_selected">已选择 %1$d 位发送者</string>

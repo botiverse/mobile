@@ -2298,8 +2298,11 @@ private fun RaftAppShellReadyContent(
     var railInlineSecondaryDestination by remember { mutableStateOf<String?>(null) }
     // The Search tab's result list position survives leaving and re-entering the tab.
     val searchTabListState = rememberLazyListState()
+    val searchTabReturnHighlight = remember { HomeSearchReturnHighlight() }
     // Re-tapping the selected Search tab focuses its field (one increment per tap).
     var searchTabFocusInputRequest by remember { mutableStateOf(0) }
+    // A query a conversation search handed to the Search tab ("Search all"), until applied.
+    var searchTabQueryRequest by remember { mutableStateOf<RaftSearchTabQueryRequest?>(null) }
     // task #13: once a rail surface exposes Activity (rail active or an inline destination is
     // covering the middle pane) the live tab must survive width transitions — narrowing must
     // not clamp a user-reached Activity selection back to Home.
@@ -5294,6 +5297,16 @@ private fun RaftAppShellReadyContent(
         retainedAppShellTabs = retainedAppShellTabs + AppShellSearchTabKey
     }
 
+    // Nav spec §10.5: a conversation search's "Search all" closed the pages above the shell;
+    // once the shell shows again it selects the Search tab with that query.
+    LaunchedEffect(pageVisible) {
+        if (!pageVisible) return@LaunchedEffect
+        val request = RaftSearchTabHandoff.consume() ?: return@LaunchedEffect
+        bridge.log("app_shell_search_handoff nonce=${request.nonce} queryLength=${request.query.length}")
+        searchTabQueryRequest = request
+        openSearchTab(source = "conversation_search_expand")
+    }
+
     val handleAppShellBack by rememberUpdatedState {
         if (popMainRoute()) {
             bridge.log(
@@ -7395,10 +7408,13 @@ private fun RaftAppShellReadyContent(
                             initialSearchFocusInput = false,
                             searchInputActive = active,
                             searchFocusInputRequest = searchTabFocusInputRequest,
+                            searchQueryRequest = searchTabQueryRequest,
+                            onSearchQueryApplied = { searchTabQueryRequest = null },
                             adaptivePane = shellScope.adaptivePane,
                             tabRoot = true,
                             hostPager = pager,
                             searchListState = searchTabListState,
+                            searchReturnHighlight = searchTabReturnHighlight,
                             searchBottomContentPadding = appShellBottomContentInset,
                         )
                     }
@@ -20792,6 +20808,18 @@ internal fun SharedHomeSearchPanel(
     inputActive: Boolean = true,
     // Each increment focuses the field (re-tapping the selected Search tab).
     focusInputRequest: Int = 0,
+    // Advances when the hosting page reappears (a pushed result closed).
+    visibleTick: Int = 0,
+    // The opened-row mark, hoisted like [listState] where the page content is rebuilt on return.
+    returnHighlightState: HomeSearchReturnHighlight? = null,
+    // The phone Search tab root: the field sits in the tab head (the 56dp frame bar).
+    tabHead: Boolean = false,
+    // A conversation-scoped pushed search: shows the "In #channel" scope and a "Search all"
+    // action that hands the query to the Search tab.
+    onExpandToSearchTab: ((String) -> Unit)? = null,
+    // A query handed over from a conversation search (Search tab only); applied once.
+    externalQueryRequest: RaftSearchTabQueryRequest? = null,
+    onExternalQueryApplied: () -> Unit = {},
     initialHistoryEditing: Boolean = false,
     searchHomeVisualTextScale: Float = 1f,
     onOpenItem: (InboxItem) -> Unit,
@@ -20891,6 +20919,25 @@ internal fun SharedHomeSearchPanel(
             inputActive = inputActive,
             focusInputRequest = focusInputRequest
         )
+    val returnHighlight = rememberHomeSearchReturnHighlight(pageVisible = inputActive, visibleTick = visibleTick, hoisted = returnHighlightState)
+    // The initial autofocus (pushed search pages) runs once, the first time the page shows;
+    // coming back from a result never refocuses the field.
+    var pendingInitialFocus by remember { mutableStateOf(initialFocusInput) }
+    LaunchedEffect(inputActive) {
+        if (inputActive && pendingInitialFocus) {
+            pendingInitialFocus = false
+            delay(100)
+            searchFocusRequester.requestFocus()
+        }
+    }
+    LaunchedEffect(externalQueryRequest?.nonce) {
+        val request = externalQueryRequest ?: return@LaunchedEffect
+        searchEditor.replaceText(request.query) { next ->
+            onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged(next))
+        }
+        if (request.query.isNotBlank()) onIntent(SharedHomeSearchSavedIntent.SubmitSearch)
+        onExternalQueryApplied()
+    }
     var senderSearch by remember { mutableStateOf("") }
     var channelSearch by remember { mutableStateOf("") }
     val pinLabel = stringResource(MR.strings.home_action_pin)
@@ -20962,12 +21009,24 @@ internal fun SharedHomeSearchPanel(
                     onClear = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged("")) },
                     onClose = onClose,
                     interactive = interactiveSearchField,
-                    autoFocus = initialFocusInput && inputActive,
+                    tabHead = tabHead,
                     topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
                     placeholder = stringResource(MR.strings.search_placeholder)
                 )
-                SharedHomeSearchDivider()
+                // The tab head draws its own 1dp seam.
+                if (!tabHead) SharedHomeSearchDivider()
                 RaftAppShellBodyTopBanner()
+                if (onExpandToSearchTab != null) {
+                    channelFilters.firstOrNull { it.id == state.selectedChannelId }?.let { scope ->
+                        SharedHomeSearchScopeRow(
+                            scopeLabel = scope.searchScopeLabel(),
+                            onExpand = {
+                                searchInputFocus.release()
+                                onExpandToSearchTab(state.query)
+                            }
+                        )
+                    }
+                }
                 SharedHomeSearchFilters(
                     state = state,
                     channelFilters = channelFilters,
@@ -21106,6 +21165,8 @@ internal fun SharedHomeSearchPanel(
                                 frequentEntityResults.size,
                                 key = { index -> "frequent:${frequentEntityResults[index].key}" },
                             ) { index ->
+                                val frequentKey = "frequent:${frequentEntityResults[index].key}"
+                                Box(Modifier.homeSearchReturnHighlight(returnHighlight, frequentKey)) {
                                 SharedHomeSearchEntityRow(
                                     result = frequentEntityResults[index],
                                     query = "",
@@ -21116,10 +21177,12 @@ internal fun SharedHomeSearchPanel(
                                     visualTextScale = searchHomeVisualTextScale,
                                     onOpen = {
                                         searchInputFocus.release()
+                                        returnHighlight.markOpened(frequentKey)
                                         onOpenEntity(frequentEntityResults[index])
                                     },
                                     onContextMenu = null,
                                 )
+                                }
                             }
                         }
                     }
@@ -21128,6 +21191,7 @@ internal fun SharedHomeSearchPanel(
                             SharedHomeSearchSectionLabel(stringResource(MR.strings.search_section_entities))
                         }
                         items(entityResults.size, key = { index -> entityResults[index].key }) { index ->
+                            Box(Modifier.homeSearchReturnHighlight(returnHighlight, entityResults[index].key)) {
                             SharedHomeSearchEntityRow(
                                 result = entityResults[index],
                                 query = state.query,
@@ -21137,6 +21201,7 @@ internal fun SharedHomeSearchPanel(
                                 isPinned = entityResults[index].isPinnedBy(pinnedItems),
                                 onOpen = {
                                     searchInputFocus.release()
+                                    returnHighlight.markOpened(entityResults[index].key)
                                     onOpenEntity(entityResults[index])
                                 },
                                 onContextMenu =
@@ -21154,6 +21219,7 @@ internal fun SharedHomeSearchPanel(
                                             }
                                         }
                             )
+                            }
                         }
                     }
                     if (groupedResults.isNotEmpty()) {
@@ -21165,6 +21231,7 @@ internal fun SharedHomeSearchPanel(
                         when (group) {
                             is HomeSearchResultGroup.Message -> {
                                 item(key = group.item.key) {
+                                    Box(Modifier.homeSearchReturnHighlight(returnHighlight, group.item.key)) {
                                     SharedHomeSearchMessageResultRow(
                                         item = group.item,
                                         query = state.query,
@@ -21174,13 +21241,16 @@ internal fun SharedHomeSearchPanel(
                                         timeContext = timeContext,
                                         onOpen = {
                                             searchInputFocus.release()
+                                            returnHighlight.markOpened(group.item.key)
                                             onOpenItem(group.item)
                                         }
                                     )
+                                    }
                                 }
                             }
                             is HomeSearchResultGroup.Thread -> {
                                 item(key = group.key) {
+                                    Box(Modifier.homeSearchReturnHighlight(returnHighlight, group.key)) {
                                     SharedHomeThreadResultGroup(
                                         group = group,
                                         query = state.query,
@@ -21190,9 +21260,11 @@ internal fun SharedHomeSearchPanel(
                                         timeContext = timeContext,
                                         onOpenItem = { item ->
                                             searchInputFocus.release()
+                                            returnHighlight.markOpened(group.key)
                                             onOpenItem(item)
                                         }
                                     )
+                                    }
                                 }
                             }
                         }
@@ -21603,9 +21675,36 @@ private fun SharedHomeSearchToolbar(
     onClose: (() -> Unit)?,
     interactive: Boolean = true,
     autoFocus: Boolean = false,
+    tabHead: Boolean = false,
     topSafeAreaPadding: Dp = 0.dp,
     placeholder: String
 ) {
+    if (tabHead) {
+        // Nav spec §2/§7.1: the Search tab root wears the same tab head as the other roots, a
+        // 56dp frame bar (Source Yellow, the dark frame in dark) with a 1dp seam; the field
+        // takes the title's place, 16dp from both edges.
+        RaftTopPageHeaderFrame(
+            backgroundColor = RaftColor.Frame,
+            topSafeArea = topSafeAreaPadding,
+            contentStartPadding = SearchControlsHorizontalPadding,
+            contentEndPadding = SearchControlsHorizontalPadding,
+        ) {
+            SharedHomeSearchInput(
+                query = editor.value,
+                loading = loading,
+                interactive = interactive,
+                placeholder = placeholder,
+                autoFocus = autoFocus,
+                focusRequester = focusRequester,
+                onQueryChange = { next -> editor.acceptEditorValue(next, onQueryChange) },
+                onSubmit = onSubmit,
+                onClear = { editor.clear(onClear) },
+                raftField = true,
+                modifier = Modifier.weight(1f).then(fieldModifier)
+            )
+        }
+        return
+    }
     SharedHomeSearchControlsRow(
         topSafeAreaPadding = topSafeAreaPadding,
         // Back sits at the top-bar edge inset, its arrow 14dp in, like every page header.
@@ -21628,6 +21727,42 @@ private fun SharedHomeSearchToolbar(
             onClear = { editor.clear(onClear) },
             raftField = true,
             modifier = Modifier.weight(1f).then(fieldModifier)
+        )
+    }
+}
+
+/** "#name" for a channel scope, the bare name for a DM. */
+private fun SearchChannelFilterItem.searchScopeLabel(): String =
+    if (icon == RaftLucideIconName.Hash) "#$label" else label
+
+/**
+ * Nav spec §7.2: a conversation search shows where it searches ("In #channel") and offers
+ * "Search all", which moves the query to the Search tab (this page stays scoped).
+ */
+@Composable
+private fun SharedHomeSearchScopeRow(scopeLabel: String, onExpand: () -> Unit) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(RaftColor.SurfaceWhite)
+                .padding(start = SearchControlsHorizontalPadding, end = SearchControlsHorizontalPadding, top = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RaftText(
+            text = MR.strings.search_scope_in_channel.format(listOf(scopeLabel)).localized(),
+            style = RaftTheme.typography.callout,
+            color = RaftColor.TextMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        RaftButton(
+            text = stringResource(MR.strings.search_scope_expand_all),
+            onClick = onExpand,
+            variant = RaftButtonVariant.Default,
+            size = RaftButtonSize.Md,
         )
     }
 }
