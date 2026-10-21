@@ -491,6 +491,18 @@ jobs:
           path: compose/designsystem/build/reports/screenshots/
           if-no-files-found: ignore
 
+      # HomeChannelListScreenshotTest (Robolectric, :shared:testDebugUnitTest) writes every
+      # render here, plus <name>.actual.png / .diff.png when it fails or has no golden yet;
+      # uploaded on every run so the images (and new goldens) are reviewable without Gradle.
+      - name: Upload shared Home screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: shared-home-screenshots
+          path: compose/shared/build/reports/home-screenshots/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Verify NetworkKMM curl runtime and pinned CA
         shell: bash
         run: |

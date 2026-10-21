@@ -453,7 +453,7 @@ object VisualFixtureData {
     }
 
     object HomeChannelList {
-        const val COMMENT: String = "Phone Home rows for screens.home.channel-list and screens.home.channel-list.dark (same rows, light and dark). The one source for both providers: the React host (VisualTestingCases.tsx primeHomeChannelListStores, the playwright stubs) reads it here; Android reads the generated VisualFixtureData.HomeChannelList (CHANNELS / DIRECT_MESSAGES row lists) in HomeChannelListVisualHost.kt. Server id/slug are fixtureData.server. Every row carries every field so both sides map rows uniformly. mention and followedThreadsWithNewReplies have no Android Home model yet; Android ignores them. No row is selected: a phone Home root never shows one."
+        const val COMMENT: String = "Phone Home rows for screens.home.channel-list and screens.home.channel-list.dark (same rows, light and dark). The one source for both providers: the React host (VisualTestingCases.tsx primeHomeChannelListStores, the playwright stubs) reads it here; Android reads the generated VisualFixtureData.HomeChannelList (CHANNELS / DIRECT_MESSAGES row lists) in HomeChannelListVisualHost.kt. Server id/slug are fixtureData.server. Every row carries every field so both sides map rows uniformly. mention (the @ sticker) and followedThreadsWithNewReplies (the [thread] N count) are drawn on both; the Android app does not load them from the server yet, only this fixture sets them. No row is selected: a phone Home root never shows one."
         const val SERVER_NAME: String = "Raft Design"
         const val SAVED_TOTAL: Int = 5
         const val ACTIVITY_UNREAD_COUNT: Int = 0
