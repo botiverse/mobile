@@ -49,31 +49,46 @@ class RaftAppOpenTracker(
  * - A slot reports its route once per entry: recomposition, a repeated appear, or the same route
  *   reported again are not entries.
  * - Coming back to a slot that was covered by another page (Back from a pushed page, switching
- *   back to a tab) is an entry: web counts route changes the same way.
+ *   back to a tab) is an entry: web counts route changes the same way. Only an entry covers: a
+ *   page that merely shows again (the shell around a tab after a pause) does not.
  * - A slot that appears again after the app was in the background is not an entry, nor is one
- *   that only paused (a system dialog) without another page showing in between.
+ *   that only paused (a system dialog) without another page being entered in between.
+ * - A slot with a visit key that remounts (closed, then a new slot with the same key and route,
+ *   with no page entered in between) continues the closed visit: e.g. the shell's Home tab page
+ *   rebuilt while the signed-in shell settles on a cold start is not a second Home entry.
  */
 class RaftPageViewTracker(
     private val emit: (RaftProductPageView) -> Unit,
 ) {
     private class Slot {
         var route: RaftProductPageView? = null
+        var visitKey: String? = null
         var visible = false
+        var shownBefore = false
         var lastEmitted: RaftProductPageView? = null
-        var hiddenAtShowSequence: Long? = null
+        var hiddenAtEntrySequence: Long? = null
         var backgroundSinceShown = false
     }
 
+    /** The visit of a closed slot, which a remount of the same page continues. */
+    private class ClosedVisit(val visitKey: String, val view: RaftProductPageView, val entrySequence: Long)
+
     private val lock = SynchronizedObject()
     private val slots = HashMap<String, Slot>()
-    private var showSequence = 0L
+    private var entrySequence = 0L
+    private var closedVisit: ClosedVisit? = null
 
-    fun onPageRoute(slotKey: String, route: RaftProductPageView?) {
+    /**
+     * [visitKey] names the place the slot shows (stable across remounts of the same page, unique
+     * per place), or null when a new slot is always a new visit.
+     */
+    fun onPageRoute(slotKey: String, route: RaftProductPageView?, visitKey: String? = null) {
         val view =
             synchronized(lock) {
                 val slot = slots.getOrPut(slotKey) { Slot() }
                 slot.route = route
-                if (slot.visible) slot.takeEmission() else null
+                if (visitKey != null) slot.visitKey = visitKey
+                if (slot.visible) slot.takeEntry() else null
             }
         view?.let(emit)
     }
@@ -84,13 +99,26 @@ class RaftPageViewTracker(
                 val slot = slots.getOrPut(slotKey) { Slot() }
                 if (slot.visible) return
                 slot.visible = true
-                val hiddenAt = slot.hiddenAtShowSequence
-                val returnedFromCover = hiddenAt != null && showSequence > hiddenAt && !slot.backgroundSinceShown
-                if (returnedFromCover) slot.lastEmitted = null
-                slot.hiddenAtShowSequence = null
+                val firstShow = !slot.shownBefore
+                slot.shownBefore = true
+                val hiddenAt = slot.hiddenAtEntrySequence
+                val returnedFromCover = hiddenAt != null && entrySequence > hiddenAt && !slot.backgroundSinceShown
+                slot.hiddenAtEntrySequence = null
                 slot.backgroundSinceShown = false
-                showSequence += 1
-                slot.takeEmission()
+                when {
+                    firstShow && slot.continuesClosedVisit() -> {
+                        slot.lastEmitted = slot.route
+                        null
+                    }
+                    firstShow || returnedFromCover -> {
+                        if (returnedFromCover) slot.lastEmitted = null
+                        entrySequence += 1
+                        slot.takeEmission()
+                    }
+                    // Shown again without another page entered in between: a resume, not an entry
+                    // (unless its route changed while hidden).
+                    else -> slot.takeEntry()
+                }
             }
         view?.let(emit)
     }
@@ -100,12 +128,21 @@ class RaftPageViewTracker(
             val slot = slots[slotKey] ?: return
             if (!slot.visible) return
             slot.visible = false
-            slot.hiddenAtShowSequence = showSequence
+            slot.hiddenAtEntrySequence = entrySequence
         }
     }
 
     fun onPageClosed(slotKey: String) {
-        synchronized(lock) { slots.remove(slotKey) }
+        synchronized(lock) {
+            val slot = slots.remove(slotKey) ?: return
+            val visitKey = slot.visitKey
+            val view = slot.lastEmitted
+            // Only a slot still on its visit (not covered by a later entry) can be continued.
+            val onVisit = slot.visible || slot.hiddenAtEntrySequence == entrySequence
+            if (visitKey != null && view != null && onVisit) {
+                closedVisit = ClosedVisit(visitKey, view, entrySequence)
+            }
+        }
     }
 
     /** The app went to the background: pages that show again afterwards are not new entries. */
@@ -120,6 +157,18 @@ class RaftPageViewTracker(
     fun onAppForeground() {
         synchronized(lock) { slots.values.forEach { if (it.visible) it.backgroundSinceShown = false } }
     }
+
+    private fun Slot.continuesClosedVisit(): Boolean {
+        val closed = closedVisit ?: return false
+        val key = visitKey ?: return false
+        if (closed.visitKey != key || closed.view != route || closed.entrySequence != entrySequence) return false
+        closedVisit = null
+        return true
+    }
+
+    /** A route newly reported on a shown slot: an entry when it differs from the last one. */
+    private fun Slot.takeEntry(): RaftProductPageView? =
+        takeEmission()?.also { entrySequence += 1 }
 
     private fun Slot.takeEmission(): RaftProductPageView? {
         val current = route ?: return null

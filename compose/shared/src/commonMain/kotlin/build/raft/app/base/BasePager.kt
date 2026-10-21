@@ -128,6 +128,12 @@ internal abstract class BasePager : ComposeContainer() {
      */
     protected open fun productPageView(): RaftProductPageView? = null
 
+    /**
+     * The place this page shows, stable when the same page is rebuilt (a new pager for the same
+     * place), or null when every new pager is a new visit. See [build.raft.app.data.RaftPageViewTracker].
+     */
+    protected open fun productPageVisitKey(): String? = null
+
     private var productPageViewResolved = false
 
     private fun reportProductPageShown() {
@@ -135,7 +141,7 @@ internal abstract class BasePager : ComposeContainer() {
             val pageViews = RaftProductEvents.pageViews
             if (!productPageViewResolved) {
                 productPageViewResolved = true
-                productPageView()?.let { pageViews.onPageRoute(pagerId, it) }
+                productPageView()?.let { pageViews.onPageRoute(pagerId, it, productPageVisitKey()) }
             }
             pageViews.onPageShown(pagerId)
         }
