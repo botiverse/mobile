@@ -6656,6 +6656,8 @@ internal class SharedThreadStore(
     private var backgroundMembersHydrationJob: Job? = null
     private var readInFlightMarker: ThreadVisibleReadMarker? = null
     private var pendingReadMarker: ThreadVisibleReadMarker? = null
+    // Task #19: a newer marker coalesced away by the window is re-tried when the window ends.
+    private var deferredReadJob: Job? = null
     private var lastCompletedReadMarker: ThreadVisibleReadMarker? = null
     private var lastCompletedReadAt: TimeMark? = null
     private var lastRoutePayload: RaftThreadScreenPayload? = null
@@ -6885,6 +6887,8 @@ internal class SharedThreadStore(
     fun clear() {
         loadJob?.cancel()
         loadJob = null
+        deferredReadJob?.cancel()
+        deferredReadJob = null
         threadJoinCatchUpJob?.cancel()
         threadJoinCatchUpJob = null
         secondaryTimelineRefreshJob?.cancel()
@@ -9224,9 +9228,33 @@ internal class SharedThreadStore(
         if (!authorityStillCurrent()) return
         val marker = authorityState.payload.visibleReadMarker(visibleTailIndex) ?: return
         if (marker.wasRecentlyMarkedRead()) {
+            // Task #19 (Hands 2aa74345): the window only coalesces. A marker NEWER than the completed one
+            // (a message that arrived, or a stand-in replaced by the network page, right after the last
+            // read) must still be marked once the window ends: nothing else re-runs the visible read while
+            // the user just stays on the page, and the conversation kept one unread forever.
+            val deferMs = if (marker != lastCompletedReadMarker) readCoalesceRemainingMillis() else null
             diagnosticsLogger?.invoke(
-                "thread_read_skip channelId=${marker.channelId} reason=recently_marked latest=${marker.latestMessageId}"
+                "thread_read_skip channelId=${marker.channelId} reason=recently_marked latest=${marker.latestMessageId}" +
+                    (deferMs?.let { " deferredMs=$it" } ?: "")
             )
+            if (deferMs != null) {
+                deferredReadJob?.cancel()
+                deferredReadJob =
+                    scope.launch {
+                        delay(deferMs)
+                        // Only the marker the user was shown: anything that changed since (a newer message
+                        // while the page went to the background, older rows shifting the index) is owned by
+                        // the page's own next visible-read dispatch, never marked from here unseen.
+                        if (_state.value.payload.visibleReadMarker(visibleTailIndex) == marker) {
+                            markVisibleRead(visibleTailIndex)
+                        } else {
+                            diagnosticsLogger?.invoke(
+                                "thread_read_skip channelId=${marker.channelId} reason=deferred_marker_changed " +
+                                    "latest=${marker.latestMessageId}"
+                            )
+                        }
+                    }
+            }
             return
         }
         if (readInFlightMarker != null) {
@@ -9282,6 +9310,12 @@ internal class SharedThreadStore(
                     null
                 }
         }
+    }
+
+    /** Time left in the coalesce window of the last completed read (at least 1 ms). */
+    private fun readCoalesceRemainingMillis(): Long {
+        val ageMs = lastCompletedReadAt?.elapsedNow()?.inWholeMilliseconds ?: 0L
+        return (ThreadVisibleReadCoalesceWindowMillis - ageMs).coerceAtLeast(1L)
     }
 
     private fun ThreadVisibleReadMarker.wasRecentlyMarkedRead(): Boolean {

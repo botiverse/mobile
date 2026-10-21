@@ -13498,6 +13498,83 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.MarkVisibleRead())
 
         assertEquals(listOf("channel-1"), api.readAllChannels)
+        assertTrue(api.readSeqRequests.isEmpty(), "coalesced inside the window")
+        // Task #19 (Hands 2aa74345): the newer message is not dropped — it is marked once the window ends.
+        withTimeout(5_000) { while (api.readSeqRequests.isEmpty()) delay(50) }
+        assertEquals(listOf("channel-1" to 11L), api.readSeqRequests)
+        scope.cancel()
+    }
+
+    @Test
+    fun deferredReadIsDroppedWhenANewerMessageArrivedUnseen() = runBlocking {
+        // Review of task #19: the deferred retry marks only the marker the user was shown. A message that
+        // arrives during the window without a new visible-read dispatch (page backgrounded) stays unread.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                conversationRepository =
+                    FakeConversationRepository(
+                        threadResult = DataResult.Content(threadSnapshot(body = "cached body", seq = 0))
+                    ),
+            )
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        fun newMessage(id: String, seq: Long) =
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    Message(
+                        id = MessageId(id),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        seq = seq,
+                        author = member("u2", "Stdrc"),
+                        timestampLabel = "2026-05-19T16:01:00Z",
+                        body = "body $id"
+                    )
+                )
+            )
+
+        store.accept(SharedThreadIntent.MarkVisibleRead())
+        store.accept(newMessage("m2", 11L))
+        store.accept(SharedThreadIntent.MarkVisibleRead()) // shown m2 -> deferred
+        store.accept(newMessage("m3", 12L)) // arrives unseen: no further dispatch
+        delay(2_500)
+
+        assertEquals(listOf("channel-1"), api.readAllChannels)
+        assertTrue(api.readSeqRequests.isEmpty(), api.readSeqRequests.toString())
+        scope.cancel()
+    }
+
+    @Test
+    fun visibleReadOfTheSameMarkerInsideTheWindowIsNotRetried() = runBlocking {
+        // Negative twin of the deferred retry: nothing new arrived, so nothing is re-sent after the window.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                conversationRepository =
+                    FakeConversationRepository(
+                        threadResult = DataResult.Content(threadSnapshot(body = "cached body", seq = 0))
+                    ),
+            )
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(SharedThreadIntent.MarkVisibleRead())
+        store.accept(SharedThreadIntent.MarkVisibleRead())
+        delay(2_500)
+
+        assertEquals(listOf("channel-1"), api.readAllChannels)
+        assertTrue(api.readSeqRequests.isEmpty(), api.readSeqRequests.toString())
         scope.cancel()
     }
 
