@@ -59,6 +59,11 @@ internal data class ThreadActionCard(
     val presentationConfirmLabel: String? = null,
     val presentationWarning: String? = null,
     val genericApprovalAllowed: Boolean = false,
+    /**
+     * The card's own server (wire `sourceServerId`, fixed at prepare time). In a joint channel it
+     * can differ from the server the card is viewed in.
+     */
+    val sourceServerId: String? = null,
 ) {
     val isExecuted: Boolean
         get() = state.equals("executed", ignoreCase = true)
@@ -84,6 +89,7 @@ internal data class WireActionCardPresentation(
 internal data class WireActionCardMetadata(
     val kind: String? = null,
     val version: Int? = null,
+    val sourceServerId: String? = null,
     val forwardedItems: List<WireForwardedBundleItem> = emptyList(),
     /**
      * Keep the canonical action object intact at the wire boundary. Mobile has
@@ -183,6 +189,7 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
         presentationConfirmLabel = meta.presentation?.confirmLabel?.takeIf { it.isNotBlank() },
         presentationWarning = meta.presentation?.warning?.takeIf { it.isNotBlank() },
         genericApprovalAllowed = meta.presentation?.genericApprovalAllowed == true,
+        sourceServerId = meta.sourceServerId?.takeIf { it.isNotBlank() },
     )
 }
 
@@ -225,6 +232,7 @@ internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
         putString("presentationConfirmLabel", presentationConfirmLabel)
         putString("presentationWarning", presentationWarning)
         putBoolean("genericApprovalAllowed", genericApprovalAllowed)
+        putString("sourceServerId", sourceServerId)
     }
 
 /** True when the projected message metadata carries an action card (any type). */
@@ -269,6 +277,7 @@ internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): Threa
         presentationWarning = metadata["${ActionCardMetadataPrefix}presentationWarning"]?.takeIf { it.isNotBlank() },
         genericApprovalAllowed =
             metadata["${ActionCardMetadataPrefix}genericApprovalAllowed"]?.equals("true", ignoreCase = true) == true,
+        sourceServerId = metadata["${ActionCardMetadataPrefix}sourceServerId"]?.takeIf { it.isNotBlank() },
     )
 }
 
@@ -306,6 +315,15 @@ internal fun ThreadActionCard.withExecutedChannelMembers(
         resultAddedHumanIds = addedHumanIds,
         resultAddedAgentIds = addedAgentIds
     )
+
+/**
+ * `feedback:submit`: never executed inline (the server refuses a generic execute); it is sent from
+ * the feedback form, which on mobile is the Feedback WebView (see `raftFeedbackCardEntryOrNull`).
+ */
+internal fun ThreadActionCard.isFeedbackSubmitAction(): Boolean =
+    type.equals(FeedbackSubmitActionCardType, ignoreCase = true)
+
+internal const val FeedbackSubmitActionCardType = "feedback:submit"
 
 internal fun ThreadActionCard.isSupportedCommitAction(): Boolean =
     type.equals("agent:create", ignoreCase = true) ||

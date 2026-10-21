@@ -78,7 +78,7 @@ class SettingsStandaloneWebViewHostTest {
 
     @Test
     fun feedbackWebViewKeepsMainDocumentNavigationFenced() {
-        assertFalse(settingsFeedbackWebViewSpec.allowNavigation)
+        assertFalse(settingsFeedbackWebViewSpec().allowNavigation)
     }
 
     @Test
