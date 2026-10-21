@@ -140,6 +140,12 @@ const val ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY: String = "activity_conver
  */
 const val THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY: String = "thread_unread_badge_v0"
 
+/** Agent migration UI (slock `AGENT_MIGRATION_FEATURE_FLAG_KEY`); off hides the section. */
+const val AGENT_MIGRATION_FEATURE_FLAG_KEY: String = "agent_migration_v0"
+
+/** Moving an agent to the cloud (slock `AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY`). */
+const val AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY: String = "agent_migration_hosted_v0"
+
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
@@ -161,6 +167,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY,
     ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY,
     THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY,
+    AGENT_MIGRATION_FEATURE_FLAG_KEY,
+    AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY,
 )
 
 /**

@@ -21,6 +21,9 @@ import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowChevron
 import build.raft.designsystem.components.RaftListRowGroup
+import build.raft.app.data.ChannelSosStore
+import build.raft.app.data.RaftAgentControlsApi
+import build.raft.app.data.serverRoleCanControlAgentRuntime
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedServerChannelMembersSlice
@@ -102,6 +105,13 @@ internal fun channelSettingsSectionKeys(canManage: Boolean): List<String> =
         add("preferences")
         if (canManage) add("management")
     }
+
+/** Web ChatPanel `joined && capabilities.controlAgentRuntime`; channels only (a DM has no SOS). */
+internal fun channelSettingsCanStopAllAgents(channel: HomeChannelRow, serverRole: String?): Boolean =
+    channel.joined &&
+        !channel.archived &&
+        channel.kind != ConversationKind.DirectMessage &&
+        serverRoleCanControlAgentRuntime(serverRole)
 
 internal fun channelSettingsUsesStandalonePage(newDesignSettingsEnabled: Boolean): Boolean =
     newDesignSettingsEnabled
@@ -231,6 +241,17 @@ private fun ChannelSettingsPageScreen() {
             serverId = route.serverId.value,
             conversationId = route.channelId.value
         )
+    // Web ChatPanel: the channel overflow offers "Stop All Agents" (SOS) to
+    // joined members holding `controlAgentRuntime` (owner/admin/member).
+    var viewerServerRole by remember(route) { mutableStateOf<String?>(null) }
+    LaunchedEffect(authStore, route) {
+        viewerServerRole =
+            authStore.readSession()?.servers?.firstOrNull { it.id == route.serverId.value }?.role
+    }
+    var sosStore by remember(route) { mutableStateOf<ChannelSosStore?>(null) }
+    val agentControlsApi = remember(sharedStores, storeScope) {
+        RaftAgentControlsApi(sharedStores.networkClient(storeScope))
+    }
     val updateFailedLabel = stringResource(MR.strings.thread_settings_update_failed)
     val archiveFailedLabel = stringResource(MR.strings.thread_error_archive_channel)
     val deleteFailedLabel = stringResource(MR.strings.thread_error_delete_channel)
@@ -311,6 +332,17 @@ private fun ChannelSettingsPageScreen() {
                         pinned = pinned,
                         longMessageCollapseSetting = longMessageCollapseSetting,
                         canManage = canManage,
+                        canStopAllAgents =
+                            channelSettingsCanStopAllAgents(channel, viewerServerRole) && authorityAccepted,
+                        onStopAllAgents = {
+                            sosStore =
+                                ChannelSosStore(
+                                    channelId = route.channelId,
+                                    channelName = channel.name.removePrefix("#"),
+                                    dataSource = agentControlsApi,
+                                    scope = scope
+                                )
+                        },
                         writeActionsEnabled = settingsState.writeActionsEnabled && authorityAccepted,
                         onEdit = { dialog = ChannelSettingsDialog.Edit },
                         onOpenMembers = {
@@ -355,6 +387,15 @@ private fun ChannelSettingsPageScreen() {
                     if (settingsState.actionInFlight != ChannelSettingsAction.Disconnect) disconnectConfirm = false
                 },
                 onConfirm = { settingsStore.dispatch(ChannelSettingsIntent.Disconnect) },
+            )
+        }
+
+        val activeSosStore = sosStore
+        if (channel != null && activeSosStore != null) {
+            ChannelSosDialog(
+                channelName = channel.name.removePrefix("#"),
+                store = activeSosStore,
+                onClose = { sosStore = null }
             )
         }
 
@@ -419,6 +460,8 @@ private fun ChannelSettingsContent(
     pinned: Boolean,
     longMessageCollapseSetting: RaftLongMessageCollapseConversationSetting,
     canManage: Boolean,
+    canStopAllAgents: Boolean,
+    onStopAllAgents: () -> Unit,
     writeActionsEnabled: Boolean,
     onEdit: () -> Unit,
     onOpenMembers: () -> Unit,
@@ -462,6 +505,18 @@ private fun ChannelSettingsContent(
                 onToggleMute = onToggleMute,
                 onTogglePin = onTogglePin
             )
+        }
+        if (canStopAllAgents) {
+            item(key = "agents") {
+                RaftBrutalCard(contentPadding = 16.dp) {
+                    RaftModalFullWidthActionButton(
+                        label = stringResource(MR.strings.channel_sos_entry),
+                        icon = RaftLucideIconName.Square,
+                        color = RaftColor.AccentOrange,
+                        onClick = onStopAllAgents
+                    )
+                }
+            }
         }
         if (canManage && writeActionsEnabled) {
             item(key = "management") {
