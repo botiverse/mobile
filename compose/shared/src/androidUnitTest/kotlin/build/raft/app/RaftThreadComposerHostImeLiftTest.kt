@@ -24,8 +24,8 @@ import java.time.Duration
 import kotlin.math.roundToInt
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import org.junit.Rule
 import org.junit.runner.RunWith
-import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
@@ -39,11 +39,14 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w393dp-h852dp-xhdpi")
 class RaftThreadComposerHostImeLiftTest {
+    @get:Rule
+    val activities = RobolectricComposeActivityRule()
+
     private val composerHeight = 48.dp
 
     @Test
     fun hostReportedKeyboardLiftsTheComposerWhenComposeInsetsAreStale() {
-        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        val activity = activities.launch()
         val host = RaftHostImeInsets()
         var composerBottomPx = -1
         var rootHeightPx = -1

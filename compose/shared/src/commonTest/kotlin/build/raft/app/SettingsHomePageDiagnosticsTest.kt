@@ -494,10 +494,31 @@ class SettingsHomePageDiagnosticsTest {
         val rows = payload.sections.first { it.title == "Diagnostics" }.rows
 
         assertEquals(listOf("API Server", "Diagnostics"), payload.sections.map { it.title })
-        assertEquals(listOf("diagnostics", "router"), rows.map { it.key })
+        assertEquals(listOf("diagnostics", "router", DEVELOPER_ACTION_TEXT_INPUT_TRACE), rows.map { it.key })
         assertEquals("Diagnostics", rows.first().title)
         assertTrue(rows.first().detail.contains("auth"))
         assertFalse(rows.first().detail.contains("network"))
+    }
+
+    @Test
+    fun developerPayloadTextInputTraceRowTogglesToTheOtherState() {
+        listOf(false, true).forEach { enabled ->
+            val payload =
+                SharedSettingsDeveloperSnapshot().toDeveloperPayload(
+                    state = ScreenLoadState.Content(SharedSettingsDeveloperSnapshot()),
+                    actionState = null,
+                    errorStrings = englishErrorPresentationStringsForTest(),
+                    textInputTraceEnabled = enabled
+                )
+            val row =
+                payload.sections.first { it.title == "Diagnostics" }.rows.first { it.key == DEVELOPER_ACTION_TEXT_INPUT_TRACE }
+
+            assertEquals(enabled, row.toggleValue)
+            // A tap sends the row value: the state the toggle switches to.
+            assertEquals((!enabled).toString(), row.value)
+            assertEquals(if (enabled) "On" else "Off", row.status)
+            assertTrue(row.enabled)
+        }
     }
 
     @Test

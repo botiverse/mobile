@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -312,15 +313,16 @@ internal fun RaftSearchRow(
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val style = RaftTheme.typography.field.copy(color = colors.foreground)
     Column(modifier.fillMaxWidth()) {
+        val state = rememberRaftTextFieldState(value, onValueChange, traceName = "RaftSearchRow")
         BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            singleLine = true,
+            state = state,
+            lineLimits = TextFieldLineLimits.SingleLine,
+            inputTransformation = rememberRaftTextInputTraceTransformation("RaftSearchRow"),
             textStyle = style,
             cursorBrush = SolidColor(colors.foreground),
             interactionSource = source,
             modifier = Modifier.fillMaxWidth().then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
-            decorationBox = { inner ->
+            decorator = { inner ->
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -332,7 +334,7 @@ internal fun RaftSearchRow(
                 ) {
                     RaftGlyphIcon(RaftGlyph.Search, size = 16.dp, color = colors.foregroundHint)
                     Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                        if (value.isEmpty() && placeholder != null) {
+                        if (state.text.isEmpty() && placeholder != null) {
                             RaftText(placeholder, style = style, color = colors.foregroundHint, maxLines = 1)
                         }
                         inner()

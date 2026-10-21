@@ -2221,6 +2221,8 @@
     <string name="settings_developer_diagnostics_detail">Open auth, sanitized logs, and feedback tools.</string>
     <string name="settings_developer_route_launcher">Route launcher</string>
     <string name="settings_developer_route_launcher_detail">Open Kuikly route launcher and icon compare.</string>
+    <string name="settings_developer_text_input_trace">Text input trace</string>
+    <string name="settings_developer_text_input_trace_detail">Log every keyboard edit and text sync in text fields to the app logs (lengths only, never the text), for IME bug reports.</string>
     <string name="settings_developer_presets">Presets</string>
     <string name="settings_developer_presets_detail">Choose a preset to fill the environment form, then save to apply it.</string>
     <string name="settings_developer_presets_empty">No presets are available from this host.</string>

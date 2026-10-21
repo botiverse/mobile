@@ -59,6 +59,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.input.TextFieldDecorator
+import androidx.compose.foundation.text.input.TextFieldState
+import build.raft.designsystem.components.raftTextFieldLineLimits
+import build.raft.designsystem.components.rememberRaftTextFieldState
+import build.raft.designsystem.components.rememberRaftTextInputTraceTransformation
+import build.raft.designsystem.components.toRaftKeyboardActionHandler
+import build.raft.designsystem.components.toRaftOutputTransformation
+import build.raft.designsystem.components.toRaftTextFieldValue
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.KeyboardActionScope
 import androidx.compose.ui.text.input.ImeAction
@@ -1685,29 +1693,6 @@ internal fun TextFieldValue.toRaftTextInputState(): TextInputState =
     )
 
 /**
- * The most recent [TextFieldValue] a field has seen, for action-boundary reads (Send).
- *
- * The composed `value` lags an IME edit by a frame: Compose delivers the edit to `onValueChange`,
- * the caller stores it, and only the next recomposition passes it back. A Send fired inside that
- * window must still see the edit, so the `onValueChange` wrapper records it ([recordEdit]) before
- * calling the caller. Every committed composition records the caller's value ([recordComposed]),
- * so programmatic changes (clear after send, draft restore) and edits the caller rejected win
- * again once composed.
- */
-internal class RaftLiveTextFieldValue(initial: TextFieldValue) {
-    var value: TextFieldValue = initial
-        private set
-
-    fun recordEdit(next: TextFieldValue) {
-        value = next
-    }
-
-    fun recordComposed(composed: TextFieldValue) {
-        value = composed
-    }
-}
-
-/**
  * Composition barrier for action-boundary reads (Send, draft capture): the IME's unfinished
  * composition (mid-dictation, mid-CJK conversion) is committed as-is, without dropping characters.
  *
@@ -1919,14 +1904,13 @@ internal fun TextField(
     // Focused: cursor and selection drags (and single-line scrolling) keep the drag from the
     // host's full-page back swipe.
     val keepsBackSwipe = remember { mutableStateOf(false) }
-    BasicTextField(
+    val state = rememberRaftTextFieldState(value, currentOnValueChange, traceName = "TextField")
+    RaftAppStateTextField(
+        state = state,
         modifier = updatedModifier
             .raftKeepsBackSwipe(keepsBackSwipe.value)
             .onFocusChanged { keepsBackSwipe.value = it.isFocused },
-        value = value,
-        onValueChange = currentOnValueChange,
         textStyle = resolvedTextStyle,
-        singleLine = raftTextFieldSingleLine(maxLines),
         maxLines = maxLines,
         onTextLayout = currentOnTextLayout,
         keyboardOptions = resolvedKeyboardOptions,
@@ -1935,9 +1919,9 @@ internal fun TextField(
         enabled = enabled,
         readOnly = readOnly,
         visualTransformation = visualTransformation,
-        decorationBox = { innerTextField ->
+        decorator = { innerTextField ->
             Box(contentAlignment = contentAlignment) {
-                if (value.isEmpty() && placeholder.isNotEmpty()) {
+                if (state.text.isEmpty() && placeholder.isNotEmpty()) {
                     Text(
                         text = placeholder,
                         style = resolvedTextStyle.copy(color = placeholderColor ?: resolvedTextStyle.color),
@@ -2012,25 +1996,16 @@ internal fun TextField(
             onBlur = onBlur,
             participatesInGlobalFocusDismiss = participatesInGlobalFocusDismiss,
         )
-    // CMP: the editing state lives in Compose, so the "native" read is the live value: the most
-    // recent value seen by the field, including an IME edit delivered to onValueChange that the
-    // caller has not recomposed with yet (an IME commit and Send within one frame), see
-    // RaftLiveTextFieldValue.
-    val liveValueForReader = remember { RaftLiveTextFieldValue(value) }
-    SideEffect { liveValueForReader.recordComposed(value) }
-    val onValueChangeRecordingLive: (TextFieldValue) -> Unit =
-        remember(liveValueForReader) {
-            { next ->
-                liveValueForReader.recordEdit(next)
-                currentOnValueChange(next)
-            }
-        }
+    // The editor edits a TextFieldState; the caller's value follows it (rememberRaftTextFieldState).
+    // The "native" read is that state itself: it already holds an IME edit the caller has not been
+    // told about or recomposed with yet (an IME commit and Send within one frame).
+    val state = rememberRaftTextFieldState(value, { next -> currentOnValueChange(next) }, traceName = "TextField")
     if (nativeEditingStateReader != null) {
         SideEffect {
             nativeEditingStateReader.bind(nativeEditingStateBindingOwner) { callback ->
                 callback(
                     RaftTextFieldNativeEditorRead(
-                        state = liveValueForReader.value.toRaftTextInputState().raftWithFinishedComposition(),
+                        state = state.toRaftTextFieldValue().toRaftTextInputState().raftWithFinishedComposition(),
                         editorNativeRef = -1,
                     )
                 )
@@ -2041,14 +2016,12 @@ internal fun TextField(
     // Focused: cursor and selection drags (and single-line scrolling) keep the drag from the
     // host's full-page back swipe.
     val keepsBackSwipe = remember { mutableStateOf(false) }
-    BasicTextField(
+    RaftAppStateTextField(
+        state = state,
         modifier = updatedModifier
             .raftKeepsBackSwipe(keepsBackSwipe.value)
             .onFocusChanged { keepsBackSwipe.value = it.isFocused },
-        value = value,
-        onValueChange = onValueChangeRecordingLive,
         textStyle = resolvedTextStyle,
-        singleLine = raftTextFieldSingleLine(maxLines),
         maxLines = maxLines,
         onTextLayout = currentOnTextLayout,
         keyboardOptions = resolvedKeyboardOptions,
@@ -2057,9 +2030,9 @@ internal fun TextField(
         enabled = enabled,
         readOnly = readOnly,
         visualTransformation = visualTransformation,
-        decorationBox = { innerTextField ->
+        decorator = { innerTextField ->
             Box(contentAlignment = contentAlignment) {
-                if (value.text.isEmpty() && placeholder.isNotEmpty()) {
+                if (state.text.isEmpty() && placeholder.isNotEmpty()) {
                     Text(
                         text = placeholder,
                         style = resolvedTextStyle.copy(color = placeholderColor ?: resolvedTextStyle.color),
@@ -2081,6 +2054,44 @@ internal fun TextField(
     }
 }
 
+
+/**
+ * The app editor's state-based BasicTextField: the value-based options of [TextField] mapped to
+ * the TextFieldState API (line limits, keyboard action handler, output transformation, layout
+ * callback), plus the text-input trace when it is on.
+ */
+@Composable
+private fun RaftAppStateTextField(
+    state: TextFieldState,
+    modifier: Modifier,
+    textStyle: TextStyle,
+    maxLines: Int,
+    onTextLayout: (TextLayoutResult) -> Unit,
+    keyboardOptions: KeyboardOptions,
+    keyboardActions: KeyboardActions,
+    cursorBrush: Brush,
+    enabled: Boolean,
+    readOnly: Boolean,
+    visualTransformation: VisualTransformation,
+    decorator: TextFieldDecorator,
+) {
+    val outputTransformation = remember(visualTransformation) { visualTransformation.toRaftOutputTransformation() }
+    BasicTextField(
+        state = state,
+        modifier = modifier,
+        enabled = enabled,
+        readOnly = readOnly,
+        inputTransformation = rememberRaftTextInputTraceTransformation("TextField"),
+        textStyle = textStyle,
+        keyboardOptions = keyboardOptions,
+        onKeyboardAction = keyboardActions.toRaftKeyboardActionHandler(keyboardOptions.imeAction),
+        lineLimits = raftTextFieldLineLimits(singleLine = raftTextFieldSingleLine(maxLines), maxLines = maxLines),
+        onTextLayout = { getResult -> getResult()?.let(onTextLayout) },
+        cursorBrush = cursorBrush,
+        outputTransformation = outputTransformation,
+        decorator = decorator,
+    )
+}
 
 fun Modifier.appearPercentage(
     onPercentageChanged: (Float) -> Unit
