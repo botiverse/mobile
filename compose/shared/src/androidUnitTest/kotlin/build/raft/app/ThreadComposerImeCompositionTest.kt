@@ -83,6 +83,9 @@ class ThreadComposerImeCompositionTest {
             )
         }
         settle(activity)
+        // The state-based text field starts its input session only in a focused window
+        // (TextFieldDecoratorModifier); Robolectric's activity window never gains focus on its own.
+        activity.window.decorView.dispatchWindowFocusChanged(true)
         uiState = uiState.copy(focusRequestNonce = 1)
         settle(activity)
         val root = findComposeRoot(activity.window.decorView) as View
