@@ -230,44 +230,64 @@ class RaftDisplaySemanticsTest {
             assertEquals(9.5f, (placeTitle.left - placeIcon.right) / d, 0.5f)
         }
 
-    /**
-     * Web phone metrics (Lagoon's 393dp measurement): rows 44dp tall and 1dp apart; a group
-     * header's title 20dp after its 14dp chevron's start; its controls 28dp, 4dp apart.
-     */
+    /** Web phone metrics (Lagoon's 393dp measurement): a header with two controls over two rows. */
+    private fun androidx.compose.ui.test.ComposeUiTest.setSidebarWebMetricsContent() {
+        setContent(
+            themed {
+                Column(Modifier.width(393.dp)) {
+                    RaftSidebarSectionHeader(
+                        "Channels",
+                        expanded = true,
+                        onExpandedChange = {},
+                        modifier = Modifier.testTag("header"),
+                        actions = {
+                            RaftSidebarSectionAction(RaftGlyph.ArrowUpDown, "Sort Channels", {}, Modifier.testTag("sort"))
+                            RaftSidebarSectionAction(RaftGlyph.Plus, "Create Channel", {}, Modifier.testTag("create"))
+                        },
+                    )
+                    RaftSidebarItem("general", onClick = {}, modifier = Modifier.testTag("row1"))
+                    RaftSidebarItem("random", onClick = {}, modifier = Modifier.testTag("row2"))
+                }
+            },
+        )
+    }
+
+    private fun androidx.compose.ui.test.ComposeUiTest.boundsOf(tag: String) =
+        onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+
+    private fun androidx.compose.ui.test.ComposeUiTest.textBounds(text: String) =
+        onNodeWithText(text, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+
+    /** Rows 44dp tall and 1dp apart (the web's collapsed `my-px`). */
     @Test
-    fun sidebarRowsStand1dpApartAndAHeaderMatchesTheWeb() =
+    fun sidebarRowsStand1dpApart() =
         runComposeUiTest {
-            setContent(
-                themed {
-                    Column(Modifier.width(393.dp)) {
-                        RaftSidebarSectionHeader(
-                            "Channels",
-                            expanded = true,
-                            onExpandedChange = {},
-                            modifier = Modifier.testTag("header"),
-                            actions = {
-                                RaftSidebarSectionAction(RaftGlyph.ArrowUpDown, "Sort Channels", {}, Modifier.testTag("sort"))
-                                RaftSidebarSectionAction(RaftGlyph.Plus, "Create Channel", {}, Modifier.testTag("create"))
-                            },
-                        )
-                        RaftSidebarItem("general", onClick = {}, modifier = Modifier.testTag("row1"))
-                        RaftSidebarItem("random", onClick = {}, modifier = Modifier.testTag("row2"))
-                    }
-                },
-            )
-            val d = density.density
-            fun bounds(tag: String) = onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-            val first = onNodeWithText("general", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-            val second = onNodeWithText("random", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-            assertEquals(45f, (second.top - first.top) / d, 0.5f)
-            val header = bounds("header")
-            val title = onNodeWithText("Channels", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-            // px-2, then the 14dp chevron and gap-1.5.
-            assertEquals(28f, (title.left - header.left) / d, 0.5f)
-            val sort = bounds("sort")
-            val create = bounds("create")
-            assertEquals(28f, sort.height / d, 0.5f)
-            assertEquals(4f, (create.left - sort.right) / d, 0.5f)
+            setSidebarWebMetricsContent()
+            assertEquals(45f, (textBounds("random").top - textBounds("general").top) / density.density, 0.5f)
+        }
+
+    /** A group header's title sits `px-2` + the 14dp chevron + `gap-1.5` from its edge. */
+    @Test
+    fun aSidebarHeaderTitleSits28dpIn() =
+        runComposeUiTest {
+            setSidebarWebMetricsContent()
+            assertEquals(28f, (textBounds("Channels").left - boundsOf("header").left) / density.density, 0.5f)
+        }
+
+    /** A group header's controls are 28dp (`h-7 min-w-7`)... */
+    @Test
+    fun sidebarHeaderControlsAre28dp() =
+        runComposeUiTest {
+            setSidebarWebMetricsContent()
+            assertEquals(28f, boundsOf("sort").height / density.density, 0.5f)
+        }
+
+    /** ...and 4dp apart (`gap-1`). */
+    @Test
+    fun sidebarHeaderControlsStand4dpApart() =
+        runComposeUiTest {
+            setSidebarWebMetricsContent()
+            assertEquals(4f, (boundsOf("create").left - boundsOf("sort").right) / density.density, 0.5f)
         }
 
     /** A DM's aside parts stand 6dp apart (web `SIDEBAR_ROW_TRAILING_CLASS`), a place row's 4dp. */
