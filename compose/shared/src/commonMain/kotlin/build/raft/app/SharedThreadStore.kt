@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.data.DataResult
+import build.raft.app.data.isAuthSessionBlocker
+import build.raft.app.data.isEdgeBlockedMarker
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.HomeConversationRow
 import build.raft.app.data.HomeSnapshot
@@ -127,6 +129,7 @@ import build.raft.app.network.sync.DurablePartitionKey
 import build.raft.app.network.sync.InlineThreadReplyPreviewLimit
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.ThreadDurableLastKnownReader
+import build.raft.app.network.sync.ThreadDurableAccessEvictor
 import build.raft.app.network.sync.windowEnvelopes
 import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
 import build.raft.app.network.sync.ThreadDurablePageDirection
@@ -278,8 +281,49 @@ internal val ReplyCacheProvenance.replyCacheOwnerScopeId: String?
                 ).joinToString("\u001f")
             }
 
+/**
+ * Timeline (payload) cache owner: environment + account + server only (data-layer plan step 2).
+ *
+ * Auth and server-selection generations are deliberately NOT part of this key, so switching
+ * servers A -> B -> A or a same-account token rotation reaches the same cached timelines again.
+ * Admission is still [replyCacheOwnerScopeId]'s: a blank segment or the auth "no session"
+ * sentinel owns no timeline cache. The generations survive as a write fence instead
+ * ([isSameTimelineCacheAccount]): a late response is dropped only when the ACCOUNT or the
+ * ENVIRONMENT changed since its request, never because the user switched servers or the token
+ * rotated (a late server-A response is still server-A data and is written to A's key).
+ *
+ * The pending-send journal keeps the generation-exact [threadPendingSendOwnerScopeId].
+ */
 internal val ReplyCacheProvenance.threadPayloadOwnerScopeId: String?
-    get() = replyCacheOwnerScopeId
+    get() =
+        replyCacheOwnerScopeId?.let {
+            sharedThreadTimelineOwnerScopeId(environmentId, principalId, serverId)
+        }
+
+internal fun sharedThreadTimelineOwnerScopeId(
+    environmentId: String,
+    principalId: String,
+    serverId: String
+): String = listOf(environmentId, principalId, serverId).joinToString("\u001f")
+
+/** Prefix shared by every timeline owner of one environment + account (all its servers). */
+internal fun sharedThreadTimelineAccountScopePrefix(
+    environmentId: String,
+    principalId: String
+): String = listOf(environmentId, principalId, "").joinToString("\u001f")
+
+/**
+ * Tenny rule 1 write fence for the timeline cache: same environment and same account. The
+ * process-auth binding is compared when both sides know it, because a replaced binding (logout
+ * then login) is an account boundary even for the same principal id. Server selection and the
+ * auth (token) generation are intentionally ignored.
+ */
+internal fun ReplyCacheProvenance.isSameTimelineCacheAccount(other: ReplyCacheProvenance): Boolean =
+    environmentId.isNotBlank() &&
+        principalId.isNotBlank() &&
+        environmentId == other.environmentId &&
+        principalId == other.principalId &&
+        (bindingGeneration <= 0L || other.bindingGeneration <= 0L || bindingGeneration == other.bindingGeneration)
 
 /**
  * The durable message partition this provenance may read (task #1123). It is the same identity
@@ -356,6 +400,15 @@ private fun sharedThreadOwnedPayloadCacheKey(
     )
 
 private const val SharedThreadPrewarmMaxConcurrency = 2
+
+/**
+ * Tenny rule 3 caps for the in-memory timeline cache ([SharedThreadPayloadStore]), LRU by last
+ * read or write. 20 per server covers the conversations a user moves between in one session (the
+ * durable V2 partition keeps 64 channel/DM + 24 reply-thread scopes per server on disk); 60 in
+ * total bounds memory to roughly three busy servers' worth of one-page payloads.
+ */
+internal const val SharedThreadTimelineCacheMaxConversationsPerServer = 20
+internal const val SharedThreadTimelineCacheMaxConversations = 60
 private const val SharedThreadPrewarmStartIntervalMillis = 100L
 private const val SharedThreadZeroReplyOriginHydrationGraceMillis = 300L
 private const val SharedThreadFreshnessMessageFactLimit = 512
@@ -618,6 +671,23 @@ internal class SharedThreadFreshnessLedger(
                 }
         }
     }
+
+    fun retireOwnersMatching(
+        serverId: String? = null,
+        ownerPredicate: (String) -> Boolean
+    ): Map<SharedThreadOwnedPayloadCacheKey, Pair<SharedThreadFreshnessGeneration, SharedThreadFreshnessGeneration>> =
+        synchronized(lock) {
+            generations.keys
+                .filter { key ->
+                    (serverId == null || key.payloadKey.serverId == serverId) && ownerPredicate(key.ownerScopeId)
+                }
+                .associateWith { key ->
+                    val previous = requireNotNull(generations[key])
+                    val current = SharedThreadFreshnessGeneration(key.payloadKey, key.ownerScopeId)
+                    generations[key] = current
+                    previous to current
+                }
+        }
 
     fun isCurrent(generation: SharedThreadFreshnessGeneration): Boolean =
         synchronized(lock) {
@@ -918,9 +988,17 @@ internal class SharedThreadPayloadStore(
     private val prewarmStartIntervalMillis: Long = SharedThreadPrewarmStartIntervalMillis,
     internal val freshnessLedger: SharedThreadFreshnessLedger = SharedThreadFreshnessLedger(),
     private val replyThreadAccessFlights: SharedReplyThreadAccessFlightStore<ThreadSnapshot> =
-        SharedReplyThreadAccessFlightStore(scope)
+        SharedReplyThreadAccessFlightStore(scope),
+    /** Tenny rule 3: per-server LRU cap (one server = one env + account + server owner). */
+    private val maxConversationsPerServer: Int = SharedThreadTimelineCacheMaxConversationsPerServer,
+    /** Tenny rule 3: process-wide LRU cap across every server and account. */
+    private val maxConversations: Int = SharedThreadTimelineCacheMaxConversations,
 ) {
     private val payloads = MutableStateFlow<Map<SharedThreadOwnedPayloadCacheKey, SharedThreadPayloadEntry>>(emptyMap())
+    // Least recently used first. Guarded by [recencyLock]; lock order is ledger -> recency, never
+    // the reverse, because commits run inside `freshnessLedger.runIfCurrent`.
+    private val recencyLock = SynchronizedObject()
+    private val recency = LinkedHashSet<SharedThreadOwnedPayloadCacheKey>()
     private val prewarmMutex = Mutex()
     private val prewarmPool = Semaphore(maxConcurrentPrewarms.coerceAtLeast(1))
     private val prewarmStartMutex = Mutex()
@@ -975,6 +1053,110 @@ internal class SharedThreadPayloadStore(
         }
     }
 
+    /**
+     * Account / environment boundary (Tenny rule 1): fence every in-flight producer of every server
+     * owned by this environment + account. Committed entries are re-tokened, not dropped; they
+     * stay unreachable for another account because the account is part of the key.
+     */
+    fun retireAccount(environmentId: String, principalId: String) {
+        if (environmentId.isBlank() || principalId.isBlank()) return
+        val prefix = sharedThreadTimelineAccountScopePrefix(environmentId, principalId)
+        val retired = freshnessLedger.retireOwnersMatching { owner -> owner.startsWith(prefix) }
+        if (retired.isEmpty()) return
+        payloads.update { current ->
+            current.mapValues { (key, entry) ->
+                val transition = retired[key]
+                if (transition?.first === entry.generation) {
+                    SharedThreadPayloadEntry(entry.payload, transition.second)
+                } else {
+                    entry
+                }
+            }
+        }
+    }
+
+    /**
+     * Tenny rule 2, server scope: the account was removed from [serverId] (or the server was
+     * deleted). Drop that server's whole timeline partition for every owner and fence late
+     * producers, so neither a cached first frame nor a late response can bring it back.
+     */
+    fun dropServer(serverId: String) {
+        if (serverId.isBlank()) return
+        freshnessLedger.retireOwnersMatching(serverId = serverId) { true }
+        synchronized(recencyLock) {
+            payloads.update { current -> current.filterKeys { key -> key.payloadKey.serverId != serverId } }
+            recency.removeAll { key -> key.payloadKey.serverId == serverId }
+        }
+    }
+
+    /**
+     * Tenny rule 2, conversation scope: a background validation proved the account lost access to
+     * this conversation (403/404). Remove its cached timeline and fence in-flight producers.
+     */
+    fun evictConversation(serverId: String, threadId: String, ownerScopeId: String) {
+        if (serverId.isBlank() || threadId.isBlank() || ownerScopeId.isBlank()) return
+        val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
+        freshnessLedger.advanceAndRun(serverId, threadId, ownerScopeId) { _, _ ->
+            synchronized(recencyLock) {
+                payloads.update { current -> current - key }
+                recency.remove(key)
+            }
+        }
+    }
+
+    /**
+     * Session end (sign-out): cached timelines are message content and leave with the session.
+     * Every owner generation is retired so a late producer cannot re-commit afterwards.
+     */
+    fun clearAll() {
+        freshnessLedger.retireOwnersMatching { true }
+        synchronized(recencyLock) {
+            payloads.value = emptyMap()
+            recency.clear()
+        }
+    }
+
+    /** Test seam: owner keys currently cached, least recently used first. */
+    internal fun cachedKeysForTest(): List<SharedThreadOwnedPayloadCacheKey> =
+        synchronized(recencyLock) { recency.filter { key -> key in payloads.value }.toList() }
+
+    private fun commitEntry(key: SharedThreadOwnedPayloadCacheKey, entry: SharedThreadPayloadEntry) {
+        synchronized(recencyLock) {
+            payloads.update { current -> current + (key to entry) }
+            recency.remove(key)
+            recency.add(key)
+            trimToCapsLocked()
+        }
+    }
+
+    private fun touch(key: SharedThreadOwnedPayloadCacheKey) {
+        synchronized(recencyLock) {
+            if (recency.remove(key)) recency.add(key)
+        }
+    }
+
+    /**
+     * Evicts least recently used conversations first: within a server beyond
+     * [maxConversationsPerServer], then across all servers beyond [maxConversations]. The entry
+     * just written is the most recent one and is never the victim.
+     */
+    private fun trimToCapsLocked() {
+        val present = payloads.value.keys
+        recency.retainAll(present)
+        present.filterNot(recency::contains).forEach(recency::add)
+        val victims = mutableSetOf<SharedThreadOwnedPayloadCacheKey>()
+        val perServerCap = maxConversationsPerServer.coerceAtLeast(1)
+        recency.groupBy { key -> key.ownerScopeId }.values.forEach { ownerKeys ->
+            if (ownerKeys.size > perServerCap) victims += ownerKeys.take(ownerKeys.size - perServerCap)
+        }
+        val survivors = recency.filterNot(victims::contains)
+        val totalCap = maxConversations.coerceAtLeast(1)
+        if (survivors.size > totalCap) victims += survivors.take(survivors.size - totalCap)
+        if (victims.isEmpty()) return
+        recency.removeAll(victims)
+        payloads.update { current -> current - victims }
+    }
+
     fun get(
         serverId: String,
         threadId: String,
@@ -983,8 +1165,10 @@ internal class SharedThreadPayloadStore(
         ownerScopeId: String
     ): RaftThreadScreenPayload? {
         val generation = freshnessLedger.capture(serverId, threadId, ownerScopeId)
-        return payloads.value[sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)]
+        val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
+        return payloads.value[key]
             ?.takeIf { entry -> entry.generation === generation }
+            ?.also { touch(key) }
             ?.payload
             ?.let { payload ->
                 freshnessLedger.applyReplyCountFacts(serverId, threadId, environmentId, principalId, payload)
@@ -999,7 +1183,7 @@ internal class SharedThreadPayloadStore(
     ) {
         val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
         val generation = freshnessLedger.capture(serverId, threadId, ownerScopeId)
-        payloads.update { current -> current + (key to SharedThreadPayloadEntry(payload, generation)) }
+        commitEntry(key, SharedThreadPayloadEntry(payload, generation))
     }
 
     fun putIfCurrent(
@@ -1015,9 +1199,7 @@ internal class SharedThreadPayloadStore(
                     generation.key.serverId,
                     generation.key.threadId
                 )
-            payloads.update { current ->
-                current + (key to SharedThreadPayloadEntry(payload, generation))
-            }
+            commitEntry(key, SharedThreadPayloadEntry(payload, generation))
         }
     }
 
@@ -1169,9 +1351,7 @@ internal class SharedThreadPayloadStore(
                                 ) {
                                     freshnessLedger.runIfCurrent(generation) {
                                         if (result is DataResult.Content) {
-                                            payloads.update { current ->
-                                                current + (key to SharedThreadPayloadEntry(result.data, generation))
-                                            }
+                                            commitEntry(key, SharedThreadPayloadEntry(result.data, generation))
                                             prewarmReadyGenerations[key] = generation
                                             prewarmFailures.remove(key)
                                             prewarmFailureGenerations.remove(key)
@@ -1378,9 +1558,7 @@ internal class SharedThreadPayloadStore(
                         ) {
                             freshnessLedger.runIfCurrent(generation) {
                                 if (result is DataResult.Content) {
-                                    payloads.update { current ->
-                                        current + (key to SharedThreadPayloadEntry(result.data, generation))
-                                    }
+                                    commitEntry(key, SharedThreadPayloadEntry(result.data, generation))
                                     prewarmReadyGenerations[key] = generation
                                     prewarmFailures.remove(key)
                                     prewarmFailureGenerations.remove(key)
@@ -1434,7 +1612,10 @@ internal class SharedThreadPayloadStore(
         failedPrewarmTakeoverResults.clear()
         failedPrewarmTakeoverResultGenerations.clear()
         lastPrewarmStartedAt = null
-        payloads.value = emptyMap()
+        synchronized(recencyLock) {
+            payloads.value = emptyMap()
+            recency.clear()
+        }
         freshnessLedger.clearForTest()
     }
 }
@@ -1529,6 +1710,11 @@ internal class SharedThreadDataSource(
      * adjacent-page writer from the provider.
      */
     private val durablePageExtender: ThreadDurablePageExtender? = null,
+    /**
+     * Lost-access eviction (data-layer plan, Tenny rule 2): drops a conversation's durable V2 window
+     * after a background validation answered 403 / 404. Absent means memory-only eviction.
+     */
+    private val durableAccessEvictor: ThreadDurableAccessEvictor? = null,
     private val agentsApiClient: RaftAgentsApiClient? = null,
     private val actionCardsApiClient: RaftIntegrationsActionsPushApiClient? = null,
     private val savedStatusRepository: SavedStatusRepository? = null,
@@ -1629,6 +1815,7 @@ internal class SharedThreadDataSource(
         durableLastKnownReader: ThreadDurableLastKnownReader? = null,
         enteredScopeSnapshotLoader: ThreadEnteredScopeSnapshotLoader? = null,
         durablePageExtender: ThreadDurablePageExtender? = null,
+        durableAccessEvictor: ThreadDurableAccessEvictor? = null,
         agentsApiClient: RaftAgentsApiClient? = null,
         actionCardsApiClient: RaftIntegrationsActionsPushApiClient? = null,
         savedStatusRepository: SavedStatusRepository? = null,
@@ -1660,6 +1847,7 @@ internal class SharedThreadDataSource(
         durableLastKnownReader = durableLastKnownReader,
         enteredScopeSnapshotLoader = enteredScopeSnapshotLoader,
         durablePageExtender = durablePageExtender,
+        durableAccessEvictor = durableAccessEvictor,
         agentsApiClient = agentsApiClient,
         actionCardsApiClient = actionCardsApiClient,
         savedStatusRepository = savedStatusRepository,
@@ -1679,6 +1867,8 @@ internal class SharedThreadDataSource(
     private val cacheServerId = MutableStateFlow("")
     private val cachePrincipalId = MutableStateFlow("")
     private val cachePayloadOwnerScopeId = MutableStateFlow("")
+    // Last identity published before an identity gap, so the account fence can compare across it.
+    private var lastTimelineAccountProvenance: ReplyCacheProvenance? = null
     private val replyCacheProvenanceLock = SynchronizedObject()
     private val replyCacheCaptureSequence = atomic(0L)
     private val replyCacheProvenance = MutableStateFlow<ReplyCacheProvenance?>(null)
@@ -1908,12 +2098,7 @@ internal class SharedThreadDataSource(
                         selectionGeneration = source.selectionGeneration,
                         bindingGeneration = source.bindingGeneration,
                     )
-                current
-                    ?.threadPayloadOwnerScopeId
-                    ?.takeIf { oldOwnerScopeId ->
-                        oldOwnerScopeId != next.threadPayloadOwnerScopeId
-                    }
-                    ?.let(payloadCache::retireOwner)
+                retireTimelineAccountIfChangedLocked(next)
                 next.also { replyCacheProvenance.value = it }
             }
         }
@@ -1922,9 +2107,12 @@ internal class SharedThreadDataSource(
         synchronized(replyCacheProvenanceLock) {
             if (captureSequence >= latestPublishedReplyCacheCapture) {
                 latestPublishedReplyCacheCapture = captureSequence
-                replyCacheProvenance.value
-                    ?.threadPayloadOwnerScopeId
-                    ?.let(payloadCache::retireOwner)
+                // Not retired here: an identity gap is usually a server switch or token rotation
+                // in progress, and a late response for the previous server is still that server's
+                // data (Tenny rule 1). The account fence runs when the next identity is published
+                // ([retireTimelineAccountIfChangedLocked]) and in [cachePayload], which refuses
+                // every write while no identity is current.
+                replyCacheProvenance.value?.let { lastTimelineAccountProvenance = it }
                 replyCacheProvenance.value = null
             }
         }
@@ -1938,6 +2126,18 @@ internal class SharedThreadDataSource(
         synchronized(replyCacheProvenanceLock) {
             replyCacheProvenance.value == expected
         }
+
+    /**
+     * Timeline-cache account fence (Tenny rule 1). A server switch or a token rotation keeps every
+     * in-flight producer able to commit to its own server's key; only a different environment or
+     * account retires the previous account's generations.
+     */
+    private fun retireTimelineAccountIfChangedLocked(next: ReplyCacheProvenance) {
+        val previous = replyCacheProvenance.value ?: lastTimelineAccountProvenance
+        lastTimelineAccountProvenance = next
+        if (previous == null || previous.isSameTimelineCacheAccount(next)) return
+        payloadCache.retireAccount(previous.environmentId, previous.principalId)
+    }
 
     /**
      * Send terminal work may cross a transparent token rotation, but never a new auth binding or
@@ -2007,6 +2207,13 @@ internal class SharedThreadDataSource(
             block(current)
         }
 
+    /**
+     * Writes a canonical timeline into the payload cache under [ownerScopeId] (env + account +
+     * server). Fence (Tenny rule 1): the write is admitted while the CURRENT identity is the same
+     * environment + account as [expectedProvenance] (when given) and [ownerScopeId] is exactly
+     * that account's key for [serverId]. A server switch or token rotation since the request does
+     * not refuse it — the payload is written to its own server's key.
+     */
     fun cachePayload(
         payload: RaftThreadScreenPayload,
         serverId: String = cacheServerId.value,
@@ -2015,11 +2222,17 @@ internal class SharedThreadDataSource(
         expectedProvenance: ReplyCacheProvenance? = null
     ): Boolean =
         synchronized(replyCacheProvenanceLock) {
-            if (expectedProvenance != null && replyCacheProvenance.value != expectedProvenance) {
-                return@synchronized false
+            val current = replyCacheProvenance.value ?: return@synchronized false
+            if (expectedProvenance != null) {
+                if (!current.isSameTimelineCacheAccount(expectedProvenance)) return@synchronized false
+                if (expectedProvenance.serverId != serverId) return@synchronized false
             }
-            if (ownerScopeId.isBlank()) return@synchronized false
-            if (replyCacheProvenance.value?.threadPayloadOwnerScopeId != ownerScopeId) {
+            if (ownerScopeId.isBlank() || serverId.isBlank()) return@synchronized false
+            if (current.threadPayloadOwnerScopeId == null) return@synchronized false
+            if (
+                ownerScopeId !=
+                    sharedThreadTimelineOwnerScopeId(current.environmentId, current.principalId, serverId)
+            ) {
                 return@synchronized false
             }
             val canonicalRoute = payload.resolveThreadRouteIdentity()
@@ -2596,6 +2809,41 @@ internal class SharedThreadDataSource(
         val threadId = payload.resolveThreadRouteIdentity().timelineChannelId ?: return
         val ownerScopeId = cachePayloadOwnerScopeId.value.takeIf { it.isNotBlank() } ?: return
         payloadCache.remove(cacheServerId.value, threadId, ownerScopeId)
+    }
+
+    /**
+     * Tenny rule 2: a background validation of [payload]'s conversation proved the account lost
+     * access (see [isConversationAccessLost]). Evicts the in-memory timeline under the requesting
+     * account's key and, when wired, the conversation's durable V2 window. The account fence is
+     * the same as a write's: another account's cache is never touched.
+     */
+    internal suspend fun evictLostConversationAccess(
+        payload: RaftThreadScreenPayload,
+        expectedProvenance: ReplyCacheProvenance,
+    ): Boolean {
+        val threadId = payload.resolveThreadRouteIdentity().timelineChannelId ?: return false
+        val ownerScopeId = expectedProvenance.threadPayloadOwnerScopeId ?: return false
+        val sameAccount =
+            synchronized(replyCacheProvenanceLock) {
+                replyCacheProvenance.value?.isSameTimelineCacheAccount(expectedProvenance) == true
+            }
+        if (!sameAccount) return false
+        payloadCache.evictConversation(expectedProvenance.serverId, threadId, ownerScopeId)
+        val evictor = durableAccessEvictor ?: return true
+        val partition =
+            expectedProvenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+                ?: return true
+        try {
+            evictor.evictConversation(partition, threadId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Throwable) {
+            diagnosticsLogger(
+                "thread_access_lost_durable_evict_failed server=${expectedProvenance.serverId} " +
+                    "threadId=$threadId reason=${failure.message ?: failure::class.simpleName.orEmpty()}"
+            )
+        }
+        return true
     }
 
     internal fun invalidateCachedPayload(
@@ -3647,6 +3895,19 @@ internal class SharedThreadDataSource(
                     } ?: canonicalPayload
                 }
         if (!replyAccessResolutionOwnerStillCurrent(resolutionScope)) {
+            // The page that asked is no longer current (server switch, token rotation, or account
+            // change). The response is still canonical data of the server it was requested from:
+            // keep it in that server's timeline cache unless the account/environment changed
+            // (Tenny rule 1; [cachePayload] applies the account fence and the generation fence).
+            if (persistResult && canonicalRequestGeneration != null) {
+                cachePayload(
+                    payload = payload,
+                    serverId = resolutionScope.provenance.serverId,
+                    expectedGeneration = canonicalRequestGeneration,
+                    ownerScopeId = payloadOwnerScopeId,
+                    expectedProvenance = resolutionScope.provenance
+                )
+            }
             return staleReplyCacheProvenanceResult()
         }
         val cacheProvenance =
@@ -6024,8 +6285,27 @@ internal data class SharedThreadState(
      * Switching threads resets the status to Idle for the new key so we
      * never reuse a previous thread's "Loaded" verdict.
      */
-    val membersLoadKey: String? = null
+    val membersLoadKey: String? = null,
+    /**
+     * Tenny rule 2: a background validation of a conversation that was painted from cache answered
+     * 403 / 404 (see [isConversationAccessLost]). Its cached timeline is already evicted; the page
+     * leaves with the "conversation is no longer available" notice. Reset by the next route start.
+     */
+    val conversationAccessLost: Boolean = false
 )
+
+/**
+ * A background validation result that proves this account can no longer read the conversation:
+ * a non-auth 403 (removed / kicked / private) or a 404 (deleted). 401 is an auth-session problem
+ * handled by the auth route, and an edge block is a network fact, not an access fact.
+ */
+internal fun DataResult<*>.isConversationAccessLost(): Boolean =
+    when (this) {
+        is DataResult.NoPermission ->
+            !blocker.isAuthSessionBlocker() && !blocker.serverMessage.isEdgeBlockedMarker()
+        is DataResult.Error -> error.code == "http_404"
+        else -> false
+    }
 
 internal enum class ThreadAccessResolution {
     Loading,
@@ -6301,6 +6581,12 @@ internal class SharedThreadStore(
     fun timelineSliceFlow(): Flow<ThreadTimelineSlice> =
         state
             .map { threadState -> threadState.timelineSlice }
+            .distinctUntilChanged()
+
+    /** Tenny rule 2 leave signal (see [SharedThreadState.conversationAccessLost]). */
+    fun conversationAccessLostFlow(): Flow<Boolean> =
+        state
+            .map { threadState -> threadState.conversationAccessLost }
             .distinctUntilChanged()
 
     fun replyMetadataFlow(): Flow<Map<String, ThreadReplyMetadata>> =
@@ -7313,6 +7599,9 @@ internal class SharedThreadStore(
                                         accessResolution = projectedAccessResolution,
                                         canonicalAccessResolved = canonicalAccessResolved,
                                         lastRefreshResultReason = result.diagnosticsResultReason(),
+                                        conversationAccessLost =
+                                            currentState.conversationAccessLost ||
+                                                (hasRenderableContent && result.isConversationAccessLost()),
                                         writeActionsEnabled =
                                             authorityProjectedPayload.hasWriteAuthorityForAccess(
                                                 accessResolution = projectedAccessResolution,
@@ -7345,7 +7634,11 @@ internal class SharedThreadStore(
         }
         val currentProvenance =
             dataSource.currentReplyCacheProvenanceForLocalSend(refreshProvenance)
-        if (result is DataResult.NoPermission) {
+        if (result.isConversationAccessLost()) {
+            // Tenny rule 2: drop memory + durable cache for this conversation (a 404 keeps the
+            // last content on screen as a failed refresh, so it must not be re-cached below).
+            dataSource.evictLostConversationAccess(basePayload, refreshProvenance)
+        } else if (result is DataResult.NoPermission) {
             currentProvenance?.let { dataSource.invalidateCachedPayload(basePayload, it) }
         } else {
             committedPayload?.let { payload ->
@@ -10647,6 +10940,8 @@ internal class SharedThreadViewModel(
     fun payloadFlow(): Flow<RaftThreadScreenPayload> = store.payloadFlow()
 
     fun renderSliceFlow(): Flow<SharedThreadRenderSlice> = store.renderSliceFlow()
+
+    fun conversationAccessLostFlow(): Flow<Boolean> = store.conversationAccessLostFlow()
 
     fun timelineSliceFlow(): Flow<ThreadTimelineSlice> = store.timelineSliceFlow()
 

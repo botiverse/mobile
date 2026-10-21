@@ -11,6 +11,7 @@ import build.raft.designsystem.gesture.raftBackSwipeRegion
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY
 import build.raft.app.data.KnownEntityScope
+import build.raft.app.data.homeStateForPage
 import build.raft.app.data.RaftKnownEntityResolver
 import build.raft.app.data.RAFT_SHELL_OVERLAY_REQUEST_EVENT
 import build.raft.app.data.RAFT_SHELL_OVERLAY_RESULT_EVENT
@@ -4389,6 +4390,7 @@ private fun ThreadPageScreen(
                 durableLastKnownReader = sharedStores.threadDurableLastKnownReader,
                 enteredScopeSnapshotLoader = sharedStores.threadEnteredScopeSnapshotLoader,
                 durablePageExtender = sharedStores.threadDurablePageExtender,
+                durableAccessEvictor = sharedStores.threadDurableAccessEvictor,
                 agentsApiClient = RaftAgentsApiClient(
                     transport = RaftAgentsNetworkApi(networkClient),
                     diagnosticsLogger = { message -> bridge.log("thread_agents_api $message") }
@@ -6243,8 +6245,9 @@ private fun SharedThreadRouteContentContent(
     val canonicalFinalAuthority by canonicalFinalAuthorityFlow.collectAsState()
     val foregroundBannerCurrentServerStore = remember(sharedStores) { sharedStores.localDataStore }
     val sharedHomeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
-    val sharedHomeStateFlow = remember(sharedHomeStore) { sharedHomeStore?.state ?: flowOf(SharedHomeState()) }
-    val sharedHomeState by sharedHomeStateFlow.collectAsState(SharedHomeState())
+    // Data-layer plan: frame 1 sees the Home store's current value (pin state, rows), not an empty state.
+    val sharedHomeStateFlow = remember(sharedHomeStore) { sharedHomeStore.homeStateForPage() }
+    val sharedHomeState by sharedHomeStateFlow.collectAsState()
     val realtimeEvents = remember(eventBus) { RaftRealtimeEvents(eventBus) }
     val realtimeEventMapper =
         remember(sharedStores) {
@@ -6281,6 +6284,20 @@ private fun SharedThreadRouteContentContent(
     val renderSlice by remember(threadViewModel) {
         threadViewModel.renderSliceFlow()
     }.collectAsState(threadViewModel.currentRenderSlice)
+    // Data-layer plan, Tenny rule 2: a background refresh of a conversation painted from cache
+    // proved the account lost access (403 / 404). The store already evicted its cached timeline;
+    // leave with the same notice Home shows for a conversation that is no longer available.
+    val conversationAccessLost by remember(threadViewModel) {
+        threadViewModel.conversationAccessLostFlow()
+    }.collectAsState(threadViewModel.state.value.conversationAccessLost)
+    val conversationUnavailableLabel = stringResource(MR.strings.home_error_conversation_unavailable)
+    LaunchedEffect(conversationAccessLost) {
+        if (conversationAccessLost) {
+            bridge.logWarn("thread_access_lost_leave instanceKey=${initialRouteIdentity.instanceKey}")
+            bridge.toast(conversationUnavailableLabel)
+            onBack()
+        }
+    }
     // task #36: the side thread's "open parent channel" keeps the column and hands focus to the
     // main detail: the side page drops its own input focus (keyboard down) and asks the main page,
     // by its key/generation, to scroll to and highlight the parent message. The composer is never

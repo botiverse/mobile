@@ -60,6 +60,8 @@ import build.raft.app.network.sync.CanonicalMessageFoldKind
 import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
 import build.raft.app.network.sync.CanonicalMessageV2CanaryOutcome
 import build.raft.app.network.sync.CanonicalMessageV2DurableLastKnownReader
+import build.raft.app.network.sync.CanonicalMessageV2DurableAccessEvictor
+import build.raft.app.network.sync.ThreadDurableAccessEvictor
 import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
 import build.raft.app.network.sync.ThreadDurablePageExtender
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine
@@ -414,6 +416,8 @@ internal class RaftSharedStoreProvider private constructor(
     internal val threadEnteredScopeSnapshotLoader: ThreadEnteredScopeSnapshotLoader,
     /** Offline cache paging entry (task #168): adjacent older / newer pages → the same V2 window. */
     internal val threadDurablePageExtender: ThreadDurablePageExtender,
+    /** Lost-access eviction (data-layer plan, Tenny rule 2) for the same V2 partition. */
+    internal val threadDurableAccessEvictor: ThreadDurableAccessEvictor,
     internal val threadPendingSendJournal: ThreadPendingSendJournal,
     val channelSettingsSnapshotCache: ChannelSettingsSnapshotCache,
     val foregroundReconciler: SharedForegroundReconciler,
@@ -659,6 +663,8 @@ internal class RaftSharedStoreProvider private constructor(
                     // Reply previews are message content: same lifetime (page keys are also
                     // principal-scoped, so a successor never reads them in the meantime).
                     threadDurableLastKnownReader.replyWindowCache?.clearAll()
+                    // In-memory channel / thread timelines: same lifetime as the reply previews.
+                    threadPayloadStore.clearAll()
                     // Pending-send rows are retired by the identity-bound
                     // processPresenceBindingTransition hook.  This terminal
                     // route deliberately has no captured environment/principal
@@ -698,6 +704,15 @@ internal class RaftSharedStoreProvider private constructor(
             nativeHost = BridgeProcessRealtimeNativeHost(host),
             scope = threadSendScope,
             onPresenceTransportConnected = ::handlePresenceTransportConnected,
+            // Data-layer plan, Tenny rule 2: removed from (or deleted) server -> drop that server's
+            // timeline partition, in memory and on disk. Called only after the terminal mutation was
+            // accepted under the then-current grant (the grant itself is revoked by that mutation).
+            onServerAccessLost = { grant ->
+                threadPayloadStore.dropServer(grant.serverId)
+                threadDurableAccessEvictor.evictServerPartition(
+                    grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+                )
+            },
             // Task #168: the durable message canary records which connection has its member rooms joined;
             // only a current grant may record it (as the transport epoch, #2991).
             onRoomsJoined = { grant, transportEpoch ->
@@ -2595,6 +2610,11 @@ internal class RaftSharedStoreProvider private constructor(
                 threadDurableLastKnownReader = threadDurableLastKnownReader,
                 threadEnteredScopeSnapshotLoader = threadEnteredScopeSnapshotLoader,
                 threadDurablePageExtender = threadDurablePageExtender,
+                threadDurableAccessEvictor =
+                    CanonicalMessageV2DurableAccessEvictor(
+                        engine = canonicalMessageV2GenerationEngine,
+                        logger = sharedInfoLogger("CanonicalMessageV2Store", "canonical_v2_access_evict"),
+                    ),
                 threadPendingSendJournal = threadPendingSendJournal,
                 channelSettingsSnapshotCache = ChannelSettingsSnapshotCache(),
                 foregroundReconciler = foregroundReconciler,

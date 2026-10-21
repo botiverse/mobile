@@ -1217,12 +1217,17 @@ class SharedThreadStoreTest {
                 selectionGeneration = 2L
             )
 
-        // Positive control: a complete identity yields one owner key shared by every reply cache.
+        // Positive control: the pending-send journal keeps the generation-exact owner, while the
+        // timeline cache is keyed by environment + account + server only (data-layer plan step 2).
         assertEquals(
             "https://prod.example.test\u001fuser-1\u001fserver-1\u001f1\u001f2",
-            full.threadPayloadOwnerScopeId
+            full.threadPendingSendOwnerScopeId
         )
-        assertEquals(full.threadPayloadOwnerScopeId, full.threadPendingSendOwnerScopeId)
+        assertEquals("https://prod.example.test\u001fuser-1\u001fserver-1", full.threadPayloadOwnerScopeId)
+        assertEquals(
+            full.threadPayloadOwnerScopeId,
+            full.copy(authGeneration = 7L, selectionGeneration = 9L).threadPayloadOwnerScopeId
+        )
 
         // A blank segment no longer collapses into a shared "legacy" bucket: the owner is absent.
         assertNull(full.copy(environmentId = "").threadPayloadOwnerScopeId)
@@ -1237,7 +1242,7 @@ class SharedThreadStoreTest {
         // Selection generation 0 is the first durable selection epoch, not a sentinel.
         assertEquals(
             "https://prod.example.test\u001fuser-1\u001fserver-1\u001f1\u001f0",
-            full.copy(selectionGeneration = 0L).threadPayloadOwnerScopeId
+            full.copy(selectionGeneration = 0L).threadPendingSendOwnerScopeId
         )
     }
 
@@ -3018,24 +3023,17 @@ class SharedThreadStoreTest {
                 "network body",
                 store.state.value.payload.messages.single().body
             )
+            // Data-layer plan step 2: a token rotation keeps the same timeline-cache key.
+            assertEquals(ownerA.threadPayloadOwnerScopeId, ownerARotated.threadPayloadOwnerScopeId)
             val cached =
-                listOfNotNull(
-                    payloadStore.get(
-                        "server-1",
-                        "channel-1",
-                        environmentId = ownerA.environmentId,
-                        principalId = ownerA.principalId,
-                        ownerScopeId = ownerA.threadPayloadOwnerScopeId.orEmpty()
-                    ),
-                    payloadStore.get(
-                        "server-1",
-                        "channel-1",
-                        environmentId = ownerARotated.environmentId,
-                        principalId = ownerARotated.principalId,
-                        ownerScopeId = ownerARotated.threadPayloadOwnerScopeId.orEmpty()
-                    )
+                payloadStore.get(
+                    "server-1",
+                    "channel-1",
+                    environmentId = ownerARotated.environmentId,
+                    principalId = ownerARotated.principalId,
+                    ownerScopeId = ownerARotated.threadPayloadOwnerScopeId.orEmpty()
                 )
-            assertEquals("network body", cached.single().messages.single().body)
+            assertEquals("network body", cached?.messages?.single()?.body)
         } finally {
             api.releaseChannelMessages?.complete(Unit)
             scopeJob.cancelAndJoin()
