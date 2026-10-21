@@ -74,9 +74,10 @@ internal object RaftSidebarItemMetrics {
 
     /**
      * `my-px`: in the web's block flow the 1px margins above and below collapse, so rows
-     * stand 1dp apart. Compose margins add up, so each row keeps 1dp above only.
+     * stand 1dp apart. Compose margins add up, so each row keeps half of it above and below:
+     * 1dp between rows, and about 1dp at either end of a run (before a group header).
      */
-    val MarginTop = 1.dp
+    val MarginVertical = 0.5.dp
 
     /** `SidebarItemIcon` / `SidebarItemChannelIcon`: a 19dp box with a 16dp icon. */
     val IconBox = 19.dp
@@ -121,7 +122,7 @@ enum class RaftSidebarItemVariant(
  *
  * - Box: at least 44dp tall (it grows with the font scale), 8dp start / 10dp end padding
  *   inside a 1.5dp edge that is always there (transparent at rest), control radius, gap 8,
- *   1dp above it, so rows stand 1dp apart (the web's collapsed `my-px`). The row fills the width it is given.
+ *   0.5dp above and below, so rows stand 1dp apart (the web's collapsed `my-px`). The row fills the width it is given.
  * - [leading]: a 19dp slot for a 16dp icon ([RaftSidebarItemIcon]) or a 19dp avatar, drawn
  *   in `foreground-hint` ([LocalRaftContentColor]), 8dp from the name. [variant]
  *   [RaftSidebarItemVariant.Entry] (Home's Search / Activity / Saved) makes it a 20dp icon
@@ -277,7 +278,7 @@ private fun RaftSidebarItemLayout(
     ) {
         Row(
             modifier
-                .padding(top = RaftSidebarItemMetrics.MarginTop)
+                .padding(vertical = RaftSidebarItemMetrics.MarginVertical)
                 .fillMaxWidth()
                 .heightIn(min = RaftSidebarItemMetrics.MinHeight)
                 .raftSticker(look, RaftRadius.Control, pressed = pressed, focused = focused, colors = colors)
