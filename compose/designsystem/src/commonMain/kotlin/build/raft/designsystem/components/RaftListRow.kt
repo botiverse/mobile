@@ -176,8 +176,10 @@ fun RaftListRow(
     val inks = raftListRowInks(tone, enabled, colors)
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val interactive = onClick != null
-    val pressed = interactive && enabled && !selected && raftIsPressed(source)
-    val focused = interactive && enabled && raftIsFocused(source)
+    val isPressed = raftIsPressed(source)
+    val pressed = interactive && enabled && !selected && isPressed
+    val isFocused = raftIsFocused(source)
+    val focused = interactive && enabled && isFocused
     val ruleStart = variant.ruleStart
     val showBadge = badge != null && enabled && !selected
     val align = if (alignTop) Alignment.Top else Alignment.CenterVertically

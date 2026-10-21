@@ -89,7 +89,8 @@ fun RaftSpinner(
             variant == RaftSpinnerVariant.Inverse -> RaftTheme.colors.foregroundInverse
             else -> LocalRaftContentColor.current.takeIf { it.isSpecified } ?: RaftTheme.colors.foreground
         }
-    val still = stillStep ?: LocalRaftSpinnerStillStep.current
+    val localStillStep = LocalRaftSpinnerStillStep.current
+    val still = stillStep ?: localStillStep
     var animatedStep by remember { mutableIntStateOf(0) }
     if (still == null) {
         LaunchedEffect(Unit) {

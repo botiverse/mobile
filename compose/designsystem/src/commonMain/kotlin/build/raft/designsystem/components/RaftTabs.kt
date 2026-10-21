@@ -303,11 +303,13 @@ private fun RaftUnderlineTab(
     icon: (@Composable () -> Unit)?,
 ) {
     val colors = RaftTheme.colors
-    val focused = enabled && raftIsFocused(source)
+    val isFocused = raftIsFocused(source)
+    val focused = enabled && isFocused
+    val isPressed = raftIsPressed(source)
     val ink =
         when {
             !enabled -> colors.foregroundDisabled
-            selected || raftIsPressed(source) -> colors.foreground
+            selected || isPressed -> colors.foreground
             else -> colors.foregroundMuted
         }
     val line = colors.foreground
@@ -352,8 +354,10 @@ internal fun RaftStickerItem(
 ) {
     val colors = RaftTheme.colors
     val look = raftStickerItemLook(active, enabled, colors)
-    val pressed = enabled && raftIsPressed(source)
-    val focused = enabled && raftIsFocused(source)
+    val isPressed = raftIsPressed(source)
+    val pressed = enabled && isPressed
+    val isFocused = raftIsFocused(source)
+    val focused = enabled && isFocused
     val typography = RaftTheme.typography
     Row(
         modifier

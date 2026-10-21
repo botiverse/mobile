@@ -166,11 +166,12 @@ fun RaftCheckbox(
         } else {
             Modifier
         }
+    val isFocused = raftIsFocused(source)
     RaftCheckboxBox(
         checked = checked || indeterminate,
         indeterminate = indeterminate,
         enabled = enabled,
-        focused = interactive && enabled && raftIsFocused(source),
+        focused = interactive && enabled && isFocused,
         modifier = modifier.then(toggle).then(if (interactive && label != null) Modifier.semantics { contentDescription = label } else Modifier),
     )
 }
@@ -273,7 +274,8 @@ fun RaftRadio(
         } else {
             Modifier
         }
-    RaftRadioBox(selected, enabled, focused = onClick != null && enabled && raftIsFocused(source), modifier = modifier.then(select))
+    val isFocused = raftIsFocused(source)
+    RaftRadioBox(selected, enabled, focused = onClick != null && enabled && isFocused, modifier = modifier.then(select))
 }
 
 @Composable
@@ -315,7 +317,8 @@ fun RaftSwitch(
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val colors = RaftTheme.colors
     val look = raftSwitchLook(checked, enabled, colors)
-    val focused = onCheckedChange != null && enabled && raftIsFocused(source)
+    val isFocused = raftIsFocused(source)
+    val focused = onCheckedChange != null && enabled && isFocused
     RaftRegisterFieldItemTap(if (onCheckedChange != null && enabled) ({ onCheckedChange(!checked) }) else null)
     val knobOffset by animateDpAsState(if (checked) 20.dp else 0.dp, tween(220, easing = RaftEaseSlide))
     val toggle =
@@ -397,7 +400,8 @@ fun RaftCheckboxRow(
                 onClick = { onCheckedChange(!checked) },
             ),
     ) {
-        RaftCheckboxBox(checked, indeterminate = false, enabled = enabled, focused = enabled && raftIsFocused(source), modifier = Modifier)
+        val isFocused = raftIsFocused(source)
+        RaftCheckboxBox(checked, indeterminate = false, enabled = enabled, focused = enabled && isFocused, modifier = Modifier)
     }
 }
 
@@ -423,7 +427,8 @@ fun RaftRadioRow(
         enabled = enabled,
         modifier = modifier.selectable(selected, source, indication = null, enabled = enabled, role = Role.RadioButton, onClick = onClick),
     ) {
-        RaftRadioBox(selected, enabled, focused = enabled && raftIsFocused(source), modifier = Modifier)
+        val isFocused = raftIsFocused(source)
+        RaftRadioBox(selected, enabled, focused = enabled && isFocused, modifier = Modifier)
     }
 }
 

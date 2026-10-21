@@ -180,7 +180,9 @@ fun RaftMenuItem(
 ) {
     val colors = RaftTheme.colors
     val source = interactionSource ?: remember { MutableInteractionSource() }
-    val highlighted = enabled && (raftIsPressed(source) || raftIsFocused(source))
+    val isPressed = raftIsPressed(source)
+    val isFocused = raftIsFocused(source)
+    val highlighted = enabled && (isPressed || isFocused)
     val ink = if (enabled) colors.foreground else colors.foregroundDisabled
     val iconInk = if (enabled) colors.foregroundMuted else colors.foregroundDisabled
     val shape = RoundedCornerShape(RaftRadius.Control)

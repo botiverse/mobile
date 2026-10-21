@@ -249,8 +249,11 @@ private fun RaftSidebarItemLayout(
     val typography = RaftTheme.typography
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val interactive = onClick != null
-    val pressed = interactive && (raftIsPressed(source) || raftIsHovered(source) || (menuOpen && !selected))
-    val focused = interactive && raftIsFocused(source)
+    val isPressed = raftIsPressed(source)
+    val isHovered = raftIsHovered(source)
+    val pressed = interactive && (isPressed || isHovered || (menuOpen && !selected))
+    val isFocused = raftIsFocused(source)
+    val focused = interactive && isFocused
     val titleInk =
         when (tone) {
             RaftRowTone.Muted -> colors.foregroundMuted
@@ -622,8 +625,10 @@ fun RaftSidebarSectionHeader(
     val typography = RaftTheme.typography
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val interactive = onExpandedChange != null
-    val focused = interactive && raftIsFocused(source)
-    val pressed = interactive && (raftIsPressed(source) || menuOpen)
+    val isFocused = raftIsFocused(source)
+    val focused = interactive && isFocused
+    val isPressed = raftIsPressed(source)
+    val pressed = interactive && (isPressed || menuOpen)
     val showAttention = attention && !expanded && !menuOpen
     val hint = colors.foregroundHint
     val lineHeight = 18.dp

@@ -544,8 +544,10 @@ fun RaftComboboxChipsTrigger(
     val typography = RaftTheme.typography
     val source = interactionSource ?: remember { MutableInteractionSource() }
     val look = raftSelectTriggerLook(enabled, invalid, chips.isNotEmpty(), colors)
-    val pressed = enabled && raftIsPressed(source)
-    val focused = enabled && raftIsFocused(source)
+    val isPressed = raftIsPressed(source)
+    val pressed = enabled && isPressed
+    val isFocused = raftIsFocused(source)
+    val focused = enabled && isFocused
     val shape = RoundedCornerShape(RaftRadius.Control)
     val field = LocalRaftFieldState.current
     val shown = if (chips.isEmpty()) placeholder else chips.joinToString(", ")
@@ -637,7 +639,9 @@ private fun RaftComboboxChip(text: String, enabled: Boolean, onRemove: (() -> Un
 private fun RaftComboboxChipRemove(label: String, onClick: () -> Unit) {
     val colors = RaftTheme.colors
     val source = remember { MutableInteractionSource() }
-    val pressed = raftIsPressed(source) || raftIsHovered(source)
+    val isPressed = raftIsPressed(source)
+    val isHovered = raftIsHovered(source)
+    val pressed = isPressed || isHovered
     val focused = raftIsFocused(source)
     Box(
         Modifier
@@ -661,7 +665,9 @@ private fun RaftComboboxChipRemove(label: String, onClick: () -> Unit) {
 private fun RaftComboboxClear(text: String, onClick: () -> Unit) {
     val colors = RaftTheme.colors
     val source = remember { MutableInteractionSource() }
-    val pressed = raftIsPressed(source) || raftIsHovered(source)
+    val isPressed = raftIsPressed(source)
+    val isHovered = raftIsHovered(source)
+    val pressed = isPressed || isHovered
     val focused = raftIsFocused(source)
     Box(
         Modifier
@@ -706,7 +712,9 @@ internal fun RaftComboboxOptionRow(
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val source = interactionSource ?: remember { MutableInteractionSource() }
-    val highlighted = enabled && (raftIsPressed(source) || raftIsFocused(source))
+    val isPressed = raftIsPressed(source)
+    val isFocused = raftIsFocused(source)
+    val highlighted = enabled && (isPressed || isFocused)
     val ink = if (enabled) colors.foreground else colors.foregroundDisabled
     // A field Select's options share the field type (select.tsx `chrome: field`), the chosen one too.
     val labelStyle =
