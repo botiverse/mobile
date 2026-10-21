@@ -4,6 +4,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.uikit.LocalUIViewController
+import androidx.compose.ui.uikit.OnFocusBehavior
 import androidx.compose.ui.window.ComposeUIViewController
 import build.raft.app.cmp.RaftCmpRoot
 import build.raft.app.cmp.RaftCmpRouter
@@ -184,6 +185,18 @@ object RaftCmpIos {
                     // flashed black under a light app on a dark-mode phone. Transparent, it shows
                     // the canvas colour painted behind it (raftPaintHostCanvas).
                     opaque = false
+                    // One owner for the keyboard's bottom inset: the page. Every shared page and
+                    // modal pads for WindowInsets.ime itself (thread composer:
+                    // raftThreadComposerLiveKeyboardPadding; modals: keyboardAvoidanceEnabled), as
+                    // on Android, where the edge-to-edge window never resizes for the IME. CMP's
+                    // default FocusableAboveKeyboard additionally shifts the whole view up by the
+                    // part of the focused field it thinks the keyboard covers. It measures that
+                    // against the layout of the moment of the keyboard event, so a keyboard that
+                    // comes back without a frame-by-frame animation (the composer with the
+                    // keyboard up -> add image -> PHPicker sheet) is measured before the page's
+                    // own IME padding lands: the view moves up by the keyboard height and the
+                    // padding then adds it again, lifting the page by twice the keyboard.
+                    onFocusBehavior = OnFocusBehavior.DoNothing
                 },
             ) {
                 // Read from composition, not captured in this lambda: a Kotlin closure holding the
