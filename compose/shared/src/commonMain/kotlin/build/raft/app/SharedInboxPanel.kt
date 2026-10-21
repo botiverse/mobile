@@ -1788,16 +1788,26 @@ private fun SharedActivityList(
         }
     }
     val newActivityAboveKeysState = rememberUpdatedState(newActivityAboveKeys)
-    val showNewActivityPill by
+    val newActivityAboveCount by
         remember(listState) {
             derivedStateOf {
-                activityNewRowsAboveViewport(
+                activityNewRowsAboveViewportCount(
                     newRowKeys = newActivityAboveKeysState.value,
                     lazyItemKeys = lazyItemKeysState.value,
                     firstVisibleItemIndex = listState.firstVisibleItemIndex,
                 )
             }
         }
+    // A landed row scrolled into view is seen: it leaves the pill's count.
+    LaunchedEffect(listState, active) {
+        if (!active) return@LaunchedEffect
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.mapNotNullTo(mutableSetOf()) { it.key as? String } }
+            .distinctUntilChanged()
+            .collect { visible ->
+                val unseen = activityUnseenNewRowKeys(newActivityAboveKeys, visible)
+                if (unseen != newActivityAboveKeys) newActivityAboveKeys = unseen
+            }
+    }
     // Row gestures resolve the committed item at commit time (see activityItemForCommittedGesture);
     // the card rows and the conversation-list rows share these exact handlers.
     fun committedRowItem(renderedItemKey: String): InboxItem? =
@@ -2000,11 +2010,15 @@ private fun SharedActivityList(
                 },
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
             )
-        } else if (showNewActivityPill) {
+        } else if (newActivityAboveCount > 0) {
             // Task #47: newer rows landed above a reader who had already scrolled;
             // the viewport stays theirs until they tap (explicit viewport replacement).
+            // web `thread.newUpdates`: the count of those rows not seen yet.
             RaftButton(
-                text = stringResource(MR.strings.activity_new_activity),
+                text = stringResource(
+                    if (newActivityAboveCount == 1) MR.strings.activity_updates_one else MR.strings.activity_updates_many,
+                    newActivityAboveCount
+                ),
                 onClick = {
                     newActivityAboveKeys = emptySet()
                     revealRequest += 1
