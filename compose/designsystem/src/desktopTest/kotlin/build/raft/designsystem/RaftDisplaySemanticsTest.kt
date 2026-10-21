@@ -18,6 +18,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -68,6 +69,8 @@ import build.raft.designsystem.components.RaftSidebarChannelItem
 import build.raft.designsystem.components.RaftSidebarItem
 import build.raft.designsystem.components.RaftSidebarItemVariant
 import build.raft.designsystem.components.raftSidebarItemIconSize
+import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.RaftSidebarSectionAction
 import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.designsystem.components.RaftReadOnlyField
 import build.raft.designsystem.components.RaftSkeleton
@@ -226,6 +229,71 @@ class RaftDisplaySemanticsTest {
             assertEquals(16f, placeIcon.width / d, 0.5f)
             // 1.5dp of the 19dp slot on each side of the 16dp icon, then gap-2.
             assertEquals(9.5f, (placeTitle.left - placeIcon.right) / d, 0.5f)
+        }
+
+    /** Web phone metrics (Lagoon's 393dp measurement): a header with two controls over two rows. */
+    private fun androidx.compose.ui.test.ComposeUiTest.setSidebarWebMetricsContent(screenDensity: Float? = null) {
+        setContent(
+            themed {
+                CompositionLocalProvider(LocalDensity provides Density(screenDensity ?: LocalDensity.current.density)) {
+                Column(Modifier.width(393.dp)) {
+                    RaftSidebarSectionHeader(
+                        "Channels",
+                        expanded = true,
+                        onExpandedChange = {},
+                        modifier = Modifier.testTag("header"),
+                        actions = {
+                            RaftSidebarSectionAction(RaftGlyph.ArrowUpDown, "Sort Channels", {}, Modifier.testTag("sort"))
+                            RaftSidebarSectionAction(RaftGlyph.Plus, "Create Channel", {}, Modifier.testTag("create"))
+                        },
+                    )
+                    RaftSidebarItem("general", onClick = {}, modifier = Modifier.testTag("row1"))
+                    RaftSidebarItem("random", onClick = {}, modifier = Modifier.testTag("row2"))
+                }
+                }
+            },
+        )
+    }
+
+    private fun androidx.compose.ui.test.ComposeUiTest.boundsOf(tag: String) =
+        onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+
+    private fun androidx.compose.ui.test.ComposeUiTest.textBounds(text: String) =
+        onNodeWithText(text, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+
+    /**
+     * Rows 44dp tall and 1dp apart (the web's collapsed `my-px`), at a phone's 2x density: at
+     * 1x each 0.5dp margin rounds to a whole pixel.
+     */
+    @Test
+    fun sidebarRowsStand1dpApart() =
+        runComposeUiTest {
+            setSidebarWebMetricsContent(screenDensity = 2f)
+            assertEquals(45f, (textBounds("random").top - textBounds("general").top) / 2f, 0.5f)
+        }
+
+    /** A group header's title sits `px-2` + the 14dp chevron + `gap-1.5` from its edge. */
+    @Test
+    fun aSidebarHeaderTitleSits28dpIn() =
+        runComposeUiTest {
+            setSidebarWebMetricsContent()
+            assertEquals(28f, (textBounds("Channels").left - boundsOf("header").left) / density.density, 0.5f)
+        }
+
+    /** A group header's controls are 28dp (`h-7 min-w-7`)... */
+    @Test
+    fun sidebarHeaderControlsAre28dp() =
+        runComposeUiTest {
+            setSidebarWebMetricsContent()
+            assertEquals(28f, boundsOf("sort").height / density.density, 0.5f)
+        }
+
+    /** ...and 4dp apart (`gap-1`). */
+    @Test
+    fun sidebarHeaderControlsStand4dpApart() =
+        runComposeUiTest {
+            setSidebarWebMetricsContent()
+            assertEquals(4f, (boundsOf("create").left - boundsOf("sort").right) / density.density, 0.5f)
         }
 
     /** A DM's aside parts stand 6dp apart (web `SIDEBAR_ROW_TRAILING_CLASS`), a place row's 4dp. */

@@ -114,8 +114,8 @@ class HomeSidebarWebMetricsTest {
         assertEquals(1, (pinnedHeader.top - saved.bottom).toDp(), "entry row -> section header gap")
         assertEquals(44, saved.height.toDp(), "entry row height")
         assertEquals(44, firstChannel.height.toDp(), "channel row height")
-        // Recorded, not asserted here: the 2dp inter-row gap is RaftSidebarItem's (DS) `my-px`.
-        println("inter-row gap = ${(secondChannel.top - firstChannel.bottom) / density}dp")
+        // Web: the rows' `my-px` margins collapse, so rows stand 1px apart (RaftSidebarItem).
+        assertEquals(1, (secondChannel.top - firstChannel.bottom).toDp(), "inter-row gap")
     }
 
     private fun settle() {
