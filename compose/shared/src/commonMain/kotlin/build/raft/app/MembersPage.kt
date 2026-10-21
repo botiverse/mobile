@@ -14213,7 +14213,6 @@ internal fun MembersPageHeader(
     onBack: (() -> Unit)? = null
 ) {
     RaftMainTabPageHeader(
-        surface = RaftMainTabHeaderSurface.Members,
         title = title,
         subtitle = null,
         refreshing = refreshing,
