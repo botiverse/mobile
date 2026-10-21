@@ -473,7 +473,7 @@ Android Chinese:
 
 Raft Android [marketing version] 现已上线。已经安装 Raft 的用户可以在「设置 → 关于 → 检查更新」中直接升级。
 
-- 下载更新：<[verified Hands share URL]>
+- 下载更新：<https://hands.build/apps/raft-android/latest>
 
 ✨ **新功能**
 
@@ -497,7 +497,7 @@ Android English:
 
 Raft Android [marketing version] is now available. If you already have Raft installed, update directly from Settings > About > Check for updates.
 
-- Download: <[verified Hands share URL]>
+- Download: <https://hands.build/apps/raft-android/latest>
 
 ✨ **New**
 
@@ -541,6 +541,15 @@ TestFlight: <[current verified join URL]>
 
 This is a TestFlight beta, not an App Store production release. The canonical TestFlight version is `[marketing version] ([build number])`.
 ```
+
+The Android download link is always the stable latest page
+`https://hands.build/apps/raft-android/latest` (owner decision, 2026-10-21).
+It resolves to the current active `main` release at view time, so links in
+older announcements never go stale. Do not put a per-release share link in an
+announcement: once a newer release supersedes it, that link stops downloading.
+Per-release share links are still fine for draft review and QA. Before
+posting, open the latest page and confirm it shows the version being
+announced.
 
 For Android, map the reviewed New/Improved/Fixed bullet groups into the
 template's `✨` / `🔧` / `🐛` sections. Omit a section only when its reviewed
