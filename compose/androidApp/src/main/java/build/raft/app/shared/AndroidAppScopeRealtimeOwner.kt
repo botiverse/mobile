@@ -12,6 +12,7 @@ import android.os.Bundle
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.RaftAppLog
+import build.raft.app.core.data.diagnostics.RaftResumeFrameProbe
 import build.raft.app.core.data.network.AndroidNetworkPrewarmController
 import build.raft.app.core.data.realtime.SocketIoRealtimeClient
 import build.raft.app.data.KeyValueAuthSessionStore
@@ -74,12 +75,14 @@ internal object AndroidAppScopeRealtimeOwner {
                     "retiredRequests=$retired"
             )
             if (foreground) {
+                RaftResumeFrameProbe.onAppShown()
                 installedApplicationContext?.let { context ->
                     onAppShown(context, source = "process_activity_started")
                 }
                 // Keeps the FCM delivery-status answer fresh for the background tray decision.
                 RaftAndroidPushRegistrationBridge.refreshDeliveryStatus(reason = "app_foreground")
             } else {
+                RaftResumeFrameProbe.onAppHidden()
                 onAppHidden(source = "process_activity_stopped")
                 // No-Play-services devices: make sure the background connection service is up now that the
                 // app is hidden (no-op on Play services devices).

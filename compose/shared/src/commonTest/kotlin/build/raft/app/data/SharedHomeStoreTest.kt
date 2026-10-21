@@ -2927,6 +2927,7 @@ class SharedHomeStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
         val api = BlockingHomeApi()
+        var nowMillis = 10_000L
         val store = SharedHomeStore(
             authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             dataSource =
@@ -2942,18 +2943,27 @@ class SharedHomeStoreTest {
                     }
                 ),
             scope = scope,
-            diagnosticsLogger = logs::add
+            diagnosticsLogger = logs::add,
+            nowMillis = { nowMillis }
         )
         val blockedBackgroundRefresh = api.blockNextChannels()
 
         store.dispatch(SharedHomeIntent.Start)
         blockedBackgroundRefresh.awaitStarted()
+        assertEquals(1, api.channelsCalls)
+
+        // Task #60: the shell's visibility refresh for the same return from background joins the
+        // Start load instead of restarting it; past the window it would replace it.
+        nowMillis += FOREGROUND_REFRESH_COALESCE_WINDOW_MILLIS
+        store.dispatchVisibleForegroundRefresh()
+        assertEquals(1, api.channelsCalls)
         logs.clear()
 
+        // An event-driven ForegroundRefresh always replaces the in-flight load.
         val blockedForegroundRefresh = api.blockNextChannels()
         store.dispatch(SharedHomeIntent.ForegroundRefresh)
         blockedForegroundRefresh.awaitStarted()
-
+        assertEquals(2, api.channelsCalls)
         assertEquals(
             0,
             logs.count {
@@ -4203,6 +4213,7 @@ class SharedHomeStoreTest {
 
     private class BlockingHomeApi : RaftHomeApi {
         private var channelBlock: BlockingCall? = null
+        var channelsCalls = 0
 
         fun blockNextChannels(): BlockingCall =
             BlockingCall().also { channelBlock = it }
@@ -4220,6 +4231,7 @@ class SharedHomeStoreTest {
             error("server-specific overload should be used")
 
         override suspend fun channels(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
+            channelsCalls += 1
             channelBlock?.let { block ->
                 channelBlock = null
                 block.started.complete(Unit)

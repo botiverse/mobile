@@ -1805,6 +1805,14 @@ class SharedServerMembersStore internal constructor(
                             }
                             val previous = _state.value.entriesByServerId[key]
                                 ?.takeIf { it.matches(directoryBinding) }
+                            if (previous.keepsLoadedStatusDuring(priority)) {
+                                // Task #60: a background revalidation (app resume, socket
+                                // reconnect, Home agent-status projection) of a roster already on
+                                // screen must not flip it to InFlight and back. Each flip replaced
+                                // the whole members state and recomposed every roster reader, so
+                                // an unchanged roster now publishes nothing.
+                                return@commitFlightIfCurrent
+                            }
                             putEntry(
                                 key,
                                 (previous ?: directoryBinding.emptyServerMembersEntry()).copy(
@@ -3223,3 +3231,10 @@ private fun MemberProfile.serverMembersSourceServerLabel(localServerId: String?)
     if (localServerId != null && sourceId == localServerId) return null
     return serverName?.takeIf { it.isNotBlank() } ?: serverSlug?.takeIf { it.isNotBlank() }
 }
+
+/** A loaded, non-empty roster stays `Loaded` while a Background-priority flight revalidates it. */
+internal fun SharedServerMembersEntry?.keepsLoadedStatusDuring(priority: DataRequestPriority): Boolean =
+    this != null &&
+        priority == DataRequestPriority.Background &&
+        status == SharedServerMembersLoadStatus.Loaded &&
+        members.isNotEmpty()

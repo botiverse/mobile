@@ -383,6 +383,9 @@ class SharedInboxPanelTest {
     fun activityPageDidAppearRefreshesOnlyAfterInitialAppearance() {
         assertEquals(false, activityPageDidAppearShouldRefresh(0))
         assertEquals(true, activityPageDidAppearShouldRefresh(1))
+        // Task #60: a kept-alive but hidden Activity tab skips the shell's resume appearance; it
+        // refreshes when the tab becomes active instead.
+        assertEquals(false, activityPageDidAppearShouldRefresh(1, active = false))
     }
 
     @Test

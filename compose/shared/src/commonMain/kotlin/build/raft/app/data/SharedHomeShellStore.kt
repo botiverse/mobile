@@ -55,6 +55,8 @@ class SharedHomeShellStore(
     activityState: StateFlow<SharedActivityState>,
     searchSavedState: StateFlow<SharedHomeSearchSavedState>,
     private val dispatchHome: (SharedHomeIntent) -> Unit,
+    /** Visibility-driven Home refresh; may join a load the same foreground transition launched. */
+    private val dispatchHomeVisibleRefresh: () -> Unit = { dispatchHome(SharedHomeIntent.ForegroundRefresh) },
     private val acceptHome: suspend (SharedHomeIntent) -> Unit = { intent -> dispatchHome(intent) },
     private val dispatchActivity: (SharedActivityIntent) -> Unit,
     private val acceptActivityRealtime: suspend (SharedActivityIntent) -> Unit = { intent -> dispatchActivity(intent) },
@@ -250,11 +252,11 @@ class SharedHomeShellStore(
                 if (_state.value.selectedTab == "activity") {
                     dispatchActivity(SharedActivityIntent.Refresh)
                 } else {
-                    dispatchHome(SharedHomeIntent.ForegroundRefresh)
+                    dispatchHomeVisibleRefresh()
                     refreshSavedSummary()
                 }
             else -> {
-                dispatchHome(SharedHomeIntent.ForegroundRefresh)
+                dispatchHomeVisibleRefresh()
                 refreshSavedSummary()
             }
         }

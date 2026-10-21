@@ -160,6 +160,9 @@ internal class SharedHomeStore(
     private val conversationIdentityRevisionByServer = linkedMapOf<String, Long>()
 
     private var loadJob: Job? = null
+    /** Intent and wall-clock time that launched [loadJob] through [dispatch] (task #60 coalescing). */
+    private var loadJobLaunchIntent: SharedHomeIntent? = null
+    private var loadJobLaunchedAtMillis: Long = 0L
     /**
      * Home loads whose response is still in flight, keyed by token, valued by whether a realtime message
      * raised a local unread count meanwhile. The unread endpoints carry no message seq, so a response read
@@ -306,6 +309,8 @@ internal class SharedHomeStore(
             loadJob?.cancel()
             agentDirectMessageStatusJob?.cancel()
             agentDirectMessageStatusJob = null
+            loadJobLaunchIntent = intent
+            loadJobLaunchedAtMillis = nowMillis()
             loadJob =
                 scope.launch {
                     accept(intent)
@@ -320,6 +325,37 @@ internal class SharedHomeStore(
     private fun debounceInFlightHomeLoad(intent: SharedHomeIntent): Boolean {
         if (!intent.debouncesInFlightHomeLoad) return false
         return coalesceIntoInFlightHomeLoad(intent.toSharedHomeIntentDiagnosticsLabel())
+    }
+
+    /**
+     * Foreground refresh requested by app/page visibility (resume, pageDidAppear) rather than by a
+     * data event.
+     *
+     * Task #60: one return from background dispatched `Start` (shell home start check) and
+     * `ForegroundRefresh` (shell pageDidAppear) in the same frame. ForegroundRefresh cancelled the
+     * Start load and launched an identical one, so every resume paid two Home bootstraps (channels,
+     * DMs, unread, sidebar order) and two rounds of Home state publication. The visibility refresh
+     * now joins a Start/ForegroundRefresh load launched moments ago: that load was launched by the
+     * same foreground transition, so its requests already carry foreground-fresh data. Older loads
+     * are still replaced. Event-driven reconciles keep using [dispatch], which always refetches.
+     */
+    fun dispatchVisibleForegroundRefresh() {
+        if (coalesceForegroundRefreshIntoFreshLoad()) return
+        dispatch(SharedHomeIntent.ForegroundRefresh)
+    }
+
+    private fun coalesceForegroundRefreshIntoFreshLoad(): Boolean {
+        if (loadJob?.isActive != true) return false
+        val launchIntent = loadJobLaunchIntent
+        if (launchIntent != SharedHomeIntent.Start && launchIntent != SharedHomeIntent.ForegroundRefresh) return false
+        val ageMillis = nowMillis() - loadJobLaunchedAtMillis
+        if (ageMillis !in 0L..FOREGROUND_REFRESH_COALESCE_WINDOW_MILLIS) return false
+        diagnosticsLogger(
+            "home_load_debounce intent=${SharedHomeIntent.ForegroundRefresh.toSharedHomeIntentDiagnosticsLabel()} " +
+                "reason=fresh_in_flight_load launchedBy=${launchIntent.toSharedHomeIntentDiagnosticsLabel()} " +
+                "ageMs=$ageMillis"
+        )
+        return true
     }
 
     private fun coalesceIntoInFlightHomeLoad(intentLabel: String): Boolean {
@@ -1297,6 +1333,7 @@ internal class SharedHomeStore(
         diagnosticsLogger("home_realtime_refresh scope=${event.scope} reason=${event.reason}")
         val nextSwitch = _state.value.serverSwitchState.refresh()
         reduceState(_state.value.copy(serverSwitchState = nextSwitch))
+        loadJobLaunchIntent = null
         loadJob =
             scope.launch {
                 val previousReason = stateDiagnosticsReason
@@ -1371,6 +1408,7 @@ internal class SharedHomeStore(
             diagnosticsLogger("home_unread_reconcile_load round=$round")
             val nextSwitch = _state.value.serverSwitchState.refresh()
             reduceState(_state.value.copy(serverSwitchState = nextSwitch))
+            loadJobLaunchIntent = null
             loadJob =
                 scope.launch {
                     val previousReason = stateDiagnosticsReason
@@ -4134,6 +4172,9 @@ private const val SIDEBAR_ORDER_FIRST_PAINT_WAIT_MS = 300L
 
 // Reconcile loads after realtime unread raced a Home load; past this the local counts stand until the next load.
 private const val MAX_REALTIME_UNREAD_RECONCILE_ROUNDS = 3
+
+/** Task #60: a ForegroundRefresh joins a Start/ForegroundRefresh load launched at most this long ago. */
+internal const val FOREGROUND_REFRESH_COALESCE_WINDOW_MILLIS = 1_000L
 
 private data class HomeRealtimeConversationPatch(
     val conversation: ConversationSummary,

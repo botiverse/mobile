@@ -3202,6 +3202,7 @@ private fun RaftAppShellReadyContent(
                 activityState = homeActivityStore.state,
                 searchSavedState = homeSearchSavedViewModel.state,
                 dispatchHome = homeStore::dispatch,
+                dispatchHomeVisibleRefresh = homeStore::dispatchVisibleForegroundRefresh,
                 acceptHome = { intent ->
                     homeStore.accept(intent)
                     homeStore.awaitRealtimeSettled()
