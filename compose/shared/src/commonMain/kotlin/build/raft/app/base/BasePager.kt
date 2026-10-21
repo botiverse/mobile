@@ -14,6 +14,8 @@ import build.raft.app.toJsonObject
 import build.raft.app.RaftAdaptivePanePagerEvent
 import build.raft.app.RAFT_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT
 import build.raft.app.data.RaftEnhancedNotifyCenter
+import build.raft.app.data.RaftProductEvents
+import build.raft.app.data.RaftProductPageView
 import build.raft.app.data.RaftStoreThreading
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -71,6 +73,7 @@ internal abstract class BasePager : ComposeContainer() {
 
     override fun pageDidAppear() {
         super.pageDidAppear()
+        reportProductPageShown()
         raftPageVisible = true
         val initialAppearance = !raftHasAppeared
         raftHasAppeared = true
@@ -110,7 +113,32 @@ internal abstract class BasePager : ComposeContainer() {
     override fun pageDidDisappear() {
         super.pageDidDisappear()
         raftPageVisible = false
+        runCatching { RaftProductEvents.pageViews.onPageHidden(pagerId) }
         onRaftPageDidDisappear()
+    }
+
+    override fun pageWillDestroy() {
+        super.pageWillDestroy()
+        runCatching { RaftProductEvents.pageViews.onPageClosed(pagerId) }
+    }
+
+    /**
+     * This page's `page_viewed` identity (product analytics), or null when it is not a product
+     * page. Read once, on the first appearance; identity only, never content.
+     */
+    protected open fun productPageView(): RaftProductPageView? = null
+
+    private var productPageViewResolved = false
+
+    private fun reportProductPageShown() {
+        runCatching {
+            val pageViews = RaftProductEvents.pageViews
+            if (!productPageViewResolved) {
+                productPageViewResolved = true
+                productPageView()?.let { pageViews.onPageRoute(pagerId, it) }
+            }
+            pageViews.onPageShown(pagerId)
+        }
     }
 
     protected open fun onRaftPageDidAppear(isInitialAppearance: Boolean) = Unit

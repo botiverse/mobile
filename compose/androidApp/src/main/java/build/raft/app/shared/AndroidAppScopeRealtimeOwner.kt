@@ -21,6 +21,7 @@ import build.raft.app.data.SharedRaftAuthTransport
 import build.raft.app.data.RaftAndroidPushRegistrationBridge
 import build.raft.app.data.RaftAuthApiClient
 import build.raft.app.data.RaftHostNetworkNotifyContract
+import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.updateRaftHostVisibility
 import build.raft.app.data.postAndroidAppScopeEvent
 import build.raft.app.data.realtime.GeneratedRealtimeContract
@@ -75,6 +76,8 @@ internal object AndroidAppScopeRealtimeOwner {
                     "retiredRequests=$retired"
             )
             if (foreground) {
+                // Product analytics: app_opened (cold / back after the 30-minute session gap).
+                RaftProductEvents.onAppForeground()
                 RaftResumeFrameProbe.onAppShown()
                 installedApplicationContext?.let { context ->
                     onAppShown(context, source = "process_activity_started")
@@ -82,6 +85,7 @@ internal object AndroidAppScopeRealtimeOwner {
                 // Keeps the FCM delivery-status answer fresh for the background tray decision.
                 RaftAndroidPushRegistrationBridge.refreshDeliveryStatus(reason = "app_foreground")
             } else {
+                RaftProductEvents.onAppBackground()
                 RaftResumeFrameProbe.onAppHidden()
                 onAppHidden(source = "process_activity_stopped")
                 // No-Play-services devices: make sure the background connection service is up now that the

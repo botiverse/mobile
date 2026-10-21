@@ -1970,6 +1970,8 @@ internal class RaftSharedStoreProvider private constructor(
                     )
                 }
             val networkClient = scopedNetworkClientFactory(authStore)
+            // Product analytics (RFC-067) sends through the shared client at Background priority.
+            RaftProductEvents.bindTransport(networkClient)
             val messageBodyFontSizeStore =
                 SharedMessageBodyFontSizeStore(
                     scope = RaftStoreThreading.newScope(),
@@ -2086,6 +2088,7 @@ internal class RaftSharedStoreProvider private constructor(
                             }
                         is AuthSessionEvent.Cleared ->
                             {
+                                RaftProductEvents.setSignedOut()
                                 serverFeatureFlagLastKnown.clearAll()
                                 ProcessDiagnosticFeatureFlagOverrides.registry.clearObservations()
                                 processServerMembersCore.invalidateAll(reason = "cleared")
