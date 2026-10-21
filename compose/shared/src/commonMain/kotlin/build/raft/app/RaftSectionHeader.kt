@@ -59,7 +59,9 @@ internal val RaftCollapsibleSectionCountTextStyle: TextStyle
         RaftType.Caption.copy(fontFamily = RaftMonoFamily, letterSpacing = 0.sp)
 // raft-ui `sidebarSectionCount`: `text-foreground-hint`.
 internal val RaftCollapsibleSectionCountColor: Color get() = RaftColor.ForegroundHint
-internal val RaftMainTabHeaderStartPadding = 8.dp
+// raft-ui top-level page head: no icon sticker (the selected tab already shows it); the title
+// starts on the 16dp phone margin, like Activity.
+internal val RaftMainTabHeaderStartPadding = 16.dp
 // Task #179: getter so the header follows the Settings font option.
 internal val RaftMainTabHeaderTitleStyle: TextStyle
     get() = RaftType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp)
@@ -68,18 +70,6 @@ internal val RaftTopPageHeaderContentSpacing = 12.dp
 // After a 44dp Back: its 22dp arrow keeps 11dp of its own inset, so the title sits 17dp past it.
 private val RaftTopPageHeaderBackContentSpacing = 6.dp
 internal val RaftTopPageHeaderContentEndPadding = 16.dp
-
-internal enum class RaftMainTabHeaderSurface(
-    val iconName: RaftLucideIconName
-) {
-    Members(RaftLucideIconName.Users),
-    Tasks(RaftLucideIconName.SquareCheckBig),
-    // Activity as a bottom tab: the same Lucide `activity` glyph as the web Activity nav item.
-    Activity(RaftLucideIconName.Activity),
-    Settings(RaftLucideIconName.Settings),
-    Dms(RaftLucideIconName.MessageSquare),
-    More(RaftLucideIconName.Ellipsis)
-}
 
 internal object RaftCollapsibleSectionTokens {
     const val AnimationDurationMillis: Int = 180
@@ -343,7 +333,6 @@ internal fun RaftTopPageHeaderFrame(
 
 @Composable
 internal fun RaftMainTabPageHeader(
-    surface: RaftMainTabHeaderSurface,
     title: String,
     subtitle: String? = null,
     modifier: Modifier = Modifier,
@@ -357,7 +346,6 @@ internal fun RaftMainTabPageHeader(
         title = title,
         onBack = onBack,
         subtitle = subtitle,
-        iconName = surface.iconName,
         modifier = modifier,
         applyTopSafeArea = applyTopSafeArea,
         contentStartPadding = contentStartPadding,

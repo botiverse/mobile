@@ -277,7 +277,6 @@ private fun SharedTasksHeader(
     refreshing: Boolean = false
 ) {
     RaftMainTabPageHeader(
-        surface = RaftMainTabHeaderSurface.Tasks,
         title = stringResource(MR.strings.tasks_title),
         subtitle = subtitle ?: stringResource(MR.strings.tasks_header_channel_tasks),
         refreshing = refreshing

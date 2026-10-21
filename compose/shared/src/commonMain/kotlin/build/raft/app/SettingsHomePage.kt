@@ -8088,7 +8088,6 @@ private fun SettingsAppShellHomeContent(
                 title = moreRoot?.title ?: payload.title,
                 items = settingsHomeItemsForMoreRoot(payload.items, moreRoot, membersSubtitle),
             ),
-        headerSurface = if (moreRoot != null) RaftMainTabHeaderSurface.More else RaftMainTabHeaderSurface.Settings,
         bottomContentPadding = bottomContentPadding,
         onHeaderClick = onSettingsHeaderClick,
         onSelect = onSelect,
@@ -27342,7 +27341,6 @@ internal fun rememberSettingsHomePayload(
 internal fun SettingsHomeContent(
     payload: RaftSettingsHomePayload,
     bottomContentPadding: Dp = RaftAppSpacing.Lg,
-    headerSurface: RaftMainTabHeaderSurface = RaftMainTabHeaderSurface.Settings,
     applyTopSafeArea: Boolean = true,
     onHeaderClick: (() -> Unit)? = null,
     onBack: (() -> Unit)? = null,
@@ -27356,7 +27354,6 @@ internal fun SettingsHomeContent(
         }
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
         RaftMainTabPageHeader(
-            surface = headerSurface,
             title = payload.title,
             subtitle = null,
             modifier = headerModifier,
