@@ -138,6 +138,11 @@ internal class RaftAndroidVideoView(
     private var fullscreenContainer: FrameLayout? = null
     private var savedOrientation: Int? = null
     private var fullscreenBackCallback: OnBackPressedCallback? = null
+    private var releaseDeferred = false
+    private val fullscreenDestroyObserver =
+        LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_DESTROY) exitFullscreen()
+        }
 
     private val player: ExoPlayer =
         ExoPlayer.Builder(context)
@@ -168,7 +173,7 @@ internal class RaftAndroidVideoView(
         player.addListener(
             object : Player.Listener {
                 override fun onRenderedFirstFrame() {
-                    if (!stopped) callbacks.onFirstFrame()
+                    if (!stopped && !releaseDeferred) callbacks.onFirstFrame()
                 }
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -246,9 +251,23 @@ internal class RaftAndroidVideoView(
         player.pause()
     }
 
+    /**
+     * Compose released the inline slot. In fullscreen that happens on its own: the rotation to
+     * landscape re-lays the message list out and can drop this row, which used to end fullscreen
+     * and rotate straight back. The fullscreen player lives on the Activity, so keep it until the
+     * person leaves fullscreen, and release then.
+     */
     fun stop() {
         if (stopped) return
-        exitFullscreen()
+        if (fullscreenContainer != null) {
+            releaseDeferred = true
+            return
+        }
+        release()
+    }
+
+    private fun release() {
+        if (stopped) return
         stopped = true
         mainHandler.removeCallbacksAndMessages(null)
         playerView.player = null
@@ -329,6 +348,8 @@ internal class RaftAndroidVideoView(
                     exitFullscreen()
                 }
             }.also { activity.onBackPressedDispatcher.addCallback(it) }
+        // A deferred release must not outlive the Activity.
+        activity.lifecycle.addObserver(fullscreenDestroyObserver)
         playerView.setFullscreenButtonState(true)
     }
 
@@ -337,9 +358,11 @@ internal class RaftAndroidVideoView(
         fullscreenContainer = null
         fullscreenBackCallback?.remove()
         fullscreenBackCallback = null
+        hostActivity?.lifecycle?.removeObserver(fullscreenDestroyObserver)
         container.removeView(playerView)
         (container.parent as? ViewGroup)?.removeView(container)
-        addView(playerView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        // The inline slot is gone (stop() deferred): nothing to return to.
+        if (!releaseDeferred) addView(playerView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         hostActivity?.let { activity ->
             activity.requestedOrientation = savedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             WindowInsetsControllerCompat(activity.window, activity.window.decorView)
@@ -347,10 +370,11 @@ internal class RaftAndroidVideoView(
         }
         savedOrientation = null
         playerView.setFullscreenButtonState(false)
+        if (releaseDeferred) release()
     }
 
     private fun reportState(state: PlayState) {
-        if (stopped) return
+        if (stopped || releaseDeferred) return
         if (state == lastReportedState) return
         lastReportedState = state
         callbacks.onPlayState(state)
