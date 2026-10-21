@@ -46,6 +46,7 @@ new product concept gets a Japanese rendering.
 | Join link | 参加リンク | |
 | Billing / Plan / Usage | 請求 / プラン / 使用量 | |
 | Storage | ストレージ | |
+| Downloads (download centre) | ダウンロード | Settings › Storage › Downloads; a running download is ダウンロード中 |
 | Appearance | 外観 | |
 | Language & Region | 言語と地域 | |
 | Danger Zone | 危険な操作 | |

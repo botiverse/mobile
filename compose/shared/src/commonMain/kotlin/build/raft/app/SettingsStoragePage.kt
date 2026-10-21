@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.base.Utils
+import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.downloads.RaftDownloadCenterProcess
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsIntent
@@ -12,6 +14,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -134,6 +138,53 @@ private fun SettingsStorageScreen() {
         settingsViewModel.dispatch(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Storage))
     }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
+    val downloadCenter = RaftDownloadCenterProcess.center
+    val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
+        pager.pageData.params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
+    }
+    val attachmentOwnerVersion by ProcessAttachmentAuthScopes.version.collectAsState()
+    val attachmentOwner = remember(attachmentOwnerVersion, storeScope.shellInstanceId) {
+        currentAttachmentOwnerLease(storeScope)
+    }
+    val ownerKey = attachmentOwner?.principalKey?.value
+    val downloadEntries by remember(ownerKey) { downloadCenter.entries(ownerKey) }.collectAsState(initial = emptyList())
+    val coroutineScope = rememberCoroutineScope()
+    val openResultTerms =
+        RaftAttachmentOpenResultTerms(
+            downloadStopped = stringResource(MR.strings.file_preview_download_stopped),
+            unableToDownloadAttachment = stringResource(MR.strings.file_preview_error_download_attachment),
+            noAppCanOpenFile = stringResource(MR.strings.file_preview_error_no_app),
+            storageUnavailable = stringResource(MR.strings.file_preview_error_storage_unavailable),
+            downloadFailed = stringResource(MR.strings.file_preview_download_failed),
+            unableToOpenAttachment = stringResource(MR.strings.file_preview_error_open_attachment)
+        )
+    fun onDownloadAction(action: RaftDownloadCenterAction) {
+        when (action) {
+            is RaftDownloadCenterAction.Open -> {
+                val owner = attachmentOwner ?: return
+                val entry = downloadEntries.firstOrNull { it.id == action.id } ?: return
+                coroutineScope.launch {
+                    // The committed public copy only: never re-downloads from here.
+                    val result =
+                        bridge.openAttachment(
+                            url = "",
+                            attachmentId = entry.attachmentId,
+                            fileName = entry.fileName,
+                            owner = owner,
+                            mimeType = entry.mimeType,
+                            requirePublicDownload = true
+                        )
+                    raftAttachmentOpenResultMessage(result?.optString("status").orEmpty(), openResultTerms)
+                        ?.let(bridge::toast)
+                }
+            }
+            is RaftDownloadCenterAction.Pause -> downloadCenter.pause(action.id)
+            is RaftDownloadCenterAction.Resume -> downloadCenter.resume(action.id)
+            is RaftDownloadCenterAction.Cancel -> downloadCenter.cancel(action.id)
+            is RaftDownloadCenterAction.Retry -> downloadCenter.retry(action.id)
+            is RaftDownloadCenterAction.Delete -> downloadCenter.delete(action.id)
+        }
+    }
     SettingsDetailShell(
         title = stringResource(MR.strings.settings_storage_title),
         subtitle = "",
@@ -156,6 +207,14 @@ private fun SettingsStorageScreen() {
                             ?.let { settingsViewModel.dispatch(SharedSettingsIntent.ClearStorage(it)) }
                     else -> bridge.log("settings_storage_unsupported_action action=$action target=${target.orEmpty()}")
                 }
+            },
+            downloads = {
+                RaftDownloadCenterSection(
+                    entries = downloadEntries,
+                    canRetry = downloadCenter::canRetry,
+                    onAction = ::onDownloadAction,
+                    onClearFinished = { ownerKey?.let(downloadCenter::clearFinished) }
+                )
             }
         )
     }
@@ -175,12 +234,17 @@ private fun rememberStoragePayload(
 internal fun SettingsStorageContent(
     payload: RaftSettingsStoragePayload,
     bottomContentPadding: Dp = RaftAppSpacing.Lg,
-    onEvent: (String, String?) -> Unit
+    onEvent: (String, String?) -> Unit,
+    /** Settings › Storage › Downloads (the download centre), above the storage rows. */
+    downloads: (@Composable () -> Unit)? = null
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        if (downloads != null) {
+            item(key = "download-center") { downloads() }
+        }
         item {
             SettingsStorageSummary(
                 title = payload.totalTitle,

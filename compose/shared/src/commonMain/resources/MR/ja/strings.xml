@@ -2808,4 +2808,17 @@
     <string name="message_delegated_sent_by_deleted_in_body">（削除済みのアシスタントが代理送信）</string>
     <string name="message_delegated_preview_sender">%1$s（%2$s が代理送信）</string>
     <string name="message_delegated_preview_sender_deleted">%1$s（削除済みのアシスタントが代理送信）</string>
+    <string name="download_center_title">ダウンロード</string>
+    <string name="download_center_entry">ダウンロード</string>
+    <string name="download_center_entry_detail">ダウンロードしたファイルと、バックグラウンドで実行中のダウンロード。</string>
+    <string name="download_center_empty">ダウンロードしたファイルはここに表示されます。</string>
+    <string name="download_center_clear_finished">終了したものを消去</string>
+    <string name="download_center_status_failed">失敗</string>
+    <string name="download_center_status_interrupted">中断</string>
+    <string name="download_center_status_cancelled">キャンセル済み</string>
+    <string name="download_center_status_saving">ダウンロードに保存中</string>
+    <string name="download_center_retry_unavailable">もう一度ダウンロードするには、メッセージを開いてください。</string>
+    <string name="download_center_progress_bytes">%1$s / %2$s</string>
+    <string name="file_preview_download_background_hint">このページを離れてもダウンロードは続きます。設定 › ストレージ › ダウンロード で確認できます。</string>
+    <string name="file_preview_download_completed_hint">保存しました。設定 › ストレージ › ダウンロード で確認できます。</string>
 </resources>

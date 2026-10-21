@@ -2808,4 +2808,17 @@
     <string name="message_delegated_sent_by_deleted_in_body">(sent by a deleted assistant)</string>
     <string name="message_delegated_preview_sender">%1$s (sent by %2$s)</string>
     <string name="message_delegated_preview_sender_deleted">%1$s (sent by a deleted assistant)</string>
+    <string name="download_center_title">Downloads</string>
+    <string name="download_center_entry">Downloads</string>
+    <string name="download_center_entry_detail">Files you downloaded, and downloads still running in the background.</string>
+    <string name="download_center_empty">Files you download appear here.</string>
+    <string name="download_center_clear_finished">Clear Finished</string>
+    <string name="download_center_status_failed">Failed</string>
+    <string name="download_center_status_interrupted">Interrupted</string>
+    <string name="download_center_status_cancelled">Cancelled</string>
+    <string name="download_center_status_saving">Saving to Downloads</string>
+    <string name="download_center_retry_unavailable">Open the message to download it again.</string>
+    <string name="download_center_progress_bytes">%1$s of %2$s</string>
+    <string name="file_preview_download_background_hint">You can leave this page: the download keeps going. Find it in Settings › Storage › Downloads.</string>
+    <string name="file_preview_download_completed_hint">Saved. You can find it in Settings › Storage › Downloads.</string>
 </resources>
