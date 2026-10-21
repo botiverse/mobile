@@ -301,6 +301,7 @@ internal fun SharedHomeActivityScreen(
                 memberRepository = memberRepository,
                 channelRepository = channelRepository,
                 prewarmReplyThread = replyThreadPrewarmDataSource::prewarmReplyThread,
+                replyThreadContentCached = replyThreadPrewarmDataSource::hasCurrentReplyThreadContent,
                 diagnosticsLogger = activityDiagnosticsLogger
             )
         }

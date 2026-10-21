@@ -54,6 +54,8 @@ import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.RaftIntegrationsActionsPushApiClient
 import build.raft.app.data.SavedStatusRepository
 import build.raft.app.data.SharedServerMembersStore
+import build.raft.app.data.SharedForegroundLoadGate
+import build.raft.app.data.SharedForegroundThreadKey
 import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.ServerFeatureFlagSnapshot
 import build.raft.app.data.MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY
@@ -414,6 +416,7 @@ private const val SharedThreadZeroReplyOriginHydrationGraceMillis = 300L
 private const val SharedThreadFreshnessMessageFactLimit = 512
 private const val SharedThreadReplyCountFactLimit = 2_048
 private const val SharedThreadPrewarmGenerationSupersededCode = "thread_prewarm_generation_superseded"
+private const val SharedThreadPrewarmJoinTimeoutMillis = 5_000L
 private const val ReplyCacheProvenanceStaleCode = "thread_reply_cache_provenance_stale"
 
 private fun <T> staleReplyCacheProvenanceResult(): DataResult<T> =
@@ -993,6 +996,13 @@ internal class SharedThreadPayloadStore(
     private val maxConversationsPerServer: Int = SharedThreadTimelineCacheMaxConversationsPerServer,
     /** Tenny rule 3: process-wide LRU cap across every server and account. */
     private val maxConversations: Int = SharedThreadTimelineCacheMaxConversations,
+    /**
+     * Process-wide "a visible thread page is loading its first content" gate. Owned here because
+     * this store is the one object every visible thread page and the Activity reply prewarm share.
+     */
+    internal val foregroundLoadGate: SharedForegroundLoadGate = SharedForegroundLoadGate(),
+    /** A visible open never waits on an in-flight prewarm longer than this before fetching itself. */
+    private val prewarmJoinTimeoutMillis: Long = SharedThreadPrewarmJoinTimeoutMillis,
 ) {
     private val payloads = MutableStateFlow<Map<SharedThreadOwnedPayloadCacheKey, SharedThreadPayloadEntry>>(emptyMap())
     // Least recently used first. Guarded by [recencyLock]; lock order is ledger -> recency, never
@@ -1422,7 +1432,21 @@ internal class SharedThreadPayloadStore(
         serverId: String,
         threadId: String,
         ownerScopeId: String
-    ): DataResult<RaftThreadScreenPayload>? {
+    ): DataResult<RaftThreadScreenPayload>? =
+        joinOrConsumePrewarmWithOutcome(serverId, threadId, ownerScopeId).result
+
+    /**
+     * Like [joinOrConsumePrewarm] but says which prewarm state answered, and bounds the join of an
+     * in-flight prewarm by [prewarmJoinTimeoutMillis]: a stuck background request must never hold
+     * a visible open. On [SharedThreadPrewarmJoinOutcome.JoinTimedOut] the in-flight prewarm is
+     * detached (not cancelled: callers already awaiting it still get its result, but it can no longer
+     * commit into the cache or mark itself ready) and the caller issues its own fetch.
+     */
+    suspend fun joinOrConsumePrewarmWithOutcome(
+        serverId: String,
+        threadId: String,
+        ownerScopeId: String
+    ): SharedThreadPrewarmJoin {
         val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
         val lookup =
             prewarmMutex.withLock {
@@ -1445,11 +1469,43 @@ internal class SharedThreadPayloadStore(
                         ?.takeIf { prewarmFailureGenerations[key] === generation }
                 )
             }
-        lookup.cached?.let { return DataResult.Content(it) }
-        val result = lookup.inFlight?.await() ?: lookup.failure
-        if (result == null || freshnessLedger.isCurrent(lookup.generation)) return result
-        return DataResult.Error(
-            ScreenError(code = SharedThreadPrewarmGenerationSupersededCode, retryable = true)
+        lookup.cached?.let {
+            return SharedThreadPrewarmJoin(DataResult.Content(it), SharedThreadPrewarmJoinOutcome.ConsumedReady)
+        }
+        val inFlight = lookup.inFlight
+        val outcome: SharedThreadPrewarmJoinOutcome
+        val result =
+            if (inFlight != null) {
+                val joined =
+                    withTimeoutOrNull(prewarmJoinTimeoutMillis.coerceAtLeast(1L)) { inFlight.await() }
+                if (joined == null) {
+                    // The caller now fetches for itself under this same generation. Detach (do not
+                    // cancel) the slow prewarm, exactly like [promoteQueuedPrewarm] does, so its late
+                    // completion fails the `prewarmInFlight[key] === currentJob` commit guard instead
+                    // of overwriting the newer own-fetch entry and marking itself ready.
+                    prewarmMutex.withLock {
+                        if (prewarmInFlight[key] === inFlight) {
+                            prewarmInFlight.remove(key)
+                            prewarmInFlightGenerations.remove(key)
+                            prewarmFetchStartedGenerations.remove(key)
+                        }
+                    }
+                    return SharedThreadPrewarmJoin(null, SharedThreadPrewarmJoinOutcome.JoinTimedOut)
+                }
+                outcome = SharedThreadPrewarmJoinOutcome.JoinedInFlight
+                joined
+            } else if (lookup.failure != null) {
+                outcome = SharedThreadPrewarmJoinOutcome.StoredFailure
+                lookup.failure
+            } else {
+                return SharedThreadPrewarmJoin(null, SharedThreadPrewarmJoinOutcome.None)
+            }
+        if (freshnessLedger.isCurrent(lookup.generation)) return SharedThreadPrewarmJoin(result, outcome)
+        return SharedThreadPrewarmJoin(
+            DataResult.Error(
+                ScreenError(code = SharedThreadPrewarmGenerationSupersededCode, retryable = true)
+            ),
+            outcome
         )
     }
 
@@ -1619,6 +1675,19 @@ internal class SharedThreadPayloadStore(
         freshnessLedger.clearForTest()
     }
 }
+
+internal enum class SharedThreadPrewarmJoinOutcome(val diagnosticsName: String) {
+    ConsumedReady("consumed_ready"),
+    JoinedInFlight("joined_in_flight"),
+    JoinTimedOut("join_timeout"),
+    StoredFailure("stored_failure"),
+    None("no_prewarm"),
+}
+
+internal data class SharedThreadPrewarmJoin(
+    val result: DataResult<RaftThreadScreenPayload>?,
+    val outcome: SharedThreadPrewarmJoinOutcome,
+)
 
 private data class SharedThreadPrewarmLookup(
     val generation: SharedThreadFreshnessGeneration,
@@ -1861,6 +1930,8 @@ internal class SharedThreadDataSource(
     )
 
     private val payloadCache = payloadStore ?: SharedThreadPayloadStore()
+    /** Shared with Activity reply prewarm through the process-wide [SharedThreadPayloadStore]. */
+    internal val foregroundLoadGate: SharedForegroundLoadGate get() = payloadCache.foregroundLoadGate
     private val messageResolver = messageStore ?: SharedThreadMessageStore()
     private val replyThreadResolveCache = mutableMapOf<ReplyThreadResolveKey, String>()
     private val cacheEnvironmentId = MutableStateFlow("")
@@ -2326,6 +2397,19 @@ internal class SharedThreadDataSource(
                     ownerScopeId
                 )
             }
+
+    /**
+     * True when the shared memory cache holds this reply thread's content at its CURRENT freshness
+     * generation, i.e. a foreground open already loaded it and nothing has changed since. Activity
+     * prewarm uses it to drop only a queued prewarm whose work is genuinely done.
+     */
+    internal suspend fun hasCurrentReplyThreadContent(marker: ActivityReplyThreadPrewarmMarker): Boolean {
+        val key = marker.key
+        if (key.serverId.isBlank() || key.threadChannelId.isBlank()) return false
+        val provenance = readReplyResolutionScope()?.provenance ?: return false
+        if (provenance.serverId != key.serverId) return false
+        return cachedPayloadIfCurrent(key.threadChannelId, provenance) != null
+    }
 
     internal fun cachedPayloadIfCurrent(
         threadId: String,
@@ -3749,31 +3833,36 @@ internal class SharedThreadDataSource(
         var failedPrewarm = false
         if (reusePrewarm && threadId != null) {
             val serverId = session.currentServerId.orEmpty()
+            fun logReuse(outcome: String, reason: String) =
+                diagnosticsLogger(
+                    "thread_refresh_reuse_prewarm threadId=$threadId outcome=$outcome reason=$reason"
+                )
             if (payloadCache.promoteQueuedPrewarm(serverId, threadId, payloadOwnerScopeId)) {
                 diagnosticsLogger?.invoke(
                     "thread_prewarm_promote threadId=$threadId from=background_queue to=foreground"
                 )
+                logReuse("own_fetch", "prewarm_queued_promoted")
                 failedPrewarm = true
             } else {
-                when (
-                    val warmed =
-                        payloadCache.joinOrConsumePrewarm(
-                            serverId,
-                            threadId,
-                            payloadOwnerScopeId
-                        )
-                ) {
+                val joined = payloadCache.joinOrConsumePrewarmWithOutcome(serverId, threadId, payloadOwnerScopeId)
+                when (val warmed = joined.result) {
                     is DataResult.Content -> {
                         if (!cacheReplyThreadResolution(resolutionScope.provenance, warmed.data)) {
                             return staleReplyCacheProvenanceResult()
                         }
+                        logReuse(joined.outcome.diagnosticsName, "prewarm_content")
                         seedThreadAuthorProfiles(session.currentServerId, warmed.data, source = "prewarm")
                         return warmed
                     }
                     is DataResult.Empty,
                     is DataResult.Error,
-                    is DataResult.NoPermission -> failedPrewarm = true
-                    null -> Unit
+                    is DataResult.NoPermission -> {
+                        logReuse("own_fetch", "prewarm_failed_${joined.outcome.diagnosticsName}")
+                        failedPrewarm = true
+                    }
+                    // JoinTimedOut leaves failedPrewarm false on purpose: the timed-out prewarm was detached
+                    // (it can no longer commit), so there is nothing to take over; the open fetches itself.
+                    null -> logReuse("own_fetch", joined.outcome.diagnosticsName)
                 }
             }
         }
@@ -6647,6 +6736,9 @@ internal class SharedThreadStore(
     }
 
     private var loadJob: Job? = null
+    // Foreground priority lease for this page's first-content load (see [SharedForegroundLoadGate]).
+    private val foregroundLoadLeaseLock = SynchronizedObject()
+    private var foregroundLoadLease: SharedForegroundLoadGate.Lease? = null
     private var enteredScopeSnapshotJob: Job? = null
     private var threadJoinCatchUpJob: Job? = null
     private var secondaryTimelineRefreshJob: Job? = null
@@ -6905,6 +6997,7 @@ internal class SharedThreadStore(
         firstContentReadyRouteKey = null
         pendingAuxiliaryHydration = null
         pendingSecondaryTimelineApply = null
+        releaseForegroundLoadLease(expected = null, reason = "cleared")
         advanceRouteStaleToken()
         reducePayloadPatch(cachePayload = true) { currentPayload ->
             if (currentPayload.newerMessagesStatus == "loading") {
@@ -6951,10 +7044,78 @@ internal class SharedThreadStore(
         )
     }
 
+    /**
+     * Holds a foreground-load lease from Start until this page's first content is ready, the
+     * start/refresh finishes (content, failure, or early return), the load is cancelled, or the
+     * page is cleared. Background Activity prewarm does not start new loads while it is held.
+     */
     private suspend fun start(initialPayload: RaftThreadScreenPayload) {
+        val producerContext = dataSource.captureReplyCacheProducerContext()
+        val lease = acquireForegroundLoadLease(initialPayload, producerContext?.session?.currentServerId)
+        try {
+            startRoute(initialPayload, producerContext)
+        } finally {
+            releaseForegroundLoadLease(expected = lease, reason = "start_finished")
+        }
+    }
+
+    private fun acquireForegroundLoadLease(
+        initialPayload: RaftThreadScreenPayload,
+        serverId: String?,
+    ): SharedForegroundLoadGate.Lease {
+        val threadId =
+            initialPayload.sourceThreadId?.takeIf { it.isNotBlank() }
+                ?: initialPayload.streamChannelId?.takeIf { it.isNotBlank() }
+        val threadKey =
+            serverId?.takeIf { it.isNotBlank() }?.let { server ->
+                SharedForegroundThreadKey(
+                    serverId = server,
+                    threadId = threadId,
+                    parentChannelId = initialPayload.parentChannelId?.takeIf { it.isNotBlank() },
+                    parentMessageId = initialPayload.parentMessageId?.takeIf { it.isNotBlank() },
+                )
+            }
+        val gate = dataSource.foregroundLoadGate
+        val lease = gate.acquire(threadKey)
+        val previous =
+            synchronized(foregroundLoadLeaseLock) {
+                val replaced = foregroundLoadLease
+                foregroundLoadLease = lease
+                replaced
+            }
+        if (previous?.release() == true) {
+            diagnosticsLogger?.invoke(
+                "thread_foreground_load_released reason=restarted heldMs=${previous.heldMillis()}"
+            )
+        }
+        diagnosticsLogger?.invoke(
+            "thread_foreground_load_acquired threadId=${threadId.orEmpty()} " +
+                "activeForegroundLoads=${gate.activeCount()}"
+        )
+        return lease
+    }
+
+    /** Idempotent: [expected] null releases whatever lease this page holds. */
+    private fun releaseForegroundLoadLease(expected: SharedForegroundLoadGate.Lease?, reason: String) {
+        val lease =
+            synchronized(foregroundLoadLeaseLock) {
+                val current = foregroundLoadLease
+                if (expected == null || current === expected) foregroundLoadLease = null
+                expected ?: current
+            } ?: return
+        if (lease.release()) {
+            diagnosticsLogger?.invoke(
+                "thread_foreground_load_released reason=$reason heldMs=${lease.heldMillis()}"
+            )
+        }
+    }
+
+    private suspend fun startRoute(
+        initialPayload: RaftThreadScreenPayload,
+        producerContext: ReplyCacheProducerContext?,
+    ) {
         focusedOriginHydrationJob?.cancel()
         focusedOriginHydrationJob = null
-        val producerContext = dataSource.captureReplyCacheProducerContext()
         val session = producerContext?.session
         val payloadOwnerScopeId = producerContext?.provenance?.threadPayloadOwnerScopeId
         val routeCandidatePayload = initialPayload.withoutRouteCandidateContent()
@@ -7828,6 +7989,7 @@ internal class SharedThreadStore(
     }
 
     private fun markFirstContentReady() {
+        releaseForegroundLoadLease(expected = null, reason = "first_content_ready")
         val currentPayload = _state.value.payload
         val routeKey = currentPayload.resolveThreadRouteIdentity().instanceKey
         firstContentReadyRouteKey = routeKey

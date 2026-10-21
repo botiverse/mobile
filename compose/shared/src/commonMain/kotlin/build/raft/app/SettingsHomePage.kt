@@ -3084,6 +3084,7 @@ private fun RaftAppShellReadyContent(
                 memberRepository = memberRepository,
                 channelRepository = channelRepository,
                 prewarmReplyThread = homeActivityReplyThreadPrewarmDataSource::prewarmReplyThread,
+                replyThreadContentCached = homeActivityReplyThreadPrewarmDataSource::hasCurrentReplyThreadContent,
                 onUnreadCountsChanged = { homeStore.dispatch(SharedHomeIntent.ForegroundRefresh) },
                 // task #436: shared store — both call sites must use one identity.
                 diagnosticsLogger = sharedActivityStoreDiagnosticsLogger()

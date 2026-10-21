@@ -92,6 +92,8 @@ internal fun activityStore(
         DataResult.Empty(EmptyReason.NoMessages)
     },
     replyThreadFreshnessLedger: SharedThreadFreshnessLedger = SharedThreadFreshnessLedger(),
+    foregroundLoadGate: SharedForegroundLoadGate = SharedForegroundLoadGate(),
+    replyThreadContentCached: suspend (ActivityReplyThreadPrewarmMarker) -> Boolean = { false },
     tailPrewarmDepthCap: Int = 20,
     readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = null,
     readStateV1Canary: ReadStateV1ProductionCanary? = null,
@@ -119,6 +121,8 @@ internal fun activityStore(
         persistSlices = persistSlices,
         prewarmReplyThread = prewarmReplyThread,
         replyThreadFreshnessLedger = replyThreadFreshnessLedger,
+        foregroundLoadGate = foregroundLoadGate,
+        replyThreadContentCached = replyThreadContentCached,
         tailPrewarmDepthCap = tailPrewarmDepthCap,
         readReceiptOwnerFactory = readReceiptOwnerFactory,
         readStateV1Canary = readStateV1Canary,
