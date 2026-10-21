@@ -516,10 +516,10 @@ def check_composer_native_send_snapshot_wiring(
 
     Under Kuikly the Send snapshot read the native editor, and was wired to the wrong view. On
     CMP the editing state lives in Compose, so the snapshot reader must be bound to the
-    TextField's *live* TextFieldValue (RaftLiveTextFieldValue: the onValueChange wrapper records
-    an IME edit before the caller recomposes, and each composition records the caller's value, so
-    a reader bound in an earlier composition still sees the latest text/composition even when IME
-    commit and Send land in one frame) and unbound when the field leaves composition. The bounded opaque-token timeout in the composer still applies; pure
+    TextField's *live* editor state: the TextFieldState the editor edits (task #69), which holds
+    an IME edit before the caller is told about it or recomposes, so a reader bound in an earlier
+    composition still sees the latest text/composition even when IME commit and Send land in one
+    frame, and is unbound when the field leaves composition. The bounded opaque-token timeout in the composer still applies; pure
     snapshot/gate tests alone cannot prove either production callsite is connected.
     """
     text_field = ""
@@ -537,12 +537,10 @@ def check_composer_native_send_snapshot_wiring(
     if not text_field:
         raise Violation("task #127 anchor missing: shared TextField region is not auditable")
     basic_required = (
-        "val liveValueForReader = remember { RaftLiveTextFieldValue(value) }",
-        "SideEffect { liveValueForReader.recordComposed(value) }",
-        "liveValueForReader.recordEdit(next)",
-        "onValueChange = onValueChangeRecordingLive,",
+        "val state = rememberRaftTextFieldState(value,",
+        "state = state,",
         "nativeEditingStateReader.bind(nativeEditingStateBindingOwner)",
-        "state = liveValueForReader.value.toRaftTextInputState()",
+        "state = state.toRaftTextFieldValue().toRaftTextInputState()",
         "nativeEditingStateReader?.unbind(nativeEditingStateBindingOwner)",
     )
     for token in basic_required:
@@ -553,7 +551,7 @@ def check_composer_native_send_snapshot_wiring(
     if re.search(r"state\s*=\s*(value|currentValueForReader)\.toRaftTextInputState\(\)", text_field):
         raise Violation(
             "task #127 regression: Send snapshot reader captures the composition-time value; "
-            "read liveValueForReader.value instead"
+            "read the editor's TextFieldState instead"
         )
 
     composer_required = (
@@ -1232,25 +1230,16 @@ internal fun TextField(
     DisposableEffect(nativeEditingStateReader, nativeEditingStateBindingOwner) {
         onDispose { nativeEditingStateReader?.unbind(nativeEditingStateBindingOwner) }
     }
-    val liveValueForReader = remember { RaftLiveTextFieldValue(value) }
-    SideEffect { liveValueForReader.recordComposed(value) }
-    val onValueChangeRecordingLive: (TextFieldValue) -> Unit =
-        remember(liveValueForReader) {
-            { next ->
-                liveValueForReader.recordEdit(next)
-                currentOnValueChange(next)
-            }
-        }
+    val state = rememberRaftTextFieldState(value, { next -> currentOnValueChange(next) }, traceName = "TextField")
     if (nativeEditingStateReader != null) {
         SideEffect {
             nativeEditingStateReader.bind(nativeEditingStateBindingOwner) { callback ->
-                callback(RaftTextFieldNativeEditorRead(state = liveValueForReader.value.toRaftTextInputState()))
+                callback(RaftTextFieldNativeEditorRead(state = state.toRaftTextFieldValue().toRaftTextInputState()))
             }
         }
     }
-    BasicTextField(
-        value = value,
-        onValueChange = onValueChangeRecordingLive,
+    RaftAppStateTextField(
+        state = state,
     )
 }
 """
@@ -1273,10 +1262,9 @@ onEvent("sendSnapshotUnavailable", "native_editor_unavailable", null, null)
         good_snapshot_composer_page,
     )
     for source_name, token in (
-        ("basic", "val liveValueForReader = remember { RaftLiveTextFieldValue(value) }"),
-        ("basic", "SideEffect { liveValueForReader.recordComposed(value) }"),
-        ("basic", "liveValueForReader.recordEdit(next)"),
-        ("basic", "onValueChange = onValueChangeRecordingLive,"),
+        ("basic", "val state = rememberRaftTextFieldState(value,"),
+        ("basic", "state = state,"),
+        ("basic", "state = state.toRaftTextFieldValue().toRaftTextInputState()"),
         ("basic", "nativeEditingStateReader.bind(nativeEditingStateBindingOwner)"),
         ("basic", "nativeEditingStateReader?.unbind(nativeEditingStateBindingOwner)"),
         ("composer", "if (pendingToken !== token) return false"),
@@ -1302,7 +1290,7 @@ onEvent("sendSnapshotUnavailable", "native_editor_unavailable", null, null)
     try:
         check_composer_native_send_snapshot_wiring(
             good_snapshot_basic_widget.replace(
-                "state = liveValueForReader.value.toRaftTextInputState()",
+                "state = state.toRaftTextFieldValue().toRaftTextInputState()",
                 "state = value.toRaftTextInputState()",
             ),
             good_snapshot_composer_page,
