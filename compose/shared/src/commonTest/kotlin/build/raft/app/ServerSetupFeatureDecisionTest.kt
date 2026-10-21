@@ -59,6 +59,38 @@ class ServerSetupFeatureDecisionTest {
     }
 
     @Test
+    fun aServerThatPassedBeforeKeepsHomeWhileItsCheckReRuns() {
+        val identity = ServerSetupAdmissionIdentity("env", "account", "server", "generation:2")
+        // A server switch restarts the check: Checking / no state / Loading keep Home for a known server.
+        assertTrue(serverSetupStillAllowsHome(previouslyAllowed = true, state = null))
+        assertTrue(serverSetupStillAllowsHome(true, ServerSetupAdmissionState.Loading(identity)))
+        // A fresh Blocked result still takes the screen; an unknown server still waits.
+        assertFalse(serverSetupStillAllowsHome(true, ServerSetupAdmissionState.Blocked(identity, projection(blocksChat = true))))
+        assertFalse(serverSetupStillAllowsHome(false, ServerSetupAdmissionState.Loading(identity)))
+    }
+
+    @Test
+    fun admissionMemoryRecordsAllowedServersAndForgetsBlockedOnes() {
+        ServerSetupAdmissionMemory.clearForTest()
+        val identity = ServerSetupAdmissionIdentity("env", "account", "server", "generation:3")
+        val key = ServerSetupAdmissionMemory.key("env", "account", "server")
+        assertFalse(ServerSetupAdmissionMemory.contains(key))
+        ServerSetupAdmissionMemory.record(key, allowsHome = true, state = null)
+        assertTrue(ServerSetupAdmissionMemory.contains(key))
+        // A check in flight neither adds nor forgets.
+        ServerSetupAdmissionMemory.record(key, allowsHome = false, state = ServerSetupAdmissionState.Loading(identity))
+        assertTrue(ServerSetupAdmissionMemory.contains(key))
+        ServerSetupAdmissionMemory.record(
+            key,
+            allowsHome = false,
+            state = ServerSetupAdmissionState.Blocked(identity, projection(blocksChat = true)),
+        )
+        assertFalse(ServerSetupAdmissionMemory.contains(key))
+        assertFalse(ServerSetupAdmissionMemory.contains(ServerSetupAdmissionMemory.key("env", "other-account", "server")))
+        ServerSetupAdmissionMemory.clearForTest()
+    }
+
+    @Test
     fun cancelledOldIdentityFetchCannotConvertIntoFailureBypass() = runBlocking {
         val started = CompletableDeferred<Unit>()
         val never = CompletableDeferred<HomeNetworkResponse>()

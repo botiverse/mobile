@@ -35,9 +35,45 @@ internal data class ServerSetupAdmissionHost(
     val state: ServerSetupAdmissionState?,
     val retry: () -> Unit,
     val content: @Composable () -> Unit,
+    /** This server already passed the check earlier in this process (see [ServerSetupAdmissionMemory]). */
+    val previouslyAllowed: Boolean = false,
 ) {
     val allowsHome: Boolean
-        get() = serverSetupAllowsHome(featureDecision, state)
+        get() = serverSetupAllowsHome(featureDecision, state) ||
+            serverSetupStillAllowsHome(previouslyAllowed, state)
+}
+
+/**
+ * A server that passed the check before keeps Home while its check re-runs (a server switch
+ * restarts it): the shell no longer blanks to the loading cover for a round trip on every switch.
+ * Only a fresh Blocked or Failed result takes the screen.
+ */
+internal fun serverSetupStillAllowsHome(
+    previouslyAllowed: Boolean,
+    state: ServerSetupAdmissionState?,
+): Boolean =
+    previouslyAllowed && state !is ServerSetupAdmissionState.Blocked && state !is ServerSetupAdmissionState.Failed
+
+/**
+ * Process-wide record of the servers whose setup check allowed Home (Admitted or Bypassed), per
+ * environment and account. Main thread only. A Blocked or Failed result forgets the server.
+ */
+internal object ServerSetupAdmissionMemory {
+    private val allowed = mutableSetOf<String>()
+
+    fun key(environmentId: String, accountId: String, serverId: String): String =
+        "$environmentId|$accountId|$serverId"
+
+    fun contains(key: String): Boolean = key in allowed
+
+    fun record(key: String, allowsHome: Boolean, state: ServerSetupAdmissionState?) {
+        when {
+            allowsHome -> allowed += key
+            state is ServerSetupAdmissionState.Blocked || state is ServerSetupAdmissionState.Failed -> allowed -= key
+        }
+    }
+
+    internal fun clearForTest() = allowed.clear()
 }
 
 internal enum class ServerSetupFeatureDecision { Checking, Bypassed, Enabled }
@@ -127,9 +163,15 @@ internal fun rememberServerSetupAdmissionHost(
     }
 
     val retry = { refreshEpoch += 1 }
+    val memoryKey = ServerSetupAdmissionMemory.key(environmentId, accountId, serverId)
+    val previouslyAllowed = remember(memoryKey) { ServerSetupAdmissionMemory.contains(memoryKey) }
+    LaunchedEffect(memoryKey, featureDecision, state) {
+        ServerSetupAdmissionMemory.record(memoryKey, serverSetupAllowsHome(featureDecision, state), state)
+    }
     return ServerSetupAdmissionHost(
         featureDecision = featureDecision,
         state = state,
+        previouslyAllowed = previouslyAllowed,
         retry = retry,
         content = {
             when {
