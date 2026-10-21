@@ -13,6 +13,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.SideEffect
@@ -181,6 +182,13 @@ fun RaftPagerHost(
         }
     }
 
+    // One composition per pager. [args] changing (e.g. the wide detail pane switching to another
+    // conversation) creates a NEW pager above; without this key its content would run in the old
+    // pager's slot table and every unkeyed `remember` in the page (ThreadPageScreen's payload,
+    // instanceId and adaptive close request) would keep the PREVIOUS page's values: the detail
+    // stayed on the old channel while the shell had already selected the new one. Kuikly gave each
+    // page its own render view, so this is that contract.
+    key(pager) {
     CompositionLocalProvider(
         LocalActivity provides remember(pager) { RaftPageActivity(pager) },
         LocalRaftPageArgs provides args,
@@ -203,6 +211,7 @@ fun RaftPagerHost(
                 }
             }
         }
+    }
     }
 }
 

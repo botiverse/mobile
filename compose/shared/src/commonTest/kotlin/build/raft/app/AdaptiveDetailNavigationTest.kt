@@ -56,6 +56,40 @@ class AdaptiveDetailNavigationTest {
         assertSame(covered, covered.withOpenedDetail(channel.toRaftAdaptiveDetailIdentity("server")!!, channel, defaultLanding = true))
     }
 
+    @Test fun aListTapReplacesAnExistingWideDetailHoweverItArrived() {
+        // Bug A (11500008): with a detail already on screen in the wide pane, tapping another
+        // conversation in the Home or Activity list must hand the NEW payload to the detail.
+        // The detail page itself is rebuilt per payload (RaftPagerHostPageSwapTest).
+        val other = WireThreadLaunchPayload(threadId = "other", sourceThreadId = "other")
+        val otherId = other.toRaftAdaptiveDetailIdentity("server")!!
+        val wide = RaftAdaptivePaneState(widthPx = 1920, heightPx = 1200, density = 1.5f,
+            posture = RaftAdaptivePanePosture.Flat, layout = RaftAdaptivePaneLayout.DualPane)
+        val compact = wide.copy(widthPx = 1200, heightPx = 1920, layout = RaftAdaptivePaneLayout.Compact)
+        val empty = RaftAdaptiveWorkspaceState(shellInstanceId = "shell", serverId = "server", pane = wide)
+        fun SharedAdaptiveWorkspaceSession.window(pane: RaftAdaptivePaneState) =
+            copy(workspace = reduceRaftAdaptiveWorkspace(workspace!!, RaftAdaptiveWorkspaceIntent.WindowChanged(pane)))
+
+        // Cold start wide: the shell's default landing fills the pane.
+        val landed = SharedAdaptiveWorkspaceSession(workspace = empty)
+            .withOpenedDetail(channel.toRaftAdaptiveDetailIdentity("server")!!, channel, defaultLanding = true)
+        // Width change with an existing user-opened detail: compact -> wide keeps it on screen.
+        val resized = session().window(compact).window(wide)
+        assertEquals(RaftAdaptiveWorkspacePresentation.Split, resized.workspace!!.presentation)
+
+        for (before in listOf(landed, resized, session())) {
+            val tapped = before.withOpenedDetail(otherId, other)
+            assertEquals(otherId, tapped.workspace!!.selection!!.identity)
+            assertEquals(other, tapped.launchPayload)
+            assertTrue(tapped.workspace.selection!!.generation > before.workspace!!.selection!!.generation)
+            // The user's pick is never a default landing, so a later compact window keeps it.
+            assertFalse(tapped.workspace.selectionIsDefaultLanding)
+            assertEquals(otherId, tapped.window(compact).workspace!!.selection!!.identity)
+        }
+
+        // #3353 still holds: an untouched landing is dropped by a compact window, not parked in Home.
+        assertNull(landed.window(compact).workspace!!.selection)
+    }
+
     @Test fun returningToTheShellKeepsADetailStillShownBesideTheList() {
         val split = session()
         assertEquals(RaftAdaptiveWorkspacePresentation.Split, split.workspace!!.presentation)
