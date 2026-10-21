@@ -324,6 +324,82 @@ class RaftAdaptiveWorkspaceTest {
         assertEquals("joint-all", resolveRaftAdaptiveHomeLandingId(null, withJointFirst))
     }
 
+    // Hands d5ec0533: a transient wide window (phone briefly landscape) while the user was in a
+    // pushed channel/thread stack auto-landed #proj-mobile in the wide detail. Back in portrait,
+    // backing out of the stack revealed that auto-picked channel as a compact DetailOnly page
+    // inside the Home tab instead of the Home list.
+    @Test
+    fun defaultLandingIsRefusedWhileTheShellIsCoveredByPushedPages() {
+        val covered =
+            initialState()
+                .reduce(RaftAdaptiveWorkspaceIntent.WindowChanged(widePane()))
+                .reduce(RaftAdaptiveWorkspaceIntent.ParentVisibilityChanged(false))
+
+        assertFalse(covered.acceptsAdaptiveDefaultLanding())
+        val landed = covered.reduce(RaftAdaptiveWorkspaceIntent.LandDefaultDetail(detailIdentity("proj-mobile")))
+        assertNull(landed.selection)
+
+        val back = landed.reduce(RaftAdaptiveWorkspaceIntent.ParentVisibilityChanged(true))
+        assertEquals(RaftAdaptiveWorkspacePresentation.ListOnly, back.presentation)
+    }
+
+    @Test
+    fun defaultLandingDoesNotSurviveTheWindowLeavingDualPane() {
+        val wide =
+            initialState()
+                .reduce(RaftAdaptiveWorkspaceIntent.WindowChanged(widePane()))
+                .reduce(RaftAdaptiveWorkspaceIntent.LandDefaultDetail(detailIdentity("all")))
+        val landed = wide.selection ?: error("landing missing")
+        assertEquals(RaftAdaptiveWorkspacePresentation.Split, wide.presentation)
+        assertTrue(wide.selectionIsDefaultLanding)
+
+        val compact =
+            wide.reduce(
+                RaftAdaptiveWorkspaceIntent.WindowChanged(
+                    widePane().copy(layout = RaftAdaptivePaneLayout.Compact)
+                )
+            )
+
+        assertNull(compact.selection)
+        assertEquals(RaftAdaptiveWorkspacePresentation.ListOnly, compact.presentation)
+        assertFalse(compact.acceptsDetailCallback(landed.identity.key, landed.generation))
+    }
+
+    @Test
+    fun defaultLandingNeverReplacesAUserSelection() {
+        val opened =
+            initialState()
+                .reduce(RaftAdaptiveWorkspaceIntent.WindowChanged(widePane()))
+                .reduce(RaftAdaptiveWorkspaceIntent.OpenDetail(detailIdentity("thread-a")))
+
+        assertEquals(
+            opened,
+            opened.reduce(RaftAdaptiveWorkspaceIntent.LandDefaultDetail(detailIdentity("all"))),
+        )
+    }
+
+    @Test
+    fun userOpeningTheLandedConversationKeepsCompactContinuity() {
+        val identity = detailIdentity("all")
+        val landed =
+            initialState()
+                .reduce(RaftAdaptiveWorkspaceIntent.WindowChanged(widePane()))
+                .reduce(RaftAdaptiveWorkspaceIntent.LandDefaultDetail(identity))
+        val generation = landed.selection?.generation ?: error("landing missing")
+        val adopted = landed.reduce(RaftAdaptiveWorkspaceIntent.OpenDetail(identity))
+        assertFalse(adopted.selectionIsDefaultLanding)
+        assertEquals(generation, adopted.selection?.generation)
+
+        val compact =
+            adopted.reduce(
+                RaftAdaptiveWorkspaceIntent.WindowChanged(
+                    widePane().copy(layout = RaftAdaptivePaneLayout.Compact)
+                )
+            )
+        assertEquals(RaftAdaptiveWorkspacePresentation.DetailOnly, compact.presentation)
+        assertEquals(identity, compact.selection?.identity)
+    }
+
     private fun initialState(): RaftAdaptiveWorkspaceState =
         RaftAdaptiveWorkspaceState(
             shellInstanceId = "shell-a",
