@@ -3385,6 +3385,31 @@ class KmpVisualScreenshotCaptureTest {
         )
     }
 
+    // The whole phone Home root (top bar, Saved, Pinned / Joint / Channels / DMs, tab bar) from
+    // the fixture the React case seeds (slock shared/homeChannelListFixture.json). The page pins
+    // the app theme from pageData.appearance and restores it when the activity closes.
+    @Test
+    fun captureHomeChannelList() {
+        captureKmpComponentCase(
+            caseId = "screens.home.channel-list",
+            pageName = "compose_home_channel_list_visual",
+            pageData = JSONObject().put("appearance", "light"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
+    fun captureHomeChannelListDark() {
+        captureKmpComponentCase(
+            caseId = "screens.home.channel-list.dark",
+            pageName = "compose_home_channel_list_visual",
+            pageData = JSONObject().put("appearance", "dark"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500
+        )
+    }
+
     @Test
     fun captureTasksPanelStates() {
         captureKmpComponentCase(
