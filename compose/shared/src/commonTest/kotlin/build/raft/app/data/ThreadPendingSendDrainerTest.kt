@@ -239,9 +239,11 @@ class ThreadPendingSendDrainerTest {
         val send = RecordingSend()
         send.throwables += RaftRequestTimeoutException("send request exceeded 30000ms")
         send.results += ThreadApiResult.Success(successPage())
-        val drainer = drainer(store = store, send = send.handler)
+        val wakeups = mutableListOf<Long>()
+        val drainer = drainer(store = store, send = send.handler, wakeups = wakeups)
 
         drainer.drainOnceForTests("send_failed")
+        assertEquals(listOf(0L), wakeups)
         drainer.drainOnceForTests("backoff")
 
         assertEquals(listOf("local-1" to "thread_send_timeout"), store.markFailedCalls)
@@ -328,7 +330,10 @@ class ThreadPendingSendDrainerTest {
         policy: RetryPolicy = RetryPolicy(maxAttempts = 4, baseDelayMillis = 0L, maxDelayMillis = 0L),
         realtimeTriggerMinIntervalMs: Long = 0L,
         scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-        wakeups: MutableList<Long>? = null,
+        // Always capture backoff wakeups. A real wakeup would launch a second drain pass on
+        // Dispatchers.Default that races the pass the test drives with drainOnceForTests and
+        // can send the same row an extra time (the flaky timeoutExceptionIsClassifiedAndBackedOff).
+        wakeups: MutableList<Long> = mutableListOf(),
     ): ThreadPendingSendDrainer =
         ThreadPendingSendDrainer(
             drainStore = store,
@@ -340,7 +345,7 @@ class ThreadPendingSendDrainerTest {
             onRowFailed = onRowFailed,
             policy = policy,
             realtimeTriggerMinIntervalMs = realtimeTriggerMinIntervalMs,
-            wakeupSchedulerOverride = wakeups?.let { captured -> { ms -> captured += ms } },
+            wakeupSchedulerOverride = { ms -> wakeups += ms },
         )
 
     private fun provenance() =
