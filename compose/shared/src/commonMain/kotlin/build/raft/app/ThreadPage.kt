@@ -28998,7 +28998,9 @@ internal fun threadMessageMenuCapabilities(
         slice.showReplyActions || slice.originMessage?.id == message.id
     return ThreadMessageMenuCapabilities(
         quickReactions = canReact,
-        addReaction = canReact,
+        // Web's message menu has no "Add reaction" row (only the quick-reaction row); the full
+        // picker is the "+" beside a message's reactions (artin, 2026-10-21).
+        addReaction = false,
         copyLink = !localSend,
         selectMessage = !localSend && !system && !slice.viewerIsGuest,
         translate = if (localSend) ThreadMessageMenuTranslateState.Hidden else translate,
