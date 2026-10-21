@@ -233,7 +233,8 @@ private fun MembersAgentActivityNowCard(
             now.dotColor()?.let { RaftStatusDot(color = it, size = RaftStatusSize.Lg) }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 RaftText(
-                    text = now.label,
+                    // Same localized caption as the profile badge (raw free-text activity passes through).
+                    text = now.indicator?.copy(label = now.label)?.localizedMemberStatusLabel() ?: now.label,
                     style = typography.headline.copy(fontWeight = FontWeight.Bold),
                     color = colors.foreground,
                     maxLines = 2,
