@@ -153,3 +153,10 @@ internal fun <T> List<T>.orderedLikeWebRail(key: (T) -> String): List<T> =
     sortedBy { item ->
         AppShellRailWebOrder.indexOf(key(item)).let { if (it < 0) AppShellRailWebOrder.size else it }
     }
+
+/** Where a conversation search's "Search all" shows its query in the app shell. */
+internal enum class AppShellSearchHandoffTarget { SearchTab, RailInlineSearch }
+
+/** The phone bar has the Search tab; the wide rail has its inline Search entry instead. */
+internal fun appShellSearchHandoffTarget(navRailActive: Boolean): AppShellSearchHandoffTarget =
+    if (navRailActive) AppShellSearchHandoffTarget.RailInlineSearch else AppShellSearchHandoffTarget.SearchTab

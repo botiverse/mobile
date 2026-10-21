@@ -1034,8 +1034,10 @@ private fun HomeSearchRouterContent(
         onExpandToSearchTab =
             if (normalizedInitialChannelId != null && !environment.tabRoot && environment.inlineOnClose == null) {
                 { query ->
-                    RaftSearchTabHandoff.request(query)
-                    environment.pager.closeHomeSecondaryPage()
+                    // Only hand off while an app shell is alive to take it; otherwise stay here.
+                    if (RaftSearchTabHandoff.request(query, shellAlive = AppShellChildTabRegistry.hasEntries())) {
+                        environment.pager.closeHomeSecondaryPage()
+                    }
                 }
             } else {
                 null

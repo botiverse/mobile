@@ -11,6 +11,14 @@ internal class ComposeRaftAppShellPage : build.raft.app.base.BasePager() {
     private var initialAuthRestoreTick by mutableStateOf(0)
     private var adaptivePane by mutableStateOf(RaftAdaptivePaneState())
     private var conversationForwardRequestTick by mutableStateOf(0)
+    private var searchHandoff by mutableStateOf<RaftSearchTabQueryRequest?>(null)
+
+    override val raftSearchTabHandoffRole: RaftSearchTabHandoffRole
+        get() = RaftSearchTabHandoffRole.Shell
+
+    override fun onRaftSearchTabHandoff(request: RaftSearchTabQueryRequest) {
+        searchHandoff = request
+    }
 
     override fun willInit() {
         super.willInit()
@@ -22,7 +30,9 @@ internal class ComposeRaftAppShellPage : build.raft.app.base.BasePager() {
                     initialAuthRestoreTick = initialAuthRestoreTick,
                     pageVisible = raftPageVisible,
                     adaptivePane = adaptivePane,
-                    conversationForwardRequestTick = conversationForwardRequestTick
+                    conversationForwardRequestTick = conversationForwardRequestTick,
+                    searchHandoff = searchHandoff,
+                    onSearchHandoffApplied = { searchHandoff = null }
                 )
             }
         }

@@ -54,13 +54,23 @@ internal fun rememberHomeSearchReturnHighlight(
         val key = homeSearchReturnHighlightKey(highlight.openedKey, pageVisible) ?: return@LaunchedEffect
         highlight.openedKey = null
         highlight.shownKey = key
-        highlight.alpha.snapTo(1f)
-        // Hold the mark for a moment, then fade it out; [HomeSearchReturnHighlightMillis] in all.
-        highlight.alpha.animateTo(
-            0f,
-            tween(HomeSearchReturnHighlightMillis - HomeSearchReturnHighlightHoldMillis, delayMillis = HomeSearchReturnHighlightHoldMillis, easing = LinearEasing)
-        )
-        highlight.shownKey = null
+        try {
+            highlight.alpha.snapTo(1f)
+            // Hold the mark for a moment, then fade it out; [HomeSearchReturnHighlightMillis] in all.
+            highlight.alpha.animateTo(
+                0f,
+                tween(
+                    HomeSearchReturnHighlightMillis - HomeSearchReturnHighlightHoldMillis,
+                    delayMillis = HomeSearchReturnHighlightHoldMillis,
+                    easing = LinearEasing
+                )
+            )
+        } finally {
+            // Leaving mid-fade (the page left again, the tab was disposed) must not leave the mark;
+            // a newer mark started meanwhile keeps its own key. No suspending call here: this also
+            // runs on cancellation.
+            if (highlight.shownKey == key) highlight.shownKey = null
+        }
     }
     return highlight
 }

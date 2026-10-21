@@ -1,6 +1,12 @@
 package build.raft.app.base
 
 import build.raft.app.RaftEnvironmentIndicatorHost
+import build.raft.app.RAFT_EMBEDDED_CHILD_PAGE_PARAM
+import build.raft.app.RaftSearchTabHandoff
+import build.raft.app.RaftSearchTabHandoffAction
+import build.raft.app.RaftSearchTabHandoffRole
+import build.raft.app.RaftSearchTabQueryRequest
+import build.raft.app.compat.module.RouterModule
 import build.raft.app.raftEnvironmentIndicatorEnabledForPage
 import build.raft.app.raftLogError
 import build.raft.app.raftLogInfo
@@ -72,6 +78,33 @@ internal abstract class BasePager : ComposeContainer() {
             raftPageVisibleResumeTick += 1
         }
         onRaftPageDidAppear(isInitialAppearance = initialAppearance)
+        handleSearchTabHandoff(initialAppearance)
+    }
+
+    /**
+     * Nav spec §10.5 "Search all": while a handoff is pending, a page stacked over the app shell
+     * that reappears closes itself, so the stack pops back to the shell; the shell consumes it
+     * ([raftSearchTabHandoffRole]). Embedded child pages never act.
+     */
+    protected open val raftSearchTabHandoffRole: RaftSearchTabHandoffRole
+        get() =
+            if (pageData.params.optBoolean(RAFT_EMBEDDED_CHILD_PAGE_PARAM, false)) {
+                RaftSearchTabHandoffRole.Ignore
+            } else {
+                RaftSearchTabHandoffRole.PopToShell
+            }
+
+    /** The shell's handoff consumer (it reads the request when it shows again). */
+    protected open fun onRaftSearchTabHandoff(request: RaftSearchTabQueryRequest) = Unit
+
+    private fun handleSearchTabHandoff(initialAppearance: Boolean) {
+        when (RaftSearchTabHandoff.onPageAppeared(raftSearchTabHandoffRole, initialAppearance)) {
+            RaftSearchTabHandoffAction.ClosePage ->
+                acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+            RaftSearchTabHandoffAction.Consume ->
+                RaftSearchTabHandoff.consume()?.let(::onRaftSearchTabHandoff)
+            RaftSearchTabHandoffAction.None -> Unit
+        }
     }
 
     override fun pageDidDisappear() {

@@ -1963,16 +1963,6 @@ internal class ComposeThreadPage : AuthenticatedProductPager(AuthenticatedProduc
         adaptivePaneState = reduceRaftAdaptivePane(adaptivePaneState, event)
         adaptivePaneEvent = event
     }
-    // A conversation search's "Search all" returns to the app shell's Search tab: this page,
-    // reappearing on the way back, closes too (an embedded detail pane is part of the shell).
-    override fun onRaftPageDidAppear(isInitialAppearance: Boolean) {
-        if (
-            !pageData.params.optBoolean(RAFT_EMBEDDED_CHILD_PAGE_PARAM, false) &&
-            RaftSearchTabHandoff.closesPushedPages()
-        ) {
-            acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
-        }
-    }
 }
 
 @Page(THREAD_MEMBERS_PAGE, supportInLocal = true)

@@ -842,6 +842,9 @@ internal object AppShellChildTabRegistry {
     }
 
     fun entry(shellId: String): AppShellChildTabEntry? = entries[shellId]
+
+    /** True while an app shell is composed (it registers its child tabs). */
+    fun hasEntries(): Boolean = entries.isNotEmpty()
 }
 
 internal fun sharedSettingsResolvedWebBaseUrl(webUrl: String?): String =
@@ -2181,7 +2184,9 @@ internal fun RaftAppShellContent(
     initialAuthRestoreTick: Int = 0,
     pageVisible: Boolean = true,
     adaptivePane: RaftAdaptivePaneState = RaftAdaptivePaneState(),
-    conversationForwardRequestTick: Int = 0
+    conversationForwardRequestTick: Int = 0,
+    searchHandoff: RaftSearchTabQueryRequest? = null,
+    onSearchHandoffApplied: () -> Unit = {}
 ) {
     // #85 follow-up: seed the KmmResource `StringDesc.localeType`
     // global from the persisted `AppLocale` as early as possible
@@ -2203,6 +2208,8 @@ internal fun RaftAppShellContent(
                 pageVisible = pageVisible,
                 adaptivePane = adaptivePane,
                 conversationForwardRequestTick = conversationForwardRequestTick,
+                searchHandoff = searchHandoff,
+                onSearchHandoffApplied = onSearchHandoffApplied,
                 sharedStores = databaseLaunchAttempt.value,
             )
         is RaftDatabaseLaunchAttempt.UpgradeRequired -> {
@@ -2237,6 +2244,8 @@ private fun RaftAppShellReadyContent(
     pageVisible: Boolean,
     adaptivePane: RaftAdaptivePaneState,
     conversationForwardRequestTick: Int,
+    searchHandoff: RaftSearchTabQueryRequest? = null,
+    onSearchHandoffApplied: () -> Unit = {},
     sharedStores: RaftSharedStoreProvider,
 ) {
     val errorStrings = localizedErrorPresentationStrings()
@@ -5297,14 +5306,25 @@ private fun RaftAppShellReadyContent(
         retainedAppShellTabs = retainedAppShellTabs + AppShellSearchTabKey
     }
 
-    // Nav spec §10.5: a conversation search's "Search all" closed the pages above the shell;
-    // once the shell shows again it selects the Search tab with that query.
-    LaunchedEffect(pageVisible) {
-        if (!pageVisible) return@LaunchedEffect
-        val request = RaftSearchTabHandoff.consume() ?: return@LaunchedEffect
-        bridge.log("app_shell_search_handoff nonce=${request.nonce} queryLength=${request.query.length}")
+    // Nav spec §10.5: a conversation search's "Search all" popped the pages above the shell,
+    // which took the request once (ComposeRaftAppShellPage). Show Search with that query: the
+    // phone Search tab, or the rail's inline Search on the wide layout. The search page clears
+    // [searchTabQueryRequest] once it has applied it.
+    LaunchedEffect(searchHandoff?.nonce) {
+        val request = searchHandoff ?: return@LaunchedEffect
+        val navRail =
+            raftAdaptiveNavRailActive(
+                desktopModeEnabled = desktopModeOnLargeScreen,
+                paneState = shellScope.adaptivePane
+            )
+        val target = appShellSearchHandoffTarget(navRail)
+        bridge.log("app_shell_search_handoff nonce=${request.nonce} queryLength=${request.query.length} target=$target")
         searchTabQueryRequest = request
-        openSearchTab(source = "conversation_search_expand")
+        when (target) {
+            AppShellSearchHandoffTarget.SearchTab -> openSearchTab(source = "conversation_search_expand")
+            AppShellSearchHandoffTarget.RailInlineSearch -> railInlineSecondaryDestination = AppShellRailSearchKey
+        }
+        onSearchHandoffApplied()
     }
 
     val handleAppShellBack by rememberUpdatedState {
@@ -7501,6 +7521,8 @@ private fun RaftAppShellReadyContent(
                                 routeVisibleTick = pageVisibleTick,
                                 initialSearchFocusInput = false,
                                 adaptivePane = shellScope.adaptivePane,
+                                searchQueryRequest = searchTabQueryRequest.takeIf { railInlineDestination == HomeDestinationSearch },
+                                onSearchQueryApplied = { searchTabQueryRequest = null },
                                 inlineOpenRequest = { request, source ->
                                     openHomeMessageRequest(request, source)
                                 },
