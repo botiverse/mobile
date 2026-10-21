@@ -47,6 +47,7 @@ import build.raft.app.data.SharedHomeShellDestinationSaved
 import build.raft.app.data.SharedHomeShellDestinationSearch
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SharedHomeStore
+import build.raft.app.data.homeStateForPage
 import build.raft.app.data.SharedHomeViewModel
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.RaftAuthSessionStore
@@ -784,10 +785,8 @@ private fun HomeSearchRouterContent(
         }
     val homeState by homeViewModel.state.collectAsState()
     val sharedHomeStateFlow =
-        remember(environment.sharedHomeStore) {
-            environment.sharedHomeStore?.state ?: flowOf(SharedHomeState())
-        }
-    val sharedHomeState by sharedHomeStateFlow.collectAsState(SharedHomeState())
+        remember(environment.sharedHomeStore) { environment.sharedHomeStore.homeStateForPage() }
+    val sharedHomeState by sharedHomeStateFlow.collectAsState()
     val pinnedItems =
         remember(sharedHomeState.content, homeState.content) {
             val sidebarOrder =
