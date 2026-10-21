@@ -30,11 +30,15 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.remember
+import build.raft.app.components.RaftSlotIcon
+import build.raft.designsystem.components.RaftComboboxOption
+import build.raft.designsystem.components.RaftComboboxSheet
+import build.raft.designsystem.components.RaftMultiComboboxSheet
 
 private const val RaftFilterPopoverWidthValue = 220f
 private const val RaftFilterPopoverVerticalOffsetValue = 8f
@@ -133,80 +137,6 @@ internal fun RaftFilterPopover(
                         containerTapRequestsFocus = true,
                         showClearWhenNotEmpty = true,
                         onClear = { onSearchChange("") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            } else {
-                null
-            }
-    )
-}
-
-@Suppress("UNUSED_PARAMETER")
-@Composable
-internal fun RaftFilterPopover(
-    anchor: RaftPopoverAnchor?,
-    title: String,
-    searchPlaceholder: String,
-    searchText: TextFieldValue,
-    onSearchChange: (TextFieldValue) -> Unit,
-    options: List<RaftFilterOption>,
-    selectedIds: Set<String>,
-    onToggle: (String) -> Unit,
-    onClear: () -> Unit,
-    onDismiss: () -> Unit,
-    widthDp: Float = RaftFilterPopoverWidthValue,
-    horizontalOffsetDp: Float = 0f,
-    verticalOffsetDp: Float = RaftFilterPopoverVerticalOffsetValue,
-    multiSelect: Boolean = true,
-    surfaceBorderColor: Color = RaftColor.BorderBlack,
-    surfaceShadowColor: Color = RaftColor.ShadowBlack,
-    selectedRowColor: Color = RaftColor.AppBgLightBlue.copy(alpha = 0.28f),
-    searchable: Boolean = true,
-    showClearWhenSelected: Boolean = multiSelect,
-    headerSlot: (@Composable () -> Unit)? = null
-) {
-    if (anchor == null) return
-    val filtered =
-        if (searchText.text.isBlank()) options
-        else options.filter { it.label.contains(searchText.text, ignoreCase = true) }
-    RaftLookFilterPopover(
-        anchor = anchor,
-        title = title,
-        filtered = filtered,
-        selectedIds = selectedIds,
-        onToggle = onToggle,
-        onClear = onClear,
-        onDismiss = onDismiss,
-        widthDp = widthDp,
-        horizontalOffsetDp = horizontalOffsetDp,
-        verticalOffsetDp = verticalOffsetDp,
-        multiSelect = multiSelect,
-        showClearWhenSelected = showClearWhenSelected,
-        headerSlot = headerSlot,
-        searchField =
-            if (searchable) {
-                {
-                    RaftBrutalInputField(
-                        value = searchText,
-                        onValueChange = onSearchChange,
-                        placeholder = searchPlaceholder,
-                        autoFocus = false,
-                        maxLines = 1,
-                        textStyle = RaftFilterPopoverInputStyle(),
-                        fieldMinHeight = RaftFilterSearchHeight,
-                        horizontalPadding = RaftFilterSearchPaddingHorizontal,
-                        verticalPadding = 0.dp,
-                        showShadow = false,
-                        // The search row is chromeless: only the hairline below it.
-                        borderColor = Color.Transparent,
-                        enabledBackgroundColor = Color.Transparent,
-                        placeholderColor = RaftColor.ForegroundHint,
-                        // The whole 40dp row focuses the editor (iOS's native hit
-                        // region is smaller than the row).
-                        containerTapRequestsFocus = true,
-                        showClearWhenNotEmpty = true,
-                        onClear = { onSearchChange(TextFieldValue("")) },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -384,5 +314,82 @@ private fun RaftLookFilterPopover(
                 }
             }
         }
+    }
+}
+
+/**
+ * A searchable filter or picker opened from a chip (Tasks' channel / creator / assignee
+ * filters and assignee picker, Search's sender and channel filters): on a phone, raft-ui
+ * ComboboxSelect is a bottom sheet with search ([RaftMultiComboboxSheet] /
+ * [RaftComboboxSheet]), not a popover under the chip. Same callbacks as
+ * [RaftFilterPopover]: [onToggle] per changed id, [onClear] for "clear all"; a one-value
+ * pick ([multiSelect] false) closes the sheet. An empty list says [status] when given (a
+ * load in progress or its error), else "No matches". The short fixed lists (sort, time,
+ * scope) stay anchored popovers.
+ */
+@Composable
+internal fun RaftFilterSheet(
+    title: String,
+    searchPlaceholder: String,
+    searchText: String,
+    onSearchChange: (String) -> Unit,
+    options: List<RaftFilterOption>,
+    selectedIds: Set<String>,
+    onToggle: (String) -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit,
+    multiSelect: Boolean = true,
+    showClear: Boolean = multiSelect,
+    status: String? = null
+) {
+    val comboboxOptions = remember(options) { options.map { RaftComboboxOption(it.id, it.label) } }
+    val icons = remember(options) { options.mapNotNull { option -> option.icon?.let { option.id to it } }.toMap() }
+    val leading: (@Composable (RaftComboboxOption<String>) -> Unit)? =
+        if (icons.isEmpty()) {
+            null
+        } else {
+            { option -> icons[option.value]?.let { RaftSlotIcon(it, size = 16.dp) } }
+        }
+    val noMatches = stringResource(MR.strings.common_no_matches)
+    val emptyFor: (String) -> String = { status ?: noMatches }
+    val clearLabel = stringResource(MR.strings.common_clear)
+    if (multiSelect) {
+        RaftMultiComboboxSheet(
+            values = options.map { it.id }.filter { it in selectedIds },
+            options = comboboxOptions,
+            onValuesChange = { next ->
+                if (next.isEmpty()) {
+                    onClear()
+                } else {
+                    val nextSet = next.toSet()
+                    (selectedIds - nextSet).forEach(onToggle)
+                    (nextSet - selectedIds).forEach(onToggle)
+                }
+            },
+            onDismissRequest = onDismiss,
+            title = title,
+            emptyText = emptyFor,
+            query = searchText,
+            onQueryChange = onSearchChange,
+            searchPlaceholder = searchPlaceholder,
+            doneLabel = stringResource(MR.strings.common_done),
+            clearLabel = clearLabel.takeIf { showClear },
+            optionLeading = leading
+        )
+    } else {
+        RaftComboboxSheet(
+            value = selectedIds.firstOrNull(),
+            options = comboboxOptions,
+            onValueChange = onToggle,
+            onDismissRequest = onDismiss,
+            title = title,
+            emptyText = emptyFor,
+            query = searchText,
+            onQueryChange = onSearchChange,
+            searchPlaceholder = searchPlaceholder,
+            onClear = onClear.takeIf { showClear },
+            clearLabel = clearLabel,
+            optionLeading = leading
+        )
     }
 }

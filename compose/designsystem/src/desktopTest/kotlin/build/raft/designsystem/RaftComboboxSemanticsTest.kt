@@ -25,9 +25,11 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import build.raft.designsystem.components.RaftCombobox
 import build.raft.designsystem.components.RaftComboboxOption
+import build.raft.designsystem.components.RaftComboboxSheet
 import build.raft.designsystem.components.RaftComboboxSheetThreshold
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftMultiCombobox
+import build.raft.designsystem.components.RaftMultiComboboxSheet
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
@@ -185,5 +187,84 @@ class RaftComboboxSemanticsTest {
             waitForIdle()
             assertEquals(emptyList<String>(), values)
             onNodeWithContentDescription("Models, Add models").assertExists()
+        }
+
+    /** A sheet opened by the caller's own trigger: the caller's query filters; a pick closes it; Clear clears. */
+    @Test
+    fun aComboboxSheetFiltersByTheCallersQueryAndAPickCloses() =
+        runComposeUiTest {
+            var open by mutableStateOf(true)
+            var value by mutableStateOf<String?>("opus")
+            var query by mutableStateOf("")
+            var cleared = false
+            setContent(
+                themed {
+                    if (open) {
+                        RaftComboboxSheet(
+                            value = value,
+                            options = models,
+                            onValueChange = { value = it },
+                            onDismissRequest = { open = false },
+                            title = "Model",
+                            emptyText = noModels,
+                            query = query,
+                            onQueryChange = { query = it },
+                            onClear = { cleared = true },
+                        )
+                    }
+                },
+            )
+            onNode(hasSetTextAction()).assertIsNotFocused()
+            onNode(hasSetTextAction()).performTextInput("codex")
+            waitForIdle()
+            assertEquals("codex", query)
+            onAllNodes(selectableRow).assertCountEquals(1)
+            onNode(option("GPT-5 Codex")).performClick()
+            waitForIdle()
+            assertEquals("codex", value)
+            assertEquals(false, open)
+
+            open = true
+            waitForIdle()
+            onNodeWithText("Clear").performClick()
+            waitForIdle()
+            assertEquals(true, cleared)
+            assertEquals(false, open)
+        }
+
+    /** The multiple sheet for the caller's own trigger stays open across picks until Done. */
+    @Test
+    fun aMultiComboboxSheetKeepsOpenUntilDone() =
+        runComposeUiTest {
+            var open by mutableStateOf(true)
+            var values by mutableStateOf(listOf<String>())
+            var query by mutableStateOf("")
+            setContent(
+                themed {
+                    if (open) {
+                        RaftMultiComboboxSheet(
+                            values = values,
+                            options = models,
+                            onValuesChange = { values = it },
+                            onDismissRequest = { open = false },
+                            title = "Models",
+                            emptyText = noModels,
+                            query = query,
+                            onQueryChange = { query = it },
+                        )
+                    }
+                },
+            )
+            onNode(option("Claude Opus")).performClick()
+            onNode(option("Claude Sonnet")).performClick()
+            waitForIdle()
+            assertEquals(listOf("opus", "sonnet"), values)
+            assertEquals(true, open)
+            onNodeWithText("Clear").performClick()
+            waitForIdle()
+            assertEquals(emptyList<String>(), values)
+            onNodeWithText("Done").performClick()
+            waitForIdle()
+            assertEquals(false, open)
         }
 }

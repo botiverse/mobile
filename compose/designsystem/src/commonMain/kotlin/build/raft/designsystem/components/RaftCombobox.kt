@@ -411,6 +411,105 @@ fun <T> RaftMultiCombobox(
 }
 
 /**
+ * [RaftCombobox]'s bottom sheet for a trigger of the caller's own (a filter chip, a toolbar
+ * button) rather than the select field: shown while composed, closed by [onDismissRequest]
+ * (Back, a tap on the scrim). Titled [title], with the search row at the top ([query] is
+ * the caller's, so it can survive the sheet; options are filtered by it here) and the list
+ * filling the sheet; the search row waits for a tap. Picking a row calls [onValueChange]
+ * and then [onDismissRequest]. With [onClear], [clearLabel] at the end of the title clears
+ * the value and closes the sheet.
+ */
+@Composable
+fun <T> RaftComboboxSheet(
+    value: T?,
+    options: List<RaftComboboxOption<T>>,
+    onValueChange: (T) -> Unit,
+    onDismissRequest: () -> Unit,
+    title: String,
+    emptyText: (query: String) -> String,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    searchPlaceholder: String = "Search",
+    onClear: (() -> Unit)? = null,
+    clearLabel: String = "Clear",
+    optionLeading: (@Composable (RaftComboboxOption<T>) -> Unit)? = null,
+) {
+    RaftSheetWindow(onDismissRequest = onDismissRequest) { surfaceModifier ->
+        RaftComboboxSheetSurface(
+            title = title,
+            query = query,
+            onQueryChange = onQueryChange,
+            options = options,
+            isSelected = { it == value },
+            onPick = { option ->
+                if (option.value != value) onValueChange(option.value)
+                onDismissRequest()
+            },
+            emptyText = emptyText,
+            modifier = surfaceModifier,
+            searchPlaceholder = searchPlaceholder,
+            onClear =
+                if (onClear != null && value != null) {
+                    {
+                        onClear()
+                        onDismissRequest()
+                    }
+                } else {
+                    null
+                },
+            clearLabel = clearLabel,
+            optionLeading = optionLeading,
+            inWindow = true,
+        )
+    }
+}
+
+/**
+ * [RaftMultiCombobox]'s bottom sheet for a trigger of the caller's own (a filter chip):
+ * shown while composed. Picking a row adds or removes its value ([onValuesChange]) and
+ * keeps the sheet open; [doneLabel], Back and a tap on the scrim call [onDismissRequest].
+ * With values chosen, [clearLabel] (null: none) clears them all. [query] as in
+ * [RaftComboboxSheet].
+ */
+@Composable
+fun <T> RaftMultiComboboxSheet(
+    values: List<T>,
+    options: List<RaftComboboxOption<T>>,
+    onValuesChange: (List<T>) -> Unit,
+    onDismissRequest: () -> Unit,
+    title: String,
+    emptyText: (query: String) -> String,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    searchPlaceholder: String = "Search",
+    doneLabel: String = "Done",
+    clearLabel: String? = "Clear",
+    optionLeading: (@Composable (RaftComboboxOption<T>) -> Unit)? = null,
+) {
+    RaftSheetWindow(onDismissRequest = onDismissRequest) { surfaceModifier ->
+        RaftComboboxSheetSurface(
+            title = title,
+            query = query,
+            onQueryChange = onQueryChange,
+            options = options,
+            isSelected = { it in values },
+            onPick = { option ->
+                onValuesChange(if (option.value in values) values.filter { it != option.value } else values + option.value)
+            },
+            emptyText = emptyText,
+            modifier = surfaceModifier,
+            searchPlaceholder = searchPlaceholder,
+            onClear = if (clearLabel != null && values.isNotEmpty()) { { onValuesChange(emptyList()) } } else null,
+            clearLabel = clearLabel ?: "",
+            onDone = onDismissRequest,
+            doneLabel = doneLabel,
+            optionLeading = optionLeading,
+            inWindow = true,
+        )
+    }
+}
+
+/**
  * raft-ui ComboboxChips as a trigger: the field of a [RaftMultiCombobox]. The select
  * trigger's frame and states (44dp minimum, control radius, 1dp `line-field` on
  * `layer-card`, pressed, focus ring, [invalid] `danger-strong`, disabled `fill-muted`),
