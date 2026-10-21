@@ -12,6 +12,7 @@ class AuthenticatedProductRouteTest {
                 THREAD_PAGE,
                 THREAD_MEMBERS_PAGE,
                 CHANNEL_SETTINGS_PAGE,
+                JOINT_CHANNEL_CONNECTIONS_PAGE,
                 THREAD_FORWARD_BUNDLE_PAGE,
                 HOME_SEARCH_PAGE,
                 HOME_SAVED_PAGE,

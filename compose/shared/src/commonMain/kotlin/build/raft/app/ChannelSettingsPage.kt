@@ -11,7 +11,16 @@ import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftBrutalCard
 import build.raft.app.components.RaftSwitchButton
+import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.HomeChannelRow
+import build.raft.app.data.ScreenError
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftDialog
+import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftListRowChevron
+import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedServerChannelMembersSlice
@@ -110,6 +119,14 @@ internal fun channelSettingsCanMakePrivate(channel: HomeChannelRow): Boolean =
 
 internal fun channelSettingsCanDelete(channel: HomeChannelRow): Boolean =
     !channelSettingsIsJoint(channel)
+
+/**
+ * Web EditChannelDialog: a completed joint channel shows "Disconnect Channel" where other channels
+ * show Delete, hidden once archived. The route itself is gated on `federateChannels` (owner/admin),
+ * which is the same role set as [ChannelSettingsState.canManage].
+ */
+internal fun channelSettingsCanDisconnect(channel: HomeChannelRow): Boolean =
+    channelSettingsIsJoint(channel) && !channel.archived
 
 @Page(CHANNEL_SETTINGS_PAGE, supportInLocal = true)
 internal class ComposeChannelSettingsPage : AuthenticatedProductPager(AuthenticatedProductRoute.ChannelSettings) {
@@ -217,6 +234,9 @@ private fun ChannelSettingsPageScreen() {
     val updateFailedLabel = stringResource(MR.strings.thread_settings_update_failed)
     val archiveFailedLabel = stringResource(MR.strings.thread_error_archive_channel)
     val deleteFailedLabel = stringResource(MR.strings.thread_error_delete_channel)
+    val disconnectFailedLabel = stringResource(MR.strings.joint_disconnect_failed)
+    val errorStrings = localizedErrorPresentationStrings()
+    var disconnectConfirm by remember(route) { mutableStateOf(false) }
 
     LaunchedEffect(settingsStore, liveOwner, routeOwner) {
         if (liveOwner == routeOwner) {
@@ -252,8 +272,11 @@ private fun ChannelSettingsPageScreen() {
                 homeStore?.dispatch(SharedHomeIntent.Refresh)
             }
             is ChannelSettingsEffect.Failure -> {
+                disconnectConfirm = false
                 bridge.toast(
                     when (effect.action) {
+                        ChannelSettingsAction.Disconnect ->
+                            channelSettingsDisconnectFailureMessage(effect, errorStrings, disconnectFailedLabel)
                         ChannelSettingsAction.Delete -> deleteFailedLabel
                         ChannelSettingsAction.Archive -> archiveFailedLabel
                         else -> updateFailedLabel
@@ -262,6 +285,7 @@ private fun ChannelSettingsPageScreen() {
             }
             ChannelSettingsEffect.Close -> {
                 dialog = null
+                disconnectConfirm = false
                 homeStore?.dispatch(SharedHomeIntent.Refresh)
                 router.closePage()
             }
@@ -301,7 +325,16 @@ private fun ChannelSettingsPageScreen() {
                         onTogglePin = { settingsStore.dispatch(ChannelSettingsIntent.TogglePin) },
                         onMakePrivate = { dialog = ChannelSettingsDialog.Visibility },
                         onArchive = { dialog = ChannelSettingsDialog.Archive },
-                        onDelete = { dialog = ChannelSettingsDialog.Delete }
+                        onDelete = { dialog = ChannelSettingsDialog.Delete },
+                        onOpenJointConnections = {
+                            pager.openRaftPage(
+                                pageName = JOINT_CHANNEL_CONNECTIONS_PAGE,
+                                pageData = jointChannelConnectionsPageData(route),
+                                storeScopeOverride = storeScope,
+                                authenticatedRouteAuthorityRequired = true,
+                            )
+                        },
+                        onDisconnect = { disconnectConfirm = true },
                     )
                 settingsState.status == ChannelSettingsLoadStatus.Error ||
                     settingsState.status == ChannelSettingsLoadStatus.AuthorityRejected ->
@@ -312,6 +345,17 @@ private fun ChannelSettingsPageScreen() {
                     )
                 else -> ChannelSettingsLoading()
             }
+        }
+
+        if (disconnectConfirm && channel != null) {
+            ChannelSettingsDisconnectDialog(
+                channelName = channel.name.removePrefix("#"),
+                disconnecting = settingsState.actionInFlight == ChannelSettingsAction.Disconnect,
+                onDismiss = {
+                    if (settingsState.actionInFlight != ChannelSettingsAction.Disconnect) disconnectConfirm = false
+                },
+                onConfirm = { settingsStore.dispatch(ChannelSettingsIntent.Disconnect) },
+            )
         }
 
         val currentChannel = channel
@@ -382,7 +426,9 @@ private fun ChannelSettingsContent(
     onTogglePin: () -> Unit,
     onMakePrivate: () -> Unit,
     onArchive: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onOpenJointConnections: () -> Unit,
+    onDisconnect: () -> Unit,
 ) {
     // task #177: standalone page; the last row clears the system navigation bar.
     val bottomSafeArea = raftBottomSafeAreaPadding()
@@ -401,6 +447,11 @@ private fun ChannelSettingsContent(
         item(key = "members") {
             ChannelMembersCard(slice = memberSlice, fallbackCount = channel.memberCount, onClick = onOpenMembers)
         }
+        if (channelSettingsIsJoint(channel)) {
+            item(key = "joint-connections") {
+                ChannelJointConnectionsEntry(onClick = onOpenJointConnections)
+            }
+        }
         item(key = "preferences") {
             ChannelPreferencesCard(
                 muteSupported = channel.activityMuteSupported,
@@ -417,9 +468,11 @@ private fun ChannelSettingsContent(
                 ChannelManagementCard(
                     showMakePrivate = channelSettingsCanMakePrivate(channel),
                     showDelete = channelSettingsCanDelete(channel),
+                    showDisconnect = channelSettingsCanDisconnect(channel),
                     onMakePrivate = onMakePrivate,
                     onArchive = onArchive,
-                    onDelete = onDelete
+                    onDelete = onDelete,
+                    onDisconnect = onDisconnect,
                 )
             }
         }
@@ -633,9 +686,11 @@ private fun ChannelPreferenceRow(
 private fun ChannelManagementCard(
     showMakePrivate: Boolean,
     showDelete: Boolean,
+    showDisconnect: Boolean,
     onMakePrivate: () -> Unit,
     onArchive: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onDisconnect: () -> Unit,
 ) {
     val actions = channelSettingsManagementActions(showMakePrivate, showDelete)
     RaftBrutalCard(contentPadding = 16.dp, verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -655,8 +710,83 @@ private fun ChannelManagementCard(
                 }
             }
         )
+        if (showDisconnect) {
+            RaftDesignSystemTheme {
+                RaftButton(
+                    text = stringResource(MR.strings.joint_disconnect_channel),
+                    onClick = onDisconnect,
+                    modifier = Modifier.fillMaxWidth(),
+                    variant = RaftButtonVariant.Danger,
+                    size = RaftButtonSize.Lg,
+                )
+            }
+        }
     }
 }
+
+/** Joint channels: the entry to Connected servers (list, resend, invite another server). */
+@Composable
+private fun ChannelJointConnectionsEntry(onClick: () -> Unit) {
+    RaftDesignSystemTheme {
+        RaftListRowGroup(Modifier.fillMaxWidth()) {
+            RaftListRow(
+                title = stringResource(MR.strings.joint_connections_title),
+                onClick = onClick,
+                description = stringResource(MR.strings.joint_connections_rule),
+                wrapDescription = true,
+                descriptionMaxLines = 2,
+                leading = { RaftComputersIcon(RaftLucideIconName.GitBranch, size = 20.dp) },
+                trailing = { RaftListRowChevron() },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ChannelSettingsDisconnectDialog(
+    channelName: String,
+    disconnecting: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    RaftDesignSystemTheme {
+        RaftDialog(
+            onDismissRequest = onDismiss,
+            title = stringResource(MR.strings.joint_disconnect_title),
+            description = stringResource(MR.strings.joint_disconnect_confirm, channelName),
+            dismissOnClickOutside = !disconnecting,
+            closeLabel = stringResource(MR.strings.common_close),
+            footer = {
+                RaftButton(
+                    text = stringResource(MR.strings.common_cancel),
+                    onClick = onDismiss,
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Lg,
+                    enabled = !disconnecting,
+                )
+                RaftButton(
+                    text = stringResource(MR.strings.joint_disconnect_action),
+                    onClick = onConfirm,
+                    variant = RaftButtonVariant.Danger,
+                    size = RaftButtonSize.Lg,
+                    loading = disconnecting,
+                    loadingLabel = stringResource(MR.strings.joint_disconnecting),
+                )
+            },
+        )
+    }
+}
+
+/** Disconnect failures keep the server's reason (web shows the route's `error`), via the app error pipeline. */
+internal fun channelSettingsDisconnectFailureMessage(
+    failure: ChannelSettingsEffect.Failure,
+    strings: ErrorPresentationStrings,
+    fallback: String,
+): String =
+    ScreenError(code = failure.code, retryable = false, serverMessage = failure.serverMessage)
+        .userFacingMessage(strings)
+        .takeIf(String::isNotBlank)
+        ?: fallback
 
 internal fun channelSettingsManagementActions(
     showMakePrivate: Boolean,

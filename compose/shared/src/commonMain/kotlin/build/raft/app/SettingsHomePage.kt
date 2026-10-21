@@ -221,6 +221,7 @@ import build.raft.app.data.realtime.RealtimeCursorPolicy
 import build.raft.app.data.realtime.realtimeProcessDesiredSession
 import build.raft.app.data.HomeRowRestoredHint
 import build.raft.app.data.SharedHomeContentState
+import build.raft.app.data.jointInviteIdFromHomeNotificationIdOrNull
 import build.raft.app.data.displayRowHints
 import build.raft.app.data.SharedHomeDataSource
 import build.raft.app.data.HomeSnapshot
@@ -2843,6 +2844,19 @@ private fun RaftAppShellReadyContent(
                 warningLogger = raftLogger("SlockChannelRepository", "shared_channel_repository", RaftLogLevel.Warn)
             )
         }
+    // Pending joint-channel invites for the Home notification center (web usePendingJointInvites).
+    val jointInviteScope = rememberCoroutineScope()
+    val jointInviteStore =
+        remember(appShellNetworkClient, jointInviteScope) {
+            build.raft.app.data.SharedJointInviteStore(
+                dataSource =
+                    build.raft.app.data.NetworkJointInviteDataSource(
+                        networkClient = appShellNetworkClient,
+                        logger = raftLogger("SlockJointInvites", "shared_joint_invites", RaftLogLevel.Warn),
+                    ),
+                scope = jointInviteScope,
+            )
+        }
     val homeReadReceiptRepository =
         remember(shellAuthStore, appShellNetworkClient) {
             RealReadReceiptRepository(
@@ -3077,6 +3091,7 @@ private fun RaftAppShellReadyContent(
     var conversationForwardGestureEnabled by remember { mutableStateOf(false) }
     var serverDrawerProgrammaticCloseFence by remember { mutableStateOf<((String) -> Unit)?>(null) }
     var createChannelDialogOpen by remember { mutableStateOf(false) }
+    var createJointChannelDialogOpen by remember { mutableStateOf(false) }
     var createChannelSubmitting by remember { mutableStateOf(false) }
     // task #226: global announcement modal. The API client already exists (the
     // dismiss is server-persisted per user); the shell fetches the latest active
@@ -5403,6 +5418,12 @@ private fun RaftAppShellReadyContent(
         }
     }
 
+    fun openCreateJointChannelDialog() {
+        createJointChannelDialogOpen = true
+        createChannelMembers = emptyList()
+        loadCreateChannelMembers()
+    }
+
     fun openCreateChannelDialog() {
         createChannelDialogOpen = true
         createChannelError = null
@@ -7173,11 +7194,13 @@ private fun RaftAppShellReadyContent(
                                 },
                                 onInviteHuman = { serverId -> serverSwitcherInviteServerId = serverId },
                                 onCreateChannel = { openCreateChannelDialog() },
+                                onCreateJointChannel = { openCreateJointChannelDialog() },
                                 onOpenConversation = { conversationIdentity ->
                                     openHomeConversation(conversationIdentity, "home")
                                 },
                                 serverMembersStore = appShellServerMembersStore,
                                 channelRepository = channelRepository,
+                                jointInviteStore = jointInviteStore,
                                 topSafeAreaOverride = shellScope.topSafeArea,
                                 bottomContentPadding = appShellBottomContentInset,
                                 listPositionServerId = homeListPositionServerId,
@@ -7553,6 +7576,36 @@ private fun RaftAppShellReadyContent(
                     }
                     }
             Box(modifier = Modifier.fillMaxSize()) {
+                if (createJointChannelDialogOpen) {
+                    val jointHomeSnapshot = (homeState.content as? SharedHomeContentState.Content)?.snapshot
+                    CreateJointChannelDialogHost(
+                        networkClient = appShellNetworkClient,
+                        // Web `freeAllowance`: the current server's plan is "free".
+                        freePlan = (jointHomeSnapshot?.server?.plan ?: "free") == "free",
+                        currentServerSlug = jointHomeSnapshot?.server?.slug,
+                        currentMemberId = jointHomeSnapshot?.currentMember?.id?.value,
+                        members = createChannelMembers,
+                        membersLoading = createChannelMembersLoading,
+                        logger = raftLogger("SlockCreateJointChannel", "create_joint_channel", RaftLogLevel.Warn),
+                        onDismiss = { createJointChannelDialogOpen = false },
+                        onOpenChannel = { channel ->
+                            createJointChannelDialogOpen = false
+                            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh))
+                            openHomeConversation(
+                                buildThreadLaunchConversationIdentity(
+                                    kind = ConversationKind.Joint,
+                                    channelId = channel.channelId,
+                                    channelType = "joint",
+                                ),
+                                "create_joint_channel",
+                            )
+                        },
+                        onOpenBilling = {
+                            createJointChannelDialogOpen = false
+                            pager.openSettingsBillingPage(storeScope)
+                        },
+                    )
+                }
                 if (createChannelDialogOpen) {
                     SharedCreateChannelDialog(
                         submitting = createChannelSubmitting,
@@ -19644,9 +19697,12 @@ private fun SharedHomeScreen(
     /** Server switcher "Invite Human" for the given server; null hides the entry. */
     onInviteHuman: ((serverId: String) -> Unit)? = null,
     onCreateChannel: () -> Unit,
+    /** Joint Channels section "+"; shown only with federateChannels (owner/admin), as web gates it. */
+    onCreateJointChannel: (() -> Unit)? = null,
     onOpenConversation: (ThreadLaunchConversationIdentity) -> Unit,
     serverMembersStore: SharedServerMembersStore? = null,
     channelRepository: ChannelRepository? = null,
+    jointInviteStore: build.raft.app.data.SharedJointInviteStore? = null,
     topSafeAreaOverride: Dp? = null,
     bottomContentPadding: Dp = RaftAppSpacing.Lg,
     listPositionServerId: String? = null,
@@ -19667,6 +19723,15 @@ private fun SharedHomeScreen(
     val pinnedMemberOpenScope = rememberCoroutineScope()
     val homeContentSummary = sharedHomeContentRenderSummary(state.content)
     val shouldStartHome = sharedHomeShouldStartOnActive(active, sessionReady, state)
+    val jointInvites =
+        rememberHomeJointInvites(
+            bridge = bridge,
+            store = jointInviteStore,
+            content = state.content,
+            active = active,
+            onIntent = onIntent,
+            onOpenConversation = onOpenConversation,
+        )
     LaunchedEffect(active, sessionReady, homeContentSummary, state.homeRealtimeDirty, shouldStartHome) {
         bridge.log(
             "shared_home_screen_enter active=$active sessionReady=$sessionReady " +
@@ -19958,7 +20023,7 @@ private fun SharedHomeScreen(
                         "directMessageDraftIds=${directMessageDraftIds.joinToString(separator = ",")}"
                 )
             }
-            val notificationItems = state.notifications.map { it.toHomeNotificationItem() }
+            val notificationItems = jointInvites.items + state.notifications.map { it.toHomeNotificationItem() }
             val conversationsByThreadId =
                 remember(snapshot.channels, snapshot.directMessages) {
                     (snapshot.channels + snapshot.directMessages).associateBy { it.threadId.value }
@@ -20060,6 +20125,7 @@ private fun SharedHomeScreen(
                         onIntent(SharedHomeIntent.DismissServerSwitcher)
                     },
                 onCreateChannelClick = onCreateChannel,
+                onCreateJointChannelClick = onCreateJointChannel?.takeIf { snapshot.server.permissions.canManageSettings },
                 onSearchClick = {
                     onIntent(SharedHomeIntent.SelectTopAction(SharedHomeTopAction.Search))
                     onOpenSearch()
@@ -20073,7 +20139,10 @@ private fun SharedHomeScreen(
                     onOpenSaved()
                 },
                 onNotificationView = { notification ->
+                    val jointInviteId = notification.id.jointInviteIdFromHomeNotificationIdOrNull()
                     when {
+                        jointInviteId != null ->
+                            jointInviteStore?.dispatch(build.raft.app.data.SharedJointInviteIntent.Accept(jointInviteId))
                         notification.id.isAppUpdateHomeNotificationId() && onAppUpdateOpen != null ->
                             onAppUpdateOpen()
                         notification.id.isMachineHomeNotificationId() ->
@@ -20086,10 +20155,16 @@ private fun SharedHomeScreen(
                     }
                 },
                 onNotificationDismiss = { notification ->
-                    onNotificationDismiss(notification.id)
+                    val jointInviteId = notification.id.jointInviteIdFromHomeNotificationIdOrNull()
+                    if (jointInviteId != null) {
+                        jointInviteStore?.dispatch(build.raft.app.data.SharedJointInviteIntent.Dismiss(jointInviteId))
+                    } else {
+                        onNotificationDismiss(notification.id)
+                    }
                 },
                 onRefresh = {
                     onIntent(SharedHomeIntent.Refresh)
+                    jointInvites.refresh()
                 },
                 onChannelClick = { threadId ->
                     val conversation = conversationsByThreadId[threadId]

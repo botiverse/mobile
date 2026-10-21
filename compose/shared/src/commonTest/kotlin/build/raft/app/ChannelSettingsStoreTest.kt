@@ -37,6 +37,8 @@ import build.raft.app.model.ThreadId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -174,13 +176,14 @@ class ChannelSettingsStoreTest {
             dataSource.makePrivate(),
             dataSource.archive(),
             dataSource.delete(),
+            dataSource.disconnect(),
         ).forEach { result ->
             assertEquals(
                 AUTHENTICATED_ROUTE_AUTHORITY_CHANGED,
                 assertIs<DataResult.Error>(result).error.code,
             )
         }
-        assertEquals(7, gateway.captureCalls)
+        assertEquals(8, gateway.captureCalls)
         assertEquals(0, gateway.networkClientCalls)
     }
 
@@ -512,6 +515,91 @@ class ChannelSettingsStoreTest {
     }
 
     @Test
+    fun jointDisconnectClosesSettingsAndRetiresSnapshot() = runTest {
+        val cache = ChannelSettingsSnapshotCache()
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(jointSnapshot()))
+        val store = store(dataSource, cache = cache)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+
+        store.dispatch(ChannelSettingsIntent.Disconnect)
+        runCurrent()
+
+        assertEquals(1, dataSource.disconnectCalls)
+        assertEquals(0, dataSource.deleteCalls)
+        assertEquals(ChannelSettingsEffect.Close, store.state.value.effect)
+        assertEquals(null, store.state.value.actionInFlight)
+        assertEquals(null, cache.get(routeOwner(), route()))
+        store.clear()
+    }
+
+    @Test
+    fun disconnectIsRejectedForRegularArchivedAndNonAdminChannels() = runTest {
+        listOf(
+            snapshot(),
+            jointSnapshot().let { it.copy(channel = it.channel.copy(archived = true)) },
+            jointSnapshot().copy(canManage = false),
+        ).forEach { loaded ->
+            val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(loaded))
+            val store = store(dataSource)
+            store.dispatch(ChannelSettingsIntent.Load)
+            runCurrent()
+
+            store.dispatch(ChannelSettingsIntent.Disconnect)
+            runCurrent()
+
+            assertEquals(0, dataSource.disconnectCalls)
+            assertEquals(null, store.state.value.effect)
+            store.clear()
+        }
+    }
+
+    @Test
+    fun disconnectFailureKeepsContentAndCarriesServerReason() = runTest {
+        val dataSource =
+            FakeChannelSettingsDataSource(
+                loadResult = DataResult.Content(jointSnapshot()),
+                disconnectResult =
+                    DataResult.NoPermission(
+                        PermissionBlocker(code = "joint_forbidden", serverMessage = "Only admins can disconnect joint channels")
+                    ),
+            )
+        val store = store(dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+
+        store.dispatch(ChannelSettingsIntent.Disconnect)
+        runCurrent()
+
+        assertEquals(
+            ChannelSettingsEffect.Failure(
+                ChannelSettingsAction.Disconnect,
+                "joint_forbidden",
+                "Only admins can disconnect joint channels",
+            ),
+            store.state.value.effect,
+        )
+        assertEquals("#canonical", store.state.value.channel?.name)
+        assertTrue(store.state.value.writeActionsEnabled)
+        store.clear()
+    }
+
+    @Test
+    fun realDataSourceDisconnectPostsTheJointRoute() = runTest {
+        val network = RecordingChannelSettingsNetworkClient()
+        val dataSource =
+            RealChannelSettingsDataSource(
+                route = route(),
+                authStore = authStore(),
+                owner = routeOwner(),
+                gateway = FixedChannelSettingsGateway(network),
+            )
+
+        assertIs<DataResult.Content<Unit>>(dataSource.disconnect())
+        assertEquals(listOf("POST" to "channels/channel-1/disconnect"), network.methods.zip(network.paths))
+    }
+
+    @Test
     fun realDataSourceColdLoadDoesNotDependOnHomeAndPinRereadsCanonicalOrder() = runBlocking {
         val network = RecordingChannelSettingsNetworkClient()
         val gateway = FixedChannelSettingsGateway(network)
@@ -596,6 +684,11 @@ class ChannelSettingsStoreTest {
                 ),
         )
 
+    private fun jointSnapshot(): ChannelSettingsSnapshot =
+        snapshot().let { base ->
+            base.copy(channel = base.channel.copy(channelType = "joint", kind = ConversationKind.Joint))
+        }
+
     private fun homeSnapshot(): HomeSnapshot =
         HomeSnapshot(
             server =
@@ -641,6 +734,7 @@ private class FakeChannelSettingsDataSource(
     private val loadResult: DataResult<ChannelSettingsSnapshot>? = null,
     private val loadGate: CompletableDeferred<DataResult<ChannelSettingsSnapshot>>? = null,
     private val pinResult: CompletableDeferred<DataResult<SettingsServerSidebarOrderSnapshot>>? = null,
+    private val disconnectResult: DataResult<Unit> = DataResult.Content(Unit),
 ) : ChannelSettingsDataSource {
     var loadCalls = 0
     var muteCalls = 0
@@ -649,6 +743,7 @@ private class FakeChannelSettingsDataSource(
     var makePrivateCalls = 0
     var archiveCalls = 0
     var deleteCalls = 0
+    var disconnectCalls = 0
 
     override suspend fun load(): DataResult<ChannelSettingsSnapshot> {
         loadCalls += 1
@@ -689,6 +784,11 @@ private class FakeChannelSettingsDataSource(
     override suspend fun delete(): DataResult<Unit> {
         deleteCalls += 1
         return DataResult.Content(Unit)
+    }
+
+    override suspend fun disconnect(): DataResult<Unit> {
+        disconnectCalls += 1
+        return disconnectResult
     }
 }
 
@@ -771,6 +871,7 @@ private class RecordingChannelSettingsNetworkClient : RaftNetworkClient {
                 path == "servers/server-1/sidebar-order" && method == "PATCH" ->
                     """{"pinned":[{"kind":"channel","id":"channel-1"}]}"""
                 path == "servers/server-1/sidebar-order" -> """{"pinned":[]}"""
+                path == "channels/channel-1/disconnect" && method == "POST" -> """{"ok":true}"""
                 else -> return HomeNetworkResponse(code = 404, bodyText = null)
             }
         return HomeNetworkResponse(code = 200, bodyText = response)
