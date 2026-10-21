@@ -138,6 +138,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.key
 import build.raft.app.compat.pager.Pager
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -145,6 +146,7 @@ import kotlinx.coroutines.flow.runningFold
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.CancellationException
 import kotlin.time.TimeSource
 
@@ -1699,41 +1701,89 @@ private fun SharedActivityList(
     // Unread-row walk (ActivityUnreadJump.kt). Intent owner: the user's head tap / tab re-tap,
     // one generation per tap, consumed only when observed after this list mounted (no remount
     // replay) and only by the active page. User-override fence: the scroll runs under the list's
-    // scroll mutex, so a drag cancels it (and the mark); a newer tap restarts this effect.
+    // scroll mutex, so a drag cancels it (and the mark); a newer tap restarts this effect; a
+    // settled jump records the viewport it left, so a later manual scroll restarts the walk from
+    // the viewport. The walk is per filter page (a filter change starts a new one).
     val unreadJumpFence = remember { AppShellScrollToTopRequestFence(unreadJumpRequest) }
-    var unreadJumpCursorKey by
+    var unreadJumpWalk by
         remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
-            mutableStateOf<String?>(null)
+            mutableStateOf<ActivityUnreadWalk>(ActivityUnreadWalk.Idle)
         }
     val unreadJumpHighlight = remember { HomeSearchReturnHighlight() }
+    // Read at decision time (also after a page the walk requested has landed).
+    val unreadJumpRows by rememberUpdatedState(conversationListEntries to renderedItems)
+    val unreadJumpListContext by rememberUpdatedState(conversationList?.context)
+    val unreadJumpPagingState =
+        rememberUpdatedState(
+            ActivityUnreadJumpPaging(
+                rowCount = renderedItems.size,
+                hasMore = snapshot.hasMore,
+                loadingMore = loadingMore,
+                loadMoreErrorCode = loadMoreErrorCode,
+            )
+        )
+    fun unreadJumpEntries(): List<ActivityUnreadJumpEntry> {
+        val (entries, items) = unreadJumpRows
+        val listContext = unreadJumpListContext
+        return entries?.map { entry ->
+            when (entry) {
+                is ActivityConversationListEntry.Section -> ActivityUnreadJumpEntry(entry.key, unread = false)
+                is ActivityConversationListEntry.Row ->
+                    ActivityUnreadJumpEntry(entry.key, unread = entry.item.activityRowDisplaysUnread(listContext))
+            }
+        } ?: items.map { item -> ActivityUnreadJumpEntry(item.key, unread = item.activityRowDisplaysUnread(null)) }
+    }
+    fun unreadJumpViewport(): ActivityUnreadJumpViewport =
+        ActivityUnreadJumpViewport(
+            firstVisibleItemIndex = listState.firstVisibleItemIndex,
+            firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset,
+            visibleItemKeys = listState.layoutInfo.visibleItemsInfo.mapNotNull { it.key as? String },
+        )
     LaunchedEffect(unreadJumpRequest) {
         if (!unreadJumpFence.consume(unreadJumpRequest) || !active) return@LaunchedEffect
-        val listContext = conversationList?.context
-        val entries =
-            conversationListEntries?.map { entry ->
-                when (entry) {
-                    is ActivityConversationListEntry.Section -> ActivityUnreadJumpEntry(entry.key, unread = false)
-                    is ActivityConversationListEntry.Row ->
-                        ActivityUnreadJumpEntry(entry.key, unread = entry.item.activityRowDisplaysUnread(listContext))
+        var pagesRequested = 0
+        var target: ActivityUnreadJumpTarget
+        while (true) {
+            val paging = unreadJumpPagingState.value
+            target =
+                activityNextUnreadJumpTarget(
+                    entries = unreadJumpEntries(),
+                    viewport = unreadJumpViewport(),
+                    walk = unreadJumpWalk,
+                    canLoadMore = paging.canLoadMore && pagesRequested < ActivityUnreadJumpMaxLoadMorePages,
+                )
+            if (target != ActivityUnreadJumpTarget.LoadMore) break
+            // Unread rows may sit in pages not loaded yet: load the next one before wrapping.
+            pagesRequested += 1
+            if (!paging.loadingMore) latestOnIntent(SharedActivityIntent.LoadMore)
+            val landed =
+                withTimeoutOrNull(ActivityUnreadJumpLoadMoreTimeoutMillis) {
+                    snapshotFlow { unreadJumpPagingState.value }.first { it.settledAfter(paging) }
                 }
-            } ?: renderedItems.map { item -> ActivityUnreadJumpEntry(item.key, unread = item.activityRowDisplaysUnread(null)) }
-        val target =
-            activityNextUnreadJumpTarget(
-                entries = entries,
-                firstVisibleItemIndex = listState.firstVisibleItemIndex,
-                firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset,
-                visibleItemKeys = listState.layoutInfo.visibleItemsInfo.mapNotNullTo(mutableSetOf()) { it.key as? String },
-                cursorKey = unreadJumpCursorKey,
-            )
-        when (target) {
-            ActivityUnreadJumpTarget.Top -> {
-                unreadJumpCursorKey = null
-                listState.animateScrollToTopExpressive()
+            if (landed == null) {
+                target = ActivityUnreadJumpTarget.Top
+                break
             }
+        }
+        when (val next = target) {
             is ActivityUnreadJumpTarget.Row -> {
-                unreadJumpCursorKey = target.key
-                listState.animateScrollToItem(target.index)
-                unreadJumpHighlight.flash(target.key)
+                unreadJumpWalk = ActivityUnreadWalk.AtRow(key = next.key, settled = false)
+                listState.animateScrollToItem(next.index)
+                val left = unreadJumpViewport()
+                unreadJumpWalk =
+                    ActivityUnreadWalk.AtRow(
+                        key = next.key,
+                        settled = true,
+                        anchorKey = left.firstVisibleKey,
+                        anchorOffset = left.firstVisibleItemScrollOffset,
+                    )
+                unreadJumpHighlight.flash(next.key)
+            }
+            else -> {
+                // A tap while this runs restarts at the first unread row (walk stays ReturningToTop).
+                unreadJumpWalk = ActivityUnreadWalk.ReturningToTop
+                listState.animateScrollToTopExpressive()
+                unreadJumpWalk = ActivityUnreadWalk.Idle
             }
         }
     }
