@@ -80,12 +80,14 @@ class RaftActivityTabTest {
     @Test
     fun oldMembersAndSettingsLaunchValuesStillOpenThosePages() {
         // Deep links / notifications / account + diagnostics entry points still pass
-        // slockInitialTab=members|settings: they land on the page (pushed from More, bar on More).
+        // slockInitialTab=members|settings: they land on the page with the bar on More. On the
+        // phone a settings selection then moves to the More tab, whose root page is Settings.
         listOf("members", "settings").forEach { tab ->
             val selection = JSONObject().put("slockInitialTab", tab).appShellLaunchSelection()
             assertEquals(tab, selection.selectedTab)
             assertEquals("more", appShellPhoneBottomBarSelectedKey(selection.selectedTab))
         }
+        assertEquals("more", appShellSettingsRootTab("settings", navRailActive = false))
         assertEquals("more", JSONObject().put("slockInitialTab", "more").appShellLaunchSelection().selectedTab)
         // Search is an action, not a launch tab.
         assertEquals("home", JSONObject().put("slockInitialTab", "search").appShellLaunchSelection().selectedTab)

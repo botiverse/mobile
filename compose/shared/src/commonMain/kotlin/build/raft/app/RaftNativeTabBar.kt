@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * icons, badges, selection) and the same visibility rule (`showBottomTabs`) are published
  * through a [RaftNativeTabBarBridge]. The host only renders that state and reports taps back
  * through [RaftNativeTabBarBridge.selectTab], which runs the shell's ordinary tab handler
- * (select, re-tap scroll-to-top, More menu, ...). Programmatic navigation (deep links,
+ * (select, re-tap scroll-to-top, the Search action, ...). Programmatic navigation (deep links,
  * notification opens) changes the shell's selected tab and therefore the published state.
  *
  * A host opts in per page: it registers a bridge in [RaftNativeTabBarRegistry] and passes the
@@ -58,8 +58,9 @@ data class RaftNativeTabBarItem(
      */
     val attentionDot: Boolean = false,
     /**
-     * True for the Search action (last item): a tap opens search over the current tab and it is
-     * never the selected item. The host may render it apart from the tabs (iOS 26 search role).
+     * True for the Search action (the slot left of More, stdrc 2026-10-21): a tap opens search over
+     * the current tab and it is never the selected item. The host keeps it in the bar like any
+     * tab and refuses UIKit selection for it.
      */
     val searchAction: Boolean = false,
 )
@@ -226,12 +227,11 @@ internal fun RaftNativeTabBarPublisher(
     bridge: RaftNativeTabBarBridge,
     items: List<RaftBottomTabItemPayload>,
     onSelect: (String) -> Unit,
-    accessory: RaftBottomTabItemPayload? = null,
 ) {
     val token = remember(bridge) { Any() }
     val currentOnSelect by rememberUpdatedState(onSelect)
     val selectHandler = remember(bridge) { { key: String -> currentOnSelect(key) } }
-    val state = remember(items, accessory) { raftNativeTabBarState(items, visible = true, accessory = accessory) }
+    val state = remember(items) { raftNativeTabBarState(items, visible = true) }
     DisposableEffect(bridge, state) {
         bridge.publish(token, state, selectHandler)
         onDispose { }
@@ -244,13 +244,11 @@ internal fun RaftNativeTabBarPublisher(
 internal fun raftNativeTabBarState(
     items: List<RaftBottomTabItemPayload>,
     visible: Boolean,
-    accessory: RaftBottomTabItemPayload? = null,
 ): RaftNativeTabBarState =
     RaftNativeTabBarState(
-        items =
-            items.map(::raftNativeTabBarItem) +
-                listOfNotNull(accessory?.let { raftNativeTabBarItem(it).copy(searchAction = true) }),
-        selectedKey = items.firstOrNull { it.selected }?.key,
+        items = items.map(::raftNativeTabBarItem),
+        // The Search action is never the selection, whatever the payload says.
+        selectedKey = items.firstOrNull { it.selected && it.key != AppShellSearchActionKey }?.key,
         visible = visible,
     )
 
@@ -266,6 +264,7 @@ internal fun raftNativeTabBarItem(item: RaftBottomTabItemPayload): RaftNativeTab
         badgeValue = raftNativeTabBarBadgeValue(badgeCount),
         enabled = item.enabled,
         attentionDot = item.attentionDot && badgeCount == 0,
+        searchAction = item.key == AppShellSearchActionKey,
     )
 }
 
@@ -283,8 +282,13 @@ internal fun raftNativeTabBarSymbol(icon: RaftLucideIconName): RaftNativeTabBarS
         RaftLucideIconName.House -> RaftNativeTabBarSymbol("house", "house.fill")
         RaftLucideIconName.MessageCircle -> RaftNativeTabBarSymbol("message", "message.fill")
         RaftLucideIconName.Bell -> RaftNativeTabBarSymbol("bell", "bell.fill")
-        // Lucide "activity" is a pulse line; SF Symbols has no filled variant of it.
-        RaftLucideIconName.Activity -> RaftNativeTabBarSymbol("waveform.path.ecg", "waveform.path.ecg")
+        // Lucide "activity" is a pulse line. The bare `waveform.path.ecg` is a wide, flat glyph
+        // whose ink sits on the mid line with thin peaks, so in a UITabBar it reads smaller and
+        // higher than the boxed house / checkmark.square neighbours (stdrc 2026-10-21: "floats").
+        // The rectangle variant carries the same pulse in a rounded square on the symbol
+        // baseline, the same footprint as checkmark.square, and has a filled selected state.
+        RaftLucideIconName.Activity ->
+            RaftNativeTabBarSymbol("waveform.path.ecg.rectangle", "waveform.path.ecg.rectangle.fill")
         RaftLucideIconName.Ellipsis -> RaftNativeTabBarSymbol("ellipsis", "ellipsis")
         RaftLucideIconName.SquareCheckBig -> RaftNativeTabBarSymbol("checkmark.square", "checkmark.square.fill")
         RaftLucideIconName.Users -> RaftNativeTabBarSymbol("person.2", "person.2.fill")

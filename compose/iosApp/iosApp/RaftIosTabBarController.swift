@@ -3,7 +3,7 @@ import UIKit
 
 /// App-shell page content on iOS: the shell's Compose controller plus the system tab bar.
 ///
-/// The app shell is one Compose page whose tabs (Home, Activity, Tasks, More, ...) are
+/// The app shell is one Compose page whose bar items (Home, Activity, Tasks, Search, More) are
 /// retained inside a single composition with shared stores, realtime ingest and adaptive
 /// panes, so the tabs cannot be split into one Compose controller per tab without duplicating
 /// the shell. Instead this controller layers a real `UITabBarController` over the full-screen
@@ -174,12 +174,17 @@ final class RaftIosTabBarController: UIViewController {
 extension RaftIosTabBarController: UITabBarControllerDelegate {
     /// Shared owns the selection: every tap (including a re-tap of the selected tab) goes to the
     /// shell's tab handler and UIKit never switches on its own; the new selection arrives
-    /// through the published state.
+    /// through the published state. The Search item (stdrc 2026-10-21: a slot left of More) is
+    /// an action: the same call opens search over the current tab, and since this returns false
+    /// and shared never publishes Search as the selection, it is never the selected item.
     func tabBarController(
         _ tabBarController: UITabBarController,
         shouldSelect viewController: UIViewController
     ) -> Bool {
         guard let slot = viewController as? RaftIosTabSlotViewController else { return false }
+        if slot.searchAction {
+            RaftIosDiagnosticsRecord("info", "RaftIosTabBar", "search_action_tap")
+        }
         if !bridge.selectTab(key: slot.tabKey) {
             RaftIosDiagnosticsRecord("warn", "RaftIosTabBar", "tab_tap_unhandled key=\(slot.tabKey)")
         }
@@ -196,7 +201,8 @@ private extension RaftIosTabBarItemSpec {
             selectedSystemImageName: item.selectedSystemImageName,
             badgeValue: item.badgeValue,
             enabled: item.enabled,
-            attentionDot: item.attentionDot
+            attentionDot: item.attentionDot,
+            searchAction: item.searchAction
         )
     }
 }
@@ -257,6 +263,8 @@ private final class RaftIosTabBarOverlayView: UIView {
 /// Empty, non-interactive tab child: it only carries the `UITabBarItem` for one shared tab.
 private final class RaftIosTabSlotViewController: UIViewController {
     let tabKey: String
+    /// The Search action slot: tapping it opens search, it never becomes the selection.
+    private(set) var searchAction = false
 
     init(tabKey: String) {
         self.tabKey = tabKey
@@ -277,6 +285,7 @@ private final class RaftIosTabSlotViewController: UIViewController {
     }
 
     func apply(_ spec: RaftIosTabBarItemSpec) {
+        searchAction = spec.searchAction
         let item: UITabBarItem = tabBarItem
         if item.title != spec.title {
             item.title = spec.title

@@ -1,7 +1,7 @@
 package build.raft.app
 
 /**
- * Activity as an app-shell bottom tab (artin 2026-10-20; bar since xxchan 2026-10-20: 主页 · 动态 · 任务 · 更多 + 搜索).
+ * Activity as an app-shell bottom tab (artin 2026-10-20; edge bar since stdrc 2026-10-21: 主页 · 动态 · 任务 · 搜索 · 更多).
  *
  * The tab hosts the existing Activity page content ([SharedHomeActivityScreen]) under a main-tab
  * header (icon sticker + title + stats line, no back arrow), with the three Activity segments

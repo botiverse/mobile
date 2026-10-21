@@ -1,8 +1,8 @@
 package build.raft.app.data
 
-import build.raft.app.RaftMoreRow
+import build.raft.app.RaftMoreAttention
 import build.raft.app.appShellPhoneBottomTabs
-import build.raft.app.raftMoreAttentionRows
+import build.raft.app.raftMoreAttention
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -104,23 +104,23 @@ class RaftComputerAttentionSeenTest {
     @Test
     fun guestHasNoComputersDot() {
         // Guests cannot manage machines, so the shell never carries machine notices for them.
-        val rows = raftMoreAttentionRows(listOf(APP_UPDATE_HOME_NOTIFICATION_ID), emptySet())
-        assertEquals(setOf(RaftMoreRow.Settings), rows)
+        val rows = raftMoreAttention(listOf(APP_UPDATE_HOME_NOTIFICATION_ID), emptySet())
+        assertEquals(setOf(RaftMoreAttention.AppUpdate), rows)
     }
 
     @Test
     fun moreTabAndComputersRowReadTheSameSeenState() {
         val ids = listOf("machine-offline:m1")
         val seen = raftComputerAttentionMarkSeen(emptySet(), raftComputerAttentionPairs(ids))
-        val tabDot = { rows: Set<RaftMoreRow> ->
-            appShellPhoneBottomTabs("home", "h", "a", "t", "m", moreAttentionRows = rows)
+        val tabDot = { rows: Set<RaftMoreAttention> ->
+            appShellPhoneBottomTabs("home", "h", "a", "s", "t", "m", moreAttention = rows)
                 .single { it.key == "more" }
                 .attentionDot
         }
-        val unseenRows = raftMoreAttentionRows(ids)
-        assertEquals(setOf(RaftMoreRow.Computers), unseenRows)
+        val unseenRows = raftMoreAttention(ids)
+        assertEquals(setOf(RaftMoreAttention.Computers), unseenRows)
         assertTrue(tabDot(unseenRows))
-        val seenRows = raftMoreAttentionRows(ids, seen)
+        val seenRows = raftMoreAttention(ids, seen)
         assertEquals(emptySet(), seenRows)
         assertFalse(tabDot(seenRows))
     }

@@ -3343,11 +3343,12 @@ private fun RaftHomePreviewBottomTabBar(
     val tasksTabLabel = stringResource(MR.strings.tab_tasks)
     val moreTabLabel = stringResource(MR.strings.tab_more)
     val searchLabel = stringResource(MR.strings.home_nav_search)
-    val items = remember(selectedTabKey, homeTabLabel, activityTabLabel, tasksTabLabel, moreTabLabel) {
+    val items = remember(selectedTabKey, homeTabLabel, activityTabLabel, searchLabel, tasksTabLabel, moreTabLabel) {
         appShellPhoneBottomTabs(
             selectedTab = selectedTabKey,
             homeLabel = homeTabLabel,
             activityLabel = activityTabLabel,
+            searchLabel = searchLabel,
             tasksLabel = tasksTabLabel,
             moreLabel = moreTabLabel,
         )
@@ -3356,8 +3357,7 @@ private fun RaftHomePreviewBottomTabBar(
         items = items,
         onSelect = onSelect,
         modifier = modifier,
-        bottomSafeArea = bottomSafeArea,
-        accessory = remember(searchLabel) { appShellSearchAction(searchLabel) }
+        bottomSafeArea = bottomSafeArea
     )
 }
 
