@@ -835,11 +835,11 @@ class CanonicalMessageV2CanaryCorrectnessTest {
         assertEquals(false, over.hasLoadedOldest, "the window no longer reaches the beginning")
     }
 
-    // ---- task #14a: realtime replies of an entered reply thread are display only -----------------------
+    // ---- task #14a: realtime replies of an entered reply thread without a join ack are display only -----
     //
-    // No positive per-thread delivery signal exists on the server (thread rooms are never joined at connect,
-    // `join:channel` has no ack, replies under private/dm/joint parents go only to `user:<followerId>` rooms),
-    // so a reply-thread enter commits its page but leaves the window `thread_delivery_unconfirmed`.
+    // Without a positive per-thread delivery signal (thread rooms are never joined at connect; task #14c: no
+    // `channel:joined` for the thread before the enter), a reply-thread enter commits its page but leaves the
+    // window `thread_delivery_unconfirmed`.
 
     @Test
     fun t10AnEnteredThreadKeepsItsPageButARealtimeReplyIsDisplayOnly() = withFreshDatabase { database ->
@@ -1089,6 +1089,151 @@ class CanonicalMessageV2CanaryCorrectnessTest {
         }
     }
 
+    // ---- task #14c: a public-parent thread whose room join was acked before the enter is continuous ----
+
+    private fun threadEnterContinuity(rig: Rig, scope: SyncScopeKey = thread1): String =
+        rig.logs.last { it.startsWith("canonical_v2_canary enter=committed server=server-1 scope=${scope.scopeId} scopeKind=thread ") }
+            .substringAfter("continuity=")
+
+    /**
+     * Paired: the same connection, page and production reply wire; only `channel:joined` for the thread before the
+     * enter differs. With it the reply is written as a PARTIAL fact; without it (or on a server that never acks)
+     * the reply stays display only.
+     */
+    @Test
+    fun t12APublicParentThreadAckedBeforeTheEnterWritesTheProductionReplyPartial() {
+        fun run(ack: Boolean): Triple<Set<String>, Map<String, Set<MessageAggregateField>>, String> = withFreshDatabase { database ->
+            val rig = Rig(database)
+            bounded {
+                rig.server.thread(thread1, parentChannelId = "channel-a", rootMessageId = "root-1")
+                rig.server.has(thread1, "r1" to 1L)
+                rig.connect(1L)
+                if (ack) rig.joinAck(thread1, 1L)
+                rig.enterThread(thread1, thread1Parent)
+                val r2 = rig.replyNew(thread1, "r2", 2L, omit = PRODUCTION_NEW_OMITS)
+                assertTrue(rig.deliver(r2))
+                assertEquals(r2, rig.projected.last(), "displayed either way")
+                Triple(rig.storedIds(thread1), rig.store.restore(thread1).unknownFieldsByFactId, threadEnterContinuity(rig))
+            }
+        }
+        val acked = run(ack = true)
+        assertEquals("continuous", acked.third)
+        assertEquals(setOf("r1", "r2"), acked.first)
+        assertEquals(mapOf("r2" to BOTH_UNKNOWN), acked.second)
+
+        val unacked = run(ack = false)
+        assertEquals("discontinuous reason=thread_delivery_unconfirmed", unacked.third)
+        assertEquals(setOf("r1"), unacked.first)
+        assertEquals(emptyMap(), unacked.second)
+    }
+
+    @Test
+    fun t12APrivateParentThreadStaysDisplayOnlyEvenWithAnAck() {
+        fun run(parentType: String): Pair<Set<String>, String> = withFreshDatabase { database ->
+            val rig = Rig(database)
+            bounded {
+                rig.server.channelTypes["channel-a"] = parentType
+                rig.server.thread(thread1, parentChannelId = "channel-a", rootMessageId = "root-1")
+                rig.server.has(thread1, "r1" to 1L)
+                rig.connect(1L)
+                rig.joinAck(thread1, 1L)
+                rig.enterThread(thread1, thread1Parent)
+                assertTrue(rig.deliver(rig.replyNew(thread1, "r2", 2L, omit = PRODUCTION_NEW_OMITS, parentChannelType = parentType)))
+                rig.storedIds(thread1) to threadEnterContinuity(rig)
+            }
+        }
+        assertEquals(setOf("r1") to "discontinuous reason=thread_delivery_follower_only", run("private"))
+        assertEquals(setOf("r1", "r2") to "continuous", run("channel"))
+    }
+
+    @Test
+    fun t12AnAckOnAnOlderConnectionOrForAnotherThreadOrDeniedLeavesTheReplyDisplayOnly() {
+        fun run(signal: suspend (Rig) -> Unit): Pair<Set<String>, String> = withFreshDatabase { database ->
+            val rig = Rig(database)
+            bounded {
+                rig.server.thread(thread1, parentChannelId = "channel-a", rootMessageId = "root-1")
+                rig.server.has(thread1, "r1" to 1L)
+                rig.connect(1L)
+                signal(rig)
+                rig.connect(2L)
+                rig.enterThread(thread1, thread1Parent)
+                assertTrue(rig.deliver(rig.replyNew(thread1, "r2", 2L), epoch = 2L))
+                rig.storedIds(thread1) to threadEnterContinuity(rig)
+            }
+        }
+        val thread2 = SyncScopeKey(partition, "thread-2", "thread")
+        assertEquals(setOf("r1") to "discontinuous reason=thread_delivery_unconfirmed", run { it.joinAck(thread1, 1L) })
+        assertEquals(setOf("r1") to "discontinuous reason=thread_delivery_unconfirmed", run { it.joinAck(thread2, 2L) })
+        assertEquals(setOf("r1") to "discontinuous reason=join_denied", run { it.joinAck(thread1, 2L, joined = false) })
+        // Positive control: the same sequence with the current connection's ack for this thread is written.
+        assertEquals(setOf("r1", "r2") to "continuous", run { it.joinAck(thread1, 2L) })
+    }
+
+    @Test
+    fun t12AReconnectAfterAContinuousThreadEnterStopsTheWritesUntilTheNextEnter() = withFreshDatabase { database ->
+        val rig = Rig(database)
+        bounded {
+            rig.server.thread(thread1, parentChannelId = "channel-a", rootMessageId = "root-1")
+            rig.server.has(thread1, "r1" to 1L)
+            rig.connect(1L)
+            rig.joinAck(thread1, 1L)
+            rig.enterThread(thread1, thread1Parent)
+            assertTrue(rig.deliver(rig.replyNew(thread1, "r2", 2L), epoch = 1L))
+            assertEquals(setOf("r1", "r2"), rig.storedIds(thread1))
+
+            rig.connect(2L)
+            rig.joinAck(thread1, 2L)
+            assertTrue(rig.deliver(rig.replyNew(thread1, "r3", 3L), epoch = 2L))
+            assertEquals(setOf("r1", "r2"), rig.storedIds(thread1), "a reconnect ends continuity even with a new ack")
+            assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, rig.canary.continuityOf(thread1))
+
+            rig.enterThread(thread1, thread1Parent)
+            assertEquals("continuous", threadEnterContinuity(rig))
+            assertTrue(rig.deliver(rig.replyNew(thread1, "r4", 4L), epoch = 2L))
+            assertEquals(setOf("r1", "r2", "r3", "r4"), rig.storedIds(thread1))
+        }
+    }
+
+    @Test
+    fun t12AnAckDuringTheThreadEnterFetchDoesNotReplayItsBufferedReply() = withFreshDatabase { database ->
+        val rig = Rig(database)
+        bounded {
+            rig.server.thread(thread1, parentChannelId = "channel-a", rootMessageId = "root-1")
+            rig.server.has(thread1, "r1" to 1L)
+            rig.connect(1L)
+            val hold = rig.server.holdNextPage()
+            val entering = async { rig.enterThread(thread1, thread1Parent) }
+            hold.read.await()
+            // The server read the page before this socket's thread-room join completed.
+            rig.joinAck(thread1, 1L)
+            assertTrue(rig.deliver(rig.replyNew(thread1, "r2", 2L)))
+            hold.release.complete(Unit)
+            entering.await()
+
+            assertEquals("discontinuous reason=thread_join_ack_after_request", threadEnterContinuity(rig))
+            assertEquals(setOf("r1"), rig.storedIds(thread1))
+            assertEquals(0, rig.store.incrementalWrites)
+        }
+    }
+
+    @Test
+    fun t12TheThreadsOwnNonMembershipYieldsToTheAckButTheParentChannelsNeverDoes() {
+        fun run(nonMember: String): String = withFreshDatabase { database ->
+            val rig = Rig(database)
+            bounded {
+                rig.nonMembers += nonMember
+                rig.server.thread(thread1, parentChannelId = "channel-a", rootMessageId = "root-1")
+                rig.server.has(thread1, "r1" to 1L)
+                rig.connect(1L)
+                rig.joinAck(thread1, 1L)
+                rig.enterThread(thread1, thread1Parent)
+                threadEnterContinuity(rig)
+            }
+        }
+        assertEquals("continuous", run(nonMember = "thread-1"))
+        assertEquals("discontinuous reason=non_member", run(nonMember = "channel-a"))
+    }
+
     /** A stored marker outside the allowed set (or out of canonical order) poisons the scope; a valid one reads. */
     @Test
     fun t11AnInvalidStoredMarkerPoisonsTheScope() {
@@ -1165,6 +1310,9 @@ class CanonicalMessageV2CanaryCorrectnessTest {
             threads[scope.scopeId] = parentChannelId to rootMessageId
         }
 
+        /** Task #14c: `channels/{id}` answers this `type` for a top-level channel (default the public `channel`). */
+        val channelTypes = java.util.concurrent.ConcurrentHashMap<String, String>()
+
         fun pageLoads(): Int = paths.count { it.startsWith("messages/channel/") }
 
         /** The channel's latest page (≤ 200 nodes) as the catch-up reads it, now. */
@@ -1207,7 +1355,8 @@ class CanonicalMessageV2CanaryCorrectnessTest {
                     """{"id":"$channelId","type":"thread","parentChannelId":"$parentChannelId","parentMessageId":"$rootMessageId"}""",
                 )
             }
-            return HomeNetworkResponse(200, """{"id":"$channelId","type":"channel"}""")
+            val type = channelTypes[channelId] ?: "channel"
+            return HomeNetworkResponse(200, """{"id":"$channelId","type":"$type"}""")
         }
 
         private fun node(channelId: String, id: String, seq: Long, content: String): String {
@@ -1268,6 +1417,14 @@ class CanonicalMessageV2CanaryCorrectnessTest {
             canary.noteTransportEpoch(partition, epoch)
             if (roomsJoined) canary.noteRoomsJoined(partition, epoch)
             connected = true
+        }
+
+        /**
+         * Task #14c: the server answered this socket's `join:channel` for [scope] on [epoch] (`channel:joined`
+         * when [joined], else `channel:join_denied`), as the ingress coordinator forwards it.
+         */
+        suspend fun joinAck(scope: SyncScopeKey, epoch: Long, joined: Boolean = true) {
+            canary.noteChannelJoinAck(partition, scope.scopeId, epoch, joined)
         }
 
         /** The user opens the channel: the real enter snapshot loader against [server]. */
@@ -1359,9 +1516,10 @@ class CanonicalMessageV2CanaryCorrectnessTest {
             parentChannelId: String = "channel-a",
             rootMessageId: String = "root-1",
             omit: Set<String> = emptySet(),
+            parentChannelType: String = "channel",
         ): MessageNew {
             val context = """{ "channelType": "thread", "parentChannelId": "$parentChannelId", """ +
-                """"parentChannelType": "channel", "parentMessageId": "$rootMessageId" }"""
+                """"parentChannelType": "$parentChannelType", "parentMessageId": "$rootMessageId" }"""
             val event = mapper.map(
                 RealtimeSocketEvents.MessageNew,
                 wire(scope, id, seq, "body-$id", threadId = null, partial = false, conversationContext = context, omit = omit),

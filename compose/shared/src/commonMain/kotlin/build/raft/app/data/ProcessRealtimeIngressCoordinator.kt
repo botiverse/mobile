@@ -83,7 +83,9 @@ internal class ProcessRealtimeIngressCoordinator(
                             .optString(RaftRealtimeNotifyContract.KeyChannelId)
                             .takeIf { it.isNotEmpty() && it == it.trim() }
                             ?: return
-                    { grant, epoch -> onChannelJoinAck(grant, epoch, channelId, channelJoinAck) }
+                    val signal: suspend (RealtimeGrantRecord, Long) -> Unit =
+                        { grant, epoch -> onChannelJoinAck(grant, epoch, channelId, channelJoinAck) }
+                    signal
                 }
                 else -> null
             }

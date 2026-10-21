@@ -810,9 +810,10 @@ internal class CanonicalMessageV2ProductionCanary(
 
     /** Holding [stateMutex]: what [noteChannelJoinAck] says about [channelId] on the socket of [epoch]. */
     private fun threadJoinLocked(partition: DurablePartitionKey, channelId: SyncScopeId, epoch: Long?): CanonicalMessageV2ThreadJoin {
+        if (epoch == null) return CanonicalMessageV2ThreadJoin.Unconfirmed
         val signal = channelJoinSignalByChannel[partition to channelId]
         return when {
-            epoch == null || signal == null || signal.transportEpoch != epoch -> CanonicalMessageV2ThreadJoin.Unconfirmed
+            signal == null || signal.transportEpoch != epoch -> CanonicalMessageV2ThreadJoin.Unconfirmed
             !signal.joined -> CanonicalMessageV2ThreadJoin.Denied
             // A leave of the room since the ack: the socket is no longer in it.
             signal.roomLeaveCount != roomLeaveCount(partition.serverId, channelId) -> CanonicalMessageV2ThreadJoin.Unconfirmed
