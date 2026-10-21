@@ -181,4 +181,24 @@ class ActivityRefreshTopAnchorTest {
         assertFalse(activityNewRowsAboveViewport(emptySet(), lazyKeys, firstVisibleItemIndex = 8))
         assertTrue(activityNewRowsAboveViewport(landed, lazyKeys, firstVisibleItemIndex = 50), "index past the key list")
     }
+
+    @Test
+    fun `the new activity pill counts the unseen landed rows above the viewport`() {
+        val lazyKeys =
+            listOf(
+                "activity-list-section:Pinned", "p1",
+                "activity-list-section:AllConversations", "n1", "n2", "n3", "c3", "c2", "c1",
+            )
+        val landed = setOf("n1", "n2", "n3")
+        assertEquals(0, activityNewRowsAboveViewportCount(landed, lazyKeys, firstVisibleItemIndex = 0), "list at the top")
+        assertEquals(1, activityNewRowsAboveViewportCount(landed, lazyKeys, firstVisibleItemIndex = 4), "n2, n3 in or below the viewport")
+        assertEquals(3, activityNewRowsAboveViewportCount(landed, lazyKeys, firstVisibleItemIndex = 7))
+        assertEquals(3, activityNewRowsAboveViewportCount(landed, lazyKeys, firstVisibleItemIndex = 50), "index past the key list")
+        // The reader scrolled n2 into view and back down: it was seen, so it no longer counts.
+        val unseen = activityUnseenNewRowKeys(landed, visibleItemKeys = setOf("n1", "n2"))
+        assertEquals(setOf("n3"), unseen)
+        assertEquals(1, activityNewRowsAboveViewportCount(unseen, lazyKeys, firstVisibleItemIndex = 7))
+        // Nothing landed is visible: the same set comes back (no state write).
+        assertTrue(activityUnseenNewRowKeys(landed, setOf("c1", "c2")) === landed)
+    }
 }

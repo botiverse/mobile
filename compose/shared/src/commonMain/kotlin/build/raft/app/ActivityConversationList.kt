@@ -317,6 +317,16 @@ private fun InboxItem.hasActivitySystemSender(): Boolean {
     return senderKind == MemberKind.System || senderId == "system"
 }
 
+/** The conversation (thread: its parent channel) or DM peer is muted; muted rows show no unread count. */
+internal fun InboxItem.activityConversationMuted(
+    context: ActivityConversationListContext,
+    dmPeer: ActivityConversationDmPeer? =
+        if (isActivityDirectMessageConversation()) context.dmPeersByChannelId[channelId.value] else null,
+): Boolean {
+    val mutedChannelId = if (kind == InboxItemKind.Thread) parentChannelId?.value else channelId.value
+    return (mutedChannelId != null && mutedChannelId in context.mutedChannelIds) || dmPeer?.activityMuted == true
+}
+
 /** The web `InboxRow` list-layout projection of one Activity item. Pure; unit-tested. */
 internal fun InboxItem.activityConversationRowModel(
     context: ActivityConversationListContext,
@@ -374,8 +384,7 @@ internal fun InboxItem.activityConversationRowModel(
         } else {
             lastMessagePreview ?: latestActivityPreview
         }
-    val mutedChannelId = if (kind == InboxItemKind.Thread) parentChannelId?.value else channelId.value
-    val muted = (mutedChannelId != null && mutedChannelId in context.mutedChannelIds) || dmPeer?.activityMuted == true
+    val muted = activityConversationMuted(context, dmPeer)
     val unread = unreadCount.coerceAtLeast(0)
     return ActivityConversationRowModel(
         leadingKind = leadingKind,
@@ -524,6 +533,8 @@ internal fun ActivityConversationListRow(
     modifier: Modifier = Modifier,
     /** Rule L swipe shortcut (ActivitySwipeToDoneBox); null: no swipe. */
     onSwipeDone: (() -> Unit)? = null,
+    /** On the row surface above the swipe box's opaque layer (e.g. the unread-walk mark). */
+    contentModifier: Modifier = Modifier,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -558,6 +569,7 @@ internal fun ActivityConversationListRow(
             modifier =
                 Modifier
                     .fillMaxWidth()
+                    .then(contentModifier)
                     .then(
                         when {
                             selected -> Modifier.background(colors.infoSoft)
