@@ -70,6 +70,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
@@ -125,6 +127,9 @@ private data class HomeSecondaryRouteEnvironment(
     val inlineOpenEntity: ((SearchEntityResult) -> Boolean)? = null,
     // When embedded inline there is no pushed page to pop — "close" returns to the host tab.
     val inlineOnClose: (() -> Unit)? = null,
+    // stdrc 2026-10-21: Search is a bottom tab on the phone. As a tab root the page has no Back
+    // and keeps the bar's inset; its results still push pages (with Back, over the bar).
+    val tabRoot: Boolean = false,
 )
 
 @Composable
@@ -134,9 +139,14 @@ private fun rememberHomeSecondaryRouteEnvironment(
     inlineOpenRequest: ((HomeMessageOpenRequest, String) -> Unit)? = null,
     inlineOpenEntity: ((SearchEntityResult) -> Boolean)? = null,
     inlineOnClose: (() -> Unit)? = null,
+    tabRoot: Boolean = false,
+    hostPager: Pager? = null,
 ): HomeSecondaryRouteEnvironment {
     RememberKmmResourceLocaleSeedFromLocalActivity()
-    val pager = LocalActivity.current.getPager() as Pager
+    // A tab rendered in an app-shell child page reads the shell's page (store scope, time
+    // capabilities, page pushes), not the child host's.
+    val localPager = LocalActivity.current.getPager() as Pager
+    val pager = hostPager ?: localPager
     val bridge = remember(pager) { Utils.bridgeModule(pager.pagerId) }
     val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
         pager.pageData.params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
@@ -222,6 +232,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
         inlineOpenRequest,
         inlineOpenEntity,
         inlineOnClose,
+        tabRoot,
     ) {
         HomeSecondaryRouteEnvironment(
             pager = pager,
@@ -252,6 +263,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
             inlineOpenRequest = inlineOpenRequest,
             inlineOpenEntity = inlineOpenEntity,
             inlineOnClose = inlineOnClose,
+            tabRoot = tabRoot,
         )
     }
 }
@@ -267,6 +279,10 @@ internal fun HomeSecondaryRouterContent(
     inlineOpenRequest: ((HomeMessageOpenRequest, String) -> Unit)? = null,
     inlineOpenEntity: ((SearchEntityResult) -> Boolean)? = null,
     inlineOnClose: (() -> Unit)? = null,
+    tabRoot: Boolean = false,
+    hostPager: Pager? = null,
+    searchListState: LazyListState? = null,
+    searchBottomContentPadding: Dp? = null,
 ) {
     val environment = rememberHomeSecondaryRouteEnvironment(
         routeVisibleTick,
@@ -274,6 +290,8 @@ internal fun HomeSecondaryRouterContent(
         inlineOpenRequest,
         inlineOpenEntity,
         inlineOnClose,
+        tabRoot,
+        hostPager,
     )
     val retainedDestination = retainedHomeSecondaryDestination(destination)
     PerformanceSceneEffect(
@@ -290,7 +308,9 @@ internal fun HomeSecondaryRouterContent(
                     routeVisibleTick,
                     initialChannelId = initialSearchChannelId,
                     initialOpenFilterId = initialSearchOpenFilterId,
-                    initialFocusInput = initialSearchFocusInput
+                    initialFocusInput = initialSearchFocusInput,
+                    listState = searchListState,
+                    bottomContentPadding = searchBottomContentPadding
                 )
             HomeDestinationSaved -> HomeSavedRouterContent(environment, routeVisibleTick)
             else -> RaftCenteredLoading(message = stringResource(MR.strings.auth_state_opening_server))
@@ -720,7 +740,9 @@ private fun HomeSearchRouterContent(
     routeVisibleTick: Int = 0,
     initialChannelId: String? = null,
     initialOpenFilterId: String? = null,
-    initialFocusInput: Boolean = false
+    initialFocusInput: Boolean = false,
+    listState: LazyListState? = null,
+    bottomContentPadding: Dp? = null
 ) {
     val conversationNotReadyMessage = stringResource(MR.strings.home_error_conversation_not_ready)
     val homeDataSource =
@@ -822,7 +844,8 @@ private fun HomeSearchRouterContent(
         remember(searchServerId, computersState) {
             computersState.toHomeSearchComputerDirectory(searchServerId)
         }
-    val listState = rememberLazyListState()
+    val ownListState = rememberLazyListState()
+    val searchListState = listState ?: ownListState
     val activeDraftRecords by environment.composerDraftPersistSlice.activeDraftRecordsState.collectAsState(emptySet())
     val draftProjection =
         remember(activeDraftRecords) {
@@ -857,6 +880,7 @@ private fun HomeSearchRouterContent(
             items = searchSavedState.search.items
         )
     }
+    val chrome = homeSearchPageChrome(tabRoot = environment.tabRoot)
     SharedHomeSearchPanel(
         state = searchSavedState.search,
         homeState = homeState,
@@ -866,7 +890,12 @@ private fun HomeSearchRouterContent(
         computerDirectory = computerDirectory,
         draftProjection = draftProjection,
         onIntent = searchSavedViewModel::dispatch,
-        onClose = { environment.inlineOnClose?.invoke() ?: environment.pager.closeHomeSecondaryPage() },
+        onClose =
+            if (chrome.showsBack) {
+                { environment.inlineOnClose?.invoke() ?: environment.pager.closeHomeSecondaryPage() }
+            } else {
+                null
+            },
         onOpenItem = { item ->
             when (
                 val resolution =
@@ -981,10 +1010,11 @@ private fun HomeSearchRouterContent(
             },
         initialOpenFilterId = initialOpenFilterId,
         initialFocusInput = initialFocusInput,
-        bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
+        bottomContentPadding =
+            bottomContentPadding ?: environment.shellScope.bottomInset(includeBottomTabBar = chrome.aboveBottomBar),
         timeContext = environment.timeContext,
         shellScope = environment.shellScope,
-        listState = listState
+        listState = searchListState
     )
 }
 

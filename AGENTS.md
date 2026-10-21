@@ -190,7 +190,7 @@ test -d "$SLOCK_SOURCE_REPO/packages/shared"
   modifiers or parameters explicitly named `*Dp`.
 - See `docs/kuikly-overlay-coordinate-contract.md` before changing
   `RaftAnchoredPopover`, `RaftFloatingOverlayLayout`, or trigger components
-  such as `RaftAnchoredToolbarChip`.
+  such as `RaftAnchoredPickerTrigger`.
 
 ## Kuikly Back Handling Rule
 

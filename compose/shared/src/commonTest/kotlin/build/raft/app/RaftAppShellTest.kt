@@ -1468,7 +1468,7 @@ class RaftAppShellTest {
         }
         // stdrc 2026-10-21: Home · Activity · Tasks · Search · More in one edge bar.
         val tabs = build("home")
-        assertEquals(listOf("home", "activity", "tasks", AppShellSearchActionKey, "more"), tabs.map { it.key })
+        assertEquals(listOf("home", "activity", "tasks", AppShellSearchTabKey, "more"), tabs.map { it.key })
         assertEquals(
             listOf("localized-home", "localized-activity", "localized-tasks", "localized-search", "localized-more"),
             tabs.map { it.label }
@@ -1481,24 +1481,54 @@ class RaftAppShellTest {
             assertEquals(listOf(false, false, false, false, true), build(selected).map { it.selected }, "selected=$selected")
         }
         assertEquals(listOf(false, false, true, false, false), build("tasks").map { it.selected })
-        // A stale/unknown selection (and the Search action key) never selects anything but Home.
-        assertEquals(listOf(true, false, false, false, false), build(AppShellSearchActionKey).map { it.selected })
+        // Search is a tab: selected like the others (stdrc option B).
+        assertEquals(listOf(false, false, false, true, false), build(AppShellSearchTabKey).map { it.selected })
+        // A stale/unknown selection selects Home.
+        assertEquals(listOf(true, false, false, false, false), build("bogus").map { it.selected })
+    }
+
+    // stdrc 2026-10-21 (option B): Search is a phone tab.
+    @Test
+    fun searchIsAPhoneTabRootWithTheBarAndNoBack() {
+        assertEquals(listOf("home", "activity", "tasks", AppShellSearchTabKey, "more"), AppShellPhoneBottomTabKeys)
+        assertEquals(AppShellSearchTabKey, retainedAppShellSelectedTab(AppShellSearchTabKey))
+        assertEquals(AppShellSearchTabKey, appShellPhoneBottomBarSelectedKey(AppShellSearchTabKey))
+        val tabs = appShellBottomTabs(
+            selectedKey = AppShellSearchTabKey,
+            orderedTabKeys = AppShellPhoneBottomBarKeys,
+            activityUnreadCount = 3,
+            moreAttention = setOf(RaftMoreAttention.AppUpdate),
+            labelFor = { it }
+        )
+        assertEquals(listOf(AppShellSearchTabKey), tabs.filter { it.selected }.map { it.key })
+        // Search never wears a dot.
+        assertFalse(tabs.single { it.key == AppShellSearchTabKey }.attentionDot)
+        // Root: no Back, so the bar shows; tapping another tab leaves it.
+        assertNull(appShellMoreChildBackTarget(AppShellSearchTabKey, navRailActive = false))
+        assertTrue(appShellBottomTabsVisible(selectedTab = AppShellSearchTabKey, selectedHomeDestination = null))
+        assertTrue(shouldHandleAppShellTabSelection(AppShellSearchTabKey, "tasks"))
+        assertEquals("kuikly_search", appShellBottomTabPerformanceRoute(AppShellSearchTabKey))
+        // It is kept alive as a child tab like the others.
+        assertEquals(AppShellSearchTabKey, appShellActiveChildPagerTab(AppShellSearchTabKey))
+        assertEquals(
+            listOf("home", AppShellSearchTabKey),
+            appShellRetainedChildTabs(AppShellSearchTabKey, mountedTabs = setOf("home", AppShellSearchTabKey))
+        )
     }
 
     @Test
-    fun searchSlotIsAnActionAndNeverSelected() {
-        assertEquals(listOf("home", "activity", "tasks", "more"), AppShellPhoneBottomTabKeys)
-        assertTrue(AppShellSearchActionKey in AppShellPhoneBottomBarKeys)
-        assertFalse(AppShellSearchActionKey in AppShellPhoneBottomTabKeys)
-        // Even asked to, the builder never marks the Search slot selected.
-        val tabs = appShellBottomTabs(
-            selectedKey = AppShellSearchActionKey,
-            orderedTabKeys = AppShellPhoneBottomBarKeys,
-            labelFor = { it }
-        )
-        assertTrue(tabs.none { it.selected })
-        // It is not a shell tab key: a stray selection clamps to Home.
-        assertEquals("home", retainedAppShellSelectedTab(AppShellSearchActionKey))
+    fun searchPageChromeFollowsTheNavigationRule() {
+        // Tab root: no Back, content sits above the bar.
+        assertEquals(HomeSearchPageChrome(showsBack = false, aboveBottomBar = true), homeSearchPageChrome(tabRoot = true))
+        // Pushed (rail Home head, channel search): Back, covers the bar.
+        assertEquals(HomeSearchPageChrome(showsBack = true, aboveBottomBar = false), homeSearchPageChrome(tabRoot = false))
+    }
+
+    @Test
+    fun searchTabMovesToTheRailSearchEntryOnTheWideLayout() {
+        assertTrue(appShellSearchTabMovesToRailSearch(AppShellSearchTabKey, navRailActive = true))
+        assertFalse(appShellSearchTabMovesToRailSearch(AppShellSearchTabKey, navRailActive = false))
+        assertFalse(appShellSearchTabMovesToRailSearch("home", navRailActive = true))
     }
 
     @Test
@@ -1560,7 +1590,7 @@ class RaftAppShellTest {
         }
         // Only the More tab picks the signal up.
         assertEquals(false, build("home", both)["activity"])
-        assertEquals(false, build("home", both)[AppShellSearchActionKey])
+        assertEquals(false, build("home", both)[AppShellSearchTabKey])
     }
 
     @Test
@@ -1731,48 +1761,34 @@ class RaftAppShellTest {
 
     @Test
     fun appShellBottomTabsStayMountedBehindNativeHomeChildPages() {
+        assertEquals(true, appShellBottomTabsVisible(selectedTab = "home", selectedHomeDestination = null))
+        assertEquals(true, appShellBottomTabsVisible(selectedTab = "home", selectedHomeDestination = "activity"))
+        assertEquals(false, appShellBottomTabsVisible(selectedTab = "home", selectedHomeDestination = "unknown"))
+    }
+
+    // stdrc 2026-10-21: a page with Back at the top shows no bottom tab bar; a tab root shows it.
+    @Test
+    fun appShellBottomTabsShowOnTabRootsAndHideOnInShellPagesWithBack() {
+        // Phone bar roots: no Back, bar shows (the home destination of another tab is ignored).
+        for (root in AppShellPhoneBottomTabKeys) {
+            assertEquals(true, appShellBottomTabsVisible(selectedTab = root, selectedHomeDestination = null), root)
+            assertEquals(true, appShellBottomTabsVisible(selectedTab = root, selectedHomeDestination = "activity"), root)
+        }
+        // Settings resolves to the More root on the phone; DMs is a legacy root.
+        assertEquals(true, appShellBottomTabsVisible(selectedTab = "settings", selectedHomeDestination = null))
+        assertEquals(true, appShellBottomTabsVisible(selectedTab = "dms", selectedHomeDestination = null))
+        // Members is pushed inside More with Back to More: no bar.
+        for (child in AppShellMoreChildTabKeys) {
+            assertEquals("more", appShellMoreChildBackTarget(child, navRailActive = false), child)
+            assertEquals(false, appShellBottomTabsVisible(selectedTab = child, selectedHomeDestination = null), child)
+        }
+        // On the wide rail Members is a rail root without Back (the rail, not the bar, navigates).
         assertEquals(
             true,
-            appShellBottomTabsVisible(
-                selectedTab = "home",
-                selectedHomeDestination = null,
-            )
+            appShellBottomTabsVisible(selectedTab = "members", selectedHomeDestination = null, navRailActive = true)
         )
-        assertEquals(
-            true,
-            appShellBottomTabsVisible(
-                selectedTab = "home",
-                selectedHomeDestination = "activity",
-            )
-        )
-        assertEquals(
-            false,
-            appShellBottomTabsVisible(
-                selectedTab = "home",
-                selectedHomeDestination = "unknown",
-            )
-        )
-        assertEquals(
-            true,
-            appShellBottomTabsVisible(
-                selectedTab = "settings",
-                selectedHomeDestination = null,
-            )
-        )
-        assertEquals(
-            true,
-            appShellBottomTabsVisible(
-                selectedTab = "settings",
-                selectedHomeDestination = null,
-            )
-        )
-        assertEquals(
-            true,
-            appShellBottomTabsVisible(
-                selectedTab = "tasks",
-                selectedHomeDestination = "activity",
-            )
-        )
+        // Unknown tab keys fall back to the Home root.
+        assertEquals(true, appShellBottomTabsVisible(selectedTab = "bogus", selectedHomeDestination = null))
     }
 
     @Test

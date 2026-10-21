@@ -85,27 +85,27 @@ class RaftNativeTabBarTest {
                 ),
                 visible = true,
             )
-        assertEquals(listOf("home", "activity", "tasks", AppShellSearchActionKey, "more"), state.items.map { it.key })
+        assertEquals(listOf("home", "activity", "tasks", AppShellSearchTabKey, "more"), state.items.map { it.key })
         val byKey = state.items.associateBy { it.key }
         assertTrue(byKey.getValue("activity").attentionDot)
         assertEquals(0, byKey.getValue("activity").badgeCount)
         assertNull(byKey.getValue("activity").badgeValue)
         assertFalse(byKey.getValue("tasks").attentionDot)
-        // Search sits directly left of More, flagged as the action, never the selection.
+        // Search sits directly left of More as an ordinary tab (stdrc option B).
         val search = state.items[3]
-        assertEquals(AppShellSearchActionKey, search.key)
+        assertEquals(AppShellSearchTabKey, search.key)
         assertEquals("label-search", search.title)
-        assertTrue(search.searchAction)
+        assertFalse(search.searchAction)
         assertEquals("magnifyingglass", search.systemImageName)
         assertEquals("home", state.selectedKey)
-        assertEquals(listOf(search), state.items.filter { it.searchAction })
-        // A payload claiming Search is selected still publishes no Search selection.
-        val forced =
+        assertTrue(state.items.none { it.searchAction })
+        // The selected Search tab is published as the selection.
+        val onSearch =
             raftNativeTabBarState(
-                listOf(RaftBottomTabItemPayload(key = AppShellSearchActionKey, selected = true)),
+                listOf(RaftBottomTabItemPayload(key = AppShellSearchTabKey, selected = true)),
                 visible = true,
             )
-        assertNull(forced.selectedKey)
+        assertEquals(AppShellSearchTabKey, onSearch.selectedKey)
         // The selected Activity tab never carries the dot.
         val onActivity = raftNativeTabBarState(fiveTabs(selectedKey = "activity", activityUnreadCount = 3), visible = true)
         assertFalse(onActivity.items.single { it.key == "activity" }.attentionDot)

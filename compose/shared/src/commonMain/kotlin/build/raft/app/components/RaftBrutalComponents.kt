@@ -1547,62 +1547,6 @@ private fun RaftPickerChip(
     }
 }
 
-@Composable
-internal fun RaftAnchoredToolbarChip(
-    label: String,
-    onClick: (RaftPopoverAnchor) -> Unit,
-    anchorIdentity: Any,
-    modifier: Modifier = Modifier,
-    iconName: RaftLucideIconName? = null,
-    trailingIconName: RaftLucideIconName? = RaftLucideIconName.ChevronDown,
-    active: Boolean = false,
-    enabled: Boolean = true,
-    uppercase: Boolean = true,
-    count: Int? = null,
-    activeBackgroundColor: Color = RaftColor.AccentCyan,
-    inactiveBackgroundColor: Color = RaftColor.SurfaceWhite,
-    borderColor: Color = RaftColor.EmptyStateGray,
-    disabledBorderColor: Color = RaftColor.EmptyStateGray,
-    activeShadowOffset: Dp = 0.dp,
-    reserveActiveShadowSpace: Boolean = false,
-    activeShadowColor: Color = RaftColor.ShadowBlack,
-    onAnchorChanged: ((RaftPopoverAnchorResolver) -> Unit)? = null
-) {
-    val currentOnAnchorChanged by rememberUpdatedState(onAnchorChanged)
-    val anchor = remember(anchorIdentity) { RaftLiveRootAnchorRef(identity = anchorIdentity) }
-    val anchorResolver = remember(anchor) { anchor.resolver(RaftPopoverLocalPoint.BottomStart) }
-    var resolverNotified by remember(anchorResolver) { mutableStateOf(false) }
-    Box(
-        modifier =
-            modifier.raftCaptureLiveRootAnchor(anchor) {
-                if (!resolverNotified) {
-                    resolverNotified = true
-                    currentOnAnchorChanged?.invoke(anchorResolver)
-                }
-            }
-    ) {
-        RaftToolbarChip(
-            label = label,
-            iconName = iconName,
-            trailingIconName = trailingIconName,
-            active = active,
-            enabled = enabled,
-            uppercase = uppercase,
-            count = count,
-            activeBackgroundColor = activeBackgroundColor,
-            inactiveBackgroundColor = inactiveBackgroundColor,
-            borderColor = borderColor,
-            disabledBorderColor = disabledBorderColor,
-            activeShadowOffset = activeShadowOffset,
-            reserveActiveShadowSpace = reserveActiveShadowSpace,
-            activeShadowColor = activeShadowColor,
-            onClick = {
-                anchor.resolve(RaftPopoverLocalPoint.BottomStart)?.let(onClick)
-            }
-        )
-    }
-}
-
 /**
  * Legacy-named icon button; renders the design-system [RaftIconButton] (size from
  * [raftIconButtonSizeFor]: `xs` 24dp, `sm` 28dp, `icon-md` 32dp, `icon-lg` 44dp), its variant

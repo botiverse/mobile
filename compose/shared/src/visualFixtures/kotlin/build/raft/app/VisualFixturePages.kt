@@ -300,7 +300,7 @@ internal class ComposeAndroidFloatingTabBarVisualPage : BasePager() {
                         moreLabel = "More",
                         activityUnreadCount = 12
                     ).map { it.copy(enabled = it.key != disabledKey) },
-                onSelect = { if (it != AppShellSearchActionKey) selectedKey = it },
+                onSelect = { selectedKey = it },
                 modifier = Modifier.width(390.dp),
                 bottomSafeArea = bottomSafeArea
             )

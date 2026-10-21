@@ -1,8 +1,8 @@
 package build.raft.app.components
 
 import build.raft.app.RaftColor
+import build.raft.app.RaftLucideIconName
 import build.raft.app.RaftAppRadius
-import build.raft.app.RaftAppStroke
 import build.raft.app.RaftType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,15 +32,18 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextFieldDefaults
+import build.raft.designsystem.tokens.RaftStroke
+import androidx.compose.foundation.layout.Arrangement
+import build.raft.designsystem.components.RaftTextFieldClearAction
 
 
 /**
- * raft-ui Input / InputGroup metrics for the Home search field ([raftField]): 44dp tall,
- * 12dp side padding, `text-field` 16/24, `foreground-hint` placeholder; the read-only
- * stand-in draws the same control (card fill, 1.5dp `line-field` edge, control radius).
+ * raft-ui search field (`rf-search`, web MessageSearchPage): the design-system [RaftTextField]
+ * input group, 44dp, 1dp `line-field` edge, control radius, the search glyph as the leading
+ * addon and the clear button addon once there is text. The read-only stand-in draws the same box.
  */
-private val RaftSearchFieldHeight = RaftMetrics.FieldHeight
-
 private fun raftSearchFieldTextStyle() = RaftType.Input.copy(fontSize = 16.sp, lineHeight = 24.sp, color = RaftColor.TextBlack)
 
 @Composable
@@ -50,15 +53,17 @@ private fun RaftSearchFieldPreview(
     modifier: Modifier
 ) {
     val shape = RoundedCornerShape(RaftAppRadius.Control)
-    Box(
+    Row(
         modifier =
             modifier
-                .height(RaftSearchFieldHeight)
+                .height(RaftTextFieldDefaults.Height)
                 .background(RaftColor.Card, shape)
-                .border(RaftAppStroke.Control, RaftColor.LineField, shape)
+                .border(RaftStroke.Field, RaftColor.LineField, shape)
                 .padding(horizontal = RaftMetrics.FieldPaddingHorizontal),
-        contentAlignment = Alignment.CenterStart
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
+        RaftSlotIcon(RaftLucideIconName.Search, size = RaftTextFieldDefaults.AddonIconSize, color = RaftColor.ForegroundHint)
         Text(
             text = text.ifBlank { placeholder },
             style = raftSearchFieldTextStyle(),
@@ -112,6 +117,31 @@ private fun submitSharedHomeSearchInput(
     }
 }
 
+private fun sharedHomeSearchKeyboardActions(submit: () -> Unit): KeyboardActions =
+    KeyboardActions(onSearch = { submit() }, onDone = { submit() })
+
+/**
+ * The app editor behaviour (IME Search action, focus-dismiss registry, delayed [autoFocus]) for
+ * the design-system search field.
+ */
+@Composable
+private fun rememberSharedHomeSearchEditor(
+    autoFocus: Boolean,
+    focusRequester: FocusRequester?,
+    submit: () -> Unit
+): RaftDesignSystemEditor {
+    val fallbackFocusRequester = remember { FocusRequester() }
+    return rememberRaftDesignSystemEditor(
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = sharedHomeSearchKeyboardActions(submit),
+        keyboardHeightChange = {},
+        focusRequester = focusRequester ?: fallbackFocusRequester,
+        autoFocus = autoFocus,
+        onFocus = {},
+        onBlur = {}
+    )
+}
+
 @Composable
 internal fun SharedHomeSearchInput(
     query: String,
@@ -131,16 +161,30 @@ internal fun SharedHomeSearchInput(
         RaftSearchFieldPreview(query, placeholder, modifier)
         return
     }
+    if (raft) {
+        val editor = rememberSharedHomeSearchEditor(autoFocus, focusRequester, { submitSharedHomeSearchInput(query, loading, onSubmit) })
+        RaftTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = modifier.fillMaxWidth().then(editor.modifier),
+            placeholder = placeholder.ifEmpty { null },
+            leading = { RaftSlotIcon(RaftLucideIconName.Search) },
+            trailingAction = if (query.isNotEmpty()) ({ RaftTextFieldClearAction(onClear) }) else null,
+            keyboardOptions = editor.keyboardOptions,
+            keyboardActions = sharedHomeSearchKeyboardActions { submitSharedHomeSearchInput(query, loading, onSubmit) }
+        )
+        return
+    }
     if (interactive) {
         RaftBrutalInputField(
             value = query,
             onValueChange = onQueryChange,
             placeholder = placeholder,
             maxLines = 1,
-            textStyle = if (raft) raftSearchFieldTextStyle() else RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
-            fieldMinHeight = if (raft) RaftSearchFieldHeight else 38.dp,
-            horizontalPadding = if (raft) RaftMetrics.FieldPaddingHorizontal else 11.dp,
-            verticalPadding = if (raft) 0.dp else 5.dp,
+            textStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
+            fieldMinHeight = 38.dp,
+            horizontalPadding = 11.dp,
+            verticalPadding = 5.dp,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions =
                 KeyboardActions(
@@ -203,16 +247,30 @@ internal fun SharedHomeSearchInput(
         RaftSearchFieldPreview(query.text, placeholder, modifier)
         return
     }
+    if (raft) {
+        val editor = rememberSharedHomeSearchEditor(autoFocus, focusRequester, { submitSharedHomeSearchInput(query.text, loading, onSubmit) })
+        RaftTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = modifier.fillMaxWidth().then(editor.modifier),
+            placeholder = placeholder.ifEmpty { null },
+            leading = { RaftSlotIcon(RaftLucideIconName.Search) },
+            trailingAction = if (query.text.isNotEmpty()) ({ RaftTextFieldClearAction(onClear) }) else null,
+            keyboardOptions = editor.keyboardOptions,
+            keyboardActions = sharedHomeSearchKeyboardActions { submitSharedHomeSearchInput(query.text, loading, onSubmit) }
+        )
+        return
+    }
     if (interactive) {
         RaftBrutalInputField(
             value = query,
             onValueChange = onQueryChange,
             placeholder = placeholder,
             maxLines = 1,
-            textStyle = if (raft) raftSearchFieldTextStyle() else RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
-            fieldMinHeight = if (raft) RaftSearchFieldHeight else 38.dp,
-            horizontalPadding = if (raft) RaftMetrics.FieldPaddingHorizontal else 11.dp,
-            verticalPadding = if (raft) 0.dp else 5.dp,
+            textStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
+            fieldMinHeight = 38.dp,
+            horizontalPadding = 11.dp,
+            verticalPadding = 5.dp,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions =
                 KeyboardActions(

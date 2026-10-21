@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftPickerTriggerButton
 import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.RaftReadOnlyField
@@ -51,7 +52,7 @@ import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalCard
 import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftBrutalListRow
-import build.raft.app.components.RaftAnchoredToolbarChip
+import build.raft.app.components.RaftAnchoredPickerTrigger
 import build.raft.app.components.RaftBrutalReadOnlyField
 import build.raft.app.components.RaftBrutalSearchField
 import build.raft.app.components.RaftBrutalSelectField
@@ -69,7 +70,6 @@ import build.raft.app.components.SharedHomeSearchEditorOwner
 import build.raft.app.components.SharedHomeSearchInput
 import build.raft.app.components.RaftLinkButton
 import build.raft.app.components.RaftSwitchButton
-import build.raft.app.components.RaftToolbarChip
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.raftDisabledActionBackgroundFor
@@ -745,7 +745,6 @@ internal fun appShellChildPageGlassStyle(bottomTabBarOverlaysContent: Boolean): 
 private val AppShellNotificationLaunchJson = Json { ignoreUnknownKeys = true }
 private val SearchControlsHorizontalPadding = 16.dp
 private val SearchMessagesHorizontalPadding = 16.dp
-private val SearchControlShadowOffset = 2.dp
 private val SavedSelectedRowShadowOffset = 2.dp
 private val SavedUnsaveHitTargetSize = 44.dp
 private val SearchPopoverBorderColor: Color get() = RaftColor.BorderBlack
@@ -755,7 +754,7 @@ private val SearchMutedTextColor: Color get() = RaftColor.TextBlack.copy(alpha =
 // xxchan 2026-10-20: the phone bar is 主页 · 动态 · 任务 · 更多 (+ the Search action); Members and
 // Settings are pushed from More. They stay shell child pages so the wide rail, deep links and
 // old launch values keep selecting them directly.
-private val AppShellChildPageTabKeys = listOf("home", "activity", "tasks", "more", "members", "settings")
+private val AppShellChildPageTabKeys = listOf("home", "activity", "tasks", AppShellSearchTabKey, "more", "members", "settings")
 private val AppShellChildPagePrewarmOrder = listOf("settings", "tasks", "members")
 
 internal typealias AppShellChildTabRenderer = @Composable (tab: String, active: Boolean) -> Unit
@@ -1216,7 +1215,7 @@ private val bottomTabBarSmokeItems = listOf(
     RaftBottomTabItemPayload("home", "Home", RaftLucideIconName.House, selected = true),
     RaftBottomTabItemPayload("activity", "Activity", RaftLucideIconName.Activity, attentionDot = true),
     RaftBottomTabItemPayload("tasks", "Tasks", RaftLucideIconName.SquareCheckBig),
-    RaftBottomTabItemPayload(AppShellSearchActionKey, "Search", RaftLucideIconName.Search),
+    RaftBottomTabItemPayload(AppShellSearchTabKey, "Search", RaftLucideIconName.Search),
     RaftBottomTabItemPayload("more", "More", RaftLucideIconName.Ellipsis)
 )
 
@@ -1229,8 +1228,8 @@ internal const val AppShellRailSavedKey = "rail_saved"
 
 /**
  * The phone bottom bar (stdrc 2026-10-21): Home · Activity · Tasks · Search · More for
- * [selectedTab]. Search holds the slot left of More as an action and is never selected; a page pushed
- * from More (Members) and Settings itself keep More selected.
+ * [selectedTab]. Search is a tab left of More; a page pushed from More (Members) and Settings
+ * itself keep More selected.
  */
 internal fun appShellPhoneBottomTabs(
     selectedTab: String,
@@ -1251,7 +1250,7 @@ internal fun appShellPhoneBottomTabs(
             when (key) {
                 "home" -> homeLabel
                 "activity" -> activityLabel
-                AppShellSearchActionKey -> searchLabel
+                AppShellSearchTabKey -> searchLabel
                 "tasks" -> tasksLabel
                 "more" -> moreLabel
                 else -> key.uppercase()
@@ -1279,7 +1278,7 @@ internal fun appShellBottomTabs(
     labelFor: (String) -> String
 ): List<RaftBottomTabItemPayload> =
     orderedTabKeys.map { key ->
-        val selected = selectedKey == key && key != AppShellSearchActionKey
+        val selected = selectedKey == key
         RaftBottomTabItemPayload(
             key = key,
             label = labelFor(key),
@@ -1299,7 +1298,7 @@ internal fun appShellBottomTabs(
 // union keeps legacy clamping behavior unchanged while making the Slack keys first-class for
 // child-page lookup, tap normalization and retained-tab bookkeeping.
 private val retainedAppShellTabKeys =
-    listOf("home", "tasks", "members", "settings") + listOf("home", "dms", "activity", "more")
+    listOf("home", "tasks", "members", "settings") + listOf("home", "dms", "activity", "more", AppShellSearchTabKey)
 
 internal fun retainedAppShellSelectedTab(selectedTab: String): String =
     selectedTab.takeIf { it in retainedAppShellTabKeys } ?: "home"
@@ -1776,15 +1775,26 @@ internal fun appShellBottomTabPerformanceRoute(tab: String): String =
         "dms" -> "kuikly_dms"
         "activity" -> "kuikly_activity"
         "more" -> "kuikly_more"
+        AppShellSearchTabKey -> "kuikly_search"
         else -> "kuikly_home"
     }
 
 internal fun appShellBottomTabPerformancePhase(tab: String): String =
     "bottom_tab_${retainedAppShellSelectedTab(tab)}"
 
+/**
+ * Navigation rule (stdrc 2026-10-21): a page with Back at the top shows no bottom tab bar; a
+ * page without Back is a tab root and shows it. The roots (Home, Activity, Tasks, More = the
+ * Settings page) show the bar; an in-shell child page that carries Back hides it — Members
+ * pushed from More ([appShellMoreChildBackTarget]). Home secondary destinations and every other
+ * Back page (settings groups, Computers, threads, task details) are native pages pushed over the
+ * shell, so the bar stays mounted behind them. The wide nav rail never shows the bar (callers
+ * also gate on it).
+ */
 internal fun appShellBottomTabsVisible(
     selectedTab: String,
     selectedHomeDestination: String?,
+    navRailActive: Boolean = false,
 ): Boolean =
     when (retainedAppShellSelectedTab(selectedTab)) {
         // Home secondary destinations are native child pages. Keep the root tab bar mounted
@@ -1792,7 +1802,7 @@ internal fun appShellBottomTabsVisible(
         "home" ->
             selectedHomeDestination == null ||
                 retainedHomeSecondaryDestination(selectedHomeDestination) != null
-        else -> true
+        else -> appShellMoreChildBackTarget(selectedTab, navRailActive) == null
     }
 
 internal fun sharedHomeShouldStartOnActive(active: Boolean, sessionReady: Boolean, state: SharedHomeState): Boolean =
@@ -2283,6 +2293,8 @@ private fun RaftAppShellReadyContent(
     // destination rendered INLINE in the AppShell middle pane — never a pushed secondary page
     // (the rail must stay). Narrow or flag-off keeps the legacy push path unchanged.
     var railInlineSecondaryDestination by remember { mutableStateOf<String?>(null) }
+    // The Search tab's result list position survives leaving and re-entering the tab.
+    val searchTabListState = rememberLazyListState()
     // task #13: once a rail surface exposes Activity (rail active or an inline destination is
     // covering the middle pane) the live tab must survive width transitions — narrowing must
     // not clamp a user-reached Activity selection back to Home.
@@ -5256,16 +5268,26 @@ private fun RaftAppShellReadyContent(
         }
     }
 
-    // xxchan 2026-10-20: the bar's Search action pushes the search page over the current tab
-    // (the tab stays selected; Back returns to it). The pushed page covers the bar, so a second
-    // tap cannot reach here while search is open; the guard only drops a duplicate push.
-    fun openSearchOverCurrentTab(source: String) {
-        if (retainedHomeSecondaryDestination(selectedHomeDestination) == HomeDestinationSearch) {
-            bridge.log("app_shell_search_open_skip reason=already_open source=$source tab=$selectedTab")
+    // stdrc 2026-10-21 (option B): Search is a phone tab. Opening search (the Home head's Search
+    // button) selects it like a bar tap; the wide rail keeps the pushed search page.
+    fun openSearchTab(source: String) {
+        val navRail =
+            raftAdaptiveNavRailActive(
+                desktopModeEnabled = desktopModeOnLargeScreen,
+                paneState = shellScope.adaptivePane
+            )
+        if (navRail) {
+            bridge.log("app_shell_search_open source=$source tab=$selectedTab mode=rail_page")
+            openHomeSecondaryDestination(HomeDestinationSearch)
             return
         }
-        bridge.log("app_shell_search_open source=$source tab=$selectedTab")
-        openHomeSecondaryDestination(HomeDestinationSearch)
+        bridge.log("app_shell_search_open source=$source tab=$selectedTab mode=tab")
+        if (shouldDismissHomeNotificationCenterForAppShellTabSelection(selectedTab, AppShellSearchTabKey)) {
+            homeFocusLossDismissEpoch += 1
+            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
+        }
+        selectAppShellTab(AppShellSearchTabKey, directChildSwitch = true)
+        retainedAppShellTabs = retainedAppShellTabs + AppShellSearchTabKey
     }
 
     val handleAppShellBack by rememberUpdatedState {
@@ -5967,6 +5989,14 @@ private fun RaftAppShellReadyContent(
     // stdrc 2026-10-21: Settings is the More tab's root on the phone bar and the pinned rail entry
     // on the wide layout; a selection made for the other layout moves to this layout's root.
     LaunchedEffect(selectedTab, navRailActive) {
+        if (appShellSearchTabMovesToRailSearch(selectedTab, navRailActive)) {
+            // The rail has no Search tab: a phone Search tab left open when the window widens
+            // becomes the rail's inline Search over Home.
+            bridge.log("app_shell_search_tab_to_rail from=$selectedTab")
+            selectAppShellTab("home", directChildSwitch = true)
+            railInlineSecondaryDestination = AppShellRailSearchKey
+            return@LaunchedEffect
+        }
         val root = appShellSettingsRootTab(selectedTab, navRailActive) ?: return@LaunchedEffect
         bridge.log("app_shell_settings_root from=$selectedTab to=$root navRail=$navRailActive")
         selectAppShellTab(root, directChildSwitch = true)
@@ -5976,6 +6006,7 @@ private fun RaftAppShellReadyContent(
         appShellBottomTabsVisible(
             selectedTab = selectedTab,
             selectedHomeDestination = selectedHomeDestination,
+            navRailActive = navRailActive,
         ) && !navRailActive
     val homeTabLabel = stringResource(MR.strings.tab_home)
     val tasksTabLabel = stringResource(MR.strings.tab_tasks)
@@ -6363,10 +6394,6 @@ private fun RaftAppShellReadyContent(
 
     val onAppShellTabSelected: (String) -> Unit = onBottomTabSelected@{
                 prewarmAdmissionGate.invalidate("bottom_tab_tap:$it")
-                if (it == AppShellSearchActionKey) {
-                    openSearchOverCurrentTab(source = "bottom_bar")
-                    return@onBottomTabSelected
-                }
                 val nextTab = retainedAppShellSelectedTab(it)
                 when (
                     bottomTabTapTracker.onTap(
@@ -7101,7 +7128,7 @@ private fun RaftAppShellReadyContent(
                                     homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
                                 },
                                 onOpenSearch = {
-                                    openHomeSecondaryDestination(HomeDestinationSearch)
+                                    openSearchTab(source = "home_head")
                                 },
                                 onOpenActivity = {
                                     openHomeSecondaryDestination(HomeDestinationActivity)
@@ -7340,6 +7367,21 @@ private fun RaftAppShellReadyContent(
                         PerformanceSceneEffect(bridge, "kuikly_more", active = active)
                         settingsTabContent(active)
                     }
+                    // stdrc 2026-10-21 (option B): the phone Search tab. A tab root (no Back, the bar
+                    // stays); a result pushes its page over the shell and Back returns here with the
+                    // query, results and scroll kept (the tab stays composed like the others).
+                    val searchTabContent: @Composable (active: Boolean) -> Unit = { _ ->
+                        HomeSecondaryRouterContent(
+                            destination = HomeDestinationSearch,
+                            routeVisibleTick = pageVisibleTick,
+                            initialSearchFocusInput = true,
+                            adaptivePane = shellScope.adaptivePane,
+                            tabRoot = true,
+                            hostPager = pager,
+                            searchListState = searchTabListState,
+                            searchBottomContentPadding = appShellBottomContentInset,
+                        )
+                    }
                     val childTabRenderer: AppShellChildTabRenderer = { tab, active ->
                         val homeSummary = sharedHomeContentRenderSummary(homeState.content)
                         LaunchedEffect(tab, active, currentChildTab, readyServerId, homeSummary, homeState.homeRealtimeDirty) {
@@ -7358,6 +7400,7 @@ private fun RaftAppShellReadyContent(
                                 "dms" -> dmsTabContent(active)
                                 "activity" -> activityTabContent(active)
                                 "more" -> moreTabContent(active)
+                                AppShellSearchTabKey -> searchTabContent(active)
                                 else -> homeTabContent(active)
                             }
                         }
@@ -21968,9 +22011,8 @@ private fun SharedHomeSearchFilters(
     val sortActive = state.sort != SearchSort.Relevance
     val scopeLabel = stringResource(MR.strings.search_filter_scope)
     val channelLabel = stringResource(MR.strings.search_filter_channel)
-    // raft-ui PickerTriggerButton: an applied filter is the cyan `--info-soft` wash
-    // (web `appliedFilterProps`).
-    val appliedFill = RaftColor.InfoSoft
+    // raft-ui PickerTriggerButton: an applied filter (web `appliedFilterProps`) is the
+    // `info-soft` wash.
     SharedHomeSearchControlsBlock {
         val backSwipeRowState = rememberLazyListState()
         val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
@@ -21984,64 +22026,44 @@ private fun SharedHomeSearchFilters(
                 item(key = "search-filter-${filter.id}") {
                     when (filter) {
                         HomeSearchFilter.Sender ->
-                            RaftAnchoredToolbarChip(
+                            RaftAnchoredPickerTrigger(
                                 label = state.localizedSenderFilterLabel(),
                                 anchorIdentity = "search_filter:sender",
-                                active = senderActive,
-                                enabled = true,
-                                uppercase = !senderActive,
+                                hasValue = senderActive,
                                 iconName = RaftLucideIconName.CircleUser,
-                                activeBackgroundColor = appliedFill,
-                                activeShadowOffset = SearchControlShadowOffset,
-                                reserveActiveShadowSpace = true,
                                 onAnchorChanged = senderAnchorChanged,
                                 onClick = { anchor ->
                                     onOpenFilter("sender", anchor)
                                 }
                             )
                         HomeSearchFilter.Scope ->
-                            RaftAnchoredToolbarChip(
+                            RaftAnchoredPickerTrigger(
                                 label = if (scopeActive) "$scopeLabel ${state.selectedScopes.size}" else scopeLabel,
                                 anchorIdentity = "search_filter:scope",
-                                active = scopeActive,
-                                enabled = true,
-                                uppercase = !scopeActive,
+                                hasValue = scopeActive,
                                 iconName = RaftLucideIconName.AtSign,
-                                activeBackgroundColor = appliedFill,
-                                activeShadowOffset = SearchControlShadowOffset,
-                                reserveActiveShadowSpace = true,
                                 onAnchorChanged = scopeAnchorChanged,
                                 onClick = { anchor ->
                                     onOpenFilter("scope", anchor)
                                 }
                             )
                         HomeSearchFilter.Channel ->
-                            RaftAnchoredToolbarChip(
+                            RaftAnchoredPickerTrigger(
                                 label = selectedChannel?.label ?: channelLabel,
                                 anchorIdentity = "search_filter:channel",
-                                active = channelActive,
-                                enabled = true,
-                                uppercase = selectedChannel == null,
+                                hasValue = channelActive,
                                 iconName = selectedChannel?.iconName ?: RaftLucideIconName.Hash,
-                                activeBackgroundColor = appliedFill,
-                                activeShadowOffset = SearchControlShadowOffset,
-                                reserveActiveShadowSpace = true,
                                 onAnchorChanged = channelAnchorChanged,
                                 onClick = { anchor ->
                                     onOpenFilter("channel", anchor)
                                 }
                             )
                         HomeSearchFilter.Time ->
-                            RaftAnchoredToolbarChip(
+                            RaftAnchoredPickerTrigger(
                                 label = state.timeRange.localizedSearchLabel(),
                                 anchorIdentity = "search_filter:time",
-                                active = timeActive,
-                                enabled = true,
-                                uppercase = false,
+                                hasValue = timeActive,
                                 iconName = RaftLucideIconName.Calendar,
-                                activeBackgroundColor = appliedFill,
-                                activeShadowOffset = SearchControlShadowOffset,
-                                reserveActiveShadowSpace = true,
                                 onAnchorChanged = timeAnchorChanged,
                                 onClick = { anchor ->
                                     onOpenFilter("time", anchor)
@@ -22051,16 +22073,11 @@ private fun SharedHomeSearchFilters(
                 }
             }
             item {
-                RaftAnchoredToolbarChip(
+                RaftAnchoredPickerTrigger(
                     label = state.sort.localizedSearchLabel(),
                     anchorIdentity = "search_filter:sort",
-                    active = sortActive,
-                    enabled = true,
-                    uppercase = false,
+                    hasValue = sortActive,
                     iconName = RaftLucideIconName.ArrowUpDown,
-                    activeBackgroundColor = appliedFill,
-                    activeShadowOffset = SearchControlShadowOffset,
-                    reserveActiveShadowSpace = true,
                     onAnchorChanged = sortAnchorChanged,
                     onClick = { anchor ->
                         onOpenFilter("sort", anchor)
@@ -22069,13 +22086,9 @@ private fun SharedHomeSearchFilters(
             }
             if (hasActiveFilters) {
                 item {
-                    RaftToolbarChip(
-                        label = stringResource(MR.strings.search_filter_clear_all),
-                        active = false,
-                        enabled = true,
-                        uppercase = false,
-                        activeShadowOffset = SearchControlShadowOffset,
-                        reserveActiveShadowSpace = true,
+                    RaftPickerTriggerButton(
+                        text = stringResource(MR.strings.search_filter_clear_all),
+                        showIndicator = false,
                         onClick = { onIntent(SharedHomeSearchSavedIntent.ClearSearchFilters) }
                     )
                 }
@@ -25411,8 +25424,7 @@ internal fun BottomTabBarSmokeContent() {
     val shellScope = rememberRaftAppShellScope()
     var selectedTab by remember { mutableStateOf("tasks") }
     val smokeItems = bottomTabBarSmokeItems.map { item -> item.copy(selected = item.key == selectedTab) }
-    // Search is an action: tapping it never moves the selection.
-    val onSmokeSelect: (String) -> Unit = { if (it != AppShellSearchActionKey) selectedTab = it }
+    val onSmokeSelect: (String) -> Unit = { selectedTab = it }
     Box(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
         Column(
             modifier = Modifier

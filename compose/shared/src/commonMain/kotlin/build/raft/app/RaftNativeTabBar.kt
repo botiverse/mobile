@@ -58,9 +58,8 @@ data class RaftNativeTabBarItem(
      */
     val attentionDot: Boolean = false,
     /**
-     * True for the Search action (the slot left of More, stdrc 2026-10-21): a tap opens search over
-     * the current tab and it is never the selected item. The host keeps it in the bar like any
-     * tab and refuses UIKit selection for it.
+     * Always false: Search is an ordinary tab since stdrc 2026-10-21 (option B). Kept so the iOS
+     * host's item mapping stays source-compatible.
      */
     val searchAction: Boolean = false,
 )
@@ -247,8 +246,7 @@ internal fun raftNativeTabBarState(
 ): RaftNativeTabBarState =
     RaftNativeTabBarState(
         items = items.map(::raftNativeTabBarItem),
-        // The Search action is never the selection, whatever the payload says.
-        selectedKey = items.firstOrNull { it.selected && it.key != AppShellSearchActionKey }?.key,
+        selectedKey = items.firstOrNull { it.selected }?.key,
         visible = visible,
     )
 
@@ -264,7 +262,6 @@ internal fun raftNativeTabBarItem(item: RaftBottomTabItemPayload): RaftNativeTab
         badgeValue = raftNativeTabBarBadgeValue(badgeCount),
         enabled = item.enabled,
         attentionDot = item.attentionDot && badgeCount == 0,
-        searchAction = item.key == AppShellSearchActionKey,
     )
 }
 
