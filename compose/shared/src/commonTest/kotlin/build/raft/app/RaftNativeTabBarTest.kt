@@ -36,11 +36,11 @@ class RaftNativeTabBarTest {
         assertEquals("activity", state.selectedKey)
         assertTrue(state.visible)
         assertEquals(
-            listOf("house", "waveform.path.ecg", "checkmark.square", "person.2", "gearshape"),
+            listOf("house", "waveform.path.ecg.rectangle", "checkmark.square", "person.2", "gearshape"),
             state.items.map { it.systemImageName },
         )
         assertEquals(
-            listOf("house.fill", "waveform.path.ecg", "checkmark.square.fill", "person.2.fill", "gearshape.fill"),
+            listOf("house.fill", "waveform.path.ecg.rectangle.fill", "checkmark.square.fill", "person.2.fill", "gearshape.fill"),
             state.items.map { it.selectedSystemImageName },
         )
     }
@@ -71,25 +71,41 @@ class RaftNativeTabBarTest {
     }
 
     @Test
-    fun activityUnreadPublishesADotNotACountAndSearchAsTrailingAction() {
+    fun phoneBarPublishesFiveItemsWithSearchLeftOfMore() {
         val state =
             raftNativeTabBarState(
-                fiveTabs(selectedKey = "home", activityUnreadCount = 120),
+                appShellPhoneBottomTabs(
+                    selectedTab = "home",
+                    homeLabel = "h",
+                    activityLabel = "a",
+                    searchLabel = "label-search",
+                    tasksLabel = "t",
+                    moreLabel = "m",
+                    activityUnreadCount = 120,
+                ),
                 visible = true,
-                accessory = appShellSearchAction("label-search"),
             )
+        assertEquals(listOf("home", "activity", "tasks", AppShellSearchActionKey, "more"), state.items.map { it.key })
         val byKey = state.items.associateBy { it.key }
         assertTrue(byKey.getValue("activity").attentionDot)
         assertEquals(0, byKey.getValue("activity").badgeCount)
         assertNull(byKey.getValue("activity").badgeValue)
         assertFalse(byKey.getValue("tasks").attentionDot)
-        // Search is the last item, flagged as the action, never the selection.
-        val search = state.items.last()
+        // Search sits directly left of More, flagged as the action, never the selection.
+        val search = state.items[3]
         assertEquals(AppShellSearchActionKey, search.key)
+        assertEquals("label-search", search.title)
         assertTrue(search.searchAction)
         assertEquals("magnifyingglass", search.systemImageName)
         assertEquals("home", state.selectedKey)
-        assertFalse(state.items.dropLast(1).any { it.searchAction })
+        assertEquals(listOf(search), state.items.filter { it.searchAction })
+        // A payload claiming Search is selected still publishes no Search selection.
+        val forced =
+            raftNativeTabBarState(
+                listOf(RaftBottomTabItemPayload(key = AppShellSearchActionKey, selected = true)),
+                visible = true,
+            )
+        assertNull(forced.selectedKey)
         // The selected Activity tab never carries the dot.
         val onActivity = raftNativeTabBarState(fiveTabs(selectedKey = "activity", activityUnreadCount = 3), visible = true)
         assertFalse(onActivity.items.single { it.key == "activity" }.attentionDot)

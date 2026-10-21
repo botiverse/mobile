@@ -54,26 +54,38 @@ class RaftTabBarStyleTest {
         // The badge's bottom edge stays in the icon's top band, leaving the icon readable.
         assertTrue(spec.BadgeOffsetY + spec.BadgeHeight < iconTop + spec.IconSize / 2)
         assertTrue(iconRight < spec.PillWidth)
-        // The tab cell (sticker slot + gap + one label line) fits inside the pill's border.
-        assertTrue(
-            spec.PillHeight + spec.LabelGap + spec.LabelLineHeight.value.dp <= spec.BarHeight - spec.ContainerBorder * 2
-        )
     }
 
     @Test
-    fun phoneBarFollowsJasperSizes() {
-        // Jasper 2026-10-20: pill and Search 56dp tall, tabs >= 44dp, 8dp gap, 16dp margins.
+    fun phoneBarIsTheFullWidthEdgeBar() {
+        // stdrc 2026-10-21: back to the 58dp edge bar (mockup A, pre-#3340) with five slots.
         val spec = RaftBottomTabBarSpec
-        assertEquals(56.dp, spec.BarHeight)
-        assertEquals(56.dp, spec.AccessorySize)
-        assertEquals(44.dp, spec.MinTabTarget)
-        assertEquals(8.dp, spec.SearchGap)
-        assertEquals(16.dp, spec.SideMargin)
-        // Four tabs keep a >= 44dp target on a 320dp phone.
-        val pillWidth = 320.dp - spec.SideMargin * 2 - spec.SearchGap - spec.AccessorySize
-        val tabWidth = (pillWidth - spec.PillInnerPadding * 2) / AppShellPhoneBottomTabKeys.size
-        assertTrue(tabWidth >= spec.MinTabTarget, "tab width $tabWidth")
-        // The tab cell fills the pill's height, so its hit area is >= 44dp tall too.
-        assertTrue(spec.BarHeight >= spec.MinTabTarget)
+        assertEquals(58.dp, spec.BarHeight)
+        assertEquals(7.dp, spec.TopPadding)
+        assertEquals(5, AppShellPhoneBottomBarKeys.size)
+        // Five equal slots on a 320dp phone still fit the 56dp pill and a >= 44dp target.
+        val slotWidth = 320.dp / AppShellPhoneBottomBarKeys.size
+        assertTrue(slotWidth >= spec.PillWidth, "slot width $slotWidth")
+        // The tab cell (1dp seam + top padding + sticker slot + gap + label) fits the bar.
+        assertTrue(
+            1.dp + spec.TopPadding + spec.PillHeight + spec.LabelGap + spec.LabelLineHeight.value.dp <= spec.BarHeight
+        )
+        assertTrue(spec.BarHeight >= 44.dp)
+    }
+
+    @Test
+    fun activityGlyphIsDrawnOnTheSameOpticalBoxAsTheOtherTabs() {
+        // Lucide activity's ink spans 2..22 of the 24-unit viewBox; house / square-check-big /
+        // search keep to 3..21. Scaled by 18/20 it lands on the same 3..21 box.
+        val scale = raftBottomTabIconScale(RaftLucideIconName.Activity)
+        assertEquals(0.9f, scale)
+        assertEquals(3f, 12f - (12f - 2f) * scale, 0.001f)
+        assertEquals(21f, 12f + (22f - 12f) * scale, 0.001f)
+        listOf(
+            RaftLucideIconName.House,
+            RaftLucideIconName.Search,
+            RaftLucideIconName.SquareCheckBig,
+            RaftLucideIconName.Ellipsis,
+        ).forEach { assertEquals(1f, raftBottomTabIconScale(it), "icon=$it") }
     }
 }

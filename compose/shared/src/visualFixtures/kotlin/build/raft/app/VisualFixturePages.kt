@@ -295,22 +295,22 @@ internal class ComposeAndroidFloatingTabBarVisualPage : BasePager() {
                         selectedTab = selectedKey,
                         homeLabel = "Home",
                         activityLabel = "Activity",
+                        searchLabel = "Search",
                         tasksLabel = "Tasks",
                         moreLabel = "More",
                         activityUnreadCount = 12
                     ).map { it.copy(enabled = it.key != disabledKey) },
                 onSelect = { if (it != AppShellSearchActionKey) selectedKey = it },
                 modifier = Modifier.width(390.dp),
-                bottomSafeArea = bottomSafeArea,
-                accessory = appShellSearchAction("Search")
+                bottomSafeArea = bottomSafeArea
             )
         }
     }
 }
 
 /**
- * The phone bottom bar (xxchan 2026-10-20): 主页 · 动态 · 任务 · 更多 with the round Search action
- * beside them, rendered by the shared Compose bar at 390dp. Top: 动态 selected (no dot on the
+ * The phone bottom bar (stdrc 2026-10-21): the full-width edge bar 主页 · 动态 · 任务 · 搜索 · 更多
+ * (搜索 is an action, never selected), rendered by the shared Compose bar at 390dp. Top: 动态 selected (no dot on the
  * selected tab); middle: 任务 selected with the unread dot on 动态; bottom: a page pushed from
  * 更多 (成员) keeps 更多 selected.
  */
@@ -330,13 +330,13 @@ internal class ComposeBottomTabBarMockupVisualPage : BasePager() {
                                 selectedTab = selectedTab,
                                 homeLabel = "主页",
                                 activityLabel = "动态",
+                                searchLabel = "搜索",
                                 tasksLabel = "任务",
                                 moreLabel = "更多",
                                 activityUnreadCount = 51
                             ),
                         onSelect = {},
-                        modifier = Modifier.width(390.dp),
-                        accessory = appShellSearchAction("搜索")
+                        modifier = Modifier.width(390.dp)
                     )
                 }
             }

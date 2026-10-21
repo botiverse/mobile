@@ -132,8 +132,6 @@ internal fun RaftAppShellSurface(
     bottomTabs: List<RaftBottomTabItemPayload>,
     onBottomTabSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
-    /** An action beside the tabs (Search); reported through [onBottomTabSelected] by its key. */
-    bottomTabAccessory: RaftBottomTabItemPayload? = null,
     networkStatus: RaftAppShellNetworkStatus = RaftAppShellNetworkStatus.Online,
     showBottomTabs: Boolean = true,
     interactionLocked: Boolean = false,
@@ -217,8 +215,7 @@ internal fun RaftAppShellSurface(
                             items = bottomTabs,
                             onSelect = onBottomTabSelected,
                             modifier = Modifier.fillMaxWidth(),
-                            bottomSafeArea = shellScope.bottomSafeArea,
-                            accessory = bottomTabAccessory
+                            bottomSafeArea = shellScope.bottomSafeArea
                         )
                     }
                 }

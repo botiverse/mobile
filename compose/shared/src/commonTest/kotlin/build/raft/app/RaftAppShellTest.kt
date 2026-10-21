@@ -878,9 +878,9 @@ class RaftAppShellTest {
 
     @Test
     fun sharedBottomTabHostKeepsSafeAreaOutsideTabContent() {
-        // 56dp bar with 8dp margins above and below.
-        assertEquals(72.dp, raftSharedBottomTabBarHostHeight(0.dp))
-        assertEquals(90.dp, raftSharedBottomTabBarHostHeight(18.dp))
+        // stdrc 2026-10-21: the 58dp edge bar, then the bottom safe area below it.
+        assertEquals(58.dp, raftSharedBottomTabBarHostHeight(0.dp))
+        assertEquals(76.dp, raftSharedBottomTabBarHostHeight(18.dp))
         assertEquals(
             raftSharedBottomTabBarHostHeight(18.dp) + RaftAppSpacing.Lg,
             raftSharedBottomTabBarContentInset(18.dp)
@@ -896,28 +896,20 @@ class RaftAppShellTest {
     }
 
     @Test
-    fun sharedKuiklyFloatingDockCoversOverlayTouchRegion() {
-        assertEquals(92.dp, raftFloatingDockBottomTabBarHostHeight(0.dp))
-        assertEquals(110.dp, raftFloatingDockBottomTabBarHostHeight(18.dp))
-    }
-
-    @Test
-    fun bottomTabContentInsetClearsEveryRendererHost() {
+    fun everyComposeRendererReservesTheEdgeBarBand() {
+        // stdrc 2026-10-21: no floating docks; every Compose renderer draws the edge bar.
         val bottomSafeArea = 18.dp
-        val floatingHostClearance = raftFloatingDockBottomTabBarHostHeight(bottomSafeArea)
-
-        assertEquals(
-            floatingHostClearance,
-            raftAppBottomTabBarContentInset(RaftAppTabBarRenderer.AndroidFloating, bottomSafeArea)
-        )
-        assertEquals(
-            floatingHostClearance,
-            raftAppBottomTabBarContentInset(RaftAppTabBarRenderer.IosLiquidGlass, bottomSafeArea)
-        )
-        assertEquals(
-            raftSharedBottomTabBarContentInset(bottomSafeArea),
-            raftAppBottomTabBarContentInset(RaftAppTabBarRenderer.SharedCompose, bottomSafeArea)
-        )
+        listOf(
+            RaftAppTabBarRenderer.AndroidFloating,
+            RaftAppTabBarRenderer.IosLiquidGlass,
+            RaftAppTabBarRenderer.SharedCompose,
+        ).forEach { renderer ->
+            assertEquals(
+                raftSharedBottomTabBarContentInset(bottomSafeArea),
+                raftAppBottomTabBarContentInset(renderer, bottomSafeArea),
+                "renderer=$renderer"
+            )
+        }
     }
 
     @Test
@@ -1468,83 +1460,133 @@ class RaftAppShellTest {
                 selectedTab = selectedTab,
                 homeLabel = "localized-home",
                 activityLabel = "localized-activity",
+                searchLabel = "localized-search",
                 tasksLabel = "localized-tasks",
                 moreLabel = "localized-more",
                 activityUnreadCount = 7
             )
         }
-        // xxchan 2026-10-20: Home · Activity · Tasks · More; Search is an action, not a tab.
+        // stdrc 2026-10-21: Home · Activity · Tasks · Search · More in one edge bar.
         val tabs = build("home")
-        assertEquals(listOf("home", "activity", "tasks", "more"), tabs.map { it.key })
+        assertEquals(listOf("home", "activity", "tasks", AppShellSearchActionKey, "more"), tabs.map { it.key })
         assertEquals(
-            listOf("localized-home", "localized-activity", "localized-tasks", "localized-more"),
+            listOf("localized-home", "localized-activity", "localized-tasks", "localized-search", "localized-more"),
             tabs.map { it.label }
         )
-        assertEquals(RaftLucideIconName.Ellipsis, tabs[3].iconName)
-        assertEquals(listOf(0, 0, 0, 0), tabs.map { it.badgeCount })
-        // Members and Settings are pages pushed from More: More stays the selected tab.
+        assertEquals(RaftLucideIconName.Search, tabs[3].iconName)
+        assertEquals(RaftLucideIconName.Ellipsis, tabs[4].iconName)
+        assertEquals(listOf(0, 0, 0, 0, 0), tabs.map { it.badgeCount })
+        // Settings is More's root and Members is pushed from it: More stays the selected tab.
         listOf("members", "settings", "more").forEach { selected ->
-            assertEquals(listOf(false, false, false, true), build(selected).map { it.selected }, "selected=$selected")
+            assertEquals(listOf(false, false, false, false, true), build(selected).map { it.selected }, "selected=$selected")
         }
-        assertEquals(listOf(false, false, true, false), build("tasks").map { it.selected })
+        assertEquals(listOf(false, false, true, false, false), build("tasks").map { it.selected })
         // A stale/unknown selection (and the Search action key) never selects anything but Home.
-        assertEquals(listOf(true, false, false, false), build(AppShellSearchActionKey).map { it.selected })
+        assertEquals(listOf(true, false, false, false, false), build(AppShellSearchActionKey).map { it.selected })
     }
 
     @Test
-    fun searchActionIsNotATabAndNeverSelected() {
-        val search = appShellSearchAction("localized-search")
-        assertEquals(AppShellSearchActionKey, search.key)
-        assertEquals("localized-search", search.label)
-        assertEquals(RaftLucideIconName.Search, search.iconName)
-        assertFalse(search.selected)
+    fun searchSlotIsAnActionAndNeverSelected() {
+        assertEquals(listOf("home", "activity", "tasks", "more"), AppShellPhoneBottomTabKeys)
+        assertTrue(AppShellSearchActionKey in AppShellPhoneBottomBarKeys)
         assertFalse(AppShellSearchActionKey in AppShellPhoneBottomTabKeys)
+        // Even asked to, the builder never marks the Search slot selected.
+        val tabs = appShellBottomTabs(
+            selectedKey = AppShellSearchActionKey,
+            orderedTabKeys = AppShellPhoneBottomBarKeys,
+            labelFor = { it }
+        )
+        assertTrue(tabs.none { it.selected })
         // It is not a shell tab key: a stray selection clamps to Home.
         assertEquals("home", retainedAppShellSelectedTab(AppShellSearchActionKey))
     }
 
     @Test
-    fun morePagesGoBackToMoreOnlyOnThePhoneLayout() {
+    fun membersGoesBackToMoreOnlyOnThePhoneLayout() {
         assertEquals("more", appShellMoreChildBackTarget("members", navRailActive = false))
-        assertEquals("more", appShellMoreChildBackTarget("settings", navRailActive = false))
-        // The wide rail lists Members and Settings as roots.
+        // The wide rail lists Members as a root.
         assertNull(appShellMoreChildBackTarget("members", navRailActive = true))
-        assertNull(appShellMoreChildBackTarget("settings", navRailActive = true))
-        listOf("home", "activity", "tasks", "more", "unknown").forEach { tab ->
+        // Settings is More's root on the phone, not a page pushed from it.
+        listOf("home", "activity", "tasks", "more", "settings", "unknown").forEach { tab ->
             assertNull(appShellMoreChildBackTarget(tab, navRailActive = false), "tab=$tab")
         }
     }
 
     @Test
-    fun moreTabAndRowsDotFromHomeNotices() {
-        assertEquals(emptySet(), raftMoreAttentionRows(emptyList()))
-        assertEquals(emptySet(), raftMoreAttentionRows(listOf("announcement:1")))
-        assertEquals(setOf(RaftMoreRow.Settings), raftMoreAttentionRows(listOf(APP_UPDATE_HOME_NOTIFICATION_ID)))
-        assertEquals(
-            setOf(RaftMoreRow.Computers),
-            raftMoreAttentionRows(listOf("machine-offline:m1", "machine-outdated:1.2.0:m2"))
-        )
-        val both = raftMoreAttentionRows(listOf("machine-offline:m1", APP_UPDATE_HOME_NOTIFICATION_ID))
-        assertEquals(setOf(RaftMoreRow.Settings, RaftMoreRow.Computers), both)
+    fun settingsHasOneRootPerLayout() {
+        // Phone: a settings deep link / diagnostics link lands on the More tab (Settings root).
+        assertEquals("more", appShellSettingsRootTab("settings", navRailActive = false))
+        // Wide rail: no More tab; the pinned Settings entry is the root.
+        assertEquals("settings", appShellSettingsRootTab("more", navRailActive = true))
+        listOf("home", "activity", "tasks", "members").forEach { tab ->
+            assertNull(appShellSettingsRootTab(tab, navRailActive = false), "phone tab=$tab")
+            assertNull(appShellSettingsRootTab(tab, navRailActive = true), "rail tab=$tab")
+        }
+        assertNull(appShellSettingsRootTab("more", navRailActive = false))
+        assertNull(appShellSettingsRootTab("settings", navRailActive = true))
+    }
 
-        val build = { selectedTab: String, rows: Set<RaftMoreRow> ->
+    @Test
+    fun moreTabAndSettingsRowsDotFromHomeNotices() {
+        assertEquals(emptySet(), raftMoreAttention(emptyList()))
+        assertEquals(emptySet(), raftMoreAttention(listOf("announcement:1")))
+        assertEquals(setOf(RaftMoreAttention.AppUpdate), raftMoreAttention(listOf(APP_UPDATE_HOME_NOTIFICATION_ID)))
+        assertEquals(
+            setOf(RaftMoreAttention.Computers),
+            raftMoreAttention(listOf("machine-offline:m1", "machine-outdated:1.2.0:m2"))
+        )
+        val both = raftMoreAttention(listOf("machine-offline:m1", APP_UPDATE_HOME_NOTIFICATION_ID))
+        assertEquals(setOf(RaftMoreAttention.AppUpdate, RaftMoreAttention.Computers), both)
+        // Each signal dots its Settings row: the update -> About, a machine -> Computers.
+        assertEquals("about", RaftMoreAttention.AppUpdate.settingsRowKey)
+        assertEquals("computers", RaftMoreAttention.Computers.settingsRowKey)
+
+        val build = { selectedTab: String, attention: Set<RaftMoreAttention> ->
             appShellPhoneBottomTabs(
                 selectedTab = selectedTab,
                 homeLabel = "h",
                 activityLabel = "a",
+                searchLabel = "s",
                 tasksLabel = "t",
                 moreLabel = "m",
-                moreAttentionRows = rows
+                moreAttention = attention
             ).associate { it.key to it.attentionDot }
         }
         assertEquals(true, build("home", both)["more"])
         assertEquals(false, build("home", emptySet())["more"])
-        // Never on the selected tab: More and the pages pushed from it keep More selected.
+        // Never on the selected tab: More, Settings and the pages pushed from it keep More selected.
         listOf("more", "settings", "members").forEach { tab ->
             assertEquals(false, build(tab, both)["more"], "tab=$tab")
         }
         // Only the More tab picks the signal up.
         assertEquals(false, build("home", both)["activity"])
+        assertEquals(false, build("home", both)[AppShellSearchActionKey])
+    }
+
+    @Test
+    fun moreRootSettingsLeadsWithMembersAndComputersAndDotsAttentionRows() {
+        val items =
+            listOf(
+                SettingsHomePageLinkPayload(key = "account", title = "Account", section = "Personal"),
+                SettingsHomePageLinkPayload(key = "server", title = "Server", section = "Workspace"),
+                SettingsHomePageLinkPayload(key = "computers", title = "Computers", section = "Workspace"),
+                SettingsHomePageLinkPayload(key = "about", title = "About", section = "About"),
+            )
+        // The wide rail keeps its Settings page unchanged.
+        assertEquals(items, settingsHomeItemsForMoreRoot(items, moreRoot = null))
+
+        val root = SettingsMoreRoot(title = "More", membersTitle = "Members", attentionRowKeys = setOf("computers", "about"))
+        val phone = settingsHomeItemsForMoreRoot(items, root)
+        assertEquals(listOf("members", "computers", "account", "server", "about"), phone.map { it.key })
+        // Members and Computers form the first group (no section heading) ahead of the sections.
+        assertEquals(listOf(null, null, "Personal", "Workspace", "About"), phone.map { it.section })
+        assertEquals(SettingsMoreMembersRowKey, phone.first().key)
+        assertEquals("members", appShellActiveChildPagerTab(SettingsMoreMembersRowKey))
+        assertEquals(listOf(false, true, false, false, true), phone.map { it.attentionDot })
+        assertEquals(
+            listOf(false, false, false, false, false),
+            settingsHomeItemsForMoreRoot(items, root.copy(attentionRowKeys = emptySet())).map { it.attentionDot }
+        )
     }
 
     @Test
@@ -1566,14 +1608,6 @@ class RaftAppShellTest {
         assertEquals(200, RaftAppShellBottomBarReturnMillis)
         assertNotEquals(EnterTransition.None, RaftAppShellBottomBarReturn)
         assertEquals(ExitTransition.None, RaftAppShellBottomBarLeave)
-    }
-
-    @Test
-    fun moreRowsAreMembersComputersSettings() {
-        assertEquals(listOf("members", "computers", "settings"), RaftMoreRows.map { it.key })
-        // Rows that open a shell page use the shell child-tab key.
-        assertEquals("members", appShellActiveChildPagerTab(RaftMoreRow.Members.key))
-        assertEquals("settings", appShellActiveChildPagerTab(RaftMoreRow.Settings.key))
     }
 
     @Test

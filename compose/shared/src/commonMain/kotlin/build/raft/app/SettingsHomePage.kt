@@ -691,7 +691,7 @@ private val EmptyConversationDirectoryProjectionFlow =
     MutableStateFlow(emptyMap<String, SharedConversationDirectoryProjection>())
 private const val SettingsDestinationHome = "home"
 private const val SettingsDestinationAccount = "account"
-private const val SettingsDestinationComputers = "computers"
+internal const val SettingsDestinationComputers = "computers"
 private const val SettingsDestinationAdministration = "administration"
 private const val SettingsDestinationConnectedApps = "connected-apps"
 private const val SettingsDestinationBilling = "billing"
@@ -980,6 +980,8 @@ internal data class SettingsHomePageLinkPayload(
     val iconName: RaftLucideIconName = RaftLucideIconName.Settings,
     val value: String? = null,
     val section: String? = null,
+    /** Attention dot on the row (the More tab's signals on the phone Settings root). */
+    val attentionDot: Boolean = false,
 )
 
 @Serializable
@@ -1213,10 +1215,9 @@ private val bottomTabBarSmokeItems = listOf(
     RaftBottomTabItemPayload("home", "Home", RaftLucideIconName.House, selected = true),
     RaftBottomTabItemPayload("activity", "Activity", RaftLucideIconName.Activity, attentionDot = true),
     RaftBottomTabItemPayload("tasks", "Tasks", RaftLucideIconName.SquareCheckBig),
+    RaftBottomTabItemPayload(AppShellSearchActionKey, "Search", RaftLucideIconName.Search),
     RaftBottomTabItemPayload("more", "More", RaftLucideIconName.Ellipsis)
 )
-
-private val bottomTabBarSmokeSearchAction = appShellSearchAction("Search")
 
 /** Rail-only inline destination key (task #13 three-pane): Search renders in the AppShell
  *  middle pane under the wide LeftRail; it is not a persisted tab key. */
@@ -1226,40 +1227,35 @@ internal const val AppShellRailSearchKey = "rail_search"
 internal const val AppShellRailSavedKey = "rail_saved"
 
 /**
- * The phone bottom bar tabs (Home, Activity, Tasks, More) for [selectedTab]; a page pushed from
- * More keeps More selected. Search is not among them: see [appShellSearchAction].
+ * The phone bottom bar (stdrc 2026-10-21): Home · Activity · Tasks · Search · More for
+ * [selectedTab]. Search holds the slot left of More as an action and is never selected; a page pushed
+ * from More (Members) and Settings itself keep More selected.
  */
 internal fun appShellPhoneBottomTabs(
     selectedTab: String,
     homeLabel: String,
     activityLabel: String,
+    searchLabel: String,
     tasksLabel: String,
     moreLabel: String,
     activityUnreadCount: Int = 0,
-    moreAttentionRows: Set<RaftMoreRow> = emptySet(),
+    moreAttention: Set<RaftMoreAttention> = emptySet(),
 ): List<RaftBottomTabItemPayload> =
     appShellBottomTabs(
         selectedKey = appShellPhoneBottomBarSelectedKey(selectedTab),
-        orderedTabKeys = AppShellPhoneBottomTabKeys,
+        orderedTabKeys = AppShellPhoneBottomBarKeys,
         activityUnreadCount = activityUnreadCount,
-        moreAttentionRows = moreAttentionRows,
+        moreAttention = moreAttention,
         labelFor = { key ->
             when (key) {
                 "home" -> homeLabel
                 "activity" -> activityLabel
+                AppShellSearchActionKey -> searchLabel
                 "tasks" -> tasksLabel
                 "more" -> moreLabel
                 else -> key.uppercase()
             }
         }
-    )
-
-/** The Search action beside the phone tabs: opens search over the current tab, never selected. */
-internal fun appShellSearchAction(label: String): RaftBottomTabItemPayload =
-    RaftBottomTabItemPayload(
-        key = AppShellSearchActionKey,
-        label = label,
-        iconName = appShellTabIcon(AppShellSearchActionKey),
     )
 
 /**
@@ -1269,19 +1265,20 @@ internal fun appShellSearchAction(label: String): RaftBottomTabItemPayload =
  *
  * This list is the single source of truth for every bottom-bar renderer, including the
  * host-drawn iOS UITabBar (RaftNativeTabBarBridge): a key added to the ordered tab keys
- * appears there with its label and icon. Activity unread is an attention dot, hidden while
- * Activity is the selected tab ([appShellActivityTabShowsDot]); More wears the same dot when a
- * row inside it has something new ([appShellMoreTabShowsDot]); tabs carry no numbers.
+ * appears there with its label and icon. The Search action key is never selected. Activity
+ * unread is an attention dot, hidden while Activity is the selected tab
+ * ([appShellActivityTabShowsDot]); More wears the same dot when Settings has something new
+ * ([appShellMoreTabShowsDot]); tabs carry no numbers.
  */
 internal fun appShellBottomTabs(
     selectedKey: String,
     orderedTabKeys: List<String>,
     activityUnreadCount: Int = 0,
-    moreAttentionRows: Set<RaftMoreRow> = emptySet(),
+    moreAttention: Set<RaftMoreAttention> = emptySet(),
     labelFor: (String) -> String
 ): List<RaftBottomTabItemPayload> =
     orderedTabKeys.map { key ->
-        val selected = selectedKey == key
+        val selected = selectedKey == key && key != AppShellSearchActionKey
         RaftBottomTabItemPayload(
             key = key,
             label = labelFor(key),
@@ -1290,7 +1287,7 @@ internal fun appShellBottomTabs(
             attentionDot =
                 when (key) {
                     "activity" -> appShellActivityTabShowsDot(activityUnreadCount, selected)
-                    "more" -> appShellMoreTabShowsDot(moreAttentionRows, selected)
+                    "more" -> appShellMoreTabShowsDot(moreAttention, selected)
                     else -> false
                 }
         )
@@ -5953,6 +5950,14 @@ private fun RaftAppShellReadyContent(
             desktopModeEnabled = desktopModeOnLargeScreen,
             paneState = shellScope.adaptivePane
         )
+    // stdrc 2026-10-21: Settings is the More tab's root on the phone bar and the pinned rail entry
+    // on the wide layout; a selection made for the other layout moves to this layout's root.
+    LaunchedEffect(selectedTab, navRailActive) {
+        val root = appShellSettingsRootTab(selectedTab, navRailActive) ?: return@LaunchedEffect
+        bridge.log("app_shell_settings_root from=$selectedTab to=$root navRail=$navRailActive")
+        selectAppShellTab(root, directChildSwitch = true)
+        retainedAppShellTabs = retainedAppShellTabs + root
+    }
     val showAppShellBottomTabs =
         appShellBottomTabsVisible(
             selectedTab = selectedTab,
@@ -6012,39 +6017,41 @@ private fun RaftAppShellReadyContent(
         )
         previousComputerAttention.value = currentComputerAttention
     }
-    // Every way into Computers (More row, Settings > Computers on the wide rail, a Home notice).
+    // Every way into Computers (the More/Settings row, Settings > Computers on the wide rail, a
+    // Home notice).
     val openComputersPage: () -> Unit = {
         writeComputerAttentionSeen(
             build.raft.app.data.raftComputerAttentionMarkSeen(computerAttentionSeen, currentComputerAttention)
         )
         pager.openSettingsComputersPage(storeScope)
     }
-    // Rows inside More with something new (Settings: app update; Computers: an offline/outdated
-    // machine not yet seen); they dot the More tab and their own row on the More page from this
-    // one set, so tab and row light and clear together.
-    val moreAttentionRows = remember(homeState.notifications, computerAttentionSeen) {
-        raftMoreAttentionRows(homeState.notifications.map { it.id }, computerAttentionSeen)
+    // Something new in More / Settings (app update -> About; an offline/outdated machine not yet
+    // seen -> Computers); it dots the More tab and the matching Settings rows from this one set,
+    // so tab and rows light and clear together.
+    val moreAttention = remember(homeState.notifications, computerAttentionSeen) {
+        raftMoreAttention(homeState.notifications.map { it.id }, computerAttentionSeen)
     }
     val appShellBottomTabItems = remember(
         selectedTab,
         homeTabLabel,
         tasksTabLabel,
         activityTabLabel,
+        searchTabLabel,
         moreTabLabel,
         activityTabUnreadCount,
-        moreAttentionRows
+        moreAttention
     ) {
         appShellPhoneBottomTabs(
             selectedTab = selectedTab,
             homeLabel = homeTabLabel,
             activityLabel = activityTabLabel,
+            searchLabel = searchTabLabel,
             tasksLabel = tasksTabLabel,
             moreLabel = moreTabLabel,
             activityUnreadCount = activityTabUnreadCount,
-            moreAttentionRows = moreAttentionRows
+            moreAttention = moreAttention
         )
     }
-    val appShellSearchActionItem = remember(searchTabLabel) { appShellSearchAction(searchTabLabel) }
     // The wide rail keeps the web LeftRail entries (Members is a rail root there).
     val appShellRailTabItems = remember(
         selectedTab,
@@ -6398,7 +6405,6 @@ private fun RaftAppShellReadyContent(
         RaftAppShellSurface(
             shellScope = shellScope,
             bottomTabs = appShellBottomTabItems,
-            bottomTabAccessory = appShellSearchActionItem,
             onBottomTabSelected = onAppShellTabSelected,
             networkStatus = hostNetworkStatus,
             showBottomTabs = showAppShellBottomTabs,
@@ -7192,8 +7198,8 @@ private fun RaftAppShellReadyContent(
                             true,
                         )
                     }
-                    // Members and Settings are pages pushed from More on the phone layout: their
-                    // header gets a back button to More. On the wide rail they are rail roots.
+                    // Members is a page pushed from More (the Settings page) on the phone layout: its
+                    // header gets a back button to More. On the wide rail it is a rail root.
                     val moreChildBack: (() -> Unit)? =
                         appShellMoreChildBackTarget(selectedTab, navRailActive)?.let { target ->
                             {
@@ -7244,9 +7250,21 @@ private fun RaftAppShellReadyContent(
                             }
                         )
                     }
+                    // stdrc 2026-10-21: the More tab's root page IS Settings. On the phone bar it
+                    // opens with Members and Computers as its first group (their rows dot with the
+                    // More tab); the wide rail keeps its Settings page as before.
                     val settingsTabContent: @Composable (active: Boolean) -> Unit = {
                         SettingsAppShellHomeContent(
-                            onBack = moreChildBack,
+                            moreRoot =
+                                if (navRailActive) {
+                                    null
+                                } else {
+                                    SettingsMoreRoot(
+                                        title = moreTabLabel,
+                                        membersTitle = membersTabLabel,
+                                        attentionRowKeys = moreAttention.mapTo(mutableSetOf()) { it.settingsRowKey },
+                                    )
+                                },
                             session = (authGateState as? SharedAuthGateState.Ready)?.session,
                             bottomContentPadding = appShellBottomContentInset,
                             onSettingsHeaderClick = {
@@ -7263,6 +7281,11 @@ private fun RaftAppShellReadyContent(
                                 prewarmAdmissionGate.invalidate("settings_open_page:$key")
                                 settingsHeaderTapCount = 0
                                 when (key) {
+                                    SettingsMoreMembersRowKey -> {
+                                        bridge.log("app_shell_more_open row=$key from=$selectedTab")
+                                        selectAppShellTab("members", directChildSwitch = true)
+                                        retainedAppShellTabs = retainedAppShellTabs + "members"
+                                    }
                                     SettingsDestinationAccount -> pager.openSettingsAccountPage(storeScope)
                                     SettingsDestinationStorage -> pager.openSettingsStoragePage(storeScope)
                                     SettingsDestinationReleaseNotes -> pager.openReleaseNotesPage(storeScope = storeScope)
@@ -7289,21 +7312,7 @@ private fun RaftAppShellReadyContent(
                     val currentChildTab = retainedAppShellSelectedTab(selectedTab)
                     val moreTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         PerformanceSceneEffect(bridge, "kuikly_more", active = active)
-                        RaftMorePage(
-                            bottomContentPadding = appShellBottomContentInset,
-                            attentionRows = moreAttentionRows,
-                            onSelect = { row ->
-                                prewarmAdmissionGate.invalidate("more_open:${row.key}")
-                                bridge.log("app_shell_more_open row=${row.key} from=$selectedTab")
-                                when (row) {
-                                    RaftMoreRow.Members, RaftMoreRow.Settings -> {
-                                        selectAppShellTab(row.key, directChildSwitch = true)
-                                        retainedAppShellTabs = retainedAppShellTabs + row.key
-                                    }
-                                    RaftMoreRow.Computers -> openComputersPage()
-                                }
-                            }
-                        )
+                        settingsTabContent(active)
                     }
                     val childTabRenderer: AppShellChildTabRenderer = { tab, active ->
                         val homeSummary = sharedHomeContentRenderSummary(homeState.content)
@@ -8010,20 +8019,67 @@ internal fun SettingsNativeDetailScreen() {
     )
 }
 
+/** Row key of the Members entry at the top of the More (Settings) page. */
+internal const val SettingsMoreMembersRowKey = "members"
+
+/**
+ * The Settings page as the phone More tab's root (stdrc / Jasper 2026-10-21): titled like the
+ * tab ([title], 更多 / More / その他), Members and Computers lead as the first group, then the
+ * Settings sections with their own headings; the rows named in [attentionRowKeys] wear the
+ * attention dot the More tab shows ([RaftMoreAttention.settingsRowKey]).
+ */
+internal data class SettingsMoreRoot(
+    val title: String,
+    val membersTitle: String,
+    val attentionRowKeys: Set<String> = emptySet(),
+)
+
+/**
+ * The Settings home rows for [moreRoot]: Members and Computers move to a first group (no section
+ * heading) ahead of the existing sections, and attention rows get their dot. Without a More root
+ * (the wide rail) the rows are unchanged.
+ */
+internal fun settingsHomeItemsForMoreRoot(
+    items: List<SettingsHomePageLinkPayload>,
+    moreRoot: SettingsMoreRoot?,
+    membersSubtitle: String = "",
+): List<SettingsHomePageLinkPayload> {
+    if (moreRoot == null) return items
+    val computers = items.firstOrNull { it.key == SettingsDestinationComputers }
+    val firstGroup =
+        listOfNotNull(
+            SettingsHomePageLinkPayload(
+                key = SettingsMoreMembersRowKey,
+                title = moreRoot.membersTitle,
+                subtitle = membersSubtitle,
+                iconName = RaftLucideIconName.Users,
+            ),
+            computers?.copy(section = null),
+        )
+    return (firstGroup + items.filter { it.key != SettingsDestinationComputers })
+        .map { it.copy(attentionDot = it.key in moreRoot.attentionRowKeys) }
+}
+
 @Composable
 private fun SettingsAppShellHomeContent(
     session: StoredAuthSession?,
     bottomContentPadding: Dp,
     onSettingsHeaderClick: () -> Unit,
     onSelect: (String) -> Unit,
-    onBack: (() -> Unit)? = null,
+    moreRoot: SettingsMoreRoot? = null,
 ) {
+    val payload = appShellSettingsHomePayload(session)
+    val membersSubtitle = stringResource(MR.strings.more_hub_members_subtitle)
     SettingsHomeContent(
-        payload = appShellSettingsHomePayload(session),
+        payload =
+            payload.copy(
+                title = moreRoot?.title ?: payload.title,
+                items = settingsHomeItemsForMoreRoot(payload.items, moreRoot, membersSubtitle),
+            ),
+        headerSurface = if (moreRoot != null) RaftMainTabHeaderSurface.More else RaftMainTabHeaderSurface.Settings,
         bottomContentPadding = bottomContentPadding,
         onHeaderClick = onSettingsHeaderClick,
         onSelect = onSelect,
-        onBack = onBack,
     )
 }
 
@@ -25317,6 +25373,8 @@ internal fun BottomTabBarSmokeContent() {
     val shellScope = rememberRaftAppShellScope()
     var selectedTab by remember { mutableStateOf("tasks") }
     val smokeItems = bottomTabBarSmokeItems.map { item -> item.copy(selected = item.key == selectedTab) }
+    // Search is an action: tapping it never moves the selection.
+    val onSmokeSelect: (String) -> Unit = { if (it != AppShellSearchActionKey) selectedTab = it }
     Box(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
         Column(
             modifier = Modifier
@@ -25362,16 +25420,7 @@ internal fun BottomTabBarSmokeContent() {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            RaftBottomTabBar(items = smokeItems, onSelect = { selectedTab = it }, modifier = Modifier.fillMaxWidth(), accessory = bottomTabBarSmokeSearchAction)
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                "Floating Dock",
-                style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray),
-                color = RaftColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            RaftFloatingDockTabBar(items = smokeItems, onSelect = { selectedTab = it }, modifier = Modifier.fillMaxWidth(), accessory = bottomTabBarSmokeSearchAction)
+            RaftBottomTabBar(items = smokeItems, onSelect = onSmokeSelect, modifier = Modifier.fillMaxWidth())
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 "Navigation Rail",
@@ -25381,7 +25430,7 @@ internal fun BottomTabBarSmokeContent() {
                 overflow = TextOverflow.Ellipsis
             )
             Row(modifier = Modifier.fillMaxWidth().height(140.dp)) {
-                RaftNavigationRailTabBar(items = smokeItems, onSelect = { selectedTab = it })
+                RaftNavigationRailTabBar(items = smokeItems, onSelect = onSmokeSelect)
                 Column(
                     modifier = Modifier.weight(1f).fillMaxSize().background(RaftColor.AppBgLightBlue).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -25406,7 +25455,7 @@ internal fun BottomTabBarSmokeContent() {
         }
         RaftAppBottomTabBarHost(
             items = smokeItems,
-            onSelect = { selectedTab = it },
+            onSelect = onSmokeSelect,
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter),
@@ -25425,8 +25474,7 @@ internal fun BottomTabBarVisualContent() {
         RaftBottomTabBar(
             items = bottomTabBarSmokeItems,
             onSelect = {},
-            modifier = Modifier.width(390.dp),
-            accessory = bottomTabBarSmokeSearchAction
+            modifier = Modifier.width(390.dp)
         )
     }
 }
@@ -26504,13 +26552,13 @@ internal fun RaftActivityTabVisualContent() {
                     selectedTab = "activity",
                     homeLabel = "Home",
                     activityLabel = "Activity",
+                    searchLabel = "Search",
                     tasksLabel = "Tasks",
                     moreLabel = "More",
                     activityUnreadCount = homeActivityTabVisualSnapshot.totalUnreadCount
                 ),
             onSelect = {},
-            modifier = Modifier.fillMaxWidth(),
-            accessory = appShellSearchAction("Search")
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }
@@ -27265,6 +27313,7 @@ internal fun rememberSettingsHomePayload(
 internal fun SettingsHomeContent(
     payload: RaftSettingsHomePayload,
     bottomContentPadding: Dp = RaftAppSpacing.Lg,
+    headerSurface: RaftMainTabHeaderSurface = RaftMainTabHeaderSurface.Settings,
     applyTopSafeArea: Boolean = true,
     onHeaderClick: (() -> Unit)? = null,
     onBack: (() -> Unit)? = null,
@@ -27278,7 +27327,7 @@ internal fun SettingsHomeContent(
         }
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
         RaftMainTabPageHeader(
-            surface = RaftMainTabHeaderSurface.Settings,
+            surface = headerSurface,
             title = payload.title,
             subtitle = null,
             modifier = headerModifier,
@@ -27320,4 +27369,5 @@ private fun SettingsHomePageLinkPayload.toTabItemPayload(): RaftTabItemPayload =
         iconName = iconName,
         value = value,
         section = section,
+        attentionDot = attentionDot,
     )

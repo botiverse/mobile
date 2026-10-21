@@ -40,8 +40,8 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
         let dotted = RaftIosTabBarItemSpec(
             key: "activity",
             title: "Activity",
-            systemImageName: "waveform.path.ecg",
-            selectedSystemImageName: "waveform.path.ecg",
+            systemImageName: "waveform.path.ecg.rectangle",
+            selectedSystemImageName: "waveform.path.ecg.rectangle.fill",
             badgeValue: nil,
             enabled: true,
             attentionDot: true
@@ -50,8 +50,8 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
     }
 
     func testDisplayItemsKeepSharedOrderIncludingAFifthTab() {
-        // Phone bar: four tabs plus the Search action as the fifth item.
-        let keys = ["home", "activity", "tasks", "more", "search"]
+        // Phone bar (stdrc 2026-10-21): four tabs with the Search action directly left of More.
+        let keys = ["home", "activity", "tasks", "search", "more"]
 
         let shown = RaftIosTabBarItemMapping.displayItems(keys.map { spec($0) })
 
@@ -66,6 +66,23 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
 
         XCTAssertEqual(shown.map(\.key), ["home", "dms", "activity", "tasks", "members"])
         XCTAssertEqual(shown.count, RaftIosTabBarItemMapping.maximumTabCount)
+    }
+
+    func testSearchActionIsCarriedOnTheSpecAndNeverAPublishedSelection() {
+        let search = RaftIosTabBarItemSpec(
+            key: "search",
+            title: "Search",
+            systemImageName: "magnifyingglass",
+            selectedSystemImageName: "magnifyingglass",
+            badgeValue: nil,
+            enabled: true,
+            searchAction: true
+        )
+        XCTAssertTrue(search.searchAction)
+        XCTAssertFalse(spec("home").searchAction)
+        // Shared never publishes "search" as the selection; a nil selection keeps the current tab.
+        let keys = ["home", "activity", "tasks", "search", "more"]
+        XCTAssertNil(RaftIosTabBarItemMapping.selectedIndex(of: nil, in: keys))
     }
 
     func testSelectedIndexFollowsSharedKeyAndIgnoresNonTabDestinations() {

@@ -12,6 +12,8 @@ struct RaftIosTabBarItemSpec: Equatable {
     /// `UITabBarItem.badgeValue`: nil hides the badge, "" draws the dot-only badge.
     let badgeValue: String?
     let enabled: Bool
+    /// The Search action (never the selected item; a tap opens search over the current tab).
+    let searchAction: Bool
 
     init(
         key: String,
@@ -20,7 +22,8 @@ struct RaftIosTabBarItemSpec: Equatable {
         selectedSystemImageName: String,
         badgeValue: String?,
         enabled: Bool,
-        attentionDot: Bool = false
+        attentionDot: Bool = false,
+        searchAction: Bool = false
     ) {
         self.key = key
         self.title = title
@@ -28,6 +31,7 @@ struct RaftIosTabBarItemSpec: Equatable {
         self.selectedSystemImageName = selectedSystemImageName
         self.badgeValue = RaftIosTabBarItemMapping.badgeValue(fromShared: badgeValue, attentionDot: attentionDot)
         self.enabled = enabled
+        self.searchAction = searchAction
     }
 }
 
