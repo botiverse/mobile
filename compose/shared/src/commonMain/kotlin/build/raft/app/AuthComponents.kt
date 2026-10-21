@@ -46,6 +46,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.layout.ContentScale
@@ -374,11 +375,16 @@ internal fun AuthBrandBlock(modifier: Modifier = Modifier) {
 
 @Composable
 internal fun AuthCenterMark(modifier: Modifier = Modifier, size: Dp = 36.dp) {
+    // The mark is a single black path (cut-outs are transparent), so on the dark canvas it is
+    // drawn in `foreground` ink; light keeps the asset's own black untouched.
+    val dark = RaftAppThemeState.isDark
+    val ink = RaftColor.TextBlack
     RaftCachedImage(
         source = RaftIconAssetSource,
         contentDescription = null,
         modifier = modifier.size(size),
-        contentScale = ContentScale.Fit
+        contentScale = ContentScale.Fit,
+        colorFilter = if (dark) remember(ink) { ColorFilter.tint(ink) } else null
     )
 }
 
@@ -572,9 +578,15 @@ internal fun AuthActionButton(
     // on this render path, task #372/#382).
     val dimWholeButton = !enabled && preserveDisabledVisual
     val dimOntoCard = { c: Color -> lerp(RaftColor.Card, c, disabledAlpha) }
+    // Dark `foreground-disabled` (#636360) on `fill-muted` (#32322F) is ~2:1 and the label all but
+    // vanishes (task #58); dark disabled auth buttons step one rung up the ink ladder to
+    // `foreground-hint` and a `line-seam` edge so they still read as disabled but stay legible.
+    // Light keeps the raft-ui disabled look exactly.
+    val darkTheme = RaftAppThemeState.isDark
     val contentColor = when {
         dimWholeButton -> dimOntoCard(activeContentColor)
         enabled || preserveDisabledVisual -> activeContentColor
+        darkTheme -> RaftColor.ForegroundHint
         else -> RaftColor.ForegroundDisabled
     }
     // raft disabled controls are opaque: fill-muted, line-muted edge, foreground-disabled type.
@@ -586,6 +598,7 @@ internal fun AuthActionButton(
     val borderColor = when {
         dimWholeButton -> dimOntoCard(activeBorder)
         enabled || preserveDisabledVisual -> activeBorder
+        darkTheme -> RaftColor.BorderSeam
         else -> RaftColor.BorderHairline
     }
     val height = if (variant == AuthActionButtonVariant.Large) 44.dp else 36.dp
