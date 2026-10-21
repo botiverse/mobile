@@ -130,6 +130,7 @@ internal fun rememberStandaloneSettingsEnvironment(
     val dataSource =
         remember(
             sharedStores,
+            storeScope,
             authStore,
             networkClient,
             sharedPreferenceStore,
@@ -156,6 +157,8 @@ internal fun rememberStandaloneSettingsEnvironment(
                         },
                     ),
                 serverMembersStore = serverMembersStore,
+                // Data-layer plan step 5: the shell's owner-fenced, durable machine cache.
+                computersSource = sharedStores.computersStore(storeScope),
                 notificationPreferenceRepository = notificationPreferenceRepository,
                 localeRepository = PersistentLocaleRepository(KeyValueLocalePreferenceStore(sharedPreferenceStore)),
                 chatLayoutPreferenceRepository = chatLayoutPreferenceRepository,

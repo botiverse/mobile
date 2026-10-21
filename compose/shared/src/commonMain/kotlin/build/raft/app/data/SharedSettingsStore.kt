@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.KmmResourceLocaleRuntime
 import build.raft.app.RaftLucideIconName
+import build.raft.app.isConversationAccessLost
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ComputerRestartDone
@@ -815,7 +816,29 @@ class SharedSettingsDataSource(
                 null
             }
         val result = sharedResult ?: settingsRepository?.getComputers() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
-        return result.withAddComputerGate(session.canManageCurrentServer())
+        val canManage = session.canManageCurrentServer()
+        if (serverId != null && result is DataResult.Content) computersSource?.recordAddComputerGate(serverId, canManage)
+        return result.withAddComputerGate(canManage)
+    }
+
+    /**
+     * Cache-first page open (data-layer plan step 5): the current server's machine list as last
+     * loaded under this account, without a network call; null when nothing is cached.
+     */
+    suspend fun cachedComputers(): DataResult<SettingsComputersSnapshot>? {
+        val session = sessionStore.readSession()
+        val serverId = session?.currentServerId ?: return null
+        val cached = computersSource?.cachedSettingsComputersForServer(serverId) ?: return null
+        return cached.withAddComputerGate(session.canManageCurrentServer())
+    }
+
+    /** Cache-first machine page: the last page loaded for [machineId] on the current server. */
+    suspend fun cachedComputerDetail(machineId: String): DataResult<SettingsComputerDetailSnapshot>? {
+        val session = sessionStore.readSession()
+        val serverId = session?.currentServerId ?: return null
+        val source = computersSource ?: return null
+        val detail = source.cachedSettingsComputerDetail(serverId, machineId) ?: return null
+        return DataResult.Content(detail)
     }
 
     suspend fun loadComputerDetail(machineId: String, forceComputers: Boolean = false): DataResult<SettingsComputerDetailSnapshot> {
@@ -848,6 +871,15 @@ class SharedSettingsDataSource(
                 is DataResult.NoPermission -> DataResult.NoPermission(sharedComputer.blocker)
                 null -> settingsRepository?.getComputerDetail(machineId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
             }.withComputerManageGate(session).withComputerCommandContext(computerCommandContext(session))
+        if (serverId != null && computersSource != null) {
+            when {
+                result is DataResult.Content ->
+                    computersSource.recordSettingsComputerDetail(serverId, machineId, result.data)
+                // The machine is gone (deleted) or the account lost the server: never paint it again.
+                result is DataResult.Empty || result.isConversationAccessLost() ->
+                    computersSource.recordSettingsComputerDetail(serverId, machineId, null)
+            }
+        }
         if (result is DataResult.Content && serverId != null) {
             refreshServerMembersForSettingsStatus(serverId, force = forceComputers)
         }
@@ -2830,10 +2862,33 @@ class SharedSettingsStore(
             SharedSettingsDestination.Home -> loadHome()
             SharedSettingsDestination.Account ->
                 dataSource.loadAccount().applyToState(destination) { copy(account = it) }
-            SharedSettingsDestination.Computers ->
-                dataSource.loadComputers(forceComputers = forceComputers).applyToState(destination) { copy(computers = it) }
-            SharedSettingsDestination.ComputerDetail ->
-                loadComputerDetail(_state.value.route.itemId.orEmpty(), forceComputers = forceComputers)
+            SharedSettingsDestination.Computers -> {
+                // Cache-first: paint the last known list at once, then validate it once.
+                val cached = if (forceComputers) null else dataSource.cachedComputers()
+                cached?.applyToState(destination) { copy(computers = it) }
+                val fresh = dataSource.loadComputers(forceComputers = forceComputers || cached != null)
+                fresh.applyToState(destination) { copy(computers = it) }
+                // Lost access (403 / 404) evicted the cached list: the stale rows must not stay.
+                if (cached != null && fresh !is DataResult.Content && dataSource.cachedComputers() == null) {
+                    _state.value = _state.value.copy(computers = fresh.toScreenLoadState())
+                }
+            }
+            SharedSettingsDestination.ComputerDetail -> {
+                val machineId = _state.value.route.itemId.orEmpty()
+                val cached =
+                    if (forceComputers || machineId.isBlank()) null else dataSource.cachedComputerDetail(machineId)
+                if (cached == null) {
+                    loadComputerDetail(machineId, forceComputers = forceComputers)
+                } else {
+                    cached.applyToState(destination) { copy(computerDetail = it) }
+                    val fresh = dataSource.loadComputerDetail(machineId, forceComputers = true)
+                    fresh.applyToState(destination) { copy(computerDetail = it) }
+                    // The machine was deleted or access was lost: its cached page was forgotten.
+                    if (fresh !is DataResult.Content && dataSource.cachedComputerDetail(machineId) == null) {
+                        _state.value = _state.value.copy(computerDetail = fresh.toScreenLoadState())
+                    }
+                }
+            }
             SharedSettingsDestination.Server ->
                 dataSource.loadServer().applyToState(destination) { copy(server = it) }
             SharedSettingsDestination.Administration ->

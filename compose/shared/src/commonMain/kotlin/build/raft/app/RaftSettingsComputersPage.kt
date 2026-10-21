@@ -45,7 +45,9 @@ import build.raft.app.data.COMPUTER_ACTION_SCAN_WORKSPACES
 import build.raft.app.data.RaftAuthSessionEventSource
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.base.BridgeModule
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.SharedComputersStore
 import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsComputerAgentSnapshot
@@ -144,6 +146,23 @@ internal fun RaftSettingsComputersRoute(pageVisibleResumeTick: Int = 0, pageVisi
 
 internal data class RaftComputerPageTarget(val machineId: String, val serverId: String?)
 
+private data class RaftComputersFirstFrame(val computersStore: SharedComputersStore, val serverId: String?)
+
+@Composable
+private fun rememberRaftComputersFirstFrame(bridge: BridgeModule, storeScope: RaftShellStoreScope): RaftComputersFirstFrame {
+    val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
+    return remember(sharedStores, storeScope) {
+        RaftComputersFirstFrame(
+            computersStore = sharedStores.computersStore(storeScope),
+            serverId = sharedStores.currentSelectedServerIdOrNull(storeScope),
+        )
+    }
+}
+
+/** The page's own load state, or — while that is still Loading — the cached snapshot. */
+internal fun <T> raftComputersFirstFrameState(state: ScreenLoadState<T>, cached: T?): ScreenLoadState<T> =
+    if (state == ScreenLoadState.Loading && cached != null) ScreenLoadState.Content(cached) else state
+
 private sealed interface RaftComputersSessionRead {
     data object Pending : RaftComputersSessionRead
 
@@ -155,8 +174,16 @@ private sealed interface RaftComputersSessionRead {
  * sign-out) and emitted only when it actually changes.
  */
 @Composable
-private fun rememberRaftComputersSession(authStore: RaftAuthSessionStore): State<RaftComputersSessionRead> =
-    produceState<RaftComputersSessionRead>(RaftComputersSessionRead.Pending, authStore) {
+private fun rememberRaftComputersSession(
+    authStore: RaftAuthSessionStore,
+    firstFrameServerId: String? = null,
+): State<RaftComputersSessionRead> =
+    produceState<RaftComputersSessionRead>(
+        // First frame: the shell's selected server (synchronous), so a cached page paints at once;
+        // the session read below confirms or corrects it.
+        firstFrameServerId?.let { RaftComputersSessionRead.Read(it) } ?: RaftComputersSessionRead.Pending,
+        authStore,
+    ) {
         suspend fun read() =
             RaftComputersSessionRead.Read(
                 runCatchingPreservingCancellation { authStore.readSession()?.currentServerId }.getOrNull()
@@ -213,6 +240,10 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
         }
     val settingsState by settingsViewModel.state.collectAsState()
     val navigationScope = rememberCoroutineScope()
+    val firstFrame = rememberRaftComputersFirstFrame(bridge, environment.storeScope)
+    // Data-layer plan step 5: until the page's own load lands, the first frames read the shell's
+    // machine cache (memory, seeded from disk on a cold start) instead of a spinner.
+    val cachedComputers = remember(firstFrame) { firstFrame.computersStore.currentSettingsComputers(firstFrame.serverId) }
     LaunchedEffect(Unit) {
         bridge.log("settings_computers_open target=list")
         settingsViewModel.dispatch(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
@@ -224,7 +255,7 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
             settingsViewModel.dispatch(SharedSettingsIntent.RefreshComputers)
         }
     }
-    val session by rememberRaftComputersSession(environment.authStore)
+    val session by rememberRaftComputersSession(environment.authStore, firstFrame.serverId)
     val currentServerId = (session as? RaftComputersSessionRead.Read)?.currentServerId
     RaftComputersRealtimeEffect(pager, environment.storeScope, currentServerId, pageVisible, settingsViewModel::dispatch)
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
@@ -234,11 +265,13 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
         val serverId = environment.authStore.readSession()?.currentServerId
         settingsComputerRouteIdentity(serverId, effect.machineId)?.let { pager.openSettingsComputerPage(environment.storeScope, it) }
     }
-    val model = raftComputersListModel(settingsState.computers)
+    val computersLoadState =
+        raftComputersFirstFrameState(settingsState.computers, cachedComputers?.takeIf { firstFrame.serverId == currentServerId })
+    val model = raftComputersListModel(computersLoadState)
     val refreshing = settingsState.isRefreshing(SharedSettingsDestination.Computers)
     val refreshErrorCode =
         raftComputersRefreshErrorCode(
-            hasContent = settingsState.computers is ScreenLoadState.Content,
+            hasContent = computersLoadState is ScreenLoadState.Content,
             routeErrorCode = settingsState.routeErrorCode,
             refreshing = refreshing,
         )
@@ -389,6 +422,13 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
             SharedSettingsViewModel(environment.dataSource) { bridge.log("settings_computer_detail $it") }
         }
     val settingsState by settingsViewModel.state.collectAsState()
+    val firstFrame = rememberRaftComputersFirstFrame(bridge, environment.storeScope)
+    val cachedDetail =
+        remember(firstFrame, target) {
+            (target.serverId ?: firstFrame.serverId)?.let { serverId ->
+                firstFrame.computersStore.cachedSettingsComputerDetail(serverId, target.machineId)
+            }
+        }
     LaunchedEffect(target) {
         bridge.log("settings_computers_open target=detail")
         settingsViewModel.dispatch(
@@ -405,13 +445,17 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
         }
     }
     // The target server is checked against the shell's current server, which may change while open.
-    val session by rememberRaftComputersSession(environment.authStore)
+    val session by rememberRaftComputersSession(environment.authStore, firstFrame.serverId)
     val model =
         when (val read = session) {
             RaftComputersSessionRead.Pending -> RaftComputerDetailModel.Loading
             is RaftComputersSessionRead.Read ->
                 raftComputerDetailModel(
-                    state = settingsState.computerDetail,
+                    state =
+                        raftComputersFirstFrameState(
+                            settingsState.computerDetail,
+                            cachedDetail?.takeIf { firstFrame.serverId == read.currentServerId },
+                        ),
                     machineId = target.machineId,
                     targetServerId = target.serverId,
                     currentServerId = read.currentServerId,

@@ -127,7 +127,7 @@ private fun JointChannelConnectionsScreen() {
         remember(sharedStores, storeScope) { sharedStores.authenticatedRouteOwnerFlow(storeScope) }
             .collectAsState(sharedStores.currentAuthenticatedRouteOwner(storeScope))
     val scope = rememberCoroutineScope()
-    val store = remember(route, routeOwner, authorityGateway, scope) {
+    val store = remember(route, routeOwner, authorityGateway, scope, sharedStores) {
         JointChannelConnectionsStore(
             dataSource =
                 RealJointChannelConnectionsDataSource(
@@ -137,6 +137,8 @@ private fun JointChannelConnectionsScreen() {
                     logger = { bridge.log("joint_connections_store $it") },
                 ),
             scope = scope,
+            // Data-layer plan step 5: the first frame is the cached list for this account + channel.
+            cacheSlot = jointChannelConnectionsCacheSlot(sharedStores.jointConnectionsCache, routeOwner, route),
         )
     }
     val state by store.state.collectAsState()
