@@ -1,8 +1,5 @@
 package build.raft.app
 
-import build.raft.designsystem.components.RaftSidebarGroupLabel
-import build.raft.designsystem.components.RaftSidebarItem
-import build.raft.designsystem.components.raftSidebarItemIconSize
 import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.RaftReadOnlyField
@@ -10,7 +7,6 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.components.RaftSlotIcon
-import build.raft.app.components.RaftAttentionDot
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftRadioRow
 import build.raft.designsystem.components.RaftRadioGroup
@@ -27335,10 +27331,6 @@ internal fun SettingsHomeContent(
     onBack: (() -> Unit)? = null,
     onSelect: (String) -> Unit
 ) {
-    if (headerSurface == RaftMainTabHeaderSurface.More) {
-        SettingsMoreRootContent(payload, bottomContentPadding, applyTopSafeArea, onSelect)
-        return
-    }
     val headerModifier =
         if (onHeaderClick != null) {
             Modifier.clickable(role = Role.Button, onClick = onHeaderClick)
@@ -27380,57 +27372,6 @@ internal fun SettingsHomeContent(
         }
     }
 }
-
-/**
- * The phone's More tab root, the Settings page (stdrc 2026-10-21), drawn as the web draws it
- * (Sidebar settings mode on a phone): a large title in place of an icon bar, and the rows as
- * sidebar rows (a 16dp glyph and the name, no description line) under plain group labels
- * (raft-ui SidebarGroupLabel); the first group (Members, Computers) has none. A row with news
- * (the More tab's signals) ends in the attention pixel.
- */
-@Composable
-private fun SettingsMoreRootContent(
-    payload: RaftSettingsHomePayload,
-    bottomContentPadding: Dp,
-    applyTopSafeArea: Boolean,
-    onSelect: (String) -> Unit,
-) {
-    RaftLargeTitlePage(
-        title = payload.title,
-        applyTopSafeArea = applyTopSafeArea,
-        bottomContentPadding = bottomContentPadding,
-    ) {
-        var lastSection: String? = null
-        payload.items.forEachIndexed { index, link ->
-            val section = link.section
-            if (section != null && section != lastSection) {
-                item(key = "section:$section") {
-                    RaftSidebarGroupLabel(section, Modifier.padding(horizontal = RaftSettingsMoreRootInset))
-                }
-            } else if (index == 0) {
-                item(key = "top") { Spacer(Modifier.height(4.dp)) }
-            }
-            lastSection = section
-            item(key = link.key) {
-                RaftSidebarItem(
-                    title = link.title,
-                    onClick = { onSelect(link.key) },
-                    modifier = Modifier.padding(horizontal = RaftSettingsMoreRootInset),
-                    leading = { RaftSlotIcon(link.iconName, size = raftSidebarItemIconSize()) },
-                    trailing =
-                        if (link.attentionDot) {
-                            { RaftAttentionDot() }
-                        } else {
-                            null
-                        },
-                )
-            }
-        }
-    }
-}
-
-/** `SidebarContentInner` `px-2`: rows sit 8dp in from the screen edge. */
-private val RaftSettingsMoreRootInset = 8.dp
 
 private fun SettingsHomePageLinkPayload.toTabItemPayload(): RaftTabItemPayload =
     RaftTabItemPayload(
