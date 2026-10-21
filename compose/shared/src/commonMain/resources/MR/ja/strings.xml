@@ -1654,6 +1654,8 @@
     <string name="search_section_messages">メッセージ</string>
     <string name="search_action_load_more_results">さらに結果を読み込む</string>
     <string name="search_filter_scope">範囲</string>
+    <string name="search_scope_in_channel">%1$s 内</string>
+    <string name="search_scope_expand_all">すべて</string>
     <string name="search_filter_from">送信者</string>
     <string name="search_filter_from_value">送信者: %1$s</string>
     <string name="search_filter_from_selected">送信者: %1$d 人選択中</string>

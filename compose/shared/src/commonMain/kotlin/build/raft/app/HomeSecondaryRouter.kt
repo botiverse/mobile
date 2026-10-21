@@ -282,7 +282,12 @@ internal fun HomeSecondaryRouterContent(
     tabRoot: Boolean = false,
     hostPager: Pager? = null,
     searchListState: LazyListState? = null,
+    searchReturnHighlight: HomeSearchReturnHighlight? = null,
     searchBottomContentPadding: Dp? = null,
+    searchInputActive: Boolean = true,
+    searchFocusInputRequest: Int = 0,
+    searchQueryRequest: RaftSearchTabQueryRequest? = null,
+    onSearchQueryApplied: () -> Unit = {},
 ) {
     val environment = rememberHomeSecondaryRouteEnvironment(
         routeVisibleTick,
@@ -310,7 +315,12 @@ internal fun HomeSecondaryRouterContent(
                     initialOpenFilterId = initialSearchOpenFilterId,
                     initialFocusInput = initialSearchFocusInput,
                     listState = searchListState,
-                    bottomContentPadding = searchBottomContentPadding
+                    returnHighlight = searchReturnHighlight,
+                    bottomContentPadding = searchBottomContentPadding,
+                    inputActive = searchInputActive,
+                    focusInputRequest = searchFocusInputRequest,
+                    queryRequest = searchQueryRequest,
+                    onQueryApplied = onSearchQueryApplied
                 )
             HomeDestinationSaved -> HomeSavedRouterContent(environment, routeVisibleTick)
             else -> RaftCenteredLoading(message = stringResource(MR.strings.auth_state_opening_server))
@@ -742,7 +752,12 @@ private fun HomeSearchRouterContent(
     initialOpenFilterId: String? = null,
     initialFocusInput: Boolean = false,
     listState: LazyListState? = null,
-    bottomContentPadding: Dp? = null
+    returnHighlight: HomeSearchReturnHighlight? = null,
+    bottomContentPadding: Dp? = null,
+    inputActive: Boolean = true,
+    focusInputRequest: Int = 0,
+    queryRequest: RaftSearchTabQueryRequest? = null,
+    onQueryApplied: () -> Unit = {}
 ) {
     val conversationNotReadyMessage = stringResource(MR.strings.home_error_conversation_not_ready)
     val homeDataSource =
@@ -1010,6 +1025,25 @@ private fun HomeSearchRouterContent(
             },
         initialOpenFilterId = initialOpenFilterId,
         initialFocusInput = initialFocusInput,
+        inputActive = inputActive,
+        focusInputRequest = focusInputRequest,
+        tabHead = environment.tabRoot,
+        visibleTick = routeVisibleTick,
+        returnHighlightState = returnHighlight,
+        // Nav spec §7.2: a conversation-scoped pushed search hands "Search all" to the Search tab.
+        onExpandToSearchTab =
+            if (normalizedInitialChannelId != null && !environment.tabRoot && environment.inlineOnClose == null) {
+                { query ->
+                    // Only hand off while an app shell is alive to take it; otherwise stay here.
+                    if (RaftSearchTabHandoff.request(query, shellAlive = AppShellChildTabRegistry.hasEntries())) {
+                        environment.pager.closeHomeSecondaryPage()
+                    }
+                }
+            } else {
+                null
+            },
+        externalQueryRequest = queryRequest,
+        onExternalQueryApplied = onQueryApplied,
         bottomContentPadding =
             bottomContentPadding ?: environment.shellScope.bottomInset(includeBottomTabBar = chrome.aboveBottomBar),
         timeContext = environment.timeContext,

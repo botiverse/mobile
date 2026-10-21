@@ -2388,4 +2388,13 @@ class RaftHomeComponentsTest {
             refreshToken = "refresh",
             selectedServerId = "server-1"
         )
+
+    @Test
+    fun homeHeadShowsTheIdentityClusterBeforeTheServerIdentityLoads() {
+        val fallback = homeTitlebarServerIdentity(serverIdentity = null, serverName = "Lagoon", serverPublicPageLive = true)
+        assertEquals("Lagoon", fallback.name)
+        assertEquals(true, fallback.publicPageLive)
+        val loaded = RaftServerSwitcherItem(id = "s1", name = "Loaded", avatarUrl = "https://a/b.png")
+        assertEquals(loaded, homeTitlebarServerIdentity(loaded, serverName = "Lagoon", serverPublicPageLive = false))
+    }
 }

@@ -1650,6 +1650,8 @@
     <string name="search_section_messages">Messages</string>
     <string name="search_action_load_more_results">Load more results</string>
     <string name="search_filter_scope">Scope</string>
+    <string name="search_scope_in_channel">In %1$s</string>
+    <string name="search_scope_expand_all">Search all</string>
     <string name="search_filter_from">From</string>
     <string name="search_filter_from_value">From: %1$s</string>
     <string name="search_filter_from_selected">From: %1$d selected</string>
