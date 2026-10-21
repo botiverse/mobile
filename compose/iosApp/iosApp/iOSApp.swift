@@ -218,6 +218,9 @@ enum RaftIosPushHost {
         shellInstanceId: String? = nil,
         source: String
     ) {
+        // Product analytics: this open came from a notification (`app_opened.via`). Reported
+        // before the activation it belongs to, so not deferred to the main queue.
+        RaftIosProductEventsHost.shared.noteNotificationOpen()
         runOnMain {
             guard let payload = sanitizedSystemNotificationOpenPayload(
                 userInfo: userInfo,

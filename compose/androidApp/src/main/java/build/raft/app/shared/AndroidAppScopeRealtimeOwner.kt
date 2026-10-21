@@ -67,6 +67,19 @@ internal object AndroidAppScopeRealtimeOwner {
     private var networkCallbackInstalled = false
     private var processLifecycleInstalled = false
     private var hostNetworkOnline: Boolean? = null
+    @Volatile private var productAppOpenPending = false
+
+    private fun takePendingProductAppOpen() {
+        if (!productAppOpenPending) return
+        productAppOpenPending = false
+        RaftProductEvents.onAppForeground()
+    }
+
+    /** An activity received a new launch intent (onNewIntent): what it says about this open. */
+    fun onActivityNewIntent(intent: Intent?) {
+        RaftProductEvents.onAppOpenSignal(intent.raftAppOpenSignal())
+    }
+
     private val processVisibilityTracker =
         AndroidProcessVisibilityTracker { foreground, foregroundEpoch ->
             val retired = updateRaftProcessNetworkVisibility(foreground)
@@ -76,8 +89,9 @@ internal object AndroidAppScopeRealtimeOwner {
                     "retiredRequests=$retired"
             )
             if (foreground) {
-                // Product analytics: app_opened (cold / back after the 30-minute session gap).
-                RaftProductEvents.onAppForeground()
+                // Product analytics: app_opened (cold / back after the 30-minute session gap) waits
+                // for the activity's resume, after onNewIntent delivered a notification tap.
+                productAppOpenPending = true
                 RaftResumeFrameProbe.onAppShown()
                 installedApplicationContext?.let { context ->
                     onAppShown(context, source = "process_activity_started")
@@ -85,6 +99,7 @@ internal object AndroidAppScopeRealtimeOwner {
                 // Keeps the FCM delivery-status answer fresh for the background tray decision.
                 RaftAndroidPushRegistrationBridge.refreshDeliveryStatus(reason = "app_foreground")
             } else {
+                takePendingProductAppOpen()
                 RaftProductEvents.onAppBackground()
                 RaftResumeFrameProbe.onAppHidden()
                 onAppHidden(source = "process_activity_stopped")
@@ -165,13 +180,20 @@ internal object AndroidAppScopeRealtimeOwner {
             if (processLifecycleInstalled) return
             application.registerActivityLifecycleCallbacks(
                 object : Application.ActivityLifecycleCallbacks {
-                    override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+                    override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
+                        // A fresh launch (not a restore) says how the app is being opened.
+                        if (savedInstanceState == null) {
+                            RaftProductEvents.onAppOpenSignal(activity.intent.raftAppOpenSignal())
+                        }
+                    }
 
                     override fun onActivityStarted(activity: Activity) {
                         processVisibilityTracker.onActivityStarted()
                     }
 
-                    override fun onActivityResumed(activity: Activity) = Unit
+                    override fun onActivityResumed(activity: Activity) {
+                        takePendingProductAppOpen()
+                    }
 
                     override fun onActivityPaused(activity: Activity) = Unit
 

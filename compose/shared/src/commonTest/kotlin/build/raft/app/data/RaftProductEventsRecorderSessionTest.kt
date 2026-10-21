@@ -62,6 +62,54 @@ class RaftProductEventsRecorderSessionTest {
             assertEquals("notification", properties.getValue("via").jsonPrimitive.content)
         }
 
+    /** One open per case, each after the session gap: what the host reported -> `via`. */
+    private class OpenCase(
+        val name: String,
+        val signals: List<RaftAppOpenSignal>,
+        val iosDefaultLauncher: Boolean,
+        val via: String?,
+    )
+
+    @Test
+    fun appOpenedViaFollowsTheOpenSignalOfThatOpen() =
+        runTest {
+            val h = harness()
+            val cases =
+                listOf(
+                    OpenCase("launcher icon", listOf(RaftAppOpenSignal.Launcher), iosDefaultLauncher = false, via = "launcher"),
+                    // Android: the opened activity forwards to another page; that says nothing new.
+                    OpenCase(
+                        "launcher, then a forwarded page",
+                        listOf(RaftAppOpenSignal.Launcher, RaftAppOpenSignal.Unknown),
+                        iosDefaultLauncher = false,
+                        via = "launcher",
+                    ),
+                    OpenCase("notification tap", listOf(RaftAppOpenSignal.Notification), iosDefaultLauncher = false, via = "notification"),
+                    OpenCase("recents / icon on a live task", emptyList(), iosDefaultLauncher = false, via = null),
+                    OpenCase("link or share", listOf(RaftAppOpenSignal.Unknown), iosDefaultLauncher = false, via = null),
+                    OpenCase("iOS plain launch", emptyList(), iosDefaultLauncher = true, via = "launcher"),
+                    OpenCase("iOS notification launch", listOf(RaftAppOpenSignal.Notification), iosDefaultLauncher = true, via = "notification"),
+                    OpenCase("iOS URL launch", listOf(RaftAppOpenSignal.Unknown), iosDefaultLauncher = true, via = null),
+                )
+            cases.forEachIndexed { index, case ->
+                if (index > 0) {
+                    // A notification tapped while in the foreground belongs to no open.
+                    h.recorder.onAppOpenSignal(RaftAppOpenSignal.Notification)
+                    h.recorder.onAppBackground()
+                    testScheduler.advanceTimeBy(RaftAppOpenForegroundGapMillis)
+                }
+                case.signals.forEach(h.recorder::onAppOpenSignal)
+                if (case.iosDefaultLauncher) h.recorder.onDefaultAppOpenSignal(RaftAppOpenSignal.Launcher)
+                h.recorder.onAppForeground()
+            }
+            sent(h)
+            val opened = h.transport.sentEvents.filter { it.event == "app_opened" }
+            assertEquals(cases.size, opened.size)
+            cases.zip(opened).forEach { (case, wire) ->
+                assertEquals(case.via, wire.properties["via"]?.jsonPrimitive?.content, case.name)
+            }
+        }
+
     @Test
     fun pageViewedIsNotRepeatedOnRecompositionOrRepeatedAppear() =
         runTest {

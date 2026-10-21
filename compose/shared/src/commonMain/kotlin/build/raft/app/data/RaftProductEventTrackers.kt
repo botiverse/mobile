@@ -42,6 +42,59 @@ class RaftAppOpenTracker(
     }
 }
 
+/** What the host saw open the app (Android launch intent, iOS launch / notification response). */
+enum class RaftAppOpenSignal {
+    /** The launcher icon. */
+    Launcher,
+    /** A tap on one of the app's push notifications. */
+    Notification,
+    /** Anything else (a link, a share, a restore from recents): `via` is omitted. */
+    Unknown,
+}
+
+/**
+ * `app_opened.via`: the latest open signal the host reported since the app last went to the
+ * background, taken by the next foreground. No signal means unknown, and `via` is omitted.
+ */
+class RaftAppOpenViaTracker {
+    private val lock = SynchronizedObject()
+    private var signal: RaftAppOpenSignal? = null
+
+    /**
+     * A known signal replaces the previous one; [RaftAppOpenSignal.Unknown] does not replace a known
+     * one (Android: a page the opened activity forwards to does not hide the launcher open).
+     */
+    fun onSignal(signal: RaftAppOpenSignal) {
+        synchronized(lock) {
+            if (signal == RaftAppOpenSignal.Unknown && this.signal != null) return
+            this.signal = signal
+        }
+    }
+
+    /** [signal] unless the host already reported one for this open (iOS plain launch = launcher). */
+    fun onDefaultSignal(signal: RaftAppOpenSignal) {
+        synchronized(lock) { if (this.signal == null) this.signal = signal }
+    }
+
+    fun take(): RaftAppOpenVia? =
+        synchronized(lock) {
+            val taken = signal
+            signal = null
+            taken?.toVia()
+        }
+
+    fun onBackground() {
+        synchronized(lock) { signal = null }
+    }
+}
+
+internal fun RaftAppOpenSignal.toVia(): RaftAppOpenVia? =
+    when (this) {
+        RaftAppOpenSignal.Launcher -> RaftAppOpenVia.Launcher
+        RaftAppOpenSignal.Notification -> RaftAppOpenVia.Notification
+        RaftAppOpenSignal.Unknown -> null
+    }
+
 /**
  * One `page_viewed` per page entry. A slot is one mounted page (a pager id, or a shell-owned inline
  * pane); hosts report its route and its visibility (page appear/disappear).
@@ -191,15 +244,29 @@ class RaftProductEventsRecorder(
     val pageViews = RaftPageViewTracker { view -> client.track(view.toEvent()) }
     private val lock = SynchronizedObject()
     private val taskThreadInstanceIds = LinkedHashSet<String>()
+    private val openVia = RaftAppOpenViaTracker()
 
+    /** How the app is being opened, reported before the foreground it belongs to. */
+    fun onAppOpenSignal(signal: RaftAppOpenSignal) {
+        openVia.onSignal(signal)
+    }
+
+    /** See [RaftAppOpenViaTracker.onDefaultSignal]. */
+    fun onDefaultAppOpenSignal(signal: RaftAppOpenSignal) {
+        openVia.onDefaultSignal(signal)
+    }
+
+    /** [via] overrides the reported open signal (tests, hosts that know better). */
     fun onAppForeground(via: RaftAppOpenVia? = null) {
         pageViews.onAppForeground()
+        val signalled = openVia.take()
         val start = appOpen.onForeground(nowEpochMillis()) ?: return
         client.startNewSession()
-        client.track(RaftProductEvent.AppOpened(RaftAppOpenedProperties(start = start, via = via)))
+        client.track(RaftProductEvent.AppOpened(RaftAppOpenedProperties(start = start, via = via ?: signalled)))
     }
 
     fun onAppBackground() {
+        openVia.onBackground()
         appOpen.onBackground(nowEpochMillis())
         pageViews.onAppBackground()
         client.flushNow()

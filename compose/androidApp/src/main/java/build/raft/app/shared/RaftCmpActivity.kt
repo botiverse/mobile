@@ -1280,6 +1280,7 @@ internal open class RaftCmpActivity :
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        AndroidAppScopeRealtimeOwner.onActivityNewIntent(intent)
         AndroidLoginTransitionRouting.retireHost(this)
         if (pageName == PAGE_LOGIN && resolvedPageName(intent) != PAGE_LOGIN) {
             AndroidLoginTransitionRouting.onDestroyed(this, loginTransitionToken, changingConfigurations = false)
@@ -5164,6 +5165,7 @@ internal class RaftBridgeModule(
                 appContext.packageManager
                         .getLaunchIntentForPackage(appContext.packageName)
                         ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        ?.putExtra(EXTRA_RAFT_APP_OPEN_SOURCE, RAFT_APP_OPEN_SOURCE_APP_NOTIFICATION)
                         ?.let { intent ->
                             PendingIntent.getActivity(
                                     appContext,

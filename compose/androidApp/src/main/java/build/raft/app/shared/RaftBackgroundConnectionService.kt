@@ -266,6 +266,7 @@ class RaftBackgroundConnectionService : Service() {
             val launchIntent =
                 context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                    putExtra(EXTRA_RAFT_APP_OPEN_SOURCE, RAFT_APP_OPEN_SOURCE_APP_NOTIFICATION)
                 }
             val contentIntent =
                 launchIntent?.let {

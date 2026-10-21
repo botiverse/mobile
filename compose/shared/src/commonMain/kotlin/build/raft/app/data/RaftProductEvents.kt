@@ -15,7 +15,7 @@ import kotlinx.coroutines.SupervisorJob
  *
  * Hosts wire:
  *  - lifecycle: [onAppForeground] / [onAppBackground] (Android process visibility, iOS
- *    UIApplication notifications);
+ *    UIApplication notifications), and [onAppOpenSignal] for what opened the app;
  *  - sign-in: [setSignedIn] / [setSignedOut] (app shell auth gate, auth-session clears);
  *  - transport: [bindTransport] once the shared network client exists.
  */
@@ -44,6 +44,15 @@ object RaftProductEvents {
 
     fun onAppForeground(via: RaftAppOpenVia? = null) {
         recorder.onAppForeground(via)
+    }
+
+    /** How the app is being opened (launcher icon, notification tap): `app_opened.via`. */
+    fun onAppOpenSignal(signal: RaftAppOpenSignal) {
+        recorder.onAppOpenSignal(signal)
+    }
+
+    fun onDefaultAppOpenSignal(signal: RaftAppOpenSignal) {
+        recorder.onDefaultAppOpenSignal(signal)
     }
 
     fun onAppBackground() {
