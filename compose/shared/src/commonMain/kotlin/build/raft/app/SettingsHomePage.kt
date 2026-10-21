@@ -6768,6 +6768,18 @@ private fun RaftAppShellReadyContent(
                                         .put(RAFT_ADAPTIVE_DETAIL_GENERATION, selection.generation)
                                 }
                             }
+                        // Bug A (11500008): hand-off point from the shell selection to the detail page.
+                        // Every detail_mount must be followed by the detail's own effect_enter for the
+                        // same identity/generation; a mount with no matching effect_enter means the
+                        // detail page kept rendering an older selection.
+                        LaunchedEffect(active, selection?.identity?.key, selection?.generation) {
+                            val mounted = selection?.takeIf { active && detailPageData != null } ?: return@LaunchedEffect
+                            postShellAdaptiveTrace(
+                                hop = "detail_mount",
+                                identityKey = mounted.identity.key,
+                                generation = mounted.generation,
+                            )
+                        }
                             if (detailPageData == null) {
                                 Box(
                                     modifier = modifier.fillMaxSize(),
