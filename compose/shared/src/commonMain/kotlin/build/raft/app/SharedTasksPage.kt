@@ -562,9 +562,6 @@ private fun SharedTasksLoadedBodyContent(
     }
 
     // Filter popover anchors. Resolved from each chip's live coordinates when opened.
-    var channelAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
-    var creatorAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
-    var assigneeAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
     // Caller-local editing snapshots for the filter search inputs. The durable
     // filter String in presentationState is a downstream projection; the
     // caller-local TextFieldValue is the SOLE mounted editor owner for a filter
@@ -683,8 +680,7 @@ private fun SharedTasksLoadedBodyContent(
                         viewModeRepository.selectTasksViewModeSync(mode)
                         presentationState = presentationState.reduce(TasksPresentationIntent.SelectMode(mode))
                     },
-                    onChannelChipClick = { anchor ->
-                        channelAnchor = anchor
+                    onChannelChipClick = { _ ->
                         presentationState =
                             presentationState.reduce(
                                 TasksPresentationIntent.SetOpenFilter(
@@ -692,8 +688,7 @@ private fun SharedTasksLoadedBodyContent(
                                 )
                             )
                     },
-                    onCreatorChipClick = { anchor ->
-                        creatorAnchor = anchor
+                    onCreatorChipClick = { _ ->
                         presentationState =
                             presentationState.reduce(
                                 TasksPresentationIntent.SetOpenFilter(
@@ -701,8 +696,7 @@ private fun SharedTasksLoadedBodyContent(
                                 )
                             )
                     },
-                    onAssigneeChipClick = { anchor ->
-                        assigneeAnchor = anchor
+                    onAssigneeChipClick = { _ ->
                         presentationState =
                             presentationState.reduce(
                                 TasksPresentationIntent.SetOpenFilter(
@@ -878,44 +872,41 @@ private fun SharedTasksLoadedBodyContent(
         // capture overlay too (otherwise the dim layer would swallow taps).
         when (presentationState.openFilterId) {
             "channel" ->
-                channelAnchor?.let { anchor -> RaftFilterPopover(
-                    anchor = anchor,
+                RaftFilterSheet(
                     title = stringResource(MR.strings.tasks_filter_channel),
                     searchPlaceholder = stringResource(MR.strings.tasks_search_channels),
-                    searchText = channelSearchValue,
-                    onSearchChange = { channelSearchValue = it; presentationState = presentationState.reduce(TasksPresentationIntent.SetChannelSearch(it.text)) },
+                    searchText = channelSearchValue.text,
+                    onSearchChange = { channelSearchValue = TextFieldValue(it); presentationState = presentationState.reduce(TasksPresentationIntent.SetChannelSearch(it)) },
                     options = channelFilterOptions,
                     selectedIds = visibleContent.selectedChannelNames,
                     onToggle = { id -> presentationState = presentationState.reduce(TasksPresentationIntent.ToggleChannel(id)) },
                     onClear = { presentationState = presentationState.reduce(TasksPresentationIntent.ClearChannels) },
                     onDismiss = { presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null)) }
-                ) }
+                )
             "creator" ->
-                creatorAnchor?.let { anchor -> RaftFilterPopover(
-                    anchor = anchor,
+                RaftFilterSheet(
                     title = stringResource(MR.strings.tasks_filter_creator),
                     searchPlaceholder = stringResource(MR.strings.tasks_search_creators),
-                    searchText = creatorSearchValue,
-                    onSearchChange = { creatorSearchValue = it; presentationState = presentationState.reduce(TasksPresentationIntent.SetCreatorSearch(it.text)) },
+                    searchText = creatorSearchValue.text,
+                    onSearchChange = { creatorSearchValue = TextFieldValue(it); presentationState = presentationState.reduce(TasksPresentationIntent.SetCreatorSearch(it)) },
                     options = creatorFilterOptions,
                     selectedIds = visibleContent.selectedCreatorIds,
                     onToggle = { id -> presentationState = presentationState.reduce(TasksPresentationIntent.ToggleCreator(id)) },
                     onClear = { presentationState = presentationState.reduce(TasksPresentationIntent.ClearCreators) },
                     onDismiss = { presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null)) }
-                ) }
+                )
             "assignee" ->
-                assigneeAnchor?.let { anchor -> RaftFilterPopover(
-                    anchor = anchor,
+                RaftFilterSheet(
                     title = stringResource(MR.strings.tasks_filter_assignee),
                     searchPlaceholder = stringResource(MR.strings.tasks_search_assignees),
-                    searchText = assigneeSearchValue,
-                    onSearchChange = { assigneeSearchValue = it; presentationState = presentationState.reduce(TasksPresentationIntent.SetAssigneeSearch(it.text)) },
+                    searchText = assigneeSearchValue.text,
+                    onSearchChange = { assigneeSearchValue = TextFieldValue(it); presentationState = presentationState.reduce(TasksPresentationIntent.SetAssigneeSearch(it)) },
                     options = assigneeFilterOptions,
                     selectedIds = visibleContent.selectedAssigneeIds,
                     onToggle = { id -> presentationState = presentationState.reduce(TasksPresentationIntent.ToggleAssignee(id)) },
                     onClear = { presentationState = presentationState.reduce(TasksPresentationIntent.ClearAssignees) },
                     onDismiss = { presentationState = presentationState.reduce(TasksPresentationIntent.SetOpenFilter(null)) }
-                ) }
+                )
             else -> Unit
         }
 
@@ -945,13 +936,13 @@ private fun SharedTasksLoadedBodyContent(
         }
 
         // Assignee editor (task v2 port, task #244). Per the web ruling the assignee
-        // picker reuses the searchable filter popover (stdrc msg=4c357cb1) — humans
+        // picker reuses the searchable filter sheet (stdrc msg=4c357cb1) — humans
         // first, then agents, "unassigned" sentinel always first and never filtered
         // away. Matching is on the visible display name, mirroring TaskProperties.tsx.
         assigneeMenuTask?.takeIf { it.readOnlyReason == null }?.let { task ->
-            val resolvedAssigneeAnchor =
-                assigneeMenuAnchor?.takeIf { it.belongsTo(tasksStatusMenuOwnerIdentity(task.id.value)) }
-                    ?: return@let
+            // The picker opens for the task whose assignee chip was tapped.
+            assigneeMenuAnchor?.takeIf { it.belongsTo(tasksStatusMenuOwnerIdentity(task.id.value)) }
+                ?: return@let
             val unassignedLabel = stringResource(MR.strings.tasks_assignee_unassigned)
             val needle = assigneeMenuSearch.trim().lowercase()
             val people =
@@ -960,8 +951,7 @@ private fun SharedTasksLoadedBodyContent(
                     .filter { needle.isEmpty() || it.displayName.lowercase().contains(needle) }
                     .sortedWith(compareByDescending<MemberProfile> { it.kind == MemberKind.Human }.thenBy { it.displayName.lowercase() })
             val selectedId = task.assignee?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId
-            RaftFilterPopover(
-                anchor = resolvedAssigneeAnchor,
+            RaftFilterSheet(
                 title = stringResource(MR.strings.tasks_filter_assignee),
                 searchPlaceholder = stringResource(MR.strings.tasks_search_assignees),
                 searchText = assigneeMenuSearch,
@@ -994,7 +984,7 @@ private fun SharedTasksLoadedBodyContent(
                     assigneeMenuSearch = ""
                 },
                 multiSelect = false,
-                showClearWhenSelected = false
+                showClear = false
             )
         }
 

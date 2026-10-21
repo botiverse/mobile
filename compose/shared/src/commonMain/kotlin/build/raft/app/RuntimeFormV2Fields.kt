@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftCombobox
+import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftFieldLabel
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -8,7 +10,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftBrutalSelectField
 import build.raft.app.components.RaftBrutalSelectOption
 import build.raft.app.components.RaftBrutalTextField
@@ -52,9 +53,6 @@ import kotlinx.serialization.json.JsonPrimitive
 
 /** Sentinel select id for "no value", which a derived select offers as the runtime default. */
 private const val RUNTIME_FORM_V2_DEFAULT_OPTION_ID = "__runtime_form_v2_default__"
-
-/** Sentinel select id for "type your own value" (`select.custom_value`). */
-private const val RUNTIME_FORM_V2_CUSTOM_OPTION_ID = "__runtime_form_v2_custom__"
 
 /** Select id prefix for a group heading (`provider.saved_connection`: saved / direct). */
 private const val RUNTIME_FORM_V2_GROUP_OPTION_PREFIX = "__runtime_form_v2_group__"
@@ -290,17 +288,14 @@ private fun RuntimeFormV2FieldRow(
                     )
                 is RuntimeFormV2Choices.Select -> {
                     val defaultLabel = stringResource(MR.strings.runtime_form_v2_option_default)
-                    val customLabel = stringResource(MR.strings.agent_create_label_custom)
                     val savedGroupLabel = stringResource(MR.strings.runtime_form_v2_saved_providers)
                     val directGroupLabel = stringResource(MR.strings.runtime_form_v2_direct_providers)
+                    val noMatches = stringResource(MR.strings.common_no_matches)
+                    val searchLabel = stringResource(MR.strings.search_filter_search)
+                    val useCustomLabel = stringResource(MR.strings.runtime_form_v2_use_custom, "%1\$s")
                     // `provider.saved_connection`: headings only when the list mixes saved and direct choices.
                     val grouped = choices.options.mapNotNull { it.group }.distinct().size > 1
                     val unlisted = current.isNotEmpty() && choices.options.none { it.value == current }
-                    // `select.custom_value`: a combobox. "Custom" switches to a text field; a stored value
-                    // the list does not offer (typed earlier) opens in that mode, never as not-a-choice.
-                    var customMode by remember(field.key) { mutableStateOf(choices.allowCustom && unlisted) }
-                    if (!choices.allowCustom && customMode) customMode = false
-                    if (choices.allowCustom && unlisted && !customMode) customMode = true
                     val options = buildList {
                         if (choices.allowEmpty) add(RaftBrutalSelectOption(RUNTIME_FORM_V2_DEFAULT_OPTION_ID, defaultLabel))
                         var lastGroup: String? = null
@@ -314,15 +309,12 @@ private fun RuntimeFormV2FieldRow(
                             // A bound connection that is unavailable stays visible but cannot be picked again.
                             add(RaftBrutalSelectOption(option.value, option.label, enabled = !option.unavailable))
                         }
-                        if (choices.allowCustom) {
-                            add(RaftBrutalSelectOption(RUNTIME_FORM_V2_CUSTOM_OPTION_ID, customLabel))
-                        } else if (unlisted) {
+                        if (unlisted) {
                             // A stored value the server no longer offers stays visible, but cannot be re-picked.
                             add(RaftBrutalSelectOption(current, current, enabled = false))
                         }
                     }
                     val selectedId = when {
-                        customMode -> RUNTIME_FORM_V2_CUSTOM_OPTION_ID
                         current.isEmpty() && choices.allowEmpty -> RUNTIME_FORM_V2_DEFAULT_OPTION_ID
                         else -> current
                     }
@@ -350,33 +342,54 @@ private fun RuntimeFormV2FieldRow(
                         } else {
                             RaftFieldLabel(text = field.label, required = required)
                         }
-                        RaftBrutalSelectField(
-                            options = options,
-                            selectedId = selectedId,
-                            selectedLabel = options.firstOrNull { it.id == selectedId }?.label.orEmpty(),
-                            placeholder = field.placeholder ?: field.label,
-                            enabled = fieldEnabled,
-                            rowHeight = 36.dp,
-                            onSelect = { option ->
-                                clearFocus()
-                                if (option.id == RUNTIME_FORM_V2_CUSTOM_OPTION_ID) {
-                                    // Start the typed value empty; a required field then asks for one.
-                                    if (!customMode) onChange(field.key, JsonPrimitive(""))
-                                    customMode = true
-                                } else {
-                                    customMode = false
+                        if (choices.allowCustom) {
+                            // `select.custom_value` is raft-ui's ComboboxSelect with `create`: the list
+                            // with search, and typed text that is not a choice offered as "Use “…”".
+                            // A stored value the list does not offer shows as itself.
+                            RaftCombobox(
+                                value = current.takeIf { it.isNotEmpty() || choices.allowEmpty },
+                                options = buildList {
+                                    if (choices.allowEmpty) add(RaftComboboxOption("", defaultLabel))
+                                    choices.options.forEach { option ->
+                                        add(
+                                            RaftComboboxOption(
+                                                value = option.value,
+                                                label = option.label,
+                                                group = option.group?.takeIf { grouped }?.let { if (it == "saved") savedGroupLabel else directGroupLabel },
+                                                enabled = !option.unavailable
+                                            )
+                                        )
+                                    }
+                                },
+                                onValueChange = { next ->
+                                    clearFocus()
+                                    onChange(field.key, JsonPrimitive(next))
+                                },
+                                emptyText = { noMatches },
+                                placeholder = field.placeholder ?: field.label,
+                                title = field.label,
+                                searchPlaceholder = searchLabel,
+                                create = { typed ->
+                                    clearFocus()
+                                    onChange(field.key, JsonPrimitive(typed))
+                                },
+                                createLabel = { typed -> useCustomLabel.replace("%1\$s", typed) },
+                                enabled = fieldEnabled,
+                                label = field.label
+                            )
+                        } else {
+                            RaftBrutalSelectField(
+                                options = options,
+                                selectedId = selectedId,
+                                selectedLabel = options.firstOrNull { it.id == selectedId }?.label.orEmpty(),
+                                placeholder = field.placeholder ?: field.label,
+                                enabled = fieldEnabled,
+                                rowHeight = 36.dp,
+                                onSelect = { option ->
+                                    clearFocus()
                                     val next = if (option.id == RUNTIME_FORM_V2_DEFAULT_OPTION_ID) "" else option.id
                                     onChange(field.key, JsonPrimitive(next))
                                 }
-                            }
-                        )
-                        if (customMode) {
-                            // Label-less input: the select above already carries the field label.
-                            RaftBrutalInputField(
-                                value = current,
-                                onValueChange = { onChange(field.key, JsonPrimitive(it)) },
-                                placeholder = field.placeholder.orEmpty(),
-                                enabled = fieldEnabled
                             )
                         }
                         // `choice.labels`: the selected choice's description (e.g. what a reasoning level does).

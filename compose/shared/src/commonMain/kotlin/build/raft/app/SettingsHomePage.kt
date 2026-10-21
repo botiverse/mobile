@@ -21062,8 +21062,7 @@ internal fun SharedHomeSearchPanel(
                         showClearWhenSelected = true
                     )
                 "sender" ->
-                    RaftFilterPopover(
-                        anchor = senderAnchor,
+                    RaftFilterSheet(
                         title = stringResource(MR.strings.search_filter_from),
                         searchPlaceholder = stringResource(MR.strings.search_filter_search_senders),
                         searchText = senderSearch,
@@ -21076,31 +21075,15 @@ internal fun SharedHomeSearchPanel(
                         onClear = { onIntent(SharedHomeSearchSavedIntent.ClearSearchSenders) },
                         onDismiss = { openFilterId = null },
                         multiSelect = true,
-                        surfaceBorderColor = SearchPopoverBorderColor,
-                        surfaceShadowColor = SearchPopoverShadowColor,
-                        selectedRowColor = RaftColor.SurfaceWhite,
-                        showClearWhenSelected = true,
-                        // Only pass a header when there is a status to show: the raft popover
-                        // pads the slot and reserves its height, so an empty slot would leave a gap.
-                        headerSlot =
+                        // An empty list while senders load (or fail) says so.
+                        status =
                             when {
-                                state.senderFiltersLoading -> {
-                                    {
-                                        Text(stringResource(MR.strings.search_filter_loading_senders), style = RaftType.Caption, color = RaftColor.TextMutedGray)
-                                    }
-                                }
-                                state.senderFiltersErrorCode != null -> {
-                                    val errorCode = state.senderFiltersErrorCode
-                                    {
-                                        Text(errorCode, style = RaftType.Caption, color = RaftColor.AccentRed)
-                                    }
-                                }
-                                else -> null
+                                state.senderFiltersLoading -> stringResource(MR.strings.search_filter_loading_senders)
+                                else -> state.senderFiltersErrorCode
                             }
                     )
                 "channel" ->
-                    RaftFilterPopover(
-                        anchor = channelAnchor,
+                    RaftFilterSheet(
                         title = stringResource(MR.strings.search_filter_channels),
                         searchPlaceholder = stringResource(MR.strings.search_filter_search),
                         searchText = channelSearch,
@@ -21112,12 +21095,8 @@ internal fun SharedHomeSearchPanel(
                         },
                         onClear = { onIntent(SharedHomeSearchSavedIntent.SetSearchChannel(null)) },
                         onDismiss = { openFilterId = null },
-                        widthDp = 220f,
                         multiSelect = false,
-                        surfaceBorderColor = SearchPopoverBorderColor,
-                        surfaceShadowColor = SearchPopoverShadowColor,
-                        selectedRowColor = RaftColor.SurfaceWhite,
-                        showClearWhenSelected = true
+                        showClear = true
                     )
                 "time" ->
                     RaftFilterPopover(
