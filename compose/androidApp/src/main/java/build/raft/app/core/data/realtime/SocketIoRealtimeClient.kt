@@ -35,6 +35,7 @@ import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerMembershipRemoved
 import build.raft.app.model.ServerDeleted
 import build.raft.app.model.ServerPlanUpdated
+import build.raft.app.model.ComputerRestartDone
 import build.raft.app.model.ServerNotificationPreferencesChanged
 import build.raft.app.model.AgentCreated
 import build.raft.app.model.SyncResumeResponse
@@ -732,6 +733,7 @@ private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is ServerMembershipRemoved -> "server_membership_removed"
     is ServerDeleted -> "server_deleted"
     is ServerPlanUpdated -> "server_plan_updated"
+    is ComputerRestartDone -> "computer_restart_done"
     is ServerNotificationPreferencesChanged -> "server_notification_prefs_updated"
     is AgentCreated -> "agent_created"
     is SyncResumeResponse -> "sync_resume_response"

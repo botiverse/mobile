@@ -173,6 +173,24 @@ class RaftSettingsComputersModelTest {
     }
 
     @Test
+    fun editorClosesOnlyWhenItsSaveFinishesWithoutAnError() {
+        assertTrue(raftComputerEditorClosesAfterSave(wasSaving = true, saving = false, failed = false))
+        assertFalse(raftComputerEditorClosesAfterSave(wasSaving = true, saving = false, failed = true))
+        assertFalse(raftComputerEditorClosesAfterSave(wasSaving = false, saving = false, failed = false))
+        assertFalse(raftComputerEditorClosesAfterSave(wasSaving = false, saving = true, failed = false))
+    }
+
+    @Test
+    fun agentIdentityLabelJoinsRuntimeAndModelLikeTheWebMachineAgentRow() {
+        assertEquals("Claude Code · Claude Opus", raftComputerAgentIdentityLabel(runtime = "claude", model = "opus"))
+        // A model the bundled catalog does not know reads as its raw id (web `agentModelLabel`).
+        assertEquals("Claude Code · my-custom-model", raftComputerAgentIdentityLabel(runtime = "claude", model = "my-custom-model"))
+        assertEquals("Codex CLI", raftComputerAgentIdentityLabel(runtime = "codex", model = " "))
+        assertEquals("opus", raftComputerAgentIdentityLabel(runtime = null, model = "opus"))
+        assertNull(raftComputerAgentIdentityLabel(runtime = "", model = null))
+    }
+
+    @Test
     fun realtimeFilterAdmitsOnlyMachineEventsOfTheCurrentServer() {
         fun machines(serverId: String?, subjectId: String? = "m-1") =
             RealtimeRefreshRequired(

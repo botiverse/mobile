@@ -53,6 +53,7 @@ import build.raft.app.model.RealtimeAgentActivityEntry
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
+import build.raft.app.model.ComputerRestartDone
 import build.raft.app.model.ServerDeleted
 import build.raft.app.model.ServerPlanUpdated
 import build.raft.app.model.ServerId
@@ -227,8 +228,13 @@ class RealtimeEventMapper(
             RealtimeSocketEvents.MachineUpdated,
             RealtimeSocketEvents.ComputerUpgradeProgress,
             RealtimeSocketEvents.ComputerUpgradeDone,
+            // machine:upgrade-request: the server settled or expired a web upgrade request; the
+            // machines list carries the result (payload `{machineId, upgradeRequest}`).
+            RealtimeSocketEvents.MachineUpgradeRequest,
             RealtimeSocketEvents.DaemonStatus ->
                 decodeSubjectRefresh(element, RealtimeRefreshScope.Machines, eventName)
+            RealtimeSocketEvents.ComputerRestartDone ->
+                decodeOrNull(ComputerRestartDoneDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.ServerMemberAdded,
             RealtimeSocketEvents.ServerMemberUpdated,
             RealtimeSocketEvents.ServerMemberLeft,
@@ -591,6 +597,24 @@ private data class ServerMembershipRemovedDto(
 private data class ServerDeletedDto(
     val serverId: String,
 )
+
+/**
+ * `computer:restart:done` as the server relays it: the Computer's frame (`type`, `requestId`, `ok`,
+ * `error?`; packages/shared/src/index.ts) with `machineId` added (services/agentOrchestrator.ts).
+ */
+@Serializable
+private data class ComputerRestartDoneDto(
+    val machineId: String? = null,
+    val requestId: String? = null,
+    val ok: Boolean = false,
+    val error: String? = null,
+) {
+    fun toDomain(): ComputerRestartDone? {
+        val machine = machineId?.takeIf { it.isNotBlank() } ?: return null
+        val request = requestId?.takeIf { it.isNotBlank() } ?: return null
+        return ComputerRestartDone(machineId = machine, requestId = request, ok = ok, error = error?.takeIf { it.isNotBlank() })
+    }
+}
 
 @Serializable
 private data class ServerPlanUpdatedDto(

@@ -64,6 +64,12 @@ interface SettingsRepository {
     suspend fun updateComputerDescription(request: SettingsComputerDescriptionUpdateRequest): DataResult<SettingsComputerSnapshot>
     suspend fun deleteComputer(machineId: String): DataResult<SettingsComputerActionResult>
     suspend fun rotateComputerKey(machineId: String): DataResult<SettingsComputerKeyRotationResult>
+    /** `POST servers/:id/machines/:machineId/computer/restart` (managed Computers, online only). */
+    suspend fun restartComputer(machineId: String): DataResult<SettingsComputerRestartResult> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    /** `POST servers/:id/machines/:machineId/computer/upgrade` with the consented `targetVersion`. */
+    suspend fun upgradeComputer(request: SettingsComputerUpgradeRequest): DataResult<SettingsComputerUpgradeRequestSnapshot> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
     suspend fun getComputerRuntimeModels(
         machineId: String,
         runtime: String
@@ -817,6 +823,19 @@ data class SettingsComputerRuntimeModelsSnapshot(
     val runtime: String,
     val models: List<String>,
     val defaultModel: String? = null
+)
+
+/** A web Upgrade click: the policy's exact target, as `POST …/computer/upgrade` requires it. */
+data class SettingsComputerUpgradeRequest(
+    val machineId: String,
+    val targetVersion: String
+)
+
+/** A restart the server relayed (or queued); [requestId] correlates the `computer:restart:done` frame. */
+data class SettingsComputerRestartResult(
+    val machineId: String,
+    val requestId: String? = null,
+    val queued: Boolean = false
 )
 
 data class SettingsComputerActionResult(

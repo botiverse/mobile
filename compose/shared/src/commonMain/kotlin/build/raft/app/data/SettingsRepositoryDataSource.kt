@@ -705,6 +705,27 @@ class RealSettingsRepository(
         }
     }
 
+    override suspend fun restartComputer(machineId: String): DataResult<SettingsComputerRestartResult> {
+        val serverId = selectedServerId() ?: return serverRequired()
+        val normalizedMachineId = machineId.trim()
+        if (normalizedMachineId.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        logger("machine_control_start serverId=$serverId machineId=$normalizedMachineId action=restart")
+        return computersApiClient.restartComputer(ServerId(serverId), normalizedMachineId).mapComputerResult {
+            SettingsComputerRestartResult(machineId = normalizedMachineId, requestId = it.requestId, queued = it.queued)
+        }
+    }
+
+    override suspend fun upgradeComputer(
+        request: SettingsComputerUpgradeRequest
+    ): DataResult<SettingsComputerUpgradeRequestSnapshot> {
+        val serverId = selectedServerId() ?: return serverRequired()
+        val machineId = request.machineId.trim()
+        val targetVersion = request.targetVersion.trim()
+        if (machineId.isBlank() || targetVersion.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        logger("machine_control_start serverId=$serverId machineId=$machineId action=upgrade target=$targetVersion")
+        return computersApiClient.upgradeComputer(ServerId(serverId), machineId, targetVersion)
+    }
+
     override suspend fun rotateComputerKey(machineId: String): DataResult<SettingsComputerKeyRotationResult> {
         val serverId = selectedServerId() ?: return serverRequired()
         val normalizedMachineId = machineId.trim()
@@ -2806,7 +2827,13 @@ internal fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnaps
         creatorUserId = creatorUserId,
         attachedByCurrentUser = attachedByCurrentUser,
         agentCount = agentCount,
-        upgradeAvailable = isComputer && computerUpgradeAvailable == true
+        upgradeAvailable = isComputer && computerUpgradeAvailable == true,
+        broadcastPolicy = computerBroadcastPolicy,
+        upgradeRequest = upgradeRequest,
+        remoteUpgradeSupported = remoteUpgradeSupported,
+        versionGate = versionGate,
+        latestComputerVersion = latestComputerVersion,
+        latestComputerReleaseNotes = latestComputerReleaseNotes
     )
 
 private fun ComputerWorkspaceSummary.toSettingsWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot =

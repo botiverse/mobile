@@ -769,6 +769,19 @@ data class ServerDeleted(
     val serverId: ServerId
 ) : RealtimeEvent
 
+/**
+ * `computer:restart:done` (slock packages/server/src/services/agentOrchestrator.ts relays the
+ * Computer's frame to the `server:<id>` room with the machine id added): the result of a web
+ * restart, correlated by [requestId].
+ */
+@Serializable
+data class ComputerRestartDone(
+    val machineId: String,
+    val requestId: String,
+    val ok: Boolean,
+    val error: String? = null
+) : RealtimeEvent
+
 @Serializable
 data class ServerPlanUpdated(
     val serverId: ServerId,

@@ -11,7 +11,9 @@ import build.raft.app.data.SettingsSectionErrorSnapshot
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsState
+import build.raft.app.model.ComputerRestartDone
 import build.raft.app.model.RealtimeEvent
+import build.raft.app.model.getModelLabel
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 
@@ -169,6 +171,27 @@ internal fun raftComputersRefreshErrorCode(hasContent: Boolean, routeErrorCode: 
 internal fun raftComputerEditableTextAfterReload(current: String, baseline: String, incoming: String): String =
     if (current == baseline) incoming else current
 
+/**
+ * Whether an open Name/Description editor goes back to text: its save just finished
+ * ([wasSaving] -> not [saving]) without an error, like web `handleSaveRename` closing the editor
+ * once the PATCH resolves. A failed save keeps the editor open with the draft.
+ */
+internal fun raftComputerEditorClosesAfterSave(wasSaving: Boolean, saving: Boolean, failed: Boolean): Boolean =
+    wasSaving && !saving && !failed
+
+/**
+ * The subtitle of an agent row on a computer (web `MachineAgentRow` `agentIdentityLabel`): the
+ * runtime's display name and the model's label, joined by " · ", either one dropped when absent.
+ * The model label follows web `agentModelLabel`: the bundled catalog label, else the raw id.
+ */
+internal fun raftComputerAgentIdentityLabel(runtime: String?, model: String?): String? {
+    val runtimeId = runtime?.trim()?.takeIf { it.isNotBlank() }
+    val modelId = model?.trim()?.takeIf { it.isNotBlank() }
+    val runtimeLabel = runtimeId?.let(::raftAgentRuntimeDisplayName)
+    val modelLabel = modelId?.let { getModelLabel(runtimeId = runtimeId.orEmpty(), modelId = it).ifBlank { it } }
+    return listOfNotNull(runtimeLabel, modelLabel).joinToString(" · ").ifBlank { null }
+}
+
 internal fun raftComputerDetailModel(
     state: ScreenLoadState<SettingsComputerDetailSnapshot>,
     machineId: String,
@@ -276,10 +299,13 @@ internal fun raftComputerWorkspaceSize(bytes: Long?): String? = bytes?.takeIf { 
 
 /**
  * Whether a realtime event concerns the Computers pages of [serverId]: a Machines-scope refresh
- * (machine:status / machine:updated / computer:upgrade:*) naming a machine, on that server. Every
+ * (machine:status / machine:updated / machine:upgrade-request) naming a machine on that server, or a
+ * `computer:restart:done`. Every
  * other event is dropped before it reaches the settings store.
  */
 internal fun raftComputersRealtimeEventApplies(event: RealtimeEvent, serverId: String): Boolean {
+    // A web restart's result is relayed to the server's room only, so it carries no server id.
+    if (event is ComputerRestartDone) return event.machineId.isNotBlank()
     if (event !is RealtimeRefreshRequired || event.scope != RealtimeRefreshScope.Machines) return false
     if (event.subjectId.isNullOrBlank()) return false
     val eventServerId = event.serverId?.value?.trim()?.takeIf { it.isNotBlank() } ?: return true
