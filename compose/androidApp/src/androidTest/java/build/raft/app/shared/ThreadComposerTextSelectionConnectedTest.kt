@@ -1,11 +1,15 @@
 package build.raft.app.shared
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.Instrumentation
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Region
+import android.os.Build
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.ViewConfiguration
+import android.view.accessibility.AccessibilityWindowInfo
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.semantics.SemanticsActions
@@ -94,11 +98,16 @@ class ThreadComposerTextSelectionConnectedTest {
             val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
             tapWordCenter(scenario, "beta", taps = 2)
             awaitSelection(scenario, "double tap should select the word", TextRange(6, 10))
+            // A narrow screen moves Select all into the floating toolbar's overflow menu.
             val selectAll =
-                requireNotNull(device.wait(Until.findObject(By.text(SelectAllLabel)), ToolbarWaitMs)) {
-                    "the selection toolbar should offer '$SelectAllLabel'"
-                }
-            selectAll.click()
+                device.wait(Until.findObject(By.text(SelectAllLabel)), ToolbarWaitMs)
+                    ?: device.findObject(By.desc(ToolbarOverflowDescription))?.let { overflow ->
+                        overflow.click()
+                        device.wait(Until.findObject(By.text(SelectAllLabel)), ToolbarWaitMs)
+                    }
+            requireNotNull(selectAll) {
+                "the selection toolbar (or its overflow) should offer '$SelectAllLabel'"
+            }.click()
             awaitSelection(scenario, "Select all should select the whole draft", TextRange(0, ComposerText.length))
             awaitBothHandles("Select all", scenario)
             captureScreen("select-all")
@@ -147,6 +156,7 @@ class ThreadComposerTextSelectionConnectedTest {
 
     private fun tapWordCenter(scenario: ActivityScenario<RaftCmpActivity>, word: String, taps: Int) {
         val point = wordPointOnScreen(scenario, word)
+        awaitAppWindowOwnsPoint(point, "tap on '$word'")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         var downTime = SystemClock.uptimeMillis()
         repeat(taps) {
@@ -172,6 +182,7 @@ class ThreadComposerTextSelectionConnectedTest {
         val anchorLineCenter = handleLineCenterOnScreen(scenario, kind)
         val dx = target.x - anchorLineCenter.x
         val dy = target.y - anchorLineCenter.y
+        awaitAppWindowOwnsPoint(start, "drag of the $kind handle")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val downTime = SystemClock.uptimeMillis()
         instrumentation.sendPointerSync(MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, start.x, start.y, 0))
@@ -192,6 +203,60 @@ class ThreadComposerTextSelectionConnectedTest {
             MotionEvent.obtain(downTime, downTime + DragDurationMs, MotionEvent.ACTION_UP, start.x + dx, start.y + dy, 0)
         )
         composeRule.waitForIdle()
+    }
+
+    /**
+     * Waits until the topmost touchable window under [point] belongs to this app.
+     *
+     * `sendPointerSync` injects a targeted event: when another uid's window (IME, system bar,
+     * a system dialog) is the touch target at that point, the platform rejects it with "Targeted
+     * input event injection ... not directed at a window owned by uid". Window placement after
+     * the keyboard hides or a popup closes has no completion callback the test can observe, so
+     * this polls the accessibility window list (top layer first) under a short bounded deadline
+     * and fails with the windows at the point instead of the platform's bare exception.
+     */
+    private fun awaitAppWindowOwnsPoint(point: Offset, description: String) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val appPackage = instrumentation.targetContext.packageName
+        val x = point.x.toInt()
+        val y = point.y.toInt()
+        val automation = instrumentation.uiAutomation
+        // The window list is empty unless the UiAutomation service asks for interactive windows.
+        automation.serviceInfo =
+            automation.serviceInfo.apply {
+                flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+            }
+        var last = "none"
+        val deadline = SystemClock.uptimeMillis() + WindowOwnershipWaitMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            composeRule.waitForIdle()
+            val windows = automation.windows.sortedByDescending { it.layer }
+            val atPoint =
+                windows.filter { window ->
+                    if (Build.VERSION.SDK_INT >= 33) {
+                        Region().also(window::getRegionInScreen).contains(x, y)
+                    } else {
+                        android.graphics.Rect().also(window::getBoundsInScreen).contains(x, y)
+                    }
+                }
+            val owner = atPoint.firstOrNull()
+            if (owner != null && owner.root?.packageName?.toString() == appPackage) return
+            last =
+                "atPoint=" +
+                    atPoint.joinToString { window -> window.summary() }.ifEmpty { "none" } +
+                    " all=" + windows.joinToString { window -> window.summary() }.ifEmpty { "none" }
+            SystemClock.sleep(PollMs)
+        }
+        captureScreen("window-at-point-${description.filter { it.isLetterOrDigit() }}")
+        throw AssertionError(
+            "$description: point ($x, $y) is not owned by an $appPackage window within " +
+                "${WindowOwnershipWaitMs}ms; windows (top first): $last"
+        )
+    }
+
+    private fun AccessibilityWindowInfo.summary(): String {
+        val bounds = android.graphics.Rect().also(::getBoundsInScreen)
+        return "[type=$type layer=$layer title=$title bounds=$bounds package=${root?.packageName}]"
     }
 
     private fun handleLineCenterOnScreen(scenario: ActivityScenario<RaftCmpActivity>, kind: HandleKind): Offset {
@@ -320,6 +385,7 @@ class ThreadComposerTextSelectionConnectedTest {
         const val FirstParagraph = "alpha beta gamma"
         const val ComposerText = "$FirstParagraph\ndelta epsilon zeta"
         const val SelectAllLabel = "Select all"
+        const val ToolbarOverflowDescription = "More options"
         const val TapDurationMs = 40L
         const val TapGapMs = 60L
         const val DragSteps = 16
@@ -327,6 +393,7 @@ class ThreadComposerTextSelectionConnectedTest {
         const val ToolbarWaitMs = 5_000L
         const val HandleWaitMs = 5_000L
         const val SelectionWaitMs = 8_000L
+        const val WindowOwnershipWaitMs = 5_000L
         const val PollMs = 100L
     }
 }

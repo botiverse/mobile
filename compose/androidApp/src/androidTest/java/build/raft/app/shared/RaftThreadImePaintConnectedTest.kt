@@ -366,6 +366,8 @@ class RaftThreadImePaintConnectedTest {
                     bounds != null &&
                     node.isEnabled &&
                     node.isClickable &&
+                    node.isFocusable &&
+                    node.hasClickAction() &&
                     bounds.width() > 0 &&
                     bounds.height() > 0
                 ) {
@@ -382,6 +384,18 @@ class RaftThreadImePaintConnectedTest {
         }
     }
 
+    /**
+     * The composer's Send control as an accessibility service sees it: the focusable node that
+     * owns the click action and is named "Send".
+     *
+     * Compose does not put the name on that node itself. The design-system icon button merges its
+     * descendants, and Compose moves a merging node's own content description onto a synthetic,
+     * non-focusable child (`SemanticsNode.emitFakeNodes`), so the tree reads
+     * `View[clickable, focusable, ACTION_CLICK]` > `View[description=Send]`. TalkBack and Switch
+     * Access focus the parent and announce the child's name, the same pairing this resolves.
+     * Matching the first "Send" description alone (the Kuikly-era tree) finds the unclickable
+     * child and never taps.
+     */
     private fun sendActionNode(): AccessibilityNodeInfo? {
         val root =
             InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
@@ -390,10 +404,51 @@ class RaftThreadImePaintConnectedTest {
         queue.add(root)
         while (queue.isNotEmpty()) {
             val node = queue.removeFirst()
-            if (node.contentDescription?.toString() == SendActionDescription) return node
+            if (node.contentDescription?.toString() == SendActionDescription) {
+                return node.accessibilityClickOwner()
+            }
             repeat(node.childCount) { index -> node.getChild(index)?.let(queue::addLast) }
         }
         return null
+    }
+
+    /** This node if an accessibility service can click it, else its nearest clickable ancestor. */
+    private fun AccessibilityNodeInfo.accessibilityClickOwner(): AccessibilityNodeInfo? {
+        var candidate: AccessibilityNodeInfo? = this
+        while (candidate != null) {
+            if (candidate.isClickable) return candidate
+            if (candidate !== this && candidate.isFocusable) return null
+            candidate = candidate.parent
+        }
+        return null
+    }
+
+    private fun AccessibilityNodeInfo.hasClickAction(): Boolean =
+        actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK }
+
+    /** Every node named [SendActionDescription] in the active window, with its click owner. */
+    private fun sendActionCandidatesSummary(): String {
+        val root =
+            InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
+                ?: return "<no-root>"
+        val entries = mutableListOf<String>()
+        fun describe(node: AccessibilityNodeInfo): String {
+            val bounds = Rect().also(node::getBoundsInScreen)
+            return "class=${node.className} window=${node.windowId} enabled=${node.isEnabled} " +
+                "clickable=${node.isClickable} focusable=${node.isFocusable} " +
+                "description=${node.contentDescription} bounds=$bounds " +
+                "actions=${node.actionList.map { it.id }} children=${node.childCount}"
+        }
+        fun visit(node: AccessibilityNodeInfo, path: String) {
+            if (node.contentDescription?.toString() == SendActionDescription) {
+                entries +=
+                    "path=$path ${describe(node)} " +
+                        "clickOwner=[${node.accessibilityClickOwner()?.let(::describe) ?: "none"}]"
+            }
+            repeat(node.childCount) { index -> node.getChild(index)?.let { visit(it, "$path/$index") } }
+        }
+        visit(root, "r")
+        return entries.joinToString(" | ").ifEmpty { "none" }
     }
 
     private fun tapSendButton(
@@ -644,12 +699,14 @@ class RaftThreadImePaintConnectedTest {
         val sendActionSummary =
             sendActionNode()?.let { node ->
                 "enabled=${node.isEnabled} clickable=${node.isClickable} " +
-                    "description=${node.contentDescription}"
+                    "focusable=${node.isFocusable} clickAction=${node.hasClickAction()} " +
+                    "class=${node.className} window=${node.windowId}"
             } ?: "none"
         return "requestCount=${ThreadNewerAutoPaginationVisualFixtureProbe.sentRequestCount(nonce)} " +
             "retiredIdentity=$retiredEditorId editorCount=${editors.size} " +
             "current=[$currentSummary] retained=[$retainedSummary] " +
-            "imeVisible=$imeVisible sendAction=[$sendActionSummary]"
+            "imeVisible=$imeVisible sendAction=[$sendActionSummary] " +
+            "sendCandidates=[${sendActionCandidatesSummary()}]"
     }
 
     private fun RaftTextFieldSnapshot.composerEditorDiagnostics(retiredEditorId: Int): String =
