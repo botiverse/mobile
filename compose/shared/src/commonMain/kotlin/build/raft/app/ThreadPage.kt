@@ -381,6 +381,7 @@ import build.raft.app.compat.pager.IPagerEventObserver
 import build.raft.app.compat.pager.Pager
 import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.compose.stringResource
+import com.tencent.tmm.kmmresource.resource.StringResource
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -522,7 +523,9 @@ internal enum class ThreadNewMessageMenuTool {
     CopyLink,
     FollowThread,
     TaskStatus,
-    ConvertToTask
+    ConvertToTask,
+    /** In-place text selection context only: select the whole message body. */
+    SelectAll
 }
 
 internal val ThreadNewMessageMenuToolOrder =
@@ -533,6 +536,20 @@ internal val ThreadNewMessageMenuToolOrder =
         ThreadNewMessageMenuTool.Save,
         ThreadNewMessageMenuTool.Translate,
         ThreadNewMessageMenuTool.Select
+    )
+
+/**
+ * The Compact menu shown for an in-place text selection: Select All takes the Select slot and
+ * leads the row, Copy ("Copy selection") copies the selection; the row keeps six slots.
+ */
+internal val ThreadNewMessageMenuSelectionToolOrder =
+    listOf(
+        ThreadNewMessageMenuTool.SelectAll,
+        ThreadNewMessageMenuTool.Copy,
+        ThreadNewMessageMenuTool.Reply,
+        ThreadNewMessageMenuTool.Forward,
+        ThreadNewMessageMenuTool.Save,
+        ThreadNewMessageMenuTool.Translate
     )
 
 /**
@@ -548,6 +565,12 @@ internal val ThreadNewMessageMenuSecondaryToolOrder =
         ThreadNewMessageMenuTool.ConvertToTask
     )
 
+/** One message's Compact menu actions: reactions plus the tool callbacks. */
+internal class ThreadNewMessageMenuMessageActions(
+    val onReact: (String) -> Unit,
+    val tools: ThreadNewMessageMenuToolCallbacks,
+)
+
 internal data class ThreadNewMessageMenuToolCallbacks(
     val onCopy: () -> Unit,
     val onReply: () -> Unit,
@@ -559,7 +582,8 @@ internal data class ThreadNewMessageMenuToolCallbacks(
     val onCopyLink: () -> Unit = {},
     val onFollowThread: () -> Unit = {},
     val onTaskStatus: () -> Unit = {},
-    val onConvertToTask: () -> Unit = {}
+    val onConvertToTask: () -> Unit = {},
+    val onSelectAll: () -> Unit = {}
 )
 
 internal fun ThreadNewMessageMenuTool.dispatch(callbacks: ThreadNewMessageMenuToolCallbacks) {
@@ -575,6 +599,7 @@ internal fun ThreadNewMessageMenuTool.dispatch(callbacks: ThreadNewMessageMenuTo
         ThreadNewMessageMenuTool.FollowThread -> callbacks.onFollowThread()
         ThreadNewMessageMenuTool.TaskStatus -> callbacks.onTaskStatus()
         ThreadNewMessageMenuTool.ConvertToTask -> callbacks.onConvertToTask()
+        ThreadNewMessageMenuTool.SelectAll -> callbacks.onSelectAll()
     }
 }
 
@@ -597,7 +622,9 @@ internal data class ThreadNewMessageMenuActionAvailability(
     val threadFollowed: Boolean = false,
     val taskStatus: Boolean = false,
     val taskDone: Boolean = false,
-    val convertToTask: Boolean = false
+    val convertToTask: Boolean = false,
+    /** Shown for an in-place text selection: Copy copies the selection and Select All appears. */
+    val selectionContext: Boolean = false
 ) {
     fun enabled(tool: ThreadNewMessageMenuTool): Boolean =
         when (tool) {
@@ -606,13 +633,18 @@ internal data class ThreadNewMessageMenuActionAvailability(
             ThreadNewMessageMenuTool.Forward -> forward
             ThreadNewMessageMenuTool.Save -> save
             ThreadNewMessageMenuTool.Translate -> translate && !translatePending
-            ThreadNewMessageMenuTool.Select -> select
+            // In-place selection already covers picking text; the Select tool is hidden there.
+            ThreadNewMessageMenuTool.Select -> select && !selectionContext
             ThreadNewMessageMenuTool.AddReaction -> addReaction
             ThreadNewMessageMenuTool.CopyLink -> copyLink
             ThreadNewMessageMenuTool.FollowThread -> followThread
             ThreadNewMessageMenuTool.TaskStatus -> taskStatus
             ThreadNewMessageMenuTool.ConvertToTask -> convertToTask
+            ThreadNewMessageMenuTool.SelectAll -> selectionContext
         }
+
+    fun primaryTools(): List<ThreadNewMessageMenuTool> =
+        if (selectionContext) ThreadNewMessageMenuSelectionToolOrder else ThreadNewMessageMenuToolOrder
 
     fun secondaryTools(): List<ThreadNewMessageMenuTool> =
         ThreadNewMessageMenuSecondaryToolOrder.filter(::enabled)
@@ -21978,6 +22010,124 @@ private fun ThreadMessagesListContent(
                 onDismiss = { authorDescriptionPopover = null }
             )
         }
+        // The Compact menu's message actions, shared by the long-press menu and the in-place
+        // selection menu; [close] dismisses whichever surface showed them.
+        fun compactMenuMessageActions(
+            message: RaftThreadMessageItem,
+            replyMetadata: ThreadReplyMetadata,
+            close: () -> Unit
+        ): ThreadNewMessageMenuMessageActions {
+            val followThreadChannelId = replyMetadata.threadChannelId?.takeIf { it.isNotBlank() }
+            return ThreadNewMessageMenuMessageActions(
+                onReact = { emoji ->
+                    close()
+                    onThreadEvent("toggleReaction", message.id, null, emoji)
+                },
+                tools =
+                    ThreadNewMessageMenuToolCallbacks(
+                        onCopy = {
+                            close()
+                            onThreadEvent("copyMessage", message.id, null, null)
+                        },
+                        onReply = {
+                            close()
+                            onThreadEvent("openMessageThread", message.id, null, null)
+                        },
+                        onForward = {
+                            close()
+                            onForwardMessage(message.id)
+                        },
+                        onSave = {
+                            close()
+                            onThreadEvent("toggleMessageSaved", message.id, null, null)
+                        },
+                        onTranslate = {
+                            close()
+                            translationStore?.translateNow(message.toTranslationCandidate())
+                        },
+                        onSelect = {
+                            close()
+                            onEnterShareSelection(message.id)
+                        },
+                        onAddReaction = {
+                            close()
+                            reactionPickerMessageId = message.id
+                        },
+                        onCopyLink = {
+                            close()
+                            onThreadEvent("copyMessageLink", message.id, null, null)
+                        },
+                        onFollowThread = {
+                            close()
+                            if (replyMetadata.isThreadFollowed && followThreadChannelId != null) {
+                                onThreadEvent(UNFOLLOW_THREAD_ACTION, message.id, followThreadChannelId, null)
+                            } else {
+                                onThreadEvent(FOLLOW_THREAD_ACTION, message.id, null, null)
+                            }
+                        },
+                        onTaskStatus = {
+                            close()
+                            onThreadEvent(
+                                if (message.isThreadTaskDone()) "reopenTask" else "markTaskDone",
+                                message.taskId,
+                                null,
+                                null
+                            )
+                        },
+                        onConvertToTask = {
+                            close()
+                            onThreadEvent("convertMessageToTask", message.id, null, null)
+                        }
+                    )
+            )
+        }
+        fun compactMenuAvailability(
+            message: RaftThreadMessageItem,
+            replyMetadata: ThreadReplyMetadata
+        ): ThreadNewMessageMenuActionAvailability =
+            threadMessageMenuCapabilities(
+                message = message,
+                replyMetadata = replyMetadata,
+                slice = renderPayload,
+                writeActionsEnabled = writeActionsEnabled,
+                translate =
+                    threadMessageMenuTranslateState(
+                        message = message,
+                        translationState = translationState,
+                        translationAvailable = translationStore != null
+                    ),
+                taskConvertPending = message.id in pendingTaskConvertMessageIds
+            ).toThreadNewMessageMenuActionAvailability(message, replyMetadata)
+        // New Message Menu toggle: a text selection shows this same Compact menu in place
+        // (ThreadInPlaceTextSelection.kt positions it against the visible selection).
+        val inPlaceSelectionMenuHost = LocalThreadInPlaceTextSelectionHost.current
+        if (inPlaceSelectionMenuHost?.enabled == true) {
+            val selectionMenu: @Composable (ThreadInPlaceSelectionMenuRequest) -> Unit = { request ->
+                renderPayload.threadActionMessage(request.messageId, linkedTasksProjection)?.let { message ->
+                    val replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message)
+                    val actions = compactMenuMessageActions(message, replyMetadata, close = request.dismiss)
+                    ThreadNewMessageMenuChrome(
+                        availability =
+                            threadInPlaceSelectionMenuAvailability(compactMenuAvailability(message, replyMetadata)),
+                        onReact = actions.onReact,
+                        onCopy = request.copySelection,
+                        onReply = actions.tools.onReply,
+                        onForward = actions.tools.onForward,
+                        onSave = actions.tools.onSave,
+                        onTranslate = actions.tools.onTranslate,
+                        onSelect = actions.tools.onSelect,
+                        onMore = {},
+                        onAddReaction = actions.tools.onAddReaction,
+                        onCopyLink = actions.tools.onCopyLink,
+                        onFollowThread = actions.tools.onFollowThread,
+                        onTaskStatus = actions.tools.onTaskStatus,
+                        onConvertToTask = actions.tools.onConvertToTask,
+                        onSelectAll = request.selectAll
+                    )
+                }
+            }
+            SideEffect { inPlaceSelectionMenuHost.selectionMenu = selectionMenu }
+        }
         actionMessageId?.let { messageId ->
             val resolvedActionAnchor =
                 actionMenuAnchor?.takeIf { it.belongsTo(threadMessageMenuOwnerIdentity(messageId)) }
@@ -22036,56 +22186,27 @@ private fun ThreadMessagesListContent(
                         )
                     }
                 if (variant == ThreadMessageMenuVariant.Compact) {
-                    val followThreadChannelId = replyMetadata.threadChannelId?.takeIf { it.isNotBlank() }
+                    val actions = compactMenuMessageActions(message, replyMetadata, close = closeActionMenu)
                     ThreadNewMessageMenu(
                         anchor = resolvedActionAnchor,
                         availability = capabilities.toThreadNewMessageMenuActionAvailability(message, replyMetadata),
                         onDismiss = closeActionMenu,
-                        onReact = { emoji ->
-                            closeActionMenu()
-                            onThreadEvent("toggleReaction", message.id, null, emoji)
-                        },
-                        onCopy = {
-                            closeActionMenu()
-                            onThreadEvent("copyMessage", message.id, null, null)
-                        },
-                        onReply = {
-                            closeActionMenu()
-                            onThreadEvent("openMessageThread", message.id, null, null)
-                        },
-                        onForward = {
-                            closeActionMenu()
-                            onForwardMessage(message.id)
-                        },
-                        onSave = {
-                            closeActionMenu()
-                            onThreadEvent("toggleMessageSaved", message.id, null, null)
-                        },
-                        onTranslate = onTranslate,
-                        onSelect = {
-                            closeActionMenu()
-                            onEnterShareSelection(message.id)
-                        },
+                        onReact = actions.onReact,
+                        onCopy = actions.tools.onCopy,
+                        onReply = actions.tools.onReply,
+                        onForward = actions.tools.onForward,
+                        onSave = actions.tools.onSave,
+                        onTranslate = actions.tools.onTranslate,
+                        onSelect = actions.tools.onSelect,
                         onMore = {
                             classicMenuOverrideMessageId = message.id
                             diagnosticsLogger("thread_message_menu_compact_more messageId=${message.id}")
                         },
-                        onAddReaction = onAddReaction,
-                        onCopyLink = {
-                            closeActionMenu()
-                            onThreadEvent("copyMessageLink", message.id, null, null)
-                        },
-                        onFollowThread = {
-                            if (replyMetadata.isThreadFollowed && followThreadChannelId != null) {
-                                onUnfollowThread(followThreadChannelId)
-                            } else {
-                                onFollowThread()
-                            }
-                        },
-                        onTaskStatus = {
-                            onTaskStatusChange(if (message.isThreadTaskDone()) "reopenTask" else "markTaskDone")
-                        },
-                        onConvertToTask = onConvertToTask
+                        onAddReaction = actions.tools.onAddReaction,
+                        onCopyLink = actions.tools.onCopyLink,
+                        onFollowThread = actions.tools.onFollowThread,
+                        onTaskStatus = actions.tools.onTaskStatus,
+                        onConvertToTask = actions.tools.onConvertToTask
                     )
                 } else {
                     ThreadMessageActionMenu(
@@ -25190,15 +25311,8 @@ private fun ThreadMessageCardContent(
                                                     } else {
                                                         null
                                                     },
-                                                diagnosticsLogger = diagnosticsLogger,
-                                                onShowMessageMenu = { rowLocalOffset ->
-                                                    longPressGestureOwner.rootAnchor
-                                                        .resolve(
-                                                            rowLocalOffset?.let { RaftPopoverLocalPoint.Exact(it) }
-                                                                ?: RaftPopoverLocalPoint.BottomStart
-                                                        )
-                                                        ?.let(onShowActions)
-                                                }
+                                                wholeMessageText = threadMessageSelectionSourceText(message),
+                                                diagnosticsLogger = diagnosticsLogger
                                             ) {
                                                 if (richContentEnabled) {
                                                     val markdownRenderSignature =
@@ -25496,7 +25610,8 @@ internal fun ThreadNewMessageMenuChrome(
     onCopyLink: () -> Unit = {},
     onFollowThread: () -> Unit = {},
     onTaskStatus: () -> Unit = {},
-    onConvertToTask: () -> Unit = {}
+    onConvertToTask: () -> Unit = {},
+    onSelectAll: () -> Unit = {}
 ) {
     val callbacks =
         ThreadNewMessageMenuToolCallbacks(
@@ -25510,7 +25625,8 @@ internal fun ThreadNewMessageMenuChrome(
             onCopyLink = onCopyLink,
             onFollowThread = onFollowThread,
             onTaskStatus = onTaskStatus,
-            onConvertToTask = onConvertToTask
+            onConvertToTask = onConvertToTask,
+            onSelectAll = onSelectAll
         )
     val secondaryTools = availability.secondaryTools()
     // raft-ui overlay: popover layer, seam ring and the float shadow (no offset box).
@@ -25540,7 +25656,7 @@ internal fun ThreadNewMessageMenuChrome(
                         .background(RaftColor.BorderHairline)
             )
             ThreadNewMessageMenuToolRow(
-                tools = ThreadNewMessageMenuToolOrder,
+                tools = availability.primaryTools(),
                 callbacks = callbacks,
                 availability = availability
             )
@@ -25551,48 +25667,63 @@ internal fun ThreadNewMessageMenuChrome(
                     availability = availability
                 )
             }
-            ThreadNewMessageMenuMoreOverlay(
-                enabled = availability.more,
-                onClick = onMore
-            )
+            // A selection menu has no "More": its message actions are all on the two rows.
+            if (!availability.selectionContext) {
+                ThreadNewMessageMenuMoreOverlay(
+                    enabled = availability.more,
+                    onClick = onMore
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun ThreadNewMessageMenuTool.compactLabel(availability: ThreadNewMessageMenuActionAvailability): String =
+    stringResource(compactLabelResource(availability))
+
+/** The string key each Compact tool shows for [availability] (pure, so the per-state model is testable). */
+internal fun ThreadNewMessageMenuTool.compactLabelResource(
+    availability: ThreadNewMessageMenuActionAvailability
+): StringResource =
     when (this) {
-        ThreadNewMessageMenuTool.Copy -> stringResource(MR.strings.thread_action_copy_markdown)
-        ThreadNewMessageMenuTool.Reply -> stringResource(MR.strings.thread_new_message_menu_reply)
-        ThreadNewMessageMenuTool.Forward -> stringResource(MR.strings.thread_action_forward)
+        ThreadNewMessageMenuTool.Copy ->
+            if (availability.selectionContext) {
+                MR.strings.thread_text_selection_copy_selection
+            } else {
+                MR.strings.thread_action_copy_markdown
+            }
+        ThreadNewMessageMenuTool.Reply -> MR.strings.thread_new_message_menu_reply
+        ThreadNewMessageMenuTool.Forward -> MR.strings.thread_action_forward
         ThreadNewMessageMenuTool.Save ->
             if (availability.saved) {
-                stringResource(MR.strings.thread_action_remove_from_saved)
+                MR.strings.thread_action_remove_from_saved
             } else {
-                stringResource(MR.strings.thread_action_save_message)
+                MR.strings.thread_action_save_message
             }
         ThreadNewMessageMenuTool.Translate ->
             if (availability.translatePending) {
-                stringResource(MR.strings.translation_state_in_progress)
+                MR.strings.translation_state_in_progress
             } else {
-                stringResource(MR.strings.thread_action_translate)
+                MR.strings.thread_action_translate
             }
-        ThreadNewMessageMenuTool.Select -> stringResource(MR.strings.thread_action_select_message)
-        ThreadNewMessageMenuTool.AddReaction -> stringResource(MR.strings.thread_action_add_reaction)
-        ThreadNewMessageMenuTool.CopyLink -> stringResource(MR.strings.thread_action_copy_link)
+        ThreadNewMessageMenuTool.Select -> MR.strings.thread_action_select_message
+        ThreadNewMessageMenuTool.AddReaction -> MR.strings.thread_action_add_reaction
+        ThreadNewMessageMenuTool.CopyLink -> MR.strings.thread_action_copy_link
         ThreadNewMessageMenuTool.FollowThread ->
             if (availability.threadFollowed) {
-                stringResource(MR.strings.thread_action_unfollow_thread)
+                MR.strings.thread_action_unfollow_thread
             } else {
-                stringResource(MR.strings.thread_action_follow_thread)
+                MR.strings.thread_action_follow_thread
             }
         ThreadNewMessageMenuTool.TaskStatus ->
             if (availability.taskDone) {
-                stringResource(MR.strings.thread_action_reopen_task)
+                MR.strings.thread_action_reopen_task
             } else {
-                stringResource(MR.strings.thread_action_mark_done)
+                MR.strings.thread_action_mark_done
             }
-        ThreadNewMessageMenuTool.ConvertToTask -> stringResource(MR.strings.thread_action_convert_to_task)
+        ThreadNewMessageMenuTool.ConvertToTask -> MR.strings.thread_action_convert_to_task
+        ThreadNewMessageMenuTool.SelectAll -> MR.strings.thread_text_selection_select_all
     }
 
 internal fun ThreadNewMessageMenuTool.compactIcon(
@@ -25612,6 +25743,7 @@ internal fun ThreadNewMessageMenuTool.compactIcon(
         ThreadNewMessageMenuTool.TaskStatus ->
             if (availability.taskDone) RaftLucideIconName.RefreshCw else RaftLucideIconName.CircleCheckBig
         ThreadNewMessageMenuTool.ConvertToTask -> RaftLucideIconName.ClipboardCheck
+        ThreadNewMessageMenuTool.SelectAll -> RaftLucideIconName.SquareCheckBig
     }
 
 @Composable
@@ -25664,7 +25796,7 @@ private fun ThreadNewMessageMenuMoreOverlay(
 }
 
 @Composable
-internal fun ThreadNewMessageMenuToolButton(
+private fun ThreadNewMessageMenuToolButton(
     label: String,
     icon: RaftLucideIconName,
     enabled: Boolean,

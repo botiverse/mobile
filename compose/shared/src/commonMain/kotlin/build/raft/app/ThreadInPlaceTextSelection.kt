@@ -1,9 +1,5 @@
 package build.raft.app
 
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.contextmenu.provider.LocalTextContextMenuToolbarProvider
 import androidx.compose.foundation.text.contextmenu.provider.TextContextMenuDataProvider
 import androidx.compose.foundation.text.contextmenu.provider.TextContextMenuProvider
@@ -39,9 +35,6 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import build.raft.app.compat.ui.LocalRaftPageActive
-import build.raft.app.components.raftLookOverlaySurface
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.awaitCancellation
 
 /**
@@ -50,12 +43,13 @@ import kotlinx.coroutines.awaitCancellation
  * Gesture rule (toggle ON): a long-press that lands on the message body belongs to Compose's
  * [SelectionContainer] (select word, drag handles); the row-level long-press menu does not fire
  * there. A long-press on the rest of the row (avatar, author line, attachments, blank row space)
- * still opens the message menu, and the selection bar's More item opens it too. Toggle OFF: no
- * container, no deferral, the row behaves exactly as before.
+ * still opens the message menu. Toggle OFF: no container, no deferral, the row behaves exactly as
+ * before.
  *
- * The platform text toolbar is replaced by our own bar on both toolbar paths: Android's new text
- * context menu ([LocalTextContextMenuToolbarProvider], on by default there) and the legacy
- * [LocalTextToolbar] that skiko/iOS still uses.
+ * The platform text toolbar is replaced on both toolbar paths (Android's new text context menu,
+ * [LocalTextContextMenuToolbarProvider], on by default there, and the legacy [LocalTextToolbar]
+ * that skiko/iOS still uses) by the full Compact New Message Menu, WeChat style: reactions and
+ * message tools, with Copy copying the selection and Select All added.
  */
 /** What the host needs from a message's selection; [ThreadInPlaceSelectionController] in production. */
 internal interface ThreadInPlaceSelectionTarget {
@@ -70,6 +64,12 @@ internal class ThreadInPlaceTextSelectionHost(
     val copyText: (String) -> Unit,
 ) {
     private var active: ThreadInPlaceSelectionTarget? = null
+
+    /**
+     * The page's Compact New Message Menu for a selection (set by ThreadMessagesListContent,
+     * which owns the message actions); null until the list has composed.
+     */
+    var selectionMenu by mutableStateOf<(@Composable (ThreadInPlaceSelectionMenuRequest) -> Unit)?>(null)
 
     /** The thread list's visible viewport in window space; the bar never leaves it. */
     var viewportInWindow by mutableStateOf<Rect?>(null)
@@ -207,27 +207,35 @@ internal fun threadInPlaceSelectionCopyText(
     selectedTexts: List<String>,
     selectableTexts: List<String>,
     fullMessageText: String?,
+    emptySelectionFallback: String? = null,
 ): String {
     val selected = selectedTexts.filter { it.isNotEmpty() }
-    if (selected.isEmpty()) return ""
+    if (selected.isEmpty()) return emptySelectionFallback.orEmpty()
     if (!fullMessageText.isNullOrBlank() && threadInPlaceSelectionCoversAll(selectedTexts, selectableTexts)) {
         return fullMessageText
     }
     return selected.joinToString(separator = "\n")
 }
 
-internal enum class ThreadInPlaceSelectionBarAction {
-    Copy,
-    SelectAll,
-    More
-}
+/**
+ * What the page-level Compact menu needs from a selection: Copy copies the selection, Select All
+ * extends it, and every other message action calls [dismiss] (clear selection + menu) first.
+ */
+internal class ThreadInPlaceSelectionMenuRequest(
+    val messageId: String,
+    val copySelection: () -> Unit,
+    val selectAll: () -> Unit,
+    val dismiss: () -> Unit,
+)
 
-internal val ThreadInPlaceSelectionBarActions =
-    listOf(
-        ThreadInPlaceSelectionBarAction.Copy,
-        ThreadInPlaceSelectionBarAction.SelectAll,
-        ThreadInPlaceSelectionBarAction.More
-    )
+/**
+ * The Compact menu in selection context: same message actions as the long-press menu, plus
+ * Select All; Copy reads "Copy selection"; the Select tool and the More chevron are hidden.
+ */
+internal fun threadInPlaceSelectionMenuAvailability(
+    messageMenu: ThreadNewMessageMenuActionAvailability,
+): ThreadNewMessageMenuActionAvailability =
+    messageMenu.copy(copy = true, more = false, selectionContext = true)
 
 @Stable
 internal class ThreadInPlaceSelectionController(
@@ -295,9 +303,6 @@ internal class ThreadInPlaceSelectionController(
         val body = bodyCoordinates?.takeIf { it.isAttached } ?: return false
         return row.localBoundingBoxOf(body, clipBounds = false).contains(offset)
     }
-
-    fun rowLocalOffsetOf(windowOffset: Offset): Offset? =
-        rowCoordinates?.takeIf { it.isAttached }?.windowToLocal(windowOffset)
 
     /** Legacy TextToolbar path: [rootRect] is in root coordinates; store it body-relative. */
     internal fun showMenuAtRootRect(rootRect: Rect) {
@@ -382,9 +387,9 @@ internal fun rememberThreadInPlaceSelectionController(
 internal fun ThreadInPlaceSelectableBody(
     controller: ThreadInPlaceSelectionController?,
     fullMessageText: String?,
+    wholeMessageText: String,
     messageMenuOpen: Boolean,
     diagnosticsLogger: (String) -> Unit,
-    onShowMessageMenu: (rowLocalOffset: Offset?) -> Unit,
     content: @Composable () -> Unit,
 ) {
     if (controller == null) {
@@ -426,57 +431,54 @@ internal fun ThreadInPlaceSelectableBody(
         diagnosticsLogger("thread_in_place_selection_back_clear messageId=${controller.messageId}")
         controller.clear()
     }
-    if (pageActive && controller.menuRequested && controller.hasSelection) {
-        ThreadInPlaceSelectionBarHost(
-            controller = controller,
-            onAction = { action ->
-                when (action) {
-                    ThreadInPlaceSelectionBarAction.Copy -> {
+    val selectionMenu = host.selectionMenu
+    if (pageActive && selectionMenu != null && controller.menuRequested && controller.hasSelection) {
+        val request =
+            remember(controller, fullMessageText, wholeMessageText, host) {
+                ThreadInPlaceSelectionMenuRequest(
+                    messageId = controller.messageId,
+                    copySelection = {
                         val selected = controller.selectedTexts()
                         val selectable = controller.selectableTexts()
-                        val text = threadInPlaceSelectionCopyText(selected, selectable, fullMessageText)
+                        val text =
+                            threadInPlaceSelectionCopyText(
+                                selectedTexts = selected,
+                                selectableTexts = selectable,
+                                fullMessageText = fullMessageText,
+                                emptySelectionFallback = wholeMessageText
+                            )
                         diagnosticsLogger(
                             "thread_in_place_selection_copy messageId=${controller.messageId} " +
                                 "chars=${text.length} lines=${text.lines().size} " +
-                                "full=${threadInPlaceSelectionCoversAll(selected, selectable)} nodes=${selected.count { it.isNotEmpty() }}"
+                                "full=${threadInPlaceSelectionCoversAll(selected, selectable)} " +
+                                "nodes=${selected.count { it.isNotEmpty() }}"
                         )
                         if (text.isNotEmpty()) host.copyText(text)
                         controller.clear()
-                    }
-                    ThreadInPlaceSelectionBarAction.SelectAll -> {
+                    },
+                    selectAll = {
                         diagnosticsLogger("thread_in_place_selection_select_all messageId=${controller.messageId}")
                         controller.selectAll()
-                    }
-                    ThreadInPlaceSelectionBarAction.More -> {
-                        diagnosticsLogger("thread_in_place_selection_more messageId=${controller.messageId}")
-                        val rowLocal =
-                            controller.currentMenuAnchorInWindow()?.let {
-                                controller.rowLocalOffsetOf(it.visibleSelection.bottomCenter)
-                            }
+                    },
+                    dismiss = {
+                        diagnosticsLogger("thread_in_place_selection_menu_action messageId=${controller.messageId}")
                         controller.clear()
-                        onShowMessageMenu(rowLocal)
                     }
-                }
+                )
             }
-        )
+        ThreadInPlaceSelectionMenuHost(controller = controller) {
+            selectionMenu(request)
+        }
     }
 }
 
-/** Separate scope: only the bar recomposes as the body moves; hidden while the selection is off-screen. */
+/** Separate scope: only the menu recomposes as the body moves; hidden while the selection is off-screen. */
 @Composable
-private fun ThreadInPlaceSelectionBarHost(
+private fun ThreadInPlaceSelectionMenuHost(
     controller: ThreadInPlaceSelectionController,
-    onAction: (ThreadInPlaceSelectionBarAction) -> Unit,
+    menu: @Composable () -> Unit,
 ) {
     val anchor = controller.currentMenuAnchorInWindow() ?: return
-    ThreadInPlaceSelectionBar(anchor = anchor, onAction = onAction)
-}
-
-@Composable
-private fun ThreadInPlaceSelectionBar(
-    anchor: ThreadInPlaceSelectionBarAnchor,
-    onAction: (ThreadInPlaceSelectionBarAction) -> Unit,
-) {
     val density = LocalDensity.current
     val gapPx = with(density) { 8.dp.roundToPx() }
     val edgePx = with(density) { 8.dp.roundToPx() }
@@ -488,39 +490,9 @@ private fun ThreadInPlaceSelectionBar(
         popupPositionProvider = positionProvider,
         properties = PopupProperties(focusable = false)
     ) {
-        Row(
-            modifier =
-                Modifier
-                    .raftLookOverlaySurface()
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-        ) {
-            ThreadInPlaceSelectionBarActions.forEach { action ->
-                ThreadNewMessageMenuToolButton(
-                    label = action.label(),
-                    icon = action.icon(),
-                    enabled = true,
-                    onClick = { onAction(action) },
-                    modifier = Modifier.width(56.dp).height(52.dp)
-                )
-            }
-        }
+        menu()
     }
 }
-
-@Composable
-private fun ThreadInPlaceSelectionBarAction.label(): String =
-    when (this) {
-        ThreadInPlaceSelectionBarAction.Copy -> stringResource(MR.strings.thread_text_selection_copy)
-        ThreadInPlaceSelectionBarAction.SelectAll -> stringResource(MR.strings.thread_text_selection_select_all)
-        ThreadInPlaceSelectionBarAction.More -> stringResource(MR.strings.thread_new_message_menu_more)
-    }
-
-private fun ThreadInPlaceSelectionBarAction.icon(): RaftLucideIconName =
-    when (this) {
-        ThreadInPlaceSelectionBarAction.Copy -> RaftLucideIconName.Copy
-        ThreadInPlaceSelectionBarAction.SelectAll -> RaftLucideIconName.SquareCheckBig
-        ThreadInPlaceSelectionBarAction.More -> RaftLucideIconName.Ellipsis
-    }
 
 /** Positions the bar against the visible selection, inside the list viewport (window as fallback). */
 internal class ThreadInPlaceSelectionBarPositionProvider(
