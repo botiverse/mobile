@@ -27,4 +27,11 @@ class ZoomPanTouchSlopTrackerTest {
         repeat(9) { assertFalse(tracker.accept(1.0019f, Offset.Zero, viewportExtent = 1000f), "pinch $it") }
         assertTrue(tracker.accept(1.0019f, Offset.Zero, viewportExtent = 1000f), "~2% of 1000px is past 18px")
     }
+
+    @Test fun onlyAZoomedImageKeepsBackSwipes() {
+        // At 1x a horizontal drag belongs to the gallery / the host's back swipe; zoomed in it pans.
+        assertFalse(raftZoomedImageKeepsBackSwipe(1f))
+        assertTrue(raftZoomedImageKeepsBackSwipe(1.01f))
+        assertTrue(raftZoomedImageKeepsBackSwipe(4f))
+    }
 }

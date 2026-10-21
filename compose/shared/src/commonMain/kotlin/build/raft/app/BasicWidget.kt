@@ -7,6 +7,7 @@ import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
+import build.raft.designsystem.gesture.raftBackSwipeRegion
 import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import build.raft.app.compat.ui.nativeEvent
 import androidx.compose.runtime.Composable
@@ -458,6 +459,9 @@ internal class ZoomPanTouchSlopTracker(private val touchSlop: Float) {
     }
 }
 
+/** A zoomable image keeps horizontal (back-direction) drags only while zoomed in: they pan it. */
+internal fun raftZoomedImageKeepsBackSwipe(scale: Float): Boolean = scale > 1f
+
 @Composable
 private fun RaftZoomableCachedImage(
     source: String,
@@ -485,6 +489,9 @@ private fun RaftZoomableCachedImage(
         modifier = modifier
             .clipToBounds()
             .onSizeChanged { viewportSize = it }
+            // Zoomed in, a horizontal drag pans the image: it must not start the host's back swipe
+            // (iOS full-page pop) or page a surrounding gallery. At 1x the drag is left alone.
+            .raftBackSwipeRegion { raftZoomedImageKeepsBackSwipe(scale) }
             .pointerInput(source) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
