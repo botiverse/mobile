@@ -3402,6 +3402,58 @@ private fun RaftThreadScreenPayload.resolveMarkdownMentionOpenTarget(
     )
 }
 
+/**
+ * Mention lookup key -> "@Display Name" for every member the page already knows: channel members
+ * first, then the server directory (non-joined members are still mentionable and must not render
+ * as a raw handle).
+ */
+internal fun threadMarkdownMentionDisplayLabels(
+    members: List<RaftThreadMemberItem>,
+    memberCandidates: List<RaftThreadMemberItem>
+): ThreadMarkdownMentionDisplayLabels =
+    ThreadMarkdownMentionDisplayLabels(
+        (members + memberCandidates).mapNotNull { member ->
+            val name = member.displayName.trim().removePrefix("@").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            ThreadMarkdownMentionDisplayLabel(
+                id = member.id,
+                handle = member.handle,
+                displayName = member.displayName,
+                label = "@$name"
+            )
+        }
+    )
+
+internal data class ThreadMarkdownMentionDisplayLabel(
+    val id: String,
+    val handle: String,
+    val displayName: String,
+    val label: String
+)
+
+/** Equality-comparable, so a same-content member refresh does not invalidate markdown token plans. */
+internal data class ThreadMarkdownMentionDisplayLabels(
+    private val entries: List<ThreadMarkdownMentionDisplayLabel>
+) {
+    fun labelFor(tag: ThreadMarkdownTag): String? {
+        val key = tag.label.normalizedThreadMentionLookupKey()
+        if (key.isBlank()) return null
+        return entries.firstOrNull { entry ->
+            entry.id.equals(key, ignoreCase = true) ||
+                entry.handle.removePrefix("@").equals(key, ignoreCase = true) ||
+                entry.displayName.equals(key, ignoreCase = true)
+        }?.label
+    }
+}
+
+internal fun resolveThreadMarkdownTagDisplayLabel(
+    tag: ThreadMarkdownTag,
+    labels: ThreadMarkdownMentionDisplayLabels
+): String =
+    when (tag.kind) {
+        ThreadMarkdownTagKind.UserMention -> labels.labelFor(tag) ?: threadMarkdownTagDisplayLabel(tag.label)
+        else -> threadMarkdownTagDisplayLabel(tag.label)
+    }
+
 internal fun RaftThreadScreenPayload.resolveMarkdownTagDisplayLabel(tag: ThreadMarkdownTag): String =
     when (tag.kind) {
         ThreadMarkdownTagKind.UserMention ->
@@ -7785,7 +7837,11 @@ private fun SharedThreadRouteContentContent(
         } else {
             MutableStateFlow(SharedServerMembersEntry(serverId = threadMembersServerId?.value.orEmpty()))
         }
-    }.collectAsState(SharedServerMembersEntry(serverId = threadMembersServerId?.value.orEmpty()))
+    }.collectAsState(
+        // First frame: the directory already in memory, so @mentions paint names, not handles.
+        threadMembersServerId?.let { serverId -> serverMembersStore?.currentServerMembersEntry(serverId) }
+            ?: SharedServerMembersEntry(serverId = threadMembersServerId?.value.orEmpty())
+    )
     LaunchedEffect(selectedThreadTab, serverMembersStore, threadMembersServerId) {
         val store = serverMembersStore ?: return@LaunchedEffect
         val serverId = threadMembersServerId ?: return@LaunchedEffect
@@ -7822,10 +7878,14 @@ private fun SharedThreadRouteContentContent(
             )
         }
     }.collectAsState(
-        SharedServerChannelMembersSlice(
-            serverId = threadMembersServerId?.value,
-            channelId = threadMembersChannelId?.value.orEmpty()
-        )
+        if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
+            serverMembersStore.currentChannelMemberSlice(threadMembersServerId, threadMembersChannelId)
+        } else {
+            SharedServerChannelMembersSlice(
+                serverId = threadMembersServerId?.value,
+                channelId = threadMembersChannelId?.value.orEmpty()
+            )
+        }
     )
     val threadMembersProjection =
         remember(baseRenderedPayload, threadChannelMembersSlice, threadServerMembersEntry, threadMembersServerId) {
@@ -15476,9 +15536,15 @@ private fun ThreadPageContentContent(
                 knownTaskNumbers = knownMarkdownTaskNumbers
             )
         }
+    // Keyed on the resolved label index (equality), not on the member lists' identity: a
+    // same-content member refresh keeps the lambda, so token plans are not recomputed.
+    val markdownMentionLabels =
+        remember(payload.members, payload.memberCandidates) {
+            threadMarkdownMentionDisplayLabels(payload.members, payload.memberCandidates)
+        }
     val resolveMarkdownTagLabel =
-        remember(payload.members) {
-            { tag: ThreadMarkdownTag -> payload.resolveMarkdownTagDisplayLabel(tag) }
+        remember(markdownMentionLabels) {
+            { tag: ThreadMarkdownTag -> resolveThreadMarkdownTagDisplayLabel(tag, markdownMentionLabels) }
         }
     val timelineRenderConfig =
         remember(
