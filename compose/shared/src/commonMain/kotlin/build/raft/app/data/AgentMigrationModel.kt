@@ -178,6 +178,7 @@ internal val AgentMigrationNotice.phase: AgentMigrationPhase?
 internal val AgentMigrationNotice.isActive: Boolean get() = phase == AgentMigrationPhase.Active
 internal val AgentMigrationNotice.isCompleted: Boolean get() = phase == AgentMigrationPhase.Completed
 internal val AgentMigrationNotice.isFailed: Boolean get() = phase == AgentMigrationPhase.Failed
+internal val AgentMigrationNotice.isAborted: Boolean get() = state == "aborted"
 internal val AgentMigrationNotice.isCanceled: Boolean get() = phase == AgentMigrationPhase.Canceled
 internal val AgentMigrationNotice.isHosted: Boolean get() = targetKind == "hosted"
 internal val AgentMigrationNotice.isCancelRequested: Boolean get() = state.startsWith("cancel_requested_")
@@ -243,9 +244,10 @@ internal fun AgentMigrationNotice.needsAttention(): Boolean =
         (isHosted && (state == "arriving" || state == "starting") && failureReason in HOSTED_ARRIVAL_ATTENTION_REASONS) ||
         cancelNeedsAttention
 
-// ── Errors ──
+// ── Errors and Pro gate ──
 
 internal object AgentMigrationErrorCodes {
+    const val ProPlanRequired = "MIGRATION_PRO_PLAN_REQUIRED"
     const val RevisionStale = "MIGRATION_REVISION_STALE"
     const val ConcurrentUpdate = "MIGRATION_CONCURRENT_UPDATE"
     const val UiDisabled = "agent_migration_ui_disabled"

@@ -19,6 +19,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftAppSectionEyebrow
 import build.raft.app.components.raftCardSurface
+import build.raft.app.components.RaftProBadge
+import build.raft.app.components.RaftProUpgradeDialog
 import build.raft.app.data.AGENT_MIGRATION_STEP_COUNT
 import build.raft.app.data.AgentMigrationActionError
 import build.raft.app.data.AgentMigrationEffect
@@ -29,8 +31,10 @@ import build.raft.app.data.AgentMigrationNotice
 import build.raft.app.data.AgentMigrationState
 import build.raft.app.data.AgentMigrationTarget
 import build.raft.app.data.HOSTED_ARRIVAL_ATTENTION_REASONS
+import build.raft.app.data.RaftProGateDecision
 import build.raft.app.data.canCancel
 import build.raft.app.data.endedComputerMigration
+import build.raft.app.data.isAborted
 import build.raft.app.data.isActive
 import build.raft.app.data.isCancelRequested
 import build.raft.app.data.isCanceled
@@ -66,7 +70,11 @@ internal class AgentMigrationSectionInputs(
     val computers: List<AgentMigrationComputer>,
     /** The server's `agent_migration_hosted_v0` gate: offer the cloud as a target. */
     val hostedAvailable: Boolean,
+    val proGate: RaftProGateDecision,
+    /** Billing is still loading: the entry waits instead of guessing (web `billingChecking`). */
+    val proGateChecking: Boolean,
     val onIntent: (AgentMigrationIntent) -> Unit,
+    val onOpenBilling: () -> Unit,
     val onCopy: (String) -> Unit,
     val formatTimestamp: (String) -> String?,
     /** A watched move ended with the agent elsewhere: reload the agent (web re-reads agents). */
@@ -77,7 +85,9 @@ private const val HOSTED_TARGET_CHOICE = "__cloud__"
 
 /**
  * Web `AgentMigrationSection`: move the agent to another computer or to the
- * cloud, follow the move, cancel it, and confirm the cloud review. 
+ * cloud, follow the move, cancel it, and confirm the cloud review. A Pro
+ * feature: the title carries the Pro tag and, on a plan without it, the
+ * entry opens the upgrade sheet instead of the start dialog.
  */
 @Composable
 internal fun AgentMigrationSection(
@@ -93,9 +103,14 @@ internal fun AgentMigrationSection(
     val retryOnTarget = ended == AgentMigrationEnding.Failed && notice.flippedAt == null
     var startDialogTarget by remember { mutableStateOf<String?>(null) }
     var showStartDialog by remember { mutableStateOf(false) }
+    var showUpgrade by remember { mutableStateOf(false) }
     var showCancel by remember { mutableStateOf(false) }
 
     fun openStart(target: String?) {
+        if (inputs.proGate == RaftProGateDecision.UpgradeRequired) {
+            showUpgrade = true
+            return
+        }
         inputs.onIntent(AgentMigrationIntent.ClearStartError)
         startDialogTarget = target
         showStartDialog = true
@@ -104,6 +119,7 @@ internal fun AgentMigrationSection(
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
             RaftAppSectionEyebrow(label = stringResource(MR.strings.agent_migration_section_title))
+            RaftProBadge()
         }
         if (notice == null || notice.isCompleted || notice.isCanceled) {
             RaftText(
@@ -147,7 +163,8 @@ internal fun AgentMigrationSection(
                     RaftButton(
                         text = stringResource(MR.strings.agent_migration_detail_try_migration_again),
                         onClick = { openStart(notice?.targetMachineId) },
-                        size = RaftButtonSize.Md
+                        size = RaftButtonSize.Md,
+                        enabled = !inputs.proGateChecking
                     )
                 }
                 RaftButton(
@@ -163,6 +180,7 @@ internal fun AgentMigrationSection(
                         ),
                     onClick = { openStart(null) },
                     size = RaftButtonSize.Md,
+                    enabled = !inputs.proGateChecking
                 )
             }
         }
@@ -171,6 +189,10 @@ internal fun AgentMigrationSection(
     LaunchedEffect(state.effect) {
         when (state.effect) {
             AgentMigrationEffect.Started -> showStartDialog = false
+            AgentMigrationEffect.ProRequired -> {
+                showStartDialog = false
+                showUpgrade = true
+            }
             AgentMigrationEffect.AgentPlacementChanged -> inputs.onAgentPlacementChanged()
             null -> return@LaunchedEffect
         }
@@ -183,6 +205,17 @@ internal fun AgentMigrationSection(
             initialTarget = startDialogTarget,
             onStart = { inputs.onIntent(AgentMigrationIntent.Start(it)) },
             onDismiss = { if (!state.starting) showStartDialog = false }
+        )
+    }
+    if (showUpgrade) {
+        RaftProUpgradeDialog(
+            title = stringResource(MR.strings.raft_pro_migration_title),
+            description = stringResource(MR.strings.raft_pro_migration_description),
+            onUpgrade = {
+                showUpgrade = false
+                inputs.onOpenBilling()
+            },
+            onDismiss = { showUpgrade = false }
         )
     }
     LaunchedEffect(notice?.canCancel(), state.canceling, state.cancelError) {
@@ -268,33 +301,33 @@ private fun agentMigrationNoticeCopy(notice: AgentMigrationNotice, inputs: Agent
             "arriving", "starting" -> return status(stringResource(MR.strings.agent_migration_hosted_switching))
         }
     }
-    return when (notice.state) {
-        "failed", "aborted" -> {
-            val title =
-                stringResource(
-                    if (notice.state == "failed") MR.strings.agent_migration_detail_migration_failed else MR.strings.agent_migration_detail_migration_aborted
-                )
-            if (notice.flippedAt != null) {
-                AgentMigrationNoticeCopy(
-                    title,
-                    null,
-                    if (notice.isHosted) {
-                        stringResource(MR.strings.agent_migration_hosted_failed_after_move)
-                    } else {
-                        stringResource(MR.strings.agent_migration_detail_migration_failed_after_move, source, target)
-                    }
-                )
-            } else {
-                val reason = notice.transportErrorCode ?: notice.failureReason ?: notice.abortReason
-                AgentMigrationNoticeCopy(
-                    title,
-                    stringResource(MR.strings.agent_migration_detail_migration_still_on_source, source),
-                    notice.transportErrorMessage?.takeIf { it.isNotBlank() }
-                        ?: reason?.let { stringResource(MR.strings.agent_migration_error_code, it) }
-                        ?: stringResource(MR.strings.agent_migration_generic_error)
-                )
-            }
+    if (notice.isFailed) {
+        val title =
+            stringResource(
+                if (notice.isAborted) MR.strings.agent_migration_detail_migration_aborted else MR.strings.agent_migration_detail_migration_failed
+            )
+        return if (notice.flippedAt != null) {
+            AgentMigrationNoticeCopy(
+                title,
+                null,
+                if (notice.isHosted) {
+                    stringResource(MR.strings.agent_migration_hosted_failed_after_move)
+                } else {
+                    stringResource(MR.strings.agent_migration_detail_migration_failed_after_move, source, target)
+                }
+            )
+        } else {
+            val reason = notice.transportErrorCode ?: notice.failureReason ?: notice.abortReason
+            AgentMigrationNoticeCopy(
+                title,
+                stringResource(MR.strings.agent_migration_detail_migration_still_on_source, source),
+                notice.transportErrorMessage?.takeIf { it.isNotBlank() }
+                    ?: reason?.let { stringResource(MR.strings.agent_migration_error_code, it) }
+                    ?: stringResource(MR.strings.agent_migration_generic_error)
+            )
         }
+    }
+    return when (notice.state) {
         "cancel_requested_pre_flip" ->
             if (notice.cancelNeedsAttention) {
                 AgentMigrationNoticeCopy(

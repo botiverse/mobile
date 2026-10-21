@@ -2676,6 +2676,9 @@
     <string name="channel_sos_resume_failed_other">%1$d 個のエージェントを再開できませんでした。</string>
     <string name="channel_sos_stop_failed">エージェントを停止できませんでした。もう一度お試しください。</string>
     <string name="channel_sos_resume_error">エージェントを再開できませんでした。もう一度お試しください。</string>
+    <string name="raft_pro_badge">Pro</string>
+    <string name="raft_pro_migration_title">Pro にアップグレードしてエージェントを移行</string>
+    <string name="raft_pro_migration_description">アップグレードすると、エージェントとそのワークスペースを別のコンピューターに移行できます。</string>
     <string name="agent_migration_section_title">エージェントの移行</string>
     <string name="agent_migration_section_description">このエージェントとそのワークスペースを別のコンピューターに移行します。</string>
     <string name="agent_migration_detail_start_migration">別のコンピューターに移行</string>
@@ -2794,4 +2797,5 @@
     <string name="agent_migration_hosted_skip_not_text">テキスト以外のファイル</string>
     <string name="agent_migration_hosted_skip_over_budget">クラウドのサイズまたはファイル数の上限を超過</string>
     <string name="agent_migration_hosted_skip_provider_rejected">クラウドが拒否</string>
+    <string name="raft_pro_upgrade">アップグレード</string>
 </resources>

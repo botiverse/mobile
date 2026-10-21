@@ -2676,6 +2676,9 @@
     <string name="channel_sos_resume_failed_other">%1$d 个 Agent 未能恢复。</string>
     <string name="channel_sos_stop_failed">没能停止这些 Agent，请重试。</string>
     <string name="channel_sos_resume_error">没能恢复这些 Agent，请重试。</string>
+    <string name="raft_pro_badge">Pro</string>
+    <string name="raft_pro_migration_title">升级至 Pro 以迁移 Agent</string>
+    <string name="raft_pro_migration_description">升级后，可以把 Agent 连同工作区迁移到另一台计算机。</string>
     <string name="agent_migration_section_title">Agent 迁移</string>
     <string name="agent_migration_section_description">把这个 Agent 连同工作区迁移到另一台计算机。</string>
     <string name="agent_migration_detail_start_migration">迁移到另一台计算机</string>
@@ -2794,4 +2797,5 @@
     <string name="agent_migration_hosted_skip_not_text">非文本文件</string>
     <string name="agent_migration_hosted_skip_over_budget">超出云端的大小或文件数量上限</string>
     <string name="agent_migration_hosted_skip_provider_rejected">被云端拒绝</string>
+    <string name="raft_pro_upgrade">升级</string>
 </resources>

@@ -15,12 +15,15 @@ internal interface AgentMigrationDataSource {
     suspend fun startMigration(agentId: MemberId, target: AgentMigrationTarget): DataResult<String>
     suspend fun cancelMigration(agentId: MemberId, migrationRef: String, expectedRevision: Int): DataResult<Unit>
     suspend fun confirmHostedMigration(agentId: MemberId, migrationRef: String, expectedRevision: Int): DataResult<Unit>
+    suspend fun billingPlan(): DataResult<RaftBillingPlanSnapshot>
 }
 
 /** A refused migration request: the server `code` (when sent) and its text. */
 internal data class AgentMigrationActionError(val code: String, val serverMessage: String? = null)
 
 internal sealed interface AgentMigrationEffect {
+    /** The server says the plan does not include migration: show the upgrade sheet, not the error. */
+    data object ProRequired : AgentMigrationEffect
     data object Started : AgentMigrationEffect
     /** A watched migration completed or switched to the cloud: the agent's computer changed. */
     data object AgentPlacementChanged : AgentMigrationEffect
@@ -37,12 +40,15 @@ internal data class AgentMigrationState(
     val cancelError: AgentMigrationActionError? = null,
     val confirming: Boolean = false,
     val confirmError: AgentMigrationActionError? = null,
-    val effect: AgentMigrationEffect? = null
+    val effect: AgentMigrationEffect? = null,
+    /** Advisory plan for the Pro gate; null when unknown (not readable by this viewer). */
+    val billingPlan: String? = null,
+    val billingChecking: Boolean = false
 )
 
 internal sealed interface AgentMigrationIntent {
     /** Begin watching one agent: read now, then poll while a migration is active. */
-    data class Watch(val agentId: MemberId) : AgentMigrationIntent
+    data class Watch(val agentId: MemberId, val checkPlan: Boolean = true) : AgentMigrationIntent
     data object StopWatching : AgentMigrationIntent
     data object Refresh : AgentMigrationIntent
     data class Start(val target: AgentMigrationTarget) : AgentMigrationIntent
@@ -76,7 +82,7 @@ internal class AgentMigrationStore(
 
     fun dispatch(intent: AgentMigrationIntent) {
         when (intent) {
-            is AgentMigrationIntent.Watch -> watch(intent.agentId)
+            is AgentMigrationIntent.Watch -> watch(intent.agentId, intent.checkPlan)
             AgentMigrationIntent.StopWatching -> stopWatching()
             AgentMigrationIntent.Refresh -> refresh(DataRequestPriority.Visible)
             is AgentMigrationIntent.Start -> start(intent.target)
@@ -93,13 +99,21 @@ internal class AgentMigrationStore(
         if (next != mutableState.value) mutableState.value = next
     }
 
-    private fun watch(agentId: MemberId) {
+    private fun watch(agentId: MemberId, checkPlan: Boolean) {
         if (mutableState.value.agentId == agentId && (readJob?.isActive == true || pollJob?.isActive == true)) return
         stopWatching()
-        mutableState.value = AgentMigrationState(agentId = agentId)
+        mutableState.value = AgentMigrationState(agentId = agentId, billingChecking = checkPlan)
         watchedActiveRef = null
         watchedHostedSwitchRef = null
         refresh(DataRequestPriority.Visible)
+        if (checkPlan) {
+            scope.launch {
+                val plan = (guarded { dataSource.billingPlan() } as? DataResult.Content)?.data?.plan
+                if (mutableState.value.agentId == agentId) {
+                    update { it.copy(billingPlan = plan, billingChecking = false) }
+                }
+            }
+        }
     }
 
     private fun stopWatching() {
@@ -177,6 +191,14 @@ internal class AgentMigrationStore(
                     update { it.copy(starting = false, effect = AgentMigrationEffect.Started) }
                     refresh(DataRequestPriority.Foreground)
                 }
+                result.isProPlanRequired() -> {
+                    update { it.copy(starting = false, effect = AgentMigrationEffect.ProRequired) }
+                    // The plan changed under us (web reloads billing): re-read it for the gate.
+                    scope.launch {
+                        val plan = (guarded { dataSource.billingPlan() } as? DataResult.Content)?.data?.plan
+                        if (plan != null && mutableState.value.agentId == agentId) update { it.copy(billingPlan = plan) }
+                    }
+                }
                 else -> update { it.copy(starting = false, startError = result.toMigrationActionError()) }
             }
         }
@@ -248,6 +270,9 @@ internal class AgentMigrationStore(
         private const val MAX_CANCEL_ATTEMPTS = 3
     }
 }
+
+private fun DataResult<*>.isProPlanRequired(): Boolean =
+    this is DataResult.Error && error.serverCode == AgentMigrationErrorCodes.ProPlanRequired
 
 internal fun DataResult<*>.toMigrationActionError(): AgentMigrationActionError =
     when (this) {

@@ -90,11 +90,13 @@ class AgentMigrationStoreTest {
         val network = ScriptedAgentControlsNetworkClient()
         network.respond("GET", statusPath, 200, notice("provisioning"))
         network.respond("GET", statusPath, 200, notice("completed", revision = 9))
+        network.respond("GET", "billing/subscription", 200, """{"plan":"pro","subscription":null,"stripeConfigured":true,"permissions":{"canReadBillingSummary":true,"canManageBilling":true}}""")
         val store = AgentMigrationStore(RaftAgentControlsApi(network), backgroundScope)
 
         store.dispatch(AgentMigrationIntent.Watch(agentId))
         runCurrent()
         assertEquals("provisioning", store.state.value.notice?.state)
+        assertEquals("pro", store.state.value.billingPlan)
 
         advanceTimeBy(AgentMigrationStore.AGENT_MIGRATION_POLL_MS + 1)
         runCurrent()
@@ -113,6 +115,7 @@ class AgentMigrationStoreTest {
     fun startRefreshesStatusAndSurfacesRefusals() = runTest {
         val network = ScriptedAgentControlsNetworkClient()
         network.respond("GET", statusPath, 200, """{"migration":null}""")
+        network.respond("GET", "billing/subscription", 403, """{"error":"Only server owners and admins can view billing"}""")
         network.respond(
             "POST",
             "agents/${agentId.value}/migrate",
@@ -122,6 +125,8 @@ class AgentMigrationStoreTest {
         val store = AgentMigrationStore(RaftAgentControlsApi(network), backgroundScope)
         store.dispatch(AgentMigrationIntent.Watch(agentId))
         runCurrent()
+        assertNull(store.state.value.billingPlan) // unreadable billing never invents a denial
+        assertFalse(store.state.value.billingChecking)
 
         store.dispatch(AgentMigrationIntent.Start(AgentMigrationTarget.Computer("m-source")))
         runCurrent()
@@ -137,6 +142,28 @@ class AgentMigrationStoreTest {
     }
 
     @Test
+    fun proPlanRefusalOpensTheUpgradePromptInsteadOfAnError() = runTest {
+        val network = ScriptedAgentControlsNetworkClient()
+        network.respond("GET", statusPath, 200, """{"migration":null}""")
+        network.respond("GET", "billing/subscription", 403, """{"error":"Only server owners and admins can view billing"}""")
+        network.respond(
+            "POST",
+            "agents/${agentId.value}/migrate",
+            403,
+            """{"error":"Agent migration requires a Pro plan","code":"MIGRATION_PRO_PLAN_REQUIRED","details":{"failureReason":"MIGRATION_PRO_PLAN_REQUIRED"}}"""
+        )
+        val store = AgentMigrationStore(RaftAgentControlsApi(network), backgroundScope)
+        store.dispatch(AgentMigrationIntent.Watch(agentId))
+        runCurrent()
+
+        store.dispatch(AgentMigrationIntent.Start(AgentMigrationTarget.Cloud))
+        runCurrent()
+
+        assertEquals(AgentMigrationEffect.ProRequired, store.state.value.effect)
+        assertNull(store.state.value.startError)
+    }
+
+    @Test
     fun cancelRetriesAStaleRevisionWithTheLatestOne() = runTest {
         val network = ScriptedAgentControlsNetworkClient()
         val cancelPath = "agents/${agentId.value}/migration/cancel"
@@ -146,7 +173,7 @@ class AgentMigrationStoreTest {
         network.respond("POST", cancelPath, 409, """{"error":"Migration changed concurrently","code":"MIGRATION_REVISION_STALE","details":{"failureReason":"MIGRATION_REVISION_STALE"}}""")
         network.respond("POST", cancelPath, 200, """{"ok":true}""")
         val store = AgentMigrationStore(RaftAgentControlsApi(network), backgroundScope)
-        store.dispatch(AgentMigrationIntent.Watch(agentId))
+        store.dispatch(AgentMigrationIntent.Watch(agentId, checkPlan = false))
         runCurrent()
 
         store.dispatch(AgentMigrationIntent.Cancel)
@@ -166,7 +193,7 @@ class AgentMigrationStoreTest {
         network.respond("GET", statusPath, 200, notice("provisioning"))
         network.respond("POST", "agents/${agentId.value}/migration/cancel", 404, """{"error":"Migration not found","code":"MIGRATION_NOT_FOUND"}""")
         val store = AgentMigrationStore(RaftAgentControlsApi(network), backgroundScope)
-        store.dispatch(AgentMigrationIntent.Watch(agentId))
+        store.dispatch(AgentMigrationIntent.Watch(agentId, checkPlan = false))
         runCurrent()
 
         store.dispatch(AgentMigrationIntent.Cancel)
@@ -183,7 +210,7 @@ class AgentMigrationStoreTest {
         network.respond("GET", statusPath, 200, notice("in_transit", revision = 7, targetKind = "hosted", extra = hostedReview))
         network.respond("POST", confirmPath, 200, notice("arriving", revision = 8, targetKind = "hosted"))
         val store = AgentMigrationStore(RaftAgentControlsApi(network), backgroundScope)
-        store.dispatch(AgentMigrationIntent.Watch(agentId))
+        store.dispatch(AgentMigrationIntent.Watch(agentId, checkPlan = false))
         runCurrent()
 
         store.dispatch(AgentMigrationIntent.ConfirmHosted)
@@ -201,7 +228,7 @@ class AgentMigrationStoreTest {
         network.respond("GET", statusPath, 200, notice("provisioning"))
         network.respond("GET", statusPath, 500, """{"error":"boom","code":"MIGRATION_STATUS_FAILED","details":{"failureReason":"MIGRATION_STATUS_FAILED"}}""")
         val store = AgentMigrationStore(RaftAgentControlsApi(network), backgroundScope)
-        store.dispatch(AgentMigrationIntent.Watch(agentId))
+        store.dispatch(AgentMigrationIntent.Watch(agentId, checkPlan = false))
         runCurrent()
         advanceTimeBy(AgentMigrationStore.AGENT_MIGRATION_POLL_MS + 1)
         runCurrent()

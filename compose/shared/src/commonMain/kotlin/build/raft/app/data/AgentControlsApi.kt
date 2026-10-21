@@ -240,6 +240,17 @@ internal class RaftAgentControlsApi(
             parse = { Unit }
         )
 
+    /**
+     * The server plan from `GET /billing/subscription` (web `serverStore.loadBilling`),
+     * the Pro gate's advisory input. Owners/admins only; others get a 403 and no plan.
+     */
+    override suspend fun billingPlan(): DataResult<RaftBillingPlanSnapshot> =
+        send(
+            priority = DataRequestPriority.Visible,
+            path = "billing/subscription",
+            parse = { body -> parseSharedSettingsBillingSubscription(body)?.let { RaftBillingPlanSnapshot(it.effectivePlan) } }
+        )
+
     private suspend fun <T> send(
         priority: DataRequestPriority,
         path: String,

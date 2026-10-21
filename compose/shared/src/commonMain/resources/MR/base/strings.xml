@@ -2676,6 +2676,9 @@
     <string name="channel_sos_resume_failed_other">%1$d agents could not be resumed.</string>
     <string name="channel_sos_stop_failed">Couldn\'t stop the agents. Try again.</string>
     <string name="channel_sos_resume_error">Couldn\'t resume the agents. Try again.</string>
+    <string name="raft_pro_badge">Pro</string>
+    <string name="raft_pro_migration_title">Upgrade to Pro to migrate agents</string>
+    <string name="raft_pro_migration_description">After upgrading, you can migrate an agent and its workspace to another computer.</string>
     <string name="agent_migration_section_title">Agent migration</string>
     <string name="agent_migration_section_description">Move this agent and its workspace to another computer.</string>
     <string name="agent_migration_detail_start_migration">Move to Another Computer</string>
@@ -2794,4 +2797,5 @@
     <string name="agent_migration_hosted_skip_not_text">Not text</string>
     <string name="agent_migration_hosted_skip_over_budget">Over the cloud\'s size or file limit</string>
     <string name="agent_migration_hosted_skip_provider_rejected">Refused by the cloud</string>
+    <string name="raft_pro_upgrade">Upgrade</string>
 </resources>

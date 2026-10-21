@@ -43,6 +43,8 @@ import build.raft.app.data.AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY
 import build.raft.app.data.AgentMigrationIntent
 import build.raft.app.data.AgentMigrationState
 import build.raft.app.data.AgentMigrationStore
+import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.raftProGateDecision
 import build.raft.app.data.AgentTurnStopFeedback
 import build.raft.app.data.AgentTurnStopIntent
 import build.raft.app.data.AgentTurnStopState
@@ -4389,6 +4391,7 @@ internal fun MemberDetailPageContent(
                                                 flags?.isEnabled(current.server.id, AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY) == true
                                             },
                                         computers = migrationComputers,
+                                        onOpenBilling = { pager.openSettingsBillingPage(provider.storeScope) },
                                         onAgentPlacementChanged = { localAgentDetailRefreshKey += 1 }
                                     )
                                 }
@@ -5764,6 +5767,7 @@ internal class MembersAgentMigrationBinding(
     val enabled: Boolean,
     val hostedAvailable: Boolean,
     val computers: List<AgentMigrationComputer>,
+    val onOpenBilling: () -> Unit,
     val onAgentPlacementChanged: () -> Unit
 )
 
@@ -6661,7 +6665,10 @@ private fun MembersDetailContent(
                                                 sourceMachineId = detail?.summary?.machineId,
                                                 computers = migrationBinding.computers,
                                                 hostedAvailable = migrationBinding.hostedAvailable,
+                                                proGate = raftProGateDecision(migrationState.billingPlan, defaultNowMillis()),
+                                                proGateChecking = migrationState.billingChecking,
                                                 onIntent = migrationBinding.store::dispatch,
+                                                onOpenBilling = migrationBinding.onOpenBilling,
                                                 onCopy = onCopyAgentIssueReference,
                                                 formatTimestamp = { value ->
                                                     build.raft.app.model.formatRaftTimestampLabel(value, timeContext).takeIf { it.isNotBlank() }
