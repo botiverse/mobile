@@ -1438,8 +1438,9 @@ internal class SharedThreadPayloadStore(
     /**
      * Like [joinOrConsumePrewarm] but says which prewarm state answered, and bounds the join of an
      * in-flight prewarm by [prewarmJoinTimeoutMillis]: a stuck background request must never hold
-     * a visible open. On [SharedThreadPrewarmJoinOutcome.JoinTimedOut] the in-flight prewarm keeps
-     * running (only this wait is abandoned) and the caller issues its own fetch.
+     * a visible open. On [SharedThreadPrewarmJoinOutcome.JoinTimedOut] the in-flight prewarm is
+     * detached (not cancelled: callers already awaiting it still get its result, but it can no longer
+     * commit into the cache or mark itself ready) and the caller issues its own fetch.
      */
     suspend fun joinOrConsumePrewarmWithOutcome(
         serverId: String,
@@ -3859,8 +3860,8 @@ internal class SharedThreadDataSource(
                         logReuse("own_fetch", "prewarm_failed_${joined.outcome.diagnosticsName}")
                         failedPrewarm = true
                     }
-                    // JoinTimedOut leaves failedPrewarm false on purpose: the failed-prewarm takeover
-                    // would re-join the very in-flight request that just timed out.
+                    // JoinTimedOut leaves failedPrewarm false on purpose: the timed-out prewarm was detached
+                    // (it can no longer commit), so there is nothing to take over; the open fetches itself.
                     null -> logReuse("own_fetch", joined.outcome.diagnosticsName)
                 }
             }
