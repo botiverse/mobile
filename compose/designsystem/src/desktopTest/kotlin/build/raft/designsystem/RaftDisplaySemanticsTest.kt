@@ -18,6 +18,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -231,9 +232,10 @@ class RaftDisplaySemanticsTest {
         }
 
     /** Web phone metrics (Lagoon's 393dp measurement): a header with two controls over two rows. */
-    private fun androidx.compose.ui.test.ComposeUiTest.setSidebarWebMetricsContent() {
+    private fun androidx.compose.ui.test.ComposeUiTest.setSidebarWebMetricsContent(screenDensity: Float? = null) {
         setContent(
             themed {
+                CompositionLocalProvider(LocalDensity provides Density(screenDensity ?: LocalDensity.current.density)) {
                 Column(Modifier.width(393.dp)) {
                     RaftSidebarSectionHeader(
                         "Channels",
@@ -248,6 +250,7 @@ class RaftDisplaySemanticsTest {
                     RaftSidebarItem("general", onClick = {}, modifier = Modifier.testTag("row1"))
                     RaftSidebarItem("random", onClick = {}, modifier = Modifier.testTag("row2"))
                 }
+                }
             },
         )
     }
@@ -258,12 +261,15 @@ class RaftDisplaySemanticsTest {
     private fun androidx.compose.ui.test.ComposeUiTest.textBounds(text: String) =
         onNodeWithText(text, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
 
-    /** Rows 44dp tall and 1dp apart (the web's collapsed `my-px`). */
+    /**
+     * Rows 44dp tall and 1dp apart (the web's collapsed `my-px`), at a phone's 2x density: at
+     * 1x each 0.5dp margin rounds to a whole pixel.
+     */
     @Test
     fun sidebarRowsStand1dpApart() =
         runComposeUiTest {
-            setSidebarWebMetricsContent()
-            assertEquals(45f, (textBounds("random").top - textBounds("general").top) / density.density, 0.5f)
+            setSidebarWebMetricsContent(screenDensity = 2f)
+            assertEquals(45f, (textBounds("random").top - textBounds("general").top) / 2f, 0.5f)
         }
 
     /** A group header's title sits `px-2` + the 14dp chevron + `gap-1.5` from its edge. */
