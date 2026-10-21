@@ -71,7 +71,8 @@ enum class RaftStatusSize(val edge: Dp, val radius: Dp, val border: Dp) {
 /**
  * raft-ui 0.8.0 Status, the status pixel (alias StatusDot): a square of a status colour
  * with a `sticker-ink` edge, 2dp corners (1dp at `xs`). [presence] draws one of the
- * presence lights and takes the place of [variant]'s colour. It never animates.
+ * presence lights and takes the place of [variant]'s colour; [color] (an app-resolved live
+ * status colour) takes the place of both. It never animates.
  *
  * Pair the pixel with its word. With no word next to it (an attention dot on a tab),
  * give it a [contentDescription] that says what it means; otherwise it is hidden from
@@ -84,12 +85,13 @@ fun RaftStatusDot(
     size: RaftStatusSize = RaftStatusSize.Md,
     presence: RaftPresence? = null,
     contentDescription: String? = null,
+    color: Color? = null,
 ) {
     val shape = RoundedCornerShape(size.radius)
     Box(
         modifier
             .size(size.edge)
-            .background(presence?.color ?: variant.color, shape)
+            .background(color ?: presence?.color ?: variant.color, shape)
             .border(size.border, RaftUiPalette.stickerInk, shape)
             .clearAndSetSemantics {
                 if (contentDescription != null) {

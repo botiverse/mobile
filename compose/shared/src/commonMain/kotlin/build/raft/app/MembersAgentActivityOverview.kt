@@ -103,19 +103,18 @@ internal fun MembersAgentActivityViewSwitch(
     }
 }
 
-/** What the "now" card shows about the agent's live state (from the agent detail store). */
+/**
+ * What the "now" card shows about the agent's live state. [indicator] is the detail page's
+ * observed live status (the same one its header dot reads, external tiers included); null
+ * means not observed yet, and the card then draws no dot rather than a manufactured one.
+ */
 internal data class MembersAgentActivityNow(
     val label: String,
-    val presence: RaftPresence,
+    val indicator: RaftAgentStatusIndicatorState?,
 )
 
-internal fun membersAgentActivityNowPresence(activity: String?): RaftPresence =
-    when (activity?.trim()?.lowercase()) {
-        "working", "thinking" -> RaftPresence.Busy
-        "error" -> RaftPresence.Error
-        null, "", "offline" -> RaftPresence.Offline
-        else -> RaftPresence.Online
-    }
+/** The "now" card's dot colour: the live indicator's, or none. */
+internal fun MembersAgentActivityNow.dotColor(): Color? = indicator?.color
 
 @Composable
 internal fun MembersAgentActivityOverview(
@@ -231,10 +230,11 @@ private fun MembersAgentActivityNowCard(
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            RaftStatusDot(presence = now.presence, size = RaftStatusSize.Lg)
+            now.dotColor()?.let { RaftStatusDot(color = it, size = RaftStatusSize.Lg) }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 RaftText(
-                    text = now.label,
+                    // Same localized caption as the profile badge (raw free-text activity passes through).
+                    text = now.indicator?.copy(label = now.label)?.localizedMemberStatusLabel() ?: now.label,
                     style = typography.headline.copy(fontWeight = FontWeight.Bold),
                     color = colors.foreground,
                     maxLines = 2,

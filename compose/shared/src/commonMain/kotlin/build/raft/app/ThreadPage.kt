@@ -5275,12 +5275,15 @@ internal fun ThreadMembersPageContent(
                     ) }
                     if (externalExpanded) items(filteredExternal.size, key = { "external:${filteredExternal[it].id}" }) { index ->
                         val member = filteredExternal[index]
+                        // SSOT audit: the live time context (as rememberRaftAgentStatusIndicatorState
+                        // reads it), so the lime/cyan boundary moves on its minute tick.
+                        val now = LocalRaftTimeContextProvider.current?.current?.nowEpochMillis ?: defaultNowMillis()
                         RaftModalCompactMemberRow(
                             title = member.displayName,
                             subtitle = member.handles.joinToString(" · ") { "@${it.removePrefix("@")}" },
                             avatarWireValue = member.avatarUrl, avatarLabel = member.avatarLabel,
                             statusColor = member.lastSeenAt?.let { seen ->
-                                if (isExternalAgentSeenOnline(seen, defaultNowMillis())) RaftColor.AccentLime else RaftColor.AccentCyan
+                                if (isExternalAgentSeenOnline(seen, now)) RaftColor.AccentLime else RaftColor.AccentCyan
                             }, sourceBadgeLabel = member.provider, clickEnabled = false,
                         )
                     }
@@ -11155,6 +11158,7 @@ private fun SharedThreadRouteContentContent(
                         onOpenAgentProfile = { identity ->
                             onOpenMemberProfile(renderedThread, renderedTimelineSlice, identity)
                         },
+                        agentStatusResolver = agentStatusResolver,
                     )
                 }
             },
@@ -16683,11 +16687,13 @@ internal fun ThreadHeaderDisplayModel.dmAgentActivityMemberId(): String? =
 
 @Composable
 private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState) {
+    // SSOT audit: the same localized caption as every other live-status surface.
+    val label = state.localizedMemberStatusLabel()
     Row(
         modifier =
             Modifier
                 .widthIn(max = ThreadHeaderDmAgentActivityMaxWidth)
-                .semantics { contentDescription = state.label },
+                .semantics { contentDescription = label },
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
     ) {
@@ -16697,7 +16703,7 @@ private fun ThreadDmAgentActivity(state: RaftAgentStatusIndicatorState) {
             pulsing = state.pulsing
         )
         Text(
-            text = state.label,
+            text = label,
             style =
                 RaftType.Caption.copy(
                     color = RaftColor.ForegroundHint,

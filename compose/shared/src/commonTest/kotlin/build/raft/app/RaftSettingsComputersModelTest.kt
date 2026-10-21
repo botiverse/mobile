@@ -366,4 +366,23 @@ class RaftSettingsComputersModelTest {
             agents = emptyList(),
             sections = emptyList(),
         )
+
+    @Test
+    fun computerAgentRowShowsTheLiveStatus() {
+        // SSOT audit: the row reads the members store's live activity, like Home.
+        val agent = SettingsComputerAgentSnapshot(id = "agent-1", name = "Lagoon", statusLabel = "active")
+        val working = raftAgentStatusIndicatorState(
+            build.raft.app.model.AgentStatus.Working, build.raft.app.model.Presence.Active, external = false,
+        )
+        assertEquals(working, raftComputerAgentStatusIndicator(agent, working))
+    }
+
+    @Test
+    fun computerAgentRowIsNeutralUntilTheLiveStatusIsObserved() {
+        // Same agent, lifecycle status "active"; only the live observation is missing. The
+        // lifecycle column used to paint Online green (and "inactive" grey Offline) here.
+        val agent = SettingsComputerAgentSnapshot(id = "agent-1", name = "Lagoon", statusLabel = "active")
+        assertNull(raftComputerAgentStatusIndicator(agent, live = null))
+        assertNull(raftComputerAgentStatusIndicator(agent.copy(statusLabel = "inactive"), live = null))
+    }
 }

@@ -43,7 +43,9 @@ private fun FollowersVisualContent(single: Boolean) {
                     showModeTabs = false, showSettingsAction = false, showMembersAction = false,
                     showOpenInChannelAction = true,
                 ),
-                agentFollowersHeader = { ThreadAgentFollowersHeader(state, store::dispatch) },
+                agentFollowersHeader = {
+                    ThreadAgentFollowersHeader(state, store::dispatch, agentStatusResolver = FollowersVisualStatusResolver)
+                },
                 onBack = {}, onOpenInChannel = {}, onOpenMemberProfile = {},
                 onOpenSearch = {}, onShowMembers = {}, onShowSettings = {},
             )
@@ -51,11 +53,22 @@ private fun FollowersVisualContent(single: Boolean) {
     }
 }
 
+/** Fixture live status (the wire `status` is lifecycle only): Grace is online, Josh offline, the peer agent has none. */
+private val FollowersVisualStatusResolver: RaftAgentStatusResolver = { id ->
+    kotlinx.coroutines.flow.flowOf(
+        when (id) {
+            "1" -> raftAgentStatusIndicatorState(build.raft.app.model.AgentStatus.Online, build.raft.app.model.Presence.Active, external = false)
+            "2" -> raftAgentStatusIndicatorState(build.raft.app.model.AgentStatus.Offline, build.raft.app.model.Presence.Offline, external = false)
+            else -> null
+        }
+    )
+}
+
 private class FollowersVisualRepository(single: Boolean) : ThreadAgentFollowersRepository {
     private val all = listOf(
-        ThreadAgentFollower("1", "Grace", status = "online", serverId = "local", isCurrentServer = true, canRemove = true),
-        ThreadAgentFollower("2", "Josh", status = "offline", serverId = "local", isCurrentServer = true, canRemove = true),
-        ThreadAgentFollower("3", "Agent", status = "online", serverId = "peer", serverName = "Peer Server", isCurrentServer = false, canRemove = false),
+        ThreadAgentFollower("1", "Grace", status = "active", serverId = "local", isCurrentServer = true, canRemove = true),
+        ThreadAgentFollower("2", "Josh", status = "inactive", serverId = "local", isCurrentServer = true, canRemove = true),
+        ThreadAgentFollower("3", "Agent", status = "active", serverId = "peer", serverName = "Peer Server", isCurrentServer = false, canRemove = false),
     )
     private var agents = if (single) all.take(1) else all
     override suspend fun load() = DataResult.Content(ThreadAgentFollowerRoster("fixture", true, agents))

@@ -2,9 +2,11 @@ package build.raft.app
 
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.RaftTimeFormat12Hour
-import build.raft.designsystem.components.RaftPresence
+import build.raft.app.model.AgentStatus
+import build.raft.app.model.Presence
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 /** Web AgentActivityOverview helpers (formatTurnDuration, formatClockRange, intl list). */
 class MembersAgentActivityOverviewFormatTest {
@@ -42,10 +44,20 @@ class MembersAgentActivityOverviewFormatTest {
     }
 
     @Test
-    fun nowPresenceFollowsTheLiveActivity() {
-        assertEquals(
-            listOf(RaftPresence.Busy, RaftPresence.Busy, RaftPresence.Error, RaftPresence.Offline, RaftPresence.Online),
-            listOf("working", "thinking", "error", null, "online").map(::membersAgentActivityNowPresence)
-        )
+    fun nowDotIsTheLiveIndicatorColour() {
+        // SSOT audit: the dot used to be mapped from the detail summary's activity string
+        // ("disconnected" -> Online green, null -> grey Offline, external ignored).
+        val working = raftAgentStatusIndicatorState(AgentStatus.Working, Presence.Active, external = false)
+        val disconnected = raftAgentStatusIndicatorState(AgentStatus.Disconnected, Presence.Offline, external = false)
+        val external = raftAgentStatusIndicatorState(AgentStatus.Online, Presence.Active, external = true)
+        assertEquals(RaftColor.BrandYellow, MembersAgentActivityNow("Working", working).dotColor())
+        assertEquals(RaftColor.StatusNeutralGray, MembersAgentActivityNow("Disconnected", disconnected).dotColor())
+        assertEquals(RaftColor.AccentCyan, MembersAgentActivityNow("External", external).dotColor())
+    }
+
+    @Test
+    fun nowDrawsNoDotUntilTheLiveStatusIsObserved() {
+        // Same label as the positive case; only the live observation is missing.
+        assertNull(MembersAgentActivityNow("Working", indicator = null).dotColor())
     }
 }
