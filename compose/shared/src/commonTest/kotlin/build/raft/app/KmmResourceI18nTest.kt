@@ -262,7 +262,6 @@ class KmmResourceI18nTest {
             MR.strings.home_action_close_chat,
             MR.strings.home_action_archive,
             MR.strings.home_action_sort,
-            MR.strings.home_action_save_sort,
             MR.strings.home_sort_manual,
             MR.strings.home_sort_recent,
             MR.strings.home_sort_az,
