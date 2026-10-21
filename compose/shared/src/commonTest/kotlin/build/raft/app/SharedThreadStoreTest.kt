@@ -7647,7 +7647,38 @@ class SharedThreadStoreTest {
      * live frame must fold into the cached rows instead of replacing them with a one-row window.
      */
     @Test
-    fun dmRealtimeThreadUpdatedPatchesColdCachedInlineReplyRows() = runBlocking {
+    fun dmRealtimeThreadUpdatedPatchesColdCachedInlineReplyRows() =
+        assertRealtimeThreadUpdatedPatchesColdCachedInlineReplyRows(
+            route = directMessagePayload(),
+            parentScopeKind = "dm",
+            threadChannelId = "dm-thread-1",
+        )
+
+    /**
+     * Hands 4155f83a: the same live reply on a Joint channel page. messageService.ts emits the
+     * joint `thread:updated` per projection with `parentScopeKind: "joint"`, the projection's
+     * local parent channel and its local thread channel.
+     */
+    @Test
+    fun jointRealtimeThreadUpdatedPatchesColdCachedInlineReplyRows() =
+        assertRealtimeThreadUpdatedPatchesColdCachedInlineReplyRows(
+            route =
+                basePayload().copy(
+                    instanceId = "shared-shell-thread-joint-1",
+                    sourceThreadId = "joint-1",
+                    streamChannelId = "joint-1",
+                    channelKind = JointChannelKindWireValue,
+                ),
+            parentScopeKind = "joint",
+            threadChannelId = "joint-thread-local-1",
+        )
+
+    private fun assertRealtimeThreadUpdatedPatchesColdCachedInlineReplyRows(
+        route: RaftThreadScreenPayload,
+        parentScopeKind: String,
+        threadChannelId: String,
+    ) = runBlocking {
+        val parentScopeId = requireNotNull(route.sourceThreadId)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource =
             testSharedThreadDataSource(
@@ -7677,12 +7708,12 @@ class SharedThreadStoreTest {
                 limit = build.raft.app.network.sync.InlineThreadReplyPreviewLimit,
             )
         val cached =
-            contentPayloadForRoute(directMessagePayload(), "parent").let { payload ->
+            contentPayloadForRoute(route, "parent").let { payload ->
                 payload.copy(
                     messages =
                         listOf(
                             payload.messages.single().copy(
-                                threadChannelId = "dm-thread-1",
+                                threadChannelId = threadChannelId,
                                 replyCount = 3,
                                 inlineReplies = cachedReplies,
                             )
@@ -7691,19 +7722,19 @@ class SharedThreadStoreTest {
             }
         dataSource.cachePayloadForTest(cached)
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
-        store.accept(SharedThreadIntent.Start(directMessagePayload()))
+        store.accept(SharedThreadIntent.Start(route))
         assertEquals(
             listOf("reply-1", "reply-2", "reply-3"),
             store.state.value.payload.messages.single().inlineReplies?.replies?.map { it.messageId },
         )
 
-        // Upstream shape: messageService.ts `thread:updated` for a DM parent
-        // ({ parentMessageId, threadChannelId, ...getThreadInfo, syncCoreReplyWindow, latestReply }).
+        // Upstream shape: messageService.ts `thread:updated`
+        // ({ parentMessageId, ...getThreadInfo, threadChannelId, syncCoreReplyWindow, latestReply }).
         fun threadUpdatedJson(seq: Long, replyCount: Int): String =
             """
             {
               "parentMessageId": "m1",
-              "threadChannelId": "dm-thread-1",
+              "threadChannelId": "$threadChannelId",
               "replyCount": $replyCount,
               "lastReplyAt": "2026-10-20T01:2$seq:30.000Z",
               "participantIds": ["sindresorhus", "u1"],
@@ -7712,14 +7743,14 @@ class SharedThreadStoreTest {
                 "discussion": {
                   "root": { "kind": "message", "serverId": "server-1", "id": "m1" },
                   "relation": { "kind": "replies" },
-                  "parentScopeKey": { "serverId": "server-1", "scopeKind": "dm", "scopeId": "dm-1" },
+                  "parentScopeKey": { "serverId": "server-1", "scopeKind": "$parentScopeKind", "scopeId": "$parentScopeId" },
                   "backing": "sync-scope"
                 },
                 "window": { "kind": "sync-scope-window", "scopeCursor": null, "epoch": null }
               },
               "latestReply": {
                 "id": "reply-$seq",
-                "channelId": "dm-thread-1",
+                "channelId": "$threadChannelId",
                 "seq": $seq,
                 "content": "desktop reply $seq",
                 "senderId": "u1",
@@ -7732,8 +7763,8 @@ class SharedThreadStoreTest {
                 "conversationContext": {
                   "channelType": "thread",
                   "parentMessageId": "m1",
-                  "parentChannelId": "dm-1",
-                  "parentChannelType": "dm"
+                  "parentChannelId": "$parentScopeId",
+                  "parentChannelType": "$parentScopeKind"
                 }
               }
             }
