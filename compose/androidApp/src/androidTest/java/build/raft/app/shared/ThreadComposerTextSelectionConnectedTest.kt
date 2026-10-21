@@ -12,6 +12,7 @@ import android.view.ViewConfiguration
 import android.view.accessibility.AccessibilityWindowInfo
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.getOrNull
@@ -188,14 +189,13 @@ class ThreadComposerTextSelectionConnectedTest {
     /** Drags the [kind] handle horizontally/vertically onto the center of [toWord]. */
     private fun dragHandle(scenario: ActivityScenario<RaftCmpActivity>, kind: HandleKind, toWord: String) {
         val handle = handles().single { it.kind == kind && it.visible }
-        val start = handle.touchPointOnScreen
+        val start = handleGrabPoint(handle)
         val target = wordPointOnScreen(scenario, toWord)
         // The handle hangs below its line; move it by the distance between its anchor line and the
         // target word so it keeps its offset to the text.
         val anchorLineCenter = handleLineCenterOnScreen(scenario, kind)
         val dx = target.x - anchorLineCenter.x
         val dy = target.y - anchorLineCenter.y
-        awaitAppWindowOwnsPoint(start, "drag of the $kind handle")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val downTime = SystemClock.uptimeMillis()
         instrumentation.sendPointerSync(MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, start.x, start.y, 0))
@@ -312,7 +312,62 @@ class ThreadComposerTextSelectionConnectedTest {
 
     private enum class HandleKind { Start, End, Cursor }
 
-    private data class HandleSnapshot(val kind: HandleKind, val visible: Boolean, val touchPointOnScreen: Offset)
+    private data class HandleSnapshot(
+        val kind: HandleKind,
+        val visible: Boolean,
+        val touchPointOnScreen: Offset,
+        val boundsOnScreen: Rect,
+    )
+
+    /**
+     * A point on [handle] where the handle's own popup window is the topmost window, so the drag
+     * grabs the handle.
+     *
+     * With TextFieldState (CMP 1.12 / androidx foundation 1.12) the floating text toolbar is
+     * anchored to the selected line only; the value-based field added the handle height
+     * (TextFieldSelectionManager.getContentRect: `+ 25.dp`). This fixture draws the composer at
+     * the very top of the window, so there is no room for the toolbar above the line: Android
+     * places it just below, over the lower part of the handles, and a touch on the handle's
+     * centre lands on Cut / Copy instead (Cut deleted the selected word in #3439's CI run).
+     * Scan the handle top-down at its centre line for the first point owned by the handle window;
+     * fail with the windows found when the handle is fully covered.
+     */
+    private fun handleGrabPoint(handle: HandleSnapshot): Offset {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        automation.serviceInfo =
+            automation.serviceInfo.apply {
+                flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+            }
+        val x = handle.touchPointOnScreen.x
+        var last = "none"
+        val deadline = SystemClock.uptimeMillis() + WindowOwnershipWaitMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            composeRule.waitForIdle()
+            val windows = automation.windows.sortedByDescending { it.layer }
+            fun boundsOf(window: AccessibilityWindowInfo) = android.graphics.Rect().also(window::getBoundsInScreen)
+            // The handle's popup: the smallest window holding the handle node's centre (the popup
+            // bounds may differ from the node's by a pixel of rounding).
+            val handleWindow =
+                windows
+                    .filter { window ->
+                        boundsOf(window).contains(handle.touchPointOnScreen.x.toInt(), handle.touchPointOnScreen.y.toInt())
+                    }
+                    .minByOrNull { window -> boundsOf(window).let { it.width().toLong() * it.height() } }
+            if (handleWindow != null) {
+                var y = handle.boundsOnScreen.top + 1f
+                while (y < handle.boundsOnScreen.bottom) {
+                    val top = windows.firstOrNull { window -> boundsOf(window).contains(x.toInt(), y.toInt()) }
+                    if (top != null && top.id == handleWindow.id) return Offset(x, y)
+                    y += HandleScanStepPx
+                }
+            }
+            last =
+                "handle=${handle.boundsOnScreen} handleWindow=${handleWindow?.summary()} " +
+                    "windows=" + windows.joinToString { window -> window.summary() }
+            SystemClock.sleep(PollMs)
+        }
+        throw AssertionError("the ${handle.kind} handle is covered by another window at every point; $last")
+    }
 
     private fun handles(): List<HandleSnapshot> =
         composeRule
@@ -330,7 +385,7 @@ class ThreadComposerTextSelectionConnectedTest {
                     }
                 val visible = !info.contains("visible=false")
                 val center = node.positionOnScreen + Offset(node.size.width / 2f, node.size.height / 2f)
-                HandleSnapshot(kind, visible, center)
+                HandleSnapshot(kind, visible, center, Rect(node.positionOnScreen, node.size.toSize()))
             }
 
     private fun SemanticsNode.selectionHandleInfo(): Any? =
@@ -399,6 +454,7 @@ class ThreadComposerTextSelectionConnectedTest {
         const val ComposerText = "$FirstParagraph\ndelta epsilon zeta"
         const val SelectAllLabel = "Select all"
         const val ToolbarOverflowDescription = "More options"
+        const val HandleScanStepPx = 4f
         const val TapDurationMs = 40L
         const val TapGapMs = 60L
         const val DragSteps = 16
