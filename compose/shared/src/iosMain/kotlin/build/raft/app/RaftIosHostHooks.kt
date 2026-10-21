@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.network.installIosRaftUserAgentDevice
 import build.raft.app.data.RaftAppAppearanceRuntime
 import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.image.RaftImageHost
@@ -81,6 +82,8 @@ object RaftIosHostHooks {
         if (unhandledExceptions != null) installUnhandledExceptionHook(unhandledExceptions)
         RaftPageRegistry.install()
         installRaftIosProductEventsLifecycle()
+        // iPhone vs iPad in the User-Agent: the server's product-event `$device_type` comes from it.
+        installIosRaftUserAgentDevice()
         // Settings > Appearance > Theme: the app-scope stores are installed (RaftIosAppScopeMMKV)
         // before these hooks, so the stored choice applies before the first page composes.
         RaftAppAppearanceRuntime.onSystemDarkChanged(

@@ -197,7 +197,7 @@ internal class NetworkKmmRaftHttpExecutor(
                             priority = priority.toNetworkKmmPriority()
                         )
                 )
-            traceHeaders.forEach { (name, value) -> request.setHeader(name, value) }
+            withRaftNetworkUserAgent(traceHeaders).forEach { (name, value) -> request.setHeader(name, value) }
             val response =
                 executeNetworkRequest(
                     request = request,
@@ -284,7 +284,7 @@ internal class NetworkKmmRaftHttpExecutor(
                             priority = priority.toNetworkKmmPriority()
                         )
                 )
-            traceHeaders.forEach { (name, value) -> request.setHeader(name, value) }
+            withRaftNetworkUserAgent(traceHeaders).forEach { (name, value) -> request.setHeader(name, value) }
             request.progress =
                 NetworkProgressCallbacks(
                     uploadProgress = { progress ->
@@ -528,6 +528,20 @@ private val SensitiveNetworkKmmLogPatterns =
     )
 
 private const val NETWORK_KMM_REQUEST_ID_HEADER = "x-request-id"
+private const val NETWORK_KMM_USER_AGENT_HEADER = "User-Agent"
+
+/**
+ * Raft API requests send the app User-Agent with its device token ([currentRaftNetworkUserAgent]):
+ * the server reads the product-event `$device_type` from it. A caller's own User-Agent wins.
+ */
+internal fun withRaftNetworkUserAgent(
+    headers: Map<String, String>,
+    userAgent: () -> String = ::currentRaftNetworkUserAgent,
+): Map<String, String> {
+    if (headers.keys.any { it.equals(NETWORK_KMM_USER_AGENT_HEADER, ignoreCase = true) }) return headers
+    val value = runCatching(userAgent).getOrNull()?.takeIf { it.isNotBlank() } ?: return headers
+    return headers + (NETWORK_KMM_USER_AGENT_HEADER to value)
+}
 private const val NETWORK_KMM_TRACEPARENT_HEADER = "traceparent"
 
 internal fun networkKmmTraceHeaders(
