@@ -97,11 +97,14 @@ const val MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY: String = "mobile_curl_socketio_
 // sync_core_messages_v1 joined on 2026-10-11: artin wants offline cache on by default (an offline cold
 // start or a server without the flag row used to read it as off).
 // mobile_thread_reverse_layout_v0 joined on 2026-10-12: artin wants the bottom-up thread list on by default.
+// runtime_form_v2_web joined on 2026-10-21: artin made runtime form v2 the default form (#wg-runtime-form);
+// an explicit server off still returns the v1 form, and a v2 load failure still falls back to v1.
 val SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS: Set<String> =
     setOf(
         MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY,
         SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
         MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY,
+        RUNTIME_FORM_V2_FEATURE_FLAG_KEY,
     )
 
 /** Server evaluation reason for a key that has no flag row at all (slock featureFlagService). */
@@ -110,7 +113,8 @@ private const val FEATURE_FLAG_REASON_MISSING_FLAG: String = "missing_flag"
 /**
  * Runtime form protocol v2 for the create/edit agent forms (generic renderer). The same key the
  * web reads (slock `RUNTIME_FORM_V2_WEB_FLAG_KEY`), so one switch turns v2 on for every client.
- * Off, or when the v2 endpoints fail, the pinned v1 form is used unchanged.
+ * On by default (see [SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS]); an explicit server off, or a failure
+ * of the v2 endpoints, uses the pinned v1 form unchanged.
  */
 const val RUNTIME_FORM_V2_FEATURE_FLAG_KEY: String = "runtime_form_v2_web"
 
