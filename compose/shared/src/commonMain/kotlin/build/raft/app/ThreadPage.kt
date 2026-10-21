@@ -404,6 +404,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
@@ -8303,6 +8304,19 @@ private fun SharedThreadRouteContentContent(
             )
         )
     }
+    // A quote staged by a partial-selection Reply lands here (also on an already-open reply page),
+    // after Start restored any saved draft, so it is appended and never overwrites the draft.
+    LaunchedEffect(composerDraftViewModel, composerDraftPersistSlice) {
+        combine(
+            composerDraftViewModel.state.map { it.draftKey }.distinctUntilChanged(),
+            composerDraftPersistSlice.stagedReplyQuotesState
+        ) { draftKey, _ -> draftKey }
+            .collect { draftKey ->
+                composerDraftPersistSlice.consumeStagedReplyQuotes(draftKey).forEach { quote ->
+                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.AppendQuote(quote))
+                }
+            }
+    }
 
     val latestThreadFeatureRealtimeEventHandler by rememberUpdatedState<suspend (String, RealtimeEvent) -> Unit>(
         { serverId, event ->
@@ -11566,6 +11580,12 @@ private fun SharedThreadRouteContentContent(
                             "knownThreadChannelId=${parentReplyMetadata.threadChannelId.orEmpty()} " +
                             "loadingInstance=${loadingPayload.resolveThreadRouteIdentity().instanceKey}"
                     )
+                    // Reply on a partial text selection passes its quote in the 4th slot; the reply
+                    // page's composer appends it once its draft key is known.
+                    tab?.takeIf { it.isNotBlank() }?.let { quote ->
+                        composerDraftPersistSlice.stageReplyQuote(parentMessage.id, quote)
+                        bridge.log("thread_reply_quote_staged parentMessageId=${parentMessage.id} chars=${quote.length}")
+                    }
                     onOpenThreadPayload(loadingPayload)
                 }
                 action == "followMessageThread" && !itemId.isNullOrBlank() -> {
@@ -22308,7 +22328,16 @@ private fun ThreadMessagesListContent(
                             ),
                         onReact = actions.onReact,
                         onCopy = request.copySelection,
-                        onReply = actions.tools.onReply,
+                        onReply = {
+                            // A partial selection replies quoting just the picked text.
+                            val quote = request.replyQuote()
+                            if (quote == null) {
+                                actions.tools.onReply()
+                            } else {
+                                request.dismiss()
+                                onThreadEvent("openMessageThread", message.id, null, quote)
+                            }
+                        },
                         onForward = actions.tools.onForward,
                         onSave = actions.tools.onSave,
                         onTranslate = actions.tools.onTranslate,

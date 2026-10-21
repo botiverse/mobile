@@ -238,6 +238,20 @@ internal fun threadInPlaceSelectionCopyText(
 }
 
 /**
+ * Reply quote for an in-place selection (artin, 2026-10-21): Reply on a partial selection quotes
+ * just the picked text (the same text Copy copies) in the reply composer; a whole-message or
+ * empty selection returns null so Reply stays the plain message Reply.
+ */
+internal fun threadInPlaceSelectionReplyQuote(
+    selectedTexts: List<String>,
+    selectableTexts: List<String>,
+): String? {
+    if (threadInPlaceSelectionCoversAll(selectedTexts, selectableTexts)) return null
+    val text = threadInPlaceSelectionCopyText(selectedTexts, selectableTexts, fullMessageText = null)
+    return formatThreadMessageQuote(text).takeIf { it.isNotBlank() }
+}
+
+/**
  * What the page-level Compact menu needs from a selection: Copy copies the selection, Select All
  * extends it, and every other message action calls [dismiss] (clear selection + menu) first.
  */
@@ -248,6 +262,8 @@ internal class ThreadInPlaceSelectionMenuRequest(
     val dismiss: () -> Unit,
     /** Read inside the menu so it switches between full and partial as the handles move. */
     val coversAll: () -> Boolean = { true },
+    /** Markdown quote of a partial selection for Reply; null for a whole-message selection. */
+    val replyQuote: () -> String? = { null },
 )
 
 /**
@@ -516,6 +532,9 @@ internal fun ThreadInPlaceSelectableBody(
                     },
                     coversAll = {
                         threadInPlaceSelectionCoversAll(controller.selectedTexts(), controller.selectableTexts())
+                    },
+                    replyQuote = {
+                        threadInPlaceSelectionReplyQuote(controller.selectedTexts(), controller.selectableTexts())
                     }
                 )
             }
