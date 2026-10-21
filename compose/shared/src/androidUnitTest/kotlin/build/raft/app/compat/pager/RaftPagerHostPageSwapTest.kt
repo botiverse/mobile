@@ -20,8 +20,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import build.raft.app.RobolectricComposeActivityRule
+import org.junit.Rule
 import org.junit.runner.RunWith
-import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
@@ -36,6 +37,9 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class RaftPagerHostPageSwapTest {
+    @get:Rule
+    val activities = RobolectricComposeActivityRule()
+
     private val rendered = mutableListOf<String>()
 
     /** Mirrors ThreadPageScreen: launch params read once into an unkeyed remember. */
@@ -58,7 +62,7 @@ class RaftPagerHostPageSwapTest {
     @org.junit.Ignore("Fails only inside the full shared suite on CI; isolation issue under investigation")
     @Test
     fun newPageArgsRenderTheNewPageNotThePreviousPagesState() {
-        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        val activity = activities.launch()
         // Page hosts read moko strings / preferences through the shared SQLDelight holder.
         build.raft.app.data.RaftAndroidSqlDatabaseContext.init(activity)
         val transport = HostBridgeTransport { _, _, _ -> }

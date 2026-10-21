@@ -19,8 +19,8 @@ import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import org.junit.Rule
 import org.junit.runner.RunWith
-import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
@@ -38,6 +38,9 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w393dp-h852dp-xhdpi")
 class ThreadComposerImeCompositionTest {
+    @get:Rule
+    val activities = RobolectricComposeActivityRule()
+
     private class Harness(
         val activity: ComponentActivity,
         val owner: ThreadComposerControlledEditorOwner,
@@ -48,7 +51,7 @@ class ThreadComposerImeCompositionTest {
     )
 
     private fun mountComposer(): Harness {
-        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        val activity = activities.launch()
         build.raft.app.data.RaftAndroidSqlDatabaseContext.init(activity)
         var uiState by mutableStateOf(ThreadComposerUiState(instanceId = "ime-composition"))
         val owner = ThreadComposerControlledEditorOwner(seedText = "", seedAsTask = false)

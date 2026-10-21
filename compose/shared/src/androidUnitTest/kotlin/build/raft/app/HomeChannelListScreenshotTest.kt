@@ -21,8 +21,8 @@ import kotlin.test.Test
 import kotlin.test.assertNotNull
 import kotlin.test.fail
 import org.junit.After
+import org.junit.Rule
 import org.junit.runner.RunWith
-import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
@@ -49,6 +49,9 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], qualifiers = "w390dp-h844dp-xxhdpi")
 class HomeChannelListScreenshotTest {
+    @get:Rule
+    val activities = RobolectricComposeActivityRule()
+
     private val previousAppearance = RaftAppThemeState.appearance
 
     @After
@@ -64,7 +67,7 @@ class HomeChannelListScreenshotTest {
 
     private fun capture(name: String, appearance: RaftAppAppearance) {
         RaftAppThemeState.apply(appearance)
-        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        val activity = activities.launch()
         // Moko string resources read the app context through the shared SQLDelight holder.
         build.raft.app.data.RaftAndroidSqlDatabaseContext.init(activity)
         val pager =
