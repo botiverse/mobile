@@ -289,6 +289,8 @@ internal fun HomeSecondaryRouterContent(
     searchFocusInputRequest: Int = 0,
     searchQueryRequest: RaftSearchTabQueryRequest? = null,
     onSearchQueryApplied: () -> Unit = {},
+    // The rail's inline list (two-pane): marks the row whose conversation is open in the detail.
+    inlineListSelection: RaftInlineListSelection? = null,
 ) {
     val environment = rememberHomeSecondaryRouteEnvironment(
         routeVisibleTick,
@@ -321,9 +323,10 @@ internal fun HomeSecondaryRouterContent(
                     inputActive = searchInputActive,
                     focusInputRequest = searchFocusInputRequest,
                     queryRequest = searchQueryRequest,
-                    onQueryApplied = onSearchQueryApplied
+                    onQueryApplied = onSearchQueryApplied,
+                    inlineListSelection = inlineListSelection,
                 )
-            HomeDestinationSaved -> HomeSavedRouterContent(environment, routeVisibleTick)
+            HomeDestinationSaved -> HomeSavedRouterContent(environment, routeVisibleTick, inlineListSelection)
             else -> RaftCenteredLoading(message = stringResource(MR.strings.auth_state_opening_server))
         }
     }
@@ -759,7 +762,8 @@ private fun HomeSearchRouterContent(
     inputActive: Boolean = true,
     focusInputRequest: Int = 0,
     queryRequest: RaftSearchTabQueryRequest? = null,
-    onQueryApplied: () -> Unit = {}
+    onQueryApplied: () -> Unit = {},
+    inlineListSelection: RaftInlineListSelection? = null,
 ) {
     val conversationNotReadyMessage = stringResource(MR.strings.home_error_conversation_not_ready)
     val homeDataSource =
@@ -1030,6 +1034,7 @@ private fun HomeSearchRouterContent(
         tabHead = environment.tabRoot,
         visibleTick = routeVisibleTick,
         returnHighlightState = returnHighlight,
+        inlineListSelection = inlineListSelection,
         // Nav spec §7.2: a conversation-scoped pushed search hands "Search all" to the Search tab.
         onExpandToSearchTab =
             if (normalizedInitialChannelId != null && !environment.tabRoot && environment.inlineOnClose == null) {
@@ -1055,7 +1060,8 @@ private fun HomeSearchRouterContent(
 @Composable
 private fun HomeSavedRouterContent(
     environment: HomeSecondaryRouteEnvironment,
-    routeVisibleTick: Int = 0
+    routeVisibleTick: Int = 0,
+    inlineListSelection: RaftInlineListSelection? = null,
 ) {
     val conversationNotReadyMessage = stringResource(MR.strings.home_error_conversation_not_ready)
     val copiedMessage = stringResource(MR.strings.common_copied)
@@ -1195,7 +1201,8 @@ private fun HomeSavedRouterContent(
         onCopyMarkdown = { item ->
             environment.bridge.copyToPasteboard(item.sharedHomeSavedMarkdownContent())
             environment.bridge.toast(copiedMessage)
-        }
+        },
+        inlineListSelection = inlineListSelection,
     )
 }
 
