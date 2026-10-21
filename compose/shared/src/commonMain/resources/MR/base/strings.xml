@@ -2657,4 +2657,23 @@
     <string name="agent_stop_turn_restarted">To stop the turn, the agent was restarted. Its conversation context is kept.</string>
     <string name="agent_stop_turn_upgrade_required">This agent\'s Computer needs an upgrade to stop a single turn. You can stop the whole agent instead.</string>
     <string name="agent_stop_turn_computer_offline">This agent\'s Computer is offline.</string>
+    <string name="channel_sos_entry">Stop All Agents</string>
+    <string name="channel_sos_entry_detail">Stop all agents in this channel</string>
+    <string name="channel_sos_stop_all_agents">Stop All Agents</string>
+    <string name="channel_sos_stop_action">Stop</string>
+    <string name="channel_sos_agents_stopped">Agents Stopped</string>
+    <string name="channel_sos_confirm_warning">All running agents in #%1$s will stop immediately. You can provide new guidance before resuming them.</string>
+    <string name="channel_sos_all_stopped">All agents have been stopped.</string>
+    <string name="channel_sos_guidance_hint">Provide new guidance or corrections. All agents will see this when they resume.</string>
+    <string name="channel_sos_guidance_placeholder">e.g. Stop modifying the database schema — focus only on the frontend changes I described…</string>
+    <string name="channel_sos_keep_stopped">Keep Stopped</string>
+    <string name="channel_sos_resume_all">Resume All</string>
+    <string name="channel_sos_stopping">Stopping…</string>
+    <string name="channel_sos_resuming">Resuming…</string>
+    <string name="channel_sos_resume_still_starting_one">1 agent is still starting and did not get your guidance. Try again in a moment.</string>
+    <string name="channel_sos_resume_still_starting_other">%1$d agents are still starting and did not get your guidance. Try again in a moment.</string>
+    <string name="channel_sos_resume_failed_one">1 agent could not be resumed.</string>
+    <string name="channel_sos_resume_failed_other">%1$d agents could not be resumed.</string>
+    <string name="channel_sos_stop_failed">Couldn\'t stop the agents. Try again.</string>
+    <string name="channel_sos_resume_error">Couldn\'t resume the agents. Try again.</string>
 </resources>

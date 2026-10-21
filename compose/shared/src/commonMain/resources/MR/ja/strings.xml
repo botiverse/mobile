@@ -2657,4 +2657,23 @@
     <string name="agent_stop_turn_restarted">ターンを停止するため、エージェントを再起動しました。会話のコンテキストは保持されています。</string>
     <string name="agent_stop_turn_upgrade_required">このエージェントのコンピューターは、ターンだけを停止するにはアップグレードが必要です。エージェント全体を停止することもできます。</string>
     <string name="agent_stop_turn_computer_offline">このエージェントのコンピューターはオフラインです。</string>
+    <string name="channel_sos_entry">すべてのエージェントを停止</string>
+    <string name="channel_sos_entry_detail">このチャンネルのすべてのエージェントを停止</string>
+    <string name="channel_sos_stop_all_agents">すべてのエージェントを停止</string>
+    <string name="channel_sos_stop_action">停止</string>
+    <string name="channel_sos_agents_stopped">エージェントを停止しました</string>
+    <string name="channel_sos_confirm_warning">#%1$s で実行中のすべてのエージェントがただちに停止します。再開する前に、新しい指示を伝えられます。</string>
+    <string name="channel_sos_all_stopped">すべてのエージェントを停止しました。</string>
+    <string name="channel_sos_guidance_hint">新しい指示や修正点を入力してください。再開時に、すべてのエージェントがこの内容を確認します。</string>
+    <string name="channel_sos_guidance_placeholder">例：データベーススキーマの変更はやめて、説明したフロントエンドの変更だけに集中してください…</string>
+    <string name="channel_sos_keep_stopped">停止を維持</string>
+    <string name="channel_sos_resume_all">すべて再開</string>
+    <string name="channel_sos_stopping">停止中…</string>
+    <string name="channel_sos_resuming">再開中…</string>
+    <string name="channel_sos_resume_still_starting_one">1 個のエージェントはまだ起動中のため、指示を受け取れませんでした。しばらくしてからもう一度お試しください。</string>
+    <string name="channel_sos_resume_still_starting_other">%1$d 個のエージェントはまだ起動中のため、指示を受け取れませんでした。しばらくしてからもう一度お試しください。</string>
+    <string name="channel_sos_resume_failed_one">1 個のエージェントを再開できませんでした。</string>
+    <string name="channel_sos_resume_failed_other">%1$d 個のエージェントを再開できませんでした。</string>
+    <string name="channel_sos_stop_failed">エージェントを停止できませんでした。もう一度お試しください。</string>
+    <string name="channel_sos_resume_error">エージェントを再開できませんでした。もう一度お試しください。</string>
 </resources>

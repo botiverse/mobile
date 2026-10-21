@@ -2657,4 +2657,23 @@
     <string name="agent_stop_turn_restarted">为了停止这一轮，agent 被重启了，对话上下文都还在。</string>
     <string name="agent_stop_turn_upgrade_required">这个 agent 所在的 Computer 需要升级才能只停这一轮。也可以停止整个 agent。</string>
     <string name="agent_stop_turn_computer_offline">这个 agent 所在的 Computer 离线了。</string>
+    <string name="channel_sos_entry">停止所有 Agent</string>
+    <string name="channel_sos_entry_detail">停止此频道中的所有 Agent</string>
+    <string name="channel_sos_stop_all_agents">停止所有 Agent</string>
+    <string name="channel_sos_stop_action">停止</string>
+    <string name="channel_sos_agents_stopped">Agent 已停止</string>
+    <string name="channel_sos_confirm_warning">#%1$s 中所有正在运行的 Agent 都会立即停止。恢复前，你可以提供新的指导。</string>
+    <string name="channel_sos_all_stopped">所有 Agent 均已停止。</string>
+    <string name="channel_sos_guidance_hint">提供新的指导或纠正。所有 Agent 恢复时都会看到这些内容。</string>
+    <string name="channel_sos_guidance_placeholder">例如：停止修改数据库 schema——只专注于我描述的前端改动…</string>
+    <string name="channel_sos_keep_stopped">保持停止</string>
+    <string name="channel_sos_resume_all">全部恢复</string>
+    <string name="channel_sos_stopping">停止中…</string>
+    <string name="channel_sos_resuming">正在恢复…</string>
+    <string name="channel_sos_resume_still_starting_one">1 个 Agent 仍在启动中，没有收到你的指导，请稍后再试。</string>
+    <string name="channel_sos_resume_still_starting_other">%1$d 个 Agent 仍在启动中，没有收到你的指导，请稍后再试。</string>
+    <string name="channel_sos_resume_failed_one">1 个 Agent 未能恢复。</string>
+    <string name="channel_sos_resume_failed_other">%1$d 个 Agent 未能恢复。</string>
+    <string name="channel_sos_stop_failed">没能停止这些 Agent，请重试。</string>
+    <string name="channel_sos_resume_error">没能恢复这些 Agent，请重试。</string>
 </resources>
