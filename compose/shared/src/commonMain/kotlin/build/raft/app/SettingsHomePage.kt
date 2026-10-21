@@ -19226,6 +19226,8 @@ private fun SharedMembersScreen(
                 selected = selectedDetail != null,
                 listPane = {
                     MembersRouteContent(
+                        // Back to More on the phone (the loading and error states already had it).
+                        onBack = onBack,
                         selectedIdentity = selectedDetail?.identity,
                         selectedLocalServerId = ServerId(serverId),
                         payload = renderMembersPayload,
