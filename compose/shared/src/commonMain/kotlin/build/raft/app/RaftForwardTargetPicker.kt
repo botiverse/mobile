@@ -2,6 +2,12 @@ package build.raft.app
 
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.data.DataResult
+import build.raft.app.data.ForwardMessageTarget
+import build.raft.app.data.ForwardMessageTargetRepository
+import build.raft.app.data.ForwardTargetSearchUpdate
+import build.raft.app.data.ForwardTargetServerSearchDebounceMillis
+import build.raft.app.model.ServerId
 import kotlinx.coroutines.delay
 
 internal fun raftForwardPickerActionBottomPadding(bottomSafeArea: Dp): Dp =
@@ -234,10 +240,7 @@ internal fun RaftForwardPickerRequestIdentity.accepts(
         this.query == query &&
         this.generation == generation
 
-/**
- * Search filters an in-memory index, so the debounce only coalesces a burst of keystrokes;
- * it is no longer covering for five network round trips.
- */
+/** Generic picker-load debounce. Target search debounces its server request itself ([raftForwardPickerProgressiveSearch]). */
 internal const val RaftForwardPickerSearchDebounceMillis = 120L
 
 /**
@@ -256,6 +259,32 @@ internal suspend fun <R : Any> raftForwardPickerGatedLoad(
     if (!isCurrent()) return null
     val result = load()
     return result.takeIf { isCurrent() }
+}
+
+/**
+ * One picker search keystroke: local interim matches go to [onInterim] immediately, the server's
+ * answer (after [serverDebounceMillis]) is returned. The caller restarts this on every keystroke,
+ * which cancels the previous in-flight server request; [isCurrent] additionally drops any update
+ * a newer query superseded, so an older query's results are never shown. Returns null when stale.
+ */
+internal suspend fun raftForwardPickerProgressiveSearch(
+    repository: ForwardMessageTargetRepository,
+    serverId: ServerId,
+    query: String,
+    limit: Int,
+    isCurrent: () -> Boolean,
+    onInterim: (List<ForwardMessageTarget>) -> Unit,
+    serverDebounceMillis: Long = ForwardTargetServerSearchDebounceMillis
+): DataResult<List<ForwardMessageTarget>>? {
+    var final: DataResult<List<ForwardMessageTarget>>? = null
+    repository.searchTargetsProgressively(serverId, query, limit, serverDebounceMillis).collect { update ->
+        if (!isCurrent()) return@collect
+        when (update) {
+            is ForwardTargetSearchUpdate.Interim -> onInterim(update.targets)
+            is ForwardTargetSearchUpdate.Final -> final = update.result
+        }
+    }
+    return final?.takeIf { isCurrent() }
 }
 
 internal fun RaftForwardTargetVisualKind.iconName(): RaftLucideIconName? =
