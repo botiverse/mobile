@@ -8,10 +8,12 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,6 +51,11 @@ import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.sqrt
+import kotlin.time.TimeSource
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 // Shared state primitives (raft-design Foundations > States, Elevation > Focus ring,
 // Dark mode > The die-cut edge, Color > Stickers / Pressed overlays). Every component
@@ -82,12 +89,61 @@ internal val LocalRaftFocusedPreview = staticCompositionLocalOf { false }
  */
 internal val LocalRaftHoveredPreview = staticCompositionLocalOf { false }
 
-/** Pressed from [interactionSource], or forced by [LocalRaftPressedPreview]. */
+/**
+ * The shortest time a press shows (artin 2026-10-21: tapping a Home channel showed no press,
+ * where the web does). Inside a scrolling list Compose holds a press back until it knows the
+ * finger isn't scrolling, so a quick tap emits its press and release together and the press
+ * look never reaches the screen before the next page opens. Keeping it at least this long
+ * makes every tap visible; a press held longer ends when the finger lifts.
+ */
+internal const val RaftPressMinimumMillis = 120L
+
+/**
+ * Pressed from [interactionSource] (shown for at least [RaftPressMinimumMillis] once a press
+ * starts; a press cancelled by a scroll ends at once), or forced by [LocalRaftPressedPreview].
+ */
 @Composable
 internal fun raftIsPressed(interactionSource: InteractionSource): Boolean {
-    val pressed = interactionSource.collectIsPressedAsState().value
+    val shown = remember(interactionSource) { mutableStateOf(false) }
+    LaunchedEffect(interactionSource) {
+        coroutineScope {
+            val presses = mutableListOf<PressInteraction.Press>()
+            var since = TimeSource.Monotonic.markNow()
+            var ending: Job? = null
+            interactionSource.interactions.collect { interaction ->
+                when (interaction) {
+                    is PressInteraction.Press -> {
+                        presses += interaction
+                        ending?.cancel()
+                        if (!shown.value) {
+                            shown.value = true
+                            since = TimeSource.Monotonic.markNow()
+                        }
+                    }
+                    is PressInteraction.Release -> {
+                        presses -= interaction.press
+                        if (presses.isEmpty()) {
+                            val left = RaftPressMinimumMillis - since.elapsedNow().inWholeMilliseconds
+                            ending = launch {
+                                if (left > 0) delay(left)
+                                shown.value = false
+                            }
+                        }
+                    }
+                    is PressInteraction.Cancel -> {
+                        presses -= interaction.press
+                        if (presses.isEmpty()) {
+                            ending?.cancel()
+                            shown.value = false
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Read unconditionally: a composable read after `||` is skipped when pressed (#3356).
     val preview = LocalRaftPressedPreview.current
-    return pressed || preview
+    return shown.value || preview
 }
 
 /**
