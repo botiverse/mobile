@@ -416,7 +416,7 @@ final class RaftIosMobileOAuthHost: NSObject,
         )
     }
 
-    /// Browser web login (the HarmonyOS flow): PKCE for the shared coordinator, which keeps the verifier.
+    /// Browser web login: PKCE for the shared coordinator, which keeps the verifier.
     @objc func prepareAppLogin() -> NSDictionary {
         guard let pkce = createPkce(), let callbackScheme = configuredCallbackScheme() else {
             return startError(code: "settings_mobile_oauth_pkce_failed", message: "Web sign-in could not be prepared.")

@@ -7166,7 +7166,7 @@ internal fun raftFilePreviewIsMarkdownAttachment(fileName: String, mimeType: Str
 /**
  * Desktop-mode render width in CSS pixels, matching a common desktop browser viewport.
  *
- * `public` since task #514: the iOS and OHOS render views pass it through to
+ * `public` since task #514: the iOS render view passes it through to
  * [raftFilePreviewDesktopScalePercent] from native code, and a duplicated literal there would be
  * exactly the drift this constant exists to prevent.
  */
@@ -7230,8 +7230,8 @@ const val RaftFilePreviewDesktopScaleMinPercent = 10
  * The fit scale that makes a [viewportPx]-wide WebView show the whole desktop layout, in percent.
  *
  * This is the one piece of arithmetic task #188's desktop mode depends on, and it is the same on
- * every platform: `viewportPx / (desktopCssWidth * dpr)`. It lives in shared code so Android, iOS
- * and OHOS cannot drift into three slightly different formulas with three sets of edge cases.
+ * every platform: `viewportPx / (desktopCssWidth * dpr)`. It lives in shared code so Android and iOS
+ * cannot drift into slightly different formulas with different edge cases.
  *
  * Returns `null` when no fit should be applied:
  * - a non-positive viewport width (the prop can arrive before the first layout pass), or
@@ -7778,13 +7778,11 @@ internal fun RaftFilePreviewPayloadContent(
                         // the page's own responsive breakpoints pick the wide layout -- the same thing
                         // a browser's "Request desktop site" does. Off -> empty, i.e. the page's own meta.
                         //
-                        // One shared mechanism, verified on all three platforms' injection paths:
+                        // One shared mechanism, verified on both platforms' injection paths:
                         //   Android -- SlockSandboxWebViewRenderView applies injectedJavaScript
                         //   iOS     -- WKUserScript at WKUserScriptInjectionTimeAtDocumentStart
-                        //   OHOS    -- ArkWeb rule, wrapped by scopedInjectedJavaScript() and run at
-                        //              document start behind a URL/top-frame fence
                         // The script itself is self-invoking and does not depend on any platform
-                        // global, so the fence wrapper (which calls it in place) leaves it intact.
+                        // global, so a host-side wrapper that calls it in place leaves it intact.
                         injectedJavaScript =
                             if (htmlDesktopMode) raftFilePreviewDesktopViewportScript() else "",
                         // Android ignores `width=` in the viewport meta unless this is on, so the

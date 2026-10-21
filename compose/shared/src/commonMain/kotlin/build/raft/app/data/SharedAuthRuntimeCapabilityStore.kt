@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * these values cannot enable Apple on another platform or hide it on iOS.
  */
 data class SharedAuthRuntimeCapabilities(
-    /** The host only offers browser web login (HarmonyOS). */
+    /** The host only offers browser web login. */
     val webLoginOnly: Boolean = false,
     /**
      * The host implements browser web login (`appLoginPrepare` / `appLoginOpen` and the `login/callback`

@@ -7528,8 +7528,8 @@ internal class SharedThreadStore(
      * task #243: race the lookup against an injectable deadline SIGNAL.
      *
      * `withTimeoutOrNull(1_000L)` tied the timeout branch to a real second of wall clock, which is
-     * unreachable deterministically from a test - `commonTest` compiles for OHOS arm64, where no
-     * `kotlinx-coroutines-test` KLIB exists, so virtual time is not available here. Handing the
+     * unreachable deterministically from a test - `commonTest` avoids
+     * `kotlinx-coroutines-test`, so virtual time is not available here. Handing the
      * deadline in as a suspend function lets a test complete it explicitly (the same explicit-barrier
      * shape already used in SharedReplyThreadAccessIntegrationTest) while production keeps `delay`.
      *

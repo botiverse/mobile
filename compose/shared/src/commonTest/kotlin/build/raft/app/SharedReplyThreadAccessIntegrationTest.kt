@@ -316,7 +316,7 @@ class SharedReplyThreadAccessIntegrationTest {
         }
     }
 
-    // OHOS commonTest has no kotlinx-coroutines-test KLIB; the explicit barriers above keep these
+    // commonTest avoids kotlinx-coroutines-test; the explicit barriers above keep these
     // tests deterministic while this independently owned scope preserves the production lifetime.
     private suspend fun <T> withPortableAppScope(block: suspend (CoroutineScope) -> T): T {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)

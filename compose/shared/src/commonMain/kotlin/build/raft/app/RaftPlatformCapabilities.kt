@@ -10,14 +10,12 @@ internal expect fun raftPlatformConsumesSnapshotsFromKuikly(): Boolean
  * Android keeps the stop-loss because every captured white-screen cycle is on
  * that renderer. iOS restores the ordinary automatic correction path for
  * Hands 8f33b1f3, where the cross-platform stop-loss left the final message
- * behind the keyboard. OHOS remains on the existing stop-loss until it has its
- * own product evidence; task #1015 does not broaden that release decision.
+ * behind the keyboard.
  */
 internal expect fun raftPlatformThreadImeProgrammaticViewportPolicy():
     ThreadImeProgrammaticViewportPolicy
 
-// The common idle pipeline is shared by every platform. OHOS enables the full
-// measured prewarm set; Android/iOS run a one-controller canary until their
+// The common idle pipeline is shared by every platform. Android/iOS run a one-controller canary until their
 // cold-tab CPU/frame/memory evidence justifies enabling the complete set.
 internal expect fun raftPlatformAppShellChildPagePrewarmMode(): AppShellChildPagePrewarmMode
 
@@ -32,15 +30,13 @@ internal expect fun raftPlatformSupportsAppleSignIn(): Boolean
 // The iOS app shell always has the native UITabBar renderer available. Route
 // launches created after auth/server changes do not pass the SwiftUI root's
 // pageData, so shared needs a platform default when the host did not provide an
-// explicit renderer. OHOS keeps returning null because its HDS renderer is
-// capability-gated by the ArkTS host; Android also keeps its explicit/default
-// shared renderer behavior.
+// explicit renderer. Android keeps its explicit/default shared renderer behavior.
 internal expect fun raftPlatformDefaultAppTabBarRenderer(): String?
 
 // task #556 phase 2: Android's video host renders Media3 PlayerView's
 // built-in controller (tap-to-show play/pause, drag seek, ±10s, fullscreen),
-// so the shared minimal controls must stay out of its way there. iOS/OHOS
-// keep the shared controls until their native players grow an equivalent.
+// so the shared minimal controls must stay out of its way there. iOS
+// keeps the shared controls until their native players grow an equivalent.
 internal expect fun raftPlatformUsesNativeVideoController(): Boolean
 
 /**
@@ -56,17 +52,17 @@ internal expect fun raftPlatformSupportsVideoAttachmentContainer(
 
 internal expect fun raftPlatformSupportsPushPreviewPrivacySetting(): Boolean
 
-// Each host owns its system gallery implementation: Android MediaStore Images, iOS PhotoKit
-// add-only, and OHOS PhotoAccessHelper. Shared exposes one typed sent-image action/result contract.
+// Each host owns its system gallery implementation: Android MediaStore Images and iOS PhotoKit
+// add-only. Shared exposes one typed sent-image action/result contract.
 internal expect fun raftPlatformSupportsSaveImageToPhotos(): Boolean
 
 // Android exposes durable public Downloads through an exact journal + MediaStore readback.
-// Android and OHOS expose durable downloaded-file readback; iOS does not yet have an equivalent
+// iOS does not yet have an equivalent
 // committed native authority.
 internal expect fun raftPlatformSupportsPublicAttachmentDownloadReadback(): Boolean
 
-// OHOS keeps Download silent and durable in the app-private files directory. A separate Files
-// action exports that committed private copy through the system document picker.
+// A host that keeps Download silent and durable in the app-private files directory exposes a
+// separate Files action that exports the committed private copy through the system document picker.
 internal expect fun raftPlatformSupportsPrivateAttachmentExport(): Boolean
 
 // Keep the semantic weight alongside the physical Space Grotesk face so the platform's
@@ -91,7 +87,7 @@ internal expect fun raftReleaseNotesAppSlug(): String
 /**
  * Product name used in shared settings copy that describes the installed host.
  * The copy stays localized in common resources while the platform name is
- * supplied by the concrete Android, iOS, or HarmonyOS host.
+ * supplied by the concrete Android or iOS host.
  */
 internal expect fun raftPlatformProductName(): String
 
@@ -121,15 +117,15 @@ internal expect fun raftFirstComposedCharacterEnd(text: String): Int?
  * matches react's (react measures dead-centered in the tile). Measured
  * empirically per platform on the pinned render build (PR #568 verification
  * run 29142637461): android renders the slash 1.5dp LOW under the even-split
- * HRLineHeightSpan (post-03ef5cf), so it needs -1.5dp (up). iOS/OHOS start at
+ * HRLineHeightSpan (post-03ef5cf), so it needs -1.5dp (up). iOS starts at
  * 0 until their captures are measured - do NOT copy the android value blind;
  * their text stacks place glyphs differently.
  */
 internal expect fun raftSlugSlashCenteringOffsetDp(): Float
 
 // Hands feedback is one cross-platform product contract. The common cap must
-// stay at the largest size every platform SDK can actually deliver; OHOS still
-// reads one ArrayBuffer, so all three targets are capped at 50MB until it streams.
+// stay at the largest size every platform SDK can actually deliver, so
+// every target is capped at 50MB.
 internal expect fun raftFeedbackAttachmentMaxBytes(): Long
 
 /** Stable host identity injected into the standalone feedback WebView session metadata. */

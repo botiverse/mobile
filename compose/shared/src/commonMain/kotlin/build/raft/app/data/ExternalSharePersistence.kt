@@ -16,7 +16,7 @@ private val externalShareDraftJson = Json {
 }
 
 /**
- * Bottom capability installed by Android, OHOS, or iOS when that host owns a native share inbox.
+ * Bottom capability installed by Android or iOS when that host owns a native share inbox.
  * Shared code never derives a filesystem path from the opaque token.
  */
 data class RaftExternalShareEnvelopeHostItem(

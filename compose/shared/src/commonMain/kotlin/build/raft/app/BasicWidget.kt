@@ -1331,7 +1331,7 @@ internal fun Modifier.raftButtonAccessibility(
 @Composable
 fun Modal(
     modifier: Modifier = Modifier,
-    /* 物理键触发时调用该事件（目前仅支持鸿蒙平台） */
+    /* 物理键触发时调用该事件（当前 Android/iOS 均未触发） */
     onWillDismiss: ((Any?) -> Unit)? = null,
     content: (@Composable () -> Unit)
 ) {
@@ -1722,7 +1722,7 @@ internal fun TextInputState.raftWithFinishedComposition(): TextInputState =
 /**
  * Reads the native editor's current text/selection/composition state at an action boundary.
  *
- * Native UIKit/Android/OHOS editing can already be visible while its ordinary change callback is
+ * Native UIKit/Android editing can already be visible while its ordinary change callback is
  * still queued for Compose. Callers such as Send therefore need an explicit barrier instead of
  * assuming the last rendered [TextFieldValue] is the value currently on screen.
  */

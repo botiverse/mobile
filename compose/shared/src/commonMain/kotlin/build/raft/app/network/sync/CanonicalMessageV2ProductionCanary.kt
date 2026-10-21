@@ -144,7 +144,7 @@ private class CanonicalMessageV2CanaryScopeState(
 
     /**
      * Task #168: the last delivery committed for each fact id (bounded). One realtime frame reaches the
-     * canary through more than one entry (process owner and AppShell owner; on iOS / OHOS the process
+     * canary through more than one entry (process owner and AppShell owner; on iOS the process
      * owner twice), so a delivery equal to the last committed one for its fact is that same frame again.
      */
     private val lastCommittedDeliveryByFactId = LinkedHashMap<String, CanonicalMessageV2Delivery>()

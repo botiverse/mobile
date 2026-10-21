@@ -60,7 +60,7 @@ internal data class RaftAppShellScope(
         if (includeBottomTabBar && !bottomTabBarOverlaysContent) bottomTabBarContentInset - RaftAppSpacing.Lg else 0.dp
 
     // Global dialogs must keep their action rows clear of native/floating tab
-    // bands. On Android/iOS/OHOS floating renderers the native tab can draw
+    // bands. On Android/iOS floating renderers the native tab can draw
     // above Compose siblings, so zIndex alone is not a sufficient clearance
     // contract for bottom-pinned dialog actions.
     fun globalDialogBottomInset(includeBottomTabBar: Boolean): Dp =

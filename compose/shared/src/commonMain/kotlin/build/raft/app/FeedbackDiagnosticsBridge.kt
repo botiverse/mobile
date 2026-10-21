@@ -12,7 +12,7 @@ internal object FeedbackDiagnosticsBridge {
 
     // Native bridges use the same ASCII grammar.  Kotlin's isLetterOrDigit() accepts
     // Unicode letters/digits, which would otherwise be accepted by the shared host and
-    // rejected silently by iOS/OHOS.
+    // rejected silently by iOS.
     fun validRequestId(value: String): Boolean =
         value.length in 1..128 && value.all {
             it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it in "._:-"

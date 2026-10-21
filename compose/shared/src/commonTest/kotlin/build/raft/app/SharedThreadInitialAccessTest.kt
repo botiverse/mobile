@@ -437,8 +437,8 @@ class SharedThreadInitialAccessTest {
         // the 60s watchdog, which killed the JVM (exit 73) - intermittent by construction, and
         // green locally every time, which is why it survived.
         //
-        // Virtual time is not available here: commonTest compiles for OHOS arm64 and there is no
-        // kotlinx-coroutines-test KLIB for it. So the deadline is injected as an explicit barrier
+        // Virtual time is not available here: commonTest avoids
+        // kotlinx-coroutines-test. So the deadline is injected as an explicit barrier
         // the test completes itself - the same shape SharedReplyThreadAccessIntegrationTest uses.
         // The timeout branch is now reached because this test released it, not because a second
         // elapsed. Shortening the duration was rejected: that shrinks the window instead of

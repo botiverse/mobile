@@ -28,7 +28,7 @@ object RaftCurlSocketIoPolicy {
 
     /**
      * True once a platform realtime host can actually switch to curl (Android today). The Settings
-     * switch is shown only then, so iOS / OHOS do not show a switch that does nothing.
+     * switch is shown only then, so iOS does not show a switch that does nothing.
      */
     @Volatile
     var platformSupported: Boolean = false

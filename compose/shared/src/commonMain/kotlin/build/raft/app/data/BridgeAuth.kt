@@ -807,7 +807,7 @@ internal fun systemNotificationPermissionSnapshot(
 }
 
 internal fun JsonObject.toStorageSnapshot(): SharedSettingsStorageSnapshot {
-    // Android sends "rowsJson" (string bridge, #476); OHOS/iOS still send
+    // Android sends "rowsJson" (string bridge, #476); iOS still sends
     // structured "rows". Same dual-accept shape as entriesJson (#484).
     val rowsJson =
         optJsonArray("rows")
@@ -840,8 +840,8 @@ internal fun JsonObject.toStorageSnapshot(): SharedSettingsStorageSnapshot {
 }
 
 internal fun JsonObject.toDeveloperSnapshot(): SharedSettingsDeveloperSnapshot {
-    // Android sends "optionsJson" (string bridge, #476); OHOS/iOS still
-    // send structured "options". Same dual-accept shape as entriesJson.
+    // Android sends "optionsJson" (string bridge, #476); iOS still
+    // sends structured "options". Same dual-accept shape as entriesJson.
     val optionsJson =
         optJsonArray("options")
             ?: optString("optionsJson")

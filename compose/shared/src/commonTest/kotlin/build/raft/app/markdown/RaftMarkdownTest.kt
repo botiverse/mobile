@@ -695,9 +695,8 @@ class RaftMarkdownTest {
         )
     }
 
-    // task #104 (OHOS gray background): a platform whose composed-character
-    // segmenter is unavailable (raftFirstComposedCharacterEnd == null, the
-    // OHOS actual) must STILL attach the inline-code box chrome as a
+    // task #104 (gray background): a platform whose composed-character
+    // segmenter is unavailable (raftFirstComposedCharacterEnd == null) must STILL attach the inline-code box chrome as a
     // single-child group. Dropping the group is the defect: mono typography
     // survives via the outer code-span style while the gray chip silently
     // disappears, so no shared test goes red without this tooth.
@@ -705,7 +704,7 @@ class RaftMarkdownTest {
     fun inlineCodeEdgeBoxesSurviveMissingComposedCharacterSegmenter() {
         val code = "raft build"
 
-        // Null segmenter (OHOS shape) and a working segmenter must agree on
+        // Null segmenter and a working segmenter must agree on
         // the box invariant; only the child split may differ.
         val withoutSegmenter = buildAnnotatedString {
             appendRaftInlineCodeWithEdgeBoxes(code, firstComposedCharacterEnd = null)

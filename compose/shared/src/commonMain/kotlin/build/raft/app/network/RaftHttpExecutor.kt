@@ -42,8 +42,8 @@ internal data class RaftHttpFileBody(
  *   CancellationException; they never throw for HTTP-level errors.
  * - No transport-level retry: refresh/retry policy is owned by the callers.
  *
- * Every platform gets the NetworkKMM executor (libcurl on OHOS, the
- * library's pooled ktor engines on Android/iOS) — see task #12.
+ * Every platform gets the NetworkKMM executor (the library's
+ * pooled ktor engines on Android/iOS) — see task #12.
  */
 internal interface RaftHttpExecutor {
     suspend fun execute(

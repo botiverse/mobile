@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
  *
  * Only an Android host without Google Play services installs these: there FCM cannot deliver, so the
  * only way to keep posting message notifications is to keep the realtime connection alive from a
- * foreground service. Every other host (Android with Play services, iOS, HarmonyOS) leaves the
+ * foreground service. Every other host (Android with Play services, iOS) leaves the
  * registry empty and Settings keeps its ordinary background realtime switch.
  */
 interface RaftBackgroundConnectionControls {

@@ -4528,8 +4528,7 @@ static NSDictionary *RaftFeedbackDiagnosticsBindingPayload(NSDictionary *binding
 
 #pragma mark - Slock persistent attachment store
 
-// Persistent local copy keyed by <ownerKey>-<safe(attachmentId)>, matching the
-// OHOS SlockOhosPrivateAttachmentStore scheme (KRBridgeModule.ets:140-152).
+// Persistent local copy keyed by <ownerKey>-<safe(attachmentId)>.
 // Files live under Application Support/Slock/Attachments so they survive across
 // launches; "Open with" can then share the local file directly instead of
 // re-downloading to a throwaway temp dir each tap.
@@ -4801,7 +4800,7 @@ NSString *RaftAttachmentCacheKey(NSString *ownerKey, NSString *attachmentId) {
     return owner.length ? [owner stringByAppendingFormat:@"-%@", attachment] : attachment;
 }
 
-// OHOS key scheme: directory keyed by <ownerKey>-<safe(attachmentId)>, the file lives
+// Key scheme: directory keyed by <ownerKey>-<safe(attachmentId)>, the file lives
 // inside it; lookups only need the directory, never the filename.
 static NSString *RaftAttachmentCacheDirectory(NSString *ownerKey, NSString *attachmentId) {
     NSString *key = RaftAttachmentCacheKey(ownerKey, attachmentId);
@@ -6128,7 +6127,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
     }
     if ([action isEqualToString:@"apiEnvironmentChanged"]) {
         // Self-host login: the socket still points at the previous server. Close every connection now, as the
-        // Android and HarmonyOS hosts do; the cleared session reconnects to the new environment after login.
+        // Android host does; the cleared session reconnects to the new environment after login.
         [[RaftIosRealtimeHost shared] handleCommand:@{
             @"action" : @"disconnect",
             @"reason" : @"api_environment_changed",

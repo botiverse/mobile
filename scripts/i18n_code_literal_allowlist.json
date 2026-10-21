@@ -62,12 +62,12 @@
   },
   {
     "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
-    "literal": "Edge",
-    "reason": "internal bottom-tab smoke variant label"
+    "literal": "Shared tab bar smoke preview",
+    "reason": "internal bottom-tab smoke preview label"
   },
   {
     "path": "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt",
-    "literal": "Floating Dock",
+    "literal": "Edge",
     "reason": "internal bottom-tab smoke variant label"
   },
   {
@@ -97,11 +97,6 @@
     "reason": "internal server danger-modal visual fixture label"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftFloatingOverlayTouchGuardVisualPage.kt",
-    "literal": "MENU ACTION",
-    "reason": "internal floating-overlay touch guard visual probe"
-  },
-  {
     "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftHomeComponents.kt",
     "literal": "HOME",
     "reason": "internal home app-update banner visual fixture label"
@@ -122,19 +117,9 @@
     "reason": "internal generated icon gallery heading"
   },
   {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftModalPointerBarrierVisualPage.kt",
-    "literal": "MODAL ACTION",
-    "reason": "internal modal pointer-barrier visual probe state"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftModalPointerBarrierVisualPage.kt",
-    "literal": "UNDERLAY HIT",
-    "reason": "internal modal pointer-barrier visual probe state"
-  },
-  {
-    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftModalPointerBarrierVisualPage.kt",
-    "literal": "CURSOR MOVED",
-    "reason": "internal modal pointer-barrier visual probe state"
+    "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftLucideIconGalleryPage.kt",
+    "literal": "${names.size} icons · generated vector paths",
+    "reason": "internal generated icon gallery diagnostic copy"
   },
   {
     "path": "compose/shared/src/commonMain/kotlin/build/raft/app/RaftTypographyProbePage.kt",

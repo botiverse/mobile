@@ -1886,7 +1886,7 @@ internal fun threadVisualFixture(
             // task #502: real mixed-markdown status message requested by artin.
             // Pins a leading horizontal rule, Chinese prose, bold emphasis,
             // inline-code routes containing angle-bracket placeholders, and a
-            // plain PR reference in one message across Android/iOS/OHOS.
+            // plain PR reference in one message across Android/iOS.
             RaftThreadScreenPayload(
                 instanceId = resolvedInstanceId,
                 title = "#markdown",

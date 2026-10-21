@@ -52,7 +52,7 @@ private fun RaftLucideIconGalleryScreen() {
                     color = RaftColor.TextBlack
                 )
                 Text(
-                    text = "${names.size} icons · generated OHOS paths",
+                    text = "${names.size} icons · generated vector paths",
                     style = RaftType.Body.copy(color = RaftColor.TextMutedGray),
                     color = RaftColor.TextMutedGray
                 )

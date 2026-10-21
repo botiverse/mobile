@@ -1019,7 +1019,7 @@ internal data class RaftSharedSettingsRow(
 
 internal val settingsTabBarSmokePayload = RaftSettingsHomePayload(
     title = "Settings",
-    subtitle = "Harmony smoke",
+    subtitle = "Tab bar smoke",
     items = listOf(
         SettingsHomePageLinkPayload(
             key = "account",
@@ -25084,7 +25084,7 @@ internal fun decodeSharedShellRealtimeEvent(
     mapper: RealtimeEventMapper,
     log: (String) -> Unit
 ): RealtimeEvent? {
-    // Raw path: eventName + rawPayload -> common mapper (canonical for Android & OHOS)
+    // Raw path: eventName + rawPayload -> common mapper (canonical for Android)
     val eventName = eventData.optString("eventName").takeIf { it.isNotBlank() }
     val rawPayload = eventData.optString("rawPayload").takeIf { it.isNotBlank() }
     if (eventName != null && rawPayload != null) {
@@ -25429,7 +25429,7 @@ internal fun BottomTabBarSmokeContent() {
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    "Harmony smoke preview",
+                    "Shared tab bar smoke preview",
                     style = RaftType.Input.copy(color = RaftColor.TextMutedGray),
                     color = RaftColor.TextMutedGray,
                     maxLines = 1,

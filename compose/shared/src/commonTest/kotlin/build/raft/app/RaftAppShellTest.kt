@@ -773,7 +773,7 @@ class RaftAppShellTest {
 
     @Test
     fun overlayTabBarContentReservesFullClearanceForLastRow() {
-        // Floating docks (Android floating, iOS liquid glass, OHOS HDS) overlay
+        // Floating docks (Android floating, iOS liquid glass) overlay
         // content and the host pads nothing — scrollable content must reserve
         // the renderer's full clearance or its last row hides under the dock.
         val scope =

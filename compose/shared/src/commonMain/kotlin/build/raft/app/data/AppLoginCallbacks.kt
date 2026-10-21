@@ -28,8 +28,8 @@ data class AppLoginCallback(
 )
 
 /**
- * Strict parse of `<scheme>://login/callback?requestId=…&code=…` (or `error=…`), the same rules as the
- * HarmonyOS host: no fragment, only `requestId` / `code` / `error`, no duplicates or empty values, and
+ * Strict parse of `<scheme>://login/callback?requestId=…&code=…` (or `error=…`), on every
+ * host: no fragment, only `requestId` / `code` / `error`, no duplicates or empty values, and
  * exactly `requestId` plus one of `code` / `error`. Anything else is not a login callback.
  */
 fun parseAppLoginCallback(uri: String?): AppLoginCallback? {
@@ -78,7 +78,7 @@ private fun percentDecodeStrict(raw: String): String? {
 
 /**
  * Hosts hand a browser login callback here (Android `MainActivity`, iOS `onOpenURL` / the web auth
- * session, the HarmonyOS KNOI export). The exchange runs in the background; the login page observes
+ * session). The exchange runs in the background; the login page observes
  * [RaftWebLoginCompletion]. On a cold start the shared store registry may not exist yet, so the
  * callback is retried briefly in memory (the pending request itself survives on disk).
  */

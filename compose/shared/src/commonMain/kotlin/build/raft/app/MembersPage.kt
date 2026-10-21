@@ -792,10 +792,9 @@ internal fun DataResult<MemberProfile>.membersAgentServerRoleSaveOutcome(
 private fun String?.normalizedMembersServerRole(): String =
     this?.trim()?.lowercase().orEmpty()
 
-// OHOS's zero-argument native string lookup routes through the variadic
-// OH_ResourceManager_GetStringByName API. Reading a resource that contains
-// %1$s without an argument makes the platform formatter dereference a missing
-// vararg. Resolve templates through KmmResource's formatted service path with
+// A zero-argument native string lookup that routes through a variadic
+// platform API can dereference a missing vararg when the resource contains
+// %1$s. Resolve templates through KmmResource's formatted service path with
 // a sentinel, then restore the placeholder for callbacks that supply the
 // eventual value outside composition.
 private const val MembersFormatSentinel = "__RAFT_MEMBER_FORMAT_VALUE__"

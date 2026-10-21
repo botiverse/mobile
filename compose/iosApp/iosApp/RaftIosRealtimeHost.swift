@@ -561,8 +561,8 @@ final class RaftIosRealtimeHost: NSObject {
     }
 
     private func emitRoomCommand(runtime: Runtime, eventName: String, channelId: String) {
-        // The server's join:channel / leave:channel handlers take the channel id itself, as Android and
-        // HarmonyOS send it. The previous {"channelId": …} object made both a silent no-op on iOS. Which
+        // The server's join:channel / leave:channel handlers take the channel id itself, as Android
+        // sends it. The previous {"channelId": …} object made both a silent no-op on iOS. Which
         // rooms get a leave at all is decided in shared (member channels never do).
         guard runtime.state == .connected else {
             log("emit_deferred serverId=\(runtime.serverId) eventName=\(eventName)")

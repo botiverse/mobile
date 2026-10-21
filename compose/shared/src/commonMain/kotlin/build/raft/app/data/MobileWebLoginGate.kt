@@ -11,7 +11,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Android/iOS show the browser web login (the HarmonyOS login flow) by default. Turning this pre-auth flag
+ * Android/iOS show the browser web login by default. Turning this pre-auth flag
  * ON brings back the email/social login page. It is inverted on purpose: the public flag endpoint answers
  * `false` for unknown, unmarked and disabled keys alike, so a pre-auth flag must be "off by default, server
  * turns on" (slock spec v3 "登录前可评估的 Feature Flag").

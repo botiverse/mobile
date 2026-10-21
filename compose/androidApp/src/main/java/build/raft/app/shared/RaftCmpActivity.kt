@@ -4954,7 +4954,7 @@ internal class RaftBridgeModule(
         callback?.invoke(result)
     }
 
-    /** Browser web login (the HarmonyOS flow): PKCE for the shared coordinator, which keeps the verifier. */
+    /** Browser web login: PKCE for the shared coordinator, which keeps the verifier. */
     private fun prepareAppLoginCapability(): Map<String, Any> {
         val pkce = AndroidMobileOAuth.createPkce()
         return mapOf(
@@ -5095,7 +5095,7 @@ internal class RaftBridgeModule(
                     "feedback" to feedback.orEmpty(),
                     // Serialized like entriesJson (#484): rows cross the render
                     // bridge as a primitive string, independent of container
-                    // marshal support. OHOS/iOS hosts still send structured
+                    // marshal support. The iOS host still sends structured
                     // "rows"; the shared parser accepts both.
                     "rowsJson" to
                             JSONArray()
@@ -5469,7 +5469,7 @@ internal class RaftBridgeModule(
                         },
                 // Serialized like entriesJson (#484): options cross the render
                 // bridge as a primitive string, independent of container
-                // marshal support. OHOS/iOS hosts still send structured
+                // marshal support. The iOS host still sends structured
                 // "options"; the shared parser accepts both.
                 "optionsJson" to options.toString(),
                 "feedback" to feedback.orEmpty()

@@ -152,7 +152,7 @@ private fun serverSetupValidPortSuffix(value: String): Boolean {
 /**
  * Installs the frozen two-positional-argument Web ABI without exposing a broad native JS object.
  * The synthetic navigation is rejected by the WebView allowlist and returned through the existing
- * navigationBlocked event on Android, iOS, and OHOS.
+ * navigationBlocked event on Android and iOS.
  */
 internal fun serverSetupHostBridgeJavaScript(identity: ServerSetupAdmissionIdentity): String =
     """

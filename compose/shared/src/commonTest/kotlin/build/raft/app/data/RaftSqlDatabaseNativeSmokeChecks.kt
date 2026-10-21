@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Shared driver-level smoke check reused by the native (iOS + OHOS) leaf tests.
+ * Shared driver-level smoke check reused by the native (iOS) leaf tests.
  *
  * The JVM driver already has coverage via the JVM androidUnitTest suite using
  * JdbcSqliteDriver; this exercises the real `NativeSqliteDriver` path instead:

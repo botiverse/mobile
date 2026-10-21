@@ -246,8 +246,8 @@ internal class ComposeAuthLegalAcceptancePage : build.raft.app.base.BasePager() 
 }
 
 /**
- * Where the auth About page opens. The login pages' "Sign in to a private deployment" link (web login on
- * HarmonyOS, the email/social login on Android and iOS) passes [AUTH_DESTINATION_API_ENVIRONMENT] to land on
+ * Where the auth About page opens. The login pages' "Sign in to a private deployment" link (on the email/social
+ * login on Android and iOS) passes [AUTH_DESTINATION_API_ENVIRONMENT] to land on
  * the API environment editor; the hidden diagnostics shortcut passes nothing and lands on About.
  */
 internal fun authAboutInitialDestination(destination: String?): AuthAboutDestination =
@@ -519,7 +519,7 @@ internal fun shouldApplyFreshLoginPageChoice(elapsedMs: Long, interacted: Boolea
     !interacted && elapsedMs <= MOBILE_LEGACY_LOGIN_APPLY_WINDOW_MS
 
 /**
- * Browser web login when the host offers only that (HarmonyOS), or when it implements it and the pre-auth
+ * Browser web login when the host offers only that, or when it implements it and the pre-auth
  * `mobile_legacy_login_v0` flag is not on (Android, iOS); otherwise email/social login.
  */
 internal fun shouldUseWebLogin(capabilities: SharedAuthRuntimeCapabilities, webLoginGateEnabled: Boolean): Boolean =

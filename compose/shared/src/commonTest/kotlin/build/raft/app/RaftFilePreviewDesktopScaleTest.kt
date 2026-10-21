@@ -5,8 +5,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /**
- * The fit scale is the one piece of arithmetic behind desktop mode, and task #514 gave it three
- * platform callers. These tests pin the contract so Android, iOS and OHOS cannot each end up with
+ * The fit scale is the one piece of arithmetic behind desktop mode, and task #514 gave it
+ * platform callers. These tests pin the contract so Android and iOS cannot each end up with
  * their own slightly different formula and their own edge-case behaviour.
  *
  * Two behaviours matter beyond the happy path, both carried over from the Android implementation

@@ -4,7 +4,7 @@ package build.raft.app.base
  * Kotlin/Native-safe same-name extensions for `java.util.Map` default methods
  * (task #479). `putIfAbsent`/`computeIfAbsent`/`merge` are JVM-only members:
  * commonMain code calling them compiles on Android and explodes only on the
- * OHOS/iOS native targets (broke main once — see #491/#497).
+ * iOS native targets (broke main once — see #491/#497).
  *
  * The trick: Kotlin resolves MEMBERS before extensions. On JVM these
  * extensions are shadowed by the real `java.util.Map` members (zero overhead,

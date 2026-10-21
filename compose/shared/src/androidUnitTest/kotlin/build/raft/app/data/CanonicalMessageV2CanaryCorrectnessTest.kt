@@ -689,7 +689,7 @@ class CanonicalMessageV2CanaryCorrectnessTest {
         val processOwner = rig.owner()
         val shellOwner = rig.owner()
         bounded {
-            // Android: AppShell → process owner, then the shell owner. iOS / OHOS additionally the process
+            // Android: AppShell → process owner, then the shell owner. iOS additionally the process
             // ingress coordinator → process owner.
             suspend fun deliverEverywhere(event: RealtimeEvent) {
                 rig.recordOnServer(event)
