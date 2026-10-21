@@ -10,6 +10,8 @@ import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.gesture.raftBackSwipeRegion
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY
+import build.raft.app.data.KnownEntityScope
+import build.raft.app.data.RaftKnownEntityResolver
 import build.raft.app.data.RAFT_SHELL_OVERLAY_REQUEST_EVENT
 import build.raft.app.data.RAFT_SHELL_OVERLAY_RESULT_EVENT
 import build.raft.app.data.SHELL_OVERLAY_SELECTED_ID
@@ -2742,6 +2744,20 @@ internal fun threadHeaderInitialProjectionMap(
                 ?.let { projection -> id to projection }
         }
         .toMap()
+}
+
+/** The known-entity candidate for the header's lookup ids, only if it is display-valid. */
+internal fun threadHeaderKnownCandidate(
+    resolver: RaftKnownEntityResolver,
+    accountId: String?,
+    serverId: ServerId?,
+    input: ThreadHeaderProjectionInput
+): SharedConversationDirectoryProjection? {
+    val account = accountId?.takeIf { it.isNotBlank() } ?: return null
+    val server = serverId ?: return null
+    return resolver
+        .conversation(KnownEntityScope(accountId = account, serverId = server), input.lookupIds)
+        ?.takeIf(input::acceptsForDisplay)
 }
 
 internal class ThreadHeaderProjectionStateOwner(
@@ -6506,6 +6522,27 @@ private fun SharedThreadRouteContentContent(
                 serverId = headerProjectionServerId?.value,
             )
         }
+    // First-frame header: whatever the app already holds in memory for this exact
+    // account+server+conversation (Home sidebar row, identity hub). Canonical state still wins;
+    // see displayModelWithKnownCandidate.
+    val knownEntityResolver = remember(sharedStores, storeScope) { sharedStores.knownEntityResolver(storeScope) }
+    val knownEntityAccountId =
+        currentSession?.user?.id ?: sharedStores.currentAuthenticatedRouteOwner(storeScope)?.accountId
+    val knownHeaderCandidate =
+        remember(
+            knownEntityResolver,
+            knownEntityAccountId,
+            headerProjectionServerId,
+            headerProjectionInput,
+            sharedHomeState.content
+        ) {
+            threadHeaderKnownCandidate(
+                resolver = knownEntityResolver,
+                accountId = knownEntityAccountId,
+                serverId = headerProjectionServerId,
+                input = headerProjectionInput
+            )
+        }
     val initialDirectoryConversationProjections =
         remember(
             conversationIdentityProvider,
@@ -6674,8 +6711,13 @@ private fun SharedThreadRouteContentContent(
     val headerServerPublicPageLive =
         currentSession?.servers?.firstOrNull { it.id == headerProjectionServerId?.value }?.publicPageLive == true
     val headerDisplayModel =
-        remember(headerProjectionInput, stableHeaderProjection, payload, headerServerPublicPageLive) {
-            headerProjectionInput.displayModel(stableHeaderProjection, payload)
+        remember(headerProjectionInput, stableHeaderProjection, payload, headerServerPublicPageLive, knownHeaderCandidate) {
+            headerProjectionInput
+                .displayModelWithKnownCandidate(
+                    projection = stableHeaderProjection,
+                    contentPayload = payload,
+                    knownCandidate = knownHeaderCandidate
+                )
                 .copy(serverPublicPageLive = headerServerPublicPageLive)
         }
     val activityMuteState =

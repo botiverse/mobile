@@ -870,6 +870,13 @@ internal class RaftSharedStoreProvider private constructor(
     fun sharedHomeStore(scope: RaftShellStoreScope): SharedHomeStore? =
         homeStores.get(scope)
 
+    /** In-memory candidate lookup for pushed pages' first frame (see [RaftKnownEntityResolver]). */
+    internal fun knownEntityResolver(scope: RaftShellStoreScope): RaftKnownEntityResolver =
+        raftKnownEntityResolver(
+            identityHub = { conversationIdentityHub(scope) },
+            homeStore = { sharedHomeStore(scope) },
+        )
+
     /**
      * Returns the live shell owner scope for child navigation. A route's
      * initial server is a bootstrap hint and may be stale after an in-process
