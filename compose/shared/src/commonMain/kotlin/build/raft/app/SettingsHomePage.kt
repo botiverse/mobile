@@ -11490,9 +11490,24 @@ private fun SettingsPushPreviewModeCard(
     val busy = actionState?.action == MOBILE_ACTION_PUSH_PREVIEW_MODE && actionState.inProgress
     val preference = snapshot.pushPreviewMode
     SettingsNotificationPreferenceGroup {
+        // Inside the card like its sibling rows: the same 14/12 inset and the row title type
+        // (artin 2026-10-21: the label and control ran flush against the card's edge).
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Text(
+                text = stringResource(MR.strings.settings_notifications_preview_mode_title),
+                style = RaftType.Button.copy(color = RaftColor.TextBlack),
+                color = RaftColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            SettingsFormDetailText(stringResource(MR.strings.settings_notifications_preview_mode_detail))
+        }
         SettingsSegmentedControlField(
-            label = stringResource(MR.strings.settings_notifications_preview_mode_title),
-            detail = stringResource(MR.strings.settings_notifications_preview_mode_detail),
+            modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
+            fillWidth = true,
             selectedValue = preference.selectedKey,
             options =
                 PushPreviewMode.entries.map { mode ->
@@ -12815,7 +12830,8 @@ private fun SettingsSegmentedControlField(
     modifier: Modifier = Modifier,
     label: String? = null,
     detail: String? = null,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    fillWidth: Boolean = false
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         label?.takeIf { it.isNotBlank() }?.let {
@@ -12826,7 +12842,8 @@ private fun SettingsSegmentedControlField(
             selectedValue = selectedValue,
             options = options,
             onValueSelected = onValueSelected,
-            enabled = enabled
+            enabled = enabled,
+            fillWidth = fillWidth
         )
     }
 }
