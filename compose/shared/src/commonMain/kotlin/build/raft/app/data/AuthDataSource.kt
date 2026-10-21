@@ -2560,7 +2560,9 @@ data class AuthRefreshRequestBody(
 )
 
 private const val CURRENT_TERMS_VERSION = "2026-05-12"
-private const val CURRENT_PRIVACY_VERSION = "2026-05-12"
+// slock #9018 (privacy policy 2026-10-14: usage data collection). The server accepts the previous
+// version only until 2026-10-31.
+private const val CURRENT_PRIVACY_VERSION = "2026-10-14"
 
 @kotlinx.serialization.Serializable
 data class AuthLogoutRequestBody(

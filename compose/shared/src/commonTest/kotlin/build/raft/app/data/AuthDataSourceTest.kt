@@ -924,7 +924,7 @@ class AuthDataSourceTest {
 
         assertTrue(result is SharedAuthResult.Success)
         assertEquals(
-            """{"code":"handoff-1","codeVerifier":"verifier-1","platform":"ios","acceptTerms":true,"termsVersion":"2026-05-12","privacyVersion":"2026-05-12","legalAcceptanceSource":"oauth"}""",
+            """{"code":"handoff-1","codeVerifier":"verifier-1","platform":"ios","acceptTerms":true,"termsVersion":"2026-05-12","privacyVersion":"2026-10-14","legalAcceptanceSource":"oauth"}""",
             api.mobileOAuthCompleteBody
         )
         assertEquals("user-1", store.readSession()?.user?.id)
@@ -942,7 +942,7 @@ class AuthDataSourceTest {
         assertTrue(registered is SharedAuthResult.Success)
         assertTrue(forgot is SharedAuthResult.Success)
         assertEquals(
-            """{"email":"user@slock.ai","password":"password123","acceptTerms":true,"termsVersion":"2026-05-12","privacyVersion":"2026-05-12","legalAcceptanceSource":"signup"}""",
+            """{"email":"user@slock.ai","password":"password123","acceptTerms":true,"termsVersion":"2026-05-12","privacyVersion":"2026-10-14","legalAcceptanceSource":"signup"}""",
             api.registerBody
         )
         assertEquals("""{"email":"user@slock.ai"}""", api.forgotPasswordBody)

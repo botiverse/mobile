@@ -1396,7 +1396,7 @@
     <string name="auth_terms_agreement_prefix">I agree to the&#160;</string>
     <string name="auth_terms_agreement_connector">&#160;and&#160;</string>
     <string name="auth_terms_agreement_acknowledgement">acknowledge the&#160;</string>
-    <string name="auth_terms_agreement_suffix">.</string>
+    <string name="auth_terms_agreement_suffix">, including usage data collection, which I can turn off anytime in Settings.</string>
     <string name="auth_error_session_expired">Session expired</string>
     <string name="auth_error_sign_in_continue">Sign in to continue.</string>
     <string name="auth_error_choose_server_sign_in_required">Sign in before choosing a server.</string>

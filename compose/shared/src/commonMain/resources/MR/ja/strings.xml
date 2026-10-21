@@ -1400,7 +1400,7 @@
     <string name="auth_terms_agreement_prefix">私は</string>
     <string name="auth_terms_agreement_connector">に同意し、</string>
     <string name="auth_terms_agreement_acknowledgement">あわせて</string>
-    <string name="auth_terms_agreement_suffix">を確認します。</string>
+    <string name="auth_terms_agreement_suffix">（使用状況データの収集を含みます。設定でいつでもオフにできます）を確認します。</string>
     <string name="auth_error_session_expired">セッションの有効期限が切れました</string>
     <string name="auth_error_sign_in_continue">続行するにはログインしてください。</string>
     <string name="auth_error_choose_server_sign_in_required">サーバーを選択する前にログインしてください。</string>

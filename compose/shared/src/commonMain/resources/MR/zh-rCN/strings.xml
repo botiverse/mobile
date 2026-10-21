@@ -1384,7 +1384,7 @@
     <string name="auth_terms_agreement_prefix">我同意</string>
     <string name="auth_terms_agreement_connector">并</string>
     <string name="auth_terms_agreement_acknowledgement">确认</string>
-    <string name="auth_terms_agreement_suffix">。</string>
+    <string name="auth_terms_agreement_suffix">（包括使用数据的收集，可随时在设置中关闭）。</string>
     <string name="auth_error_session_expired">会话已过期</string>
     <string name="auth_error_sign_in_continue">请登录后继续。</string>
     <string name="auth_error_choose_server_sign_in_required">请先登录再选择服务器。</string>
