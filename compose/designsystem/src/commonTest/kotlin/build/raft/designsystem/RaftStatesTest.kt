@@ -174,7 +174,8 @@ class RaftDisplayLooksTest {
     @Test
     fun optionCardTakesTheFieldBorder() {
         val option = raftCardLook(RaftCardVariant.Option, light)
-        assertEquals(1.dp, option.border)
+        // raft-ui 0.18 card.recipe `option`: border-[1.5px] border-line-field.
+        assertEquals(1.5.dp, option.border)
         assertEquals(light.lineField, option.borderColor)
         assertEquals(8.dp, option.radius)
         val card = raftCardLook(RaftCardVariant.Default, light)
