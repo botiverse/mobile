@@ -48,12 +48,6 @@ class RaftHomeComponentsTest {
     private val errorStrings = englishErrorPresentationStringsForTest()
 
     @Test
-    fun homeServerIdentityChevronUsesCompactNameBoundSpacing() {
-        assertEquals(4.dp, HomeServerIdentityNameChevronGap)
-        assertEquals(18.dp, HomeServerIdentityChevronSize)
-    }
-
-    @Test
     fun homeTitlebarAndHostedDrawerShareAppShellSafeAreaAndPageHeaderHeight() {
         assertEquals(RaftAppSize.PageHeaderHeight, homeShellHeaderHeight(0.dp))
         assertEquals(80.dp, homeShellHeaderHeight(24.dp))

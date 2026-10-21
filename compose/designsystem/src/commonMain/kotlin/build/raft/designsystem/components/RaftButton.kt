@@ -195,7 +195,7 @@ internal fun raftButtonMetrics(size: RaftButtonSize, variant: RaftButtonVariant)
         else -> RaftButtonMetrics(52.dp, 20.dp, 20.dp, 18.dp)
     }
 
-private fun raftButtonTextStyle(size: RaftButtonSize, variant: RaftButtonVariant, typography: RaftTypography): TextStyle {
+internal fun raftButtonTextStyle(size: RaftButtonSize, variant: RaftButtonVariant, typography: RaftTypography): TextStyle {
     // raft `text-footnote` (md), `text-subhead` (lg, and md on the frame), `text-body` (xl).
     val base =
         when {
@@ -216,7 +216,7 @@ private fun raftButtonTextStyle(size: RaftButtonSize, variant: RaftButtonVariant
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun RaftButtonBox(
+internal fun RaftButtonBox(
     look: RaftButtonLook,
     onClick: () -> Unit,
     modifier: Modifier,

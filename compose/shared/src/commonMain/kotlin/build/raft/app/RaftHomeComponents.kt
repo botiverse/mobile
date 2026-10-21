@@ -11,6 +11,8 @@ import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftMentionMarker
 import build.raft.designsystem.components.RaftRowTone
 import build.raft.designsystem.components.RaftSidebarChannelItem
+import build.raft.designsystem.components.RaftWorkspaceButton
+import build.raft.designsystem.components.RaftWorkspaceButtonDefaults
 import build.raft.designsystem.components.RaftSidebarItem
 import build.raft.designsystem.components.RaftSidebarItemIcon
 import build.raft.designsystem.components.RaftSidebarItemVariant
@@ -108,7 +110,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -242,10 +243,8 @@ private val HomeServerSwitcherDragHandleWidth = 32.dp
 internal val HomeServerSwitcherDragHandleIconName = RaftLucideIconName.GripVertical
 private const val HomeServerSwitcherMaxVisibleRows = 6
 private const val HomeServerBadgeTiltDegrees = -2f
-internal val HomeServerIdentityNameChevronGap = 4.dp
 internal val HomeServerPublicPageGlobeGap = 4.dp
 internal val HomeServerPublicPageGlobeSize = 13.dp
-internal val HomeServerIdentityChevronSize = 18.dp
 private val RaftSortEdgeScrollZone = 56.dp
 private val RaftSortEdgeScrollStep = 10.dp
 private const val SharedListMaxBeyondBoundsItemCount = 96
@@ -4671,10 +4670,13 @@ private fun HomeTitlebar(
             if (refreshing) {
                 RaftHeaderRefreshIndicator()
             }
+            // The bell's icon box ends on the content line (16dp), mirroring the server avatar on
+            // the left; its 44dp target reaches past it.
             HomeNotificationCenter(
                 notifications = notifications,
                 open = notificationCenterExpanded,
-                onToggle = onNotificationToggle
+                onToggle = onNotificationToggle,
+                modifier = Modifier.offset(x = HomeNotificationBellEdgeInset)
             )
         }
     }
@@ -4702,8 +4704,6 @@ private fun HomeServerIdentityCluster(
     // The caller hands this cluster the header's remaining width (weight). Only the
     // avatar + name + chevron is the switcher: the free space to its right must not be a
     // touch target, so the clickable sits on a wrap-content row inside that width.
-    val pressSource = remember { MutableInteractionSource() }
-    val pressed = pressSource.collectIsPressedAsState().value
     Box(
         modifier =
             modifier
@@ -4722,41 +4722,26 @@ private fun HomeServerIdentityCluster(
                 ),
         contentAlignment = Alignment.CenterStart
     ) {
-    Row(
-        modifier = Modifier
-            .fillMaxHeight()
-            .background(
-                if (pressed) RaftColor.FillFramePressed else Color.Transparent,
-                RoundedCornerShape(RaftAppRadius.Control)
-            )
-            .clickable(interactionSource = pressSource, indication = null, onClick = onClick),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box {
-            ServerSwitcherAvatarTile(server)
-            // Another server has unread activity.
-            if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
-        }
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = server.name,
-            color = RaftColor.TextBlack,
-            style = RaftType.ButtonBold.copy(fontSize = 15.sp, lineHeight = 20.sp),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false)
-        )
-        if (server.publicPageLive) {
-            Spacer(Modifier.width(HomeServerPublicPageGlobeGap))
-            RaftPublicPageGlobe(live = true, size = HomeServerPublicPageGlobeSize, color = RaftColor.TextBlackArgb)
-        }
-        Spacer(Modifier.width(HomeServerIdentityNameChevronGap))
-        RaftLucideIcon(
-            RaftLucideIconName.ChevronDown,
-            Modifier.size(HomeServerIdentityChevronSize),
-            color = RaftColor.TextBlackArgb
-        )
-    }
+    // raft-ui WorkspaceButton: the avatar sits on the header's content line and the press
+    // fill reaches past it by the button's inset.
+    RaftWorkspaceButton(
+        name = server.name,
+        onClick = onClick,
+        modifier = Modifier.offset(x = -RaftWorkspaceButtonDefaults.ContentInset),
+        avatar = {
+            Box {
+                ServerSwitcherAvatarTile(server, size = RaftWorkspaceButtonDefaults.AvatarSize)
+                // Another server has unread activity.
+                if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
+            }
+        },
+        mark =
+            if (server.publicPageLive) {
+                { RaftPublicPageGlobe(live = true, size = HomeServerPublicPageGlobeSize, color = RaftColor.TextBlackArgb) }
+            } else {
+                null
+            },
+    )
     }
 }
 
@@ -4914,6 +4899,9 @@ private fun HomeNotificationCenter(
 private val HomeNotificationTriggerSize = 44.dp
 private val HomeNotificationBellIconSize = 20.dp
 private val HomeNotificationTriggerSlotSize = HomeNotificationTriggerSize + HomeSmallShadowOffset
+// From the trigger slot's end to the bell icon's: the shadow offset, then the icon centred in 44dp.
+internal val HomeNotificationBellEdgeInset =
+    HomeSmallShadowOffset + (HomeNotificationTriggerSize - HomeNotificationBellIconSize) / 2
 private val HomeNotificationPopoverTopGap = 4.dp
 internal fun homeNotificationPopoverTopOffset(topSafeArea: Dp): Dp =
     topSafeArea + RaftAppSize.PageHeaderHeight + HomeNotificationPopoverTopGap
@@ -6070,12 +6058,12 @@ private fun ServerSwitcherUnreadIndicator(server: RaftServerSwitcherItem) {
 }
 
 @Composable
-internal fun ServerSwitcherAvatarTile(server: RaftServerSwitcherItem) {
+internal fun ServerSwitcherAvatarTile(server: RaftServerSwitcherItem, size: Dp = 32.dp) {
     val presentation = server.toServerSwitcherAvatarPresentation()
     Box(
         modifier =
             Modifier
-                .size(32.dp)
+                .size(size)
                 // raft-ui square avatar: sticker radius (4dp), ink tile.
                 .clip(RoundedCornerShape(RaftAppRadius.Sticker))
                 // No ink fill behind an uploaded image: a transparent server avatar must show the
@@ -6085,7 +6073,7 @@ internal fun ServerSwitcherAvatarTile(server: RaftServerSwitcherItem) {
         contentAlignment = Alignment.Center
     ) {
         if (presentation.avatarWireValue == null) {
-            ServerAvatarFallbackLabel(presentation.fallbackLabel)
+            ServerAvatarFallbackLabel(presentation.fallbackLabel, size)
         }
         presentation.avatarWireValue?.let { source ->
             if (source.toPixelAvatarSpec() != null) {
@@ -6095,7 +6083,7 @@ internal fun ServerSwitcherAvatarTile(server: RaftServerSwitcherItem) {
                     avatarWireValue = source,
                     label = presentation.fallbackLabel,
                     modifier = Modifier.fillMaxSize(),
-                    avatarSize = 32.dp,
+                    avatarSize = size,
                     borderWidth = 0.dp,
                     cacheSubject = RaftAvatarCacheSubject.Server(server.id),
                     cacheServerId = server.id
@@ -6109,8 +6097,8 @@ internal fun ServerSwitcherAvatarTile(server: RaftServerSwitcherItem) {
                     cacheSubject = RaftAvatarCacheSubject.Server(server.id),
                     cacheServerId = server.id,
                     serverDiagnosticsId = server.id,
-                    fallback = { ServerAvatarFallbackLabel(presentation.fallbackLabel) },
-                    placeholder = { ServerAvatarFallbackLabel(presentation.fallbackLabel) }
+                    fallback = { ServerAvatarFallbackLabel(presentation.fallbackLabel, size) },
+                    placeholder = { ServerAvatarFallbackLabel(presentation.fallbackLabel, size) }
                 )
             }
         }
@@ -6118,7 +6106,7 @@ internal fun ServerSwitcherAvatarTile(server: RaftServerSwitcherItem) {
 }
 
 @Composable
-private fun ServerAvatarFallbackLabel(label: String) {
+private fun ServerAvatarFallbackLabel(label: String, tileSize: Dp = 32.dp) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -6130,8 +6118,9 @@ private fun ServerAvatarFallbackLabel(label: String) {
         style =
             RaftType.Button.copy(
                 fontFamily = raftMonoFamilyForWeight(FontWeight.Bold),
-                fontSize = 17.sp,
-                lineHeight = 20.sp,
+                // The 27dp header tile takes raft-ui's `sm` initial size.
+                fontSize = if (tileSize < 32.dp) 13.sp else 17.sp,
+                lineHeight = if (tileSize < 32.dp) 16.sp else 20.sp,
                 fontWeight = FontWeight.Normal
             ),
         color = RaftColor.BrandYellow,
