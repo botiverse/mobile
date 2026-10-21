@@ -235,7 +235,8 @@ internal fun RaftPanelBackHeader(
                     .fillMaxWidth()
                     .padding(top = safeTop)
                     .height(RaftPanelHeaderHeight - RaftAppStroke.Thin)
-                    .padding(start = if (onBack != null) RaftBackButtonDefaults.EdgeInset else 16.dp, end = 6.dp),
+                    // The last 44dp icon button's 22dp glyph ends on the 16dp line, like Back's.
+                    .padding(start = if (onBack != null) RaftBackButtonDefaults.EdgeInset else 16.dp, end = RaftBackButtonDefaults.EdgeInset),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
