@@ -71,16 +71,25 @@ class RaftPagerHostPageSwapTest {
                 RaftPagerHost(factory = { ProbePage() }, args = current)
             }
         }
-        settle()
+        settleUntil { rendered.lastOrNull() == "channel-all" }
         assertEquals("channel-all", rendered.lastOrNull(), "first page, rendered=$rendered")
 
         // The list tap: same host slot, new page args.
         current = args("channel-push-test")
-        settle()
+        settleUntil { rendered.lastOrNull() == "channel-push-test" }
         assertEquals("channel-push-test", rendered.lastOrNull(), "after switching, rendered=$rendered")
     }
 
-    private fun settle() {
-        repeat(4) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100)) }
+    /**
+     * Runs the main looper (Robolectric virtual time) until [done] holds, up to 50 steps of 100ms.
+     * The first frame of a ComposeView can need more passes on a loaded CI runner than locally;
+     * a fixed 4 steps failed there before the first page had composed. The assertion after each
+     * call reports what did render.
+     */
+    private fun settleUntil(done: () -> Boolean) {
+        repeat(50) {
+            if (done()) return
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100))
+        }
     }
 }
