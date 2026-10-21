@@ -53,7 +53,7 @@ SLOCK_SHARED_STORE_PROVIDER = (
 )
 ANDROID_ACTIVITY = "compose/androidApp/src/main/java/build/raft/app/shared/RaftCmpActivity.kt"
 VISUAL_FIXTURE_DATA = (
-    "compose/shared/src/visualFixtures/kotlin/build/raft/app/VisualFixtureData.kt"
+    "compose/shared/src/visualFixtureData/kotlin/build/raft/app/VisualFixtureData.kt"
 )
 COMPOSER_IME_CONNECTED_TEST = (
     "compose/androidApp/src/androidTest/java/build/raft/app/shared/"

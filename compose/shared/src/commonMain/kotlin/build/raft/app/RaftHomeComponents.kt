@@ -8,6 +8,7 @@ import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.RaftMentionMarker
 import build.raft.designsystem.components.RaftRowTone
 import build.raft.designsystem.components.RaftSidebarChannelItem
 import build.raft.designsystem.components.RaftSidebarItem
@@ -385,7 +386,18 @@ data class RaftHomeConversationItem(
     // task #396: external bridge provider ("slack") from `channel.bridge.provider`.
     val bridgeProvider: String? = null,
     /** Channel `guestVisible`; combine with the server's publicPageLive via [channelOnPublicPage]. */
-    val guestVisible: Boolean = false
+    val guestVisible: Boolean = false,
+    /**
+     * An unread message here mentions the user (web unread summary `hasMention`, or a followed
+     * thread's): the row's yellow @ sticker. Home does not load that summary yet, so production
+     * rows leave it false; fixtures set it.
+     */
+    val mentioned: Boolean = false,
+    /**
+     * Followed threads under this channel with new replies (web `threadUnread[channelId].count`):
+     * the row's `[thread] N` segment. Not loaded by Home yet; production rows leave it 0.
+     */
+    val followedThreadUnreadCount: Int = 0
 )
 
 data class RaftHomeServerDrawerSection(
@@ -2579,6 +2591,8 @@ private fun RaftStructuralHomeShellContent(
                                                         muted = pinned.activityMuted,
                                                         bridgeProvider = pinned.bridgeProvider,
                                                         unreadCount = pinned.unreadCount,
+                                                        mentioned = pinned.mentioned,
+                                                        followedThreadUnreadCount = pinned.followedThreadUnreadCount,
                                                         interactionIdentity = homeSidebarInteractionIdentity("pinned", pinnedRow.key),
                                                         selected = pinnedSelected,
                                                         menuOpen = pinnedMenuOpen,
@@ -2637,6 +2651,8 @@ private fun RaftStructuralHomeShellContent(
                                                     muted = channel.activityMuted,
                                                     bridgeProvider = channel.bridgeProvider,
                                                     unreadCount = channel.unreadCount,
+                                                    mentioned = channel.mentioned,
+                                                    followedThreadUnreadCount = channel.followedThreadUnreadCount,
                                                     interactionIdentity = homeSidebarInteractionIdentity("joint", channel.id),
                                                     selected = jointSelected,
                                                     menuOpen = activePinMenuConversationId == channel.id && activeMenuSection == RaftHomeSortSection.JointChannels,
@@ -2697,6 +2713,8 @@ private fun RaftStructuralHomeShellContent(
                                                     muted = channel.activityMuted,
                                                     bridgeProvider = channel.bridgeProvider,
                                                     unreadCount = channel.unreadCount,
+                                                    mentioned = channel.mentioned,
+                                                    followedThreadUnreadCount = channel.followedThreadUnreadCount,
                                                     interactionIdentity = homeSidebarInteractionIdentity("channel", channel.id),
                                                     selected = channelSelected,
                                                     menuOpen = activePinMenuConversationId == channel.id && activeMenuSection == RaftHomeSortSection.Channels,
@@ -2876,6 +2894,8 @@ private fun RaftStructuralHomeShellContent(
                                                         muted = item.activityMuted,
                                                         bridgeProvider = item.bridgeProvider,
                                                         unreadCount = item.unreadCount,
+                                                        mentioned = item.mentioned,
+                                                        followedThreadUnreadCount = item.followedThreadUnreadCount,
                                                         interactionIdentity = homeSidebarInteractionIdentity("custom", customRowKey),
                                                         selected = customSelected,
                                                         menuOpen = customMenuOpen,
@@ -5727,6 +5747,8 @@ private fun HomeServerDrawerConversationRow(
                 muted = item.activityMuted,
                 bridgeProvider = item.bridgeProvider,
                 unreadCount = item.unreadCount,
+                mentioned = item.mentioned,
+                followedThreadUnreadCount = item.followedThreadUnreadCount,
                 interactionIdentity = identity,
                 onClick = onClick.takeIf { enabled },
                 modifier = Modifier.padding(horizontal = HomeServerDrawerConversationHorizontalPadding)
@@ -6363,6 +6385,46 @@ private fun homeSidebarUserContentName(name: String): AnnotatedString =
  * raft-ui SidebarItem tone of a Home conversation row: not joined reads `away` (unless it is
  * the current place), muted `muted`, a loud unread `unread` (a 700 name).
  */
+/**
+ * What a Home channel row draws at its end (web Sidebar.tsx `ChannelRow` with
+ * `getChannelUnreadIndicatorState`): the channel's unread and its followed threads with new
+ * replies are one pink count (`N`, `N · [thread] M`, `[thread] M`) in a joined, unmuted channel,
+ * and a quiet grey number in a muted or not-joined one; the @ sticker shows for a joined
+ * channel with an unread mention; the draft pencil only when nothing is unread.
+ */
+internal data class HomeChannelRowMarks(
+    val mention: Boolean,
+    val loudCount: Int,
+    val loudThreadCount: Int,
+    val quietLabel: String?,
+    val showDraft: Boolean,
+) {
+    val loud: Boolean
+        get() = loudCount > 0 || loudThreadCount > 0
+}
+
+internal fun homeChannelRowMarks(
+    unreadCount: Int,
+    followedThreadUnreadCount: Int,
+    mentioned: Boolean,
+    joined: Boolean,
+    muted: Boolean,
+    hasDraft: Boolean,
+): HomeChannelRowMarks {
+    val unread = unreadCount.coerceAtLeast(0)
+    val threads = followedThreadUnreadCount.coerceAtLeast(0)
+    val hasUnread = unread > 0 || threads > 0
+    val loud = hasUnread && joined && !muted
+    val quiet = hasUnread && !loud
+    return HomeChannelRowMarks(
+        mention = mentioned && joined,
+        loudCount = if (loud) unread else 0,
+        loudThreadCount = if (loud) threads else 0,
+        quietLabel = if (quiet) formatHomeSidebarBadgeCount(if (unread > 0) unread else threads) else null,
+        showDraft = hasDraft && !hasUnread,
+    )
+}
+
 internal fun homeConversationRowTone(
     muted: Boolean,
     joined: Boolean,
@@ -6393,6 +6455,8 @@ private fun HomeSidebarChannelRow(
     joined: Boolean = true,
     muted: Boolean = false,
     unreadCount: Int = 0,
+    mentioned: Boolean = false,
+    followedThreadUnreadCount: Int = 0,
     hasDraft: Boolean = false,
     bridgeProvider: String? = null,
     interactionIdentity: String = "channel:$symbol:$name",
@@ -6400,11 +6464,20 @@ private fun HomeSidebarChannelRow(
     onClick: (() -> Unit)? = null,
     onLongPress: ((RaftPopoverAnchor) -> Unit)? = null
 ) {
-    val badge = homeConversationBadgeProjection(HomeConversationBadgeInput(unreadCount = unreadCount, joined = joined, muted = muted))
-    val loudCount = if (badge.hasUnread && badge.tone == HomeSidebarBadgeTone.Loud) unreadCount else 0
-    val quietLabel = badge.label?.takeIf { badge.tone == HomeSidebarBadgeTone.Quiet }
+    val marks =
+        homeChannelRowMarks(
+            unreadCount = unreadCount,
+            followedThreadUnreadCount = followedThreadUnreadCount,
+            mentioned = mentioned,
+            joined = joined,
+            muted = muted,
+            hasDraft = hasDraft
+        )
+    val loudCount = marks.loudCount
+    val loudThreadCount = marks.loudThreadCount
+    val quietLabel = marks.quietLabel
     val showBridge = externalBridgeBadgeVisible(bridgeProvider)
-    val showDraft = hasDraft && badge.label == null
+    val showDraft = marks.showDraft
     val mutedIcon = homeConversationMutedIndicatorIcon(muted)
     val titleTrailing: (@Composable () -> Unit)? =
         if (showBridge || mutedIcon != null) {
@@ -6430,7 +6503,18 @@ private fun HomeSidebarChannelRow(
             }
             else -> null
         }
-    val tone = homeConversationRowTone(muted = muted, joined = joined, selected = selected, loudUnread = loudCount > 0)
+    // Web ChannelRow: the yellow @ sticker sits before the count (`ml-1`), whatever the count's tone.
+    val mentionDescription = if (marks.mention) stringResource(MR.strings.activity_list_mentioned_you) else null
+    val trailing: (@Composable RowScope.() -> Unit)? =
+        if (marks.mention) {
+            {
+                RaftMentionMarker(contentDescription = mentionDescription)
+                aside?.invoke(this)
+            }
+        } else {
+            aside
+        }
+    val tone = homeConversationRowTone(muted = muted, joined = joined, selected = selected, loudUnread = marks.loud)
     val longClick = rememberHomeSidebarLongClick(interactionIdentity, onLongPress)
     val rowModifier = modifier.then(longClick.anchorModifier)
     val title = remember(name) { homeSidebarUserContentName(name) }
@@ -6445,7 +6529,8 @@ private fun HomeSidebarChannelRow(
                 tone = tone,
                 isPrivate = symbol == "lock",
                 unreadCount = loudCount,
-                trailing = aside,
+                threadCount = loudThreadCount,
+                trailing = trailing,
                 onLongClick = longClick.onLongClick,
                 onLongClickLabel = longClickLabel,
                 menuOpen = menuOpen,
@@ -6464,10 +6549,10 @@ private fun HomeSidebarChannelRow(
                 titleTrailing = titleTrailing,
                 leading = { HomeSidebarChannelGlyph(symbol) },
                 trailing =
-                    if (aside != null || loudCount > 0) {
+                    if (trailing != null || marks.loud) {
                         {
-                            aside?.invoke(this)
-                            RaftSidebarItemMarks(unreadCount = loudCount, countDescription = null)
+                            trailing?.invoke(this)
+                            RaftSidebarItemMarks(unreadCount = loudCount, threadCount = loudThreadCount, countDescription = null)
                         }
                     } else {
                         null

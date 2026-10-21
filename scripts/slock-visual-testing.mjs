@@ -15,6 +15,23 @@ if (command === "token-audit" && !hasKmpTokenPath) {
   );
 }
 
+const hasFixtureDataOut =
+  process.argv.some((arg) => arg === "--out" || arg.startsWith("--out="));
+
+// VisualFixtureData.kt lives in src/visualFixtureData (compiled into commonMain with
+// -PslockVisualFixtures=true, into commonTest otherwise), so JVM unit tests can render
+// fixtures from it too. Older slock CLIs default to src/visualFixtures; pin the path here.
+if (command === "generate-fixture-data" && !hasFixtureDataOut) {
+  process.argv.push(
+    "--out",
+    path.resolve(
+      import.meta.dirname,
+      "..",
+      "compose/shared/src/visualFixtureData/kotlin/build/raft/app/VisualFixtureData.kt",
+    ),
+  );
+}
+
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const visualTestingCli = resolveVisualTestingCli(repoRoot);
 if (!process.env.SLOCK_VISUAL_REACT_REPO_ROOT) {
