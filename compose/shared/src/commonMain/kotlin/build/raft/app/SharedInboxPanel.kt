@@ -51,6 +51,7 @@ import build.raft.app.data.activityUpdateRevisionMessageId
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
+import build.raft.app.model.MessageDelegatedBy
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
@@ -2476,9 +2477,18 @@ internal fun InboxItem.activityCardModel(
                 else -> ActivityCardTitleGlyph.Channel
             },
         title = title,
-        body = ActivityPreviewText(senderName = senderDisplayName(senderProfiles), body = preview)
+        body =
+            ActivityPreviewText(
+                senderName = senderDisplayName(senderProfiles),
+                body = preview,
+                delegatedBy = previewDelegatedBy()
+            )
     )
 }
+
+/** RFC 077: the assistant named next to this row's sender; never on system or mention-action rows. */
+internal fun InboxItem.previewDelegatedBy(): MessageDelegatedBy? =
+    latestDelegatedBy.takeIf { kind != InboxItemKind.MentionAction && !hasActivitySystemSender() }
 
 /** raft-ui InboxItemTitle: `text-subhead`, two lines, an 18dp hanging indent for the 14dp kind glyph. */
 @Composable
@@ -2508,12 +2518,13 @@ private fun SharedActivityCardTitle(card: ActivityCardModel, unread: Boolean) {
 @Composable
 private fun SharedActivityCardBody(card: ActivityCardModel, unread: Boolean) {
     val body = card.body
+    val senderName = body.senderName?.takeIf { it.isNotBlank() }?.let { delegatedPreviewSender(it, body.delegatedBy) }
     Text(
         text =
             buildAnnotatedString {
-                if (!body.senderName.isNullOrBlank()) {
+                if (senderName != null) {
                     withStyle(raftSpanStyleForWeight(FontWeight.SemiBold).copy(color = RaftColor.TextBlack)) {
-                        append(body.senderName)
+                        append(senderName)
                         append(": ")
                     }
                 }
@@ -3068,7 +3079,9 @@ internal fun InboxItem.secondaryPreviewText(
 
 internal data class ActivityPreviewText(
     val senderName: String?,
-    val body: String
+    val body: String,
+    /** RFC 077: rendered as "Alice (sent by Friday)" by the composable card ([delegatedPreviewSender]). */
+    val delegatedBy: MessageDelegatedBy? = null
 ) {
     val fullText: String =
         if (senderName.isNullOrBlank()) {

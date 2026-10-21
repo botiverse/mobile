@@ -2802,4 +2802,10 @@
     <string name="agent_migration_hosted_skip_over_budget">超出云端的大小或文件数量上限</string>
     <string name="agent_migration_hosted_skip_provider_rejected">被云端拒绝</string>
     <string name="raft_pro_upgrade">升级</string>
+    <string name="message_delegated_sent_by">由 %1$s 代发</string>
+    <string name="message_delegated_sent_by_in_body">（由 %1$s 代发）</string>
+    <string name="message_delegated_sent_by_deleted">由已删除的助理代发</string>
+    <string name="message_delegated_sent_by_deleted_in_body">（由已删除的助理代发）</string>
+    <string name="message_delegated_preview_sender">%1$s（由 %2$s 代发）</string>
+    <string name="message_delegated_preview_sender_deleted">%1$s（由已删除的助理代发）</string>
 </resources>

@@ -54,6 +54,7 @@ import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedActivitySenderProfile
 import build.raft.app.data.typedPinnedOrLegacy
+import build.raft.app.model.MessageDelegatedBy
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
@@ -301,12 +302,17 @@ internal data class ActivityConversationRowModel(
     val hasDraft: Boolean,
     val taskNumber: Int?,
     val taskStatus: TaskStatus?,
+    /**
+     * RFC 077: the assistant that sent the latest message for [sender] — "Alice (sent by
+     * Friday)", text only (web ThreadsInbox `formatDelegatedSender`). Never on a system row.
+     */
+    val delegatedBy: MessageDelegatedBy? = null,
 )
 
 private fun String.stripActivityTitlePrefix(): String = trimStart('@', '#')
 
 /** web `isSystemSender`: mention actions, system-kind senders and the `system` sender id. */
-private fun InboxItem.hasActivitySystemSender(): Boolean {
+internal fun InboxItem.hasActivitySystemSender(): Boolean {
     if (kind == InboxItemKind.MentionAction) return true
     val (senderKind, senderId) =
         if (kind == InboxItemKind.Thread) {
@@ -401,6 +407,7 @@ internal fun InboxItem.activityConversationRowModel(
         hasDraft = hasDraft,
         taskNumber = taskNumber.takeIf { activityTaskStatusBadgesEnabled && kind == InboxItemKind.Thread && taskStatus != null },
         taskStatus = taskStatus.takeIf { activityTaskStatusBadgesEnabled && kind == InboxItemKind.Thread && taskNumber != null },
+        delegatedBy = previewDelegatedBy(),
     )
 }
 
@@ -677,8 +684,8 @@ internal fun ActivityConversationListRow(
                             sender =
                                 when (val sender = model.sender) {
                                     ActivityConversationSender.System -> systemLabel
-                                    is ActivityConversationSender.Self -> selfLabel
-                                    is ActivityConversationSender.Named -> sender.name
+                                    is ActivityConversationSender.Self -> delegatedPreviewSender(selfLabel, model.delegatedBy)
+                                    is ActivityConversationSender.Named -> delegatedPreviewSender(sender.name, model.delegatedBy)
                                     null -> null
                                 },
                             preview = model.preview ?: fallback,

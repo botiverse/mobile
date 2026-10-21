@@ -23404,7 +23404,8 @@ private fun SharedHomeSearchMessageResultRow(
         remember(item, cacheServerId) { item.previewSenderAvatarCacheIdentity(cacheServerId) }
     val preview = item.latestActivityPreview ?: item.lastMessagePreview ?: item.parentMessagePreview
         ?: stringResource(MR.strings.search_state_no_preview)
-    val sender = item.latestActivitySenderName ?: item.lastMessageSenderName
+    // RFC 077 (web MessageHitRow): "Alice (sent by Friday)", text only.
+    val sender = (item.latestActivitySenderName ?: item.lastMessageSenderName)?.let { delegatedPreviewSender(it, item.latestDelegatedBy) }
     val time = item.latestActivityAt ?: item.lastMessageAt
     val metaStyle = sharedHomeSearchTimestampTextStyle()
     val interactionSource = remember { MutableInteractionSource() }

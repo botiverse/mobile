@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -33,6 +34,8 @@ import build.raft.designsystem.components.LocalRaftTooltipPreview
 import build.raft.designsystem.components.RaftAgentStateChip
 import build.raft.designsystem.components.RaftAgentTag
 import build.raft.designsystem.components.RaftAvatar
+import build.raft.designsystem.components.RaftAvatarBadgeBox
+import build.raft.designsystem.components.RaftMessageDelegatedAvatar
 import build.raft.designsystem.components.RaftAvatarGroup
 import build.raft.designsystem.components.RaftAvatarGroupCount
 import build.raft.designsystem.components.RaftAvatarSize
@@ -452,6 +455,51 @@ class DisplayComponentScreenshotTest {
                 }
             }
         }
+
+    /**
+     * raft-ui `MessageItemDelegatedAvatar` (RFC 077): an assistant's 2xs face in the corner
+     * of its owner's md avatar, next to an agent's presence light for the corner and
+     * overhang; a deleted assistant (grayed, faded, over the surface); on a highlighted row,
+     * where the ring and backing take the row's surface.
+     */
+    @Test
+    fun messageDelegatedAvatar() =
+        capture("message_delegated_avatar") {
+            val pixelFace: @Composable () -> Unit = { Box(Modifier.fillMaxSize().background(RaftUiPalette.brand400)) }
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Md, presence = RaftPresence.Online)
+                    DelegatedOwner { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Xxs, image = pixelFace) }
+                    DelegatedOwner { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Xxs) }
+                    DelegatedOwner(deleted = true) { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Xxs) }
+                    Caption("Presence, face, placeholder, deleted")
+                }
+                val rowFill = RaftTheme.colors.fillPressed.compositeOver(RaftTheme.colors.layerCanvas)
+                Row(
+                    Modifier.background(rowFill).padding(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(24.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    DelegatedOwner(surface = rowFill) { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Xxs, image = pixelFace) }
+                    DelegatedOwner(surface = rowFill, deleted = true) { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Xxs) }
+                    Caption("On a highlighted row")
+                }
+            }
+        }
+
+    @Composable
+    private fun DelegatedOwner(
+        deleted: Boolean = false,
+        surface: Color = RaftTheme.surfaceColor,
+        face: @Composable () -> Unit,
+    ) {
+        RaftAvatarBadgeBox(
+            size = RaftAvatarSize.Md,
+            badge = { RaftMessageDelegatedAvatar(deleted = deleted, surfaceColor = surface) { face() } },
+        ) {
+            RaftAvatar(RaftAvatarType.Human, RaftAvatarSize.Md, initials = "AL")
+        }
+    }
 
     @Test
     fun statusDot() =

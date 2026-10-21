@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.withKnownLatestDelegatedLabelsFrom
 import build.raft.app.SharedThreadContentGeneration
 import build.raft.app.SharedThreadFreshnessLedger
 import build.raft.app.SharedThreadSummaryFact
@@ -864,6 +865,8 @@ class SharedActivityStore internal constructor(
                 latestActivitySenderId = message.author.id.value,
                 latestActivitySenderKind = message.author.kind,
                 latestActivitySenderAvatarWireValue = message.author.avatar?.wireValue ?: message.author.avatarUrl,
+                // Web inboxStore receiveThreadReply: `latestDelegatedBy` follows the new message.
+                latestDelegatedBy = message.delegatedBy,
                 replyCount = existing.replyCount + 1,
                 latestActivitySeq = incomingSeq ?: existing.latestActivitySeq,
                 // Keep the Done/read overlay marker in step with the patched row
@@ -1697,6 +1700,9 @@ class SharedActivityStore internal constructor(
                         } else {
                             realtimeReconcile.items.dedupeActivityItems()
                         }
+                            // RFC 077: a re-fetched row of the same latest message without
+                            // `latestDelegatedBy` keeps the known label.
+                            .withKnownLatestDelegatedLabelsFrom(current.items)
                     val adjustedCanonicalUnreadCount =
                         maxOf(
                             0,
@@ -1937,6 +1943,7 @@ class SharedActivityStore internal constructor(
             latestActivitySenderId = current.latestActivitySenderId,
             latestActivitySenderKind = current.latestActivitySenderKind,
             latestActivitySenderAvatarWireValue = current.latestActivitySenderAvatarWireValue,
+            latestDelegatedBy = current.latestDelegatedBy,
             replyCount = current.replyCount,
             unreadCount = current.unreadCount,
             firstUnreadMessageId = current.firstUnreadMessageId

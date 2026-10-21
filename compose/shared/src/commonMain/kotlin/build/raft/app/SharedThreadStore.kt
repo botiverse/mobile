@@ -852,7 +852,8 @@ internal class SharedThreadMessageStore(
             if (existing != null && !existing.needsSharedThreadMessageStoreHydration() && message.needsSharedThreadMessageStoreHydration()) {
                 existing
             } else {
-                message
+                // RFC 077: a copy without `delegatedBy` never clears the known label.
+                message.withKnownDelegatedByFrom(existing)
             }
         messages.remove(key)
         messages[key] = selected
@@ -12064,6 +12065,8 @@ internal fun RaftThreadScreenPayload.preserveStableTimelineFrom(
                     messages
                 }
             }
+            // RFC 077: a refreshed / catch-up copy without `delegatedBy` keeps the known label.
+            .withKnownDelegatedLabelsFrom(previous.messages + listOfNotNull(previous.originMessage))
             .preserveStableItemsFrom(previous.messages) { item -> item.id }
     val stableStatus =
         if (stableMessages.any { it.isTransientLocalSendingMessage() } && status == "empty") {
@@ -12088,6 +12091,10 @@ internal fun RaftThreadScreenPayload.preserveStableTimelineFrom(
                 } else {
                     origin
                 }
+            }
+            ?.let { origin ->
+                val known = (previous.messages + listOfNotNull(previous.originMessage)).firstOrNull { it.id == origin.id }
+                origin.withKnownDelegatedByFrom(known)
             }
     val stableTasks =
         tasks
@@ -12401,7 +12408,7 @@ private fun List<RaftThreadMessageItem>.mergeIntoExpandedTimelineWindow(
     val incomingById = associateBy { it.id }
     val previousIds = previous.mapTo(mutableSetOf()) { it.id }
     return (
-        previous.map { message -> incomingById[message.id] ?: message } +
+        previous.map { message -> incomingById[message.id]?.withKnownDelegatedByFrom(message) ?: message } +
             filterNot { message -> message.id in previousIds }
         ).sortedByThreadTimeline()
 }
@@ -12902,7 +12909,7 @@ private fun RaftThreadScreenPayload.applyRealtimeMessages(
         }
     if (relevant.isEmpty()) return this
     val incoming = relevant.map { message -> message.toRaftThreadMessageItem(currentUserId) }
-    val baseMessages = this.messages.absorbingCanonicalSendEchoes(incoming)
+    val baseMessages = this.messages.absorbingCanonicalSendEchoes(incoming).withIncomingDelegatedLabels(incoming)
     val merged =
         (baseMessages + incoming)
             .distinctBy { item -> item.id }
@@ -12980,7 +12987,9 @@ internal fun RaftThreadScreenPayload.mergePagedMessages(
     before: Boolean,
     pageSize: Int
 ): RaftThreadScreenPayload {
-    val baseMessages = messages.absorbingCanonicalSendEchoes(pageMessages)
+    // RFC 077: the loaded copy stays, but the page's explicit `delegatedBy` (newer) fills or
+    // replaces its label; a page copy without one never clears a known label.
+    val baseMessages = messages.absorbingCanonicalSendEchoes(pageMessages).withIncomingDelegatedLabels(pageMessages)
     val incoming = pageMessages.filterNot { pageMessage -> baseMessages.any { it.id == pageMessage.id } }
     val mergedMessages =
         if (before) {
@@ -13925,7 +13934,10 @@ private fun RaftThreadMessageItem.mergeRealtimeUpdate(
                 else -> update.reactions.ifEmpty { reactions }
             },
         attachments = mergeAttachmentCommentMetadata(update.attachments),
-        commentRef = update.commentRef ?: commentRef
+        commentRef = update.commentRef ?: commentRef,
+        // Every message row carries `delegatedBy`; a later row wins (the assistant may since
+        // have been deleted), a sparse patch without it keeps the label.
+        delegatedBy = keepKnownDelegatedBy(update.delegatedBy, delegatedBy)
     )
 }
 
@@ -14354,6 +14366,7 @@ internal fun RaftThreadMessageItem.toMessage(
         deliveryState = deliveryState.toMessageDeliveryState(),
         task = taskSummary,
         externalAuthor = if (authorMemberKind == MemberKind.External) externalAuthor else null,
+        delegatedBy = if (authorMemberKind == MemberKind.Human) delegatedBy else null,
         replyCount = replyCount,
         unreadReplyCount = unreadReplyCount,
         firstUnreadReplyMessageId = firstUnreadReplyMessageId?.let(::MessageId),
@@ -14495,6 +14508,7 @@ internal fun Message.toRaftThreadMessageItem(currentUserId: String?): RaftThread
         avatarLabel = author.avatarLabel,
         avatarWireValue = resolvedAvatar.effectiveAvatarWireValue,
         externalAuthor = externalAuthor,
+        delegatedBy = delegatedBy,
         senderMembershipStatus =
             senderMembershipStatus?.takeIf { it.isNotBlank() }
                 ?: author.membershipStatus?.takeIf { it.isNotBlank() },

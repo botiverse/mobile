@@ -2802,4 +2802,10 @@
     <string name="agent_migration_hosted_skip_over_budget">Over the cloud\'s size or file limit</string>
     <string name="agent_migration_hosted_skip_provider_rejected">Refused by the cloud</string>
     <string name="raft_pro_upgrade">Upgrade</string>
+    <string name="message_delegated_sent_by">sent by %1$s</string>
+    <string name="message_delegated_sent_by_in_body">(sent by %1$s)</string>
+    <string name="message_delegated_sent_by_deleted">sent by a deleted assistant</string>
+    <string name="message_delegated_sent_by_deleted_in_body">(sent by a deleted assistant)</string>
+    <string name="message_delegated_preview_sender">%1$s (sent by %2$s)</string>
+    <string name="message_delegated_preview_sender_deleted">%1$s (sent by a deleted assistant)</string>
 </resources>

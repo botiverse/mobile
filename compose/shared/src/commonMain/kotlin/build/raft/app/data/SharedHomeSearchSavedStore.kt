@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.withKnownLatestDelegatedLabelsFrom
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -969,7 +970,8 @@ internal class SharedHomeSearchSavedStore(
                                 if (append) {
                                     (current.items + pageItems).distinctBy { item: InboxItem -> item.key }
                                 } else {
-                                    pageItems
+                                    // RFC 077: a re-run hit without `delegatedBy` keeps the known label.
+                                    pageItems.withKnownLatestDelegatedLabelsFrom(current.items)
                                 }
                             current.copy(
                                 items = items,
