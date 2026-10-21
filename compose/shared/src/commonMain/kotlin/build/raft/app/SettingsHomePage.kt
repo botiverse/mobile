@@ -1817,6 +1817,24 @@ internal fun appShellBottomTabsVisible(
         else -> appShellMoreChildBackTarget(selectedTab, navRailActive) == null
     }
 
+/**
+ * Navigation rule on a window that shrank below the wide layout (a tablet turned to portrait, a
+ * foldable folded, a split-screen resize): the Home / Activity list-detail host keeps the open
+ * conversation and shows it alone (DetailOnly) with its own Back, so it is a pushed page and the
+ * bottom bar steps aside, as it does for a conversation opened on a phone.
+ */
+internal fun appShellAdaptiveDetailCoversTabRoot(
+    desktopModeOnLargeScreen: Boolean,
+    selectedTab: String,
+    presentation: RaftAdaptiveWorkspacePresentation?,
+): Boolean =
+    desktopModeOnLargeScreen &&
+        presentation == RaftAdaptiveWorkspacePresentation.DetailOnly &&
+        retainedAppShellSelectedTab(selectedTab) in AppShellAdaptiveListDetailTabs
+
+/** The tabs whose root is the shared list-detail host ([appShellAdaptiveDetailCoversTabRoot]). */
+internal val AppShellAdaptiveListDetailTabs: Set<String> = setOf("home", "activity")
+
 internal fun sharedHomeShouldStartOnActive(active: Boolean, sessionReady: Boolean, state: SharedHomeState): Boolean =
     active &&
         sessionReady &&
@@ -6109,7 +6127,12 @@ private fun RaftAppShellReadyContent(
             selectedTab = selectedTab,
             selectedHomeDestination = selectedHomeDestination,
             navRailActive = navRailActive,
-        ) && !navRailActive
+        ) && !navRailActive &&
+            !appShellAdaptiveDetailCoversTabRoot(
+                desktopModeOnLargeScreen = desktopModeOnLargeScreen,
+                selectedTab = selectedTab,
+                presentation = adaptiveWorkspaceState?.presentation,
+            )
     val homeTabLabel = stringResource(MR.strings.tab_home)
     val tasksTabLabel = stringResource(MR.strings.tab_tasks)
     val membersTabLabel = stringResource(MR.strings.tab_members)
@@ -6616,8 +6639,8 @@ private fun RaftAppShellReadyContent(
                             }
                         val railItems =
                             (appShellRailTabItems + railSearchItem)
-                                // task #49: same order as the web LeftRail.
-                                .orderedLikeWebRail { it.key }
+                                // Nav spec §5: the phone bar's order (Search after Tasks).
+                                .orderedLikePhoneBar { it.key }
                         RaftNavigationRailTabBar(
                             items = railItems,
                             onSelect = { key ->
@@ -6932,16 +6955,13 @@ private fun RaftAppShellReadyContent(
                             )
                         }
                             if (detailPageData == null) {
-                                Box(
+                                // The wide detail with nothing open: the shared empty state (icon,
+                                // muted title) on the pane's surface, not a bare line of text.
+                                RaftEmptyState(
+                                    title = adaptiveEmptyLabel,
                                     modifier = modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(
-                                        text = adaptiveEmptyLabel,
-                                        color = RaftColor.TextMutedGray,
-                                        fontSize = 15.sp,
-                                    )
-                                }
+                                    iconName = RaftLucideIconName.MessageSquare,
+                                )
                             } else {
                                 RaftChildPage(
                                     pageName = THREAD_PAGE,
@@ -7401,6 +7421,8 @@ private fun RaftAppShellReadyContent(
                             activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
                             externalSelectedThreadId =
                                 adaptiveWorkspaceState?.selection?.identity?.threadId,
+                            // The two-pane layout owns the highlight: none once the detail closes.
+                            externalSelectionOwned = navRailActive,
                             mainTab = true,
                             scrollToTopRequest = tabScrollToTopRequests.activity
                         )
