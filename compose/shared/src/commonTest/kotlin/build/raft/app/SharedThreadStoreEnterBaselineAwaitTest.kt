@@ -20,6 +20,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -100,6 +101,35 @@ class SharedThreadStoreEnterBaselineAwaitTest {
         assertTrue(logs.any { "thread_enter_baseline_await" in it && "completed=true" in it }, logs.toString())
         assertFalse(payload.durableLastKnown)
         assertTrue(payload.status != "content" || payload.messages.isEmpty(), payload.status)
+        scope.cancel()
+    }
+
+    @Test
+    fun baselineCommittedDuringTheWaitIsTheFirstFrameWhenTheDiskWasEmpty() = runBlocking {
+        // Task #390 path kept by task #18: nothing on disk at the first read, the load commits while the
+        // entry waits, and the second read's frame (not a loading shell) is the first frame.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val reader = MutableFakeReader()
+        val loader =
+            SharedThreadStoreEnteredScopeTest.FakeLoader { partition, _ ->
+                delay(50)
+                reader.frames[partition] = frame("baseline body")
+            }
+        val logs = mutableListOf<String>()
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource(reader = reader, loader = loader),
+                scope = scope,
+                diagnosticsLogger = logs::add,
+            )
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        val payload = store.state.value.payload
+        assertEquals("content", payload.status)
+        assertTrue(payload.durableLastKnown)
+        assertEquals(listOf("baseline body"), payload.messages.map { it.body })
+        assertEquals(List(2) { partition(ownerA) to "channel-1" }, reader.reads)
+        assertTrue(logs.any { "thread_enter_baseline_await" in it && "completed=true" in it }, logs.toString())
         scope.cancel()
     }
 

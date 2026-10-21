@@ -6636,8 +6636,9 @@ internal class SharedThreadStore(
         routeContextPayload: RaftThreadScreenPayload,
         routeIdentity: ThreadRouteIdentity,
         context: ReplyCacheProducerContext,
+        baselineJob: Job?,
     ): RaftThreadScreenPayload? {
-        enteredScopeSnapshotJob?.let { job ->
+        baselineJob?.let { job ->
             try {
                 val completed =
                     withTimeoutOrNull(SharedThreadEnterBaselineAwaitMillis) { job.join() } != null
@@ -6737,6 +6738,8 @@ internal class SharedThreadStore(
                     dataSource.loadEnteredScopeSnapshotIfCurrent(routeIdentity, producerContext, replyParent)
                 }
         }
+        // This entry's own load: the disk read below suspends, and the field may be replaced meanwhile.
+        val entryBaselineJob = if (producerContext != null) enteredScopeSnapshotJob else null
         // Offline cache read entry (task #1123): only when no in-memory candidate exists does the
         // durable last-known frame stand in for the loading shell. Memory candidates are newer by
         // construction (they were written by a network response in this process).
@@ -6756,7 +6759,7 @@ internal class SharedThreadStore(
                         routePayload = routeContextPayload,
                         routeIdentity = routeIdentity,
                         context = context,
-                    ) ?: awaitBaselineThenReadDurable(threadId, routeContextPayload, routeIdentity, context)
+                    ) ?: awaitBaselineThenReadDurable(threadId, routeContextPayload, routeIdentity, context, entryBaselineJob)
                 }
             } else {
                 null
