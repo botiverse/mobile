@@ -398,6 +398,15 @@ internal class ProcessMemberPresenceRegistry {
     fun current(owner: ProcessServerMembersOwner): Map<String, MemberPresenceUpdated> =
         snapshot.value.partitions[owner].orEmpty()
 
+    /** The value [ownerSnapshotFlow] emits right now (a page's first frame). */
+    fun currentOwnerSnapshot(owner: ProcessServerMembersOwner): ProcessPresenceOwnerSnapshot =
+        snapshot.value.let { current ->
+            ProcessPresenceOwnerSnapshot(
+                facts = current.partitions[owner].orEmpty(),
+                transport = current.transportEpochs[owner]
+            )
+        }
+
     fun factFor(owner: ProcessServerMembersOwner, memberId: String?): MemberPresenceUpdated? =
         memberId?.trim()?.takeIf { it.isNotBlank() }?.let { current(owner)[it] }
 

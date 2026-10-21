@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.toRaftAvatarLabel
+import build.raft.app.isConversationAccessLost
 import build.raft.app.base.putIfAbsent
 import build.raft.app.parseExternalAgentTimestampOrNull
 import build.raft.app.model.AvatarReference
@@ -54,7 +55,13 @@ data class SharedServerMembersEntry(
     val server: ServerSummary? = null,
     val members: List<MemberProfile> = emptyList(),
     val status: SharedServerMembersLoadStatus = SharedServerMembersLoadStatus.Idle,
-    val errorCode: String? = null
+    val errorCode: String? = null,
+    /**
+     * Data-layer plan step 3: this roster was seeded from the durable store on a cold start (or on
+     * the first visit of a server in this process) and has not been revalidated yet. It paints like
+     * a loaded roster but never satisfies a load from cache: the next refresh goes to the network.
+     */
+    val seededFromDurable: Boolean = false
 ) {
     // task #329: memberId -> profile index, built once per entry instance so
     // per-member read edges (status/profile flows, sync lookups) stop paying an
@@ -521,9 +528,19 @@ class SharedServerMembersStore internal constructor(
      * avatar so the avatar resolvers can paint it on a cold start before the directory refetch.
      * Null keeps the store memory-only (tests, fixtures).
      */
-    private val avatarRefStore: RaftMemberAvatarRefStore? = null
+    private val avatarRefStore: RaftMemberAvatarRefStore? = null,
+    /**
+     * Durable rosters (data-layer plan step 3), keyed by environment + account + server. Null keeps
+     * the store memory-only (tests, fixtures).
+     */
+    private val durableStore: RaftServerMembersDurableStore? = null,
+    /** Tenny rule 3: rosters kept in memory, least recently refreshed / written evicted first. */
+    private val maxCachedServers: Int = SharedServerMembersMaxCachedServers
 ) {
     private val mutex = Mutex()
+    private val recencyLock = SynchronizedObject()
+    // Server ids, least recently used first. Guarded by [recencyLock].
+    private val serverRecency = LinkedHashSet<String>()
     private val publishedProcessVersionsByOwner = mutableMapOf<SharedServerChannelMembersOwnerBinding, Long>()
     private val deletedAgentIdsByServerId = mutableMapOf<String, Set<String>>()
     private val _state = MutableStateFlow(SharedServerMembersState())
@@ -909,27 +926,56 @@ class SharedServerMembersStore internal constructor(
             scopedMemberProfileResolutionFlow(scopedServerId, cleanMemberId),
             presenceOwnerSnapshotFlow
         ) { resolution, presenceOwnerSnapshot ->
-            val member = resolution.profile
-            val presenceFact = presenceOwnerSnapshot.facts[cleanMemberId]
-            if (presenceOwnerSnapshot.transport != null && presenceFact == null) {
-                // A native reconnect retired the profile's pre-connect status.
-                // Publish an explicit neutral resolution (rather than null,
-                // which UI consumers interpret as permission to fall back to
-                // the stale profile) until the request-fenced forced roster
-                // refresh, current detail, or realtime repopulates this member.
-                SharedServerMemberStatus(
-                    status = null,
-                    presence = Presence.Offline,
-                    statusLabel = "—",
-                    external = member?.isExternal == true
-                )
-            } else {
-                applySeedOnlyOfflinePolicy(
-                    resolved = member.toSharedServerMemberStatus(presenceFact),
-                    seedOnly = !resolution.authoritative && presenceFact == null
-                )
-            }
+            memberStatusOf(resolution, presenceOwnerSnapshot, cleanMemberId)
         }.distinctUntilChanged()
+    }
+
+    /**
+     * The value [memberStatusFlow] emits first, read synchronously, so a status dot paints the
+     * cached agent status on its first frame instead of starting empty (data-layer plan step 3).
+     */
+    fun currentMemberStatus(
+        serverId: ServerId?,
+        memberId: String?
+    ): SharedServerMemberStatus? {
+        val cleanServerId = serverId?.value.normalizedServerMembersId() ?: return null
+        val cleanMemberId = memberId.normalizedServerMembersId() ?: return null
+        val scopedServerId = ServerId(cleanServerId)
+        val presenceOwnerSnapshot =
+            presenceOwner(scopedServerId)?.let(presenceRegistry::currentOwnerSnapshot)
+                ?: ProcessPresenceOwnerSnapshot(emptyMap(), transport = null)
+        return memberStatusOf(
+            resolution = currentScopedMemberProfileResolution(scopedServerId, cleanMemberId),
+            presenceOwnerSnapshot = presenceOwnerSnapshot,
+            memberId = cleanMemberId
+        )
+    }
+
+    private fun memberStatusOf(
+        resolution: ScopedMemberProfileResolution,
+        presenceOwnerSnapshot: ProcessPresenceOwnerSnapshot,
+        memberId: String
+    ): SharedServerMemberStatus? {
+        val member = resolution.profile
+        val presenceFact = presenceOwnerSnapshot.facts[memberId]
+        return if (presenceOwnerSnapshot.transport != null && presenceFact == null) {
+            // A native reconnect retired the profile's pre-connect status.
+            // Publish an explicit neutral resolution (rather than null,
+            // which UI consumers interpret as permission to fall back to
+            // the stale profile) until the request-fenced forced roster
+            // refresh, current detail, or realtime repopulates this member.
+            SharedServerMemberStatus(
+                status = null,
+                presence = Presence.Offline,
+                statusLabel = "—",
+                external = member?.isExternal == true
+            )
+        } else {
+            applySeedOnlyOfflinePolicy(
+                resolved = member.toSharedServerMemberStatus(presenceFact),
+                seedOnly = !resolution.authoritative && presenceFact == null
+            )
+        }
     }
 
     fun memberProfileFlow(
@@ -1268,6 +1314,8 @@ class SharedServerMembersStore internal constructor(
                 writeGeneration = write.writeGeneration
             )
         }
+        // Tenny rule 2: the durable roster forgets the member too, so a cold start cannot bring it back.
+        channelOwner?.let { owner -> durableStore?.removeMemberAsync(owner.durableKey(), memberKey) }
         if (!changed) return false
         _state.value =
             current.copy(
@@ -1776,6 +1824,14 @@ class SharedServerMembersStore internal constructor(
         if (expectedOwner != null && !directoryBinding.matches(expectedOwner)) {
             return DataResult.Error(ScreenError(code = "members_owner_stale", retryable = true))
         }
+        // Data-layer plan step 3: the epoch is captured before the request so a roster that lands
+        // after sign-out / lost access is never persisted; then paint the durable roster (cold start,
+        // first visit) before the network answers.
+        val durableEpoch = durableStore?.epoch
+        synchronized(recencyLock) {
+            if (serverRecency.remove(key)) serverRecency.add(key)
+        }
+        hydrateFromDurable(ServerId(key))
         val rosterPresenceRequest =
             if (!force) {
                 null
@@ -1862,14 +1918,19 @@ class SharedServerMembersStore internal constructor(
         }
         beforeProcessPublication()
         val publishStartedAt = TimeSource.Monotonic.markNow()
-        return mutex.withLock {
+        var durableSnapshot: MemberSnapshot? = null
+        var accessLost = false
+        val publication = mutex.withLock {
             if (currentDirectoryOwnerBinding(ServerId(key)) != directoryBinding) {
                 return@withLock DataResult.Error(ScreenError(code = "members_owner_stale", retryable = true))
             }
             processCore.commitIfCurrent(processResult) {
                 if (
                     processResult.version > 0L &&
-                    publishedProcessVersionsByOwner[directoryBinding] == processResult.version
+                    publishedProcessVersionsByOwner[directoryBinding] == processResult.version &&
+                    // An LRU-evicted or durable-seeded roster must be republished from this result.
+                    _state.value.entriesByServerId[key]
+                        ?.takeIf { it.matches(directoryBinding) && !it.seededFromDurable } != null
                 ) {
                     logger(
                         "store_load domain=server_members serverId=$key result=version_unchanged " +
@@ -1936,6 +1997,7 @@ class SharedServerMembersStore internal constructor(
                                 )
                             )
                             if (normalizedKey != key) removeEntry(key)
+                            if (normalizedKey == key) durableSnapshot = snapshot
                             logger(
                                 "shared_server_members_load_result serverId=$normalizedKey result=content members=${snapshot.members.size}"
                             )
@@ -1970,11 +2032,17 @@ class SharedServerMembersStore internal constructor(
                             )
                             publishedProcessVersionsByOwner[directoryBinding] = processResult.version
                         }
-                        is DataResult.Error -> {
+                        is DataResult.Error -> if (previous.lostAccessOnValidation(result)) {
+                            removeLostAccessRoster(key, directoryBinding)
+                            accessLost = true
+                        } else {
                             markFailure(key, previous, result.error.code)
                             logger("shared_server_members_load_result serverId=$key result=error code=${result.error.code}")
                         }
-                        is DataResult.NoPermission -> {
+                        is DataResult.NoPermission -> if (previous.lostAccessOnValidation(result)) {
+                            removeLostAccessRoster(key, directoryBinding)
+                            accessLost = true
+                        } else {
                             markFailure(key, previous, result.blocker.code)
                             logger("shared_server_members_load_result serverId=$key result=no_permission code=${result.blocker.code}")
                         }
@@ -1983,6 +2051,18 @@ class SharedServerMembersStore internal constructor(
                 }
             } ?: DataResult.Error(ScreenError(code = "members_owner_stale", retryable = true))
         }
+        // Tenny rule 1: the roster belongs to the environment + account + server it was requested
+        // for (directoryBinding), even if the user switched servers meanwhile; the epoch fences an
+        // account boundary or eviction that happened during the request.
+        val persisted = durableSnapshot
+        if (persisted != null && durableEpoch != null) {
+            durableStore?.write(directoryBinding.durableKey(), persisted, durableEpoch)
+        }
+        if (accessLost) {
+            durableStore?.evictServer(key, directoryBinding.accountId)
+            avatarRefStore?.forgetServer(key)
+        }
+        return publication
     }
 
     private fun applyAuthoritativeRosterPresence(
@@ -2345,6 +2425,8 @@ class SharedServerMembersStore internal constructor(
         val entry = _state.value.entriesByServerId[key] ?: return null
         if (!entry.matches(binding)) return null
         if (entry.status != SharedServerMembersLoadStatus.Loaded) return null
+        // A durable seed is last session's roster: it paints, but it must not satisfy the load.
+        if (entry.seededFromDurable) return null
         return entry.snapshotOrNull()
     }
 
@@ -2747,9 +2829,160 @@ class SharedServerMembersStore internal constructor(
             _state.value.copy(
                 entriesByServerId = _state.value.entriesByServerId + (key to entry)
             )
-        if (entry.status == SharedServerMembersLoadStatus.Loaded && entry.members.isNotEmpty()) {
+        touchServer(key)
+        if (
+            entry.status == SharedServerMembersLoadStatus.Loaded &&
+            entry.members.isNotEmpty() &&
+            !entry.seededFromDurable
+        ) {
             recordDurableAvatarRefs(key, entry.members, authoritativeAbsence = true)
         }
+    }
+
+    /**
+     * Marks [key] most recently used and trims the in-memory rosters to [maxCachedServers] (Tenny
+     * rule 3). The server just touched is never the victim. An evicted server keeps its durable row,
+     * so revisiting it seeds from disk again.
+     */
+    private fun touchServer(key: String) {
+        val victims =
+            synchronized(recencyLock) {
+                serverRecency.remove(key)
+                serverRecency.add(key)
+                val cap = maxCachedServers.coerceAtLeast(1)
+                if (serverRecency.size <= cap) return
+                serverRecency.take(serverRecency.size - cap).also { evicted -> serverRecency.removeAll(evicted.toSet()) }
+            }
+        if (victims.isEmpty()) return
+        val victimSet = victims.toSet()
+        _state.value =
+            _state.value.let { current ->
+                current.copy(
+                    entriesByServerId = current.entriesByServerId - victimSet,
+                    profileCacheByServerId = current.profileCacheByServerId - victimSet,
+                    channelMemberSlices = current.channelMemberSlices.filterKeys { it.serverId !in victimSet },
+                    memberSuggestionSlices = current.memberSuggestionSlices.filterKeys { it.serverId !in victimSet }
+                )
+            }
+        logger("shared_server_members_lru_evict servers=${victims.size}")
+    }
+
+    /** Test seam: server ids held in memory, least recently used first. */
+    internal fun cachedServerIdsForTest(): List<String> =
+        synchronized(recencyLock) { serverRecency.filter { it in _state.value.entriesByServerId }.toList() }
+
+    private fun SharedServerChannelMembersOwnerBinding.durableKey(): RaftServerMembersDurableKey =
+        RaftServerMembersDurableKey(environmentId = environmentId, accountId = accountId, serverId = serverId)
+
+    /**
+     * Cold-start / first-visit seed (data-layer plan step 3): when memory holds no roster for
+     * [serverId] under the current owner, paint the durable roster of this environment + account +
+     * server. The entry is `Loaded` (no spinner, no InFlight flip) but [SharedServerMembersEntry.seededFromDurable],
+     * so the next refresh still goes to the network once. A network roster that landed first wins;
+     * a read that straddles an account change is dropped.
+     */
+    suspend fun hydrateFromDurable(serverId: ServerId): Boolean {
+        val durable = durableStore ?: return false
+        val key = serverId.value.normalizedServerMembersId() ?: return false
+        val binding = currentDirectoryOwnerBinding(ServerId(key)) ?: return false
+        if (!needsDurableSeed(key, binding)) return false
+        val snapshot = durable.read(binding.durableKey()) ?: return false
+        return mutex.withLock {
+            if (currentDirectoryOwnerBinding(ServerId(key)) != binding) return@withLock false
+            if (!needsDurableSeed(key, binding)) return@withLock false
+            val members =
+                snapshot.members
+                    .filterServerRosterMembers(key)
+                    .filterDeletedAgents(key)
+            if (members.isEmpty()) return@withLock false
+            cacheProfiles(key, members)
+            putEntry(
+                key,
+                SharedServerMembersEntry(
+                    serverId = key,
+                    ownerEnvironmentId = binding.environmentId,
+                    ownerAccountId = binding.accountId,
+                    ownerWriteGeneration = binding.writeGeneration,
+                    server = snapshot.server,
+                    members = members,
+                    status = SharedServerMembersLoadStatus.Loaded,
+                    errorCode = null,
+                    seededFromDurable = true
+                )
+            )
+            logger("shared_server_members_durable_seed serverId=$key members=${members.size}")
+            true
+        }
+    }
+
+    private fun needsDurableSeed(key: String, binding: SharedServerChannelMembersOwnerBinding): Boolean {
+        val entry = _state.value.entriesByServerId[key]?.takeIf { it.matches(binding) } ?: return true
+        return entry.members.isEmpty() && entry.status != SharedServerMembersLoadStatus.Loaded
+    }
+
+    /**
+     * Tenny rule 2, server scope: the account was removed from [serverId] or the server was deleted.
+     * Drops the server's rosters, profile cache, channel slices and suggestions from memory, fences
+     * in-flight roster loads and removes the durable row and avatar references.
+     */
+    suspend fun dropServer(serverId: ServerId) {
+        val key = serverId.value.normalizedServerMembersId() ?: return
+        val binding = currentDirectoryOwnerBinding(ServerId(key))
+        processOwner(ServerId(key))?.let { owner -> processCore.invalidate(owner, reason = "server_access_lost") }
+        mutex.withLock {
+            publishedProcessVersionsByOwner.keys.removeAll { it.serverId == key }
+            deletedAgentIdsByServerId.remove(key)
+            _state.value =
+                _state.value.let { current ->
+                    current.copy(
+                        entriesByServerId = current.entriesByServerId - key,
+                        profileCacheByServerId = current.profileCacheByServerId - key,
+                        channelMemberSlices = current.channelMemberSlices.filterKeys { it.serverId != key },
+                        memberSuggestionSlices = current.memberSuggestionSlices.filterKeys { it.serverId != key }
+                    )
+                }
+            synchronized(recencyLock) { serverRecency.remove(key) }
+        }
+        durableStore?.evictServer(key, binding?.accountId)
+        avatarRefStore?.forgetServer(key)
+        logger("shared_server_members_drop_server serverId=$key")
+    }
+
+    /**
+     * Tenny rule 1, account / environment boundary (logout, account or environment switch): every
+     * roster held in memory belongs to the retired owner, so none stays readable by server id. The
+     * durable rows stay keyed by their owner (sign-out clears them separately).
+     */
+    fun retireAccountData(
+        successorEnvironmentId: String? = null,
+        successorAccountId: String? = null,
+        successorWriteGeneration: Long? = null
+    ) {
+        // A roster the successor binding already published (this runs after the binding changed)
+        // is kept; everything else belonged to the retired owner.
+        val environment = successorEnvironmentId.normalizedChannelMembersEnvironmentId()
+        val account = successorAccountId.normalizedServerMembersId()
+        fun ownedBySuccessor(entryEnvironment: String?, entryAccount: String?, generation: Long): Boolean =
+            environment != null &&
+                account != null &&
+                entryEnvironment.normalizedChannelMembersEnvironmentId() == environment &&
+                entryAccount.normalizedServerMembersId() == account &&
+                generation == successorWriteGeneration
+        val current = _state.value
+        val keptEntries =
+            current.entriesByServerId.filterValues { entry ->
+                ownedBySuccessor(entry.ownerEnvironmentId, entry.ownerAccountId, entry.ownerWriteGeneration)
+            }
+        _state.value =
+            SharedServerMembersState(
+                entriesByServerId = keptEntries,
+                channelMemberSlices =
+                    current.channelMemberSlices.filter { (scope, slice) ->
+                        ownedBySuccessor(scope.environmentId, scope.accountId, slice.ownerWriteGeneration)
+                    }
+            )
+        synchronized(recencyLock) { serverRecency.retainAll(keptEntries.keys) }
+        clearScopedReadCaches()
     }
 
     /**
@@ -2782,6 +3015,20 @@ class SharedServerMembersStore internal constructor(
                 channelMemberSlices = _state.value.channelMemberSlices + (scope to slice)
             )
     }
+
+    /**
+     * Tenny rule 2: validating a cached roster proved the account lost the server (non-auth 403 /
+     * 404). The cached roster must not paint again. Caller holds [mutex].
+     */
+    private fun removeLostAccessRoster(key: String, binding: SharedServerChannelMembersOwnerBinding) {
+        removeEntry(key)
+        publishedProcessVersionsByOwner.remove(binding)
+        synchronized(recencyLock) { serverRecency.remove(key) }
+        logger("shared_server_members_load_result serverId=$key result=access_lost")
+    }
+
+    private fun SharedServerMembersEntry?.lostAccessOnValidation(result: DataResult<*>): Boolean =
+        this != null && members.isNotEmpty() && result.isConversationAccessLost()
 
     private fun removeEntry(key: String) {
         _state.value =
@@ -3261,3 +3508,6 @@ internal fun SharedServerMembersEntry?.keepsLoadedStatusDuring(priority: DataReq
         priority == DataRequestPriority.Background &&
         status == SharedServerMembersLoadStatus.Loaded &&
         members.isNotEmpty()
+
+/** Tenny rule 3: in-memory rosters per members store (one per shell), least recently used evicted. */
+internal const val SharedServerMembersMaxCachedServers = 16

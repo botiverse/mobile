@@ -81,12 +81,25 @@ internal fun raftAgentStatusResolver(
         if (serverMembersStore == null) {
             flowOf(null)
         } else {
-            serverMembersStore
-                .memberStatusFlow(cleanServerId, memberId)
-                .map { status -> status?.toRaftAgentStatusIndicatorState() }
+            RaftAgentStatusFlow(
+                initial = serverMembersStore.currentMemberStatus(cleanServerId, memberId)?.toRaftAgentStatusIndicatorState(),
+                upstream =
+                    serverMembersStore
+                        .memberStatusFlow(cleanServerId, memberId)
+                        .map { status -> status?.toRaftAgentStatusIndicatorState() }
+            )
         }
     }
 }
+
+/**
+ * A status flow that also carries the store's current value, so the dot paints the cached agent
+ * status on its first frame instead of starting from null (data-layer plan step 3).
+ */
+internal class RaftAgentStatusFlow(
+    val initial: RaftAgentStatusIndicatorState?,
+    private val upstream: Flow<RaftAgentStatusIndicatorState?>
+) : Flow<RaftAgentStatusIndicatorState?> by upstream
 
 @Composable
 internal fun rememberRaftAgentStatusIndicatorState(
@@ -94,7 +107,7 @@ internal fun rememberRaftAgentStatusIndicatorState(
     memberId: String?
 ): RaftAgentStatusIndicatorState? {
     val statusFlow = remember(agentStatusResolver, memberId) { agentStatusResolver(memberId) }
-    val status by statusFlow.collectAsState(null)
+    val status by statusFlow.collectAsState((statusFlow as? RaftAgentStatusFlow)?.initial)
     // task #410: the external presence tier depends on `now` as well as the
     // fact. Re-resolve it whenever the live time context ticks (minute
     // boundary) or the underlying state changes, so "online" does not outlive

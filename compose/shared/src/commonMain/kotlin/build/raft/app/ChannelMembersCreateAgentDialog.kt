@@ -41,7 +41,7 @@ internal fun ChannelMembersCreateAgentDialog(
     // @names already used on this server; the server's uniqueness check still decides.
     val serverMembers by remember(membersStore, owner) {
         membersStore.serverMembersEntryFlow(owner)
-    }.collectAsState(SharedServerMembersEntry(serverId = owner.serverId))
+    }.collectAsState(remember(membersStore, owner) { membersStore.currentServerMembersEntry(owner) })
     var submitting by remember(owner) { mutableStateOf(false) }
     var error by remember(owner) { mutableStateOf<String?>(null) }
     var createdId by remember(owner) { mutableStateOf<String?>(null) }

@@ -367,6 +367,8 @@ internal class RaftSharedStoreProvider private constructor(
     private val sharedPreferenceStore: RaftKeyValueStore,
     /** Durable member avatar references shared by every members store (Hands dd79da45). */
     private val memberAvatarRefStore: RaftMemberAvatarRefStore,
+    /** Durable server rosters shared by every members store (data-layer plan step 3). */
+    private val serverMembersDurableStore: RaftServerMembersDurableStore,
     private val apiEnvironmentKeyValueStore: RaftKeyValueStore,
     val authStore: KeyValueAuthSessionStore,
     val authSessionEvents: RaftAuthSessionEvents,
@@ -594,6 +596,68 @@ internal class RaftSharedStoreProvider private constructor(
             }
         }
     }
+    private fun allServerMembersStores(): List<SharedServerMembersStore> =
+        buildList {
+            add(serverMembersStore)
+            shellServerMembersStores.entries().forEach { (_, store) -> add(store) }
+        }.distinct()
+
+    /**
+     * Data-layer plan step 3, members follow the presence auth binding:
+     * - a retired binding (logout, account or environment switch; never a server switch or a token
+     *   rotation, which keep the binding) drops every roster held in memory, so none stays readable
+     *   by server id under the successor account;
+     * - a newly bound account seeds each shell's selected server from the durable roster, so the
+     *   cold-start first frames (Home rows, Members, Thread mentions) paint cached members before
+     *   the directory refetch.
+     */
+    private fun installServerMembersBindingFollower() {
+        threadSendScope.launch {
+            var previous: ProcessPresenceAuthContext? = null
+            replyCacheAuthContext.collect { context ->
+                val before = previous
+                previous = context
+                val sameBinding =
+                    before != null && context != null &&
+                        before.environmentId == context.environmentId &&
+                        before.accountId == context.accountId &&
+                        before.writeGeneration == context.writeGeneration
+                if (sameBinding) return@collect
+                if (before != null) {
+                    allServerMembersStores().forEach { store ->
+                        store.retireAccountData(
+                            successorEnvironmentId = context?.environmentId,
+                            successorAccountId = context?.accountId,
+                            successorWriteGeneration = context?.writeGeneration
+                        )
+                    }
+                }
+                if (context != null) {
+                    val selected =
+                        selectedServerStores.entries()
+                            .mapNotNull { (scope, store) ->
+                                store.selectedServerId.value?.trim()?.takeIf { it.isNotBlank() }?.let { scope to it }
+                            }
+                    selected.forEach { (scope, serverId) ->
+                        listOf(serverMembersStore, serverMembersStore(scope)).distinct().forEach { store ->
+                            launch {
+                                try {
+                                    store.hydrateFromDurable(ServerId(serverId))
+                                } catch (cancellation: CancellationException) {
+                                    throw cancellation
+                                } catch (error: Throwable) {
+                                    sharedWarnLogger("SlockServerMembers", "server_members_durable")(
+                                        "seed_failed type=${error::class.simpleName ?: "unknown"}"
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private var authSessionClearedSubscription: RealtimeSubscription? = null
     private var authSessionClearLogger: ((String) -> Unit)? = null
     private val activeAppShellPagerOwner = AppShellActivePagerOwner()
@@ -661,6 +725,9 @@ internal class RaftSharedStoreProvider private constructor(
                     homeRowHintPersistStorage.clearAll()
                     // Avatar references are account-visible directory data: same lifetime.
                     memberAvatarRefStore.clearAll()
+                    // Durable rosters (data-layer plan step 3): same lifetime; the epoch bump inside
+                    // fences any roster write still in flight.
+                    serverMembersDurableStore.clearAllAsync()
                     // Reply previews are message content: same lifetime (page keys are also
                     // principal-scoped, so a successor never reads them in the meantime).
                     threadDurableLastKnownReader.replyWindowCache?.clearAll()
@@ -686,6 +753,7 @@ internal class RaftSharedStoreProvider private constructor(
             }
         }
         updateNetworkKmmRecoveryEnvironment()
+        installServerMembersBindingFollower()
         // Attach canonical/reaction shadow mutation to the dedicated process
         // owner. Shell owners are projection-only and never repeat this work.
         realtimeDomainEventOwner.installMessageShadowFoldLane(buildMessageShadowFoldLane())
@@ -710,6 +778,8 @@ internal class RaftSharedStoreProvider private constructor(
             // accepted under the then-current grant (the grant itself is revoked by that mutation).
             onServerAccessLost = { grant ->
                 threadPayloadStore.dropServer(grant.serverId)
+                // Step 3: the server's members (memory in every shell, durable row, avatar refs).
+                allServerMembersStores().forEach { store -> store.dropServer(ServerId(grant.serverId)) }
                 threadDurableAccessEvictor.evictServerPartition(
                     grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
                 )
@@ -1125,7 +1195,8 @@ internal class RaftSharedStoreProvider private constructor(
                     presenceOwnerFlow = { serverId -> presenceOwnerFlowResolver(serverId.value) },
                     presenceWrite = { serverId -> presenceWriteResolver(serverId.value) },
                     processOwner = { serverId -> processServerMembersOwner(authStore(scope), serverId) },
-                    avatarRefStore = memberAvatarRefStore
+                    avatarRefStore = memberAvatarRefStore,
+                    durableStore = serverMembersDurableStore
                 )
             }
         }
@@ -2438,6 +2509,11 @@ internal class RaftSharedStoreProvider private constructor(
                 )
             }
             val memberAvatarRefStore = RaftMemberAvatarRefStore(sharedPreferenceStore)
+            val serverMembersDurableStore =
+                RaftServerMembersDurableStore(
+                    storage = SqlDelightRaftServerMembersDurableStorage(database),
+                    logger = sharedInfoLogger("SlockServerMembers", "server_members_durable"),
+                )
             val serverMembersStore =
                 SharedServerMembersStore(
                     memberRepository = processServerMembersRepository,
@@ -2459,7 +2535,8 @@ internal class RaftSharedStoreProvider private constructor(
                             }
                         }
                     },
-                    avatarRefStore = memberAvatarRefStore
+                    avatarRefStore = memberAvatarRefStore,
+                    durableStore = serverMembersDurableStore
                 )
             lateinit var provider: RaftSharedStoreProvider
             val foregroundReconciler =
@@ -2531,6 +2608,7 @@ internal class RaftSharedStoreProvider private constructor(
                 authKeyValueStore = authKeyValueStore,
                 sharedPreferenceStore = sharedPreferenceStore,
                 memberAvatarRefStore = memberAvatarRefStore,
+                serverMembersDurableStore = serverMembersDurableStore,
                 apiEnvironmentKeyValueStore = apiEnvironmentKeyValueStore,
                 authStore = authStore,
                 authSessionEvents = authSessionEvents,
