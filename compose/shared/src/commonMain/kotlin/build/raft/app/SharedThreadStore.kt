@@ -8379,6 +8379,18 @@ internal class SharedThreadStore(
                     } else {
                         null
                     }
+                if (event is ThreadUpdated) {
+                    // Hands 4155f83a: the inline summary only moves when the replies host accepts
+                    // the frame; a rejected frame was invisible in diagnostics. Ids/kinds only.
+                    val envelope = event.syncCoreReplyWindow
+                    diagnosticsLogger?.invoke(
+                        "thread_replies_frame parentMessageId=${event.parentMessageId.value} " +
+                            "accepted=${acceptedRepliesProjection != null} " +
+                            "hasLatestReply=${event.latestReply != null} " +
+                            "page=${repliesPageIdentity?.let { "${it.serverId}:${it.parentScopeKind}:${it.parentScopeId}" }.orEmpty()} " +
+                            "envelope=${envelope?.let { "${it.parentScopeServerId}:${it.parentScopeKind}:${it.parentScopeId}" }.orEmpty()}"
+                    )
+                }
                 if (event is ThreadUpdated && acceptedRepliesProjection != null) {
                     dataSource.recordReplyWindows(listOf(acceptedRepliesProjection))
                     event.latestReply?.let { reply ->
