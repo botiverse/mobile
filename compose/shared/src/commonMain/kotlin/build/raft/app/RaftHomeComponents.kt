@@ -600,6 +600,7 @@ data class RaftHomeShellLabels(
     val sectionNamePlaceholder: String = "My Project",
     val sectionEmojiLabel: String = "Emoji",
     val addChannel: String = "Add channel",
+    val createJointChannel: String = "Create Joint Channel",
     val noServersAvailable: String = "No servers available",
     val joinChineseCommunityServer: String = "Join Chinese Community",
     val joinCommunityServer: String = "Join community server",
@@ -650,6 +651,7 @@ data class RaftHomeShellLabels(
             sectionNamePlaceholder = stringResource(MR.strings.home_section_name_placeholder),
             sectionEmojiLabel = stringResource(MR.strings.home_section_emoji_label),
             addChannel = stringResource(MR.strings.home_action_add_channel),
+            createJointChannel = stringResource(MR.strings.home_section_create_joint_channel),
             noServersAvailable = stringResource(MR.strings.home_state_no_servers),
             joinChineseCommunityServer = stringResource(MR.strings.home_server_switcher_join_chinese_community),
             joinCommunityServer = stringResource(MR.strings.home_server_switcher_join_community),
@@ -1507,6 +1509,8 @@ internal class RaftStructuralHomeShellCallbacks(
     /** Server switcher "Invite Human"; null hides it (web gates on `inviteMembers`). */
     val onInviteHumanClick: (() -> Unit)? = null,
     val onCreateChannelClick: () -> Unit = {},
+    /** Joint Channels section "+" (web Sidebar `canCreateJointChannel`); null hides it. */
+    val onCreateJointChannelClick: (() -> Unit)? = null,
     val onTabSelected: (String) -> Unit = {},
     val onInboxClick: () -> Unit = {},
     val onFollowedThreadsClick: () -> Unit = {},
@@ -1610,6 +1614,7 @@ internal fun RaftStructuralHomeShell(
     onCreateServerClick: () -> Unit = {},
     onInviteHumanClick: (() -> Unit)? = null,
     onCreateChannelClick: () -> Unit = {},
+    onCreateJointChannelClick: (() -> Unit)? = null,
     onTabSelected: (String) -> Unit = {},
     onInboxClick: () -> Unit = {},
     onFollowedThreadsClick: () -> Unit = {},
@@ -1721,6 +1726,7 @@ internal fun RaftStructuralHomeShell(
                 onCreateServerClick = onCreateServerClick,
                 onInviteHumanClick = onInviteHumanClick,
                 onCreateChannelClick = onCreateChannelClick,
+                onCreateJointChannelClick = onCreateJointChannelClick,
                 onTabSelected = onTabSelected,
                 onInboxClick = onInboxClick,
                 onFollowedThreadsClick = onFollowedThreadsClick,
@@ -1829,6 +1835,7 @@ private fun RaftStructuralHomeShellContent(
     val onCreateServerClick = callbacks.onCreateServerClick
     val onInviteHumanClick = callbacks.onInviteHumanClick
     val onCreateChannelClick = callbacks.onCreateChannelClick
+    val onCreateJointChannelClick = callbacks.onCreateJointChannelClick
     val onTabSelected = callbacks.onTabSelected
     val onInboxClick = callbacks.onInboxClick
     val onFollowedThreadsClick = callbacks.onFollowedThreadsClick
@@ -2623,6 +2630,9 @@ private fun RaftStructuralHomeShellContent(
                                                         sortMenuAnchor = anchor
                                                     }
                                                 },
+                                                addLabel = labels.createJointChannel.takeIf { onCreateJointChannelClick != null },
+                                                onAddClick = onCreateJointChannelClick,
+                                                addEnabled = sidebarInteractionsEnabled,
                                                 onLongPress =
                                                     if (sidebarInteractionsEnabled) {
                                                         { anchor ->

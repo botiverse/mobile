@@ -125,7 +125,97 @@ private data class WireJointOkResponse(
 private data class WireJointErrorBody(
     val error: String? = null,
     val code: String? = null,
+    val targetServerSlug: String? = null,
+    val invitee: String? = null,
+    val archivedChannelId: String? = null,
+    val archivedChannelName: String? = null,
+    val archivedChannelType: String? = null,
+    val canUnarchiveArchivedChannel: Boolean = false,
+    val blockingChannel: WireJointBlockingChannel? = null,
 )
+
+@Serializable
+private data class WireJointBlockingChannel(val name: String? = null)
+
+/**
+ * `POST channels` with `visibility: "joint"` (`routes/channels.ts` `channelRouter.post("/")`): name,
+ * optional description, initial current-server members and one `jointInvites` entry per server.
+ */
+@Serializable
+internal data class CreateJointChannelRequestBody(
+    val name: String,
+    val description: String? = null,
+    val visibility: String = "joint",
+    val agentIds: List<String> = emptyList(),
+    val userIds: List<String> = emptyList(),
+    val jointInvites: List<JointChannelInviteRequestBody>,
+)
+
+/** The server's structured details of a rejected joint request (invite target, archived collision). */
+data class JointChannelErrorDetails(
+    val code: String?,
+    val targetServerSlug: String?,
+    val invitee: String?,
+    val archivedChannelId: String?,
+    val archivedChannelName: String?,
+    val archivedChannelType: String?,
+    val canUnarchiveArchivedChannel: Boolean,
+    /** `joint_channel_free_limit_reached`: the hosted joint that already uses the free slot. */
+    val blockingChannelName: String? = null,
+)
+
+/** `archived_name_collision`: 409 from `POST channels` when an archived channel holds the name. */
+internal const val ARCHIVED_NAME_COLLISION = "archived_name_collision"
+
+internal fun parseSharedJointErrorDetails(bodyText: String?): JointChannelErrorDetails? =
+    bodyText?.takeIf(String::isNotBlank)?.let { payload ->
+        runCatching { jointChannelsJson.decodeFromString(WireJointErrorBody.serializer(), payload) }.getOrNull()
+    }?.let { wire ->
+        JointChannelErrorDetails(
+            code = wire.code?.trim()?.takeIf(String::isNotBlank),
+            targetServerSlug = wire.targetServerSlug?.trim()?.takeIf(String::isNotBlank),
+            invitee = wire.invitee?.trim()?.takeIf(String::isNotBlank),
+            archivedChannelId = wire.archivedChannelId?.trim()?.takeIf(String::isNotBlank),
+            archivedChannelName = wire.archivedChannelName?.trim()?.takeIf(String::isNotBlank),
+            archivedChannelType = wire.archivedChannelType,
+            canUnarchiveArchivedChannel = wire.canUnarchiveArchivedChannel,
+            blockingChannelName = wire.blockingChannel?.name?.trim()?.takeIf(String::isNotBlank),
+        )
+    }
+
+/** One invite draft as sent: slug + invitee list. */
+data class JointInviteTarget(val targetServerSlug: String, val invitedPeople: List<String>)
+
+sealed interface CreateJointChannelOutcome {
+    data class Created(val channel: JointChannelAccepted) : CreateJointChannelOutcome
+
+    /** Web: an archived joint channel holds the name; offer Unarchive (when allowed) or Change Name. */
+    data class ArchivedNameCollision(
+        val archivedChannelId: ChannelId,
+        val archivedChannelName: String,
+        val canUnarchive: Boolean,
+    ) : CreateJointChannelOutcome
+
+    data class Failed(val result: DataResult<*>, val details: JointChannelErrorDetails?) : CreateJointChannelOutcome
+}
+
+internal fun buildSharedCreateJointChannelBody(
+    name: String,
+    description: String?,
+    agentIds: List<String>,
+    userIds: List<String>,
+    invites: List<JointInviteTarget>,
+): String =
+    jointChannelsJson.encodeToString(
+        CreateJointChannelRequestBody.serializer(),
+        CreateJointChannelRequestBody(
+            name = name,
+            description = description,
+            agentIds = agentIds,
+            userIds = userIds,
+            jointInvites = invites.map { JointChannelInviteRequestBody(it.targetServerSlug, it.invitedPeople) },
+        ),
+    )
 
 /** `POST channels/:id/joint-invites` request body (no `sameAdmin`: the direct same-admin connect is web-only). */
 @Serializable
@@ -356,6 +446,71 @@ internal class RealJointChannelRepository(
                     path = "channels/joint-invites/${inviteId.trim()}/accept",
                     method = "POST",
                     serverIdOverride = serverId,
+                )
+            },
+        ) { body -> parseSharedJointAcceptedChannel(body) }
+
+    suspend fun createJointChannel(
+        name: String,
+        description: String?,
+        agentIds: List<String>,
+        userIds: List<String>,
+        invites: List<JointInviteTarget>,
+    ): CreateJointChannelOutcome {
+        val response =
+            try {
+                networkClient.request(
+                    priority = DataRequestPriority.Foreground,
+                    path = "channels",
+                    method = "POST",
+                    bodyText = buildSharedCreateJointChannelBody(name, description, agentIds, userIds, invites),
+                )
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (exception: Exception) {
+                warningLogger("request_failed source=joint_create exception=${exception::class.simpleName}")
+                return CreateJointChannelOutcome.Failed(
+                    DataResult.Error(ScreenError(code = "network_unavailable", retryable = true)),
+                    details = null,
+                )
+            }
+        if (response.isSuccessful) {
+            val created = parseSharedJointAcceptedChannel(response.bodyText.orEmpty())
+            return if (created != null) {
+                CreateJointChannelOutcome.Created(created)
+            } else {
+                warningLogger("parse_failed source=joint_create status=${response.code}")
+                CreateJointChannelOutcome.Failed(
+                    DataResult.Error(ScreenError(code = "joint_response_parse_failed", retryable = true)),
+                    details = null,
+                )
+            }
+        }
+        val details = parseSharedJointErrorDetails(response.bodyText ?: response.errorBodyText)
+        val archivedId = details?.archivedChannelId
+        val archivedName = details?.archivedChannelName
+        // Web offers the collision recovery only when the archived holder is itself a joint channel.
+        if (
+            response.code == 409 && details?.code == ARCHIVED_NAME_COLLISION &&
+            archivedId != null && archivedName != null && details.archivedChannelType == "joint"
+        ) {
+            return CreateJointChannelOutcome.ArchivedNameCollision(
+                archivedChannelId = ChannelId(archivedId),
+                archivedChannelName = archivedName,
+                canUnarchive = details.canUnarchiveArchivedChannel,
+            )
+        }
+        return CreateJointChannelOutcome.Failed(response.toJointDataError<Unit>(), details)
+    }
+
+    suspend fun unarchiveChannel(channelId: ChannelId): DataResult<JointChannelAccepted> =
+        execute(
+            "joint_unarchive",
+            {
+                networkClient.request(
+                    priority = DataRequestPriority.Foreground,
+                    path = "channels/${channelId.value}/unarchive",
+                    method = "POST",
                 )
             },
         ) { body -> parseSharedJointAcceptedChannel(body) }

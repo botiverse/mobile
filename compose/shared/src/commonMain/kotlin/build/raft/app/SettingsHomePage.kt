@@ -3091,6 +3091,7 @@ private fun RaftAppShellReadyContent(
     var conversationForwardGestureEnabled by remember { mutableStateOf(false) }
     var serverDrawerProgrammaticCloseFence by remember { mutableStateOf<((String) -> Unit)?>(null) }
     var createChannelDialogOpen by remember { mutableStateOf(false) }
+    var createJointChannelDialogOpen by remember { mutableStateOf(false) }
     var createChannelSubmitting by remember { mutableStateOf(false) }
     // task #226: global announcement modal. The API client already exists (the
     // dismiss is server-persisted per user); the shell fetches the latest active
@@ -5417,6 +5418,12 @@ private fun RaftAppShellReadyContent(
         }
     }
 
+    fun openCreateJointChannelDialog() {
+        createJointChannelDialogOpen = true
+        createChannelMembers = emptyList()
+        loadCreateChannelMembers()
+    }
+
     fun openCreateChannelDialog() {
         createChannelDialogOpen = true
         createChannelError = null
@@ -7187,6 +7194,7 @@ private fun RaftAppShellReadyContent(
                                 },
                                 onInviteHuman = { serverId -> serverSwitcherInviteServerId = serverId },
                                 onCreateChannel = { openCreateChannelDialog() },
+                                onCreateJointChannel = { openCreateJointChannelDialog() },
                                 onOpenConversation = { conversationIdentity ->
                                     openHomeConversation(conversationIdentity, "home")
                                 },
@@ -7568,6 +7576,36 @@ private fun RaftAppShellReadyContent(
                     }
                     }
             Box(modifier = Modifier.fillMaxSize()) {
+                if (createJointChannelDialogOpen) {
+                    val jointHomeSnapshot = (homeState.content as? SharedHomeContentState.Content)?.snapshot
+                    CreateJointChannelDialogHost(
+                        networkClient = appShellNetworkClient,
+                        // Web `freeAllowance`: the current server's plan is "free".
+                        freePlan = (jointHomeSnapshot?.server?.plan ?: "free") == "free",
+                        currentServerSlug = jointHomeSnapshot?.server?.slug,
+                        currentMemberId = jointHomeSnapshot?.currentMember?.id?.value,
+                        members = createChannelMembers,
+                        membersLoading = createChannelMembersLoading,
+                        logger = raftLogger("SlockCreateJointChannel", "create_joint_channel", RaftLogLevel.Warn),
+                        onDismiss = { createJointChannelDialogOpen = false },
+                        onOpenChannel = { channel ->
+                            createJointChannelDialogOpen = false
+                            homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.Refresh))
+                            openHomeConversation(
+                                buildThreadLaunchConversationIdentity(
+                                    kind = ConversationKind.Joint,
+                                    channelId = channel.channelId,
+                                    channelType = "joint",
+                                ),
+                                "create_joint_channel",
+                            )
+                        },
+                        onOpenBilling = {
+                            createJointChannelDialogOpen = false
+                            pager.openSettingsBillingPage(storeScope)
+                        },
+                    )
+                }
                 if (createChannelDialogOpen) {
                     SharedCreateChannelDialog(
                         submitting = createChannelSubmitting,
@@ -19659,6 +19697,8 @@ private fun SharedHomeScreen(
     /** Server switcher "Invite Human" for the given server; null hides the entry. */
     onInviteHuman: ((serverId: String) -> Unit)? = null,
     onCreateChannel: () -> Unit,
+    /** Joint Channels section "+"; shown only with federateChannels (owner/admin), as web gates it. */
+    onCreateJointChannel: (() -> Unit)? = null,
     onOpenConversation: (ThreadLaunchConversationIdentity) -> Unit,
     serverMembersStore: SharedServerMembersStore? = null,
     channelRepository: ChannelRepository? = null,
@@ -20085,6 +20125,7 @@ private fun SharedHomeScreen(
                         onIntent(SharedHomeIntent.DismissServerSwitcher)
                     },
                 onCreateChannelClick = onCreateChannel,
+                onCreateJointChannelClick = onCreateJointChannel?.takeIf { snapshot.server.permissions.canManageSettings },
                 onSearchClick = {
                     onIntent(SharedHomeIntent.SelectTopAction(SharedHomeTopAction.Search))
                     onOpenSearch()
