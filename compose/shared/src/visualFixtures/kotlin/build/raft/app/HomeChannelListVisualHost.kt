@@ -19,9 +19,9 @@ import kotlinx.coroutines.flow.flowOf
  * Every row comes from [VisualFixtureData.HomeChannelList], generated from the
  * `homeChannelList` block of slock's `packages/visual-testing/shared/fixtureData.json`, the
  * one source the React case seeds from too (`slock-visual generate-fixture-data`). This file
- * only maps those rows onto the Home models. Web-only row states (`mention`, the `@` sticker;
- * `followedThreadsWithNewReplies`, the thread count) have no Android Home model yet and are
- * not drawn here; the report shows the gap.
+ * only maps those rows onto the Home models, including `mention` (the @ sticker) and
+ * `followedThreadsWithNewReplies` (the `[thread] N` segment), which production Home does not
+ * load from the server yet.
  *
  * No row is selected: a phone Home root never shows a selected row (opening a conversation
  * pushes it over Home, and the web hides the tab bar on those routes). Selected rows are
@@ -77,6 +77,8 @@ private fun homeChannelListChannel(row: HomeChannelListRow): RaftHomeConversatio
         kind = if (type == JointChannelKindWireValue) JointChannelKindWireValue else "channel",
         channelType = type.takeIf { it == "private" },
         unreadCount = row.count("unread"),
+        mentioned = row.flag("mention"),
+        followedThreadUnreadCount = row.count("followedThreadsWithNewReplies"),
         hasDraft = row.flag("draft"),
         activityMuted = row.flag("muted"),
         activityMuteSupported = true
