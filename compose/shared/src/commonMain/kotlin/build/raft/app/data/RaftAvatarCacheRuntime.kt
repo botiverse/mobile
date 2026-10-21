@@ -186,7 +186,7 @@ internal sealed interface RaftAvatarNativeMutationResult {
     data class Failed(val code: String) : RaftAvatarNativeMutationResult
 }
 
-/** Implemented once by the common bridge; Android/iOS/OHOS consume the same wire actions. */
+/** Implemented once by the common bridge; Android/iOS consume the same wire actions. */
 internal interface RaftAvatarNativeCache {
     suspend fun inspect(
         nativePartitionKey: String,

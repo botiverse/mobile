@@ -179,8 +179,8 @@ import kotlin.time.TimeSource
 /**
  * Thread-safe append/snapshot log buffer for tests that run stores on
  * multi-threaded dispatchers. commonTest compiles for native targets too, so
- * JVM types like CopyOnWriteArrayList are off-limits, and the OHOS toolchain
- * (Kotlin 2.0.x) predates kotlin.concurrent.atomics — an unlimited Channel is
+ * JVM types like CopyOnWriteArrayList are off-limits, and
+ * kotlin.concurrent.atomics is avoided — an unlimited Channel is
  * the portable thread-safe append primitive (#214). `any` drains newly
  * arrived entries into a snapshot list owned by the single polling thread.
  */
@@ -204,7 +204,7 @@ private class ConcurrentTestLogBuffer {
 class SharedThreadStoreTest {
     @Test
     fun receiverReadEventLowersUnloadedReplyBadgeThroughStoreAndRejectsOtherServer() = runBlocking {
-        // OHOS has no coroutines-test KLIB; suspend fakes complete inline on this explicit scope.
+        // No coroutines-test; suspend fakes complete inline on this explicit scope.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository = FakeConversationRepository(threadResult = DataResult.Content(threadSnapshot(
             messages = listOf(message(id = "m1", seq = 10, body = "parent", threadChannelId = "reply-channel",
@@ -244,7 +244,7 @@ class SharedThreadStoreTest {
 
     @Test
     fun receiverZeroReadEventClearsStaleJumpThroughStore() = runBlocking {
-        // OHOS has no coroutines-test KLIB; suspend fakes complete inline on this explicit scope.
+        // No coroutines-test; suspend fakes complete inline on this explicit scope.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository = FakeConversationRepository(threadResult = DataResult.Content(threadSnapshot(
             messages = listOf(message(id = "m1", seq = 10, body = "parent", threadChannelId = "reply-channel",

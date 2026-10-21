@@ -17,7 +17,7 @@ import com.tencent.tmm.kmmresource.resource.desc.ResourceFormatted
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 
 // task #423: iOS must localize via `StringDesc.localized()` (NSBundle-backed),
-// NOT `toString()`. Unlike Android/OHOS — whose `StringDesc.toString()` is
+// NOT `toString()`. Unlike Android — whose `StringDesc.toString()` is
 // overridden to resolve the string — the Apple `ResourceStringDesc` only
 // implements `localized()`, so `toString()` returned the data-class description
 // ("ResourceStringDesc(...)") and leaked as a "RESOURCESTRING" placeholder in

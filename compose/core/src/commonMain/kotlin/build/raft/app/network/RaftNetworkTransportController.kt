@@ -20,7 +20,7 @@ import kotlinx.atomicfu.locks.synchronized
 @RaftCoreInternalApi
 data class RaftNetworkTransportPlatformPolicy(
     val platformLabel: String,
-    /** OHOS has no Ktor delegate; off means curl with H3 not requested. */
+    /** Platform has no Ktor delegate; off means curl with H3 not requested. */
     val curlRequired: Boolean,
     val appOwnedTrustRequired: Boolean,
     val readyDetail: String

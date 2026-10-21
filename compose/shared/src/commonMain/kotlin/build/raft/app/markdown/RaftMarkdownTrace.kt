@@ -17,10 +17,10 @@ package build.raft.app.markdown
  *
  * Implementation: `expect`/`actual` for cross-platform trace. On Android
  * (visible in Perfetto / Studio CPU profiler / `simpleperf`) the actual
- * implementation uses `android.os.Trace.beginSection/endSection`. On OHOS /
+ * implementation uses `android.os.Trace.beginSection/endSection`. On
  * js / native targets the actual is a no-op — trace markers cost nothing.
- * (Earlier attempt used `androidx.tracing:tracing:1.3.0` which broke OHOS
- * compile; switched to expect/actual to keep OHOS green.)
+ * (Earlier attempt used `androidx.tracing:tracing:1.3.0` which broke the
+ * Kotlin/Native compile; switched to expect/actual.)
  *
  * These markers are **only** used as phase attribution input. They do NOT
  * participate in PR gate metrics (perf numbers still come from gfxinfo
@@ -33,10 +33,10 @@ internal expect fun raftTraceDiagnosticsEnabled(): Boolean
 /**
  * KMP-friendly monotonic clock for #192 phase duration measurement.
  * Wrapped as `expect/actual` because `System.nanoTime()` exists on Android/JVM
- * but is NOT available on Kotlin/Native (OHOS) or JS — commonMain cannot call
- * it directly without breaking OHOS compile. Android actual uses `System.nanoTime()`
- * for Perfetto alignment; OHOS/JS use platform monotonic clocks (`TimeSource.Monotonic`
- * for OHOS Kotlin/Native, `performance.now()` for JS) so phase durations stay
+ * but is NOT available on Kotlin/Native or JS — commonMain cannot call
+ * it directly without breaking the native compile. Android actual uses `System.nanoTime()`
+ * for Perfetto alignment; native/JS use platform monotonic clocks (`TimeSource.Monotonic`
+ * for Kotlin/Native, `performance.now()` for JS) so phase durations stay
  * monotonic and consistent across platforms.
  */
 internal expect fun raftNanoTimeNanos(): Long
@@ -75,9 +75,9 @@ internal inline fun <T> traceMarkdownSectionNonComposable(
  * phase duration exceeds `MarkdownSpikeThresholdUs`. Single-line log so we can grep
  * logcat by tag (e.g., `adb logcat -d | grep SlockMarkdownSpike`).
  *
- * On Android logs at INFO level via `android.util.Log`; on OHOS / js / native this
+ * On Android logs at INFO level via `android.util.Log`; on js / native this
  * is a no-op (we only run smoke on Android). Pure expect/actual keeps commonMain
- * portable without forcing OHOS / native to know about the logger.
+ * portable without forcing native targets to know about the logger.
  *
  * `extra` is a lambda so call sites do not pay string interpolation (or the
  * annotation scans some sites embed in it) when diagnostics are disabled — the

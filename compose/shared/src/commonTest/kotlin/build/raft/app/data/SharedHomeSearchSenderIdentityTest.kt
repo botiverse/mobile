@@ -116,7 +116,7 @@ class SharedHomeSearchSenderIdentityTest {
         )
 
     /**
-     * OHOS commonTest has no kotlinx-coroutines-test KLIB. The continuation is the explicit
+     * commonTest avoids kotlinx-coroutines-test. The continuation is the explicit
      * interleaving barrier and intentionally ignores cancellation so request-token fencing runs.
      */
     private class DeferredMemberRepository : MemberRepository {

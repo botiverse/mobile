@@ -77,7 +77,7 @@ FOUNDATION_EXTERN UIViewController * _Nullable RaftSharePresenterController(
 FOUNDATION_EXTERN NSString *RaftAttachmentSafeComponent(NSString *raw);
 /**
  * Builds the persistent attachment cache key `<ownerKey>-<safe(attachmentId)>`
- * (OHOS SlockOhosPrivateAttachmentStore scheme; empty owner yields just the id).
+ * (empty owner yields just the id).
  */
 FOUNDATION_EXTERN NSString *RaftAttachmentCacheKey(NSString *ownerKey, NSString *attachmentId);
 

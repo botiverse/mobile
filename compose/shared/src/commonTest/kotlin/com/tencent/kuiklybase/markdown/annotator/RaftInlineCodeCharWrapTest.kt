@@ -6,7 +6,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 // task #401 A-bridge: char-level wrap break interleaving for platforms whose
-// native render lacks inline-code atomization (OHOS/iOS). These tests cover
+// native render lacks inline-code atomization (iOS). These tests cover
 // the transform itself; they are target-independent (the platform gate that
 // decides WHETHER to apply it is an expect/actual returning null on Android).
 class RaftInlineCodeCharWrapTest {

@@ -72,7 +72,7 @@ data class RaftRealtimeAppScopeConnectDecision(
     // Diagnostic string, never absent: "" means "nothing to log". Kept non-null
     // like the sibling decision types because it crosses the KNOI bridge, where a
     // Kotlin null map value materializes as JS `undefined` (not null) and defeats
-    // the ArkTS `!== null` guards.
+    // host-side `!== null` guards.
     val logMessage: String
 )
 
@@ -106,9 +106,8 @@ data class RaftRealtimeAppScopeMappedDecision(
  * C/NAPI-friendly app-scope realtime state machine.
  *
  * This class intentionally does not depend on Android Context, Kuikly Pager,
- * ArkTS objects, or platform socket classes. Android can wrap it with the
- * higher-level coordinator below; OHOS can reach the primitive host methods
- * through the generated Kotlin/Native `libshared_api.h` surface.
+ * or platform socket classes. Android can wrap it with the
+ * higher-level coordinator below.
  */
 class RaftRealtimeAppScopeEngine {
     private val state = RaftRealtimeAppScopeState()

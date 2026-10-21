@@ -41,8 +41,8 @@ data class AppBadgeCount(
     val selectedServerId: ServerId?,
     /**
      * Wall-clock millis when [count] was last successfully derived. The
-     * `Long` (not `Instant`) is intentional to match the OHOS datetime
-     * klib stability rule we adopted in `d56ed07d`; UI layer formats via
+     * `Long` (not `Instant`) is intentional (the datetime klib
+     * stability rule adopted in `d56ed07d`); UI layer formats via
      * [build.raft.app.model.RaftTime].
      *
      * Refresh-failure semantics: this field MUST NOT advance on a failed

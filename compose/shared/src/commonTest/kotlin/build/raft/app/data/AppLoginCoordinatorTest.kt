@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
-// OHOS has no kotlinx-coroutines-test KLIB; all suspend fakes complete inline and time is injected.
+// No kotlinx-coroutines-test; all suspend fakes complete inline and time is injected.
 class AppLoginCoordinatorTest {
     private val verifier = "v".repeat(43)
     private val challenge = "c".repeat(43)

@@ -7408,7 +7408,7 @@ private object RaftPixelAvatarDrawCache {
             if (composeCount == 0) 0.0
             else 1.0 - rebuildCount.toDouble() / composeCount.toDouble()
         // Debug-only log; intentionally keep at info level so it's easy to grep in logcat.
-        // OHOS / JS see the side effect of counters updating but no log line is emitted
+        // iOS / JS see the side effect of counters updating but no log line is emitted
         // (the android.util.Log call is platform-conditional below).
         // Note: avoid String.format for cross-platform compat (not in Kotlin/Native stdlib);
         // manual integer-truncation to two decimals is fine for diagnostic purposes.

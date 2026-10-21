@@ -261,7 +261,7 @@ internal fun isLegalAttachmentUploadSessionId(value: String): Boolean =
 
 /**
  * Validate a server-issued object URL without using a platform URL parser.  The shared module is
- * compiled for JVM, Native and OHOS, so this deliberately accepts only the small, unambiguous
+ * compiled for JVM and Native, so this deliberately accepts only the small, unambiguous
  * absolute HTTP(S) grammar needed by the direct-upload contract.
  *
  * In particular, do not relax this to "startsWith(https://)": userinfo, encoded authority

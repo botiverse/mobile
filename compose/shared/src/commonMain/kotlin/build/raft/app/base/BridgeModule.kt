@@ -873,7 +873,7 @@ internal class BridgeModule : Module() {
      * #81: host bridge for the selected-server app badge. Called from
      * [build.raft.app.data.SharedHomeStore] whenever
      * [build.raft.app.data.AppBadgeCount] changes. The host platform
-     * (Android / OHOS / iOS / desktop) decides how to render the badge
+     * (Android / iOS / desktop) decides how to render the badge
      * (launcher icon, app icon, tray, etc.) from `count`.
      *
      * [source] is passed for diagnostics / logging only. Per the

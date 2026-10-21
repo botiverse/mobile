@@ -28,7 +28,7 @@ import androidx.compose.ui.unit.Density
  * The Android host therefore also publishes the window's own IME inset from every inset dispatch,
  * plus whether a platform IME animation is currently driving `WindowInsets.ime`. While one is, the
  * animated Compose value is used (the composer rides the keyboard frame by frame); otherwise the
- * host's value is the truth and is used directly. Hosts that publish nothing (iOS, OHOS, tests)
+ * host's value is the truth and is used directly. Hosts that publish nothing (iOS, tests)
  * keep reading `WindowInsets.ime` alone.
  */
 

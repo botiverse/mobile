@@ -1470,7 +1470,7 @@ private val RaftMessagePermalinkChipBackground: Color
 // Chrome-related fields are platform-derived (task #441): declaring
 // consumesChromeTokens/hasDrawAdapter=true in commonMain overclaimed platforms
 // whose native renderer doesn't draw the chip chrome (it was hardcoded true
-// while OHOS had no chip at all). Document/action/style-token consumption is
+// while one renderer had no chip at all). Document/action/style-token consumption is
 // shared-side behavior and genuinely platform-independent.
 internal val RaftMarkdownRendererRichTextCapabilities: RaftRichTextCapabilities
     get() {
@@ -2704,7 +2704,7 @@ private val RaftMarkdownDividerVerticalPadding = RaftAppSpacing.Sm
 // task #66: persistent transparent copy affordance on code blocks — the old
 // native Android app had this (May task #9: transparent tap area + lucide copy
 // icon, no plate) and the KMP rewrite dropped it, leaving no way to copy code
-// on phones. Shared implementation = Android/iOS/OHOS behave identically.
+// on phones. Shared implementation = Android/iOS behave identically.
 @Composable
 private fun RaftMarkdownCodeBlockWithCopy(
     code: String,

@@ -139,7 +139,7 @@ internal class SharedHomeStore(
      * #81: wall-clock source for [AppBadgeCount.lastUpdated]. Injected so
      * tests can pin a deterministic clock; production passes a
      * `System.currentTimeMillis` adapter. Use [Long] (not [kotlin.time.Instant])
-     * to match the OHOS datetime klib stability rule we adopted in
+     * per the datetime klib stability rule adopted in
      * `d56ed07d`; UI layer formats via `RaftTime` if needed.
      */
     private val nowMillis: () -> Long = { defaultNowMillis() },

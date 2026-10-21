@@ -21,7 +21,7 @@ object RaftRealtimeNotifyContract {
      * [EventName] for the small lifecycle/action signals, so a large event
      * is decoded exactly once instead of once per open page (the Kuikly
      * bridge parses per listener). Only the Android host publishes here;
-     * iOS/OHOS ingress keeps posting raw events on [EventName].
+     * iOS ingress keeps posting raw events on [EventName].
      */
     const val RawIngestEventName = GeneratedRealtimeContract.Notify.EventName + ".rawIngest"
     const val RoomsEventName = GeneratedRealtimeContract.Notify.RoomsEventName

@@ -7,7 +7,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * task #783 common contract teeth (pure, OHOS-compatible: no coroutines-test,
+ * task #783 common contract teeth (pure, native-compatible: no coroutines-test,
  * no sleeps): only a multipart set containing a streaming fileRef part gets
  * the 3-minute upload budget; everything else keeps the ordinary bound.
  */

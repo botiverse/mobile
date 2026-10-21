@@ -153,7 +153,7 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
 
 /**
  * The `platform` value this client reports to feature-flag evaluation. The server's `FeatureFlagPlatform`
- * is coarse (`"web" | "mobile"`), so every KMP surface (Android / iOS / OHOS) reports `"mobile"`.
+ * is coarse (`"web" | "mobile"`), so every KMP surface (Android / iOS) reports `"mobile"`.
  */
 const val FEATURE_FLAG_PLATFORM_MOBILE: String = "mobile"
 

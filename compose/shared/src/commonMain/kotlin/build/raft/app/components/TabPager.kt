@@ -32,7 +32,7 @@ import kotlin.math.abs
  * The shared component deliberately knows nothing about platform back
  * gestures: platforms INJECT their avoidance policy here instead of the
  * component hardcoding it (iOS wants its interactive edge-back to win over
- * the pager near the screen's start edge; Android/OHOS keep 0 by default).
+ * the pager near the screen's start edge; Android keeps 0 by default).
  */
 data class TabPagerGesturePolicy(
     /** Region from the start edge where the pager must NOT claim the drag. */

@@ -45,10 +45,9 @@ internal object KmmResourceLocaleRuntime {
 /**
  * task #190: platform hook invoked every time the app shell (re)applies the
  * active locale. Android/iOS resolve strings against the process-local
- * [StringDesc.localeType] directly and need no extra signal. OHOS forwards
- * the locale tag to the ets host so `resourceManager` lookups can run
- * through an override configuration; without it the host always resolves
- * against the system locale.
+ * [StringDesc.localeType] directly and need no extra signal; the hook is
+ * kept for hosts that must forward the locale tag to a native resource
+ * manager.
  *
  * Implementations must tolerate being called before the host side is ready
  * and must be cheap on repeat calls with an unchanged locale (the shell

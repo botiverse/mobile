@@ -26,8 +26,7 @@ package build.raft.app
  * makes no claim beyond that. task #1010 proved and fixed Android's competing
  * focused-anchor/IME owners, so Android restores ordinary correction together
  * with that root fix. iOS had already restored it after the stop-loss caused
- * the user-visible Hands 8f33b1f3 regression. OHOS stays unchanged until it
- * has its own product evidence.
+ * the user-visible Hands 8f33b1f3 regression.
  */
 internal enum class ThreadImeProgrammaticViewportPolicy {
     SuppressWhileImeOpen,

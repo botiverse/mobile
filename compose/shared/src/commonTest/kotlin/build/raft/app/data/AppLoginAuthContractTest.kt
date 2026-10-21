@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-// OHOS has no kotlinx-coroutines-test KLIB; all suspend fakes complete inline and time is injected.
+// No kotlinx-coroutines-test; all suspend fakes complete inline and time is injected.
 class AppLoginAuthContractTest {
     private class Transport : RaftAuthTransport by AuthDataSourceTest.FakeAuthApi() {
         var startBody = ""

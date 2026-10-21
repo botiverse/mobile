@@ -79,7 +79,7 @@ internal actual fun raftFirstComposedCharacterEnd(text: String): Int? {
     return boundary?.takeIf { it in 1..text.length }
 }
 
-// Cross-platform Hands contract is bounded by the OHOS SDK's current 50MB cap.
+// Cross-platform Hands contract: one shared 50MB feedback attachment cap.
 internal actual fun raftFeedbackAttachmentMaxBytes(): Long = 50L * 1024L * 1024L
 
 internal actual fun raftFeedbackWebViewClientKind(): String = "android"
