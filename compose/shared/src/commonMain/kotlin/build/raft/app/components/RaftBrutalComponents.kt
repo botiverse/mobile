@@ -1318,13 +1318,17 @@ internal fun SegmentedControl(
     options: List<SegmentedControlOption>,
     onValueSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    // Share the given width equally (labels ellipsize) instead of each item taking its own
+    // width, for a control that must fit a card at large font sizes.
+    fillWidth: Boolean = false
 ) {
     // raft-ui SegmentedControl: a `--fill-muted` tray (radius 11, 3dp inset, 2dp gap);
     // the checked item is the yellow sticker with an ink edge.
     Row(
         modifier =
             modifier
+                .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier)
                 .background(RaftColor.FillMuted, RoundedCornerShape(11.dp))
                 .padding(3.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -1337,7 +1341,8 @@ internal fun SegmentedControl(
                 count = option.count,
                 selected = option.value == selectedValue,
                 enabled = enabled,
-                onClick = { onValueSelected(option.value) }
+                onClick = { onValueSelected(option.value) },
+                modifier = if (fillWidth) Modifier.weight(1f) else Modifier
             )
         }
     }
@@ -1355,7 +1360,8 @@ internal fun RaftSegmentedItem(
     enabled: Boolean,
     onClick: () -> Unit,
     iconName: RaftLucideIconName? = null,
-    count: Int? = null
+    count: Int? = null,
+    modifier: Modifier = Modifier
 ) {
     var pressed by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(RaftAppRadius.Control)
@@ -1378,7 +1384,7 @@ internal fun RaftSegmentedItem(
         pressOffset = 0.dp,
         onPressedChange = { pressed = it },
         modifier =
-            Modifier
+            modifier
                 .height(RaftMetrics.ControlHeightMd)
                 .background(fill, shape)
                 .border(RaftAppStroke.Control, if (selected) RaftColor.StickerInk else Color.Transparent, shape)
@@ -1386,7 +1392,7 @@ internal fun RaftSegmentedItem(
                 .padding(horizontal = 12.dp + RaftAppStroke.Control)
     ) {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically
         ) {
             iconName?.let {
@@ -1394,6 +1400,7 @@ internal fun RaftSegmentedItem(
             }
             Text(
                 text = label,
+                modifier = Modifier.weight(1f, fill = false),
                 style =
                     RaftType.Body
                         .copy(fontSize = 14.sp, lineHeight = 20.sp)
