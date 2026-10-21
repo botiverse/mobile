@@ -6954,16 +6954,13 @@ private fun RaftAppShellReadyContent(
                             )
                         }
                             if (detailPageData == null) {
-                                Box(
+                                // The wide detail with nothing open: the shared empty state (icon,
+                                // muted title) on the pane's surface, not a bare line of text.
+                                RaftEmptyState(
+                                    title = adaptiveEmptyLabel,
                                     modifier = modifier.fillMaxSize(),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    Text(
-                                        text = adaptiveEmptyLabel,
-                                        color = RaftColor.TextMutedGray,
-                                        fontSize = 15.sp,
-                                    )
-                                }
+                                    iconName = RaftLucideIconName.MessageSquare,
+                                )
                             } else {
                                 RaftChildPage(
                                     pageName = THREAD_PAGE,
@@ -7423,6 +7420,8 @@ private fun RaftAppShellReadyContent(
                             activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
                             externalSelectedThreadId =
                                 adaptiveWorkspaceState?.selection?.identity?.threadId,
+                            // The two-pane layout owns the highlight: none once the detail closes.
+                            externalSelectionOwned = navRailActive,
                             mainTab = true,
                             scrollToTopRequest = tabScrollToTopRequests.activity
                         )

@@ -175,6 +175,12 @@ internal fun SharedHomeActivityScreen(
     // selection identity (threadId) is the source of truth for the row
     // highlight; a stale checkpoint key must not resurface.
     externalSelectedThreadId: String? = null,
+    /**
+     * True while the wide list-detail host owns the selection: then a null
+     * [externalSelectedThreadId] means nothing is open beside the list, and the row highlight
+     * clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
+     */
+    externalSelectionOwned: Boolean = false,
     // Activity hosted as an app-shell bottom tab: main-tab header.
     mainTab: Boolean = false,
     // App-shell bottom-tab double tap generation (AppShellTabScrollToTopRequests.activity).
@@ -591,6 +597,7 @@ internal fun SharedHomeActivityScreen(
         presentationStore = activityStore.presentationStore,
         foregroundEpoch = activitySummary.lastForegroundEpoch,
         externalSelectedThreadId = externalSelectedThreadId,
+        externalSelectionOwned = externalSelectionOwned,
         mainTab = mainTab,
         conversationList = conversationList,
         channelMute = channelMute,
@@ -802,6 +809,12 @@ internal fun SharedHomeActivityScreen(
     foregroundEpoch: Long,
     modifier: Modifier = Modifier,
     externalSelectedThreadId: String? = null,
+    /**
+     * True while the wide list-detail host owns the selection: then a null
+     * [externalSelectedThreadId] means nothing is open beside the list, and the row highlight
+     * clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
+     */
+    externalSelectionOwned: Boolean = false,
     mainTab: Boolean = false,
     conversationList: ActivityConversationListPresentation? = null,
     channelMute: ActivityChannelMuteControl? = null
@@ -822,6 +835,7 @@ internal fun SharedHomeActivityScreen(
         presentationStore = presentationStore,
         foregroundEpoch = 0L,
         externalSelectedThreadId = externalSelectedThreadId,
+        externalSelectionOwned = externalSelectionOwned,
         mainTab = mainTab,
         conversationList = conversationList,
         channelMute = channelMute,
@@ -849,6 +863,12 @@ internal fun SharedHomeActivityPanel(
     foregroundEpoch: Long,
     modifier: Modifier = Modifier,
     externalSelectedThreadId: String? = null,
+    /**
+     * True while the wide list-detail host owns the selection: then a null
+     * [externalSelectedThreadId] means nothing is open beside the list, and the row highlight
+     * clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
+     */
+    externalSelectionOwned: Boolean = false,
     conversationList: ActivityConversationListPresentation? = null,
     channelMute: ActivityChannelMuteControl? = null
 ) {
@@ -879,6 +899,7 @@ internal fun SharedHomeActivityPanel(
             presentationStore = presentationStore,
             foregroundEpoch = foregroundEpoch,
             externalSelectedThreadId = externalSelectedThreadId,
+            externalSelectionOwned = externalSelectionOwned,
             conversationList = conversationList,
             channelMute = channelMute,
             modifier = modifier
@@ -918,6 +939,12 @@ private fun SharedActivityPanelContent(
     foregroundEpoch: Long,
     modifier: Modifier = Modifier,
     externalSelectedThreadId: String? = null,
+    /**
+     * True while the wide list-detail host owns the selection: then a null
+     * [externalSelectedThreadId] means nothing is open beside the list, and the row highlight
+     * clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
+     */
+    externalSelectionOwned: Boolean = false,
     mainTab: Boolean = false,
     conversationList: ActivityConversationListPresentation? = null,
     channelMute: ActivityChannelMuteControl? = null,
@@ -1025,6 +1052,7 @@ private fun SharedActivityPanelContent(
                     presentationStore = presentationStore,
                     foregroundEpoch = foregroundEpoch,
                     externalSelectedThreadId = externalSelectedThreadId,
+                    externalSelectionOwned = externalSelectionOwned,
                     conversationList = conversationList,
                     channelMute = channelMute,
                     unreadJumpRequest = unreadJumpRequest,
@@ -1079,6 +1107,12 @@ private fun SharedActivityBodyContent(
     presentationStore: SharedActivityPresentationStore,
     foregroundEpoch: Long,
     externalSelectedThreadId: String? = null,
+    /**
+     * True while the wide list-detail host owns the selection: then a null
+     * [externalSelectedThreadId] means nothing is open beside the list, and the row highlight
+     * clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
+     */
+    externalSelectionOwned: Boolean = false,
     conversationList: ActivityConversationListPresentation? = null,
     channelMute: ActivityChannelMuteControl? = null,
     unreadJumpRequest: Int = 0,
@@ -1160,6 +1194,7 @@ private fun SharedActivityBodyContent(
                     presentationStore = presentationStore,
                     foregroundEpoch = foregroundEpoch,
                     externalSelectedThreadId = externalSelectedThreadId,
+                    externalSelectionOwned = externalSelectionOwned,
                     conversationList = conversationList,
                     channelMute = channelMute,
                     unreadJumpRequest = unreadJumpRequest
@@ -1307,6 +1342,12 @@ private fun SharedActivityList(
     presentationStore: SharedActivityPresentationStore,
     foregroundEpoch: Long,
     externalSelectedThreadId: String? = null,
+    /**
+     * True while the wide list-detail host owns the selection: then a null
+     * [externalSelectedThreadId] means nothing is open beside the list, and the row highlight
+     * clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
+     */
+    externalSelectionOwned: Boolean = false,
     conversationList: ActivityConversationListPresentation? = null,
     channelMute: ActivityChannelMuteControl? = null,
     unreadJumpRequest: Int = 0
@@ -1467,8 +1508,14 @@ private fun SharedActivityList(
     // task #45: when the adaptive workspace owns a selection, the row highlight
     // must track THAT conversation (e.g. Search opened a different session while
     // this panel was covered) instead of reviving a stale checkpoint key.
-    LaunchedEffect(presentedItems, externalSelectedThreadId, active) {
-        if (!active || externalSelectedThreadId == null) return@LaunchedEffect
+    LaunchedEffect(presentedItems, externalSelectedThreadId, externalSelectionOwned, active) {
+        if (!active) return@LaunchedEffect
+        if (externalSelectedThreadId == null) {
+            if (externalSelectionOwned && selectedItemKey != null) {
+                selectedItemKey = null
+            }
+            return@LaunchedEffect
+        }
         val match =
             presentedItems.firstOrNull { item ->
                 item.toConversationSummary().threadId.value == externalSelectedThreadId
