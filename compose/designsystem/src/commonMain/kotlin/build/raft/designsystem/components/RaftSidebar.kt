@@ -72,8 +72,11 @@ internal object RaftSidebarItemMetrics {
     /** `SidebarItemAside` `gap-1` between its parts. */
     val AsideGap = 4.dp
 
-    /** `my-px`: rows stand 2dp apart. */
-    val MarginVertical = 1.dp
+    /**
+     * `my-px`: in the web's block flow the 1px margins above and below collapse, so rows
+     * stand 1dp apart. Compose margins add up, so each row keeps 1dp above only.
+     */
+    val MarginTop = 1.dp
 
     /** `SidebarItemIcon` / `SidebarItemChannelIcon`: a 19dp box with a 16dp icon. */
     val IconBox = 19.dp
@@ -118,7 +121,7 @@ enum class RaftSidebarItemVariant(
  *
  * - Box: at least 44dp tall (it grows with the font scale), 8dp start / 10dp end padding
  *   inside a 1.5dp edge that is always there (transparent at rest), control radius, gap 8,
- *   1dp above and below. The row fills the width it is given.
+ *   1dp above it, so rows stand 1dp apart (the web's collapsed `my-px`). The row fills the width it is given.
  * - [leading]: a 19dp slot for a 16dp icon ([RaftSidebarItemIcon]) or a 19dp avatar, drawn
  *   in `foreground-hint` ([LocalRaftContentColor]), 8dp from the name. [variant]
  *   [RaftSidebarItemVariant.Entry] (Home's Search / Activity / Saved) makes it a 20dp icon
@@ -274,7 +277,7 @@ private fun RaftSidebarItemLayout(
     ) {
         Row(
             modifier
-                .padding(vertical = RaftSidebarItemMetrics.MarginVertical)
+                .padding(top = RaftSidebarItemMetrics.MarginTop)
                 .fillMaxWidth()
                 .heightIn(min = RaftSidebarItemMetrics.MinHeight)
                 .raftSticker(look, RaftRadius.Control, pressed = pressed, focused = focused, colors = colors)
@@ -587,7 +590,7 @@ fun RaftSidebarItemMeta(text: String, modifier: Modifier = Modifier) {
  * collapsible group of rows (Pinned, Channels, a custom group).
  *
  * - `px-2 pt-4 pb-1.5`, gap 8: 40dp tall at the default font scale.
- * - The disclosure: an 18dp box with a 14dp `chevron-right` (turned down when [expanded]),
+ * - The disclosure: a 14dp `chevron-right` (turned down when [expanded]; `size-3.5`),
  *   an optional [icon] (a custom group's emoji), the [title] in `text-footnote` 700 and
  *   [count] in Space Mono 12 tabular, all `foreground-hint`, 6dp apart. It is one button
  *   spanning the header's height (so a finger can hit it), with the expand / collapse
@@ -683,7 +686,7 @@ fun RaftSidebarSectionHeader(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 CompositionLocalProvider(LocalRaftContentColor provides hint) {
-                    Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(14.dp), contentAlignment = Alignment.Center) {
                         RaftGlyphIcon(
                             RaftGlyph.ChevronRight,
                             modifier = Modifier.rotate(if (expanded) 90f else 0f),
@@ -725,8 +728,9 @@ fun RaftSidebarSectionHeader(
 }
 
 /**
- * A group header's control (`SidebarSectionControl`: ghost, icon size): a
- * [RaftIconButton] [RaftButtonVariant.Ghost] with a 16dp [glyph] in `foreground`, named
+ * A group header's control (`SidebarSectionControl`: ghost, `h-7 min-w-7`): a 28dp
+ * ([RaftIconButtonSize.Sm], touch target widened to 44dp) [RaftIconButton]
+ * [RaftButtonVariant.Ghost] with a 16dp [glyph] in `foreground`, named
  * by [tooltip] (Title Case: "Sort Channels", "Create Channel"). Sort is
  * [RaftGlyph.ArrowUpDown] (or [RaftGlyph.ArrowDownUp]), create [RaftGlyph.Plus].
  */
@@ -761,6 +765,7 @@ fun RaftSidebarSectionAction(
         tooltip = tooltip,
         modifier = modifier,
         variant = RaftButtonVariant.Ghost,
+        size = RaftIconButtonSize.Sm,
         enabled = enabled,
     ) {
         Box(Modifier.size(RaftSidebarSectionActionIconSize), contentAlignment = Alignment.Center) { icon() }
@@ -773,7 +778,7 @@ private val RaftSidebarSectionActionIconSize = 16.dp
 /**
  * Lays the content out at its own height but reports [height] (padding included in the
  * modifiers before it), centring the content on it: CSS negative block margins, so a
- * 32dp control sits on an 18dp line without growing the row.
+ * 28dp control sits on an 18dp line without growing the row.
  */
 private fun Modifier.overhang(height: Dp): Modifier =
     layout { measurable, constraints ->

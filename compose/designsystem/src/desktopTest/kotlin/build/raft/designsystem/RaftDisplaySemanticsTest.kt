@@ -68,6 +68,8 @@ import build.raft.designsystem.components.RaftSidebarChannelItem
 import build.raft.designsystem.components.RaftSidebarItem
 import build.raft.designsystem.components.RaftSidebarItemVariant
 import build.raft.designsystem.components.raftSidebarItemIconSize
+import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.RaftSidebarSectionAction
 import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.designsystem.components.RaftReadOnlyField
 import build.raft.designsystem.components.RaftSkeleton
@@ -226,6 +228,46 @@ class RaftDisplaySemanticsTest {
             assertEquals(16f, placeIcon.width / d, 0.5f)
             // 1.5dp of the 19dp slot on each side of the 16dp icon, then gap-2.
             assertEquals(9.5f, (placeTitle.left - placeIcon.right) / d, 0.5f)
+        }
+
+    /**
+     * Web phone metrics (Lagoon's 393dp measurement): rows 44dp tall and 1dp apart; a group
+     * header's title 20dp after its 14dp chevron's start; its controls 28dp, 4dp apart.
+     */
+    @Test
+    fun sidebarRowsStand1dpApartAndAHeaderMatchesTheWeb() =
+        runComposeUiTest {
+            setContent(
+                themed {
+                    Column(Modifier.width(393.dp)) {
+                        RaftSidebarSectionHeader(
+                            "Channels",
+                            expanded = true,
+                            onExpandedChange = {},
+                            modifier = Modifier.testTag("header"),
+                            actions = {
+                                RaftSidebarSectionAction(RaftGlyph.ArrowUpDown, "Sort Channels", {}, Modifier.testTag("sort"))
+                                RaftSidebarSectionAction(RaftGlyph.Plus, "Create Channel", {}, Modifier.testTag("create"))
+                            },
+                        )
+                        RaftSidebarItem("general", onClick = {}, modifier = Modifier.testTag("row1"))
+                        RaftSidebarItem("random", onClick = {}, modifier = Modifier.testTag("row2"))
+                    }
+                },
+            )
+            val d = density.density
+            fun bounds(tag: String) = onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val first = onNodeWithText("general", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val second = onNodeWithText("random", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            assertEquals(45f, (second.top - first.top) / d, 0.5f)
+            val header = bounds("header")
+            val title = onNodeWithText("Channels", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            // px-2, then the 14dp chevron and gap-1.5.
+            assertEquals(28f, (title.left - header.left) / d, 0.5f)
+            val sort = bounds("sort")
+            val create = bounds("create")
+            assertEquals(28f, sort.height / d, 0.5f)
+            assertEquals(4f, (create.left - sort.right) / d, 0.5f)
         }
 
     /** A DM's aside parts stand 6dp apart (web `SIDEBAR_ROW_TRAILING_CLASS`), a place row's 4dp. */
