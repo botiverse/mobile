@@ -1,5 +1,19 @@
 package build.raft.app.markdown
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.geometry.Offset
+import kotlin.math.abs
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -212,8 +226,31 @@ private fun RaftMermaidFullscreen(
     val topSafeArea = raftTopSafeAreaPadding()
     val bottomSafeArea = raftBottomSafeAreaPadding()
     val zoom = remember { RaftMermaidViewportState() }
+    val dragX = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
     Modal(onWillDismiss = { onDismiss() }) {
-        Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { translationX = dragX.value }
+                    .raftMermaidSwipeToDismiss(
+                        canStartAnywhere = { !zoom.canPan },
+                        onDrag = { dx -> scope.launch { dragX.snapTo((dragX.value + dx).coerceAtLeast(0f)) } },
+                        onRelease = { width, velocityX ->
+                            scope.launch {
+                                if (raftMermaidSwipeDismisses(dragX.value, width, velocityX)) {
+                                    dragX.animateTo(width)
+                                    currentOnDismiss()
+                                } else {
+                                    dragX.animateTo(0f)
+                                }
+                            }
+                        },
+                    )
+                    .background(RaftColor.SurfaceWhite)
+        ) {
             RaftDesignSystemTheme {
                 Row(
                     modifier =
@@ -298,3 +335,65 @@ private fun RaftMermaidToolbarButton(
 /** The design-system icon-button glyph size (Md 18dp, Lg 22dp). */
 private fun raftMermaidToolbarGlyph(size: RaftIconButtonSize): Dp =
     if (size == RaftIconButtonSize.Lg) 22.dp else 18.dp
+
+
+/**
+ * A right swipe closes the full-screen diagram, like the back swipe of a pushed page (the modal
+ * blocks the host's page back swipe): from the leading edge always, and anywhere while the diagram
+ * is not zoomed in for panning ([canStartAnywhere]). Only a mostly horizontal rightward drag is
+ * claimed; vertical drags, leftward drags and pinches stay with the diagram.
+ */
+private fun Modifier.raftMermaidSwipeToDismiss(
+    canStartAnywhere: () -> Boolean,
+    onDrag: (dx: Float) -> Unit,
+    onRelease: (widthPx: Float, velocityX: Float) -> Unit,
+): Modifier =
+    pointerInput(Unit) {
+        val edgePx = RaftMermaidSwipeEdge.toPx()
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            if (down.position.x > edgePx && !canStartAnywhere()) return@awaitEachGesture
+            val tracker = VelocityTracker()
+            tracker.addPointerInputChange(down)
+            var claimed = false
+            var total = Offset.Zero
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                if (!claimed && event.changes.size > 1) return@awaitEachGesture
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                if (!change.pressed) break
+                val delta = change.positionChange()
+                total += delta
+                tracker.addPointerInputChange(change)
+                if (!claimed) {
+                    when (raftMermaidSwipeClaim(total, viewConfiguration.touchSlop)) {
+                        RaftMermaidSwipeClaim.Claim -> claimed = true
+                        RaftMermaidSwipeClaim.Reject -> return@awaitEachGesture
+                        RaftMermaidSwipeClaim.Undecided -> Unit
+                    }
+                }
+                if (claimed) {
+                    change.consume()
+                    onDrag(delta.x)
+                }
+            }
+            if (claimed) onRelease(size.width.toFloat(), tracker.calculateVelocity().x)
+        }
+    }
+
+internal enum class RaftMermaidSwipeClaim { Undecided, Claim, Reject }
+
+/** Claim a drag once it passes the slop going right and mostly sideways; reject vertical or leftward. */
+internal fun raftMermaidSwipeClaim(total: Offset, touchSlop: Float): RaftMermaidSwipeClaim =
+    when {
+        total.x > touchSlop && total.x > abs(total.y) * 1.5f -> RaftMermaidSwipeClaim.Claim
+        abs(total.y) > touchSlop || total.x < -touchSlop -> RaftMermaidSwipeClaim.Reject
+        else -> RaftMermaidSwipeClaim.Undecided
+    }
+
+/** Dismiss past a third of the width, or on a quick flick to the right. */
+internal fun raftMermaidSwipeDismisses(offsetPx: Float, widthPx: Float, velocityX: Float): Boolean =
+    offsetPx > widthPx / 3f || (velocityX > RaftMermaidSwipeFlingVelocity && offsetPx > 0f)
+
+private val RaftMermaidSwipeEdge = 24.dp
+private const val RaftMermaidSwipeFlingVelocity = 1000f
