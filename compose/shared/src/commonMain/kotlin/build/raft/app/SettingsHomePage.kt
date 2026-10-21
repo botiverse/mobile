@@ -14268,13 +14268,15 @@ internal fun SharedSettingsDeveloperContent(
             state = state,
             actionState = actionState,
             errorStrings = localizedErrorPresentationStrings(),
-            copy = settingsDeveloperPayloadCopy()
+            copy = settingsDeveloperPayloadCopy(),
+            textInputTraceEnabled = RaftTextInputDiagnostics.enabled
         )
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding, onCopyValue = onCopyValue) { action, value ->
         when (action) {
             DEVELOPER_ACTION_API_ENVIRONMENT -> onOpenApiEnvironment()
             "diagnostics" -> onOpenDiagnostics()
             "router" -> onOpenRouter()
+            DEVELOPER_ACTION_TEXT_INPUT_TRACE -> RaftTextInputDiagnostics.setEnabled(value == "true")
         }
     }
 }
@@ -14553,6 +14555,7 @@ private fun SharedSettingsLocalFeatureOverrideDetailContent(
     }
 }
 
+internal const val DEVELOPER_ACTION_TEXT_INPUT_TRACE = "textInputTrace"
 private const val LOCAL_FEATURE_OVERRIDES_OPEN_ACTION = "openLocalFeatureOverrides"
 private const val LOCAL_FEATURE_OVERRIDE_OPEN_ACTION_PREFIX = "openLocalFeatureOverride|"
 private const val LOCAL_FEATURE_OVERRIDE_EXPORT_ACTION = "exportLocalFeatureOverrideEvidence"
@@ -17591,7 +17594,11 @@ internal data class SettingsDeveloperPayloadCopy(
     val diagnostics: String = "Diagnostics",
     val diagnosticsDetail: String = "Open auth, sanitized logs, and feedback tools.",
     val routeLauncher: String = "Route launcher",
-    val routeLauncherDetail: String = "Open Kuikly route launcher and icon compare."
+    val routeLauncherDetail: String = "Open Kuikly route launcher and icon compare.",
+    val textInputTrace: String = "Text input trace",
+    val textInputTraceDetail: String = "Log every keyboard edit and text sync in text fields to the app logs.",
+    val on: String = "On",
+    val off: String = "Off"
 )
 
 @Composable
@@ -17614,7 +17621,11 @@ private fun settingsDeveloperPayloadCopy(): SettingsDeveloperPayloadCopy =
         diagnostics = stringResource(MR.strings.settings_diagnostics_title),
         diagnosticsDetail = stringResource(MR.strings.settings_developer_diagnostics_detail),
         routeLauncher = stringResource(MR.strings.settings_developer_route_launcher),
-        routeLauncherDetail = stringResource(MR.strings.settings_developer_route_launcher_detail)
+        routeLauncherDetail = stringResource(MR.strings.settings_developer_route_launcher_detail),
+        textInputTrace = stringResource(MR.strings.settings_developer_text_input_trace),
+        textInputTraceDetail = stringResource(MR.strings.settings_developer_text_input_trace_detail),
+        on = stringResource(MR.strings.settings_state_on),
+        off = stringResource(MR.strings.settings_state_off)
     )
 
 internal data class SettingsDiagnosticsPayloadCopy(
@@ -17803,7 +17814,8 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
     state: ScreenLoadState<SharedSettingsDeveloperSnapshot>,
     actionState: SharedSettingsActionState?,
     errorStrings: ErrorPresentationStrings,
-    copy: SettingsDeveloperPayloadCopy = SettingsDeveloperPayloadCopy()
+    copy: SettingsDeveloperPayloadCopy = SettingsDeveloperPayloadCopy(),
+    textInputTraceEnabled: Boolean = false
 ): RaftSharedSettingsPayload {
     val environmentDetail =
         when (state) {
@@ -17863,7 +17875,17 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
                     rows =
                         listOf(
                             RaftSharedSettingsRow("diagnostics", RaftLucideIconName.ClipboardList, copy.diagnostics, copy.diagnosticsDetail, status = copy.open, enabled = true),
-                            RaftSharedSettingsRow("router", RaftLucideIconName.Route, copy.routeLauncher, copy.routeLauncherDetail, status = copy.open, enabled = true)
+                            RaftSharedSettingsRow("router", RaftLucideIconName.Route, copy.routeLauncher, copy.routeLauncherDetail, status = copy.open, enabled = true),
+                            RaftSharedSettingsRow(
+                                key = DEVELOPER_ACTION_TEXT_INPUT_TRACE,
+                                iconName = RaftLucideIconName.ClipboardList,
+                                title = copy.textInputTrace,
+                                detail = copy.textInputTraceDetail,
+                                value = (!textInputTraceEnabled).toString(),
+                                status = if (textInputTraceEnabled) copy.on else copy.off,
+                                enabled = true,
+                                toggleValue = textInputTraceEnabled
+                            )
                         )
                 )
             )
