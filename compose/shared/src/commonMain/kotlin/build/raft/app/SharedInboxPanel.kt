@@ -536,12 +536,16 @@ internal fun SharedHomeActivityScreen(
             onDispose { realtimeEvents.removeListener(subscription) }
         }
     }
-    var wasActive by remember { mutableStateOf(active) }
+    // Every entry into the kept-alive Activity tab (tab switch, rail, return from a pushed page)
+    // refreshes once; nothing fires while another tab is shown. The shell's SetSelectedTab and
+    // the pageDidAppear tick may dispatch in the same frame: the store joins those into one load
+    // (ActivityRefreshCoalesceWindowMillis) and supersedes a stale one instead of swallowing it.
+    val entryRefreshEdge = remember { ActivityTabEntryRefreshEdge(initiallyActive = active) }
     LaunchedEffect(active) {
-        if (active && !wasActive) {
+        if (entryRefreshEdge.onActiveChanged(active)) {
+            bridge.log("shared_activity_entry_refresh source=active_edge")
             activityStore.dispatch(SharedActivityIntent.Refresh)
         }
-        wasActive = active
     }
     CompositionLocalProvider(LocalActivityAvatarSource provides activityAvatarSource) {
     SharedActivityPanelContent(
@@ -611,6 +615,23 @@ internal fun resolveActivityStableOrderEnabled(
 
 internal fun activityPageDidAppearShouldRefresh(routeVisibleTick: Int, active: Boolean = true): Boolean =
     routeVisibleTick > 0 && active
+
+/**
+ * The Activity panel's inactive -> active edge. The first composition is not an entry (its
+ * mount-time LoadInitial loads), so a panel composed while active does not refresh twice, and one
+ * composed hidden (kept alive, prewarmed, rebuilt by a server switch) refreshes on its first
+ * entry. Plain state, not snapshot state: the edge is read and written only by the effect.
+ */
+internal class ActivityTabEntryRefreshEdge(initiallyActive: Boolean) {
+    private var wasActive = initiallyActive
+
+    /** Records [active]; true exactly when this is an entry (inactive -> active). */
+    fun onActiveChanged(active: Boolean): Boolean {
+        val entered = active && !wasActive
+        wasActive = active
+        return entered
+    }
+}
 
 /**
  * task #383: app-foreground resume arrives as the app-scope appLifecycle
