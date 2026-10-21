@@ -13500,6 +13500,38 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.MarkVisibleRead())
 
         assertEquals(listOf("channel-1"), api.readAllChannels)
+        assertTrue(api.readSeqRequests.isEmpty(), "coalesced inside the window")
+        // Task #19 (Hands 2aa74345): the newer message is not dropped — it is marked once the window ends.
+        withTimeout(5_000) { while (api.readSeqRequests.isEmpty()) delay(50) }
+        assertEquals(listOf("channel-1" to 11L), api.readSeqRequests)
+        scope.cancel()
+    }
+
+    @Test
+    fun visibleReadOfTheSameMarkerInsideTheWindowIsNotRetried() = runBlocking {
+        // Negative twin of the deferred retry: nothing new arrived, so nothing is re-sent after the window.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                conversationRepository =
+                    FakeConversationRepository(
+                        threadResult = DataResult.Content(threadSnapshot(body = "cached body", seq = 0))
+                    ),
+            )
+        dataSource.cachePayloadForTest(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(SharedThreadIntent.MarkVisibleRead())
+        store.accept(SharedThreadIntent.MarkVisibleRead())
+        delay(2_500)
+
+        assertEquals(listOf("channel-1"), api.readAllChannels)
+        assertTrue(api.readSeqRequests.isEmpty(), api.readSeqRequests.toString())
         scope.cancel()
     }
 
