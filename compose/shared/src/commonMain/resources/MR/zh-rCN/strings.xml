@@ -144,6 +144,10 @@
     <string name="settings_account_logout">退出登录</string>
     <string name="settings_account_logout_detail">退出此设备上的登录。你的账户和数据会保留，之后可随时重新登录。</string>
     <string name="settings_account_logout_confirm">要退出此设备上的登录吗？你的账户和数据会保留，之后可随时重新登录。</string>
+    <string name="settings_usage_data_title">共享使用数据</string>
+    <string name="settings_usage_data_description">帮助我们改进 Raft：记录你使用了哪些页面和功能，不包含消息或其他内容。</string>
+    <string name="settings_usage_data_learn_more">了解更多</string>
+    <string name="settings_usage_data_save_failed">设置没有保存成功，请重试。</string>
     <string name="settings_mobile_title">移动端</string>
     <string name="settings_mobile_subtitle">我的消息对齐</string>
     <string name="settings_computers_title">计算机</string>

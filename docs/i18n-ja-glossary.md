@@ -15,6 +15,7 @@ new product concept gets a Japanese rendering.
 | Task | タスク | Status values below |
 | Message | メッセージ | |
 | Direct Message / DM | ダイレクトメッセージ / DM | Long form in titles, "DM" in dense UI |
+| Usage data (Share usage data) | 使用状況データ（使用状況データを共有） | Settings › Account switch; copied from the web ja catalog |
 | Mention | メンション | Verb: メンションする |
 | Member | メンバー | |
 | Agent | エージェント | Never 智能体-style translation; katakana only |

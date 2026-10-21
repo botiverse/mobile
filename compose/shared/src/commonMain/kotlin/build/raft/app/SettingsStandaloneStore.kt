@@ -39,6 +39,7 @@ import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.KeyValuePushPreviewModePreferenceStore
 import build.raft.app.data.KeyValueThreadReverseLayoutPreferenceStore
 import build.raft.app.data.MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
+import build.raft.app.data.PRODUCT_ANALYTICS_SETTINGS_FEATURE_FLAG_KEY
 import build.raft.app.model.ServerId
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.data.runCatchingPreservingCancellation
@@ -172,6 +173,12 @@ internal fun rememberStandaloneSettingsEnvironment(
                 onHttp3UserChoiceChanged = { currentRaftNetworkTransportController()?.onHttp3UserChoiceChanged() },
                 threadReverseLayoutPreferenceStore = KeyValueThreadReverseLayoutPreferenceStore(sharedPreferenceStore),
                 pushPreviewModePreferenceStore = KeyValuePushPreviewModePreferenceStore(sharedPreferenceStore),
+                shareUsageDataSettingEnabled = {
+                    sharedStores.serverFeatureFlags.isEnabled(
+                        authStore.readSession()?.currentServerId?.let(::ServerId),
+                        PRODUCT_ANALYTICS_SETTINGS_FEATURE_FLAG_KEY
+                    )
+                },
                 threadReverseLayoutDefault = {
                     authStore.readSession()?.let { session ->
                         session.currentServerId?.let { serverId ->
@@ -230,6 +237,7 @@ internal fun StandaloneSettingsEffectHandler(
     state: SharedSettingsState,
     dispatch: (SharedSettingsIntent) -> Unit
 ) {
+    val shareUsageDataSaveFailed = stringResource(MR.strings.settings_usage_data_save_failed)
     LaunchedEffect(state.effect) {
         val effect = state.effect ?: return@LaunchedEffect
         when (effect) {
@@ -249,6 +257,9 @@ internal fun StandaloneSettingsEffectHandler(
             }
             is SharedSettingsEffect.CopyText -> {
                 environment.settingsCapabilities.bridgeCopyToClipboard(effect.text)
+            }
+            SharedSettingsEffect.ShareUsageDataSaveFailed -> {
+                environment.settingsCapabilities.bridgeToast(shareUsageDataSaveFailed)
             }
             is SharedSettingsEffect.ClearStorage -> {
                 val result = environment.dataSource.clearStorage(effect.target)

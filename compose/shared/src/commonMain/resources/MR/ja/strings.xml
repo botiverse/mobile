@@ -144,6 +144,10 @@
     <string name="settings_account_logout">ログアウト</string>
     <string name="settings_account_logout_detail">このデバイスからログアウトします。アカウントとデータは保持され、いつでも再ログインできます。</string>
     <string name="settings_account_logout_confirm">このデバイスからログアウトしますか？アカウントとデータは保持され、いつでも再ログインできます。</string>
+    <string name="settings_usage_data_title">使用状況データを共有</string>
+    <string name="settings_usage_data_description">使用しているページや機能の情報を共有して、Raft の改善にご協力ください。メッセージやその他のコンテンツは含まれません。</string>
+    <string name="settings_usage_data_learn_more">詳細を見る</string>
+    <string name="settings_usage_data_save_failed">この設定を保存できませんでした。もう一度お試しください。</string>
     <string name="settings_mobile_title">モバイル</string>
     <string name="settings_mobile_subtitle">自分のメッセージの配置</string>
     <string name="settings_mobile_thread_reverse_layout">チャットを最新メッセージから開く</string>

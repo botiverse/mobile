@@ -382,6 +382,8 @@ import build.raft.app.data.ACCOUNT_ACTION_AVATAR_UPLOAD
 import build.raft.app.data.ACCOUNT_ACTION_PASSWORD_CHANGE
 import build.raft.app.data.ACCOUNT_ACTION_PROFILE_SAVE
 import build.raft.app.data.ACCOUNT_ACTION_PROVIDER_CONNECT
+import build.raft.app.data.ACCOUNT_ACTION_SHARE_USAGE_DATA
+import build.raft.app.data.SHARE_USAGE_DATA_DEFAULT
 import build.raft.app.data.AgentAvatarUploadRequest
 import build.raft.app.data.AgentMachineAssignmentRequest
 import build.raft.app.data.AgentProfileUpdateRequest
@@ -16176,7 +16178,8 @@ internal fun ScreenLoadState<AccountSettingsSnapshot>.toAccountPayload(
             passwordErrorCode = actionErrorMessage.takeIf { actionState?.action == ACCOUNT_ACTION_PASSWORD_CHANGE },
             providerConnectingId = providerActionId.takeIf { actionState?.inProgress == true },
             providerErrorId = providerActionId.takeIf { actionErrorMessage != null },
-            providerErrorCode = actionErrorMessage.takeIf { providerActionId != null }
+            providerErrorCode = actionErrorMessage.takeIf { providerActionId != null },
+            usageDataSaving = actionState?.action == ACCOUNT_ACTION_SHARE_USAGE_DATA && actionState.inProgress
         )
 }
 
@@ -16225,7 +16228,9 @@ private fun AccountSettingsSnapshot.toAccountPayload(): RaftSettingsAccountPaylo
             },
         canEditProfile = canEditProfile,
         canUploadAvatar = canUploadAvatar,
-        canChangePassword = canChangePassword
+        canChangePassword = canChangePassword,
+        usageDataVisible = usageData != null,
+        usageDataSharing = usageData?.sharing ?: SHARE_USAGE_DATA_DEFAULT
     )
 
 private fun appShellAccountPayload(session: StoredAuthSession?): RaftSettingsAccountPayload {

@@ -441,6 +441,10 @@ sealed interface SharedSettingsIntent {
     data object RequestAccountAvatarUpload : SharedSettingsIntent
     data class ChangeAccountPassword(val request: AccountPasswordChangeRequest) : SharedSettingsIntent
     data class ConnectAccountProvider(val request: AccountProviderLinkStartRequest) : SharedSettingsIntent
+    /** Settings › Account "Share usage data" switch: optimistic, rolled back if the save fails. */
+    data class SetShareUsageData(val enabled: Boolean) : SharedSettingsIntent
+    /** The "Learn more" link under "Share usage data": the privacy policy, outside the app (web `target=_blank`). */
+    data object OpenShareUsageDataPrivacy : SharedSettingsIntent
     data class RegisterConnectedApp(val request: SettingsConnectedAppRegisterRequest) : SharedSettingsIntent
     data class UpdateConnectedApp(val request: SettingsConnectedAppUpdateRequest) : SharedSettingsIntent
     data class RequestConnectedAppLogoUpload(val clientRecordId: String) : SharedSettingsIntent
@@ -579,6 +583,8 @@ sealed interface SharedSettingsEffect {
     data object ShareDiagnostics : SharedSettingsEffect
     data object ClearDiagnostics : SharedSettingsEffect
     data object SendFeedback : SharedSettingsEffect
+    /** "Share usage data" could not be saved and the switch went back: show the save-failed toast. */
+    data object ShareUsageDataSaveFailed : SharedSettingsEffect
 }
 
 interface SharedSettingsPlatformCapabilities {
@@ -687,6 +693,17 @@ class SharedSettingsDataSource(
     private val pushPreviewModePreferenceStore: PushPreviewModePreferenceStore? = null,
     /** Re-sends the push registration so the server learns the new previewMode. */
     private val onPushPreviewModeChanged: () -> Unit = { RaftPushRegistrationLifecycle.onPreviewModeChanged() },
+    /**
+     * Whether Settings › Account shows "Share usage data" for the current server: web gates it on the
+     * `product_analytics_settings_v0` server flag ([PRODUCT_ANALYTICS_SETTINGS_FEATURE_FLAG_KEY]).
+     * Hidden unless the host wires the flag.
+     */
+    private val shareUsageDataSettingEnabled: suspend () -> Boolean = { false },
+    /**
+     * The server accepted a new "Share usage data" choice: the product-events client must ask
+     * `/product-events/config` again so turning it off stops sending at once.
+     */
+    private val onShareUsageDataChanged: () -> Unit = { RaftProductEvents.invalidateConsent() },
     private val serverVersionProbe: suspend (String) -> ServerVersionProbe = { SharedServerVersionGate.probe(it) }
 ) {
     private var avatarCacheRuntime: RaftAvatarCacheRuntime? = null
@@ -714,15 +731,34 @@ class SharedSettingsDataSource(
     }
 
     suspend fun loadAccount(): DataResult<AccountSettingsSnapshot> =
-        settingsRepository?.getAccount()
-            ?: sessionStore.readSession()?.toAccountSettingsSnapshot()?.let { DataResult.Content(it) }
-            ?: DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
+        (
+            settingsRepository?.getAccount()
+                ?: sessionStore.readSession()?.toAccountSettingsSnapshot()?.let { DataResult.Content(it) }
+                ?: DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
+        ).withUsageDataGate()
 
     suspend fun updateProfile(request: AccountProfileUpdateRequest): DataResult<AccountSettingsSnapshot> =
-        settingsRepository?.updateProfile(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        (settingsRepository?.updateProfile(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable))
+            .withUsageDataGate()
 
     suspend fun changeAccountPassword(request: AccountPasswordChangeRequest): DataResult<AccountSettingsSnapshot> =
-        settingsRepository?.changeAccountPassword(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        (settingsRepository?.changeAccountPassword(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable))
+            .withUsageDataGate()
+
+    /** Saves "Share usage data"; on success the product-events consent cache is dropped. */
+    suspend fun updateShareUsageData(enabled: Boolean): DataResult<AccountUsageDataSnapshot> {
+        val result =
+            settingsRepository?.updateShareUsageData(enabled)
+                ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        if (result is DataResult.Content) onShareUsageDataChanged()
+        return result
+    }
+
+    private suspend fun DataResult<AccountSettingsSnapshot>.withUsageDataGate(): DataResult<AccountSettingsSnapshot> {
+        if (this !is DataResult.Content || data.usageData == null) return this
+        val visible = runCatchingPreservingCancellation { shareUsageDataSettingEnabled() }.getOrDefault(false)
+        return if (visible) this else DataResult.Content(data.copy(usageData = null))
+    }
 
     suspend fun uploadAccountAvatar(): DataResult<AccountSettingsSnapshot> {
         val repository = settingsRepository ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -743,7 +779,7 @@ class SharedSettingsDataSource(
                         source = "account_avatar_upload"
                     )
                 }
-                result
+                result.withUsageDataGate()
             }
             is DataResult.Empty -> DataResult.Empty(picked.reason)
             is DataResult.Error -> DataResult.Error(picked.error)
@@ -2121,6 +2157,7 @@ class SharedSettingsStore(
     private var authOwnerObservationJob: Job? = null
     private var serverNotificationModeMutationGeneration: Long = 0L
     private var serverNotificationModeMutation: ServerNotificationModeMutation? = null
+    private var shareUsageDataMutation: ShareUsageDataMutation? = null
 
     init {
         authOwnerObservationJob =
@@ -2237,6 +2274,9 @@ class SharedSettingsStore(
                     dataSource.changeAccountPassword(intent.request).applyAccountActionResult(ACCOUNT_ACTION_PASSWORD_CHANGE)
                 }
             }
+            is SharedSettingsIntent.SetShareUsageData -> setShareUsageData(intent.enabled)
+            SharedSettingsIntent.OpenShareUsageDataPrivacy ->
+                _state.value = _state.value.copy(effect = SharedSettingsEffect.OpenUrl(SHARE_USAGE_DATA_PRIVACY_URL))
             is SharedSettingsIntent.ConnectAccountProvider -> {
                 runAction(ACCOUNT_ACTION_PROVIDER_CONNECT, intent.request.providerId) {
                     dataSource.startAccountProviderLink(intent.request)
@@ -2861,7 +2901,7 @@ class SharedSettingsStore(
         when (val destination = _state.value.route.destination) {
             SharedSettingsDestination.Home -> loadHome()
             SharedSettingsDestination.Account ->
-                dataSource.loadAccount().applyToState(destination) { copy(account = it) }
+                dataSource.loadAccount().preservingPendingShareUsageData().applyToState(destination) { copy(account = it) }
             SharedSettingsDestination.Computers -> {
                 // Cache-first: paint the last known list at once, then validate it once.
                 val cached = if (forceComputers) null else dataSource.cachedComputers()
@@ -3343,6 +3383,62 @@ class SharedSettingsStore(
                 .applyToState(SharedSettingsDestination.ComputerDetail) { copy(computerDetail = it) }
         }
         updateComputerControl { copy(upgradeSubmitting = null) }
+    }
+
+    /**
+     * Web `UsageDataSettingsCard`: the switch moves at once, the PATCH runs, and a failure puts the
+     * previous choice back with the save-failed toast. One save at a time (the switch is disabled while
+     * it runs, like web's `saving`); a tap that matches what is shown is a no-op.
+     */
+    private suspend fun setShareUsageData(enabled: Boolean) {
+        if (shareUsageDataMutation != null) return
+        val account = (_state.value.account as? ScreenLoadState.Content)?.data ?: return
+        val previous = account.usageData ?: return
+        if (previous.sharing == enabled) return
+        shareUsageDataMutation = ShareUsageDataMutation(enabled = enabled, previous = previous)
+        _state.value =
+            _state.value.copy(
+                account = ScreenLoadState.Content(account.copy(usageData = AccountUsageDataSnapshot(choice = enabled))),
+                actionState = SharedSettingsActionState(ACCOUNT_ACTION_SHARE_USAGE_DATA, inProgress = true),
+                routeErrorCode = null
+            )
+        val result =
+            runCatchingPreservingCancellation { dataSource.updateShareUsageData(enabled) }
+                .getOrElse { DataResult.Error(ScreenError("settings_share_usage_data_failed")) }
+        shareUsageDataMutation = null
+        val latest = (_state.value.account as? ScreenLoadState.Content)?.data
+        when (result) {
+            is DataResult.Content -> {
+                _state.value =
+                    _state.value.copy(
+                        account =
+                            latest?.takeIf { it.usageData != null }
+                                ?.let { ScreenLoadState.Content(it.copy(usageData = result.data)) }
+                                ?: _state.value.account,
+                        actionState = SharedSettingsActionState(ACCOUNT_ACTION_SHARE_USAGE_DATA, inProgress = false)
+                    )
+            }
+            is DataResult.Empty,
+            is DataResult.Error,
+            is DataResult.NoPermission -> {
+                _state.value =
+                    _state.value.copy(
+                        account =
+                            latest?.takeIf { it.usageData != null }
+                                ?.let { ScreenLoadState.Content(it.copy(usageData = previous)) }
+                                ?: _state.value.account,
+                        actionState = result.toScreenLoadState().toSettingsActionState(ACCOUNT_ACTION_SHARE_USAGE_DATA),
+                        effect = SharedSettingsEffect.ShareUsageDataSaveFailed
+                    )
+            }
+        }
+    }
+
+    /** An Account reload while a "Share usage data" save runs keeps the switch where the user put it. */
+    private fun DataResult<AccountSettingsSnapshot>.preservingPendingShareUsageData(): DataResult<AccountSettingsSnapshot> {
+        val pending = shareUsageDataMutation ?: return this
+        if (this !is DataResult.Content || data.usageData == null) return this
+        return DataResult.Content(data.copy(usageData = AccountUsageDataSnapshot(choice = pending.enabled)))
     }
 
     private suspend fun runAction(
@@ -4040,6 +4136,8 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             SharedSettingsIntent.RequestAccountAvatarUpload,
             is SharedSettingsIntent.ChangeAccountPassword,
             is SharedSettingsIntent.ConnectAccountProvider,
+            is SharedSettingsIntent.SetShareUsageData,
+            SharedSettingsIntent.OpenShareUsageDataPrivacy,
             is SharedSettingsIntent.RegisterConnectedApp,
             is SharedSettingsIntent.UpdateConnectedApp,
             is SharedSettingsIntent.RequestConnectedAppLogoUpload,
@@ -4375,6 +4473,15 @@ internal const val ACCOUNT_ACTION_PROFILE_SAVE = "saveProfile"
 internal const val ACCOUNT_ACTION_AVATAR_UPLOAD = "accountAvatarUpload"
 internal const val ACCOUNT_ACTION_PASSWORD_CHANGE = "accountPasswordChange"
 internal const val ACCOUNT_ACTION_PROVIDER_CONNECT = "accountProviderConnect"
+internal const val ACCOUNT_ACTION_SHARE_USAGE_DATA = "accountShareUsageData"
+
+/** slock `packages/shared/src/legalAcceptance.ts` `PRIVACY_URL`: web's "Learn more" under "Share usage data". */
+internal const val SHARE_USAGE_DATA_PRIVACY_URL = "https://raft.build/privacy"
+
+private data class ShareUsageDataMutation(
+    val enabled: Boolean,
+    val previous: AccountUsageDataSnapshot
+)
 internal const val SERVER_ACTION_PROFILE_SAVE = "serverProfileSave"
 internal const val SERVER_ACTION_INVITE_CREATE = "serverInviteCreate"
 internal const val SERVER_ACTION_INVITE_REVOKE = "serverInviteRevoke"

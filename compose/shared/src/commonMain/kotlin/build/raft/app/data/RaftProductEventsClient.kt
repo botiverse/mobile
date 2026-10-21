@@ -90,6 +90,8 @@ class RaftProductEventsClient(
     private val consent = HashMap<ServerId, Consent>()
     private var sessionId: String = newUuid()
     private var generation = 0L
+    /** Bumped by [invalidateConsent]: a config answer asked before the bump is not trusted. */
+    private var consentEpoch = 0L
     private var flushJob: Job? = null
     private var flushInFlight = false
     private var flushAgain = false
@@ -174,6 +176,21 @@ class RaftProductEventsClient(
         }
     }
 
+    /**
+     * Forgets every cached `clientEventsAllowed` answer, so the next flush asks
+     * `/product-events/config` again before sending anything. Call it after the user changes
+     * "Share usage data": the switch is per user, so it changes the answer for every server, and
+     * turning it off must stop sending now rather than when the cached answer expires. A config
+     * request already in flight is discarded and asked again.
+     */
+    fun invalidateConsent() {
+        synchronized(lock) {
+            consent.clear()
+            consentEpoch += 1
+        }
+        log("product_events_consent_invalidated")
+    }
+
     /** A new product session (fresh launch or a return after the session gap). */
     fun startNewSession() {
         synchronized(lock) { sessionId = newUuid() }
@@ -235,7 +252,14 @@ class RaftProductEventsClient(
                             iterator.remove()
                         }
                     }
-                    FlushWork(currentTransport, serverId, batch, generation, consent[serverId]?.takeIf { it.isFresh(now) })
+                    FlushWork(
+                        currentTransport,
+                        serverId,
+                        batch,
+                        generation,
+                        consentEpoch,
+                        consent[serverId]?.takeIf { it.isFresh(now) },
+                    )
                 }
             val info = clientInfo()
             if (info == null) {
@@ -247,7 +271,8 @@ class RaftProductEventsClient(
                     ?: when (val answer = safeFetchConfig(work.transport, work.serverId)) {
                         is RaftProductEventsConfigResult.Answered -> {
                             synchronized(lock) {
-                                if (generation == work.generation) {
+                                // An answer asked before [invalidateConsent] is not cached (checked below).
+                                if (generation == work.generation && consentEpoch == work.consentEpoch) {
                                     consent[work.serverId] = Consent(answer.clientEventsAllowed, nowEpochMillis())
                                 }
                             }
@@ -258,6 +283,12 @@ class RaftProductEventsClient(
                             return retryLater("config_unavailable")
                         }
                     }
+            if (synchronized(lock) { consentEpoch != work.consentEpoch }) {
+                // "Share usage data" changed after this batch's answer was read (cached or just fetched):
+                // put the batch back and ask the config again before sending or dropping it.
+                requeue(work)
+                continue
+            }
             if (!allowed) {
                 synchronized(lock) { queue.removeAll { it.serverId == work.serverId } }
                 log("product_events_dropped reason=not_allowed count=${work.events.size}")
@@ -291,6 +322,7 @@ class RaftProductEventsClient(
         val serverId: ServerId,
         val events: List<Queued>,
         val generation: Long,
+        val consentEpoch: Long,
         val consent: Consent?,
     )
 

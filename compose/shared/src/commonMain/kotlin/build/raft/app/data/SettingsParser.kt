@@ -39,6 +39,11 @@ private data class WireAccountUser(
     val timeFormat: String? = null,
     val preferredMessageBodyFontSize: String? = null,
     val preferredTranslationDisplay: String? = null,
+    /**
+     * RFC-067 "Share usage data" (slock `userService.toPublicUser`): true / false, or null when the
+     * user has not chosen yet ([SHARE_USAGE_DATA_DEFAULT] applies). An older server omits it: also null.
+     */
+    val shareUsageData: Boolean? = null,
 )
 
 @Serializable
@@ -97,7 +102,16 @@ fun parseSharedAccountSettingsSnapshot(
             )
         ),
         canEditProfile = true,
+        usageData = AccountUsageDataSnapshot(choice = user.shareUsageData),
     )
+}.getOrNull()
+
+/**
+ * The `shareUsageData` of a `GET` / `PATCH /api/auth/me` user body; null when the body is not a user.
+ * The snapshot's [AccountUsageDataSnapshot.choice] keeps the server's null ("not chosen").
+ */
+fun parseSharedAccountUsageDataSnapshot(bodyText: String): AccountUsageDataSnapshot? = runCatching {
+    AccountUsageDataSnapshot(choice = settingsJson.decodeFromString(WireAccountUser.serializer(), bodyText).shareUsageData)
 }.getOrNull()
 
 fun parseSharedAccountProviderLinkStartResult(
