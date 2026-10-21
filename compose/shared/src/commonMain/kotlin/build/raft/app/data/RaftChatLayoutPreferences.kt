@@ -17,7 +17,6 @@ private const val KEY_DESKTOP_MODE_ON_LARGE_SCREEN = "desktopModeOnLargeScreen"
 private const val KEY_COMPACT_CONSECUTIVE_MESSAGES = "compactConsecutiveMessages"
 private const val KEY_LONG_MESSAGE_COLLAPSE_ENABLED = "longMessageCollapseEnabled"
 private const val KEY_SINGLE_TAP_OPENS_THREAD_ENABLED = "singleTapOpensThreadEnabled"
-private const val KEY_THREAD_UNREAD_JUMP_ENABLED = "threadUnreadJumpEnabled"
 private const val KEY_NEW_MESSAGE_MENU_ENABLED = "newMessageMenuEnabled"
 private const val KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED = "foregroundMessageBannersEnabled"
 private const val KEY_ACTIVITY_TASK_STATUS_BADGES_ENABLED = "activityTaskStatusBadgesEnabled"
@@ -35,7 +34,6 @@ private val CHAT_LAYOUT_PREFERENCE_SNAPSHOT_KEYS =
         KEY_COMPACT_CONSECUTIVE_MESSAGES,
         KEY_LONG_MESSAGE_COLLAPSE_ENABLED,
         KEY_SINGLE_TAP_OPENS_THREAD_ENABLED,
-        KEY_THREAD_UNREAD_JUMP_ENABLED,
         KEY_NEW_MESSAGE_MENU_ENABLED,
         KEY_CONVERSATION_FORWARD_GESTURE_ENABLED,
         KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED,
@@ -120,9 +118,6 @@ fun raftChatLayoutPreferenceRepository(
         override suspend fun setSingleTapOpensThreadEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
             persistAndPublish { delegate.setSingleTapOpensThreadEnabled(enabled) }
 
-        override suspend fun setThreadUnreadJumpEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
-            persistAndPublish { delegate.setThreadUnreadJumpEnabled(enabled) }
-
         override suspend fun setNewMessageMenuEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
             persistAndPublish { delegate.setNewMessageMenuEnabled(enabled) }
 
@@ -173,7 +168,6 @@ private fun ChatLayoutPreferenceSnapshot.toPreferenceEventData(): JsonObject =
         put(KEY_COMPACT_CONSECUTIVE_MESSAGES, compactConsecutiveMessages)
         put(KEY_LONG_MESSAGE_COLLAPSE_ENABLED, longMessageCollapseEnabled)
         put(KEY_SINGLE_TAP_OPENS_THREAD_ENABLED, singleTapOpensThreadEnabled)
-        put(KEY_THREAD_UNREAD_JUMP_ENABLED, threadUnreadJumpEnabled)
         put(KEY_NEW_MESSAGE_MENU_ENABLED, newMessageMenuEnabled)
         put(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, conversationForwardGestureEnabled)
         put(KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED, foregroundMessageBannersEnabled)
@@ -196,7 +190,6 @@ internal fun JsonObject.toChatLayoutPreferenceSnapshotOrNull(): ChatLayoutPrefer
         compactConsecutiveMessages = optBoolean(KEY_COMPACT_CONSECUTIVE_MESSAGES, true),
         longMessageCollapseEnabled = optBoolean(KEY_LONG_MESSAGE_COLLAPSE_ENABLED, RAFT_LONG_MESSAGE_COLLAPSE_DEFAULT_ENABLED),
         singleTapOpensThreadEnabled = optBoolean(KEY_SINGLE_TAP_OPENS_THREAD_ENABLED, true),
-        threadUnreadJumpEnabled = optBoolean(KEY_THREAD_UNREAD_JUMP_ENABLED, false),
         newMessageMenuEnabled = optBoolean(KEY_NEW_MESSAGE_MENU_ENABLED, false),
         conversationForwardGestureEnabled = optBoolean(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, false),
         foregroundMessageBannersEnabled = optBoolean(KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED, false),

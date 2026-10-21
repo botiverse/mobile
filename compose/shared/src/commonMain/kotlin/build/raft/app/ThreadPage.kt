@@ -108,13 +108,6 @@ import build.raft.app.data.ThreadComposerDirectUploadClientRequestIds
 import build.raft.app.data.newAttachmentUploadClientRequestId
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.ThreadApiResult
-import build.raft.app.data.KeyValueThreadReadAnchorStore
-import build.raft.app.data.ThreadReadAnchor
-import build.raft.app.data.ThreadReadAnchorOwner
-import build.raft.app.data.ThreadReadAnchorStore
-import build.raft.app.data.ThreadUnreadAnchorMessage
-import build.raft.app.data.advanceThreadReadAnchorFrontier
-import build.raft.app.data.projectThreadUnreadJump
 import build.raft.app.data.RaftAgentsApiClient
 import build.raft.app.data.RaftAgentsNetworkApi
 import build.raft.app.data.RaftRealtimeEvents
@@ -2099,14 +2092,6 @@ internal data class RaftThreadScreenPayload(
     @Transient
     val replySummariesAuthority: build.raft.app.data.ThreadReplySummariesAuthority =
         build.raft.app.data.ThreadReplySummariesAuthority.Unavailable,
-    /**
-     * In-process arrival provenance: IDs merged by foreground gap recovery or
-     * tail pagination. Excluded from the ↓ x new unread count per the frozen
-     * task #232 contract; resume-refresh arrivals stay counted. Never
-     * route/pageData state and never persisted.
-     */
-    @Transient
-    val gapRefillMessageIds: Set<String> = emptySet(),
 )
 
 internal data class ThreadMembersPageRoute(
@@ -6409,26 +6394,6 @@ private fun SharedThreadRouteContentContent(
     var currentSession by remember(initialThreadInstanceKey) {
         mutableStateOf<StoredAuthSession?>(null)
     }
-    val threadReadAnchorStore = remember {
-        KeyValueThreadReadAnchorStore(raftSharedPreferenceStore())
-    }
-    val threadReadAnchorOwner =
-        remember(
-            currentSession?.user?.id,
-            currentSession?.currentServerId,
-            threadTimelineKey,
-            sharedStores.apiEnvironmentStore.current().apiBaseUrl,
-        ) {
-            val accountId = currentSession?.user?.id.orEmpty()
-            val serverId = currentSession?.currentServerId.orEmpty()
-            val conversationId = threadTimelineKey.orEmpty()
-            ThreadReadAnchorOwner(
-                environmentId = sharedStores.apiEnvironmentStore.current().apiBaseUrl,
-                accountId = accountId,
-                serverId = serverId,
-                conversationId = conversationId,
-            ).normalizedOrNull()
-        }
     val messageBodyOwnerKey =
         remember(currentSession?.user?.id, sharedStores.apiEnvironmentStore.current().apiBaseUrl) {
             currentSession?.user?.id?.let { accountId ->
@@ -6940,7 +6905,6 @@ private fun SharedThreadRouteContentContent(
     var threadHostForeground by remember(threadInstanceKey, storeScope.shellInstanceId) {
         mutableStateOf(isRaftHostVisible(storeScope.shellInstanceId))
     }
-    var threadReadAnchorSessionGeneration by remember(threadInstanceKey) { mutableStateOf(0L) }
     var threadPointerSessionKey by remember(threadInstanceKey, storeScope.shellInstanceId) {
         mutableStateOf(0)
     }
@@ -6989,7 +6953,6 @@ private fun SharedThreadRouteContentContent(
 
     fun applyThreadVisibleResumePlan(plan: ThreadVisibleResumePlan) {
         threadPointerSessionKey = nextThreadPointerSessionKey(threadPointerSessionKey)
-        threadReadAnchorSessionGeneration += 1L
         if (plan.refreshVisibleConversation) {
             threadViewModel.dispatch(SharedThreadIntent.RefreshLatestAfterVisibleMaxSeq)
         }
@@ -7431,7 +7394,6 @@ private fun SharedThreadRouteContentContent(
         )
     val longMessageCollapseEnabled = longMessageCollapseConversationSetting.effective
     val singleTapOpensThreadEnabled = chatLayoutPreferenceStore.readSingleTapOpensThreadEnabledSync()
-    val threadUnreadJumpEnabled = chatLayoutPreferenceStore.readThreadUnreadJumpEnabledSync()
     val newMessageMenuEnabled = chatLayoutPreferenceStore.readNewMessageMenuEnabledSync()
     val commentsUnavailableLabel = stringResource(MR.strings.thread_error_comments_unavailable)
     val unableToSendCommentLabel = stringResource(MR.strings.thread_error_send_comment)
@@ -11110,9 +11072,6 @@ private fun SharedThreadRouteContentContent(
             },
             scaffold = movableThreadRouteScaffold,
             threadInstanceKey = threadInstanceKey,
-            threadReadAnchorOwner = threadReadAnchorOwner,
-            threadReadAnchorStore = threadReadAnchorStore,
-            threadReadAnchorSessionGeneration = threadReadAnchorSessionGeneration,
             routeActive = active,
             hostForeground = threadHostForeground,
             payload = renderedThread,
@@ -11243,7 +11202,6 @@ private fun SharedThreadRouteContentContent(
             longMessageCollapseEnabled = longMessageCollapseEnabled,
             longMessageCollapseConversationSetting = longMessageCollapseConversationSetting,
             singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
-            threadUnreadJumpEnabled = threadUnreadJumpEnabled,
             newMessageMenuEnabled = newMessageMenuEnabled,
             currentServerSlug = currentServerSlug,
             translationStore = translationStore,
@@ -11370,14 +11328,6 @@ private fun SharedThreadRouteContentContent(
                             SharedThreadIntent.FocusMessage(
                                 messageId = sourceMessageId,
                                 switchToTab = RaftThreadTab.Chat.wireValue
-                            )
-                        )
-                    }
-                    action == "focusUnreadAnchor" && !itemId.isNullOrBlank() -> {
-                        threadViewModel.dispatch(
-                            SharedThreadIntent.FocusMessage(
-                                messageId = itemId,
-                                switchToTab = RaftThreadTab.Chat.wireValue,
                             )
                         )
                     }
@@ -14145,9 +14095,6 @@ private class ThreadEventHandler(
 private data class ThreadPageContentData(
     val agentFollowersHeader: @Composable () -> Unit,
     val threadInstanceKey: String,
-    val threadReadAnchorOwner: ThreadReadAnchorOwner?,
-    val threadReadAnchorStore: ThreadReadAnchorStore,
-    val threadReadAnchorSessionGeneration: Long,
     val routeActive: Boolean,
     val hostForeground: Boolean,
     val payload: RaftThreadScreenPayload,
@@ -14194,7 +14141,6 @@ private data class ThreadPageContentData(
     val longMessageCollapseEnabled: Boolean,
     val longMessageCollapseConversationSetting: RaftLongMessageCollapseConversationSetting?,
     val singleTapOpensThreadEnabled: Boolean,
-    val threadUnreadJumpEnabled: Boolean,
     val newMessageMenuEnabled: Boolean,
     val currentServerSlug: String?,
     val translationStore: SharedMessageTranslationStore?,
@@ -14254,9 +14200,6 @@ fun ThreadPageContent(
     agentFollowersHeader: @Composable () -> Unit = {},
     scaffold: @Composable (ThreadRouteScaffoldSlots) -> Unit,
     threadInstanceKey: String,
-    threadReadAnchorOwner: ThreadReadAnchorOwner?,
-    threadReadAnchorStore: ThreadReadAnchorStore,
-    threadReadAnchorSessionGeneration: Long,
     routeActive: Boolean,
     hostForeground: Boolean,
     payload: RaftThreadScreenPayload,
@@ -14322,7 +14265,6 @@ fun ThreadPageContent(
     longMessageCollapseEnabled: Boolean = false,
     longMessageCollapseConversationSetting: RaftLongMessageCollapseConversationSetting? = null,
     singleTapOpensThreadEnabled: Boolean = false,
-    threadUnreadJumpEnabled: Boolean = false,
     newMessageMenuEnabled: Boolean = false,
     currentServerSlug: String? = null,
     translationStore: SharedMessageTranslationStore? = null,
@@ -14360,9 +14302,6 @@ fun ThreadPageContent(
             ThreadPageContentData(
                 agentFollowersHeader = agentFollowersHeader,
                 threadInstanceKey = threadInstanceKey,
-                threadReadAnchorOwner = threadReadAnchorOwner,
-                threadReadAnchorStore = threadReadAnchorStore,
-                threadReadAnchorSessionGeneration = threadReadAnchorSessionGeneration,
                 routeActive = routeActive,
                 hostForeground = hostForeground,
                 payload = payload,
@@ -14409,7 +14348,6 @@ fun ThreadPageContent(
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
                 longMessageCollapseConversationSetting = longMessageCollapseConversationSetting,
                 singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
-                threadUnreadJumpEnabled = threadUnreadJumpEnabled,
                 newMessageMenuEnabled = newMessageMenuEnabled,
                 currentServerSlug = currentServerSlug,
                 translationStore = translationStore,
@@ -14474,9 +14412,6 @@ private fun ThreadPageContentContent(
 ) {
     val scaffold = callbacks.scaffold
     val threadInstanceKey = data.threadInstanceKey
-    val threadReadAnchorOwner = data.threadReadAnchorOwner
-    val threadReadAnchorStore = data.threadReadAnchorStore
-    val threadReadAnchorSessionGeneration = data.threadReadAnchorSessionGeneration
     val routeActive = data.routeActive
     val hostForeground = data.hostForeground
     val payload = data.payload
@@ -14540,7 +14475,6 @@ private fun ThreadPageContentContent(
     val longMessageCollapseEnabled = data.longMessageCollapseEnabled
     val longMessageCollapseConversationSetting = data.longMessageCollapseConversationSetting
     val singleTapOpensThreadEnabled = data.singleTapOpensThreadEnabled
-    val threadUnreadJumpEnabled = data.threadUnreadJumpEnabled
     val newMessageMenuEnabled = data.newMessageMenuEnabled
     val currentServerSlug = data.currentServerSlug
     val translationStore = data.translationStore
@@ -15271,9 +15205,6 @@ private fun ThreadPageContentContent(
                 RaftThreadTab.Chat ->
                     ThreadChatTab(
                         threadInstanceKey = threadInstanceKey,
-                        readAnchorOwner = threadReadAnchorOwner,
-                        readAnchorStore = threadReadAnchorStore,
-                        readAnchorSessionGeneration = threadReadAnchorSessionGeneration,
                         routeActive = routeActive && tabActive,
                         hostForeground = hostForeground,
                         renderConfig = timelineRenderConfig,
@@ -15297,7 +15228,6 @@ private fun ThreadPageContentContent(
                         contentExtrasVisible = contentExtrasVisible,
                         longMessageCollapseEnabled = longMessageCollapseEnabled,
                         singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
-                        threadUnreadJumpEnabled = threadUnreadJumpEnabled,
                         newMessageMenuEnabled = newMessageMenuEnabled,
                         inlineSearchVisible = inlineSearchVisible,
                         isMarkdownTagValid = isMarkdownTagValid,
@@ -17024,9 +16954,6 @@ internal fun consumeThreadHeaderScrollToTopRequest(
  */
 private data class ThreadChatTabData(
     val threadInstanceKey: String,
-    val readAnchorOwner: ThreadReadAnchorOwner?,
-    val readAnchorStore: ThreadReadAnchorStore,
-    val readAnchorSessionGeneration: Long,
     val routeActive: Boolean,
     val hostForeground: Boolean,
     val renderConfig: ThreadTimelineRenderConfig,
@@ -17047,7 +16974,6 @@ private data class ThreadChatTabData(
     val contentExtrasVisible: Boolean,
     val longMessageCollapseEnabled: Boolean,
     val singleTapOpensThreadEnabled: Boolean,
-    val threadUnreadJumpEnabled: Boolean,
     val newMessageMenuEnabled: Boolean,
     val inlineSearchVisible: Boolean,
     val markdownTagContextSignature: String,
@@ -17100,9 +17026,6 @@ private class ThreadChatTabCallbacks(
 private @Composable
 fun ThreadChatTab(
     threadInstanceKey: String,
-    readAnchorOwner: ThreadReadAnchorOwner?,
-    readAnchorStore: ThreadReadAnchorStore,
-    readAnchorSessionGeneration: Long,
     routeActive: Boolean,
     hostForeground: Boolean,
     renderConfig: ThreadTimelineRenderConfig,
@@ -17127,7 +17050,6 @@ fun ThreadChatTab(
     contentExtrasVisible: Boolean = true,
     longMessageCollapseEnabled: Boolean = false,
     singleTapOpensThreadEnabled: Boolean = false,
-    threadUnreadJumpEnabled: Boolean = false,
     newMessageMenuEnabled: Boolean = false,
     inlineSearchVisible: Boolean = false,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
@@ -17174,9 +17096,6 @@ fun ThreadChatTab(
         data =
             ThreadChatTabData(
                 threadInstanceKey = threadInstanceKey,
-                readAnchorOwner = readAnchorOwner,
-                readAnchorStore = readAnchorStore,
-                readAnchorSessionGeneration = readAnchorSessionGeneration,
                 routeActive = routeActive,
                 hostForeground = hostForeground,
                 renderConfig = renderConfig,
@@ -17197,7 +17116,6 @@ fun ThreadChatTab(
                 contentExtrasVisible = contentExtrasVisible,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
                 singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
-                threadUnreadJumpEnabled = threadUnreadJumpEnabled,
                 newMessageMenuEnabled = newMessageMenuEnabled,
                 inlineSearchVisible = inlineSearchVisible,
                 markdownTagContextSignature = markdownTagContextSignature,
@@ -17254,9 +17172,6 @@ private fun ThreadChatTabContent(
     callbacks: ThreadChatTabCallbacks,
 ) {
     val threadInstanceKey = data.threadInstanceKey
-    val readAnchorOwner = data.readAnchorOwner
-    val readAnchorStore = data.readAnchorStore
-    val readAnchorSessionGeneration = data.readAnchorSessionGeneration
     val routeActive = data.routeActive
     val hostForeground = data.hostForeground
     val renderConfig = data.renderConfig
@@ -17280,7 +17195,6 @@ private fun ThreadChatTabContent(
     val contentExtrasVisible = data.contentExtrasVisible
     val longMessageCollapseEnabled = data.longMessageCollapseEnabled
     val singleTapOpensThreadEnabled = data.singleTapOpensThreadEnabled
-    val threadUnreadJumpEnabled = data.threadUnreadJumpEnabled
     val newMessageMenuEnabled = data.newMessageMenuEnabled
     val inlineSearchVisible = data.inlineSearchVisible
     val isMarkdownTagValid = callbacks.isMarkdownTagValid
@@ -17435,9 +17349,6 @@ private fun ThreadChatTabContent(
             if (timelineSlice.originStatus != "none") {
                 ThreadMessagesList(
                     threadInstanceKey = threadInstanceKey,
-                    readAnchorOwner = readAnchorOwner,
-                    readAnchorStore = readAnchorStore,
-                    readAnchorSessionGeneration = readAnchorSessionGeneration,
                     routeActive = routeActive,
                     hostForeground = hostForeground,
                     renderConfig = renderConfig,
@@ -17461,7 +17372,6 @@ private fun ThreadChatTabContent(
                     contentExtrasVisible = contentExtrasVisible,
                     longMessageCollapseEnabled = longMessageCollapseEnabled,
                     singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
-                    threadUnreadJumpEnabled = threadUnreadJumpEnabled,
                     newMessageMenuEnabled = newMessageMenuEnabled,
                     inlineSearchVisible = inlineSearchVisible,
                     isMarkdownTagValid = isMarkdownTagValid,
@@ -17533,9 +17443,6 @@ private fun ThreadChatTabContent(
             if (timelineSlice.originStatus != "none") {
                 ThreadMessagesList(
                     threadInstanceKey = threadInstanceKey,
-                    readAnchorOwner = readAnchorOwner,
-                    readAnchorStore = readAnchorStore,
-                    readAnchorSessionGeneration = readAnchorSessionGeneration,
                     routeActive = routeActive,
                     hostForeground = hostForeground,
                     renderConfig = renderConfig,
@@ -17559,7 +17466,6 @@ private fun ThreadChatTabContent(
                     contentExtrasVisible = contentExtrasVisible,
                     longMessageCollapseEnabled = longMessageCollapseEnabled,
                     singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
-                    threadUnreadJumpEnabled = threadUnreadJumpEnabled,
                     newMessageMenuEnabled = newMessageMenuEnabled,
                     inlineSearchVisible = inlineSearchVisible,
                     isMarkdownTagValid = isMarkdownTagValid,
@@ -17625,9 +17531,6 @@ private fun ThreadChatTabContent(
         else ->
             ThreadMessagesList(
                 threadInstanceKey = threadInstanceKey,
-                readAnchorOwner = readAnchorOwner,
-                readAnchorStore = readAnchorStore,
-                readAnchorSessionGeneration = readAnchorSessionGeneration,
                 routeActive = routeActive,
                 hostForeground = hostForeground,
                 renderConfig = renderConfig,
@@ -17651,7 +17554,6 @@ private fun ThreadChatTabContent(
                 contentExtrasVisible = contentExtrasVisible,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
                 singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
-                threadUnreadJumpEnabled = threadUnreadJumpEnabled,
                 newMessageMenuEnabled = newMessageMenuEnabled,
                 inlineSearchVisible = inlineSearchVisible,
                 isMarkdownTagValid = isMarkdownTagValid,
@@ -17930,9 +17832,6 @@ private const val ThreadOriginListItemIndex = 0
  */
 private data class ThreadMessagesListData(
     val threadInstanceKey: String,
-    val readAnchorOwner: ThreadReadAnchorOwner?,
-    val readAnchorStore: ThreadReadAnchorStore,
-    val readAnchorSessionGeneration: Long,
     val routeActive: Boolean,
     val hostForeground: Boolean,
     val renderConfig: ThreadTimelineRenderConfig,
@@ -17953,7 +17852,6 @@ private data class ThreadMessagesListData(
     val contentExtrasVisible: Boolean,
     val longMessageCollapseEnabled: Boolean,
     val singleTapOpensThreadEnabled: Boolean,
-    val threadUnreadJumpEnabled: Boolean,
     val newMessageMenuEnabled: Boolean,
     val inlineSearchVisible: Boolean,
     val markdownTagContextSignature: String,
@@ -18008,9 +17906,6 @@ private class ThreadMessagesListCallbacks(
 private @Composable
 fun ThreadMessagesList(
     threadInstanceKey: String,
-    readAnchorOwner: ThreadReadAnchorOwner?,
-    readAnchorStore: ThreadReadAnchorStore,
-    readAnchorSessionGeneration: Long,
     routeActive: Boolean,
     hostForeground: Boolean,
     renderConfig: ThreadTimelineRenderConfig,
@@ -18036,7 +17931,6 @@ fun ThreadMessagesList(
     contentExtrasVisible: Boolean = true,
     longMessageCollapseEnabled: Boolean = false,
     singleTapOpensThreadEnabled: Boolean = false,
-    threadUnreadJumpEnabled: Boolean = false,
     newMessageMenuEnabled: Boolean = false,
     inlineSearchVisible: Boolean = false,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
@@ -18084,9 +17978,6 @@ fun ThreadMessagesList(
         data =
             ThreadMessagesListData(
                 threadInstanceKey = threadInstanceKey,
-                readAnchorOwner = readAnchorOwner,
-                readAnchorStore = readAnchorStore,
-                readAnchorSessionGeneration = readAnchorSessionGeneration,
                 routeActive = routeActive,
                 hostForeground = hostForeground,
                 renderConfig = renderConfig,
@@ -18107,7 +17998,6 @@ fun ThreadMessagesList(
                 contentExtrasVisible = contentExtrasVisible,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
                 singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
-                threadUnreadJumpEnabled = threadUnreadJumpEnabled,
                 newMessageMenuEnabled = newMessageMenuEnabled,
                 inlineSearchVisible = inlineSearchVisible,
                 markdownTagContextSignature = markdownTagContextSignature,
@@ -18165,9 +18055,6 @@ private fun ThreadMessagesListContent(
     callbacks: ThreadMessagesListCallbacks,
 ) {
     val threadInstanceKey = data.threadInstanceKey
-    val readAnchorOwner = data.readAnchorOwner
-    val readAnchorStore = data.readAnchorStore
-    val readAnchorSessionGeneration = data.readAnchorSessionGeneration
     val routeActive = data.routeActive
     val hostForeground = data.hostForeground
     val renderConfig = data.renderConfig
@@ -18191,7 +18078,6 @@ private fun ThreadMessagesListContent(
     val contentExtrasVisible = data.contentExtrasVisible
     val longMessageCollapseEnabled = data.longMessageCollapseEnabled
     val singleTapOpensThreadEnabled = data.singleTapOpensThreadEnabled
-    val threadUnreadJumpEnabled = data.threadUnreadJumpEnabled
     val newMessageMenuEnabled = data.newMessageMenuEnabled
     val inlineSearchVisible = data.inlineSearchVisible
     val isMarkdownTagValid = callbacks.isMarkdownTagValid
@@ -18413,69 +18299,6 @@ private fun ThreadMessagesListContent(
             if (reverseLayout) 0 else threadInitialFirstVisibleItemIndex(latestItemIndex = latestItemIndex)
     )
     val listState = remember(rawListState, reverseLayout) { ThreadListViewport(rawListState, reverseLayout) }
-    var frozenReadAnchor by remember(threadInstanceKey, readAnchorOwner, readAnchorSessionGeneration) {
-        mutableStateOf(readAnchorOwner?.let(readAnchorStore::read))
-    }
-    var latestVisibleReadAnchor by remember(threadInstanceKey, readAnchorOwner) {
-        mutableStateOf<ThreadReadAnchor?>(null)
-    }
-    LaunchedEffect(threadInstanceKey, readAnchorOwner, readAnchorSessionGeneration) {
-        frozenReadAnchor = readAnchorOwner?.let(readAnchorStore::read)
-    }
-    // task #232: the session read frontier must track the rendered visible tail
-    // reported by the messages list. Reading layoutInfo here observed a
-    // polluted visible set on live appends and advanced the frontier to the
-    // payload tail, zeroing the unread projection and hiding the pill.
-    LaunchedEffect(
-        threadInstanceKey,
-        readAnchorOwner,
-        renderPayload.messages,
-        visibleReadTailIndex,
-        routeActive,
-        hostForeground,
-    ) {
-        if (!routeActive || !hostForeground) return@LaunchedEffect
-        val anchor =
-            visibleReadTailIndex
-                ?.takeIf { it in renderPayload.messages.indices }
-                ?.let { message -> renderPayload.messages[message] }
-                ?.let { message ->
-                    message.seq?.takeIf { seq -> seq > 0L }?.let { seq ->
-                        ThreadReadAnchor(seq = seq, messageId = message.id)
-                    }
-                }
-        if (anchor != null) {
-            val advanced = advanceThreadReadAnchorFrontier(latestVisibleReadAnchor, anchor)
-            if (advanced != latestVisibleReadAnchor) {
-                diagnosticsLogger(
-                    "thread_read_anchor_frontier seq=${advanced?.seq} id=${advanced?.messageId} " +
-                        "prevSeq=${latestVisibleReadAnchor?.seq}"
-                )
-                latestVisibleReadAnchor = advanced
-            }
-        }
-    }
-    LaunchedEffect(routeActive, hostForeground, readAnchorOwner, latestVisibleReadAnchor) {
-        if (!routeActive || !hostForeground) {
-            val owner = readAnchorOwner ?: return@LaunchedEffect
-            val anchor = latestVisibleReadAnchor ?: return@LaunchedEffect
-            readAnchorStore.advance(owner, anchor)
-        }
-    }
-    val latestReadAnchorOwner by rememberUpdatedState(readAnchorOwner)
-    val latestReadAnchorFrontier by rememberUpdatedState(latestVisibleReadAnchor)
-    DisposableEffect(threadInstanceKey, readAnchorStore) {
-        onDispose {
-            val owner = latestReadAnchorOwner
-            val anchor = latestReadAnchorFrontier
-            if (owner != null && anchor != null) {
-                readAnchorStore.advance(owner, anchor)
-            }
-        }
-    }
-    // The durable anchor remains lifecycle-persisted, while the route-local frontier advances on
-    // every visible-window change. This makes the pill converge as the user reads and prevents a
-    // locally-sent row that is already on screen from being counted as unread.
     var allowBottomAutoAnchor by remember(threadInstanceKey) {
         mutableStateOf(true)
     }
@@ -18488,48 +18311,6 @@ private fun ThreadMessagesListContent(
     // native commit receipt reports `committed`, so a rejected or failed transfer keeps the
     // anchor available for a retry.
 
-    val unreadJumpAtCanonicalBottom =
-        threadUnreadJumpAtCanonicalBottom(
-            canLoadMoreAfter = renderPayload.canLoadMoreAfter,
-            canScrollTowardBottom = listState.canScrollForward,
-            latestItemOffBottom = listState.shouldShowThreadBackToBottom(latestItemIndex),
-        )
-    val latestCanonicalReadAnchor =
-        renderPayload.messages
-            .asReversed()
-            .firstOrNull { message -> (message.seq ?: 0L) > 0L }
-            ?.let { message -> ThreadReadAnchor(seq = message.seq!!, messageId = message.id) }
-    val sessionReadAnchor =
-        consumeUnreadJumpFrontierAtCanonicalBottom(
-            sessionAnchor =
-                advanceThreadReadAnchorFrontier(frozenReadAnchor, latestVisibleReadAnchor),
-            latestCanonicalMessage = latestCanonicalReadAnchor,
-            atCanonicalBottom = unreadJumpAtCanonicalBottom,
-        )
-    LaunchedEffect(unreadJumpAtCanonicalBottom, latestCanonicalReadAnchor, routeActive, hostForeground) {
-        if (!routeActive || !hostForeground) return@LaunchedEffect
-        if (!unreadJumpAtCanonicalBottom) return@LaunchedEffect
-        val advanced =
-            consumeUnreadJumpFrontierAtCanonicalBottom(
-                sessionAnchor = latestVisibleReadAnchor,
-                latestCanonicalMessage = latestCanonicalReadAnchor,
-                atCanonicalBottom = true,
-            )
-        if (advanced != latestVisibleReadAnchor) {
-            latestVisibleReadAnchor = advanced
-        }
-    }
-    val unreadJumpProjection =
-        remember(sessionReadAnchor, renderPayload.messages, renderPayload.gapRefillMessageIds) {
-            projectThreadUnreadJump(
-                anchor = sessionReadAnchor,
-                messages =
-                    renderPayload.messages.map { message ->
-                        ThreadUnreadAnchorMessage(id = message.id, seq = message.seq)
-                    },
-                excludedMessageIds = renderPayload.gapRefillMessageIds,
-            )
-        }
     var viewportControllerState by remember(threadInstanceKey) {
         diagnosticsLogger("thread_viewport_state_init key=$threadInstanceKey")
         mutableStateOf(LazyViewportControllerState())
@@ -18912,9 +18693,6 @@ private fun ThreadMessagesListContent(
     }
 
     var backToBottomInteractionGuardActive by remember(threadInstanceKey) {
-        mutableStateOf(false)
-    }
-    var unreadJumpInteractionGuardActive by remember(threadInstanceKey, readAnchorSessionGeneration) {
         mutableStateOf(false)
     }
     var latestLocalSendBottomAnchorActiveKey by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
@@ -21672,77 +21450,6 @@ private fun ThreadMessagesListContent(
                     .zIndex(ThreadInlineSearchBarZIndex)
             )
         }
-        val shouldShowUnreadJumpButton =
-            shouldShowThreadUnreadJumpButton(
-                preferenceEnabled = threadUnreadJumpEnabled,
-                routeActive = routeActive,
-                hostForeground = hostForeground,
-                unreadCount = unreadJumpProjection.unreadCount,
-                targetMessageId = unreadJumpProjection.targetMessageId,
-                inlineSearchVisible = inlineSearchVisible,
-                atCanonicalBottom = unreadJumpAtCanonicalBottom,
-            )
-        if (
-            !shareSelectionCaptureActive &&
-            threadUnreadJumpEnabled &&
-            (shouldShowUnreadJumpButton || unreadJumpInteractionGuardActive)
-        ) {
-            ThreadUnreadJumpButton(
-                unreadCount = unreadJumpProjection.unreadCount,
-                // Bottom placement per artin ruling; stacks above back-to-bottom.
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp)
-                    .zIndex(ThreadUnreadJumpButtonZIndex),
-                onClick = onClick@{
-                    if (unreadJumpInteractionGuardActive) return@onClick
-                    val targetMessageId = unreadJumpProjection.targetMessageId ?: return@onClick
-                    val targetIndex =
-                        renderPayload.threadViewportListItemIndex(
-                            LazyViewportAnchorTarget.Message(targetMessageId)
-                        )
-                    unreadJumpInteractionGuardActive = true
-                    allowBottomAutoAnchor = false
-                    initialBottomAnchorReady = true
-                    focusedAnchorIdentityForViewportReplacement(
-                        pendingIdentity = pendingFocusedMessageAnchorIdentityState.value,
-                        sessionIdentity = focusedAnchorSessionIdentity,
-                    )?.let { retiredIdentity ->
-                        scrollInterruptedFocusedMessageAnchorIdentity = retiredIdentity
-                        activeFocusedMessageId = null
-                    }
-                    diagnosticsLogger(
-                        "thread_unread_jump_click count=${unreadJumpProjection.unreadCount} " +
-                            "anchorSeq=${sessionReadAnchor?.seq} target=$targetMessageId targetIndex=$targetIndex"
-                    )
-                    coroutineScope.launch {
-                        try {
-                            if (targetIndex >= 0 && listState.canScrollToThreadItem(targetIndex)) {
-                                userScrollGeneration.value += 1
-                                dispatchViewportEvent(
-                                    LazyViewportEvent.Anchor(
-                                        target = LazyViewportAnchorTarget.Message(targetMessageId),
-                                        offset = 0,
-                                        layoutGeneration = viewportLayoutGeneration,
-                                        fallback = LazyViewportAnchorFallback.Free,
-                                    )
-                                )
-                                viewportControllerState.pendingCommand?.id?.let { commandId ->
-                                    awaitViewportCommandSettlement(commandId)
-                                }
-                            } else {
-                                sessionReadAnchor?.messageId?.let { anchorMessageId ->
-                                    onThreadEvent("focusUnreadAnchor", anchorMessageId, null, null)
-                                }
-                            }
-                        } finally {
-                            withContext(NonCancellable) {
-                                delay(ThreadBackToBottomReleaseGuardMillis)
-                                unreadJumpInteractionGuardActive = false
-                            }
-                        }
-                    }
-                },
-            )
-        }
         val shouldShowBackToBottomButton =
             shouldShowThreadBackToBottomButton(
                 ThreadBackToBottomButtonState(
@@ -23678,22 +23385,6 @@ internal fun shouldRestoreThreadOlderPageAnchor(
     currentUserScrollGeneration: Int
 ): Boolean = capturedUserScrollGeneration == currentUserScrollGeneration
 
-internal fun ThreadTimelineSlice.visibleThreadReadAnchor(
-    visibleListItemIndexes: List<Int>,
-): ThreadReadAnchor? {
-    if (visibleListItemIndexes.isEmpty()) return null
-    val firstMessageIndex = firstMessageListItemIndex()
-    return visibleListItemIndexes
-        .asSequence()
-        .mapNotNull { listIndex -> messages.getOrNull(listIndex - firstMessageIndex) }
-        .mapNotNull { message ->
-            message.seq?.takeIf { seq -> seq > 0L }?.let { seq ->
-                ThreadReadAnchor(seq = seq, messageId = message.id)
-            }
-        }
-        .maxByOrNull { anchor -> anchor.seq }
-}
-
 private fun ThreadListViewport.isThreadOlderAutoLoadThreshold(
     boundaryIndex: Int,
     userScrollGeneration: Int,
@@ -24051,47 +23742,6 @@ private fun ThreadBackToBottomButton(
     )
 }
 
-@Composable
-private fun ThreadUnreadJumpButton(
-    unreadCount: Int,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    RaftBrutalActionButton(
-        label = stringResource(MR.strings.thread_action_unread_count, unreadCount),
-        onClick = onClick,
-        modifier = modifier.raftNativeDispatchCapture(),
-        // artin visual ruling (task #232): neutral white pill, bottom placement.
-        backgroundColor = RaftColor.SurfaceWhite,
-        minWidth = 0.dp,
-        minHeight = ThreadFloatingPillButtonMinHeight,
-        textStyle = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack),
-    )
-}
-
-internal fun shouldShowThreadUnreadJumpButton(
-    preferenceEnabled: Boolean,
-    routeActive: Boolean,
-    hostForeground: Boolean,
-    unreadCount: Int,
-    targetMessageId: String?,
-    inlineSearchVisible: Boolean,
-    atCanonicalBottom: Boolean = false,
-): Boolean =
-    preferenceEnabled &&
-        routeActive &&
-        hostForeground &&
-        unreadCount > 0 &&
-        !targetMessageId.isNullOrBlank() &&
-        !inlineSearchVisible &&
-        !atCanonicalBottom
-
-internal fun threadUnreadJumpAtCanonicalBottom(
-    canLoadMoreAfter: Boolean,
-    canScrollTowardBottom: Boolean,
-    latestItemOffBottom: Boolean,
-): Boolean = !canLoadMoreAfter && !canScrollTowardBottom && !latestItemOffBottom
-
 internal fun threadVisibleReadTailMessageIndex(
     visibleListItemIndexes: List<Int>,
     firstMessageListItemIndex: Int,
@@ -24106,22 +23756,10 @@ internal fun threadVisibleReadTailMessageIndex(
         ?.minus(firstMessageListItemIndex)
 }
 
-internal fun consumeUnreadJumpFrontierAtCanonicalBottom(
-    sessionAnchor: ThreadReadAnchor?,
-    latestCanonicalMessage: ThreadReadAnchor?,
-    atCanonicalBottom: Boolean,
-): ThreadReadAnchor? =
-    if (atCanonicalBottom) {
-        advanceThreadReadAnchorFrontier(sessionAnchor, latestCanonicalMessage)
-    } else {
-        sessionAnchor
-    }
-
 private const val ThreadBackToBottomReleaseGuardMillis = 64L
-private const val ThreadUnreadJumpButtonZIndex = 5f
 
 /**
- * Compact floating thread pills (back-to-bottom and unread-jump).
+ * Compact floating thread pills (back-to-bottom).
  * artin 2026-09-02: nothing in this family needs the 42.dp action-button target.
  */
 internal val ThreadFloatingPillButtonMinHeight = 28.dp

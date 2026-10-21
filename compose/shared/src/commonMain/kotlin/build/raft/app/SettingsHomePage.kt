@@ -99,7 +99,6 @@ import build.raft.app.data.MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES
 import build.raft.app.data.MOBILE_ACTION_COMPACT_MESSAGES
 import build.raft.app.data.MOBILE_ACTION_LONG_MESSAGE_COLLAPSE
 import build.raft.app.data.MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD
-import build.raft.app.data.MOBILE_ACTION_THREAD_UNREAD_JUMP
 import build.raft.app.data.MOBILE_ACTION_NEW_MESSAGE_MENU
 import build.raft.app.data.MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE
 import build.raft.app.data.MOBILE_ACTION_COMPOSER_SEND_KEY
@@ -8828,9 +8827,6 @@ private fun SettingsNativeDetailPageContent(
                     onSingleTapOpensThreadChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetSingleTapOpensThreadEnabled(enabled))
                     },
-                    onThreadUnreadJumpChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetThreadUnreadJumpEnabled(enabled))
-                    },
                     onNewMessageMenuChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetNewMessageMenuEnabled(enabled))
                     },
@@ -10221,7 +10217,6 @@ private fun SettingsMobileContent(
     onCompactConsecutiveMessagesChange: (Boolean) -> Unit,
     onLongMessageCollapseChange: (Boolean) -> Unit,
     onSingleTapOpensThreadChange: (Boolean) -> Unit,
-    onThreadUnreadJumpChange: (Boolean) -> Unit,
     onNewMessageMenuChange: (Boolean) -> Unit,
     onConversationForwardGestureChange: (Boolean) -> Unit,
     onActivityTaskStatusBadgesChange: (Boolean) -> Unit,
@@ -10288,13 +10283,6 @@ private fun SettingsMobileContent(
                         onThreadReverseLayoutChange = onThreadReverseLayoutChange
                     )
                 }
-            }
-            item {
-                SettingsThreadUnreadJumpCard(
-                    snapshot = snapshot,
-                    actionState = actionState,
-                    onThreadUnreadJumpChange = onThreadUnreadJumpChange
-                )
             }
             item {
                 SettingsNewMessageMenuCard(
@@ -10978,60 +10966,6 @@ private fun SettingsSingleTapOpensThreadCard(
             )
         }
         if (actionState?.action == MOBILE_ACTION_SINGLE_TAP_OPENS_THREAD && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState)
-        }
-    }
-}
-
-@Composable
-private fun SettingsThreadUnreadJumpCard(
-    snapshot: SettingsMobileSnapshot,
-    actionState: SharedSettingsActionState?,
-    onThreadUnreadJumpChange: (Boolean) -> Unit
-) {
-    val busy = actionState?.action == MOBILE_ACTION_THREAD_UNREAD_JUMP && actionState.inProgress
-    val preference = snapshot.threadUnreadJump
-    SettingsFormSectionCard(
-        iconName = RaftLucideIconName.ArrowUpDown,
-        title = stringResource(MR.strings.settings_mobile_thread_unread_jump)
-    ) {
-        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_thread_unread_jump_detail))
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
-                        onThreadUnreadJumpChange(!preference.enabled)
-                    }
-                    .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    SettingsConnectedAppsBadge(
-                        stringResource(MR.strings.settings_badge_beta),
-                        RaftColor.BrandYellow
-                    )
-                    Text(
-                        preference.localizedToggleStatus(),
-                        style = RaftType.Button.copy(color = RaftColor.TextBlack),
-                        color = RaftColor.TextBlack
-                    )
-                }
-            }
-            RaftSwitchButton(
-                checked = preference.enabled,
-                enabled = preference.available && !busy
-            )
-        }
-        if (actionState?.action == MOBILE_ACTION_THREAD_UNREAD_JUMP && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
         }
     }
@@ -17077,15 +17011,6 @@ internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                                 fallbackStatus = "Off",
                                 actionState = actionState,
                                 errorStrings = errorStrings
-                            ),
-                            mobile.threadUnreadJump.toMobileToggleRow(
-                                key = MOBILE_ACTION_THREAD_UNREAD_JUMP,
-                                iconName = RaftLucideIconName.ArrowUpDown,
-                                title = "Thread unread jump",
-                                fallbackStatus = "Off",
-                                actionState = actionState,
-                                errorStrings = errorStrings,
-                                badgeLabel = "Beta"
                             ),
                             mobile.newMessageMenu.toMobileToggleRow(
                                 key = MOBILE_ACTION_NEW_MESSAGE_MENU,

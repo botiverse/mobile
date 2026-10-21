@@ -134,7 +134,7 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 | Pinned conversations first in Activity | `ThreadsInbox.tsx:644-663` | TBC | – | `sidebar-order` | S |
 | Unread badges (sidebar, server) | `store/serverStore.ts:711` | done | `data/ProcessActivityUnreadStore.kt`, `ServerUnreadSummaryDto.kt` | `/servers/unread-summary` | – |
 | Read state across devices | `store/readStateSync.ts` | done | `network/sync/ReadStateSyncDomain.kt`, `ReadStateV1Store.kt` | `read_state:updated` | – |
-| Jump to first unread | `ThreadsInbox.tsx:681` | done | `data/ThreadReadAnchorStore.kt` | `messages/context/:id` | – |
+| Jump to first unread | `ThreadsInbox.tsx:681` | done | `data/SharedActivityStore.kt` (`firstUnreadMessageId`) | `messages/context/:id` | – |
 | Push: iOS (APNs) | `routes/push.ts` (server) | done | `data/IosPushRegistration.kt`, `compose/iosApp/iosApp/iOSApp.swift` | `/push/registrations` | – |
 | **Push: Android (FCM)** | RFC 045 | missing: token never registered | `compose/androidApp/.../push/RaftFirebaseMessagingService.kt` ("Server registration is intentionally left for the native push contract follow-up") | **server needs FCM provider** | M–L |
 | Server decides what notifies (RFC 045) | `notification:push` | done: mobile trusts the server event | `RaftVisibleConversationRegistry.kt:67-131` | existing | – |
