@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.withKnownLatestDelegatedLabelsFrom
 import build.raft.app.SharedThreadContentGeneration
 import build.raft.app.SharedThreadFreshnessLedger
 import build.raft.app.SharedThreadSummaryFact
@@ -1602,6 +1603,9 @@ class SharedActivityStore internal constructor(
                         } else {
                             realtimeReconcile.items.dedupeActivityItems()
                         }
+                            // RFC 077: a re-fetched row of the same latest message without
+                            // `latestDelegatedBy` keeps the known label.
+                            .withKnownLatestDelegatedLabelsFrom(current.items)
                     val adjustedCanonicalUnreadCount =
                         maxOf(
                             0,
