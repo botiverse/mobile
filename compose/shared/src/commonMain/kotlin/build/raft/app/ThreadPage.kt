@@ -3136,22 +3136,6 @@ internal data class RaftThreadAttachmentItem(
     val height: Int? = null
 )
 
-private data class ThreadImagePreviewUrl(
-    val url: String,
-    val expiresAt: String?
-)
-
-private data class ThreadImagePreviewState(
-    val images: List<RaftThreadAttachmentItem>,
-    val currentIndex: Int,
-    val loadingAttachmentIds: Set<String> = emptySet(),
-    val failedAttachmentIds: Set<String> = emptySet()
-) {
-    val current: RaftThreadAttachmentItem? get() = images.getOrNull(currentIndex)
-}
-
-private const val ThreadAttachmentPreviewOpenWithActionId = "open-with"
-
 internal data class ThreadAttachmentCommentsDialogState(
     val attachment: RaftThreadAttachmentItem,
     val status: String = "loading",
@@ -7440,7 +7424,6 @@ private fun SharedThreadRouteContentContent(
     val commentsUnavailableLabel = stringResource(MR.strings.thread_error_comments_unavailable)
     val unableToSendCommentLabel = stringResource(MR.strings.thread_error_send_comment)
     val unableToResolveCommentLabel = stringResource(MR.strings.thread_error_resolve_comment)
-    val unableToLoadImageLabel = stringResource(MR.strings.thread_error_load_image)
     val unableToOpenAttachmentLabel = stringResource(MR.strings.thread_error_open_attachment)
     val unableToDownloadAttachmentLabel = stringResource(MR.strings.file_preview_error_download_attachment)
     val attachmentOpenResultTerms =
@@ -8383,8 +8366,6 @@ private fun SharedThreadRouteContentContent(
         realtimeDomainEventOwner.registerGuardedActiveThreadSink(sink)
         onDispose { realtimeDomainEventOwner.unregisterGuardedActiveThreadSink(sink) }
     }
-    var imagePreviewState by remember(threadInstanceKey) { mutableStateOf<ThreadImagePreviewState?>(null) }
-    var imagePreviewUrlCache by remember(threadInstanceKey) { mutableStateOf<Map<String, ThreadImagePreviewUrl>>(emptyMap()) }
     var inlineImageFallbackState by remember(threadInstanceKey) {
         mutableStateOf(ThreadInlineImageFallbackState())
     }
@@ -8691,44 +8672,6 @@ private fun SharedThreadRouteContentContent(
             routeAuthRequired(renderedThread.errorCode)
         }
     }
-    fun requestImagePreviewUrl(attachmentId: String) {
-        if (attachmentId in imagePreviewUrlCache) return
-        val currentPreview = imagePreviewState ?: return
-        if (attachmentId in currentPreview.loadingAttachmentIds) return
-        imagePreviewState =
-            currentPreview.copy(
-                loadingAttachmentIds = currentPreview.loadingAttachmentIds + attachmentId,
-                failedAttachmentIds = currentPreview.failedAttachmentIds - attachmentId
-            )
-        coroutineScope.launch {
-            when (val response = dataSource.attachmentUrl(attachmentId)) {
-                is ThreadApiResult.Success -> {
-                    imagePreviewUrlCache =
-                        imagePreviewUrlCache +
-                            (attachmentId to ThreadImagePreviewUrl(response.data.url, response.data.expiresAt))
-                    imagePreviewState =
-                        imagePreviewState?.takeIf { preview -> preview.images.any { it.id == attachmentId } }?.let { preview ->
-                            preview.copy(
-                                loadingAttachmentIds = preview.loadingAttachmentIds - attachmentId,
-                                failedAttachmentIds = preview.failedAttachmentIds - attachmentId
-                            )
-                        }
-                }
-                is ThreadApiResult.Failure -> {
-                    imagePreviewState =
-                        imagePreviewState?.takeIf { preview -> preview.images.any { it.id == attachmentId } }?.let { preview ->
-                            preview.copy(
-                                loadingAttachmentIds = preview.loadingAttachmentIds - attachmentId,
-                                failedAttachmentIds = preview.failedAttachmentIds + attachmentId
-                            )
-                        }
-                    if (imagePreviewState?.current?.id == attachmentId && imagePreviewState?.current?.thumbnailUrl.isNullOrBlank()) {
-                        bridge.toast(unableToLoadImageLabel)
-                    }
-                }
-            }
-        }
-    }
     fun requestInlineImageFallback(attachmentId: String) {
         val (nextState, shouldRequest) = inlineImageFallbackState.beginRequest(attachmentId)
         inlineImageFallbackState = nextState
@@ -8754,7 +8697,6 @@ private fun SharedThreadRouteContentContent(
         if (group.images.isEmpty()) return
         val currentIndex = group.currentIndex.coerceIn(0, group.images.lastIndex)
         val attachment = group.images[currentIndex]
-        imagePreviewState = null
         pager.openRaftFilePreviewPage(
             attachment.toThreadAttachmentLazyPreviewPayload(
                 kind = "image",
@@ -8763,13 +8705,6 @@ private fun SharedThreadRouteContentContent(
                 attachmentCommentsEnabled = attachmentCommentsEnabled
             )
         )
-    }
-    fun selectImagePreviewIndex(index: Int) {
-        val preview = imagePreviewState ?: return
-        if (preview.images.isEmpty()) return
-        val nextIndex = index.coerceIn(0, preview.images.lastIndex)
-        imagePreviewState = preview.copy(currentIndex = nextIndex)
-        requestImagePreviewUrl(preview.images[nextIndex].id)
     }
     fun openAttachmentExternally(attachment: RaftThreadAttachmentItem) {
         if (attachment.id.isBlank() || attachmentOpenStates[attachment.id].threadAttachmentIsOpening()) return
@@ -8920,7 +8855,6 @@ private fun SharedThreadRouteContentContent(
     }
     fun openAttachmentNoPreview(attachment: RaftThreadAttachmentItem) {
         if (attachment.id.isBlank()) return
-        imagePreviewState = null
         val lazyPreviewKind =
             when {
                 attachment.isMarkdownAttachment() -> "markdown"
@@ -13052,17 +12986,6 @@ private fun SharedThreadRouteContentContent(
                 )
             }
         }
-        imagePreviewState?.let { preview ->
-            ThreadImagePreviewOverlay(
-                state = preview,
-                resolvedUrls = imagePreviewUrlCache,
-                onDismiss = { imagePreviewState = null },
-                onOpenExternally = { attachment ->
-                    openAttachmentExternally(attachment)
-                },
-                onSelectIndex = ::selectImagePreviewIndex
-            )
-        }
         attachmentCommentsDialogState
             .retainForThreadWriteAuthority(renderSlice.writeActionsEnabled)
             ?.let { dialogState ->
@@ -13780,323 +13703,6 @@ internal fun List<RaftPendingAttachmentItem>.composerPendingImageAttachmentGroup
     }
 }
 
-@Composable
-private fun ThreadImagePreviewOverlay(
-    state: ThreadImagePreviewState,
-    resolvedUrls: Map<String, ThreadImagePreviewUrl>,
-    onDismiss: () -> Unit,
-    onOpenExternally: (RaftThreadAttachmentItem) -> Unit,
-    onSelectIndex: (Int) -> Unit
-) {
-    val current = state.current ?: return
-    val thumbnailUrl = current.thumbnailUrl?.takeIf { it.isNotBlank() }
-    val fullUrl = resolvedUrls[current.id]?.url?.takeIf { it.isNotBlank() }
-    val displayUrl = fullUrl ?: thumbnailUrl
-    val hasMultiple = state.images.size > 1
-    val isLoading = current.id in state.loadingAttachmentIds
-    val failedWithoutImage = current.id in state.failedAttachmentIds && displayUrl == null
-    val currentPreviewState by rememberUpdatedState(state)
-    val currentOnSelectIndex by rememberUpdatedState(onSelectIndex)
-    val bottomSafeArea = raftBottomSafeAreaPadding()
-    val swipeThresholdPx =
-        with(LocalDensity.current) {
-            56.dp.toPx()
-        }
-    var menuOpen by remember { mutableStateOf(false) }
-    var menuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
-    RaftBackHandler(
-        enabled = !menuOpen,
-        label = "thread_image_preview",
-        onBack = onDismiss
-    )
-    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            RaftTopPageHeader(
-                title = stringResource(MR.strings.thread_image_preview_title),
-                subtitle = null,
-                iconName = RaftLucideIconName.Image,
-                backgroundColor = RaftColor.Canvas,
-                onBack = onDismiss,
-                trailingContent = {
-                    RaftFilePreviewOverflowMenuButton(
-                        onOpenMenu = { anchor ->
-                            menuAnchor = anchor
-                            menuOpen = true
-                        }
-                    )
-                }
-            )
-            Column(modifier = Modifier.fillMaxSize()) {
-                val previewBottomPadding = if (hasMultiple) 0.dp else bottomSafeArea
-                // Past the first image a back-direction drag pages the preview, not the host's back swipe.
-                val galleryBackSwipe = Modifier.raftBackSwipeRegion {
-                    hasMultiple && currentPreviewState.currentIndex > 0
-                }
-                Box(
-                    modifier = Modifier.fillMaxWidth()
-                        .weight(1f)
-                        .padding(
-                            start = RaftAppSpacing.Md,
-                            top = RaftAppSpacing.Md,
-                            end = RaftAppSpacing.Md,
-                            bottom = RaftAppSpacing.Md + previewBottomPadding
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize()
-                            .raftThemedCorners(RaftAppRadius.Container)
-                            .background(RaftImagePreviewLetterboxColor, RoundedCornerShape(RaftAppRadius.Container))
-                            .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Container))
-                            .then(galleryBackSwipe)
-                            .then(
-                                if (hasMultiple) {
-                                    Modifier.pointerInput(state.currentIndex, state.images.size) {
-                                        var dragDistance = 0f
-                                        detectHorizontalDragGestures(
-                                            onDragStart = { dragDistance = 0f },
-                                            onDragEnd = {
-                                                when {
-                                                    dragDistance <= -swipeThresholdPx && currentPreviewState.currentIndex < currentPreviewState.images.lastIndex -> {
-                                                        currentOnSelectIndex(currentPreviewState.currentIndex + 1)
-                                                    }
-
-                                                    dragDistance >= swipeThresholdPx && currentPreviewState.currentIndex > 0 -> {
-                                                        currentOnSelectIndex(currentPreviewState.currentIndex - 1)
-                                                    }
-                                                }
-                                            },
-                                            onDragCancel = { dragDistance = 0f }
-                                        ) { _, dragAmount ->
-                                            dragDistance += dragAmount
-                                        }
-                                    }
-                                } else {
-                                    Modifier
-                                }
-                            )
-                    ) {
-                        if (displayUrl != null) {
-                            RaftCachedImage(
-                                source = displayUrl,
-                                contentDescription = current.name,
-                                contentScale = ContentScale.Fit,
-                                modifier = Modifier.fillMaxSize().padding(8.dp)
-                            )
-                        } else {
-                            ThreadImagePreviewEmptyState(
-                                title =
-                                    if (failedWithoutImage) {
-                                        stringResource(MR.strings.thread_image_preview_unavailable)
-                                    } else {
-                                        stringResource(MR.strings.thread_image_preview_loading)
-                                    },
-                                detail = current.name
-                            )
-                        }
-                    }
-                    if (isLoading && displayUrl != null) {
-                        ThreadImagePreviewLoadingPill(
-                            modifier =
-                                Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = if (hasMultiple) 56.dp else 12.dp)
-                        )
-                    }
-                    if (hasMultiple) {
-                        ThreadImagePreviewNavigationPill(
-                            label = "${state.currentIndex + 1}/${state.images.size}",
-                            canGoPrevious = state.currentIndex > 0,
-                            canGoNext = state.currentIndex < state.images.lastIndex,
-                            onPrevious = { onSelectIndex(state.currentIndex - 1) },
-                            onNext = { onSelectIndex(state.currentIndex + 1) },
-                            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)
-                        )
-                    }
-                }
-                if (hasMultiple) {
-                    val backSwipeRowState = rememberLazyListState()
-                    val backSwipeRow = rememberRaftBackSwipeScroll(backSwipeRowState)
-                    LazyRow(
-                        state = backSwipeRowState,
-                        userScrollEnabled = backSwipeRow.userScrollEnabled,
-                        modifier = Modifier.then(backSwipeRow.modifier).fillMaxWidth()
-                            .height(74.dp + bottomSafeArea)
-                            .background(RaftColor.SurfaceWhite)
-                            .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 10.dp + bottomSafeArea),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        items(state.images.size, key = { state.images[it].id }) { index ->
-                            ThreadImagePreviewThumbnail(
-                                attachment = state.images[index],
-                                selected = index == state.currentIndex,
-                                resolvedUrl = resolvedUrls[state.images[index].id]?.url,
-                                onClick = { onSelectIndex(index) }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        if (menuOpen && menuAnchor != null) {
-            RaftUiControlledMenu(
-                expanded = menuOpen,
-                anchor = menuAnchor!!,
-                items =
-                    listOf(
-                        RaftUiMenuItem(
-                            id = ThreadAttachmentPreviewOpenWithActionId,
-                            label = stringResource(MR.strings.thread_image_preview_open_with),
-                            icon = RaftLucideIconName.ExternalLink
-                        )
-                    ),
-                onSelect = { id ->
-                    menuOpen = false
-                    if (id == ThreadAttachmentPreviewOpenWithActionId) {
-                        onOpenExternally(current)
-                    }
-                },
-                onDismiss = { menuOpen = false },
-                width = 180.dp
-            )
-        }
-    }
-}
-
-@Composable
-private fun ThreadImagePreviewEmptyState(title: String, detail: String) {
-    Column(
-        modifier = Modifier.widthIn(max = 260.dp)
-            .raftCardSurface()
-            .padding(18.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        RaftLucideIcon(RaftLucideIconName.Image, modifier = Modifier.size(34.dp), color = ThreadLegacyBlackIconArgb)
-        Text(
-            text = title,
-            style = RaftType.ButtonBold.copy(color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            text = detail,
-            style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-            color = RaftColor.TextMutedGray,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@Composable
-private fun ThreadImagePreviewLoadingPill(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .raftCardSurface()
-            .padding(horizontal = 10.dp, vertical = 5.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = stringResource(MR.strings.thread_image_preview_loading_full),
-            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-            color = RaftColor.TextBlack,
-            maxLines = 1
-        )
-    }
-}
-
-@Composable
-private fun ThreadImagePreviewNavigationPill(
-    label: String,
-    canGoPrevious: Boolean,
-    canGoNext: Boolean,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier
-            .raftCardSurface()
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        ThreadImagePreviewInlineNavButton(
-            icon = RaftLucideIconName.ChevronLeft,
-            enabled = canGoPrevious,
-            onClick = onPrevious
-        )
-        Text(
-            text = label,
-            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
-            color = RaftColor.TextBlack,
-            maxLines = 1
-        )
-        ThreadImagePreviewInlineNavButton(
-            icon = RaftLucideIconName.ChevronRight,
-            enabled = canGoNext,
-            onClick = onNext
-        )
-    }
-}
-
-@Composable
-private fun ThreadImagePreviewInlineNavButton(
-    icon: RaftLucideIconName,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .size(24.dp)
-            .alpha(if (enabled) 1f else 0.35f)
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        RaftLucideIcon(icon, modifier = Modifier.size(16.dp), color = ThreadLegacyBlackIconArgb)
-    }
-}
-
-@Composable
-private fun ThreadImagePreviewThumbnail(
-    attachment: RaftThreadAttachmentItem,
-    selected: Boolean,
-    resolvedUrl: String?,
-    onClick: () -> Unit
-) {
-    val source = attachment.thumbnailUrl?.takeIf { it.isNotBlank() } ?: resolvedUrl?.takeIf { it.isNotBlank() }
-    Button(
-        onClick = onClick,
-        pressOffset = 2.dp,
-        modifier = Modifier.size(54.dp)
-            .background(if (selected) RaftColor.Brand else RaftColor.Card, RoundedCornerShape(RaftAppRadius.Control))
-            .border(RaftAppStroke.Control, if (selected) RaftColor.StickerInk else RaftColor.Card, RoundedCornerShape(RaftAppRadius.Control))
-            .padding(if (selected) 3.dp else 1.dp)
-    ) {
-        Box(
-            modifier = Modifier.fillMaxSize()
-                .raftThemedCorners(RaftAppRadius.Chip)
-                .background(RaftImagePreviewLetterboxColor, RoundedCornerShape(RaftAppRadius.Chip))
-                .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Chip)),
-            contentAlignment = Alignment.Center
-        ) {
-            if (source != null) {
-                RaftAspectFitImagePreviewSurface(
-                    source = source,
-                    contentDescription = attachment.name,
-                    modifier = Modifier.fillMaxSize(),
-                    borderWidth = 0.dp,
-                    contentScale = RaftImageThumbnailContentScale
-                )
-            } else {
-                RaftLucideIcon(RaftLucideIconName.Image, modifier = Modifier.size(20.dp), color = ThreadLegacyBlackIconArgb)
-            }
-        }
-    }
-}
 
 internal fun RaftThreadScreenPayload.replyThreadLoadingPayload(
     parentMessageId: String,
