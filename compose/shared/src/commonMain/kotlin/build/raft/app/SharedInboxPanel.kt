@@ -65,6 +65,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -1301,9 +1302,11 @@ private fun SharedActivityList(
     // list (see ActivityEntryTopAnchorOwner for owner + fence). Declared before
     // the canonical-snapshot effect so activation arms it before that effect runs.
     val entryTopAnchorOwner = remember(listState) { ActivityEntryTopAnchorOwner() }
-    var newActivityAbove by
+    // The rows that landed above a scrolled reader; the pill shows only while one of
+    // them is laid out above the viewport (activityNewRowsAboveViewport).
+    var newActivityAboveKeys by
         remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
-            mutableStateOf(false)
+            mutableStateOf(emptySet<String>())
         }
     LaunchedEffect(active, foregroundEpoch) {
         if (active) {
@@ -1328,7 +1331,7 @@ private fun SharedActivityList(
         snapshotFlow {
             activityListParkedAtTop(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
         }
-            .collect { atTop -> if (atTop) newActivityAbove = false }
+            .collect { atTop -> if (atTop && newActivityAboveKeys.isNotEmpty()) newActivityAboveKeys = emptySet() }
     }
     fun shouldAnchorTop(pullRefreshOwnsTop: Boolean, genuineTopUpdate: Boolean): Boolean =
         activityShouldAnchorTopOnCanonicalSnapshot(
@@ -1338,15 +1341,17 @@ private fun SharedActivityList(
                 activityListParkedAtTop(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset),
             scrollInProgress = listState.isScrollInProgress,
             genuineTopUpdate = genuineTopUpdate,
+            followParkedTop = !stableOrderEnabled,
         )
     // Same snapshot as the list change: the next measure pass applies both, so
     // LazyList cannot first re-anchor on the old head key and no delayed job exists.
     fun settleTopEdge(previousItems: List<InboxItem>, nextItems: List<InboxItem>, anchorTop: Boolean) {
         if (anchorTop) {
-            newActivityAbove = false
+            if (newActivityAboveKeys.isNotEmpty()) newActivityAboveKeys = emptySet()
             listState.requestScrollToItem(0)
-        } else if (activityHasNewTopRow(previousItems.map(InboxItem::key), nextItems.map(InboxItem::key))) {
-            newActivityAbove = true
+        } else {
+            val landed = activityNewTopRowKeys(previousItems.map(InboxItem::key), nextItems.map(InboxItem::key))
+            if (landed.isNotEmpty()) newActivityAboveKeys = newActivityAboveKeys + landed
         }
     }
     LaunchedEffect(presentedItems, active, viewportRecoveryArmed) {
@@ -1603,6 +1608,23 @@ private fun SharedActivityList(
                 activityConversationListEntries(listed, it.context)
             }
         }
+    // LazyColumn key order as laid out (section labels and pinned rows first), for the pill.
+    val lazyItemKeys =
+        remember(conversationListEntries, renderedItems) {
+            conversationListEntries?.map(ActivityConversationListEntry::key) ?: renderedItems.map(InboxItem::key)
+        }
+    val lazyItemKeysState = rememberUpdatedState(lazyItemKeys)
+    val newActivityAboveKeysState = rememberUpdatedState(newActivityAboveKeys)
+    val showNewActivityPill by
+        remember(listState) {
+            derivedStateOf {
+                activityNewRowsAboveViewport(
+                    newRowKeys = newActivityAboveKeysState.value,
+                    lazyItemKeys = lazyItemKeysState.value,
+                    firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                )
+            }
+        }
     // Row gestures resolve the committed item at commit time (see activityItemForCommittedGesture);
     // the card rows and the conversation-list rows share these exact handlers.
     fun committedRowItem(renderedItemKey: String): InboxItem? =
@@ -1788,7 +1810,7 @@ private fun SharedActivityList(
                     // marker and remains actionable; animation completion never
                     // clears work that arrived after this click.
                     updateTracking = updateTracking.consumePending()
-                    newActivityAbove = false
+                    newActivityAboveKeys = emptySet()
                     presentationGeneration =
                         activityNextPresentationGeneration(
                             currentGeneration = presentationGeneration,
@@ -1801,13 +1823,13 @@ private fun SharedActivityList(
                 },
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
             )
-        } else if (newActivityAbove) {
+        } else if (showNewActivityPill) {
             // Task #47: newer rows landed above a reader who had already scrolled;
             // the viewport stays theirs until they tap (explicit viewport replacement).
             RaftButton(
                 text = stringResource(MR.strings.activity_new_activity),
                 onClick = {
-                    newActivityAbove = false
+                    newActivityAboveKeys = emptySet()
                     revealRequest += 1
                 },
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
