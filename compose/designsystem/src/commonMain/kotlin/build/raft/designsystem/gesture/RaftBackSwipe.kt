@@ -30,12 +30,15 @@ import androidx.compose.ui.node.GlobalPositionAwareModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.currentValueOf
 import androidx.compose.ui.platform.InspectorInfo
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.ScrollAxisRange
 import androidx.compose.ui.semantics.horizontalScrollAxisRange
 import androidx.compose.ui.semantics.scrollBy
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import kotlin.math.sign
 import kotlinx.coroutines.CoroutineScope
@@ -365,6 +368,28 @@ fun Modifier.raftBackSwipeRegion(consumesBackSwipe: () -> Boolean): Modifier =
     this then RaftBackSwipeRegionElement(consumesBackSwipe)
 
 /**
+ * [raftBackSwipeRegion] whose reported bounds leave out the element's leading [edgeWidth] strip, so
+ * a back drag starting there still reaches the host's back swipe (swipe-paged content: a gallery
+ * past its first image pages back from its body but pops the page from its leading edge).
+ */
+internal fun Modifier.raftBackSwipeRegion(edgeWidth: Dp, consumesBackSwipe: () -> Boolean): Modifier =
+    this then RaftBackSwipeRegionElement(consumesBackSwipe, leadingEdgeExclusion = edgeWidth)
+
+/**
+ * [bounds] without its leading [edgePx] strip (left in LTR, right in RTL); empty when the strip
+ * covers it.
+ */
+internal fun raftTrimLeadingEdge(bounds: Rect, edgePx: Float, isLtr: Boolean): Rect {
+    if (edgePx <= 0f) return bounds
+    if (edgePx >= bounds.width) return Rect(bounds.left, bounds.top, bounds.left, bounds.bottom)
+    return if (isLtr) {
+        Rect(bounds.left + edgePx, bounds.top, bounds.right, bounds.bottom)
+    } else {
+        Rect(bounds.left, bounds.top, bounds.right - edgePx, bounds.bottom)
+    }
+}
+
+/**
  * The element this modifier is on keeps every back-direction drag that starts on it while
  * [enabled]: custom horizontal drag handlers (seek bars, drawing / pan surfaces, resize handles,
  * a focused text field's cursor and selection drags) that would otherwise race the host's pop.
@@ -376,11 +401,13 @@ private val RaftAlwaysConsumes: () -> Boolean = { true }
 
 private data class RaftBackSwipeRegionElement(
     val consumesBackSwipe: () -> Boolean,
+    val leadingEdgeExclusion: Dp = 0.dp,
 ) : ModifierNodeElement<RaftBackSwipeRegionNode>() {
-    override fun create(): RaftBackSwipeRegionNode = RaftBackSwipeRegionNode(consumesBackSwipe)
+    override fun create(): RaftBackSwipeRegionNode = RaftBackSwipeRegionNode(consumesBackSwipe, leadingEdgeExclusion)
 
     override fun update(node: RaftBackSwipeRegionNode) {
         node.consumesBackSwipe = consumesBackSwipe
+        node.leadingEdgeExclusion = leadingEdgeExclusion
     }
 
     override fun InspectorInfo.inspectableProperties() {
@@ -390,6 +417,7 @@ private data class RaftBackSwipeRegionElement(
 
 private class RaftBackSwipeRegionNode(
     var consumesBackSwipe: () -> Boolean,
+    var leadingEdgeExclusion: Dp,
 ) : Modifier.Node(), GlobalPositionAwareModifierNode, CompositionLocalConsumerModifierNode {
     private var coordinates: LayoutCoordinates? = null
     private var registry: RaftBackSwipeRegions? = null
@@ -415,7 +443,10 @@ private class RaftBackSwipeRegionNode(
     private fun currentBounds(): Rect? {
         if (!isAttached) return null
         val current = coordinates?.takeIf { it.isAttached } ?: return null
-        return current.boundsInRoot()
+        val bounds = current.boundsInRoot()
+        if (leadingEdgeExclusion <= 0.dp) return bounds
+        val edgePx = with(currentValueOf(LocalDensity)) { leadingEdgeExclusion.toPx() }
+        return raftTrimLeadingEdge(bounds, edgePx, isLtr = currentValueOf(LocalLayoutDirection) == LayoutDirection.Ltr)
     }
 
     private fun currentlyConsumes(): Boolean =

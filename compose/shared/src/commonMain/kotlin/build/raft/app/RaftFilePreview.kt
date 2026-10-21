@@ -3,7 +3,7 @@ package build.raft.app
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
-import build.raft.designsystem.gesture.raftBackSwipeRegion
+import build.raft.designsystem.gesture.raftBackSwipePagingDrag
 import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.base.Utils
 import build.raft.app.base.reduceAttachmentDownloadProgress
@@ -65,7 +65,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
@@ -7888,38 +7887,26 @@ private fun RaftFilePreviewImageGallerySurface(
         with(LocalDensity.current) {
             56.dp.toPx()
         }
+    // iOS: this page is a native push swiped away by the host's full-page pop. On the first image a
+    // back drag must stay unconsumed (a rubber-band here made the Compose touch recogniser win, so
+    // the preview could not be swiped back); past it the drag pages back except from the leading
+    // edge strip, which still pops the page. Android: every horizontal drag pages, as before.
     val galleryModifier =
         if (progressLabel != null && onImageGalleryIndexChange != null) {
-            Modifier.pointerInput(payload.imageGalleryIndex, payload.imageGallery.size) {
-                var dragDistance = 0f
-                detectHorizontalDragGestures(
-                    onDragStart = {
-                        dragDistance = 0f
-                        dragOffsetPx = 0f
-                    },
-                    onDragEnd = {
-                        val nextIndex = payload.nextImageGalleryIndex(dragDistance, swipeThresholdPx)
-                        dragDistance = 0f
-                        dragOffsetPx = 0f
-                        nextIndex?.let(onImageGalleryIndexChange)
-                    },
-                    onDragCancel = {
-                        dragDistance = 0f
-                        dragOffsetPx = 0f
-                    }
-                ) { _, dragAmount ->
-                    dragDistance += dragAmount
-                    dragOffsetPx = payload.imageGalleryDragOffsetWithResistance(dragDistance)
-                }
-            }
+            Modifier.raftBackSwipePagingDrag(
+                canPageBackward = payload.imageGalleryIndex > 0,
+                onDragStart = { dragOffsetPx = 0f },
+                onDrag = { totalDx -> dragOffsetPx = payload.imageGalleryDragOffsetWithResistance(totalDx) },
+                onDragEnd = { totalDx ->
+                    dragOffsetPx = 0f
+                    payload.nextImageGalleryIndex(totalDx, swipeThresholdPx)?.let(onImageGalleryIndexChange)
+                },
+                onDragCancel = { dragOffsetPx = 0f }
+            )
         } else {
             Modifier
         }
-    // Past the first image a back-direction drag pages the gallery, not the host's back swipe.
-    val galleryBackSwipe = Modifier.raftBackSwipeRegion {
-        progressLabel != null && onImageGalleryIndexChange != null && payload.imageGalleryIndex > 0
-    }
-    Box(modifier = modifier.clipToBounds().then(galleryBackSwipe).then(galleryModifier)) {
+    Box(modifier = modifier.clipToBounds().then(galleryModifier)) {
         Box(
             modifier =
                 Modifier
