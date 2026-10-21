@@ -15,6 +15,7 @@ import build.raft.app.data.InboxItem
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedHomeContentState
 import androidx.compose.runtime.Immutable
+import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.data.InboxSnapshot
 import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.activityVisibleSummaryCounts
@@ -1756,6 +1757,7 @@ private fun SharedActivityList(
                                     model = model,
                                     divider = entry.divider,
                                     selected = selectedItemKey == item.key,
+                                    menuOpen = activeMenuItem?.key == item.key,
                                     timeContext = timeContext,
                                     agentStatusResolver = conversationList?.agentStatusResolver ?: EmptyRaftAgentStatusResolver,
                                     showDoneAction = item.activityShowsDoneAction(),
@@ -1782,6 +1784,7 @@ private fun SharedActivityList(
                         senderProfiles = senderProfiles,
                         dmPeerNames = dmPeerNames,
                         selected = selectedItemKey == item.key,
+                        menuOpen = activeMenuItem?.key == item.key,
                         divider = index > 0,
                         timeContext = timeContext,
                         activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
@@ -2080,6 +2083,8 @@ private fun SharedActivityRow(
     senderProfiles: Map<String, SharedActivitySenderProfile>,
     dmPeerNames: Map<String, String> = emptyMap(),
     selected: Boolean,
+    /** Its long-press menu is open: web `fill-row-open` (raft-ui 0.13), under selection. */
+    menuOpen: Boolean = false,
     divider: Boolean = false,
     modifier: Modifier = Modifier,
     timeContext: RaftTimeContext?,
@@ -2118,7 +2123,13 @@ private fun SharedActivityRow(
         modifier =
             modifier
                 .fillMaxWidth()
-                .background(if (selected) RaftColor.InfoSoft else Color.Transparent)
+                .background(
+                    when {
+                        selected -> RaftColor.InfoSoft
+                        menuOpen -> RaftTheme.colors.fillRowOpen
+                        else -> Color.Transparent
+                    }
+                )
     ) {
         Column(
             modifier =

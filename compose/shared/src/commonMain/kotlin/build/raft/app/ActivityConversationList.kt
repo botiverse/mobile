@@ -507,6 +507,8 @@ internal fun ActivityConversationListRow(
     model: ActivityConversationRowModel,
     divider: Boolean,
     selected: Boolean,
+    /** Its long-press menu is open: `fill-row-open`, under selection. */
+    menuOpen: Boolean = false,
     timeContext: RaftTimeContext?,
     agentStatusResolver: RaftAgentStatusResolver,
     showDoneAction: Boolean,
@@ -552,7 +554,13 @@ internal fun ActivityConversationListRow(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .then(if (selected) Modifier.background(colors.infoSoft) else Modifier)
+                    .then(
+                        when {
+                            selected -> Modifier.background(colors.infoSoft)
+                            menuOpen -> Modifier.background(colors.fillRowOpen)
+                            else -> Modifier
+                        }
+                    )
                     .then(
                         if (divider) {
                             Modifier.drawBehind {

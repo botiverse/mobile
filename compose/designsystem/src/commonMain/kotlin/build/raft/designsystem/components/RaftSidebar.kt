@@ -22,6 +22,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.collapse
@@ -147,9 +149,9 @@ enum class RaftSidebarItemVariant(
  * Touch (raft-design ContextMenu): [onLongClick] is the press and hold that opens the row's
  * menu, the same menu as its ⋯ button and a right-click, named [onLongClickLabel] for
  * screen readers ("Channel Options"); a long press does not also click. While that menu is
- * open pass [menuOpen] = true: the row keeps the press overlay (raft-ui
- * `not-data-active:data-popup-open:bg-fill-pressed`, so not on the selected row). Both need
- * [onClick].
+ * open pass [menuOpen] = true: the row takes `fill-row-open` (raft-ui
+ * `not-data-active:data-popup-open:bg-fill-row-open`, so not on the selected row). Hover takes
+ * `fill-row-hover`; press keeps `fill-pressed`. Both need [onClick].
  */
 @Composable
 fun RaftSidebarItem(
@@ -255,7 +257,17 @@ private fun RaftSidebarItemLayout(
     val interactive = onClick != null
     val isPressed = raftIsPressed(source)
     val isHovered = raftIsHovered(source)
-    val pressed = interactive && (isPressed || isHovered || (menuOpen && !selected))
+    // raft-ui 0.13 row hover: press keeps `fill-pressed`; hover takes the lighter
+    // `fill-row-hover`, and an open menu `fill-row-open`, a step past it. The sticker
+    // (selected) row keeps its own look.
+    val pressed = interactive && isPressed
+    val rowFill =
+        when {
+            !interactive || selected || pressed -> Color.Transparent
+            menuOpen -> colors.fillRowOpen
+            isHovered -> colors.fillRowHover
+            else -> Color.Transparent
+        }
     val isFocused = raftIsFocused(source)
     val focused = interactive && isFocused
     val titleInk =
@@ -281,6 +293,7 @@ private fun RaftSidebarItemLayout(
                 .padding(vertical = RaftSidebarItemMetrics.MarginVertical)
                 .fillMaxWidth()
                 .heightIn(min = RaftSidebarItemMetrics.MinHeight)
+                .background(rowFill, RoundedCornerShape(RaftRadius.Control))
                 .raftSticker(look, RaftRadius.Control, pressed = pressed, focused = focused, colors = colors)
                 .then(
                     when {
