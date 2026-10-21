@@ -22126,7 +22126,8 @@ private fun ThreadMessagesListContent(
                     )
                 }
             }
-            SideEffect { inPlaceSelectionMenuHost.selectionMenu = selectionMenu }
+            // Stable slot reference: rows never read this, so republishing does not recompose them.
+            SideEffect { inPlaceSelectionMenuHost.selectionMenu.publish(selectionMenu) }
         }
         actionMessageId?.let { messageId ->
             val resolvedActionAnchor =

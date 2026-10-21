@@ -370,4 +370,17 @@ class ThreadInPlaceTextSelectionTest {
         )
         assertEquals(body, threadInPlaceSelectionCopyText(emptyList(), renderedNodes, body, emptySelectionFallback = body))
     }
+
+    @Test
+    fun selectionMenuReferenceStaysStableWhenTheListRepublishesIt() {
+        val host = ThreadInPlaceTextSelectionHost(enabled = true, copyText = {})
+        val before = host.selectionMenu.menu
+
+        // Each list recomposition publishes a fresh lambda (its captures changed)…
+        host.selectionMenu.publish { _ -> }
+        host.selectionMenu.publish { _ -> }
+
+        // …but what rows and the popup hold is the same reference, so rows are not invalidated.
+        assertTrue(before === host.selectionMenu.menu)
+    }
 }
