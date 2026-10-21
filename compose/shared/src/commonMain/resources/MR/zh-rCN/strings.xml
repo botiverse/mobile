@@ -1569,8 +1569,8 @@
     <string name="home_section_pinned">已置顶</string>
     <string name="home_action_pin">置顶</string>
     <string name="home_action_unpin">取消置顶</string>
-    <string name="home_action_mark_as_read">标记已读</string>
-    <string name="home_action_mark_as_unread">标记未读</string>
+    <string name="home_action_mark_as_read">标为已读</string>
+    <string name="home_action_mark_as_unread">标为未读</string>
     <string name="home_action_mark_all_as_read">全部已读</string>
     <string name="home_action_mute">静音</string>
     <string name="home_action_unmute">取消静音</string>
