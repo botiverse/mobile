@@ -8928,7 +8928,17 @@ internal class SharedThreadStore(
                 deferredReadJob =
                     scope.launch {
                         delay(deferMs)
-                        markVisibleRead(visibleTailIndex)
+                        // Only the marker the user was shown: anything that changed since (a newer message
+                        // while the page went to the background, older rows shifting the index) is owned by
+                        // the page's own next visible-read dispatch, never marked from here unseen.
+                        if (_state.value.payload.visibleReadMarker(visibleTailIndex) == marker) {
+                            markVisibleRead(visibleTailIndex)
+                        } else {
+                            diagnosticsLogger?.invoke(
+                                "thread_read_skip channelId=${marker.channelId} reason=deferred_marker_changed " +
+                                    "latest=${marker.latestMessageId}"
+                            )
+                        }
                     }
             }
             return
