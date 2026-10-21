@@ -81,6 +81,9 @@ internal object AndroidAppScopeRealtimeOwner {
                 RaftAndroidPushRegistrationBridge.refreshDeliveryStatus(reason = "app_foreground")
             } else {
                 onAppHidden(source = "process_activity_stopped")
+                // No-Play-services devices: make sure the background connection service is up now that the
+                // app is hidden (no-op on Play services devices).
+                installedApplicationContext?.let(AndroidRealtimeKeepAliveController::onAppBackgrounded)
             }
         }
 
