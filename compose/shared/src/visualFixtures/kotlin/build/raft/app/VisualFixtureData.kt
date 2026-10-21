@@ -100,6 +100,9 @@ object VisualFixtureData {
                 const val RUNTIME: String = "codex"
                 const val STATUS: String = "inactive"
             }
+            val CREATED_AGENTS: List<Map<String, Any?>> = listOf(
+                mapOf<String, Any?>("id" to "agent-visual-qa", "name" to "visual-qa", "displayName" to "Visual QA", "runtime" to "codex", "status" to "inactive"),
+            )
         }
         object AndroidDev4 {
             const val ID: String = "agent-android-dev-4"
@@ -447,5 +450,142 @@ object VisualFixtureData {
             const val MIME_TYPE: String = "application/zip"
             const val SIZE_BYTES: Int = 1887436
         }
+    }
+
+    object HomeChannelList {
+        const val COMMENT: String = "Phone Home rows for screens.home.channel-list and screens.home.channel-list.dark (same rows, light and dark). The one source for both providers: the React host (VisualTestingCases.tsx primeHomeChannelListStores, the playwright stubs) reads it here; Android reads the generated VisualFixtureData.HomeChannelList (CHANNELS / DIRECT_MESSAGES row lists) in HomeChannelListVisualHost.kt. Server id/slug are fixtureData.server. Every row carries every field so both sides map rows uniformly. mention and followedThreadsWithNewReplies have no Android Home model yet; Android ignores them. No row is selected: a phone Home root never shows one."
+        const val SERVER_NAME: String = "Raft Design"
+        const val SAVED_TOTAL: Int = 5
+        const val ACTIVITY_UNREAD_COUNT: Int = 0
+        val PINNED_CHANNEL_IDS: List<String> = listOf("channel-announcements")
+        object Channels1 {
+            const val ID: String = "channel-announcements"
+            const val NAME: String = "announcements"
+            const val TYPE: String = "channel"
+            const val UNREAD: Int = 3
+            const val MENTION: Boolean = false
+            const val FOLLOWED_THREADS_WITH_NEW_REPLIES: Int = 0
+            const val MUTED: Boolean = false
+            const val DRAFT: Boolean = false
+        }
+        object Channels2 {
+            const val ID: String = "channel-partners-sync"
+            const val NAME: String = "partners-sync"
+            const val TYPE: String = "joint"
+            const val UNREAD: Int = 2
+            const val MENTION: Boolean = false
+            const val FOLLOWED_THREADS_WITH_NEW_REPLIES: Int = 0
+            const val MUTED: Boolean = false
+            const val DRAFT: Boolean = false
+        }
+        object Channels3 {
+            const val ID: String = "channel-release"
+            const val NAME: String = "release"
+            const val TYPE: String = "channel"
+            const val UNREAD: Int = 5
+            const val MENTION: Boolean = true
+            const val FOLLOWED_THREADS_WITH_NEW_REPLIES: Int = 0
+            const val MUTED: Boolean = false
+            const val DRAFT: Boolean = false
+        }
+        object Channels4 {
+            const val ID: String = "channel-mobile"
+            const val NAME: String = "mobile"
+            const val TYPE: String = "channel"
+            const val UNREAD: Int = 0
+            const val MENTION: Boolean = false
+            const val FOLLOWED_THREADS_WITH_NEW_REPLIES: Int = 2
+            const val MUTED: Boolean = false
+            const val DRAFT: Boolean = false
+        }
+        object Channels5 {
+            const val ID: String = "channel-ops-alerts"
+            const val NAME: String = "ops-alerts"
+            const val TYPE: String = "channel"
+            const val UNREAD: Int = 12
+            const val MENTION: Boolean = false
+            const val FOLLOWED_THREADS_WITH_NEW_REPLIES: Int = 0
+            const val MUTED: Boolean = true
+            const val DRAFT: Boolean = false
+        }
+        object Channels6 {
+            const val ID: String = "channel-roadmap"
+            const val NAME: String = "roadmap"
+            const val TYPE: String = "private"
+            const val UNREAD: Int = 0
+            const val MENTION: Boolean = false
+            const val FOLLOWED_THREADS_WITH_NEW_REPLIES: Int = 0
+            const val MUTED: Boolean = false
+            const val DRAFT: Boolean = true
+        }
+        object Channels7 {
+            const val ID: String = "channel-long-name"
+            const val NAME: String = "visual-parity-and-release-readiness-for-every-phone"
+            const val TYPE: String = "channel"
+            const val UNREAD: Int = 0
+            const val MENTION: Boolean = false
+            const val FOLLOWED_THREADS_WITH_NEW_REPLIES: Int = 0
+            const val MUTED: Boolean = false
+            const val DRAFT: Boolean = false
+        }
+        val CHANNELS: List<Map<String, Any?>> = listOf(
+            mapOf<String, Any?>("id" to "channel-announcements", "name" to "announcements", "type" to "channel", "unread" to 3, "mention" to false, "followedThreadsWithNewReplies" to 0, "muted" to false, "draft" to false),
+            mapOf<String, Any?>("id" to "channel-partners-sync", "name" to "partners-sync", "type" to "joint", "unread" to 2, "mention" to false, "followedThreadsWithNewReplies" to 0, "muted" to false, "draft" to false),
+            mapOf<String, Any?>("id" to "channel-release", "name" to "release", "type" to "channel", "unread" to 5, "mention" to true, "followedThreadsWithNewReplies" to 0, "muted" to false, "draft" to false),
+            mapOf<String, Any?>("id" to "channel-mobile", "name" to "mobile", "type" to "channel", "unread" to 0, "mention" to false, "followedThreadsWithNewReplies" to 2, "muted" to false, "draft" to false),
+            mapOf<String, Any?>("id" to "channel-ops-alerts", "name" to "ops-alerts", "type" to "channel", "unread" to 12, "mention" to false, "followedThreadsWithNewReplies" to 0, "muted" to true, "draft" to false),
+            mapOf<String, Any?>("id" to "channel-roadmap", "name" to "roadmap", "type" to "private", "unread" to 0, "mention" to false, "followedThreadsWithNewReplies" to 0, "muted" to false, "draft" to true),
+            mapOf<String, Any?>("id" to "channel-long-name", "name" to "visual-parity-and-release-readiness-for-every-phone", "type" to "channel", "unread" to 0, "mention" to false, "followedThreadsWithNewReplies" to 0, "muted" to false, "draft" to false),
+        )
+        object DirectMessages1 {
+            const val ID: String = "dm-agent-cindy"
+            const val PEER_TYPE: String = "agent"
+            const val PEER_ID: String = "agent-cindy"
+            const val NAME: String = "Cindy"
+            const val AVATAR_LABEL: String = "CI"
+            const val UNREAD: Int = 0
+            const val RUNTIME: String = "codex"
+            const val ACTIVITY: String = "working"
+            const val ACTIVITY_DETAIL: String = "Capturing visual testing baselines"
+        }
+        object DirectMessages2 {
+            const val ID: String = "dm-agent-builder"
+            const val PEER_TYPE: String = "agent"
+            const val PEER_ID: String = "agent-builder"
+            const val NAME: String = "Builder"
+            const val AVATAR_LABEL: String = "BU"
+            const val UNREAD: Int = 4
+            const val RUNTIME: String = "claude"
+            const val ACTIVITY: String = "online"
+            val ACTIVITY_DETAIL: String? = null
+        }
+        object DirectMessages3 {
+            const val ID: String = "dm-agent-product-ux"
+            const val PEER_TYPE: String = "agent"
+            const val PEER_ID: String = "agent-product-ux"
+            const val NAME: String = "Product UX"
+            const val AVATAR_LABEL: String = "PR"
+            const val UNREAD: Int = 0
+            const val RUNTIME: String = "claude"
+            const val ACTIVITY: String = "online"
+            val ACTIVITY_DETAIL: String? = null
+        }
+        object DirectMessages4 {
+            const val ID: String = "dm-human-jiacheng"
+            const val PEER_TYPE: String = "user"
+            const val PEER_ID: String = "visual-human-jiacheng"
+            const val NAME: String = "Jiacheng from the infrastructure reliability team"
+            const val AVATAR_LABEL: String = "JI"
+            const val UNREAD: Int = 1
+            val RUNTIME: String? = null
+            val ACTIVITY: String? = null
+            val ACTIVITY_DETAIL: String? = null
+        }
+        val DIRECT_MESSAGES: List<Map<String, Any?>> = listOf(
+            mapOf<String, Any?>("id" to "dm-agent-cindy", "peerType" to "agent", "peerId" to "agent-cindy", "name" to "Cindy", "avatarLabel" to "CI", "unread" to 0, "runtime" to "codex", "activity" to "working", "activityDetail" to "Capturing visual testing baselines"),
+            mapOf<String, Any?>("id" to "dm-agent-builder", "peerType" to "agent", "peerId" to "agent-builder", "name" to "Builder", "avatarLabel" to "BU", "unread" to 4, "runtime" to "claude", "activity" to "online", "activityDetail" to null),
+            mapOf<String, Any?>("id" to "dm-agent-product-ux", "peerType" to "agent", "peerId" to "agent-product-ux", "name" to "Product UX", "avatarLabel" to "PR", "unread" to 0, "runtime" to "claude", "activity" to "online", "activityDetail" to null),
+            mapOf<String, Any?>("id" to "dm-human-jiacheng", "peerType" to "user", "peerId" to "visual-human-jiacheng", "name" to "Jiacheng from the infrastructure reliability team", "avatarLabel" to "JI", "unread" to 1, "runtime" to null, "activity" to null, "activityDetail" to null),
+        )
     }
 }

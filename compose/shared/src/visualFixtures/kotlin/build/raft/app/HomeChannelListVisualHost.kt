@@ -16,11 +16,12 @@ import kotlinx.coroutines.flow.flowOf
  * entry row, the Pinned, Joint Channels, Channels and Direct Messages sections and the phone
  * tab bar, from typed fixture state (no session, no auth).
  *
- * The same rows are seeded on the web side from
- * `botiverse/slock packages/visual-testing/shared/homeChannelListFixture.json`; keep the two
- * in step (names, counts, order, states). Web-only states in that fixture (the `@` mention
- * sticker on `release`, the followed-thread count on `mobile`) have no Android model on Home
- * yet, so here those rows carry only what Android can draw; the report shows the gap.
+ * Every row comes from [VisualFixtureData.HomeChannelList], generated from the
+ * `homeChannelList` block of slock's `packages/visual-testing/shared/fixtureData.json`, the
+ * one source the React case seeds from too (`slock-visual generate-fixture-data`). This file
+ * only maps those rows onto the Home models. Web-only row states (`mention`, the `@` sticker;
+ * `followedThreadsWithNewReplies`, the thread count) have no Android Home model yet and are
+ * not drawn here; the report shows the gap.
  *
  * No row is selected: a phone Home root never shows a selected row (opening a conversation
  * pushes it over Home, and the web hides the tab bar on those routes). Selected rows are
@@ -57,120 +58,94 @@ private fun HomeChannelListVisualAppearance(appearance: RaftAppAppearance, conte
     content()
 }
 
-private const val HomeChannelListServerId = "visual-server"
-private const val HomeChannelListServerName = "Raft Design"
-private const val HomeChannelListServerSlug = "visual"
+private typealias HomeChannelListRow = Map<String, Any?>
 
-/** Saved messages total (web `savedMessagesFixture.json` `total`). */
-private const val HomeChannelListSavedCount = 5
+private fun HomeChannelListRow.text(key: String): String = this[key] as String
 
-private fun homeChannelListAgentStatus(status: AgentStatus, label: String? = null, runtime: String) =
-    SharedServerMemberStatus(
-        status = status,
-        presence = status.presence,
-        statusLabel = label,
-        runtime = runtime,
-        external = false
+private fun HomeChannelListRow.textOrNull(key: String): String? = this[key] as String?
+
+private fun HomeChannelListRow.count(key: String): Int = this[key] as Int
+
+private fun HomeChannelListRow.flag(key: String): Boolean = this[key] as Boolean
+
+/** fixture `type` (web `Channel.type`): `private` is a channel kind, `joint` its own section. */
+private fun homeChannelListChannel(row: HomeChannelListRow): RaftHomeConversationItem {
+    val type = row.text("type")
+    return RaftHomeConversationItem(
+        id = row.text("id"),
+        name = row.text("name"),
+        kind = if (type == JointChannelKindWireValue) JointChannelKindWireValue else "channel",
+        channelType = type.takeIf { it == "private" },
+        unreadCount = row.count("unread"),
+        hasDraft = row.flag("draft"),
+        activityMuted = row.flag("muted"),
+        activityMuteSupported = true
     )
+}
 
-private val homeChannelListAgentStatuses =
-    mapOf(
-        "agent-cindy" to homeChannelListAgentStatus(AgentStatus.Working, "Capturing visual testing baselines", runtime = "codex"),
-        "agent-builder" to homeChannelListAgentStatus(AgentStatus.Online, runtime = "claude"),
-        "agent-product-ux" to homeChannelListAgentStatus(AgentStatus.Online, runtime = "claude"),
+private fun homeChannelListDirectMessage(row: HomeChannelListRow): RaftHomeConversationItem {
+    val isAgent = row.text("peerType") == "agent"
+    return RaftHomeConversationItem(
+        id = row.text("id"),
+        name = row.text("name"),
+        kind = RaftThreadSurfaceKind.DirectMessage,
+        unreadCount = row.count("unread"),
+        avatarLabel = row.text("avatarLabel"),
+        peerType = if (isAgent) "agent" else "human",
+        presenceMemberId = row.text("peerId")
     )
+}
 
-private val homeChannelListChannels =
-    listOf(
-        // Pinned: leaves the Channels section for the Pinned one.
-        RaftHomeConversationItem(id = "channel-announcements", name = "announcements", kind = "channel", unreadCount = 3),
-        RaftHomeConversationItem(id = "channel-partners-sync", name = "partners-sync", kind = JointChannelKindWireValue, unreadCount = 2),
-        // Web also draws the `@` mention sticker here.
-        RaftHomeConversationItem(id = "channel-release", name = "release", kind = "channel", unreadCount = 5),
-        // Web draws the followed-thread count (2 threads with new replies); no channel unread.
-        RaftHomeConversationItem(id = "channel-mobile", name = "mobile", kind = "channel"),
-        RaftHomeConversationItem(
-            id = "channel-ops-alerts",
-            name = "ops-alerts",
-            kind = "channel",
-            unreadCount = 12,
-            activityMuted = true,
-            activityMuteSupported = true
-        ),
-        RaftHomeConversationItem(
-            id = "channel-roadmap",
-            name = "roadmap",
-            kind = "channel",
-            channelType = "private",
-            hasDraft = true
-        ),
-        RaftHomeConversationItem(
-            id = "channel-long-name",
-            name = "visual-parity-and-release-readiness-for-every-phone",
-            kind = "channel"
-        ),
-    )
+/** fixture `activity` (web agent activity) as the Android agent status. */
+private fun homeChannelListAgentStatus(activity: String?): AgentStatus =
+    when (activity) {
+        "working" -> AgentStatus.Working
+        "thinking" -> AgentStatus.Thinking
+        "online" -> AgentStatus.Online
+        "idle" -> AgentStatus.Idle
+        else -> AgentStatus.Offline
+    }
 
-private val homeChannelListDirectMessages =
-    listOf(
-        RaftHomeConversationItem(
-            id = "dm-agent-cindy",
-            name = "Cindy",
-            kind = RaftThreadSurfaceKind.DirectMessage,
-            avatarLabel = "CI",
-            peerType = "agent",
-            presenceMemberId = "agent-cindy"
-        ),
-        RaftHomeConversationItem(
-            id = "dm-agent-builder",
-            name = "Builder",
-            kind = RaftThreadSurfaceKind.DirectMessage,
-            unreadCount = 4,
-            avatarLabel = "BU",
-            peerType = "agent",
-            presenceMemberId = "agent-builder"
-        ),
-        RaftHomeConversationItem(
-            id = "dm-agent-product-ux",
-            name = "Product UX",
-            kind = RaftThreadSurfaceKind.DirectMessage,
-            avatarLabel = "PR",
-            peerType = "agent",
-            presenceMemberId = "agent-product-ux"
-        ),
-        RaftHomeConversationItem(
-            id = "dm-human-jiacheng",
-            name = "Jiacheng from the infrastructure reliability team",
-            kind = RaftThreadSurfaceKind.DirectMessage,
-            unreadCount = 1,
-            avatarLabel = "JI",
-            peerType = "human",
-            presenceMemberId = "visual-human-jiacheng"
-        ),
-    )
+private val homeChannelListAgentStatuses: Map<String, SharedServerMemberStatus> =
+    VisualFixtureData.HomeChannelList.DIRECT_MESSAGES
+        .filter { row -> row.text("peerType") == "agent" }
+        .associate { row ->
+            val status = homeChannelListAgentStatus(row.textOrNull("activity"))
+            row.text("peerId") to
+                SharedServerMemberStatus(
+                    status = status,
+                    presence = status.presence,
+                    statusLabel = row.textOrNull("activityDetail"),
+                    runtime = row.textOrNull("runtime"),
+                    external = false
+                )
+        }
 
 @Composable
 private fun HomeChannelListVisualContent() {
+    val fixture = VisualFixtureData.HomeChannelList
     val resolver: RaftAgentStatusResolver =
         remember {
             val byId = homeChannelListAgentStatuses.mapValues { (_, status) -> status.toRaftAgentStatusIndicatorState() }
             ({ memberId -> flowOf(byId[memberId]) })
         }
+    val channels = remember { fixture.CHANNELS.map(::homeChannelListChannel) }
+    val directMessages = remember { fixture.DIRECT_MESSAGES.map(::homeChannelListDirectMessage) }
     RaftStructuralHomeShell(
-        currentServerName = HomeChannelListServerName,
-        currentServerId = HomeChannelListServerId,
+        currentServerName = fixture.SERVER_NAME,
+        currentServerId = VisualFixtureData.Server.ID,
         servers =
             listOf(
                 RaftServerSwitcherItem(
-                    id = HomeChannelListServerId,
-                    name = HomeChannelListServerName,
-                    slug = HomeChannelListServerSlug
+                    id = VisualFixtureData.Server.ID,
+                    name = fixture.SERVER_NAME,
+                    slug = VisualFixtureData.Server.SLUG
                 )
             ),
-        channels = homeChannelListChannels,
-        directMessages = homeChannelListDirectMessages,
-        pinnedChannelIds = listOf("channel-announcements"),
-        savedCount = HomeChannelListSavedCount,
+        channels = channels,
+        directMessages = directMessages,
+        pinnedChannelIds = fixture.PINNED_CHANNEL_IDS,
+        savedCount = fixture.SAVED_TOTAL,
         agentStatusResolver = resolver,
         contentRefreshEnabled = false,
         selectedTabKey = "home",
