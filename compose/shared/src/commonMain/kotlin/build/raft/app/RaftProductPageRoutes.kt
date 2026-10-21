@@ -29,6 +29,9 @@ internal fun appShellTabProductPageView(tab: String): RaftProductPageView? =
         else -> null
     }
 
+/** The `page_viewed` visit key of a shell tab page: one per shell and tab, across remounts. */
+internal fun appShellTabProductPageVisitKey(shellId: String, tab: String): String = "app-shell-tab|$shellId|$tab"
+
 /** The wide rail's inline list panes (Search, Saved). */
 internal fun appShellRailInlineProductPageView(key: String?): RaftProductPageView? =
     when (key) {

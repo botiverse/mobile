@@ -232,6 +232,7 @@ internal object AndroidUnreadNotificationPoster {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             }
             ?: return null
+        intent.putExtra(EXTRA_RAFT_APP_OPEN_SOURCE, RAFT_APP_OPEN_SOURCE_PUSH_NOTIFICATION)
         return PendingIntent.getActivity(
             appContext,
             notificationId,

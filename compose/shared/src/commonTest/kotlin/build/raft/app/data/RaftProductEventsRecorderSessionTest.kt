@@ -62,6 +62,54 @@ class RaftProductEventsRecorderSessionTest {
             assertEquals("notification", properties.getValue("via").jsonPrimitive.content)
         }
 
+    /** One open per case, each after the session gap: what the host reported -> `via`. */
+    private class OpenCase(
+        val name: String,
+        val signals: List<RaftAppOpenSignal>,
+        val iosDefaultLauncher: Boolean,
+        val via: String?,
+    )
+
+    @Test
+    fun appOpenedViaFollowsTheOpenSignalOfThatOpen() =
+        runTest {
+            val h = harness()
+            val cases =
+                listOf(
+                    OpenCase("launcher icon", listOf(RaftAppOpenSignal.Launcher), iosDefaultLauncher = false, via = "launcher"),
+                    // Android: the opened activity forwards to another page; that says nothing new.
+                    OpenCase(
+                        "launcher, then a forwarded page",
+                        listOf(RaftAppOpenSignal.Launcher, RaftAppOpenSignal.Unknown),
+                        iosDefaultLauncher = false,
+                        via = "launcher",
+                    ),
+                    OpenCase("notification tap", listOf(RaftAppOpenSignal.Notification), iosDefaultLauncher = false, via = "notification"),
+                    OpenCase("recents / icon on a live task", emptyList(), iosDefaultLauncher = false, via = null),
+                    OpenCase("link or share", listOf(RaftAppOpenSignal.Unknown), iosDefaultLauncher = false, via = null),
+                    OpenCase("iOS plain launch", emptyList(), iosDefaultLauncher = true, via = "launcher"),
+                    OpenCase("iOS notification launch", listOf(RaftAppOpenSignal.Notification), iosDefaultLauncher = true, via = "notification"),
+                    OpenCase("iOS URL launch", listOf(RaftAppOpenSignal.Unknown), iosDefaultLauncher = true, via = null),
+                )
+            cases.forEachIndexed { index, case ->
+                if (index > 0) {
+                    // A notification tapped while in the foreground belongs to no open.
+                    h.recorder.onAppOpenSignal(RaftAppOpenSignal.Notification)
+                    h.recorder.onAppBackground()
+                    testScheduler.advanceTimeBy(RaftAppOpenForegroundGapMillis)
+                }
+                case.signals.forEach(h.recorder::onAppOpenSignal)
+                if (case.iosDefaultLauncher) h.recorder.onDefaultAppOpenSignal(RaftAppOpenSignal.Launcher)
+                h.recorder.onAppForeground()
+            }
+            sent(h)
+            val opened = h.transport.sentEvents.filter { it.event == "app_opened" }
+            assertEquals(cases.size, opened.size)
+            cases.zip(opened).forEach { (case, wire) ->
+                assertEquals(case.via, wire.properties["via"]?.jsonPrimitive?.content, case.name)
+            }
+        }
+
     @Test
     fun pageViewedIsNotRepeatedOnRecompositionOrRepeatedAppear() =
         runTest {
@@ -146,6 +194,97 @@ class RaftProductEventsRecorderSessionTest {
             pages.onPageHidden("dm-1")
             pages.onPageShown("tab-home")
             assertEquals(listOf("app_opened:cold", "page_viewed:home", "page_viewed:dm", "page_viewed:home"), sent(h))
+        }
+
+    /**
+     * Staging 2026-10-21 (main d28e70b6, signed-in cold start): `page_viewed route=home` twice. The
+     * shell shows the cached Home, then rebuilds its tab pages while the session and server setup
+     * settle (a new Home pager), and a pause/resume re-shows the shell before its Home tab.
+     */
+    @Test
+    fun signedInColdStartReportsHomeOnce() =
+        runTest {
+            val h = harness()
+            val pages = h.recorder.pageViews
+            val homeVisit = "app-shell-tab|app-shell-child-tabs-raft-1|home"
+            h.recorder.onAppForeground()
+            pages.onPageShown("raft-1") // the shell page: no route of its own
+            pages.onPageRoute("raft-2", RaftProductPageView(RaftPageRoute.Home), homeVisit)
+            pages.onPageShown("raft-2")
+
+            // The shell drops its tab pages and builds them again a moment later.
+            testScheduler.advanceTimeBy(400L)
+            pages.onPageHidden("raft-2")
+            pages.onPageClosed("raft-2")
+            testScheduler.advanceTimeBy(800L)
+            pages.onPageRoute("raft-3", RaftProductPageView(RaftPageRoute.Home), homeVisit)
+            pages.onPageShown("raft-3")
+
+            // A pause (system dialog) hides both pages; the shell shows again before its Home tab.
+            testScheduler.advanceTimeBy(1_000L)
+            pages.onPageHidden("raft-1")
+            pages.onPageHidden("raft-3")
+            pages.onPageShown("raft-1")
+            pages.onPageShown("raft-3")
+
+            assertEquals(listOf("app_opened:cold", "page_viewed:home"), sent(h))
+        }
+
+    @Test
+    fun remountedPagesStillCountRealEntries() =
+        runTest {
+            val h = harness()
+            val pages = h.recorder.pageViews
+            val homeVisit = "app-shell-tab|shell-a|home"
+            pages.onPageShown("shell-a")
+            pages.onPageRoute("home-1", RaftProductPageView(RaftPageRoute.Home), homeVisit)
+            pages.onPageShown("home-1")
+            // Back to Home from a channel pushed over the shell (the shell shows again first).
+            pages.onPageHidden("home-1")
+            pages.onPageHidden("shell-a")
+            pages.onPageRoute("thread-1", RaftProductPageView(RaftPageRoute.Channel))
+            pages.onPageShown("thread-1")
+            pages.onPageHidden("thread-1")
+            pages.onPageClosed("thread-1")
+            pages.onPageShown("shell-a")
+            pages.onPageShown("home-1")
+            // Tab switch to Tasks; the Home page is rebuilt meanwhile; switching back is an entry.
+            pages.onPageHidden("home-1")
+            pages.onPageRoute("tasks-1", RaftProductPageView(RaftPageRoute.Tasks), "app-shell-tab|shell-a|tasks")
+            pages.onPageShown("tasks-1")
+            pages.onPageClosed("home-1")
+            pages.onPageRoute("home-2", RaftProductPageView(RaftPageRoute.Home), homeVisit)
+            pages.onPageHidden("tasks-1")
+            pages.onPageShown("home-2")
+            // The detail pane swaps one conversation for another (no visit key): each is an entry.
+            pages.onPageRoute("detail-1", RaftProductPageView(RaftPageRoute.Channel))
+            pages.onPageShown("detail-1")
+            pages.onPageHidden("detail-1")
+            pages.onPageClosed("detail-1")
+            pages.onPageRoute("detail-2", RaftProductPageView(RaftPageRoute.Channel))
+            pages.onPageShown("detail-2")
+            // Signed out and in again: a new shell, so its Home is a new visit.
+            pages.onPageHidden("detail-2")
+            pages.onPageClosed("detail-2")
+            pages.onPageHidden("home-2")
+            pages.onPageClosed("home-2")
+            pages.onPageClosed("shell-a")
+            pages.onPageRoute("home-3", RaftProductPageView(RaftPageRoute.Home), "app-shell-tab|shell-b|home")
+            pages.onPageShown("home-3")
+
+            assertEquals(
+                listOf(
+                    "page_viewed:home",
+                    "page_viewed:channel",
+                    "page_viewed:home",
+                    "page_viewed:tasks",
+                    "page_viewed:home",
+                    "page_viewed:channel",
+                    "page_viewed:channel",
+                    "page_viewed:home",
+                ),
+                sent(h),
+            )
         }
 
     @Test

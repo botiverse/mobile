@@ -57,6 +57,12 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
             window.makeKeyAndVisible()
         }
 
+        // Product analytics: a launch for a URL or a link is not a plain launcher open.
+        if !connectionOptions.urlContexts.isEmpty || connectionOptions.userActivities.contains(where: {
+            $0.activityType != RaftIosShellWindowContract.shellUserActivityType
+        }) {
+            RaftIosProductEventsHost.shared.noteOtherLaunch()
+        }
         for context in connectionOptions.urlContexts {
             _ = RaftIosMobileOAuthHost.shared.acceptCallbackURL(
                 context.url,

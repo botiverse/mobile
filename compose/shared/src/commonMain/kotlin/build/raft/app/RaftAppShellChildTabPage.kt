@@ -19,6 +19,14 @@ internal class ComposeRaftAppShellChildTabPage : build.raft.app.base.BasePager()
     override fun productPageView(): RaftProductPageView? =
         appShellTabProductPageView(retainedAppShellSelectedTab(pageData.params.optString("tab")))
 
+    // The shell's tab, not this pager: when the shell rebuilds its tab pages (the signed-in shell
+    // settling on a cold start), the new Home page continues the Home visit.
+    override fun productPageVisitKey(): String =
+        appShellTabProductPageVisitKey(
+            shellId = pageData.params.optString("shellId"),
+            tab = retainedAppShellSelectedTab(pageData.params.optString("tab")),
+        )
+
     override fun willInit() {
         super.willInit()
         setContent { RaftAppShellChildTabPageContent() }
