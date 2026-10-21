@@ -478,10 +478,11 @@ internal class CanonicalMessageV2RestSnapshotFetcher(
  * continuous — unless the user is not a member of the channel ([isKnownNonMember]: the server joins a
  * non-member's room asynchronously on open, so the page may miss messages that are never pushed either).
  * Any path that does not commit abandons the baseline. Task #14a: a reply-thread enter registers the same
- * baseline for its thread channel, naming the server-confirmed parent channel; it is known-non-member when the
- * directory says so for the thread OR its parent channel. Its commit always leaves the thread window
- * discontinuous (`thread_delivery_unconfirmed`: no per-thread delivery signal from the server), so the thread's
- * realtime replies stay display only while this page is still written.
+ * baseline for its thread channel, naming the server-confirmed parent channel and whether the directory says
+ * the user is not a member of the thread / of its parent channel. Task #14c: its commit makes the thread window
+ * continuous only under a public parent whose thread-room `channel:joined` arrived before the request (see
+ * [CanonicalMessageV2ProductionCanary]); otherwise its realtime replies stay display only while this page is
+ * still written.
  *
  * Task #14b: [persistReplyThreadPrewarmPage] writes the reply page the Activity prewarm already fetched,
  * through the same gates minus the baseline (see there).
@@ -551,11 +552,18 @@ internal class CanonicalMessageV2EnteredScopeLoader(
             log("in_flight")
             return
         }
-        // Registered before the fetch (hole A), for a reply thread too (task #14a).
-        fun nonMember() = isKnownNonMember(partition.serverId, scopeId) ||
-            (replyParentScopeId != null && isKnownNonMember(partition.serverId, replyParentScopeId))
+        // Registered before the fetch (hole A), for a reply thread too (task #14a). Task #14c: the thread's own
+        // membership and its parent's are separate (a thread join ack may lift the former, never the latter).
+        fun nonMember() = isKnownNonMember(partition.serverId, scopeId)
+        fun parentNonMember() = replyParentScopeId != null && isKnownNonMember(partition.serverId, replyParentScopeId)
         val baseline: CanonicalMessageV2EnterBaseline? =
-            canary.beginEnterBaseline(partition, scopeId, nonMember = nonMember(), replyParentScopeId = replyParentScopeId)
+            canary.beginEnterBaseline(
+                partition,
+                scopeId,
+                nonMember = nonMember(),
+                replyParentScopeId = replyParentScopeId,
+                parentNonMember = parentNonMember(),
+            )
         try {
             val expectedGeneration = generationEngine.partitionGeneration(partition)
             val frame = when (val fetched = fetch()) {
@@ -590,7 +598,12 @@ internal class CanonicalMessageV2EnteredScopeLoader(
                         val expectedKinds =
                             if (replyThread) CANONICAL_MESSAGE_V2_REPLY_THREAD_SCOPE_KINDS else CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS
                         if (baseline != null && frame.scope.scopeKind in expectedKinds) {
-                            canary.onEnterCommitted(baseline, frame, nonMemberAtCommit = nonMember())
+                            canary.onEnterCommitted(
+                                baseline,
+                                frame,
+                                nonMemberAtCommit = nonMember(),
+                                parentNonMemberAtCommit = parentNonMember(),
+                            )
                         } else {
                             canary.onExternalCommit(frame.scope)
                         }

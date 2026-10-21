@@ -469,6 +469,21 @@ final class RaftIosRealtimeHost: NSObject {
             }
             return
         }
+        if eventName == GeneratedRealtimeContract.SocketEvent.channelJoined ||
+            eventName == GeneratedRealtimeContract.SocketEvent.channelJoinDenied {
+            // Task #14c: the server's answer to this socket's `join:channel` ({ channelId }), forwarded to shared
+            // with the socket's epoch like rooms:joined. Never a domain event.
+            let joined = eventName == GeneratedRealtimeContract.SocketEvent.channelJoined
+            let channelId = payloadStringField(rawPayload: rawPayload, key: GeneratedRealtimeContract.PayloadKey.channelId)
+            log("channel_join_ack serverId=\(runtime.serverId) channelId=\(channelId) joined=\(joined)")
+            guard !channelId.isEmpty else { return }
+            postTransportSignal(
+                runtime: runtime,
+                action: joined ? "realtimeChannelJoined" : "realtimeChannelJoinDenied",
+                extra: [GeneratedRealtimeContract.PayloadKey.channelId: channelId]
+            )
+            return
+        }
         guard let params = runtime.connectParams else { return }
         let gate = payloadServerGate(connectionServerId: params.serverId, rawPayload: rawPayload)
         guard gate.accept else {
@@ -499,21 +514,38 @@ final class RaftIosRealtimeHost: NSObject {
     }
 
     /// A connection-level signal for shared, carrying this socket's epoch; skipped when the socket has none.
-    private func postTransportSignal(runtime: Runtime, action: String) {
+    /// [extra]: signal-specific keys (task #14c: the acknowledged channel id).
+    private func postTransportSignal(runtime: Runtime, action: String, extra: [String: Any] = [:]) {
         guard let params = runtime.connectParams, runtime.presenceTransportEpoch > 0 else { return }
+        var userInfo: [String: Any] = [
+            GeneratedRealtimeContract.PayloadKey.action: action,
+            GeneratedRealtimeContract.PayloadKey.serverId: params.serverId,
+            "authorityScopeLeaseId": params.authorityScopeLeaseId,
+            "authorityPrincipalId": params.authorityPrincipalId,
+            "authorityAuthGeneration": params.authorityAuthGeneration,
+            "authorityConnectionFamilyId": params.authorityConnectionFamilyId,
+            "presenceTransportEpoch": runtime.presenceTransportEpoch,
+        ]
+        for (key, value) in extra { userInfo[key] = value }
         NotificationCenter.default.post(
             name: Notification.Name(GeneratedRealtimeContract.Notify.eventName),
             object: nil,
-            userInfo: [
-                GeneratedRealtimeContract.PayloadKey.action: action,
-                GeneratedRealtimeContract.PayloadKey.serverId: params.serverId,
-                "authorityScopeLeaseId": params.authorityScopeLeaseId,
-                "authorityPrincipalId": params.authorityPrincipalId,
-                "authorityAuthGeneration": params.authorityAuthGeneration,
-                "authorityConnectionFamilyId": params.authorityConnectionFamilyId,
-                "presenceTransportEpoch": runtime.presenceTransportEpoch,
-            ]
+            userInfo: userInfo
         )
+    }
+
+    /// Task #14c: a top-level non-blank string field of a socket payload (exact key, no aliases); "" otherwise.
+    private func payloadStringField(rawPayload: String, key: String) -> String {
+        guard
+            let data = rawPayload.data(using: .utf8),
+            let object = try? JSONSerialization.jsonObject(with: data),
+            let payload = object as? [String: Any],
+            let value = payload[key] as? String
+        else {
+            return ""
+        }
+        let trimmed = clean(value)
+        return trimmed == value ? trimmed : ""
     }
 
     @objc private func handleRoomNotification(_ notification: Notification) {
@@ -890,6 +922,8 @@ final class RaftIosRealtimeHost: NSObject {
 
     private static let serverWireEvents: [String] = [
         GeneratedRealtimeContract.SocketEvent.roomsJoined,
+        GeneratedRealtimeContract.SocketEvent.channelJoined,
+        GeneratedRealtimeContract.SocketEvent.channelJoinDenied,
         GeneratedRealtimeContract.SocketEvent.syncResumeResponse,
         GeneratedRealtimeContract.SocketEvent.heartbeat,
         GeneratedRealtimeContract.SocketEvent.messageNew,

@@ -74,6 +74,7 @@ class SocketIoRealtimeClient(
     private val rawListeners = mutableSetOf<(RealtimeSocketConnectionContext, String, Any?) -> Unit>()
     private val connectedListeners = mutableSetOf<(RealtimeSocketConnectionContext) -> Unit>()
     private val roomsJoinedListeners = mutableSetOf<(RealtimeSocketConnectionContext) -> Unit>()
+    private val channelJoinAckListeners = mutableSetOf<(RealtimeSocketConnectionContext, String, Boolean) -> Unit>()
     private val transportSubscriptions = mutableListOf<RealtimeSubscription>()
     private val joinedChannels = linkedSetOf<ChannelId>()
     private var cursor: RealtimeCursorState = RealtimeCursorPolicy.fromAppliedSeq(0)
@@ -267,6 +268,19 @@ class SocketIoRealtimeClient(
         return RealtimeSubscription { transport.linearize { roomsJoinedListeners -= listener } }
     }
 
+    /**
+     * Task #14c: called on the transport's linearized thread when the server answers a `join:channel` of the
+     * current socket: `channel:joined { channelId }` (joined = true: the socket is now in `channel:<id>`) or
+     * `channel:join_denied { channelId }` (false). In order with that socket's frames, after its connected
+     * listeners. A payload without a channel id is dropped.
+     */
+    fun observeChannelJoinAck(
+        listener: (context: RealtimeSocketConnectionContext, channelId: String, joined: Boolean) -> Unit,
+    ): RealtimeSubscription {
+        transport.linearize { channelJoinAckListeners += listener }
+        return RealtimeSubscription { transport.linearize { channelJoinAckListeners -= listener } }
+    }
+
     private fun ensureTransportListeners() {
         if (transportSubscriptions.isNotEmpty()) return
         transportSubscriptions += transport.on(RealtimeSocketEvents.Connect) { capturedContext, _ ->
@@ -297,6 +311,20 @@ class SocketIoRealtimeClient(
             )
             emitSyncResume(reason = "rooms_joined")
         }
+        listOf(RealtimeSocketEvents.ChannelJoined to true, RealtimeSocketEvents.ChannelJoinDenied to false)
+            .forEach { (eventName, joined) ->
+                transportSubscriptions += transport.on(eventName) { capturedContext, payload ->
+                    if (!acceptConnectionCallback(capturedContext, eventName)) return@on
+                    markInbound()
+                    val channelId = payload.stringFieldOrNull("channelId")
+                    logger(
+                        "channel_join_ack serverId=${capturedContext.serverId.value} " +
+                            "channelId=${channelId.orEmpty()} joined=$joined"
+                    )
+                    if (channelId == null) return@on
+                    channelJoinAckListeners.toList().forEach { it(capturedContext, channelId, joined) }
+                }
+            }
         transportSubscriptions += transport.on(RealtimeSocketEvents.ConnectError) { capturedContext, payload ->
             if (!acceptConnectionCallback(capturedContext, RealtimeSocketEvents.ConnectError)) return@on
             markInbound()
@@ -634,6 +662,21 @@ class SocketIoRealtimeClient(
                 ?.asString
                 ?.takeIf(String::isNotBlank)
         is Map<*, *> -> (this["serverId"] as? String)?.takeIf(String::isNotBlank)
+        else -> null
+    }
+
+    /** Task #14c: a top-level non-blank string field of a socket payload (exact camelCase key, no aliases). */
+    private fun Any?.stringFieldOrNull(key: String): String? = when (this) {
+        null -> null
+        is JSONObject -> (opt(key) as? String)?.takeIf(String::isNotBlank)
+        is JsonObject ->
+            get(key)
+                ?.takeIf { it.isJsonPrimitive }
+                ?.asJsonPrimitive
+                ?.takeIf { it.isString }
+                ?.asString
+                ?.takeIf(String::isNotBlank)
+        is Map<*, *> -> (this[key] as? String)?.takeIf(String::isNotBlank)
         else -> null
     }
 }

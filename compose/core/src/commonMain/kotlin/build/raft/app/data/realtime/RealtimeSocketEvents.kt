@@ -15,6 +15,14 @@ object RealtimeSocketEvents {
     const val ReconnectError = GeneratedRealtimeContract.SocketEvent.ReconnectError
     const val ReconnectFailed = GeneratedRealtimeContract.SocketEvent.ReconnectFailed
     const val RoomsJoined = GeneratedRealtimeContract.SocketEvent.RoomsJoined
+
+    /**
+     * Task #14c: the server's answer to every `join:channel` (`{ channelId }`, botiverse/slock #10457):
+     * `channel:joined` once this socket is in `channel:<channelId>`, `channel:join_denied` otherwise.
+     * Connection signals like [RoomsJoined]: never mapped to a RealtimeEvent, never in [ServerWireEvents].
+     */
+    const val ChannelJoined = GeneratedRealtimeContract.SocketEvent.ChannelJoined
+    const val ChannelJoinDenied = GeneratedRealtimeContract.SocketEvent.ChannelJoinDenied
     const val SyncResume = GeneratedRealtimeContract.SocketEvent.SyncResume
     const val SyncResumeResponse = GeneratedRealtimeContract.SocketEvent.SyncResumeResponse
     const val JoinChannel = GeneratedRealtimeContract.SocketEvent.JoinChannel

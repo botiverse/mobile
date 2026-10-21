@@ -711,6 +711,21 @@ internal class RaftSharedStoreProvider private constructor(
                     )
                 }
             },
+            // Task #14c: the server's answer to a `join:channel` (a reply thread's room): the canary may make a
+            // later enter of that thread continuous. Only a current grant may record it.
+            onChannelJoinAck = { grant, transportEpoch, channelId, joined ->
+                sharedInfoLogger("SlockRealtime", "channel_join_ack")(
+                    "serverId=${grant.serverId} transportEpoch=$transportEpoch channelId=$channelId joined=$joined"
+                )
+                realtimeAuthorityProvider.runIfCurrentGrant(grant) {
+                    canonicalMessageV2Canary.noteChannelJoinAck(
+                        grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID),
+                        channelId,
+                        transportEpoch,
+                        joined,
+                    )
+                }
+            },
         ).start()
         threadSendScope.launch {
             // Task #153: a Local Feature Overrides change re-reads the DoH flag at once.

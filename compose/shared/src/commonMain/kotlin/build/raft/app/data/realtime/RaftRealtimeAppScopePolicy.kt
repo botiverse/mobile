@@ -43,6 +43,16 @@ object RaftRealtimeNotifyContract {
      * connection to all of its rooms, so frames of that epoch from here on cover every joined room.
      */
     const val ActionRealtimeRoomsJoined = "realtimeRoomsJoined"
+
+    /**
+     * Task #14c: the server acknowledged a `join:channel` for [KeyChannelId] on the socket of
+     * [KeyPresenceTransportEpoch] (`channel:joined`: that socket is now in `channel:<id>`). Posted by the host
+     * with the socket's own epoch, like [ActionRealtimeRoomsJoined].
+     */
+    const val ActionRealtimeChannelJoined = "realtimeChannelJoined"
+
+    /** Task #14c: the server refused a `join:channel` for [KeyChannelId] (`channel:join_denied`) on that socket. */
+    const val ActionRealtimeChannelJoinDenied = "realtimeChannelJoinDenied"
     const val KeyPresenceTransportEpoch = "presenceTransportEpoch"
     const val ActionAppLifecycle = "appLifecycle"
     const val LifecycleVisibleResume = "resume"

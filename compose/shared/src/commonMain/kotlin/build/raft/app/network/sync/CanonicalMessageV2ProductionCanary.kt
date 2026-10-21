@@ -107,8 +107,28 @@ class CanonicalMessageV2EnterBaseline internal constructor(
      * count against the thread window too, and the committed cursor must name it.
      */
     internal val replyParentScopeId: SyncScopeId? = null,
+    /**
+     * Task #14c: the conversation directory said the user is not a member of the reply thread's PARENT channel
+     * when the request was sent (always `false` for a top-level channel). Unlike [nonMemberAtRequest] (the
+     * thread's own follow status), a thread join ack never lifts it.
+     */
+    internal val parentNonMemberAtRequest: Boolean = false,
+    /**
+     * Task #14c: the server's latest answer to `join:channel` for [scopeId] on the socket of [epochAtRequest]
+     * when the request was sent, with no leave of that room since the answer ([CanonicalMessageV2ThreadJoin]).
+     */
+    internal val threadJoinAtRequest: CanonicalMessageV2ThreadJoin = CanonicalMessageV2ThreadJoin.Unconfirmed,
 ) {
     internal val buffered = ArrayList<CanonicalMessageV2BufferedFrame>()
+
+    /** Task #14c: `channel:join_denied` for [scopeId] arrived while the fetch was in flight. */
+    internal var threadJoinDeniedSinceRequest = false
+
+    /**
+     * Task #14c (diagnostics only): `channel:joined` for [scopeId] arrived while the fetch was in flight. It
+     * does NOT make this baseline continuous: see [CanonicalMessageV2ProductionCanary] (ordering argument).
+     */
+    internal var threadJoinAckedSinceRequest = false
     internal var overflowed = false
     internal var closed = false
 
@@ -118,6 +138,26 @@ class CanonicalMessageV2EnterBaseline internal constructor(
     internal fun alreadyHolds(delivery: CanonicalMessageV2Delivery): Boolean =
         buffered.any { it.delivery == delivery }
 }
+
+/** Task #14c: what the server last answered to this socket's `join:channel` of one thread channel. */
+internal enum class CanonicalMessageV2ThreadJoin {
+    /** No answer on this connection (or a leave of the room since): nothing is known. */
+    Unconfirmed,
+
+    /** `channel:joined` on this connection and the room was not left since: the socket is in `channel:<id>`. */
+    Joined,
+
+    /** `channel:join_denied` was the latest answer on this connection. */
+    Denied,
+}
+
+/** Task #14c: the latest `join:channel` answer for one (partition, channel id). */
+private class CanonicalMessageV2ChannelJoinSignal(
+    val transportEpoch: Long,
+    val joined: Boolean,
+    /** The room's leave count when the answer arrived: a later leave voids a `joined`. */
+    val roomLeaveCount: Long,
+)
 
 /**
  * The realtime state of one scope that has a window committed in this process (task #168: one per windowed
@@ -216,24 +256,45 @@ private sealed interface CanonicalMessageV2AppendResult {
  * - The enter (and, for the viewed channel, the gap catch-up: [beginCatchUpBaseline]) makes a window
  *   continuous only for a member channel whose connection has already seen `rooms:joined`
  *   ([noteRoomsJoined], per epoch): before it, the page may predate the server's connect-time room join.
- * - Task #14a: a reply thread's `thread` scope is mapped, checked and baselined like a channel, but its window
- *   NEVER becomes continuous: every reply-thread enter commit ends `continuity=discontinuous
- *   reason=thread_delivery_unconfirmed`, so realtime replies stay display only (as before #14a) while the
- *   enter / paging writers still write thread pages. The reason is the server: nothing tells the client it
- *   receives every reply after the enter snapshot. (a) The socket's connect-time join covers only
- *   `listChannels` + `listDMChannels` (`LISTABLE_CHANNEL_TYPES = ["channel","private","joint"]`), never a
- *   thread room, so no `rooms:joined` covers it. (b) `join:channel` is fire-and-forget without an ack: the
- *   server joins the room only after an async `canUserAccessChannel`, so a reply between the enter page and
- *   that join is never pushed. (c) Under a `private` / `dm` / `joint` parent a reply is emitted only to
- *   `user:<followerId>` rooms, i.e. only to thread followers, which the client cannot confirm. A continuous
- *   window would let a later reply advance the cursor over a missed one: a permanent hole. The routing is
- *   kept so a future positive per-thread delivery signal (a server ack of `join:channel` for a public parent,
- *   or confirmed follower status for user-room delivery) only has to lift that one gate in [onEnterCommitted]:
- *   a reply's `message:new` names the thread channel as its `channelId` and the parent in its
- *   `conversationContext`, so it maps to `(thread channel id, thread)`; it would be written only when the
- *   frame's parent (kind, channel, root) equals the parent the committed cursor stores (any other parent
- *   makes the window discontinuous), and a reconnect or a leave of the thread's OR its parent channel's room
- *   would end continuity as for a channel.
+ * - Task #14a / #14c: a reply thread's `thread` scope is mapped, checked and baselined like a channel. A reply's
+ *   `message:new` names the thread channel as its `channelId` and the parent in its `conversationContext`, so
+ *   it maps to `(thread channel id, thread)`; it is written only when the frame's parent (kind, channel, root)
+ *   equals the parent the committed cursor stores (any other parent makes the window discontinuous), and a
+ *   reconnect or a leave of the thread's OR its parent channel's room ends continuity as for a channel.
+ *   Before #14c the window never became continuous: the socket's connect-time join covers only listable
+ *   channels / DMs (never a thread room, so no `rooms:joined` covers it) and `join:channel` was fire-and-forget.
+ *   The server now (botiverse/slock #10457) answers every `join:channel` with `channel:joined { channelId }`
+ *   once the socket is in `channel:<id>`, or `channel:join_denied { channelId }` ([noteChannelJoinAck], per
+ *   (partition, channel id) with the socket's epoch). A reply-thread enter commit is CONTINUOUS only when all of:
+ *   1. the committed cursor's server-confirmed parent kind is the public `channel` (never a frame's claim):
+ *      only then does the server broadcast replies to `channel:<threadId>`. Under a `private` / `dm` / `joint`
+ *      parent they reach only followers' `user:<id>` rooms → `reason=thread_delivery_follower_only`, ack or not;
+ *   2. `channel:joined` for the thread arrived on the baseline's epoch BEFORE the baseline was registered, and
+ *      the thread room was not left since ([CanonicalMessageV2EnterBaseline.threadJoinAtRequest]); otherwise
+ *      `reason=thread_delivery_unconfirmed` (no ack: also an older server, the safe default) or
+ *      `reason=thread_join_ack_after_request` (the ack arrived only while the fetch was in flight). A later
+ *      enter on the same connection then becomes continuous; an ack after the commit changes nothing;
+ *   3. none of the channel reasons apply (room_left of the thread or parent room, rooms_not_joined, external
+ *      commit, buffer overflow) nor parent_mismatch / scope_family_mismatch; a `channel:join_denied` on the
+ *      baseline's epoch (the latest answer at request, or one during the fetch) ends `reason=join_denied`, and
+ *      one after the commit ends the continuity of a window committed on that epoch.
+ *   Membership: the thread's own non-member flag (follow status) does not block once 1 and 2 hold — a socket
+ *   in the thread room receives every reply broadcast there, follower or not — but a known non-member of the
+ *   PARENT channel always ends `reason=non_member` (an ack never lifts it).
+ *   Ordering argument for 2. `channel:joined` is emitted after `socket.join(channel:<threadId>)` on the same
+ *   socket, so receiving it on epoch E proves the server-side join happened before that receipt. The baseline is
+ *   registered after the receipt and the page request is sent after the registration, so the server reads the
+ *   page after the join. Every reply is then either committed before that read (in the page) or broadcast to
+ *   the room after the join, i.e. pushed to this socket: if it arrives before the commit it is buffered and
+ *   replayed by #3007's rules, after it the continuous window appends it; nothing can fall between. An ack
+ *   received only AFTER the registration proves no such order: the server may read the page, commit and
+ *   broadcast a reply to a room the socket is not yet in, and only then join — that reply is in neither the page
+ *   nor the stream, and a later reply would advance the cursor over it (a permanent hole). Hence such an ack
+ *   only serves the next enter. The epoch pins the ack to the socket that delivers the frames (a reconnect
+ *   drops every room; the host rejoins and the server acks again with the new epoch), and a leave of the room
+ *   after the ack voids it (the ack records the room's leave count), as does any leave of the room on that
+ *   epoch (an ack arriving after a leave may answer a join sent before it; the server joins after an async
+ *   access check), until the next connection.
  * - Task #14a partial facts ("store partial, fill in when data arrives", owner decision). The server's
  *   ordinary `message:new` omits `senderDescription` and `reactions`, and no other realtime delivery of that
  *   message is fuller (a reply's `thread:updated.latestReply` is the same payload, the own-send HTTP response
@@ -257,11 +318,14 @@ private sealed interface CanonicalMessageV2AppendResult {
  *      and not consumed here). A frame with `reactions` sets the roster; one without leaves it as stored —
  *      known stays known, unknown stays unknown. No delta is ever applied to an unknown roster.
  *   5. Continuity: a partial frame is a real message at a real seq, so it keeps the window continuous.
- *   6. Only top-level windows reach this path today (a reply-thread window is never continuous, above);
- *      reply-thread scopes share it once their delivery gate lifts.
+ *   6. A continuous reply-thread window (task #14c, above) shares this path: a production reply is written
+ *      partial like a channel message.
  *   7. Lines: `written … source=incremental[ scopeKind=thread] partial=SenderDescription,Reactions`.
  */
 private const val ROOMS_JOINED_EPOCH_MEMORY = 8
+
+/** Task #14c: how many channels' latest `join:channel` answers are remembered (least recently answered dropped). */
+private const val CHANNEL_JOIN_SIGNAL_MEMORY = 256
 
 internal class CanonicalMessageV2ProductionCanary(
     private val isEnabledForServer: (String) -> Boolean,
@@ -284,10 +348,26 @@ internal class CanonicalMessageV2ProductionCanary(
     /** Guarded by [stateMutex]: the transport epochs that have seen `rooms:joined` (most recent last, bounded). */
     private val roomsJoinedEpochsByPartition = mutableMapOf<DurablePartitionKey, LinkedHashSet<Long>>()
 
+    /**
+     * Task #14c, guarded by [stateMutex]: the latest `join:channel` answer per (partition, channel id), least
+     * recently answered first (bounded by [CHANNEL_JOIN_SIGNAL_MEMORY]).
+     */
+    private val channelJoinSignalByChannel =
+        LinkedHashMap<Pair<DurablePartitionKey, SyncScopeId>, CanonicalMessageV2ChannelJoinSignal>()
+
     private val roomLeaveLock = SynchronizedObject()
 
     /** Guarded by [roomLeaveLock]: how many times the socket left each (server, room). */
     private val roomLeaveCountByRoom = mutableMapOf<Pair<String, String>, Long>()
+
+    /** Task #14c, guarded by [roomLeaveLock]: the latest transport epoch recorded per server id. */
+    private val transportEpochByServer = mutableMapOf<String, Long>()
+
+    /**
+     * Task #14c, guarded by [roomLeaveLock]: the epochs on which the socket left each (server, room) (bounded).
+     * A `channel:joined` of such an epoch may answer a join sent BEFORE the leave, so it never confirms delivery.
+     */
+    private val roomLeftEpochsByRoom = mutableMapOf<Pair<String, String>, LinkedHashSet<Long>>()
 
     init {
         generationEngine.addPartitionRevocationObserver(::onPartitionRevoked)
@@ -641,6 +721,10 @@ internal class CanonicalMessageV2ProductionCanary(
     suspend fun noteTransportEpoch(partition: DurablePartitionKey, transportEpoch: Long) {
         if (transportEpoch <= 0L) return
         stateMutex.withLock { currentTransportEpochByPartition[partition] = transportEpoch }
+        synchronized(roomLeaveLock) {
+            val server = partition.serverId
+            transportEpochByServer[server] = maxOf(transportEpochByServer[server] ?: 0L, transportEpoch)
+        }
     }
 
     /**
@@ -652,6 +736,12 @@ internal class CanonicalMessageV2ProductionCanary(
     fun noteRoomLeft(serverId: String, roomId: String) {
         val count = synchronized(roomLeaveLock) {
             val key = serverId to roomId
+            transportEpochByServer[serverId]?.let { epoch ->
+                val epochs = roomLeftEpochsByRoom.getOrPut(key) { LinkedHashSet() }
+                epochs.remove(epoch)
+                epochs += epoch
+                while (epochs.size > ROOMS_JOINED_EPOCH_MEMORY) epochs.remove(epochs.first())
+            }
             ((roomLeaveCountByRoom[key] ?: 0L) + 1L).also { roomLeaveCountByRoom[key] = it }
         }
         logger("canonical_v2_canary room_left server=$serverId scope=$roomId count=$count")
@@ -674,9 +764,71 @@ internal class CanonicalMessageV2ProductionCanary(
         logger("canonical_v2_canary rooms_joined server=${partition.serverId} epoch=$transportEpoch")
     }
 
+    /**
+     * Task #14c: the server answered this socket's `join:channel` for [channelId] on the socket of
+     * [transportEpoch]: [joined] = `channel:joined` (the socket is now in `channel:<channelId>` and receives
+     * every later broadcast to that room), else `channel:join_denied`. Posted by the host with the socket's
+     * own epoch, witness-checked by the ingress coordinator, like [noteRoomsJoined]. The latest answer per
+     * channel wins. It only matters to a reply-thread enter registered AFTER it on the same epoch (see the
+     * class doc); a denial also ends the continuity of any window of [channelId] committed on that epoch.
+     */
+    suspend fun noteChannelJoinAck(
+        partition: DurablePartitionKey,
+        channelId: SyncScopeId,
+        transportEpoch: Long,
+        joined: Boolean,
+    ) {
+        if (transportEpoch <= 0L || channelId.isBlank()) return
+        stateMutex.withLock {
+            val key = partition to channelId
+            channelJoinSignalByChannel.remove(key)
+            channelJoinSignalByChannel[key] = CanonicalMessageV2ChannelJoinSignal(
+                transportEpoch = transportEpoch,
+                joined = joined,
+                roomLeaveCount = roomLeaveCount(partition.serverId, channelId),
+            )
+            while (channelJoinSignalByChannel.size > CHANNEL_JOIN_SIGNAL_MEMORY) {
+                channelJoinSignalByChannel.remove(channelJoinSignalByChannel.keys.first())
+            }
+            enterBaselineByChannel[key]?.takeIf { !it.closed }?.let { baseline ->
+                if (joined) baseline.threadJoinAckedSinceRequest = true else baseline.threadJoinDeniedSinceRequest = true
+            }
+            if (!joined) {
+                stateByScope.entries
+                    .filter { (scope, state) ->
+                        scope.partition == partition && scope.scopeId == channelId &&
+                            state.committedTransportEpoch == transportEpoch
+                    }
+                    .forEach { (scope, state) -> markDiscontinuousLocked(scope, state, THREAD_JOIN_DENIED) }
+            }
+        }
+        logger(
+            "canonical_v2_canary channel_join_ack server=${partition.serverId} scope=$channelId " +
+                "epoch=$transportEpoch joined=$joined",
+        )
+    }
+
+    /** Holding [stateMutex]: what [noteChannelJoinAck] says about [channelId] on the socket of [epoch]. */
+    private fun threadJoinLocked(partition: DurablePartitionKey, channelId: SyncScopeId, epoch: Long?): CanonicalMessageV2ThreadJoin {
+        val signal = channelJoinSignalByChannel[partition to channelId]
+        return when {
+            epoch == null || signal == null || signal.transportEpoch != epoch -> CanonicalMessageV2ThreadJoin.Unconfirmed
+            !signal.joined -> CanonicalMessageV2ThreadJoin.Denied
+            // A leave of the room since the ack: the socket is no longer in it.
+            signal.roomLeaveCount != roomLeaveCount(partition.serverId, channelId) -> CanonicalMessageV2ThreadJoin.Unconfirmed
+            // A leave on this socket at all: the ack may answer a join sent before it (the server joins after an
+            // async access check, so join → leave → late ack can leave the socket outside the room).
+            roomLeftOnEpoch(partition.serverId, channelId, epoch) -> CanonicalMessageV2ThreadJoin.Unconfirmed
+            else -> CanonicalMessageV2ThreadJoin.Joined
+        }
+    }
+
     /** Holding [stateMutex]. */
     private fun roomsJoinedLocked(partition: DurablePartitionKey, epoch: Long?): Boolean =
         epoch != null && roomsJoinedEpochsByPartition[partition]?.contains(epoch) == true
+
+    private fun roomLeftOnEpoch(serverId: String, roomId: String, epoch: Long): Boolean =
+        synchronized(roomLeaveLock) { roomLeftEpochsByRoom[serverId to roomId]?.contains(epoch) == true }
 
     private fun roomLeaveCount(serverId: String, roomId: String): Long =
         synchronized(roomLeaveLock) { roomLeaveCountByRoom[serverId to roomId] ?: 0L }
@@ -699,8 +851,17 @@ internal class CanonicalMessageV2ProductionCanary(
         scopeId: SyncScopeId,
         nonMember: Boolean,
         replyParentScopeId: SyncScopeId? = null,
+        /** Task #14c: the directory says the user is not a member of [replyParentScopeId]. */
+        parentNonMember: Boolean = false,
     ): CanonicalMessageV2EnterBaseline? = stateMutex.withLock {
-        registerBaselineLocked(partition, scopeId, nonMember, source = "enter", replyParentScopeId = replyParentScopeId)
+        registerBaselineLocked(
+            partition,
+            scopeId,
+            nonMember,
+            source = "enter",
+            replyParentScopeId = replyParentScopeId,
+            parentNonMember = parentNonMember && replyParentScopeId != null,
+        )
     }
 
     /**
@@ -738,10 +899,13 @@ internal class CanonicalMessageV2ProductionCanary(
         nonMember: Boolean,
         source: String,
         replyParentScopeId: SyncScopeId? = null,
+        parentNonMember: Boolean = false,
     ): CanonicalMessageV2EnterBaseline? {
         val key = partition to scopeId
         if (enterBaselineByChannel[key]?.closed == false) return null
         val epoch = currentTransportEpochByPartition[partition]
+        val threadJoin =
+            if (replyParentScopeId != null) threadJoinLocked(partition, scopeId, epoch) else CanonicalMessageV2ThreadJoin.Unconfirmed
         val baseline = CanonicalMessageV2EnterBaseline(
             partition = partition,
             scopeId = scopeId,
@@ -751,9 +915,13 @@ internal class CanonicalMessageV2ProductionCanary(
             roomsJoinedAtRequest = roomsJoinedLocked(partition, epoch),
             source = source,
             replyParentScopeId = replyParentScopeId,
+            parentNonMemberAtRequest = parentNonMember,
+            threadJoinAtRequest = threadJoin,
         )
         enterBaselineByChannel[key] = baseline
-        val kindLabel = replyParentScopeId?.let { " scopeKind=$REPLY_THREAD_SCOPE_KIND parent=$it" }.orEmpty()
+        val kindLabel = replyParentScopeId
+            ?.let { " scopeKind=$REPLY_THREAD_SCOPE_KIND parent=$it parentNonMember=$parentNonMember threadJoin=${threadJoin.name.lowercase()}" }
+            .orEmpty()
         logger(
             "canonical_v2_canary $source=registered server=${partition.serverId} scope=$scopeId$kindLabel " +
                 "epochAtRequest=$epoch nonMember=$nonMember roomsJoined=${baseline.roomsJoinedAtRequest}",
@@ -770,13 +938,17 @@ internal class CanonicalMessageV2ProductionCanary(
      * connection had not seen `rooms:joined` yet (same race for member rooms right after a reconnect), the room was
      * left meanwhile, another writer committed meanwhile, or the buffer overflowed. Task #14a: a reply thread's
      * window also stays discontinuous when its committed cursor does not name the baseline's parent channel, or
-     * the baseline was registered for the other scope family, and otherwise ALWAYS with
-     * [REPLY_THREAD_DELIVERY_UNCONFIRMED] until the server gives a positive per-thread delivery signal.
+     * the baseline was registered for the other scope family. Task #14c: and unless the server-confirmed parent
+     * (the committed cursor's `parentScopeKind`) is a public `channel` AND this connection's `channel:joined`
+     * for the thread arrived before the request ([CanonicalMessageV2EnterBaseline.threadJoinAtRequest]); see the
+     * class doc for the ordering argument and the reasons.
      */
     suspend fun onEnterCommitted(
         baseline: CanonicalMessageV2EnterBaseline,
         snapshot: CanonicalMessageV2SnapshotFrame,
         nonMemberAtCommit: Boolean = false,
+        /** Task #14c: the directory says, at commit, the user is not a member of the thread's parent channel. */
+        parentNonMemberAtCommit: Boolean = false,
     ): Unit = withContext(NonCancellable) {
         val scope = snapshot.scope
         val (state, buffered, reason) = stateMutex.withLock {
@@ -797,18 +969,32 @@ internal class CanonicalMessageV2ProductionCanary(
                 replyParentScopeId = baseline.replyParentScopeId,
             )
             stateByScope[scope] = state
+            // Task #14c: the parent kind comes from the committed cursor (the server-confirmed parent), never
+            // from a frame. Only a public channel parent broadcasts replies to `channel:<threadId>`.
+            val publicParent = replyThread && cursor.parentScopeKind == PUBLIC_CHANNEL_SCOPE_KIND
+            val threadJoined = replyThread && baseline.threadJoinAtRequest == CanonicalMessageV2ThreadJoin.Joined
             val reason = when {
                 replyThread != (baseline.replyParentScopeId != null) -> "scope_family_mismatch"
                 replyThread && cursor.parentScopeId != baseline.replyParentScopeId -> "parent_mismatch"
-                baseline.nonMemberAtRequest || nonMemberAtCommit -> "non_member"
+                replyThread && (
+                    baseline.threadJoinAtRequest == CanonicalMessageV2ThreadJoin.Denied ||
+                        baseline.threadJoinDeniedSinceRequest
+                    ) -> THREAD_JOIN_DENIED
+                // Task #14c: never lifted by a join ack (the user may not see the parent channel at all).
+                replyThread && (baseline.parentNonMemberAtRequest || parentNonMemberAtCommit) -> "non_member"
+                // Task #14c: under a public parent, a socket in the thread room receives every reply whether or
+                // not the user follows the thread, so the thread's own follow status no longer matters then.
+                (baseline.nonMemberAtRequest || nonMemberAtCommit) && !(publicParent && threadJoined) -> "non_member"
                 !baseline.roomsJoinedAtRequest -> "rooms_not_joined"
                 roomLeaveCount(scope.serverId, scope.scopeId, baseline.replyParentScopeId) !=
                     baseline.roomLeaveCountAtRequest -> "room_left"
                 baseline.superseded -> "external_commit"
                 baseline.overflowed -> "buffer_overflow"
-                // Task #14a: no positive per-thread delivery signal exists (see the class doc), so a reply
-                // thread's window is never continuous: its realtime replies stay display only.
-                replyThread -> REPLY_THREAD_DELIVERY_UNCONFIRMED
+                // Task #14c: under a private / dm / joint parent replies reach only followers' user rooms.
+                replyThread && !publicParent -> REPLY_THREAD_DELIVERY_FOLLOWER_ONLY
+                replyThread && !threadJoined ->
+                    if (baseline.threadJoinAckedSinceRequest) REPLY_THREAD_JOIN_ACK_AFTER_REQUEST
+                    else REPLY_THREAD_DELIVERY_UNCONFIRMED
                 else -> null
             }
             if (reason != null) state.discontinuous = true
@@ -1027,6 +1213,7 @@ internal class CanonicalMessageV2ProductionCanary(
         stateMutex.withLock {
             currentTransportEpochByPartition.remove(partition)
             roomsJoinedEpochsByPartition.remove(partition)
+            channelJoinSignalByChannel.keys.removeAll { it.first == partition }
             stateByScope.keys.removeAll { it.partition == partition }
             enterBaselineByChannel.entries.removeAll { (key, baseline) ->
                 (key.first == partition).also { if (it) baseline.closed = true }
@@ -1056,6 +1243,24 @@ private const val REPLY_THREAD_SCOPE_KIND: String = "thread"
  * this client receives every reply of the thread after the enter snapshot (see [CanonicalMessageV2ProductionCanary]).
  */
 private const val REPLY_THREAD_DELIVERY_UNCONFIRMED: String = "thread_delivery_unconfirmed"
+
+/**
+ * Task #14c: a reply thread under a `private` / `dm` / `joint` parent: the server sends its replies only to the
+ * followers' `user:<id>` rooms, so a thread-room join ack proves nothing about them.
+ */
+private const val REPLY_THREAD_DELIVERY_FOLLOWER_ONLY: String = "thread_delivery_follower_only"
+
+/**
+ * Task #14c: `channel:joined` for the thread arrived only while the enter fetch was in flight: the server may
+ * have read the page before it joined the room (see the class doc). Continuous from the next enter on.
+ */
+private const val REPLY_THREAD_JOIN_ACK_AFTER_REQUEST: String = "thread_join_ack_after_request"
+
+/** Task #14c: the server refused this socket's `join:channel` for the thread (`channel:join_denied`). */
+private const val THREAD_JOIN_DENIED: String = "join_denied"
+
+/** Task #14c: the only parent kind whose thread replies are broadcast to the thread's own room. */
+private const val PUBLIC_CHANNEL_SCOPE_KIND: String = "channel"
 
 /** `kind=new msg=<id> seq=<seq>`: which frame a canary line is about (ids only, never content). */
 private fun CanonicalMessageFoldInput.frameLabel(): String =

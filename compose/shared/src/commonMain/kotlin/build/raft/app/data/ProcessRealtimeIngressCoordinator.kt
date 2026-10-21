@@ -37,6 +37,11 @@ internal class ProcessRealtimeIngressCoordinator(
     private val scope: CoroutineScope,
     private val onPresenceTransportConnected: suspend (RealtimeGrantRecord, Long) -> Unit = { _, _ -> },
     private val onRoomsJoined: suspend (RealtimeGrantRecord, Long) -> Unit = { _, _ -> },
+    /**
+     * Task #14c: the server answered a `join:channel` on the socket of the epoch (`joined` = `channel:joined`,
+     * else `channel:join_denied`) for the channel id. Same witness / epoch checks as [onRoomsJoined].
+     */
+    private val onChannelJoinAck: suspend (RealtimeGrantRecord, Long, String, Boolean) -> Unit = { _, _, _, _ -> },
 ) {
     fun start() {
         // kotlinx JsonObject is immutable: hand the event to the coroutine without a defensive copy.
@@ -60,10 +65,26 @@ internal class ProcessRealtimeIngressCoordinator(
     }
 
     private suspend fun accept(eventData: JsonObject) {
-        val transportSignal =
-            when (eventData.optString(RaftRealtimeNotifyContract.KeyAction)) {
-                RaftRealtimeNotifyContract.ActionPresenceTransportConnected -> onPresenceTransportConnected
-                RaftRealtimeNotifyContract.ActionRealtimeRoomsJoined -> onRoomsJoined
+        val action = eventData.optString(RaftRealtimeNotifyContract.KeyAction)
+        val channelJoinAck =
+            when (action) {
+                RaftRealtimeNotifyContract.ActionRealtimeChannelJoined -> true
+                RaftRealtimeNotifyContract.ActionRealtimeChannelJoinDenied -> false
+                else -> null
+            }
+        val transportSignal: (suspend (RealtimeGrantRecord, Long) -> Unit)? =
+            when {
+                action == RaftRealtimeNotifyContract.ActionPresenceTransportConnected -> onPresenceTransportConnected
+                action == RaftRealtimeNotifyContract.ActionRealtimeRoomsJoined -> onRoomsJoined
+                channelJoinAck != null -> {
+                    // Task #14c: a join ack names exactly one channel; without it the signal says nothing.
+                    val channelId =
+                        eventData
+                            .optString(RaftRealtimeNotifyContract.KeyChannelId)
+                            .takeIf { it.isNotEmpty() && it == it.trim() }
+                            ?: return
+                    { grant, epoch -> onChannelJoinAck(grant, epoch, channelId, channelJoinAck) }
+                }
                 else -> null
             }
         if (transportSignal != null) {
