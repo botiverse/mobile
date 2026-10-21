@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.compat.json.JSONObject
+import build.raft.designsystem.components.raftUnreadCountText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -44,17 +45,18 @@ class RaftActivityTabTest {
     }
 
     @Test
-    fun activityUnreadIsADotNeverANumberAndNeverOnTheSelectedTab() {
-        // raft-design MobileNav / Badge + web MainLayout ActivityTabUnreadDot.
+    fun activityUnreadIsTheOnlyNumberedTabBadgeAndNeverOnTheSelectedTab() {
+        // artin 2026-10-21 (with Jasper): the Activity tab wears the pink unread count, not a dot.
         val unselected =
             appShellBottomTabs(
                 selectedKey = "home",
-                orderedTabKeys = listOf("home", "activity", "tasks"),
+                orderedTabKeys = listOf("home", "activity", "tasks", "more"),
                 activityUnreadCount = 5,
                 labelFor = { it }
             )
-        assertEquals(listOf(false, true, false), unselected.map { it.attentionDot })
-        assertEquals(listOf(0, 0, 0), unselected.map { it.badgeCount })
+        assertEquals(listOf(0, 5, 0, 0), unselected.map { it.badgeCount })
+        assertEquals(listOf(false, false, false, false), unselected.map { it.attentionDot })
+        // Selected: hidden, like the dot it replaces.
         val selected =
             appShellBottomTabs(
                 selectedKey = "activity",
@@ -62,19 +64,27 @@ class RaftActivityTabTest {
                 activityUnreadCount = 5,
                 labelFor = { it }
             )
-        assertEquals(listOf(false, false), selected.map { it.attentionDot })
+        assertEquals(listOf(0, 0), selected.map { it.badgeCount })
         listOf(0, -1).forEach { count ->
-            assertEquals(
-                false,
-                appShellBottomTabs(
-                    selectedKey = "home",
-                    orderedTabKeys = listOf("activity"),
-                    activityUnreadCount = count,
-                    labelFor = { it }
-                ).single().attentionDot,
-                "count=$count"
-            )
+            assertEquals(0, appShellActivityTabBadgeCount(count, selected = false), "count=$count")
         }
+        // The Compose bar and rail draw it with raft-ui's count text; iOS gets the same cap.
+        listOf(1 to "1", 99 to "99", 100 to "99+", 4321 to "99+").forEach { (count, text) ->
+            assertEquals(text, raftUnreadCountText(count), "count=$count")
+            assertEquals(text, raftNativeTabBarBadgeValue(appShellActivityTabBadgeCount(count, selected = false)))
+        }
+        assertEquals(null, raftNativeTabBarBadgeValue(appShellActivityTabBadgeCount(0, selected = false)))
+        // More keeps its dot and never a number.
+        val more =
+            appShellBottomTabs(
+                selectedKey = "home",
+                orderedTabKeys = listOf("activity", "more"),
+                activityUnreadCount = 2,
+                moreAttention = setOf(RaftMoreAttention.AppUpdate),
+                labelFor = { it }
+            ).associateBy { it.key }
+        assertEquals(2 to false, more.getValue("activity").let { it.badgeCount to it.attentionDot })
+        assertEquals(0 to true, more.getValue("more").let { it.badgeCount to it.attentionDot })
     }
 
     @Test

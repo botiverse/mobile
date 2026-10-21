@@ -49,6 +49,21 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
         XCTAssertEqual(dotted.badgeValue, "")
     }
 
+    func testOnlyANumberedBadgeTakesTheCountColours() {
+        XCTAssertTrue(RaftIosTabBarItemMapping.isCountBadge("7"))
+        XCTAssertTrue(RaftIosTabBarItemMapping.isCountBadge("99+"))
+        XCTAssertFalse(RaftIosTabBarItemMapping.isCountBadge(""))
+        XCTAssertFalse(RaftIosTabBarItemMapping.isCountBadge(nil))
+        XCTAssertTrue(spec("activity", badge: "12").showsCountBadge)
+        XCTAssertFalse(spec("activity", badge: "0").showsCountBadge)
+        // raft-ui attention pink 0xFFFF99C3.
+        let (red, green, blue, alpha) = RaftIosTabBarItemMapping.rgba(fromArgb: 0xFFFF99C3)
+        XCTAssertEqual(red, 1, accuracy: 0.001)
+        XCTAssertEqual(green, 0x99 / 255.0, accuracy: 0.001)
+        XCTAssertEqual(blue, 0xC3 / 255.0, accuracy: 0.001)
+        XCTAssertEqual(alpha, 1, accuracy: 0.001)
+    }
+
     func testDisplayItemsKeepSharedOrderIncludingAFifthTab() {
         // Phone bar (stdrc 2026-10-21): four tabs with the Search action directly left of More.
         let keys = ["home", "activity", "tasks", "search", "more"]

@@ -81,11 +81,11 @@ internal data class RaftBottomTabItemPayload(
     val iconName: RaftLucideIconName = RaftLucideIconName.Circle,
     val selected: Boolean = false,
     val enabled: Boolean = true,
-    /** Unread count drawn as the pink raft-ui count on the tab icon; 0 draws nothing. */
+    /** Unread count drawn as the pink raft-ui count on the tab icon (Activity only); 0 draws nothing. */
     val badgeCount: Int = 0,
     /**
-     * Attention dot on the tab icon (raft-design MobileNav / Badge: tab-bar icons carry a dot,
-     * never a number). The shell never sets it on the selected tab.
+     * Attention dot on the tab icon (raft-design MobileNav / Badge). The shell never sets it on
+     * the selected tab.
      */
     val attentionDot: Boolean = false,
 )

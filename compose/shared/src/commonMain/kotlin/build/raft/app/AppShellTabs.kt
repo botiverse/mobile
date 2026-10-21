@@ -86,11 +86,13 @@ internal fun appShellSearchTabMovesToRailSearch(selectedTab: String, navRailActi
     navRailActive && selectedTab == AppShellSearchTabKey
 
 /**
- * Activity unread on a tab icon is an attention dot, never a number (raft-design MobileNav /
- * Badge), and the selected tab never wears it (web MainLayout `ActivityTabUnreadDot`).
+ * artin 2026-10-21 (with Jasper, design system): Activity unread on the tab icon is the pink
+ * unread count — the conversation count the Activity head reads as "N unread", capped "99+" by
+ * the renderers — instead of a dot. Like the dot it was, the selected tab never wears it. Every
+ * other tab keeps its dot rule; only Activity carries a number.
  */
-internal fun appShellActivityTabShowsDot(unreadCount: Int, selected: Boolean): Boolean =
-    unreadCount > 0 && !selected
+internal fun appShellActivityTabBadgeCount(unreadCount: Int, selected: Boolean): Int =
+    if (selected) 0 else unreadCount.coerceAtLeast(0)
 
 /**
  * Something new inside More (the Settings page). Each signal dots its own row on that page
