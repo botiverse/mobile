@@ -16,7 +16,7 @@ CI 构建 → hands draft release → 【验收 Run：设备实测 + 证据 + �
 - 一次验收 **Run 的对象是一个 hands release_id**（draft）。
 - 触发源：hands webhook（自动）或 owner 手动发起。
 - 产物：逐 case 证据（截图/steps.jsonl/dump/logcat；录屏 M2）+ M3 初判 + 人工终审，写回 hands（advisory 起步）。
-- 范围外（v1 不做）：性能基准、安全测试、iOS/OHOS（platform 字段预留，先 Android）。
+- 范围外（v1 不做）：性能基准、安全测试、iOS（platform 字段预留，先 Android）。
 
 ## 2. 系统形态
 

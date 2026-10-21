@@ -8,8 +8,8 @@ This checklist was extracted from the OHOS Thread freeze investigation in
 `#KMP` task #136. The failure mode was not a native crash: Thread first content
 rendered, socket heartbeat continued, but the Kuikly thread stayed near a full
 core because Home presence realtime kept reducing Home state and writing/reading
-Home cache while Thread was active. (OHOS has since been frozen at 1.14.x and
-removed from `main`; the principles below apply to the Android and iOS hosts.)
+Home cache while Thread was active. (That OHOS host is no longer in this repo;
+the principles below apply to the Android and iOS hosts.)
 
 ## Principles
 

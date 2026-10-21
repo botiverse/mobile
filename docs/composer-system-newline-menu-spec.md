@@ -1,9 +1,9 @@
 # Composer System Newline Menu Spec
 
 > **Status (2026-07-05, task #206 closed):** Phase 1 (shared prop +
-> Android host adapter in `SlockKuiklyTextFieldViews.kt`) is live. Phase 2
-> (OHOS render fork hook for `slockSystemNewlineAction`) is NOT implemented —
-> the prop is a silent no-op on OHOS. Tracked as a residual under task #207.
+> Android host adapter in `SlockKuiklyTextFieldViews.kt`) is live. The
+> planned Phase 2 (an OHOS render hook) was dropped with the HarmonyOS app
+> (#3181).
 
 ## Goal
 
@@ -33,17 +33,8 @@ The mobile composer uses `ImeAction.Send`, so touch-only users need a newline en
 - Attach custom insertion and selection action-mode callbacks to append a `换行` menu item while leaving platform default menu items intact.
 - Insert/replace newline through `Editable.replace(...)` so Kuikly's existing text watcher emits the normal value-change event.
 
-### OHOS
-
-- Desired platform API is the system edit menu extension (`TextInput` / `TextArea` `editMenuOptions`) rather than a custom shared popup.
-- Current Slock OHOS host consumes a vendored Kuikly render HAR, and Kuikly's input view is implemented in the C++ ArkUI render (`KRTextFieldView`) rather than app-level ArkTS `TextArea(...)`.
-- The local HarmonyOS SDK exposes ArkTS `TextArea.editMenuOptions(EditMenuOptions)` and native ArkUI `NODE_TEXT_EDIT_MENU_OPTIONS` for text. The current Kuikly C++ input nodes expose text-input/text-area selection-menu visibility attributes, but not a wired `slockSystemNewlineAction` prop.
-- Phase 2 should add the same prop to the Kuikly OHOS render/fork and republish the HAR. If the C API cannot attach `ArkUI_TextEditMenuOptions` to `ARKUI_NODE_TEXT_INPUT` / `ARKUI_NODE_TEXT_AREA` for the current SDK level, keep the prop as a no-op on OHOS and document the platform limitation.
-
 ## Validation
 
 - `git diff --check`
 - Android shared compile
 - Android app compile / APK assemble
-- OHOS shared compile after shared prop changes
-- OHOS HAR rebuild after Phase 2 render changes

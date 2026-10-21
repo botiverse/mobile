@@ -6,19 +6,13 @@ PR #65 把 test.yml 重构为「两个并行预构建 job 发布 fork 产物到 
 
 ## 架构现状
 
-> 2026-10-15 更新：`fork-deps` job 已随 #3031 移除。Kuikly 走不可变发布集
-> （`kuikly-artifacts` 只做 manifest 核验，不再发布到 mavenLocal），Stately /
-> SQLiter / SQLDelight 的 OHOS fork 全部从 maven.artifacts.botiverse.dev 远端解析
-> （SQLDelight 为 `2.1.0-KBA-003`，settings.ohos 用 exclusiveContent 独占路由），
-> 任何 job 都不再回填 `~/.m2`。下文提到 fork-deps / mavenLocal 缓存的条目是
-> 当年踩坑的历史记录，仍适用于其它 actions/cache 用法。
->
-> 2026-10 更新：HarmonyOS (OHOS) 已冻结在 1.14.x（仅 `release/1.14.x` 分支构建），
-> `main` 上的 ohos / ohos-host job 与相关脚本已全部删除。原「OHOS host 门禁（容器内存墙）」
-> 一节（坑 12–14）随之移除，需要时到 `release/1.14.x` 查阅。
+> 2026-10 更新：`fork-deps`（#3031）与 `kuikly-artifacts` job 均已移除；本仓库只构建
+> Android 与 iOS，SQLDelight 等依赖直接用上游版本，任何 job 都不再回填 `~/.m2`。
+> 下文提到 fork-deps / mavenLocal / ohos flavor 缓存的条目是当年踩坑的历史记录，
+> 结论仍适用于其它 actions/cache 用法。
 
 ```
-kuikly-artifacts (ubuntu，仅核验 Raft 发布集 manifest)
+plan (ubuntu，按改动路径选平台)
                             ▼
         android (ubuntu)   ios (macos, 自建)
                  ↑ 全部依赖直接从 Raft Artifacts / Maven Central 解析
@@ -36,9 +30,9 @@ kuikly-artifacts (ubuntu) ──┐        fork-deps (ubuntu) ──┐
 
 - 缓存 key 不带 OS（产物是 jar/klib/.module，平台无关），iOS 例外：apple klib
   只能在 mac 上发布，所以 ios job 自建、用 Darwin key。
-- kuikly 的 android 与 ohos 两个 flavor 发布**重叠坐标**（ohos 过程会改写
+- （历史）kuikly 的 android 与 ohos 两个 flavor 发布**重叠坐标**（ohos 过程会改写
   :core/:compose 的 common metadata），必须分两个缓存条目，消费端只恢复自己
-  需要的 flavor，绝不能混在一个目录里。
+  需要的 flavor，绝不能混在一个目录里。同理适用于任何发布重叠坐标的多 flavor 产物。
 
 ## actions/cache 的坑
 

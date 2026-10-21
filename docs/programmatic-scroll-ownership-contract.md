@@ -132,7 +132,7 @@ ownership gates before any subsequent offset mutation.
 
 The standard delayed-alignment path must read scroll progress after its wait,
 not capture only the value from scheduling time. A platform-specific second
-wait, such as an OHOS content-size propagation window, must repeat the
+wait, such as a content-size propagation window, must repeat the
 generation, binding, and live scroll/force decisions after that second wait
 before its subsequent offset write.
 
@@ -263,7 +263,7 @@ scroll progress after the alignment delay, limits force to the progress fence,
 generation-fences stale completions, schedules a fresh retry from real
 `scrollEnd`, invalidates old/incoming owners before reuse binding, detaches a
 distinct old owner's native view, and repeats generation/progress checks after
-the OHOS-specific second wait.
+the platform-specific second wait.
 
 Its common tests cover those policy/coordinator boundaries and adversarial
 scenarios. Separate source mutations made key gates fail, but neither form of

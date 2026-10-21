@@ -31,8 +31,7 @@ auth_logs/raft-auth-critical.jsonl   (when present)
 ```
 iOS (separate attachments, not one zip): summary, then
 `launch-<session>/raft-diagnostics.jsonl*` and `flat/raft-diagnostics.jsonl`.
-Collisions keep `-2`, `-3` suffixes. OHOS zips exist only for builds up to
-1.14.x.
+Collisions keep `-2`, `-3` suffixes.
 
 ## 3. Read the summary first
 

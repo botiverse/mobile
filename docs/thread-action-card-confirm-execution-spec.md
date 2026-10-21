@@ -140,7 +140,7 @@ Do not log tokens, bearer headers, env var values, or raw secret payloads.
   - create API failure does not patch the card to Done;
   - mark-executed failure leaves the created agent result intact, emits/logs failure, and requests refresh.
 - Contract test: `agent:create` and `channel:add_member` never call `/actions/{messageId}/execute`; `channel:create` behavior is either dialog-driven or covered by a deliberate one-click exception test.
-- Compile/smoke: shared Android compile, OHOS shared compile, and a manual Android smoke opening a real action-card message in Thread.
+- Compile/smoke: shared Android compile and a manual Android smoke opening a real action-card message in Thread.
 
 ## Rollout
 
@@ -149,7 +149,7 @@ Do not log tokens, bearer headers, env var values, or raw secret payloads.
 3. Move current direct `commitAgentCreateActionCardInternal` and `commitChannelAddMembersActionCard` behavior behind dialog submit handlers or remove them if no longer needed.
 4. Parse/check `markActionExecuted` results and patch from returned metadata.
 5. Add transition diagnostics and focused tests from the matrix above.
-6. Re-run Android/OHOS compile and one real-card Thread smoke.
+6. Re-run Android compile and one real-card Thread smoke.
 
 ## Non-Goals
 

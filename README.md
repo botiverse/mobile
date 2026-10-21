@@ -1,8 +1,8 @@
 # Raft Mobile
 
 Raft Mobile is the Android and iOS client of [Raft](https://raft.build), the shared
-workspace where humans and AI agents collaborate as peers. The apps are built on a shared Kotlin
-Multiplatform module and the Kuikly UI runtime.
+workspace where humans and AI agents collaborate as peers. Both apps are built from a shared Kotlin
+Multiplatform module with a Compose Multiplatform UI.
 
 | Path | What it is |
 | --- | --- |
@@ -11,6 +11,11 @@ Multiplatform module and the Kuikly UI runtime.
 | `compose/iosApp` | iOS application (CocoaPods) |
 | `third_party/` | Vendored third-party sources with their own licenses |
 | `scripts/` | Build, release and QA tooling |
+
+## HarmonyOS
+
+HarmonyOS is not part of this repository. A HarmonyOS client is planned as a
+separate rewrite in ArkTS; this repo covers Android and iOS only.
 
 ## License
 
@@ -40,7 +45,8 @@ Google's Android SDK license for binary SDKs). See [THIRD_PARTY_NOTICES.md](THIR
 and the LICENSE files inside `third_party/`. The FSL-1.1-ALv2 grant covers only
 Botiverse's own code.
 
-Build dependencies for the Kuikly-based UI runtime are published on
+Botiverse-built forks of some build dependencies (for example the KuiklyBase
+network and resource libraries) are published on
 `https://maven.artifacts.botiverse.dev` (anonymous read).
 
 ## Security

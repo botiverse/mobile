@@ -29,10 +29,8 @@ again from the new local-main commit.
 
 ## Submodules
 
-No build dependency is a submodule any more (the OHOS SQLDelight fork moved to
-Raft Artifacts in #3031 and its gitlink was removed). The only remaining
-submodule is the `.agents/skills/kuikly-ui-framework/references/KuiklyUI`
-reference, which packaging does not need. Confirm nothing is unexpectedly
+The repository has no submodules (`.gitmodules` is absent); every build
+dependency resolves from Maven repositories. Confirm nothing is unexpectedly
 initialized:
 
 ```bash

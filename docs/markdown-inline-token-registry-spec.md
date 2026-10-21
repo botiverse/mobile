@@ -34,7 +34,7 @@ This is most visible for mentions because the desired Slock rendering is not jus
 - Do not redesign markdown syntax.
 - Do not move repository/member lookup into the renderer.
 - Do not make token rendering depend on async work during composition.
-- Do not introduce platform-specific token behavior; Android/OHOS must share the same commonMain plan.
+- Do not introduce platform-specific token behavior; Android and iOS must share the same commonMain plan.
 
 ## Current Pipeline
 

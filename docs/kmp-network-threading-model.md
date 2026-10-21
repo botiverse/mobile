@@ -1,10 +1,11 @@
 # KMP Network Threading Model
 
 Scope: Slock Kuikly/KMP shared UI, shared data sources, and host network
-modules on Android and OHOS.
+modules (at the time: Android and OHOS).
 
-> **OHOS note:** HarmonyOS (OHOS) was frozen at 1.14.x and its host was removed
-> from `main`; OHOS sections below are historical and describe `release/1.14.x`.
+> **Historical (2026-10-21):** written when Raft Mobile still had Kuikly hosts and a
+> HarmonyOS (OHOS) app. Both were removed (#3192, #3181); this repo now targets
+> Android and iOS only. OHOS content below is kept for history.
 
 This document answers the question from task #180: should response parsing
 happen "inside the network process" at the same time as the HTTP request?

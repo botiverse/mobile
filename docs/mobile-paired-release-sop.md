@@ -1,8 +1,6 @@
 # Mobile Release Train SOP
 
 Use this procedure when Mobile ships Android and iOS from one release train.
-HarmonyOS (OHOS) is frozen: 1.14.x is the last OHOS release, and any OHOS
-build is cut only from `release/1.14.x`; trains from `main` do not ship OHOS.
 Platform-specific signing and build rules remain in
 [Android Release SOP](android-release-sop.md) and
 [iOS Hands Release Practices](ios-hands-release-practices-2026-07-09.md).

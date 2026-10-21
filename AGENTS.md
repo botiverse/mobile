@@ -609,13 +609,13 @@ or helper scripts as a workaround for branch protection.
   Kuikly UI consumer comes back. KuiklyBase libraries that are not Kuikly UI
   (NetworkKMM `com.tencent.kuiklybase:network`, `resource-core`) stay.
 
-## HarmonyOS (OHOS) Status
+## HarmonyOS
 
-- OHOS support is frozen. `1.14.x` is the last OHOS release line and is built
-  only from the `release/1.14.x` branch; `main` carries no OHOS app, bridge,
-  build scripts, CI lanes, or device tooling. Do not add OHOS targets, docs, or
-  release steps on `main`. OHOS-only fixes, if any are explicitly requested,
-  go to `release/1.14.x`.
+- This repository targets Android and iOS only; it has no HarmonyOS (OHOS)
+  app, target, build, CI lane, device tooling, or release step. Do not add
+  them. HarmonyOS is planned as a separate ArkTS rewrite outside this repo
+  (see `README.md`). The legacy Kuikly OHOS app (last release 1.14.x) lives
+  only on the `release/1.14.*` branches.
 
 ## Local Preferences
 
@@ -867,7 +867,7 @@ not complete without its own changeset in that version directory.
 The release lane aggregates those changesets separately for each shipped
 platform under `change-logs/<version>/<platform>/{zh-CN,en}.md`, where
 `<platform>` is `android` or `ios` (historical versions up to 1.14.x may also
-carry `ohos`). A platform aggregate contains only
+carry a legacy `ohos` directory). A platform aggregate contains only
 behavior shipped on that platform and does not repeat the platform name in
 each bullet. Historical root-level `change-logs/<version>/{zh-CN,en}.md` files
 remain supported as workflow fallbacks, but new versions must use the

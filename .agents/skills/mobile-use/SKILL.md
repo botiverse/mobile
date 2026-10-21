@@ -80,6 +80,3 @@ ios-use analyze-log artifacts/ios/state-ios-log.txt --pretty
 UI inspect/act defaults to `agent-device` (`AGENT_DEVICE_BIN` or PATH). Use
 `--driver qa-loop --workspace compose/iosApp/iosApp.xcworkspace` only for the
 legacy XCTest file protocol. Product-log verdicts stay outside `ios-use`.
-
-HarmonyOS/OHOS device automation (`harmony-use`) was removed from `main` when
-OHOS was frozen at 1.14.x; it remains on the `release/1.14.x` branch.

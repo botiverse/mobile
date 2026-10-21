@@ -65,7 +65,7 @@ new product concept gets a Japanese rendering.
 | Public / Private | 公開 / 非公開 | Channel visibility |
 
 Brand names stay in Latin script: **Raft**, **Hands**, **Claude Code**,
-**Kuikly**, **Markdown**, **OAuth**, **OHOS**, **API**.
+**Kuikly**, **Markdown**, **OAuth**, **API**.
 
 ## Task statuses
 

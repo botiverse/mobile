@@ -44,7 +44,7 @@ regression coverage.
 
 1. Verify shared local database Home cache in the product shell.
    - The shared local-persistence injection exists.
-   - Android and OHOS should both be checked for real persistence across
+   - Each platform host should be checked for real persistence across
      Activity/app restart, not only same-process warm state.
 
 2. Change or verify shared Home visible load flow as cached-first.

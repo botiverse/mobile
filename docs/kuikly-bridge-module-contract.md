@@ -2,8 +2,9 @@
 
 Date: 2026-05-20
 
-> **OHOS note:** HarmonyOS (OHOS) was frozen at 1.14.x and its host was removed
-> from `main`; OHOS rows below are historical and describe `release/1.14.x`.
+> **Historical (2026-10-21):** written when Raft Mobile still had Kuikly hosts and a
+> HarmonyOS (OHOS) app. Both were removed (#3192, #3181); this repo now targets
+> Android and iOS only. OHOS content below is kept for history.
 
 `HRBridgeModule` is Slock's host capability bridge for shared Kuikly pages. Shared code may call the same module name on Android and OHOS; each host implements the platform-specific storage, network, routing, and diagnostics work.
 
