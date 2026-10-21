@@ -65,7 +65,7 @@ private fun SharedConversationDirectoryProjection.matchesKnownIdentity(
 
 /**
  * Production wiring: the authority-checked identity hub first, then the live Home store (which
- * keeps every visited server's rows, and survives hub resets on auth-revision rotation). Stores
+ * keeps every visited server's rows, including servers the hub evicted from its LRU). Stores
  * are looked up per call so a Home store created after the page mounted is still consulted.
  */
 internal fun raftKnownEntityResolver(

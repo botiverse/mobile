@@ -117,9 +117,11 @@ internal interface SharedConversationIdentityProvider {
 
 /**
  * Immutable owner witness attached to a conversation-directory publication. Directory rows are
- * useful launch candidates, but they are not allowed to cross an environment/account/auth
- * revision boundary. Canonical destination hydration additionally carries the selected-server
- * generation so a late A-route response cannot overwrite a newer B/A selection.
+ * keyed by environment + account + server + conversation id (data-layer plan, Tenny rule 1): only
+ * an environment or account change fences them. A token rotation (a higher [authGeneration] for
+ * the same account) and a server switch (a higher [selectionGeneration]) keep every row; the
+ * selection generation only orders two canonical publications for the same conversation, so a
+ * late A-route response cannot overwrite a newer one for that conversation.
  */
 internal data class SharedConversationIdentityAuthority(
     val environmentId: String,
@@ -141,9 +143,17 @@ internal data class SharedConversationIdentityCandidatePublication(
  * candidates; a destination-owned canonical detail publication is merged last and therefore wins
  * over those candidates. The hub exists before Home is created, which is the important cold
  * process-restore property.
+ *
+ * Lifetime (data-layer plan step 4): rows survive token rotation and server switches; an
+ * environment/account change clears them; [dropServer] evicts a server the account lost access to;
+ * at most [maxServers] servers (least recently published first) and [maxCanonicalPerServer]
+ * canonical rows per server are kept. A Home candidate published before the auth binding exists is
+ * staged ([stagePendingCandidate]) and applied once the binding arrives ([applyPendingCandidates]).
  */
 internal class SharedConversationIdentityHub(
-    private val diagnosticsLogger: (String) -> Unit = {}
+    private val diagnosticsLogger: (String) -> Unit = {},
+    private val maxServers: Int = DefaultMaxServers,
+    private val maxCanonicalPerServer: Int = DefaultMaxCanonicalPerServer,
 ) : SharedConversationIdentityProvider {
     private data class Binding(
         val environmentId: String,
@@ -156,6 +166,13 @@ internal class SharedConversationIdentityHub(
         val state: SharedConversationDirectoryState,
     )
 
+    private data class PendingCandidate(
+        val environmentId: String,
+        val accountId: String,
+        val revision: Long,
+        val state: SharedConversationDirectoryState,
+    )
+
     private data class CanonicalEntry(
         val authority: SharedConversationIdentityAuthority,
         val projection: SharedConversationDirectoryProjection,
@@ -163,8 +180,10 @@ internal class SharedConversationIdentityHub(
 
     private val lock = SynchronizedObject()
     private val candidateByServer = linkedMapOf<String, CandidateEntry>()
-    private val canonicalByServer = linkedMapOf<String, MutableMap<String, CanonicalEntry>>()
-    private val latestSelectionGenerationByServer = linkedMapOf<String, Long>()
+    private val canonicalByServer = linkedMapOf<String, LinkedHashMap<String, CanonicalEntry>>()
+    private val pendingCandidateByServer = linkedMapOf<String, PendingCandidate>()
+    /** Servers in publication order, least recent first (per-server LRU, Tenny rule 3). */
+    private val serverRecency = linkedSetOf<String>()
     private var binding: Binding? = null
     private val state = MutableStateFlow<Map<String, SharedConversationDirectoryState>>(emptyMap())
 
@@ -173,14 +192,79 @@ internal class SharedConversationIdentityHub(
         authority: SharedConversationIdentityAuthority,
         revision: Long,
         next: SharedConversationDirectoryState,
+    ): Boolean = synchronized(lock) { publishCandidateLocked(authority, revision, next) }
+
+    /**
+     * Keep a candidate that was produced before the auth binding exists (cold-start restore of the
+     * durable Home rows). Home's publisher is change-gated and will not send the same rows again,
+     * so dropping it would leave the hub empty until the next Home change. Only the latest
+     * revision per server is kept; [applyPendingCandidates] applies it under the binding.
+     */
+    fun stagePendingCandidate(
+        environmentId: String,
+        accountId: String,
+        serverId: String,
+        revision: Long,
+        next: SharedConversationDirectoryState,
     ): Boolean = synchronized(lock) {
-        if (!admitBinding(authority)) return@synchronized false
-        val serverId = authority.serverId.trim().takeIf { it.isNotBlank() } ?: return@synchronized false
-        val previous = candidateByServer[serverId]
-        if (previous != null && revision <= previous.revision) return@synchronized false
-        candidateByServer[serverId] = CandidateEntry(revision = revision, state = next)
-        recompute(serverId)
+        val environment = environmentId.trim().trimEnd('/').takeIf { it.isNotBlank() } ?: return@synchronized false
+        val account = accountId.trim().takeIf { it.isNotBlank() } ?: return@synchronized false
+        val server = serverId.trim().takeIf { it.isNotBlank() } ?: return@synchronized false
+        val previous = pendingCandidateByServer[server]
+        if (
+            previous != null &&
+            previous.environmentId == environment &&
+            previous.accountId == account &&
+            revision <= previous.revision
+        ) {
+            return@synchronized false
+        }
+        pendingCandidateByServer.remove(server)
+        pendingCandidateByServer[server] = PendingCandidate(environment, account, revision, next)
+        while (pendingCandidateByServer.size > maxServers) {
+            pendingCandidateByServer.remove(pendingCandidateByServer.keys.first())
+        }
         true
+    }
+
+    /**
+     * Apply every staged candidate that belongs to this environment + account under its auth
+     * generation. Candidates staged for another environment/account are discarded (fence).
+     * Returns the number of servers whose candidate was applied.
+     */
+    fun applyPendingCandidates(
+        environmentId: String,
+        accountId: String,
+        authGeneration: Long,
+    ): Int = synchronized(lock) {
+        if (pendingCandidateByServer.isEmpty()) return@synchronized 0
+        val environment = environmentId.trim().trimEnd('/')
+        val account = accountId.trim()
+        if (environment.isBlank() || account.isBlank()) return@synchronized 0
+        val staged = pendingCandidateByServer.entries.map { it.key to it.value }
+        pendingCandidateByServer.clear()
+        var applied = 0
+        staged.forEach { (serverId, pending) ->
+            if (pending.environmentId != environment || pending.accountId != account) {
+                diagnosticsLogger("conversation_directory_pending_drop reason=owner_changed serverId=$serverId")
+                return@forEach
+            }
+            val accepted =
+                publishCandidateLocked(
+                    authority =
+                        SharedConversationIdentityAuthority(
+                            environmentId = environment,
+                            accountId = account,
+                            serverId = serverId,
+                            authGeneration = authGeneration,
+                        ),
+                    revision = pending.revision,
+                    next = pending.state,
+                )
+            if (accepted) applied += 1
+        }
+        if (applied > 0) diagnosticsLogger("conversation_directory_pending_apply servers=$applied")
+        applied
     }
 
     /** Publish destination-owned canonical detail; it always merges after candidates. */
@@ -188,32 +272,44 @@ internal class SharedConversationIdentityHub(
         authority: SharedConversationIdentityAuthority,
         projection: SharedConversationDirectoryProjection,
     ): Boolean = synchronized(lock) {
-        if (!admitBinding(authority)) return@synchronized false
         val serverId = authority.serverId.trim().takeIf { it.isNotBlank() } ?: return@synchronized false
         if (projection.serverId != serverId) return@synchronized false
-        val latestSelection = latestSelectionGenerationByServer[serverId]
-        if (latestSelection != null && authority.selectionGeneration < latestSelection) {
+        if (!admitBinding(authority)) return@synchronized false
+        val rows = canonicalByServer.getOrPut(serverId) { linkedMapOf() }
+        val existing = rows[projection.canonicalChannelId]
+        if (existing != null && existing.authority.isNewerThan(authority)) {
             diagnosticsLogger(
                 "conversation_directory_canonical_drop reason=stale_selection " +
-                    "serverId=$serverId incoming=${authority.selectionGeneration} current=$latestSelection"
+                    "serverId=$serverId incoming=${authority.selectionGeneration} " +
+                    "current=${existing.authority.selectionGeneration}"
             )
             return@synchronized false
         }
-        if (latestSelection == null || authority.selectionGeneration > latestSelection) {
-            latestSelectionGenerationByServer[serverId] = authority.selectionGeneration
-            canonicalByServer[serverId]?.clear()
+        // Re-insert so the map's order is least-recently-published first.
+        rows.remove(projection.canonicalChannelId)
+        rows[projection.canonicalChannelId] = CanonicalEntry(authority = authority, projection = projection)
+        while (rows.size > maxCanonicalPerServer) {
+            rows.remove(rows.keys.first())
         }
-        canonicalByServer
-            .getOrPut(serverId) { linkedMapOf() }[projection.canonicalChannelId] =
-            CanonicalEntry(authority = authority, projection = projection)
+        touchServer(serverId)
         recompute(serverId)
         true
+    }
+
+    /**
+     * Tenny rule 2: the account was removed from (or lost) [serverId]; drop every row the hub
+     * holds for it. The binding is kept: other servers' rows stay valid.
+     */
+    fun dropServer(serverId: String) = synchronized(lock) {
+        val server = serverId.trim().takeIf { it.isNotBlank() } ?: return@synchronized
+        removeServerLocked(server)
     }
 
     fun clear() = synchronized(lock) {
         candidateByServer.clear()
         canonicalByServer.clear()
-        latestSelectionGenerationByServer.clear()
+        pendingCandidateByServer.clear()
+        serverRecency.clear()
         binding = null
         state.value = emptyMap()
     }
@@ -252,6 +348,31 @@ internal class SharedConversationIdentityHub(
         return resolveProjection(serverId, id)
     }
 
+    private fun publishCandidateLocked(
+        authority: SharedConversationIdentityAuthority,
+        revision: Long,
+        next: SharedConversationDirectoryState,
+    ): Boolean {
+        val serverId = authority.serverId.trim().takeIf { it.isNotBlank() } ?: return false
+        if (!admitBinding(authority)) return false
+        val previous = candidateByServer[serverId]
+        if (previous != null && revision <= previous.revision) return false
+        candidateByServer[serverId] = CandidateEntry(revision = revision, state = next)
+        // A live publication supersedes anything staged for this server.
+        pendingCandidateByServer[serverId]?.takeIf { it.revision <= revision }?.let {
+            pendingCandidateByServer.remove(serverId)
+        }
+        touchServer(serverId)
+        recompute(serverId)
+        return true
+    }
+
+    /**
+     * Tenny rule 1: fence only on an environment/account change. A different owner needs a newer
+     * auth generation than the current binding (a late publication from a predecessor session is
+     * dropped) and clears every row. The same owner is admitted at any auth generation: a token
+     * rotation, or a response that was in flight across one, is still this account's data.
+     */
     private fun admitBinding(authority: SharedConversationIdentityAuthority): Boolean {
         val environment = authority.environmentId.trim().trimEnd('/')
         val account = authority.accountId.trim()
@@ -267,10 +388,8 @@ internal class SharedConversationIdentityHub(
             binding = Binding(environment, account, authority.authGeneration)
             return true
         }
-        if (authority.authGeneration < current.authGeneration) return false
         if (authority.authGeneration > current.authGeneration) {
-            clearRowsKeepingBinding()
-            binding = Binding(environment, account, authority.authGeneration)
+            binding = current.copy(authGeneration = authority.authGeneration)
         }
         return true
     }
@@ -278,8 +397,26 @@ internal class SharedConversationIdentityHub(
     private fun clearRowsKeepingBinding() {
         candidateByServer.clear()
         canonicalByServer.clear()
-        latestSelectionGenerationByServer.clear()
+        serverRecency.clear()
         state.value = emptyMap()
+    }
+
+    private fun touchServer(serverId: String) {
+        serverRecency.remove(serverId)
+        serverRecency.add(serverId)
+        while (serverRecency.size > maxServers) {
+            val eldest = serverRecency.first()
+            diagnosticsLogger("conversation_directory_server_evict reason=lru serverId=$eldest")
+            removeServerLocked(eldest)
+        }
+    }
+
+    private fun removeServerLocked(serverId: String) {
+        serverRecency.remove(serverId)
+        candidateByServer.remove(serverId)
+        canonicalByServer.remove(serverId)
+        pendingCandidateByServer.remove(serverId)
+        if (serverId in state.value) state.value = state.value - serverId
     }
 
     private fun recompute(serverId: String) {
@@ -296,6 +433,15 @@ internal class SharedConversationIdentityHub(
             next[serverId] = projections.toSharedConversationDirectoryState(logger = diagnosticsLogger)
         }
         state.value = next
+    }
+
+    private fun SharedConversationIdentityAuthority.isNewerThan(other: SharedConversationIdentityAuthority): Boolean =
+        selectionGeneration > other.selectionGeneration ||
+            (selectionGeneration == other.selectionGeneration && authGeneration > other.authGeneration)
+
+    companion object {
+        const val DefaultMaxServers = 16
+        const val DefaultMaxCanonicalPerServer = 256
     }
 }
 

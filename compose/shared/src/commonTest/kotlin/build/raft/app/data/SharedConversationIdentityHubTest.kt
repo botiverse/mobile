@@ -123,36 +123,6 @@ class SharedConversationIdentityHubTest {
         assertNull(hub.resolveProjection(ServerId("server-1"), "dm-1"))
     }
 
-    @Test
-    fun newerAuthRevisionForSameAccountClearsEarlierRows() {
-        val hub = SharedConversationIdentityHub()
-        val oldAuthority = authority(authGeneration = 4, selectionGeneration = 8)
-        assertTrue(hub.publishCanonical(oldAuthority, dmProjection("Old", "pixel:old")))
-
-        val newAuthority = oldAuthority.copy(authGeneration = 5, selectionGeneration = 9)
-        assertTrue(
-            hub.publishCanonical(
-                newAuthority,
-                dmProjection("New", "pixel:new").copy(
-                    canonicalChannelId = "dm-2",
-                    aliases = setOf("dm-2"),
-                ),
-            )
-        )
-
-        assertNull(hub.resolveProjection(ServerId("server-1"), "dm-1"))
-        assertEquals("New", hub.resolveProjection(ServerId("server-1"), "dm-2")?.title)
-        assertFalse(hub.publishCanonical(oldAuthority, dmProjection("Late old", null)))
-        assertFalse(
-            hub.publishCandidate(
-                authority = oldAuthority.copy(selectionGeneration = 0),
-                revision = 99,
-                next = listOf(dmProjection("Late old candidate", null)).toSharedConversationDirectoryState(),
-            )
-        )
-        assertNull(hub.resolveProjection(ServerId("server-1"), "dm-1"))
-    }
-
     private fun authority(
         authGeneration: Long = 1,
         selectionGeneration: Long = 1,

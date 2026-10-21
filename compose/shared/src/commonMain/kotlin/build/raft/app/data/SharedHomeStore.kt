@@ -173,6 +173,11 @@ internal class SharedHomeStore(
     private val conversationIdentityAccountByServer = linkedMapOf<String, String>()
     /** Published copy of [conversationIdentityAccountByServer] for synchronous off-store reads. */
     private val conversationIdentityOwners = MutableStateFlow<Map<String, String>>(emptyMap())
+    /**
+     * Candidate revision per server. Never reset (not on rebind, not on [clear]): the identity hub
+     * keeps its rows across a Home rebind / token rotation and ignores any revision it has already
+     * seen, so restarting at 1 would silently drop every later Home publication (step 4).
+     */
     private val conversationIdentityRevisionByServer = linkedMapOf<String, Long>()
 
     private var loadJob: Job? = null
@@ -407,7 +412,6 @@ internal class SharedHomeStore(
         homeConversationIdentityStates.clear()
         supplementalConversationIdentityStates.clear()
         conversationIdentityAccountByServer.clear()
-        conversationIdentityRevisionByServer.clear()
         conversationIdentityStates.value = emptyMap()
         conversationIdentityOwners.value = emptyMap()
         hiddenHomeSnapshotDirty = false
@@ -3840,16 +3844,22 @@ internal class SharedHomeStore(
      * A retained Home store can outlive an auth owner. Never merge rows collected for the old
      * account into the first candidate published for its successor, even when both accounts use
      * the same server id.
+     *
+     * The first bind of a server (no previous owner) is not an owner change: Activity / opened-DM
+     * rows supplemented before Home's first snapshot belong to this session ([clear] / [reset]
+     * drop them at sign-out), so they are kept. Dropping them made the bind re-publish a directory
+     * without those rows, and their names fell back to raw handles until Activity re-supplemented.
      */
     private fun bindConversationIdentityOwner(serverKey: String, accountId: String): Boolean {
         val normalizedAccountId = accountId.trim()
         if (serverKey.isBlank() || normalizedAccountId.isBlank()) return false
         val previous = conversationIdentityAccountByServer[serverKey]
         if (previous == normalizedAccountId) return false
-        homeConversationIdentityStates.remove(serverKey)
-        supplementalConversationIdentityStates.remove(serverKey)
-        conversationIdentityRevisionByServer.remove(serverKey)
-        conversationIdentityStates.value = conversationIdentityStates.value - serverKey
+        if (previous != null) {
+            homeConversationIdentityStates.remove(serverKey)
+            supplementalConversationIdentityStates.remove(serverKey)
+            conversationIdentityStates.value = conversationIdentityStates.value - serverKey
+        }
         conversationIdentityAccountByServer[serverKey] = normalizedAccountId
         conversationIdentityOwners.value = conversationIdentityOwners.value + (serverKey to normalizedAccountId)
         return true

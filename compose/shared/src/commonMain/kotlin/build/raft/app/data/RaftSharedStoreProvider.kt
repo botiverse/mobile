@@ -617,6 +617,11 @@ internal class RaftSharedStoreProvider private constructor(
             replyCacheAuthContext.collect { context ->
                 val before = previous
                 previous = context
+                // Step 4: Home rows staged before this binding existed (cold start) are applied
+                // now, for this environment + account only.
+                if (context != null) {
+                    shellConversationIdentityHubs.entries().forEach { (_, hub) -> hub.applyPendingCandidatesFor(context) }
+                }
                 val sameBinding =
                     before != null && context != null &&
                         before.environmentId == context.environmentId &&
@@ -780,6 +785,8 @@ internal class RaftSharedStoreProvider private constructor(
                 threadPayloadStore.dropServer(grant.serverId)
                 // Step 3: the server's members (memory in every shell, durable row, avatar refs).
                 allServerMembersStores().forEach { store -> store.dropServer(ServerId(grant.serverId)) }
+                // Step 4: the server's conversation identities (names, avatars, DM peers) in every shell.
+                shellConversationIdentityHubs.entries().forEach { (_, hub) -> hub.dropServer(grant.serverId) }
                 threadDurableAccessEvictor.evictServerPartition(
                     grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
                 )
@@ -1490,8 +1497,24 @@ internal class RaftSharedStoreProvider private constructor(
                     // Capture the authority in the same synchronous turn as the Home state that
                     // produced this candidate. Looking it up later in a launched coroutine could
                     // re-endorse an old same-account row with a successor auth revision.
-                    val context = replyCacheAuthContext.value ?: return@publication
                     val environmentId = apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
+                    val context = replyCacheAuthContext.value
+                    if (context == null) {
+                        // Data-layer plan step 4: a cold start restores Home's durable rows before
+                        // the auth binding exists. Home will not send the same rows again, so stage
+                        // them; the binding follower applies them to the matching account only.
+                        val hub = conversationIdentityHub(scope)
+                        hub.stagePendingCandidate(
+                            environmentId = environmentId,
+                            accountId = publication.accountId,
+                            serverId = publication.serverId.value,
+                            revision = publication.revision,
+                            next = publication.state,
+                        )
+                        // The binding may have landed between the read above and the stage.
+                        replyCacheAuthContext.value?.let { bound -> hub.applyPendingCandidatesFor(bound) }
+                        return@publication
+                    }
                     if (
                         environmentId != context.environmentId ||
                         publication.accountId != context.accountId
@@ -3756,3 +3779,11 @@ internal object RaftSharedStoreRegistry {
             ),
         )
 }
+
+/** Data-layer plan step 4: apply Home rows staged before [context] was bound, under it. */
+private fun SharedConversationIdentityHub.applyPendingCandidatesFor(context: ProcessPresenceAuthContext): Int =
+    applyPendingCandidates(
+        environmentId = context.environmentId,
+        accountId = context.accountId,
+        authGeneration = context.authorityGeneration,
+    )
