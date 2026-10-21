@@ -707,6 +707,23 @@ class RealConversationRepository private constructor(
         includeFollowedSummaries: Boolean,
         limit: Int,
         priority: DataRequestPriority
+    ): DataResult<ThreadSnapshot> =
+        getReplyThread(
+            parentChannelId = parentChannelId,
+            parentMessageId = parentMessageId,
+            includeFollowedSummaries = includeFollowedSummaries,
+            limit = limit,
+            priority = priority,
+            captureRawMessagePage = false
+        )
+
+    override suspend fun getReplyThread(
+        parentChannelId: ChannelId,
+        parentMessageId: MessageId,
+        includeFollowedSummaries: Boolean,
+        limit: Int,
+        priority: DataRequestPriority,
+        captureRawMessagePage: Boolean
     ): DataResult<ThreadSnapshot> {
         val context = currentContext() ?: return authRequired()
         val messageLimit = limit.coerceAtLeast(1)
@@ -715,7 +732,8 @@ class RealConversationRepository private constructor(
             parentChannelId = parentChannelId,
             parentMessageId = parentMessageId,
             messageLimit = messageLimit,
-            priority = priority
+            priority = priority,
+            captureRawMessagePage = captureRawMessagePage
         )
     }
 
@@ -1181,7 +1199,9 @@ class RealConversationRepository private constructor(
         parentMessageId: MessageId,
         messageLimit: Int,
         priority: DataRequestPriority,
-        source: String = "messages_channel_reply_thread"
+        source: String = "messages_channel_reply_thread",
+        /** Task #14b: carry the reply page's raw `messages` array for the prewarm's durable write. */
+        captureRawMessagePage: Boolean = false
     ): DataResult<ThreadSnapshot> = coroutineScope {
         val loadStartedAt = TimeSource.Monotonic.markNow()
         warningLogger(
@@ -1224,6 +1244,7 @@ class RealConversationRepository private constructor(
                     serverId = context.server.id,
                 )
             }
+        var rawMessagePage = RawMessagePageWitness.None
         val messagesResult =
             executeConversation(
                 emptyReason = EmptyReason.NoMessages,
@@ -1238,6 +1259,7 @@ class RealConversationRepository private constructor(
                 emptyWhen = { it.messages.isEmpty() },
                 source = source,
                 mapper = { bodyText ->
+                    if (captureRawMessagePage) rawMessagePage = rawMessagePageWitness(bodyText, messageLimit)
                     parseSharedChannelMessages(
                         bodyText,
                         ThreadId(resolvedThreadChannelId.value),
@@ -1264,7 +1286,7 @@ class RealConversationRepository private constructor(
             ).withConversationDetail(
                 detail = detailDeferred.await(),
                 canonicalReplyThread = true,
-            )
+            ).copy(rawMessagePage = rawMessagePage)
         warningLogger(
             "reply_thread_load_result source=$source " +
                 "result=${messagesResult.conversationDiagnosticsResult()} " +
