@@ -1,5 +1,9 @@
 package build.raft.app
 
+import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -653,33 +657,30 @@ internal fun ActivityConversationListRow(
                                 )
                             }.orEmpty()
                         }
-                    // Line 2+: the excerpt (up to two lines) with the marks beside its first line.
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-                    Box(modifier = Modifier.weight(1f).heightIn(min = bodyLine), contentAlignment = Alignment.CenterStart) {
-                    RaftText(
-                        text =
-                            activityConversationBodyText(
-                                channelLabel = threadChannelText,
-                                sender =
-                                    when (val sender = model.sender) {
-                                        ActivityConversationSender.System -> systemLabel
-                                        is ActivityConversationSender.Self -> selfLabel
-                                        is ActivityConversationSender.Named -> sender.name
-                                        null -> null
-                                    },
-                                preview = model.preview ?: fallback,
-                                senderStyle = SpanStyle(fontWeight = FontWeight.SemiBold, color = colors.foreground),
-                                senderAvatar = senderAvatar != null,
-                            ),
+                    // Line 2+: the excerpt (up to two lines). The marks sit beside its first line only;
+                    // the second line runs the full width, so the marks never narrow the whole excerpt.
+                    val bodyText =
+                        activityConversationBodyText(
+                            channelLabel = threadChannelText,
+                            sender =
+                                when (val sender = model.sender) {
+                                    ActivityConversationSender.System -> systemLabel
+                                    is ActivityConversationSender.Self -> selfLabel
+                                    is ActivityConversationSender.Named -> sender.name
+                                    null -> null
+                                },
+                            preview = model.preview ?: fallback,
+                            senderStyle = SpanStyle(fontWeight = FontWeight.SemiBold, color = colors.foreground),
+                            senderAvatar = senderAvatar != null,
+                        )
+                    ActivityExcerptBesideMarks(
+                        text = bodyText,
                         style = typography.callout,
                         color = bodyColor,
-                        maxLines = ActivityConversationPreviewMaxLines,
-                        overflow = TextOverflow.Ellipsis,
                         inlineContent = inlineContent,
+                        lineHeight = bodyLine,
+                        marks = { ActivityConversationMarks(model, marksHeight = bodyLine) },
                     )
-                    }
-                    ActivityConversationMarks(model, marksHeight = bodyLine)
-                    }
                 }
             }
             if (showDoneAction) {
@@ -813,6 +814,8 @@ private fun ActivityConversationTime(item: InboxItem, timeContext: RaftTimeConte
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         clampFuture = true,
+        // Web InboxItemTimestamp is plain text: a tap near the time opens the row.
+        toggleEnabled = false,
         modifier = Modifier.widthIn(max = 96.dp),
     )
 }
@@ -858,3 +861,85 @@ private fun ActivityConversationMarks(model: ActivityConversationRowModel, marks
 /** The count as raft-ui writes it (`99+` above 99); null when the row shows no count. */
 internal fun ActivityConversationRowModel.unreadCountLabel(): String? =
     if (showUnreadCount) raftUnreadCountText(unreadCount) else null
+
+
+/**
+ * The excerpt with [marks] beside its first line only (web `InboxItemMarks` rides the first line):
+ * line 1 wraps at the width left of the marks, line 2 takes the rest of the text at the full width,
+ * then ellipsizes. Without marks it is one two-line text at the full width.
+ */
+@Composable
+private fun ActivityExcerptBesideMarks(
+    text: AnnotatedString,
+    style: TextStyle,
+    color: Color,
+    inlineContent: Map<String, InlineTextContent>,
+    lineHeight: Dp,
+    marks: @Composable () -> Unit,
+) {
+    SubcomposeLayout(Modifier.fillMaxWidth()) { constraints ->
+        val width = constraints.maxWidth
+        val gap = 8.dp.roundToPx()
+        val minLine = lineHeight.roundToPx()
+        val marksPlaceables = subcompose("marks", marks).map { it.measure(Constraints()) }
+        val marksWidth = marksPlaceables.maxOfOrNull { it.width } ?: 0
+        val loose = Constraints(maxWidth = width)
+        if (marksWidth == 0) {
+            val body =
+                subcompose("body") {
+                    RaftText(
+                        text = text,
+                        style = style,
+                        color = color,
+                        maxLines = ActivityConversationPreviewMaxLines,
+                        overflow = TextOverflow.Ellipsis,
+                        inlineContent = inlineContent,
+                    )
+                }.first().measure(loose)
+            val height = maxOf(body.height, minLine)
+            return@SubcomposeLayout layout(width, height) {
+                body.place(0, (height - body.height).coerceAtLeast(0) / 2)
+            }
+        }
+        var firstLineEnd = text.length
+        val firstWidth = (width - marksWidth - gap).coerceAtLeast(0)
+        val first =
+            subcompose("first") {
+                RaftText(
+                    text = text,
+                    style = style,
+                    color = color,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    inlineContent = inlineContent,
+                    onTextLayout = { layout -> firstLineEnd = layout.getLineEnd(0, visibleEnd = false) },
+                )
+            }.first().measure(Constraints(maxWidth = firstWidth))
+        val firstRow = maxOf(first.height, minLine)
+        val rest = text.subSequence(firstLineEnd.coerceIn(0, text.length), text.length)
+        val second =
+            if (rest.text.isBlank()) {
+                null
+            } else {
+                subcompose("second") {
+                    RaftText(
+                        text = rest,
+                        style = style,
+                        color = color,
+                        maxLines = ActivityConversationPreviewMaxLines - 1,
+                        overflow = TextOverflow.Ellipsis,
+                        inlineContent = inlineContent,
+                    )
+                }.first().measure(loose)
+            }
+        layout(width, firstRow + (second?.height ?: 0)) {
+            first.place(0, (firstRow - first.height) / 2)
+            var x = width
+            marksPlaceables.forEach { marksPlaceable ->
+                x -= marksPlaceable.width
+                marksPlaceable.place(x, (firstRow - marksPlaceable.height) / 2)
+            }
+            second?.place(0, firstRow)
+        }
+    }
+}
