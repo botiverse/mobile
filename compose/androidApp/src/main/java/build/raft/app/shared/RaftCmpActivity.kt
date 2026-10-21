@@ -94,7 +94,10 @@ import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.cmp.host.RaftCmpPageArgs
 import build.raft.app.parseRaftJsonObjectOrNull
 import build.raft.app.toRaftJsonString
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ComposeView
+import build.raft.app.compat.ui.LocalRaftHostImeInsets
+import build.raft.app.compat.ui.RaftHostImeInsets
 import androidx.core.view.WindowCompat
 import kotlinx.serialization.json.JsonObject
 import java.lang.ref.WeakReference
@@ -224,6 +227,11 @@ private class ThreadAttachmentImageCompressionException(
         message: String,
         cause: Throwable? = null,
 ) : IOException(message, cause)
+
+// Hands 1af517cc: how long a prepared IME animation may wait for onStart, and how long past its
+// stated duration a started one may run without onEnd, before pages stop following it.
+private const val IME_ANIMATION_START_GRACE_MILLIS = 300L
+private const val IME_ANIMATION_END_GRACE_MILLIS = 150L
 
 private class ThreadImageCompressionCancelledException : IOException("cancelled")
 
@@ -793,6 +801,13 @@ internal open class RaftCmpActivity :
         Runnable { handleHomeColdStartFallbackTimeout() }
     private var homeColdStartFirstDrawListener: ViewTreeObserver.OnDrawListener? = null
     private var hostAttached = false
+    // Hands 1af517cc: the window's IME as dispatched by the platform, for pages to fall back on
+    // when no IME animation drives Compose's WindowInsets.ime (see RaftHostImeInsets). API 30+
+    // only, where the window is edge to edge and Compose owns the keyboard inset.
+    private val hostImeInsets: RaftHostImeInsets? =
+            if (Build.VERSION.SDK_INT >= 30) RaftHostImeInsets() else null
+    private var imeAnimationGeneration = 0
+    private val runningImeAnimations = HashSet<WindowInsetsAnimation>()
     private var cmpFirstFrameListener: ViewTreeObserver.OnDrawListener? = null
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
     private var pendingThreadCameraCapture: PendingThreadCameraCapture? = null
@@ -1047,12 +1062,14 @@ internal open class RaftCmpActivity :
         val composeView =
             ComposeView(this).apply {
                 setContent {
-                    RaftCmpRoot(
-                        args,
-                        host,
-                        onDarkThemeResolved = ::applySystemBarAppearance,
-                        onCanvasColorResolved = { color -> applyHostCanvasColor(color.toArgb()) },
-                    )
+                    CompositionLocalProvider(LocalRaftHostImeInsets provides hostImeInsets) {
+                        RaftCmpRoot(
+                            args,
+                            host,
+                            onDarkThemeResolved = ::applySystemBarAppearance,
+                            onCanvasColorResolved = { color -> applyHostCanvasColor(color.toArgb()) },
+                        )
+                    }
                 }
             }
         container.addView(
@@ -2732,6 +2749,7 @@ internal open class RaftCmpActivity :
         val content = findViewById<View>(android.R.id.content) ?: return
         content.setOnApplyWindowInsetsListener { view, insets ->
             view.requestLayout()
+            hostImeInsets?.imeBottomPx = insets.getInsets(WindowInsets.Type.ime()).bottom
             // task #482: pageData is a one-shot snapshot taken before the first
             // inset dispatch, so it can carry zero/stale bar heights. Publish
             // every real dispatch to the shared layer, which merges it with the
@@ -2739,6 +2757,74 @@ internal open class RaftCmpActivity :
             publishWindowInsets(insets)
             insets
         }
+        trackImeInsetsAnimations(content)
+    }
+
+    // Hands 1af517cc: tells pages when a platform IME animation feeds Compose's WindowInsets.ime
+    // frame by frame (follow it) and when it does not (use the dispatched inset above). Installed
+    // on the content view, so the decor view's own callback (Huawei ALT-AL10 runner workaround)
+    // stays in place; CONTINUE_ON_SUBTREE keeps Compose's callback below receiving the animation.
+    // An animation that is prepared but never starts or ends would pin the animated value, so the
+    // flag also expires on its own. A show that reverses a running hide overlaps it, so the flag
+    // stays up until the last IME animation ends.
+    private fun trackImeInsetsAnimations(content: View) {
+        val state = hostImeInsets ?: return
+        fun expireAfter(delayMillis: Long) {
+            val generation = ++imeAnimationGeneration
+            content.postDelayed(
+                    {
+                        if (generation == imeAnimationGeneration) {
+                            runningImeAnimations.clear()
+                            state.imeAnimationRunning = false
+                        }
+                    },
+                    delayMillis,
+            )
+        }
+        content.setWindowInsetsAnimationCallback(
+                object :
+                        WindowInsetsAnimation.Callback(
+                                WindowInsetsAnimation.Callback.DISPATCH_MODE_CONTINUE_ON_SUBTREE
+                        ) {
+                    override fun onPrepare(animation: WindowInsetsAnimation) {
+                        if (animation.typeMask and WindowInsets.Type.ime() == 0) return
+                        runningImeAnimations += animation
+                        state.imeAnimationRunning = true
+                        expireAfter(IME_ANIMATION_START_GRACE_MILLIS)
+                    }
+
+                    override fun onStart(
+                            animation: WindowInsetsAnimation,
+                            bounds: WindowInsetsAnimation.Bounds,
+                    ): WindowInsetsAnimation.Bounds {
+                        if (animation.typeMask and WindowInsets.Type.ime() != 0) {
+                            runningImeAnimations += animation
+                            state.imeAnimationRunning = true
+                            if (animation.durationMillis >= 0L) {
+                                expireAfter(animation.durationMillis + IME_ANIMATION_END_GRACE_MILLIS)
+                            } else {
+                                // User-driven (e.g. predictive back): duration is -1 and only
+                                // onEnd tells us when the finger lets go; drop the start timer.
+                                imeAnimationGeneration++
+                            }
+                        }
+                        return bounds
+                    }
+
+                    override fun onProgress(
+                            insets: WindowInsets,
+                            runningAnimations: MutableList<WindowInsetsAnimation>,
+                    ): WindowInsets = insets
+
+                    override fun onEnd(animation: WindowInsetsAnimation) {
+                        if (animation.typeMask and WindowInsets.Type.ime() == 0) return
+                        runningImeAnimations -= animation
+                        if (runningImeAnimations.isNotEmpty()) return
+                        imeAnimationGeneration++
+                        state.imeAnimationRunning = false
+                    }
+                }
+        )
     }
 
     private var lastPublishedInsetsKey: String? = null
