@@ -14,4 +14,3 @@ rollout: full
 ## en
 
 Fixed large blank areas when fast-flinging a short thread on Android: the list could run past the oldest message into an empty region and then jump when it settled. It now stops at the oldest message. The thread list also bounces again at both ends: you can pull slightly past the top or bottom and it springs back.
-
