@@ -15129,14 +15129,15 @@ private fun ThreadPageContentContent(
                     generation = forwardPickerFlow.requestGeneration
                 )
         }
-        // Debounce search so a burst of typing coalesces into one local filter; the
-        // field itself stays interactive while loading.
+        // Search: local DM/channel matches show at once (display-only while Loading), the
+        // server's ranked list replaces them after the debounce. This effect restarts per
+        // keystroke, cancelling the previous server request; isCurrent drops stale answers.
         val result: DataResult<ThreadForwardTargetLoadPage> =
-            raftForwardPickerGatedLoad<DataResult<ThreadForwardTargetLoadPage>>(
-                debounce = query.isNotBlank() && !append,
-                isCurrent = isCurrentRequest
-            ) {
-                if (query.isBlank()) {
+            if (query.isBlank()) {
+                raftForwardPickerGatedLoad<DataResult<ThreadForwardTargetLoadPage>>(
+                    debounce = false,
+                    isCurrent = isCurrentRequest
+                ) {
                     when (
                         val page =
                             repository.directoryTargets(
@@ -15158,13 +15159,27 @@ private fun ThreadPageContentContent(
                         is DataResult.Error -> DataResult.Error(page.error)
                         is DataResult.NoPermission -> DataResult.NoPermission(page.blocker)
                     }
-                } else {
-                    when (val page = repository.searchTargets(serverId, query, limit = 60)) {
-                        is DataResult.Content -> DataResult.Content(ThreadForwardTargetLoadPage(items = page.data))
-                        is DataResult.Empty -> DataResult.Empty(page.reason)
-                        is DataResult.Error -> DataResult.Error(page.error)
-                        is DataResult.NoPermission -> DataResult.NoPermission(page.blocker)
-                    }
+                }
+            } else {
+                when (
+                    val page =
+                        raftForwardPickerProgressiveSearch(
+                            repository = repository,
+                            serverId = serverId,
+                            query = query,
+                            limit = 60,
+                            isCurrent = isCurrentRequest,
+                            onInterim = { interim ->
+                                forwardTargets = interim
+                                forwardDirectoryNextCursor = null
+                            }
+                        )
+                ) {
+                    null -> null
+                    is DataResult.Content -> DataResult.Content(ThreadForwardTargetLoadPage(items = page.data))
+                    is DataResult.Empty -> DataResult.Empty(page.reason)
+                    is DataResult.Error -> DataResult.Error(page.error)
+                    is DataResult.NoPermission -> DataResult.NoPermission(page.blocker)
                 }
             } ?: return@LaunchedEffect
         when (result) {

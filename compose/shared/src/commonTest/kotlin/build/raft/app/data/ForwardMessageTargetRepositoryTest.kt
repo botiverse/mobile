@@ -566,7 +566,7 @@ class ForwardMessageTargetRepositoryTest {
     }
 
     @Test
-    fun searchKeystrokesFilterTheLoadedDirectoryWithoutNetwork() = runBlocking {
+    fun interimKeystrokesFilterTheLoadedDirectoryWithoutNetworkAndWithoutMembers() = runBlocking {
         val network = RecordingForwardNetworkClient()
         network.peerChannelsBody = jointChannelsBody("Design-Room", "ops", "design-review")
         network.membersBody =
@@ -580,20 +580,18 @@ class ForwardMessageTargetRepositoryTest {
 
         val results =
             listOf("d", "de", "DES", "design", "designer", "zzz").associateWith { query ->
-                assertIs<DataResult.Content<List<ForwardMessageTarget>>>(
-                    repository.searchTargets(peer, query, limit = 60)
-                ).data.map { it.id }
+                repository.interimSearchTargets(peer, query, limit = 60).map { it.id }
             }
 
         assertEquals(authorityCalls, network.calls.size, "a keystroke must not refetch channels/DMs/members")
-        assertEquals(listOf("Design-Room", "design-review", "user-2"), results.getValue("DES"))
-        // A member candidate also matches its @handle; channels never match helper copy.
-        assertEquals(listOf("user-2"), results.getValue("designer"))
+        // Member candidates are the server's job: the interim list is DMs/channels only.
+        assertEquals(listOf("Design-Room", "design-review"), results.getValue("DES"))
+        assertEquals(emptyList(), results.getValue("designer"))
         assertEquals(emptyList(), results.getValue("zzz"))
     }
 
     @Test
-    fun coldSearchLoadsTheAuthorityOnceThenReusesItUntilTtl() = runBlocking {
+    fun coldInterimLoadsDmsAndChannelsOnceThenReusesThemUntilTtl() = runBlocking {
         val network = RecordingForwardNetworkClient()
         network.peerChannelsBody = jointChannelsBody("alpha", "beta")
         var now = 0L
@@ -603,27 +601,18 @@ class ForwardMessageTargetRepositoryTest {
 
         coroutineScope {
             listOf("a", "al", "alp").map { query ->
-                async { repository.searchTargets(peer, query, limit = 60) }
+                async { repository.interimSearchTargets(peer, query, limit = 60) }
             }.awaitAll()
         }
-        assertEquals(1, channelCalls(), "concurrent cold searches share one authority load")
-        assertEquals(
-            listOf("alpha"),
-            assertIs<DataResult.Content<List<ForwardMessageTarget>>>(
-                repository.searchTargets(peer, "ALPHA", limit = 60)
-            ).data.map { it.id }
-        )
+        assertEquals(1, channelCalls(), "concurrent cold searches share one DM/channel load")
+        assertEquals(listOf("alpha"), repository.interimSearchTargets(peer, "ALPHA", limit = 60).map { it.id })
         assertEquals(1, channelCalls())
 
         network.peerChannelsBody = jointChannelsBody("alpha", "alpine")
         now = ForwardSearchIndexTtlMillis
-        assertEquals(
-            listOf("alpha", "alpine"),
-            assertIs<DataResult.Content<List<ForwardMessageTarget>>>(
-                repository.searchTargets(peer, "alp", limit = 60)
-            ).data.map { it.id }
-        )
+        assertEquals(listOf("alpha", "alpine"), repository.interimSearchTargets(peer, "alp", limit = 60).map { it.id })
         assertEquals(2, channelCalls())
+        assertEquals(0, network.calls.count { it.path.endsWith("/members") }, "local search never reads the member list")
     }
 
     @Test

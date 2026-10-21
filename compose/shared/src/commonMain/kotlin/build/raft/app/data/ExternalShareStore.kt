@@ -444,7 +444,28 @@ internal class ExternalShareStore(
                             pageSize = 40
                         )
                     } else {
-                        when (val searched = targetRepository.searchTargets(ServerId(current.serverId), query, 40)) {
+                        // The host already debounces typing; local DM/channel matches render at
+                        // once (still loading, so not selectable) until the server's list lands.
+                        // A newer keystroke cancels this job, and with it the server request.
+                        var final: DataResult<List<ForwardMessageTarget>>? = null
+                        targetRepository.searchTargetsProgressively(ServerId(current.serverId), query, 40).collect { update ->
+                            when (update) {
+                                is ForwardTargetSearchUpdate.Interim -> {
+                                    if (generation != targetGeneration) return@collect
+                                    val latest = _state.value as? ExternalShareState.SelectingTargets ?: return@collect
+                                    if (latest.envelope.token != current.envelope.token || latest.serverId != current.serverId) {
+                                        return@collect
+                                    }
+                                    _state.value =
+                                        latest.copy(
+                                            targets = update.targets.distinctBy { it.externalShareSelectionKey() },
+                                            nextCursor = null
+                                        )
+                                }
+                                is ForwardTargetSearchUpdate.Final -> final = update.result
+                            }
+                        }
+                        when (val searched = final ?: return@launch) {
                             is DataResult.Content -> DataResult.Content(ForwardMessageTargetDirectoryPage(items = searched.data))
                             is DataResult.Empty -> DataResult.Empty(searched.reason)
                             is DataResult.Error -> DataResult.Error(searched.error)

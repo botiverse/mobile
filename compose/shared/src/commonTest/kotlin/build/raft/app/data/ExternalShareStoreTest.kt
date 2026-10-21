@@ -4,6 +4,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
 import build.raft.app.runPortableCoroutineTest
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.yield
 import kotlin.test.Test
@@ -152,6 +153,33 @@ class ExternalShareStoreTest {
         assertNull(cancelDrafts.draft)
     }
 
+    @Test
+    fun searchShowsLocalInterimWhileLoadingThenOnlyTheLatestServerAnswer() = runPortableCoroutineTest {
+        val targets = FakeTargetRepository(listOf(target("one")))
+        val store = store(FakeEnvelopeRepository(envelope()), FakeDraftRepository(), targets)
+        store.dispatch(load())
+        store.awaitState<ExternalShareState.SelectingTargets> { !it.loading && it.targets.isNotEmpty() }
+        targets.interimByQuery = { query -> listOf(target("local-$query")) }
+        targets.serverGates = mutableMapOf()
+
+        for (query in listOf("a", "ab", "abc")) {
+            store.dispatch(ExternalShareIntent.Search(query))
+            store.awaitState<ExternalShareState.SelectingTargets> {
+                it.loading && it.targets.map { target -> target.id } == listOf("local-$query")
+            }
+        }
+        // The latest answers first, then the stale ones: none of them may replace it.
+        targets.serverGates!!.getValue("abc").complete(Unit)
+        val settled = store.awaitState<ExternalShareState.SelectingTargets> { !it.loading }
+        assertEquals(listOf("server-abc"), settled.targets.map { it.id })
+        targets.serverGates!!.getValue("ab").complete(Unit)
+        targets.serverGates!!.getValue("a").complete(Unit)
+        repeat(20) { yield() }
+        val latest = assertIs<ExternalShareState.SelectingTargets>(store.state.value)
+        assertEquals("abc", latest.query)
+        assertEquals(listOf("server-abc"), latest.targets.map { it.id })
+    }
+
     private fun CoroutineScope.store(
         native: FakeEnvelopeRepository,
         drafts: FakeDraftRepository,
@@ -263,6 +291,16 @@ class ExternalShareStoreTest {
         private val values: List<ForwardMessageTarget>
     ) : ForwardMessageTargetRepository {
         var resolveCalls = 0
+        var interimByQuery: (String) -> List<ForwardMessageTarget> = { emptyList() }
+
+        /** When set, each search query waits for its own gate and answers `server-<query>`. */
+        var serverGates: MutableMap<String, CompletableDeferred<Unit>>? = null
+
+        override suspend fun interimSearchTargets(
+            serverId: ServerId,
+            query: String,
+            limit: Int
+        ): List<ForwardMessageTarget> = interimByQuery(query)
 
         override suspend fun recentTargets(serverId: ServerId, limit: Int): DataResult<List<ForwardMessageTarget>> =
             DataResult.Content(values)
@@ -271,7 +309,22 @@ class ExternalShareStoreTest {
             serverId: ServerId,
             query: String,
             limit: Int
-        ): DataResult<List<ForwardMessageTarget>> = DataResult.Content(values)
+        ): DataResult<List<ForwardMessageTarget>> {
+            val gates = serverGates ?: return DataResult.Content(values)
+            gates.getOrPut(query) { CompletableDeferred() }.await()
+            return DataResult.Content(
+                listOf(
+                    ForwardMessageTarget(
+                        serverId = serverId,
+                        kind = ForwardMessageTargetKind.RecentChannel,
+                        id = "server-$query",
+                        title = "server-$query",
+                        channelId = ChannelId("server-$query"),
+                        channelKind = ConversationKind.Channel
+                    )
+                )
+            )
+        }
 
         override suspend fun resolveTargetChannel(
             sourceServerId: ServerId,
