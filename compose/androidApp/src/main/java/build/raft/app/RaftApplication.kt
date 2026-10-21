@@ -44,6 +44,11 @@ class RaftApplication : Application() {
         RaftCmpRouter.configure(debugBuild = BuildConfig.DEBUG)
         RaftPageRegistry.install()
         RaftAndroidHostHooks.install(this)
+        // Download centre notifications attach when the centre is first used, not at startup.
+        val application = this
+        build.raft.app.downloads.RaftDownloadCenterProcess.onCreated = { center ->
+            build.raft.app.shared.RaftDownloadNotifications.attach(application, center)
+        }
         recordCoroutineWorkerKeepAliveDiagnostics()
         ProcessAndroidAttachmentPublicDownloads.start(this)
         ProcessAndroidAttachmentMediaStoreCleanup.start(this)

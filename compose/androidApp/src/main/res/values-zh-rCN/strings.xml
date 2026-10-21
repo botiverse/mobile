@@ -504,4 +504,12 @@
     <string name="raft_background_connection_channel_description">在没有 Google Play 服务的设备上，Raft 在后台保持连接以发送消息通知时显示。</string>
     <string name="raft_background_connection_notification_title">Raft 正在接收消息</string>
     <string name="raft_background_connection_notification_text">正在保持连接以接收消息通知。</string>
+    <string name="raft_download_channel_name">下载</string>
+    <string name="raft_download_channel_description">附件下载的进度和完成提醒。</string>
+    <string name="raft_download_notification_downloading">正在下载 %1$s</string>
+    <string name="raft_download_notification_more">%1$d 个下载进行中</string>
+    <string name="raft_download_notification_completed">已下载 %1$s</string>
+    <string name="raft_download_notification_failed">%1$s 下载失败</string>
+    <string name="raft_download_notification_tap_open">点按打开</string>
+    <string name="raft_download_notification_tap_retry">打开 Raft 重试</string>
 </resources>
