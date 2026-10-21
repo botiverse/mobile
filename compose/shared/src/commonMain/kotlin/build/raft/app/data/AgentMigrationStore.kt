@@ -50,6 +50,8 @@ internal sealed interface AgentMigrationIntent {
     /** Begin watching one agent: read now, then poll while a migration is active. */
     data class Watch(val agentId: MemberId, val checkPlan: Boolean = true) : AgentMigrationIntent
     data object StopWatching : AgentMigrationIntent
+    /** The page became visible / hidden (covered or app backgrounded): the poll pauses while hidden. */
+    data class SetPageVisible(val visible: Boolean) : AgentMigrationIntent
     data object Refresh : AgentMigrationIntent
     data class Start(val target: AgentMigrationTarget) : AgentMigrationIntent
     data object Cancel : AgentMigrationIntent
@@ -65,11 +67,18 @@ internal sealed interface AgentMigrationIntent {
  * the latest migration is active (stops when it ends); reads are
  * single-flight with the latest request winning. Actions re-read after they
  * land. Cancel retries on a stale revision like web `AgentMigrationCancelDialog`.
+ *
+ * The poll only runs while the page and the app host are visible
+ * ([isHostVisible], [AgentMigrationIntent.SetPageVisible]); a poll due while
+ * hidden is held and replaced by one read when the page shows again. Nothing
+ * reads after [AgentMigrationIntent.StopWatching], including action completions.
  */
 internal class AgentMigrationStore(
     private val dataSource: AgentMigrationDataSource,
     private val scope: CoroutineScope,
-    private val pollMs: Long = AGENT_MIGRATION_POLL_MS
+    private val pollMs: Long = AGENT_MIGRATION_POLL_MS,
+    /** The app host's visibility (e.g. `isRaftHostVisible(shellInstanceId)`). */
+    private val isHostVisible: () -> Boolean = { true }
 ) {
     private val mutableState = MutableStateFlow(AgentMigrationState())
     val state: StateFlow<AgentMigrationState> = mutableState.asStateFlow()
@@ -79,11 +88,15 @@ internal class AgentMigrationStore(
     private var readGeneration = 0L
     private var watchedActiveRef: String? = null
     private var watchedHostedSwitchRef: String? = null
+    private var watching = false
+    private var pageVisible = true
+    private var pollHeldWhileHidden = false
 
     fun dispatch(intent: AgentMigrationIntent) {
         when (intent) {
             is AgentMigrationIntent.Watch -> watch(intent.agentId, intent.checkPlan)
             AgentMigrationIntent.StopWatching -> stopWatching()
+            is AgentMigrationIntent.SetPageVisible -> setPageVisible(intent.visible)
             AgentMigrationIntent.Refresh -> refresh(DataRequestPriority.Visible)
             is AgentMigrationIntent.Start -> start(intent.target)
             AgentMigrationIntent.Cancel -> cancel()
@@ -100,8 +113,9 @@ internal class AgentMigrationStore(
     }
 
     private fun watch(agentId: MemberId, checkPlan: Boolean) {
-        if (mutableState.value.agentId == agentId && (readJob?.isActive == true || pollJob?.isActive == true)) return
+        if (watching && mutableState.value.agentId == agentId) return
         stopWatching()
+        watching = true
         mutableState.value = AgentMigrationState(agentId = agentId, billingChecking = checkPlan)
         watchedActiveRef = null
         watchedHostedSwitchRef = null
@@ -117,6 +131,8 @@ internal class AgentMigrationStore(
     }
 
     private fun stopWatching() {
+        watching = false
+        pollHeldWhileHidden = false
         readGeneration += 1
         readJob?.cancel()
         pollJob?.cancel()
@@ -124,8 +140,23 @@ internal class AgentMigrationStore(
         pollJob = null
     }
 
+    private fun setPageVisible(visible: Boolean) {
+        pageVisible = visible
+        if (!visible) return
+        // Also covers the host coming back while the page stayed "visible": the page
+        // re-sends SetPageVisible(true) on every resume tick.
+        if (watching && pollHeldWhileHidden && isHostVisible()) {
+            pollHeldWhileHidden = false
+            refresh(DataRequestPriority.Visible)
+        }
+    }
+
+    private fun visibleNow(): Boolean = pageVisible && isHostVisible()
+
     private fun refresh(priority: DataRequestPriority) {
+        if (!watching) return
         val agentId = mutableState.value.agentId ?: return
+        pollHeldWhileHidden = false
         pollJob?.cancel()
         readJob?.cancel()
         readGeneration += 1
@@ -147,7 +178,13 @@ internal class AgentMigrationStore(
         pollJob =
             scope.launch {
                 delay(pollMs)
-                if (generation == readGeneration) refresh(DataRequestPriority.Background)
+                if (generation != readGeneration || !watching) return@launch
+                if (visibleNow()) {
+                    refresh(DataRequestPriority.Background)
+                } else {
+                    // Hidden: hold the poll; the page's next SetPageVisible(true) reads once.
+                    pollHeldWhileHidden = true
+                }
             }
     }
 

@@ -43,6 +43,7 @@ import build.raft.app.data.AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY
 import build.raft.app.data.AgentMigrationIntent
 import build.raft.app.data.AgentMigrationState
 import build.raft.app.data.AgentMigrationStore
+import build.raft.app.data.isRaftHostVisible
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.raftProGateDecision
 import build.raft.app.data.AgentTurnStopFeedback
@@ -1601,7 +1602,7 @@ internal class ComposeMembersPage : AuthenticatedProductPager(AuthenticatedProdu
 internal class ComposeMemberDetailPage : AuthenticatedProductPager(AuthenticatedProductRoute.MemberDetail) {
     override fun willInit() {
         super.willInit()
-        setAuthenticatedContent { MemberDetailPageContent(raftPageVisibleResumeTick) }
+        setAuthenticatedContent { MemberDetailPageContent(raftPageVisibleResumeTick, pageVisible = raftPageVisible) }
     }
 }
 
@@ -3729,6 +3730,8 @@ internal fun MemberDetailPageContent(
     embeddedPayload: RaftMemberDetailPayload? = null,
     storeScopeOverride: RaftShellStoreScope? = null,
     onClose: (() -> Unit)? = null,
+    /** The pager's own visibility (covered / backgrounded); embedded hosts stay visible. */
+    pageVisible: Boolean = true,
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
@@ -3766,8 +3769,18 @@ internal fun MemberDetailPageContent(
         }
     val agentMigrationStore =
         remember(provider, routeScope) {
-            provider.agentControlsApi?.let { api -> AgentMigrationStore(api, routeScope) }
+            provider.agentControlsApi?.let { api ->
+                AgentMigrationStore(
+                    dataSource = api,
+                    scope = routeScope,
+                    isHostVisible = { isRaftHostVisible(provider.storeScope.shellInstanceId) }
+                )
+            }
         }
+    // The migration poll runs only while this page and the app are on screen.
+    LaunchedEffect(agentMigrationStore, pageVisible, pageVisibleTick) {
+        agentMigrationStore?.dispatch(AgentMigrationIntent.SetPageVisible(pageVisible))
+    }
     val memberIdentity = payload.identity
     val activeServerId by provider.selectedServerStore.currentServerId.collectAsState()
     var routeState by remember(memberIdentity) {

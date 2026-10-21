@@ -236,4 +236,62 @@ class AgentMigrationStoreTest {
         assertEquals("provisioning", store.state.value.notice?.state)
         assertEquals("MIGRATION_STATUS_FAILED", store.state.value.statusError?.code)
     }
+
+    @Test
+    fun pollPausesWhileHiddenAndReadsOnceWhenShownAgain() = runTest {
+        val network = ScriptedAgentControlsNetworkClient()
+        network.respond("GET", statusPath, 200, notice("provisioning"))
+        var hostVisible = true
+        val store = AgentMigrationStore(RaftAgentControlsApi(network), backgroundScope, isHostVisible = { hostVisible })
+        store.dispatch(AgentMigrationIntent.Watch(agentId, checkPlan = false))
+        runCurrent()
+        val reads = { network.requests.count { it.path == statusPath } }
+        assertEquals(1, reads())
+
+        store.dispatch(AgentMigrationIntent.SetPageVisible(false))
+        advanceTimeBy(10_000)
+        runCurrent()
+        assertEquals(1, reads(), "no poll while the page is covered")
+
+        store.dispatch(AgentMigrationIntent.SetPageVisible(true))
+        runCurrent()
+        assertEquals(2, reads(), "one read when the page shows again")
+
+        hostVisible = false
+        advanceTimeBy(AgentMigrationStore.AGENT_MIGRATION_POLL_MS + 1)
+        runCurrent()
+        assertEquals(2, reads(), "no poll while the app is backgrounded")
+        hostVisible = true
+        store.dispatch(AgentMigrationIntent.SetPageVisible(true))
+        runCurrent()
+        assertEquals(3, reads())
+    }
+
+    @Test
+    fun actionsCompletingAfterStopWatchingDoNotRestartReads() = runTest {
+        val network = ScriptedAgentControlsNetworkClient()
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        network.respond("GET", statusPath, 200, notice("provisioning"))
+        network.respond("POST", "agents/${agentId.value}/migration/cancel", 200, """{"ok":true}""")
+        val gated =
+            object : AgentMigrationDataSource by RaftAgentControlsApi(network) {
+                override suspend fun cancelMigration(agentId: MemberId, migrationRef: String, expectedRevision: Int): DataResult<Unit> {
+                    gate.await()
+                    return DataResult.Content(Unit)
+                }
+            }
+        val store = AgentMigrationStore(gated, backgroundScope)
+        store.dispatch(AgentMigrationIntent.Watch(agentId, checkPlan = false))
+        runCurrent()
+        store.dispatch(AgentMigrationIntent.Cancel)
+        runCurrent()
+        store.dispatch(AgentMigrationIntent.StopWatching)
+        val readsBefore = network.requests.count { it.path == statusPath }
+
+        gate.complete(Unit)
+        advanceTimeBy(10_000)
+        runCurrent()
+
+        assertEquals(readsBefore, network.requests.count { it.path == statusPath })
+    }
 }
