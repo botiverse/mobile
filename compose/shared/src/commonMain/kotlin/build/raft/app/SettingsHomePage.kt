@@ -231,6 +231,7 @@ import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.HomeConversationRow
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeParentThreadUnread
+import build.raft.app.data.SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY
 import build.raft.app.data.THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
 import build.raft.app.data.foldThreadUnreadByParent
 import build.raft.app.data.HomeDirectMessageRow
@@ -3007,6 +3008,7 @@ private fun RaftAppShellReadyContent(
                 updateServerOrder = { request -> homeSidebarOrderRepository.updateServerOrder(request) },
                 markChannelReadAll = { channelId -> homeReadReceiptRepository.markChannelReadAll(channelId) },
                 markChannelUnread = { channelId -> homeReadReceiptRepository.markChannelUnread(channelId) },
+                markConversationReadAll = { channelId -> homeReadReceiptRepository.markConversationReadAll(channelId) },
                 archiveChannel = { channelId -> channelRepository.archiveChannel(channelId) },
                 setChannelActivityMuted = { channelId, muted -> channelRepository.setChannelActivityMuted(channelId, muted) },
                 pinUpdateFailureCallback = { message -> bridge.toast(message) },
@@ -7157,6 +7159,16 @@ private fun RaftAppShellReadyContent(
                                         THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
                                     )
                             }
+                        // sidebar_mark_all_read_v0, the web SidebarReadToggleMenuItem's second gate.
+                        val homeSidebarMarkAllReadEnabled =
+                            remember(homeListServerId, homeFeatureFlagRevision) {
+                                val flagServerId = homeListServerId?.takeIf { it.isNotBlank() }
+                                flagServerId != null &&
+                                    sharedStores.serverFeatureFlags.isEnabled(
+                                        ServerId(flagServerId),
+                                        SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY
+                                    )
+                            }
                         val prefersChineseCommunity =
                             localePreferenceStore.readLocaleSync() == AppLocale.SimplifiedChinese
                         PerformanceSceneEffect(bridge, "kuikly_home", active = active)
@@ -7184,6 +7196,7 @@ private fun RaftAppShellReadyContent(
                                 // The phone bar (not the wide rail) carries Search and Activity.
                                 searchAndActivityInBottomBar = !navRailActive,
                                 threadUnreadBadgeEnabled = homeThreadUnreadBadgeEnabled,
+                                sidebarMarkAllReadEnabled = homeSidebarMarkAllReadEnabled,
                                 onIntent = { intent ->
                                     prewarmAdmissionGate.invalidate("home_intent:${intent::class.simpleName}")
                                     if (intent is SharedHomeIntent.SelectServer) {
@@ -19798,6 +19811,8 @@ private fun SharedHomeScreen(
     searchAndActivityInBottomBar: Boolean = false,
     /** Server flag `thread_unread_badge_v0`: channel rows show followed-thread unread (web parity). */
     threadUnreadBadgeEnabled: Boolean = false,
+    /** Server flag `sidebar_mark_all_read_v0`: with the thread badge on, rows offer "Mark All as Read". */
+    sidebarMarkAllReadEnabled: Boolean = false,
     onIntent: (SharedHomeIntent) -> Unit,
     onNotificationDismiss: (String) -> Unit = { id -> onIntent(SharedHomeIntent.DismissNotification(id)) },
     onAppUpdateOpen: (() -> Unit)? = null,
@@ -20363,6 +20378,12 @@ private fun SharedHomeScreen(
                         }
                     )
                 },
+                onMarkConversationReadAll =
+                    if (threadUnreadBadgeEnabled && sidebarMarkAllReadEnabled) {
+                        { conversationId -> onIntent(SharedHomeIntent.MarkConversationReadAll(conversationId)) }
+                    } else {
+                        null
+                    },
                 onChannelActivityMuteToggle = { conversationId, muted ->
                     onIntent(SharedHomeIntent.SetChannelActivityMuted(conversationId, muted))
                 },
