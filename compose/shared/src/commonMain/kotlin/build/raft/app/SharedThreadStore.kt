@@ -3672,8 +3672,12 @@ internal class SharedThreadDataSource(
                 parentMessageId = key.parentMessageId,
                 originParentMessageId = key.parentMessageId
             )
-        // Task #14b: the reply page this prewarm fetched, kept for the durable write below.
+        // Task #14b: the reply page this prewarm fetched, kept for the durable write below, and the thread
+        // scope's commit generation read BEFORE the fetch (a write landing after it makes the page stale).
         var fetchedPage: Pair<String?, RawMessagePage?>? = null
+        val durableCommitGeneration =
+            replyResolutionScope.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+                ?.let { partition -> enteredScopeSnapshotLoader?.replyThreadCommitGeneration(partition, key.threadChannelId) }
         val result =
             payloadCache.prewarm(
                 serverId = key.serverId,
@@ -3687,7 +3691,7 @@ internal class SharedThreadDataSource(
                         requestPriority = DataRequestPriority.Background,
                         replyResolutionScope = replyResolutionScope,
                         onRawReplyPage =
-                            if (enteredScopeSnapshotLoader == null) {
+                            if (durableCommitGeneration == null) {
                                 null
                             } else {
                                 { threadChannelId, page -> fetchedPage = threadChannelId to page }
@@ -3718,7 +3722,8 @@ internal class SharedThreadDataSource(
                     basePayload = basePayload,
                     context = ReplyCacheProducerContext(session, replyResolutionScope.provenance),
                     resolvedThreadChannelId = threadChannelId,
-                    rawPage = page
+                    rawPage = page,
+                    expectedCommitGeneration = durableCommitGeneration ?: return@let
                 )
             }
         }
@@ -3745,6 +3750,7 @@ internal class SharedThreadDataSource(
         context: ReplyCacheProducerContext,
         resolvedThreadChannelId: String?,
         rawPage: RawMessagePage?,
+        expectedCommitGeneration: Long,
     ) {
         val loader = enteredScopeSnapshotLoader ?: return
         val threadChannelId = basePayload.streamChannelId.orEmpty()
@@ -3775,6 +3781,7 @@ internal class SharedThreadDataSource(
             replyParent = admission.parent,
             rawMessages = rawPage.messages,
             requestedLimit = rawPage.requestedLimit,
+            expectedCommitGeneration = expectedCommitGeneration,
         ) { isCurrentReplyCacheProvenance(context.provenance) }
     }
 

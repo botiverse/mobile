@@ -72,7 +72,8 @@ class CanonicalMessageV2ReplyThreadPrewarmRoundTripTest {
         runBlocking {
             rig.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
             val otherRoot = ThreadDurableReplyParent("channel-1", "m20")
-            rig.loader.persistReplyThreadPrewarmPage(partition, "thread-1", otherRoot, replyPageArray(80), 30) { true }
+            val generation = assertNotNull(rig.loader.replyThreadCommitGeneration(partition, "thread-1"))
+            rig.loader.persistReplyThreadPrewarmPage(partition, "thread-1", otherRoot, replyPageArray(80), 30, generation) { true }
             assertTrue(rig.logs.any { skipped("parent_mismatch") in it }, rig.logs.toString())
             assertEquals(listOf(50L, 60L, 70L), assertNotNull(rig.reader.readReplyThread(partition, "thread-1", parent)).envelopes.map { it.fact.seq })
         }
@@ -129,6 +130,40 @@ class CanonicalMessageV2ReplyThreadPrewarmRoundTripTest {
             assertEquals(listOf(80L, 90L), thread.envelopes.map { it.fact.seq })
             assertEquals(80L, thread.cursor.oldestLoadedSeq)
             assertFalse(thread.cursor.hasLoadedOldest, "a full page (2 = limit) says nothing about older replies")
+        }
+    }
+
+    @Test
+    fun replyDeletedWhileThePrewarmWasInFlightIsNotWrittenBack() = withFreshDatabase { database ->
+        // The thread was opened before (window 50..70). The prewarm reads the commit generation and fetches
+        // 50..80; reply 80 is then deleted and the user enters: the enter's page (50..70) commits. The prewarm's
+        // page is newer by seq and overlaps, so only the commit generation can tell it is stale.
+        val rig = Rig(database)
+        runBlocking {
+            rig.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
+            val atFetch = rig.commitGeneration()
+            rig.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
+            rig.prewarm(replyPageArray(50, 60, 70, 80), limit = 30, generation = atFetch)
+            assertTrue(rig.logs.any { skipped("superseded") in it }, rig.logs.toString())
+            val thread = assertNotNull(rig.reader.readReplyThread(partition, "thread-1", parent))
+            assertEquals(listOf(50L, 60L, 70L), thread.envelopes.map { it.fact.seq }, "the deleted reply stays deleted")
+            assertEquals(70L, thread.cursor.newestLoadedSeq)
+        }
+    }
+
+    @Test
+    fun prewarmWithNoWriteSinceItsFetchExtendsTheWindow() = withFreshDatabase { database ->
+        // Twin of the test above: identical stored window, generation read and page, without the second enter.
+        val rig = Rig(database)
+        runBlocking {
+            rig.loader.loadReplyThreadOnEnter(partition, "thread-1", parent) { true }
+            val atFetch = rig.commitGeneration()
+            rig.prewarm(replyPageArray(50, 60, 70, 80), limit = 30, generation = atFetch)
+            assertTrue(rig.logs.any { committed("window_extended", 4) in it }, rig.logs.toString())
+            assertEquals(
+                listOf(50L, 60L, 70L, 80L),
+                assertNotNull(rig.reader.readReplyThread(partition, "thread-1", parent)).envelopes.map { it.fact.seq },
+            )
         }
     }
 
@@ -194,8 +229,12 @@ class CanonicalMessageV2ReplyThreadPrewarmRoundTripTest {
             logger = logs::add,
         )
 
-        suspend fun prewarm(page: JsonArray, limit: Int) =
-            loader.persistReplyThreadPrewarmPage(partition, "thread-1", parent, page, limit) { true }
+        /** The thread scope's commit generation, as the prewarm reads it before its page fetch. */
+        fun commitGeneration(): Long = assertNotNull(loader.replyThreadCommitGeneration(partition, "thread-1"))
+
+        /** A prewarm whose page fetch started at [generation] (default: now, i.e. nothing wrote meanwhile). */
+        suspend fun prewarm(page: JsonArray, limit: Int, generation: Long = commitGeneration()) =
+            loader.persistReplyThreadPrewarmPage(partition, "thread-1", parent, page, limit, generation) { true }
     }
 
     private fun withFreshDatabase(block: (RaftSqlDatabase) -> Unit) {

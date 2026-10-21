@@ -43,16 +43,29 @@ internal fun interface ThreadEnteredScopeSnapshotLoader {
      * ([rawMessages], sent with `limit=`[requestedLimit]); persist THAT page as the `thread` scope's
      * window instead of discarding it with the in-memory prewarm. Same admission as
      * [loadReplyThreadOnEnter] (flag, partition generation, server-confirmed parent, `stillCurrent`
-     * re-read under the scope writer) but page-only: no realtime baseline is registered, and a stored
-     * window at least as new as the page is never replaced. Implementations that do not persist reply
+     * re-read under the scope writer) but page-only: no realtime baseline is registered, a stored
+     * window at least as new as the page is never replaced, and any write of the scope after
+     * [expectedCommitGeneration] was read (e.g. an enter that saw a deletion) makes the page stale. Implementations that do not persist reply
      * threads write nothing.
      */
+    /**
+     * Task #14b: the thread scope's commit generation, read by the prewarm BEFORE its page fetch and handed
+     * back as [persistReplyThreadPrewarmPage]'s `expectedCommitGeneration`. `null` = this loader does not
+     * persist prewarm pages.
+     */
+    fun replyThreadCommitGeneration(
+        partition: DurablePartitionKey,
+        threadChannelId: SyncScopeId,
+    ): Long? = null
+
     suspend fun persistReplyThreadPrewarmPage(
         partition: DurablePartitionKey,
         threadChannelId: SyncScopeId,
         replyParent: ThreadDurableReplyParent,
         rawMessages: JsonArray,
         requestedLimit: Int,
+        /** [replyThreadCommitGeneration] read before the page was fetched; any later write of the scope wins. */
+        expectedCommitGeneration: Long,
         stillCurrent: () -> Boolean,
     ) = Unit
 }

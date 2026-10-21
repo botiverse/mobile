@@ -163,6 +163,13 @@ class CanonicalMessageV2GenerationEngine(
     private val partitionGenerationByKey = mutableMapOf<DurablePartitionKey, Long>()
     private val stateLock = SynchronizedObject()
     private val cursorByScope = mutableMapOf<SyncScopeKey, PersistedCursor>()
+    /**
+     * Task #14b: per-scope commit generation, bumped (under [stateLock]) by every store write of the scope —
+     * snapshot, incremental (enter, paging, gap catch-up, realtime, prewarm) and scope clear. Monotonic for
+     * the life of the process; never reset. A writer whose page was fetched before a commit it did not see
+     * compares it to refuse a stale page (see [scopeCommitGeneration]).
+     */
+    private val commitGenerationByScope = mutableMapOf<SyncScopeKey, Long>()
     private val partitionRevocationObservers = mutableListOf<suspend (DurablePartitionKey) -> Unit>()
     private val scopeInvalidationObservers = mutableListOf<suspend (Set<SyncScopeKey>) -> Unit>()
 
@@ -197,6 +204,18 @@ class CanonicalMessageV2GenerationEngine(
     fun currentCursor(scope: SyncScopeKey): PersistedCursor? =
         synchronized(stateLock) { cursorByScope[scope] }
 
+    /**
+     * Task #14b: the [scope]'s commit generation (0 before its first write in this process). Read it before
+     * fetching a page and compare under the scope writer: a different value means some write landed on the
+     * scope after the fetch started, so the page may be older than what is on disk.
+     */
+    fun scopeCommitGeneration(scope: SyncScopeKey): Long =
+        synchronized(stateLock) { commitGenerationByScope[scope] ?: 0L }
+
+    private fun bumpScopeCommitGeneration(scope: SyncScopeKey) {
+        synchronized(stateLock) { commitGenerationByScope[scope] = (commitGenerationByScope[scope] ?: 0L) + 1L }
+    }
+
     suspend fun applySnapshot(
         frame: CanonicalMessageV2SnapshotFrame,
         expectedPartitionGeneration: Long? = null,
@@ -205,6 +224,7 @@ class CanonicalMessageV2GenerationEngine(
             return@withPartitionMutation CanonicalMessageV2CommitResult.PartitionRevoked
         }
         val write = store.applySnapshot(frame)
+        bumpScopeCommitGeneration(frame.scope)
         invalidateEvictedScopes(write.evictedScopes)
         if (frame.scope in write.evictedScopes) {
             return@withPartitionMutation CanonicalMessageV2CommitResult.ScopeEvicted
@@ -225,6 +245,7 @@ class CanonicalMessageV2GenerationEngine(
         when (val decision = coordinator.onIncremental(frame.scope)) {
             CanonicalMessageV2IncrementalDecision.Apply -> {
                 val write = store.applyIncremental(frame)
+                bumpScopeCommitGeneration(frame.scope)
                 invalidateEvictedScopes(write.evictedScopes)
                 if (frame.scope in write.evictedScopes) {
                     return@withPartitionMutation CanonicalMessageV2CommitResult.ScopeEvicted
@@ -260,7 +281,9 @@ class CanonicalMessageV2GenerationEngine(
 
     suspend fun clearScope(scope: SyncScopeKey) {
         withPartitionMutation(scope.partition) {
-            invalidateEvictedScopes(store.clearScope(scope))
+            val cleared = store.clearScope(scope)
+            bumpScopeCommitGeneration(scope)
+            invalidateEvictedScopes(cleared)
         }
     }
 

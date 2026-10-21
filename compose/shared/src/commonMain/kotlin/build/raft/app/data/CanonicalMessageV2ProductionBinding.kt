@@ -33,8 +33,10 @@ import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
 import build.raft.app.network.sync.decodeCanonicalMessageWire
 import build.raft.app.network.sync.toCanonicalMessageV2Envelope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -603,7 +605,8 @@ internal class CanonicalMessageV2EnteredScopeLoader(
         } finally {
             // No-op once committed; otherwise the frames buffered meanwhile were never written.
             baseline?.let { canary.abandonEnterBaseline(it) }
-            inFlightMutex.withLock { inFlight.remove(key) }
+            // NonCancellable: a cancelled job must still release its marker, or the scope is refused forever.
+            withContext(NonCancellable) { inFlightMutex.withLock { inFlight.remove(key) } }
         }
     }
 
@@ -625,7 +628,9 @@ internal class CanonicalMessageV2EnteredScopeLoader(
      * 4. the page converts as a whole into envelopes of this thread scope (shared
      *    [CanonicalMessageV2RestSnapshotFetcher.replyThreadFrame]);
      * 5. under the scope writer (serialized with the enter / paging writers): `stillCurrent()` and flag
-     *    rechecked; race guard — a stored window whose parent differs, or whose newest edge is at or past
+     *    rechecked; `superseded` when the scope's commit generation moved since the caller read it before the
+     *    page fetch ([replyThreadCommitGeneration]: a deletion seen by a later enter is never undone); race
+     *    guard — a stored window whose parent differs, or whose newest edge is at or past
      *    the page's newest reply, is kept (`stored_not_older`): an enter that committed first, or a newer
      *    prewarm, is never regressed by an older page;
      * 6. a strictly newer page is written exactly like the gap catch-up's latest page
@@ -636,12 +641,18 @@ internal class CanonicalMessageV2EnteredScopeLoader(
      *    is told [CanonicalMessageV2ProductionCanary.onExternalCommit] (no baseline: the thread window stays
      *    display only for realtime replies, `thread_delivery_unconfirmed` is untouched).
      */
+    override fun replyThreadCommitGeneration(partition: DurablePartitionKey, threadChannelId: SyncScopeId): Long =
+        generationEngine.scopeCommitGeneration(
+            SyncScopeKey(partition = partition, scopeId = threadChannelId, scopeKind = REPLY_THREAD_SCOPE_KIND),
+        )
+
     override suspend fun persistReplyThreadPrewarmPage(
         partition: DurablePartitionKey,
         threadChannelId: SyncScopeId,
         replyParent: ThreadDurableReplyParent,
         rawMessages: JsonArray,
         requestedLimit: Int,
+        expectedCommitGeneration: Long,
         stillCurrent: () -> Boolean,
     ) {
         require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
@@ -690,6 +701,12 @@ internal class CanonicalMessageV2EnteredScopeLoader(
             generationEngine.withScopeWriter(scope) {
                 if (!stillCurrent()) return@withScopeWriter skip("identity_changed")
                 if (!isEnabledForServer(partition.serverId)) return@withScopeWriter skip("flag_revoked")
+                // Any write of this scope since the prewarm read the generation (before its page fetch) — e.g. an
+                // enter whose page no longer has a reply deleted meanwhile — makes the page stale: the seq guard
+                // below cannot see a deletion, and extending would write the deleted reply back.
+                if (generationEngine.scopeCommitGeneration(scope) != expectedCommitGeneration) {
+                    return@withScopeWriter skip("superseded")
+                }
                 try {
                     // `restore` re-reads the committed cursor + facts and (re)marks the scope baselined in this
                     // process, which the extend's `applyIncremental` requires. It only republishes what is on disk.
@@ -737,7 +754,7 @@ internal class CanonicalMessageV2EnteredScopeLoader(
                 }
             }
         } finally {
-            inFlightMutex.withLock { prewarmInFlight.remove(key) }
+            withContext(NonCancellable) { inFlightMutex.withLock { prewarmInFlight.remove(key) } }
         }
     }
 }
