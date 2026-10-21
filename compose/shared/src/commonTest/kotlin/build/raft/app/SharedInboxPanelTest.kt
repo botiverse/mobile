@@ -1635,6 +1635,31 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun activityContextMenuMutesOnlyJoinedChannelRows() {
+        val channel =
+            InboxItem(
+                key = "channel:general",
+                kind = InboxItemKind.Channel,
+                channelId = ChannelId("general"),
+                channelName = "general",
+            )
+        val dm = channel.copy(key = "dm:peer", kind = InboxItemKind.DirectMessage, channelId = ChannelId("dm-peer"))
+
+        assertEquals(
+            listOf("toggle-read", "done", "mute-activity"),
+            activityContextMenuActionIds(channel, mapOf("general" to false)),
+        )
+        assertEquals(
+            listOf("toggle-read", "done", "unmute-activity"),
+            activityContextMenuActionIds(channel, mapOf("general" to true)),
+        )
+        // Not a joined channel of this server (no Home row): no mute, like web `canToggleActivityMute`.
+        assertEquals(listOf("toggle-read", "done"), activityContextMenuActionIds(channel, emptyMap()))
+        // DMs mute from their own settings, not from Activity.
+        assertEquals(listOf("toggle-read", "done"), activityContextMenuActionIds(dm, mapOf("dm-peer" to false)))
+    }
+
+    @Test
     fun activityFooterSlotsProjectEveryMetadataKindToSquareBadgeVisuals() {
         assertEquals(
             SharedActivityFooterBadgeVisual(

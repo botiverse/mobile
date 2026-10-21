@@ -12,6 +12,9 @@ import build.raft.app.data.ActivityUnreadSummaryProjection
 import build.raft.app.data.ActivityUpdateTrackingState
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
+import build.raft.app.data.SharedHomeIntent
+import build.raft.app.data.SharedHomeContentState
+import androidx.compose.runtime.Immutable
 import build.raft.app.data.InboxSnapshot
 import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.activityVisibleSummaryCounts
@@ -421,6 +424,26 @@ internal fun SharedHomeActivityScreen(
                 cacheServerId = serverId,
             )
         }
+    // Web InboxContextMenu: a channel row's menu mutes or unmutes that channel's activity, read
+    // from and written through the Home sidebar state of this server (the same intent as Home's
+    // long-press), in both Activity layouts.
+    val activityMuteSource =
+        remember(sharedHomeStore, activitySummaryServerId) {
+            val serverId = activitySummaryServerId.value
+            sharedHomeStore?.state
+                ?.map { homeState -> homeState.content.activityMuteByChannelId(serverId) }
+                ?.distinctUntilChanged()
+                ?: flowOf(emptyMap())
+        }
+    val activityMuteByChannelId by activityMuteSource.collectAsState(emptyMap())
+    val channelMute =
+        remember(sharedHomeStore, activityMuteByChannelId) {
+            sharedHomeStore?.let { store ->
+                ActivityChannelMuteControl(activityMuteByChannelId) { channelId, muted ->
+                    store.dispatch(SharedHomeIntent.SetChannelActivityMuted(channelId, muted))
+                }
+            }
+        }
     val conversationList =
         remember(conversationListEnabled, conversationListContext, conversationListAgentStatusResolver) {
             val context = conversationListContext
@@ -559,6 +582,7 @@ internal fun SharedHomeActivityScreen(
         externalSelectedThreadId = externalSelectedThreadId,
         mainTab = mainTab,
         conversationList = conversationList,
+        channelMute = channelMute,
         conversationListPending = conversationListPending,
         scrollToTopRequest = scrollToTopRequest,
         modifier = modifier
@@ -744,7 +768,8 @@ internal fun SharedHomeActivityScreen(
     modifier: Modifier = Modifier,
     externalSelectedThreadId: String? = null,
     mainTab: Boolean = false,
-    conversationList: ActivityConversationListPresentation? = null
+    conversationList: ActivityConversationListPresentation? = null,
+    channelMute: ActivityChannelMuteControl? = null
 ) {
     SharedActivityPanelContent(
         state = state,
@@ -764,6 +789,7 @@ internal fun SharedHomeActivityScreen(
         externalSelectedThreadId = externalSelectedThreadId,
         mainTab = mainTab,
         conversationList = conversationList,
+        channelMute = channelMute,
         modifier = modifier
     )
 }
@@ -788,7 +814,8 @@ internal fun SharedHomeActivityPanel(
     foregroundEpoch: Long,
     modifier: Modifier = Modifier,
     externalSelectedThreadId: String? = null,
-    conversationList: ActivityConversationListPresentation? = null
+    conversationList: ActivityConversationListPresentation? = null,
+    channelMute: ActivityChannelMuteControl? = null
 ) {
     // #192 trace scope extension: wrap the Inbox panel render. The Inbox is
     // recomposed on every state snapshot change; this marker tells us how much
@@ -818,6 +845,7 @@ internal fun SharedHomeActivityPanel(
             foregroundEpoch = foregroundEpoch,
             externalSelectedThreadId = externalSelectedThreadId,
             conversationList = conversationList,
+            channelMute = channelMute,
             modifier = modifier
         )
     }
@@ -857,6 +885,7 @@ private fun SharedActivityPanelContent(
     externalSelectedThreadId: String? = null,
     mainTab: Boolean = false,
     conversationList: ActivityConversationListPresentation? = null,
+    channelMute: ActivityChannelMuteControl? = null,
     /** The list layout's flag or Home context is not decided yet: keep the loading state, paint nothing. */
     conversationListPending: Boolean = false,
     scrollToTopRequest: Int = 0
@@ -952,6 +981,7 @@ private fun SharedActivityPanelContent(
                     foregroundEpoch = foregroundEpoch,
                     externalSelectedThreadId = externalSelectedThreadId,
                     conversationList = conversationList,
+                    channelMute = channelMute,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
@@ -999,6 +1029,7 @@ private fun SharedActivityBodyContent(
     foregroundEpoch: Long,
     externalSelectedThreadId: String? = null,
     conversationList: ActivityConversationListPresentation? = null,
+    channelMute: ActivityChannelMuteControl? = null,
     modifier: Modifier = Modifier
 ) {
     val snapshot = state.snapshot
@@ -1077,7 +1108,8 @@ private fun SharedActivityBodyContent(
                     presentationStore = presentationStore,
                     foregroundEpoch = foregroundEpoch,
                     externalSelectedThreadId = externalSelectedThreadId,
-                    conversationList = conversationList
+                    conversationList = conversationList,
+                    channelMute = channelMute
                 )
         }
     }
@@ -1146,11 +1178,8 @@ private fun SharedActivityMarkAllReadButton(iconOnly: Boolean, onClick: () -> Un
 
 @Composable
 private fun activityHeaderSubtitle(totalCount: Int, totalUnreadCount: Int): String =
-    if (totalUnreadCount > 0) {
-        stringResource(MR.strings.activity_header_active_unread_count, totalCount, totalUnreadCount)
-    } else {
-        stringResource(MR.strings.activity_header_active_count, totalCount)
-    }
+    // Web `thread.header.subtitle`: both counts, always.
+    stringResource(MR.strings.activity_header_active_unread_count, totalCount, totalUnreadCount)
 
 @Composable
 private fun SharedActivityFilterBar(
@@ -1225,7 +1254,8 @@ private fun SharedActivityList(
     presentationStore: SharedActivityPresentationStore,
     foregroundEpoch: Long,
     externalSelectedThreadId: String? = null,
-    conversationList: ActivityConversationListPresentation? = null
+    conversationList: ActivityConversationListPresentation? = null,
+    channelMute: ActivityChannelMuteControl? = null
 ) {
     val presentationServerId = snapshot.server.id.value
     val panelFirstRenderMark = remember { TimeSource.Monotonic.markNow() }
@@ -1850,7 +1880,7 @@ private fun SharedActivityList(
             val resolvedMenuAnchor = menuAnchor ?: return@let
             RaftBaseMenuOverlay(
                 anchor = resolvedMenuAnchor,
-                items = activityContextMenuActionIds(item).map { actionId ->
+                items = activityContextMenuActionIds(item, channelMute?.mutedByChannelId.orEmpty()).map { actionId ->
                     when (actionId) {
                         "toggle-read" ->
                             RaftBaseMenuItem(
@@ -1866,7 +1896,7 @@ private fun SharedActivityList(
                         "done" ->
                             RaftBaseMenuItem(
                                 id = actionId,
-                                label = stringResource(MR.strings.common_done),
+                                label = stringResource(MR.strings.thread_action_mark_done),
                                 icon = RaftLucideIconName.Check
                             )
                         "follow-thread" ->
@@ -1880,6 +1910,18 @@ private fun SharedActivityList(
                                 id = actionId,
                                 label = stringResource(MR.strings.thread_action_unfollow_thread),
                                 icon = RaftLucideIconName.BellOff
+                            )
+                        "mute-activity" ->
+                            RaftBaseMenuItem(
+                                id = actionId,
+                                label = stringResource(MR.strings.activity_action_mute_activity),
+                                icon = RaftLucideIconName.BellOff
+                            )
+                        "unmute-activity" ->
+                            RaftBaseMenuItem(
+                                id = actionId,
+                                label = stringResource(MR.strings.activity_action_unmute_activity),
+                                icon = RaftLucideIconName.Bell
                             )
                         else -> error("unknown Activity menu action: $actionId")
                     }
@@ -1897,6 +1939,8 @@ private fun SharedActivityList(
                         "done" -> onIntent(SharedActivityIntent.MarkDone(item))
                         "follow-thread" -> onIntent(SharedActivityIntent.FollowThread(item))
                         "unfollow-thread" -> onIntent(SharedActivityIntent.UnfollowThread(item))
+                        "mute-activity" -> channelMute?.onToggle?.invoke(item.channelId.value, true)
+                        "unmute-activity" -> channelMute?.onToggle?.invoke(item.channelId.value, false)
                     }
                     activeMenuItem = null
                 }
@@ -1967,7 +2011,22 @@ internal fun InboxItem.activityOpenReadIntent(): SharedActivityIntent? =
  * state. Keeping this list as the production input to the Composable makes
  * the follow/unfollow and attention gates directly executable in tests.
  */
-internal fun activityContextMenuActionIds(item: InboxItem): List<String> =
+/** Web InboxContextMenu `canMute`: which joined channels' activity is muted, and how to toggle it. */
+@Immutable
+internal data class ActivityChannelMuteControl(
+    /** Joined channels of this server (Home sidebar), keyed by id: whether their activity is muted. */
+    val mutedByChannelId: Map<String, Boolean>,
+    val onToggle: (channelId: String, muted: Boolean) -> Unit,
+)
+
+/** The joined channels of [activityServerId] from the Home content; empty for another server. */
+internal fun SharedHomeContentState?.activityMuteByChannelId(activityServerId: String): Map<String, Boolean> {
+    val content = this as? SharedHomeContentState.Content ?: return emptyMap()
+    if (activityServerId.isBlank() || content.snapshot.server.id.value != activityServerId) return emptyMap()
+    return content.snapshot.channels.associate { channel -> channel.channelId.value to channel.activityMuted }
+}
+
+internal fun activityContextMenuActionIds(item: InboxItem, mutedByChannelId: Map<String, Boolean> = emptyMap()): List<String> =
     buildList {
         if (item.isUnfollowedActivityThread) {
             // Web InboxContextMenu: an unfollowed row has no read/unread toggle
@@ -1979,6 +2038,14 @@ internal fun activityContextMenuActionIds(item: InboxItem): List<String> =
         add("toggle-read")
         add("done")
         if (item.isFollowedActivityThread) add("unfollow-thread")
+        // Channel rows only (not DMs, threads or mentions), and only a joined channel.
+        if (item.kind == InboxItemKind.Channel) {
+            when (mutedByChannelId[item.channelId.value]) {
+                true -> add("unmute-activity")
+                false -> add("mute-activity")
+                null -> Unit
+            }
+        }
     }
 
 internal fun InboxItem.toReplyThreadPrewarmMarker(serverId: String): ActivityReplyThreadPrewarmMarker? {
