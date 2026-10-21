@@ -53,26 +53,34 @@ internal fun rememberHomeSearchReturnHighlight(
     LaunchedEffect(pageVisible, visibleTick) {
         val key = homeSearchReturnHighlightKey(highlight.openedKey, pageVisible) ?: return@LaunchedEffect
         highlight.openedKey = null
-        highlight.shownKey = key
-        try {
-            highlight.alpha.snapTo(1f)
-            // Hold the mark for a moment, then fade it out; [HomeSearchReturnHighlightMillis] in all.
-            highlight.alpha.animateTo(
-                0f,
-                tween(
-                    HomeSearchReturnHighlightMillis - HomeSearchReturnHighlightHoldMillis,
-                    delayMillis = HomeSearchReturnHighlightHoldMillis,
-                    easing = LinearEasing
-                )
-            )
-        } finally {
-            // Leaving mid-fade (the page left again, the tab was disposed) must not leave the mark;
-            // a newer mark started meanwhile keeps its own key. No suspending call here: this also
-            // runs on cancellation.
-            if (highlight.shownKey == key) highlight.shownKey = null
-        }
+        highlight.flash(key)
     }
     return highlight
+}
+
+/**
+ * Shows the mark on [key] now and fades it out over [HomeSearchReturnHighlightMillis]. Also used
+ * by Activity's unread-row walk (ActivityUnreadJump.kt) for the row it jumped to.
+ */
+internal suspend fun HomeSearchReturnHighlight.flash(key: String) {
+    shownKey = key
+    try {
+        alpha.snapTo(1f)
+        // Hold the mark for a moment, then fade it out; [HomeSearchReturnHighlightMillis] in all.
+        alpha.animateTo(
+            0f,
+            tween(
+                HomeSearchReturnHighlightMillis - HomeSearchReturnHighlightHoldMillis,
+                delayMillis = HomeSearchReturnHighlightHoldMillis,
+                easing = LinearEasing
+            )
+        )
+    } finally {
+        // Leaving mid-fade (the page left again, the tab was disposed) must not leave the mark;
+        // a newer mark started meanwhile keeps its own key. No suspending call here: this also
+        // runs on cancellation.
+        if (shownKey == key) shownKey = null
+    }
 }
 
 /** Lays the brand-soft wash under the opened row while its return mark fades. */
