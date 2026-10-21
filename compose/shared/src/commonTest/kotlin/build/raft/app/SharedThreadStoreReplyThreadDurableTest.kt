@@ -7,6 +7,8 @@ import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
 import build.raft.app.network.sync.CanonicalConversationContextV2
 import build.raft.app.network.sync.CanonicalMessageEnvelopeV2
+import build.raft.app.network.sync.CanonicalMessageV2EnterBaseline
+import build.raft.app.network.sync.CanonicalMessageV2ThreadJoinConfirmed
 import build.raft.app.network.sync.CanonicalMessageNodeV2
 import build.raft.app.network.sync.DurablePartitionKey
 import build.raft.app.network.sync.MessageRefV2
@@ -26,8 +28,11 @@ import build.raft.app.network.sync.TopLevelScopeRefV2
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 import kotlinx.serialization.json.JsonArray
 import kotlin.test.Test
@@ -187,6 +192,68 @@ class SharedThreadStoreReplyThreadDurableTest {
             return frame?.takeIf { it.scope.partition == partition && it.scope.scopeId == threadChannelId }
         }
     }
+    // ---- task #14c: a late join ack runs ONE gap catch-up on the open thread page, none once it closed ----
+
+    private data class JoinCatchUpRun(val catchUps: Int, val baselines: List<Pair<SyncScopeId, ThreadDurableReplyParent?>>, val logs: List<String>)
+
+    private suspend fun joinCatchUpRun(
+        close: Boolean = false,
+        confirmedThread: SyncScopeId = "thread-1",
+        catchUpCode: Int = 200,
+    ): JoinCatchUpRun = kotlinx.coroutines.coroutineScope {
+        val logs = mutableListOf<String>()
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + scopeJob)
+        val api = SharedThreadStoreTest.FakeThreadApi()
+        api.catchUpResponseCodes.addLast(catchUpCode)
+        val extender = RecordingExtender()
+        val store = SharedThreadStore(dataSource(api, extender = extender, logs = logs), scope = scope, diagnosticsLogger = logs::add)
+        store.accept(SharedThreadIntent.Start(replyRoute()))
+        repeat(20) { yield() }
+        if (close) store.clear()
+        extender.confirmations.emit(CanonicalMessageV2ThreadJoinConfirmed(partition(ownerA), confirmedThread, "channel-1", 2L))
+        // Bounded: the open page's catch-up ends with `outcome=done|failed`; a closed page never logs one.
+        withTimeoutOrNull(if (close || confirmedThread != "thread-1") 1_000L else 10_000L) {
+            while (logs.none { "thread_join_catch_up" in it && ("outcome=done" in it || "outcome=failed" in it) }) yield()
+        }
+        repeat(20) { yield() }
+        scopeJob.cancelAndJoin()
+        JoinCatchUpRun(api.catchUpCalls, extender.baselineBegins.toList(), logs.filter { "thread_join_catch_up" in it })
+    }
+
+    @Test
+    fun aJoinConfirmationRunsOneCatchUpOnTheOpenThreadPageWithTheThreadsBaseline() = runBlocking {
+        val open = joinCatchUpRun()
+        assertEquals(1, open.catchUps, open.logs.toString())
+        assertEquals(listOf<Pair<SyncScopeId, ThreadDurableReplyParent?>>("thread-1" to parent), open.baselines, "the thread scope, with its parent")
+        assertEquals(
+            listOf(
+                "thread_join_catch_up threadId=thread-1 epoch=2 outcome=requested",
+                "thread_join_catch_up threadId=thread-1 epoch=2 outcome=done",
+            ),
+            open.logs,
+        )
+
+        // Twins: the identical confirmation after the page closed, or for another thread, fetches nothing.
+        val closed = joinCatchUpRun(close = true)
+        assertEquals(0, closed.catchUps)
+        assertEquals(emptyList(), closed.baselines)
+        assertEquals(emptyList(), closed.logs)
+        val other = joinCatchUpRun(confirmedThread = "thread-2")
+        assertEquals(0, other.catchUps)
+        assertEquals(emptyList(), other.logs)
+    }
+
+    @Test
+    fun aFailedJoinCatchUpIsLoggedAndNotRetried() = runBlocking {
+        val failed = joinCatchUpRun(catchUpCode = 500)
+        assertEquals(1, failed.catchUps, "one request, no retry")
+        assertEquals("thread_join_catch_up threadId=thread-1 epoch=2 outcome=requested", failed.logs.first())
+        assertTrue(failed.logs.last().startsWith("thread_join_catch_up threadId=thread-1 epoch=2 outcome=failed retry=none"), failed.logs.toString())
+        assertEquals(2, failed.logs.size)
+        // Twin: the same catch-up succeeding logs no failure.
+        assertEquals("thread_join_catch_up threadId=thread-1 epoch=2 outcome=done", joinCatchUpRun().logs.last())
+    }
 
     private class FakeLoader : ThreadEnteredScopeSnapshotLoader {
         val topLevelLoads = mutableListOf<SyncScopeId>()
@@ -210,6 +277,21 @@ class SharedThreadStoreReplyThreadDurableTest {
 
     private class RecordingExtender : ThreadDurablePageExtender {
         val calls = mutableListOf<Pair<SyncScopeId, ThreadDurableReplyParent?>>()
+
+        /** Task #14c: what the canary would emit; and every catch-up baseline requested (channel, parent). */
+        val confirmations = MutableSharedFlow<CanonicalMessageV2ThreadJoinConfirmed>(extraBufferCapacity = 8)
+        val baselineBegins = mutableListOf<Pair<SyncScopeId, ThreadDurableReplyParent?>>()
+
+        override fun threadJoinConfirmations(): Flow<CanonicalMessageV2ThreadJoinConfirmed> = confirmations
+
+        override suspend fun beginLatestPageBaseline(
+            partition: DurablePartitionKey,
+            channelId: SyncScopeId,
+            replyParent: ThreadDurableReplyParent?,
+        ): CanonicalMessageV2EnterBaseline? {
+            baselineBegins += channelId to replyParent
+            return null
+        }
 
         override suspend fun extendWithAdjacentPage(
             partition: DurablePartitionKey,

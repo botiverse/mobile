@@ -36,9 +36,13 @@ import build.raft.app.network.sync.decodeCanonicalMessageWire
 import build.raft.app.network.sync.toThreadMessageItem
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -1231,7 +1235,76 @@ class CanonicalMessageV2CanaryCorrectnessTest {
             }
         }
         assertEquals("continuous", run(nonMember = "thread-1"))
-        assertEquals("discontinuous reason=non_member", run(nonMember = "channel-a"))
+        assertEquals("discontinuous reason=parent_non_member", run(nonMember = "channel-a"))
+    }
+
+    // ---- task #14c: a late ack on the open thread page requests one catch-up that commits continuous ----
+
+    /**
+     * The device run: the page's own `join:channel` is acked while the enter fetch is in flight, so the enter commits
+     * `thread_join_ack_after_request`. Paired: the identical sequence where the late ack names the CURRENT connection
+     * (one catch-up through the real latest-page writer, registered after the ack: continuous, and the next production
+     * reply is written partial) or an OLDER one (no catch-up, the reply stays display only).
+     */
+    @Test
+    fun t13ALateAckDuringTheThreadEnterRequestsOneCatchUpThatMakesTheWindowContinuous() {
+        fun run(ackEpoch: Long): Triple<Set<String>, Int, List<String>> = withFreshDatabase { database ->
+            val rig = Rig(database)
+            bounded {
+                rig.server.thread(thread1, parentChannelId = "channel-a", rootMessageId = "root-1")
+                rig.server.has(thread1, "r1" to 1L)
+                rig.connect(1L)
+                rig.connect(2L)
+                val catchUps = java.util.concurrent.atomic.AtomicInteger()
+                // The open thread page: one gap catch-up per confirmation, as SharedThreadStore runs it.
+                val page = launch(start = CoroutineStart.UNDISPATCHED) {
+                    rig.canary.threadJoinConfirmations.collect { confirmed ->
+                        assertEquals(thread1.scopeId to "channel-a", confirmed.threadScopeId to confirmed.replyParentScopeId)
+                        catchUps.incrementAndGet()
+                        rig.catchUpThread(thread1, thread1Parent)
+                    }
+                }
+                val hold = rig.server.holdNextPage()
+                val entering = async { rig.enterThread(thread1, thread1Parent) }
+                hold.read.await()
+                rig.joinAck(thread1, ackEpoch)
+                hold.release.complete(Unit)
+                entering.await()
+                // Bounded either way; the twin without a catch-up gets the shorter wait.
+                withTimeoutOrNull(if (ackEpoch == 2L) 30_000L else 2_000L) {
+                    while (rig.logs.none { it.startsWith("canonical_v2_canary catch_up=committed") }) yield()
+                }
+                val r2 = rig.replyNew(thread1, "r2", 2L, omit = PRODUCTION_NEW_OMITS)
+                assertTrue(rig.deliver(r2, epoch = 2L))
+                assertEquals(r2, rig.projected.last(), "displayed either way")
+                page.cancel()
+                val commits = rig.logs
+                    .filter { it.contains("=committed server=server-1 scope=thread-1 scopeKind=thread ") }
+                    .map { it.substringAfter("canonical_v2_canary ").substringBefore(" server=") + " " + it.substringAfter("continuity=") }
+                if (catchUps.get() > 0) {
+                    assertTrue(
+                        rig.logs.any {
+                            it == "canonical_v2_canary written server=server-1 scope=thread-1 source=incremental scopeKind=thread " +
+                                "partial=SenderDescription,Reactions"
+                        },
+                        rig.logs.toString(),
+                    )
+                }
+                Triple(rig.storedIds(thread1), catchUps.get(), commits)
+            }
+        }
+        assertEquals(
+            Triple(
+                setOf("r1", "r2"),
+                1,
+                listOf("enter=committed discontinuous reason=thread_join_ack_after_request", "catch_up=committed continuous"),
+            ),
+            run(ackEpoch = 2L),
+        )
+        assertEquals(
+            Triple(setOf("r1"), 0, listOf("enter=committed discontinuous reason=thread_join_ack_after_request")),
+            run(ackEpoch = 1L),
+        )
     }
 
     /** A stored marker outside the allowed set (or out of canonical order) poisons the scope; a valid one reads. */
@@ -1453,10 +1526,20 @@ class CanonicalMessageV2CanaryCorrectnessTest {
          * before the latest page is read; [duringFetch] runs after the read, before the commit.
          */
         suspend fun catchUp(scope: SyncScopeKey, duringFetch: suspend () -> Unit = {}) {
-            val baseline = writer.beginLatestPageBaseline(partition, scope.scopeId)
+            val baseline = writer.beginLatestPageBaseline(partition, scope.scopeId, null)
             val page = server.latestPage(scope)
             duringFetch()
             writer.applyLatestPageAfterBaseline(partition, scope.scopeId, page, 200, null, baseline) { true }
+        }
+
+        /**
+         * Task #14c: the gap catch-up of the open reply thread [scope] (SharedThreadStore's, through the real latest-page
+         * writer): its baseline names [parent] and is registered before the latest page is read.
+         */
+        suspend fun catchUpThread(scope: SyncScopeKey, parent: ThreadDurableReplyParent) {
+            val baseline = writer.beginLatestPageBaseline(partition, scope.scopeId, parent)
+            val page = server.latestPage(scope)
+            writer.applyLatestPageAfterBaseline(partition, scope.scopeId, page, 200, parent, baseline) { true }
         }
 
         /** The server persisted the message before pushing it; then one delivery through the displaying owner. */

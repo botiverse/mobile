@@ -4,7 +4,11 @@ import build.raft.app.canonical.message.CanonicalConversationContextWire
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.MessageAggregateField
 import build.raft.app.data.commitEnterBaselineForTest
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -323,6 +327,7 @@ class CanonicalMessageV2ProductionCanaryTest {
 
     private val threadUnconfirmedLine =
         "canonical_v2_canary enter=committed server=server-1 scope=thread-1 scopeKind=thread epoch=1 buffered=0 " +
+            "nonMember@request=false nonMember@commit=false parentNonMember@request=false parentNonMember@commit=false " +
             "continuity=discontinuous reason=thread_delivery_unconfirmed"
 
     @Test
@@ -422,17 +427,22 @@ class CanonicalMessageV2ProductionCanaryTest {
     }
 
     @Test
-    fun aThreadUnderANonMemberParentEndsNonMember() = runBlocking {
-        fun reason(nonMember: Boolean): String = runBlocking {
+    fun aThreadUnderANonMemberParentEndsParentNonMemberAndTheThreadsOwnFlagOnlyUnderAFollowerOnlyParent() = runBlocking {
+        fun reason(nonMember: Boolean = false, parentNonMember: Boolean = false, parentKind: String = "channel"): String = runBlocking {
             val fixture = Fixture(enabled = true)
-            fixture.enterThread(1L, nonMember = nonMember)
-            fixture.accept(fixture.reply("r2", 2L))
+            fixture.enterThread(1L, nonMember = nonMember, parentNonMember = parentNonMember, parentKind = parentKind)
+            fixture.accept(fixture.reply("r2", 2L, parentKind = parentKind))
             assertEquals(0, fixture.store.incrementalCalls)
             assertEquals(CanonicalMessageV2ScopeContinuity.Discontinuous, fixture.canary.continuityOf(threadScope))
             fixture.logs.single { it.startsWith("canonical_v2_canary enter=committed") }.substringAfter("reason=")
         }
-        assertEquals("non_member", reason(nonMember = true))
-        assertEquals("thread_delivery_unconfirmed", reason(nonMember = false))
+        assertEquals("parent_non_member", reason(parentNonMember = true))
+        // Task #14c: under a public parent the thread's own flag never decides: the missing ack is the reason.
+        assertEquals("thread_delivery_unconfirmed", reason(nonMember = true))
+        assertEquals("thread_delivery_unconfirmed", reason())
+        // Under a follower-only parent it does, with its own name.
+        assertEquals("thread_non_member", reason(nonMember = true, parentKind = "private"))
+        assertEquals("thread_delivery_follower_only", reason(parentKind = "private"))
     }
 
     @Test
@@ -450,6 +460,7 @@ class CanonicalMessageV2ProductionCanaryTest {
         assertTrue(
             fixture.logs.any {
                 it == "canonical_v2_canary enter=committed server=server-1 scope=thread-1 scopeKind=thread epoch=1 buffered=1 " +
+                    "nonMember@request=false nonMember@commit=false parentNonMember@request=false parentNonMember@commit=false " +
                     "continuity=discontinuous reason=thread_delivery_unconfirmed"
             },
             fixture.logs.toString(),
@@ -693,9 +704,201 @@ class CanonicalMessageV2ProductionCanaryTest {
             threadEnterReason(fixture)
         }
         assertEquals("continuous", run(nonMember = true, parentNonMember = false, ack = true))
-        assertEquals("discontinuous reason=non_member", run(nonMember = true, parentNonMember = false, ack = false))
-        assertEquals("discontinuous reason=non_member", run(nonMember = false, parentNonMember = true, ack = true))
+        // Task #14c: the thread's own flag never produces non_member under a known-member public parent.
+        assertEquals("discontinuous reason=thread_delivery_unconfirmed", run(nonMember = true, parentNonMember = false, ack = false))
+        assertEquals("discontinuous reason=parent_non_member", run(nonMember = false, parentNonMember = true, ack = true))
         assertEquals("continuous", run(nonMember = false, parentNonMember = false, ack = true))
+    }
+
+    /**
+     * Device run (task #14c): both flags false at registration, the thread's own flag true at commit, the ack during
+     * the fetch. The commit line names both moments and the reason is the late ack, never `non_member`; the twin with
+     * the PARENT flipping at commit ends `parent_non_member`.
+     */
+    @Test
+    fun aMembershipFlagFlippingAtCommitIsLoggedAndOnlyTheParentsEndsNonMember() = runBlocking {
+        fun commitLine(nonMemberAtCommit: Boolean, parentNonMemberAtCommit: Boolean): String = runBlocking {
+            val fixture = Fixture(enabled = true)
+            fixture.connect(1L)
+            fixture.enterThread(
+                1L,
+                nonMemberAtCommit = nonMemberAtCommit,
+                parentNonMemberAtCommit = parentNonMemberAtCommit,
+                beforeCommit = { fixture.joinAck(1L) },
+            )
+            fixture.logs.single { it.startsWith("canonical_v2_canary enter=committed") }
+        }
+        assertEquals(
+            "canonical_v2_canary enter=committed server=server-1 scope=thread-1 scopeKind=thread epoch=1 buffered=0 " +
+                "nonMember@request=false nonMember@commit=true parentNonMember@request=false parentNonMember@commit=false " +
+                "continuity=discontinuous reason=thread_join_ack_after_request",
+            commitLine(nonMemberAtCommit = true, parentNonMemberAtCommit = false),
+        )
+        assertEquals(
+            "canonical_v2_canary enter=committed server=server-1 scope=thread-1 scopeKind=thread epoch=1 buffered=0 " +
+                "nonMember@request=false nonMember@commit=false parentNonMember@request=false parentNonMember@commit=true " +
+                "continuity=discontinuous reason=parent_non_member",
+            commitLine(nonMemberAtCommit = false, parentNonMemberAtCommit = true),
+        )
+    }
+
+    // ---- task #14c: a late ack requests ONE catch-up whose baseline (registered after the ack) is continuous ----
+
+    private fun threadCatchUpReason(fixture: Fixture): String =
+        fixture.logs.last { it.startsWith("canonical_v2_canary catch_up=committed server=server-1 scope=thread-1 scopeKind=thread") }
+            .substringAfter("continuity=")
+
+    /** Runs [block] while collecting [CanonicalMessageV2ProductionCanary.threadJoinConfirmations] (an open page). */
+    private suspend fun <T> withOpenPage(
+        fixture: Fixture,
+        block: suspend (received: List<CanonicalMessageV2ThreadJoinConfirmed>) -> T,
+    ): T = coroutineScope {
+        val received = mutableListOf<CanonicalMessageV2ThreadJoinConfirmed>()
+        val job = launch(start = CoroutineStart.UNDISPATCHED) {
+            fixture.canary.threadJoinConfirmations.collect { received += it }
+        }
+        try {
+            block(received)
+        } finally {
+            job.cancel()
+        }
+    }
+
+    private suspend fun settle() = repeat(5) { yield() }
+
+    @Test
+    fun anAckDuringTheEnterFetchRequestsOneCatchUpThatCommitsContinuous() = runBlocking {
+        val fixture = Fixture(enabled = true)
+        withOpenPage(fixture) { received ->
+            fixture.connect(1L)
+            fixture.enterThread(1L, beforeCommit = { fixture.joinAck(1L) })
+            settle()
+            assertEquals("discontinuous reason=thread_join_ack_after_request", threadEnterReason(fixture))
+            assertEquals(
+                listOf(CanonicalMessageV2ThreadJoinConfirmed(partition, "thread-1", "channel-1", 1L)),
+                received,
+            )
+            assertTrue(
+                fixture.logs.any {
+                    it == "canonical_v2_canary thread_join_confirmed server=server-1 scope=thread-1 scopeKind=thread " +
+                        "parent=channel-1 epoch=1 trigger=enter_commit catchUp=requested subscribers=1"
+                },
+                fixture.logs.toString(),
+            )
+            // The page's catch-up: registered after the ack, so the same rule makes it continuous.
+            fixture.catchUpThread(1L)
+            assertEquals("continuous", threadCatchUpReason(fixture))
+            assertEquals(CanonicalMessageV2CanaryOutcome.Committed, fixture.accept(wireReply(extraKeys = "")))
+            assertTrue(
+                fixture.logs.any {
+                    it == "canonical_v2_canary written server=server-1 scope=thread-1 source=incremental scopeKind=thread " +
+                        "partial=SenderDescription,Reactions"
+                },
+                fixture.logs.toString(),
+            )
+            settle()
+            assertEquals(1, received.size, "the catch-up's commit requests nothing more")
+        }
+    }
+
+    /** Paired: identical sequence, only the late ack's connection differs (current vs older). */
+    @Test
+    fun aLateAckAfterTheCommitRequestsTheCatchUpOnlyOnTheWindowsOwnConnection() = runBlocking {
+        fun run(ackEpoch: Long): Pair<Int, String> = runBlocking {
+            val fixture = Fixture(enabled = true)
+            withOpenPage(fixture) { received ->
+                fixture.connect(1L)
+                fixture.connect(2L)
+                fixture.enterThread(1L)
+                assertEquals("discontinuous reason=thread_delivery_unconfirmed", threadEnterReason(fixture))
+                fixture.joinAck(ackEpoch)
+                settle()
+                fixture.catchUpThread(2L)
+                received.size to threadCatchUpReason(fixture)
+            }
+        }
+        assertEquals(1 to "continuous", run(ackEpoch = 2L))
+        assertEquals(0 to "discontinuous reason=thread_delivery_unconfirmed", run(ackEpoch = 1L))
+    }
+
+    @Test
+    fun aLateAckWithNoOpenPageIsDroppedAndNeverReplayed() = runBlocking {
+        val fixture = Fixture(enabled = true)
+        fixture.connect(1L)
+        fixture.enterThread(1L)
+        fixture.joinAck(1L)
+        assertTrue(
+            fixture.logs.any { "thread_join_confirmed" in it && it.endsWith("catchUp=requested subscribers=0") },
+            fixture.logs.toString(),
+        )
+        // A page opened afterwards does not receive it (hot, no replay).
+        withOpenPage(fixture) { received ->
+            settle()
+            assertEquals(emptyList(), received)
+        }
+    }
+
+    @Test
+    fun oneAckRequestsAtMostOneCatchUpAndAFailedCatchUpIsNotRetried() = runBlocking {
+        val fixture = Fixture(enabled = true)
+        withOpenPage(fixture) { received ->
+            fixture.connect(1L)
+            fixture.enterThread(1L, beforeCommit = { fixture.joinAck(1L) })
+            settle()
+            assertEquals(1, received.size)
+            // The page's catch-up fails (abandoned): nothing is requested again, by it or by further acks.
+            assertEquals(true, fixture.catchUpThread(2L, fail = true))
+            fixture.joinAck(1L)
+            fixture.joinAck(1L)
+            settle()
+            assertEquals(1, received.size, fixture.logs.toString())
+            assertEquals(1, fixture.logs.count { "thread_join_confirmed" in it })
+            assertTrue(fixture.logs.any { it.startsWith("canonical_v2_canary catch_up=abandoned server=server-1 scope=thread-1") })
+        }
+    }
+
+    @Test
+    fun aCatchUpThatItselfSeesALateAckRequestsNothing() = runBlocking {
+        // A catch-up registered BEFORE the ack (e.g. a resume) commits `thread_join_ack_after_request` like an enter,
+        // but never arms another catch-up: only an enter does. Twin: the same ack during an ENTER requests one.
+        fun requested(viaCatchUp: Boolean): Int = runBlocking {
+            val fixture = Fixture(enabled = true)
+            withOpenPage(fixture) { received ->
+                fixture.connect(1L)
+                if (viaCatchUp) {
+                    fixture.connect(2L)
+                    fixture.enterThread(1L)
+                    fixture.connect(3L)
+                    fixture.catchUpThread(2L, beforeCommit = { fixture.joinAck(3L) })
+                    assertEquals("discontinuous reason=thread_join_ack_after_request", threadCatchUpReason(fixture))
+                } else {
+                    fixture.connect(3L)
+                    fixture.enterThread(1L, beforeCommit = { fixture.joinAck(3L) })
+                    assertEquals("discontinuous reason=thread_join_ack_after_request", threadEnterReason(fixture))
+                }
+                settle()
+                received.size
+            }
+        }
+        assertEquals(0, requested(viaCatchUp = true))
+        assertEquals(1, requested(viaCatchUp = false))
+    }
+
+    @Test
+    fun aLeftThreadRoomNeverRequestsTheFutileCatchUp() = runBlocking {
+        fun run(leave: Boolean): Pair<Int, Boolean> = runBlocking {
+            val fixture = Fixture(enabled = true)
+            withOpenPage(fixture) { received ->
+                fixture.connect(1L)
+                fixture.enterThread(1L)
+                if (leave) fixture.canary.noteRoomLeft("server-1", "thread-1")
+                fixture.joinAck(1L)
+                settle()
+                received.size to fixture.logs.any { it.endsWith("trigger=ack catchUp=skipped reason=room_left") }
+            }
+        }
+        assertEquals(0 to true, run(leave = true))
+        assertEquals(1 to false, run(leave = false))
     }
 
     // ---- device #3092: the real `message:new` wire, decoded exactly as the socket mapper does ----
@@ -902,6 +1105,8 @@ class CanonicalMessageV2ProductionCanaryTest {
             parentKind: String = "channel",
             /** Task #14c: the directory says the user is not a member of the parent channel. */
             parentNonMember: Boolean = false,
+            nonMemberAtCommit: Boolean = false,
+            parentNonMemberAtCommit: Boolean = false,
             beforeCommit: suspend () -> Unit = {},
         ) {
             if (!connected) connect(1L)
@@ -926,8 +1131,45 @@ class CanonicalMessageV2ProductionCanaryTest {
             beforeCommit()
             engine.withScopeWriter(target) {
                 assertEquals(CanonicalMessageV2CommitResult.Committed, engine.applySnapshot(frame))
+                canary.onEnterCommitted(
+                    baseline,
+                    frame,
+                    nonMemberAtCommit = nonMemberAtCommit,
+                    parentNonMemberAtCommit = parentNonMemberAtCommit,
+                )
+            }
+        }
+
+        /**
+         * Task #14c: the thread page's gap catch-up of `thread-1` (as the adjacent-page writer runs it): its baseline
+         * is registered before the latest page (one reply at [seq]) commits; [fail] = the fetch failed (abandoned).
+         * Returns whether a baseline was registered.
+         */
+        suspend fun catchUpThread(seq: Long, fail: Boolean = false, beforeCommit: suspend () -> Unit = {}): Boolean {
+            val target = threadScope
+            val baseline = canary.beginCatchUpBaseline(
+                partition,
+                target.scopeId,
+                nonMember = false,
+                replyParentScopeId = "channel-1",
+                parentNonMember = false,
+            ) ?: return false
+            beforeCommit()
+            if (fail) {
+                canary.abandonEnterBaseline(baseline)
+                return true
+            }
+            val envelope = requireNotNull(reply("c$seq", seq).toCanonicalMessageV2Envelope(partition, replyCount = 0))
+            val frame = CanonicalMessageV2SnapshotFrame(
+                target,
+                listOf(envelope),
+                cursor(seq).copy(parentScopeKind = "channel", parentScopeId = "channel-1", rootMessageId = "root-1"),
+            )
+            engine.withScopeWriter(target) {
+                assertEquals(CanonicalMessageV2CommitResult.Committed, engine.applySnapshot(frame))
                 canary.onEnterCommitted(baseline, frame)
             }
+            return true
         }
 
         /** Task #14c: the server answered this socket's `join:channel` for [threadId] on [epoch]. */

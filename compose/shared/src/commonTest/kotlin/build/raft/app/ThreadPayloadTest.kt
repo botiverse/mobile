@@ -3901,6 +3901,22 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun onlyAReplyThreadsOwnRoomIsKeptAfterThePageCloses() {
+        // Task #14c: the kept rooms are the thread's own channel, never its parent channel.
+        val reply =
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                parentChannelId = "parent-channel",
+                sourceThreadId = "thread-channel",
+                streamChannelId = "thread-channel"
+            )
+        assertEquals(setOf("thread-channel"), reply.replyThreadRealtimeRoomIds())
+        // Twin: the same ids on a channel page keep nothing (a channel keeps today's leave rule).
+        assertEquals(emptySet(), reply.copy(surfaceKind = RaftThreadSurfaceKind.Channel).replyThreadRealtimeRoomIds())
+        assertEquals(emptySet(), reply.copy(sourceThreadId = "parent-channel", streamChannelId = " ").replyThreadRealtimeRoomIds())
+    }
+
+    @Test
     fun replyThreadRealtimeRoomsWaitForConcreteParentChannel() {
         val payload =
             RaftThreadScreenPayload(

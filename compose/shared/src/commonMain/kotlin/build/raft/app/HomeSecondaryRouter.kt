@@ -725,11 +725,12 @@ private fun openActivityAdaptiveMessageRequest(
             consumerId = "activity-surface-detail",
             generation = nextSelection.generation,
         )
-    val roomIds =
-        launchPayload
-            .toInitialPayloadOrNull(launchPayload.instanceId)
-            ?.activeRealtimeRoomIds()
-            .orEmpty()
+    val initialPayload = launchPayload.toInitialPayloadOrNull(launchPayload.instanceId)
+    val roomIds = initialPayload?.activeRealtimeRoomIds().orEmpty()
+    // Task #14c: a reply thread's own room stays joined after the detail closes (its parent's does not).
+    initialPayload?.replyThreadRealtimeRoomIds()?.forEach { roomId ->
+        roomLeaseRegistry.keepJoinedUntilClear(owner.serverId, roomId)
+    }
     realtimeEvents.applyRoomTransitions(roomLeaseRegistry.acquire(owner, roomIds))
     val previousOwner = workspaceStore.snapshot().handoffRoomLeaseOwner
     workspaceStore.update { state ->

@@ -58,6 +58,15 @@ internal class SharedRealtimeRoomLeaseRegistry(
     // Rooms the user joined from a page in this shell; the directory may not know about it yet.
     private val joinedByUser = mutableSetOf<RoomKey>()
 
+    /**
+     * Task #14c: reply-thread rooms a page asked to keep ([keepJoinedUntilClear]). Their last release sends no
+     * `leave:channel`; only [clearServer] / [clear] (sign-out, server switch) may leave them.
+     */
+    private val keptUntilClear = mutableSetOf<RoomKey>()
+
+    /** Task #14c: [keptUntilClear] rooms whose last lease was released: still joined, owned by nobody. */
+    private val retainedAfterRelease = mutableSetOf<RoomKey>()
+
     init {
         require(shellInstanceId.isNotBlank()) { "Room lease registry requires a shell id" }
     }
@@ -79,6 +88,8 @@ internal class SharedRealtimeRoomLeaseRegistry(
                 val key = RoomKey(owner.serverId, roomId)
                 val owners = ownersByRoom.getOrPut(key) { mutableSetOf() }
                 if (owner in owners) return@forEach
+                // Still joined, but the join is sent again as before (idempotent on the server, which acks it).
+                retainedAfterRelease -= key
                 if (owners.isEmpty()) {
                     transitions +=
                         RealtimeRoomTransition(
@@ -94,7 +105,7 @@ internal class SharedRealtimeRoomLeaseRegistry(
     }
 
     fun release(owner: RealtimeRoomLeaseOwner): List<RealtimeRoomTransition> = synchronized(lock) {
-        releaseOwnerLocked(owner)
+        releaseOwnerLocked(owner, teardown = false)
     }
 
     fun clearServer(serverId: String): List<RealtimeRoomTransition> = synchronized(lock) {
@@ -102,11 +113,28 @@ internal class SharedRealtimeRoomLeaseRegistry(
             roomsByOwner.keys.filter { owner ->
                 owner.shellInstanceId == shellInstanceId && owner.serverId == serverId
             }
-        owners.flatMap(::releaseOwnerLocked).distinct()
+        val transitions = owners.flatMap { releaseOwnerLocked(it, teardown = true) }.toMutableList()
+        teardownKeptLocked(transitions) { it.serverId == serverId }
+        transitions.distinct()
     }
 
     fun clear(): List<RealtimeRoomTransition> = synchronized(lock) {
-        roomsByOwner.keys.toList().flatMap(::releaseOwnerLocked).distinct()
+        val transitions = roomsByOwner.keys.toList().flatMap { releaseOwnerLocked(it, teardown = true) }.toMutableList()
+        teardownKeptLocked(transitions) { true }
+        transitions.distinct()
+    }
+
+    /**
+     * Task #14c: the page of reply thread [roomId] keeps that room joined after its last lease is released, until
+     * [clearServer] / [clear] (or a reconnect, which drops every room server-side). A thread room is never in the
+     * connect-time join, and the conversation directory may wrongly read it as non-member, so leaving it on page
+     * close stopped its replies and voided its join acks for the realtime offline cache
+     * ([build.raft.app.network.sync.CanonicalMessageV2ProductionCanary.noteRoomLeft]) for the rest of the process.
+     * Only the thread room itself is marked: the parent channel's room keeps the [leaveAllowed] rule.
+     */
+    fun keepJoinedUntilClear(serverId: String, roomId: String) = synchronized(lock) {
+        val cleanRoomId = roomId.trim().takeIf(String::isNotBlank) ?: return@synchronized
+        keptUntilClear += RoomKey(serverId, cleanRoomId)
     }
 
     /** The user joined [roomId] (e.g. the Join button): never leave it on page close. */
@@ -124,7 +152,8 @@ internal class SharedRealtimeRoomLeaseRegistry(
         ownersByRoom[RoomKey(serverId, roomId)]?.size ?: 0
     }
 
-    private fun releaseOwnerLocked(owner: RealtimeRoomLeaseOwner): List<RealtimeRoomTransition> {
+    /** [teardown]: [clearServer] / [clear], where a [keptUntilClear] room is left like any other. */
+    private fun releaseOwnerLocked(owner: RealtimeRoomLeaseOwner, teardown: Boolean): List<RealtimeRoomTransition> {
         val keys = roomsByOwner.remove(owner) ?: return emptyList()
         val transitions = mutableListOf<RealtimeRoomTransition>()
         keys.forEach { key ->
@@ -132,18 +161,37 @@ internal class SharedRealtimeRoomLeaseRegistry(
             owners -= owner
             if (owners.isEmpty()) {
                 ownersByRoom -= key
-                if (key !in joinedByUser && leaveAllowed(key.serverId, key.roomId)) {
-                    onLeave(key.serverId, key.roomId)
-                    transitions +=
-                        RealtimeRoomTransition(
-                            action = RealtimeRoomTransitionAction.Leave,
-                            serverId = key.serverId,
-                            roomId = key.roomId,
-                        )
+                if (!teardown && key in keptUntilClear) {
+                    retainedAfterRelease += key
+                } else {
+                    leaveIfAllowedLocked(key, transitions)
                 }
             }
         }
         return transitions
+    }
+
+    /** Holding [lock]: the teardown of the kept rooms [matches] selects (after their owners were released). */
+    private fun teardownKeptLocked(
+        transitions: MutableList<RealtimeRoomTransition>,
+        matches: (RoomKey) -> Boolean,
+    ) {
+        retainedAfterRelease.filter(matches).forEach { key ->
+            retainedAfterRelease -= key
+            leaveIfAllowedLocked(key, transitions)
+        }
+        keptUntilClear.removeAll(matches)
+    }
+
+    private fun leaveIfAllowedLocked(key: RoomKey, transitions: MutableList<RealtimeRoomTransition>) {
+        if (key in joinedByUser || !leaveAllowed(key.serverId, key.roomId)) return
+        onLeave(key.serverId, key.roomId)
+        transitions +=
+            RealtimeRoomTransition(
+                action = RealtimeRoomTransitionAction.Leave,
+                serverId = key.serverId,
+                roomId = key.roomId,
+            )
     }
 
     private data class RoomKey(

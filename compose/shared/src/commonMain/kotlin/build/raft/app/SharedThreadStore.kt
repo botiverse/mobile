@@ -122,6 +122,7 @@ import build.raft.app.model.ThreadUpdated
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.network.sync.CanonicalMessageV2EnterBaseline
+import build.raft.app.network.sync.CanonicalMessageV2ThreadJoinConfirmed
 import build.raft.app.network.sync.DurablePartitionKey
 import build.raft.app.network.sync.InlineThreadReplyPreviewLimit
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
@@ -168,6 +169,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -2276,8 +2278,9 @@ internal class SharedThreadDataSource(
     /**
      * Task #168 step 3: the realtime baseline of a gap catch-up of the viewed channel / DM, registered
      * BEFORE its latest-page fetch (frames of the channel during the fetch are buffered, then replayed when
-     * the page commits). `null` = none (not a top-level route, no identity, or the writer refused: not a
-     * member, or the connection has not seen `rooms:joined`): the catch-up commits as before.
+     * the page commits). `null` = none (no durable scope, no identity, or the writer refused: not a
+     * member, or the connection has not seen `rooms:joined`): the catch-up commits as before. Task #14c: a
+     * reply-thread route with its typed parent registers its thread scope's baseline the same way.
      */
     internal suspend fun beginDurableLatestPageBaselineIfCurrent(
         routeIdentity: ThreadRouteIdentity,
@@ -2285,14 +2288,42 @@ internal class SharedThreadDataSource(
     ): CanonicalMessageV2EnterBaseline? {
         val extender = durablePageExtender ?: return null
         if (!routeIdentity.canRenderTimelineCandidates) return null
-        if (durableScopeAdmission(routeIdentity, replyParent) != DurableScopeAdmission.TopLevel) return null
+        val admission = durableScopeAdmission(routeIdentity, replyParent) ?: return null
         val channelId = routeIdentity.timelineChannelId ?: return null
         val resolution = readReplyResolutionScope() ?: return null
         val partition =
             resolution.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
                 ?: return null
         if (!isCurrentReplyCacheProvenance(resolution.provenance)) return null
-        return extender.beginLatestPageBaseline(partition, channelId)
+        return extender.beginLatestPageBaseline(
+            partition,
+            channelId,
+            (admission as? DurableScopeAdmission.ReplyThread)?.parent,
+        )
+    }
+
+    /**
+     * Task #14c: the late-ack catch-up requests for this reply-thread route's own thread scope (same admission and
+     * partition as [loadEnteredScopeSnapshotIfCurrent]); `null` for any other route or without a writer.
+     */
+    internal fun threadJoinConfirmationsIfCurrent(
+        routeIdentity: ThreadRouteIdentity,
+        context: ReplyCacheProducerContext,
+        replyParent: ThreadDurableReplyParent?,
+    ): Flow<CanonicalMessageV2ThreadJoinConfirmed>? {
+        val extender = durablePageExtender ?: return null
+        if (!routeIdentity.canRenderTimelineCandidates) return null
+        val admission = durableScopeAdmission(routeIdentity, replyParent) as? DurableScopeAdmission.ReplyThread ?: return null
+        val channelId = routeIdentity.timelineChannelId ?: return null
+        val partition =
+            context.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+                ?: return null
+        if (!isCurrentReplyCacheProvenance(context.provenance)) return null
+        return extender.threadJoinConfirmations().filter { confirmed ->
+            confirmed.partition == partition &&
+                confirmed.threadScopeId == channelId &&
+                confirmed.replyParentScopeId == admission.parent.parentChannelId
+        }
     }
 
     internal suspend fun abandonDurableLatestPageBaseline(baseline: CanonicalMessageV2EnterBaseline) {
@@ -6331,6 +6362,7 @@ internal class SharedThreadStore(
 
     private var loadJob: Job? = null
     private var enteredScopeSnapshotJob: Job? = null
+    private var threadJoinCatchUpJob: Job? = null
     private var secondaryTimelineRefreshJob: Job? = null
     private var focusedOriginHydrationJob: Job? = null
     private var initialAccessResolutionJob: Job? = null
@@ -6567,6 +6599,8 @@ internal class SharedThreadStore(
     fun clear() {
         loadJob?.cancel()
         loadJob = null
+        threadJoinCatchUpJob?.cancel()
+        threadJoinCatchUpJob = null
         secondaryTimelineRefreshJob?.cancel()
         secondaryTimelineRefreshJob = null
         focusedOriginHydrationJob?.cancel()
@@ -6666,6 +6700,8 @@ internal class SharedThreadStore(
         if (producerContext != null) {
             enteredScopeSnapshotJob?.cancel()
             val replyParent = routeContextPayload.durableReplyParentOrNull()
+            // Task #14c: subscribed before the enter can commit, so a late ack during its fetch is not missed.
+            watchThreadJoinConfirmations(routeIdentity, producerContext, replyParent)
             enteredScopeSnapshotJob =
                 scope.launch {
                     dataSource.loadEnteredScopeSnapshotIfCurrent(routeIdentity, producerContext, replyParent)
@@ -7368,8 +7404,67 @@ internal class SharedThreadStore(
         if (resolvedIdentity.timelineChannelId == null) return
         val replyParent = resolved.durableReplyParentOrNull() ?: basePayload.durableReplyParentOrNull()
         enteredScopeSnapshotJob?.cancel()
+        watchThreadJoinConfirmations(resolvedIdentity, context, replyParent)
         enteredScopeSnapshotJob =
             scope.launch { dataSource.loadEnteredScopeSnapshotIfCurrent(resolvedIdentity, context, replyParent) }
+    }
+
+    /**
+     * Task #14c late-ack catch-up: while this page shows reply thread [routeIdentity], every
+     * [CanonicalMessageV2ThreadJoinConfirmed] of its thread scope runs ONE gap catch-up (the canary requests at
+     * most one per ack and only after an enter, so nothing here loops). Replaced on the next route start, cancelled
+     * by [clear]: a closed page never fetches. A failed catch-up is logged and not retried.
+     */
+    private fun watchThreadJoinConfirmations(
+        routeIdentity: ThreadRouteIdentity,
+        context: ReplyCacheProducerContext,
+        replyParent: ThreadDurableReplyParent?,
+    ) {
+        threadJoinCatchUpJob?.cancel()
+        threadJoinCatchUpJob = null
+        val confirmations = dataSource.threadJoinConfirmationsIfCurrent(routeIdentity, context, replyParent) ?: return
+        // UNDISPATCHED: subscribed before this returns, i.e. before the enter snapshot is launched.
+        threadJoinCatchUpJob =
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                confirmations.collect { confirmed -> catchUpAfterThreadJoinConfirmed(confirmed) }
+            }
+    }
+
+    private suspend fun catchUpAfterThreadJoinConfirmed(confirmed: CanonicalMessageV2ThreadJoinConfirmed) {
+        val label = "thread_join_catch_up threadId=${confirmed.threadScopeId} epoch=${confirmed.transportEpoch}"
+        val initial = _state.value.payload
+        val staleToken = routeStaleToken
+        val shown = initial.resolveThreadRouteIdentity()
+        if (shown.surfaceKind != RaftThreadSurfaceKind.ReplyThread || shown.timelineChannelId != confirmed.threadScopeId) {
+            diagnosticsLogger?.invoke("$label outcome=skipped reason=route_changed")
+            return
+        }
+        if (realtimeGapRecoveryMutex.withLock { realtimeGapRecoveryState != null || loadNewerState != null }) {
+            // A catch-up in flight registered its baseline before this ack: it cannot be the continuous one.
+            diagnosticsLogger?.invoke("$label outcome=skipped reason=catch_up_in_flight")
+            return
+        }
+        val sinceSeq = initial.messages.mapNotNull { it.seq }.maxOrNull()?.coerceAtLeast(0L) ?: 0L
+        val failuresBefore = gapCatchUpRetryableFailures
+        diagnosticsLogger?.invoke("$label outcome=requested")
+        recoverRealtimeGap(
+            initial = initial,
+            initialRequest =
+                RealtimeVisibleStreamGapRequest(
+                    channelId = ChannelId(confirmed.threadScopeId),
+                    sinceSeq = sinceSeq,
+                    serverSeq = sinceSeq + 1L,
+                ),
+            staleToken = staleToken,
+            tagAsGapRefill = false,
+        )
+        val after = _state.value.payload
+        if (gapCatchUpRetryableFailures != failuresBefore || after.newerMessagesStatus == "error") {
+            // Escalated by this line only: the next enter of the thread is the next chance (no retry loop).
+            diagnosticsLogger?.invoke("$label outcome=failed retry=none errorCode=${after.errorCode.orEmpty()}")
+        } else {
+            diagnosticsLogger?.invoke("$label outcome=done")
+        }
     }
 
     private fun queueAuxiliaryHydration(

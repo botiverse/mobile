@@ -10,6 +10,7 @@ import build.raft.app.network.sync.CanonicalMessageEnvelopeV2
 import build.raft.app.network.sync.CanonicalMessageV2IncrementalFrame
 import build.raft.app.network.sync.CanonicalMessageV2RetentionPolicy
 import build.raft.app.network.sync.CanonicalMessageV2ScopePoisoned
+import build.raft.app.network.sync.CanonicalMessageV2ThreadJoinConfirmed
 import build.raft.app.network.sync.ThreadDurablePageDirection
 import build.raft.app.network.sync.ThreadDurablePageExtender
 import build.raft.app.network.sync.ThreadDurableReplyParent
@@ -34,6 +35,7 @@ import build.raft.app.network.sync.decodeCanonicalMessageWire
 import build.raft.app.network.sync.toCanonicalMessageV2Envelope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -820,12 +822,23 @@ internal class CanonicalMessageV2AdjacentPageWriter(
     override suspend fun beginLatestPageBaseline(
         partition: DurablePartitionKey,
         channelId: SyncScopeId,
+        replyParent: ThreadDurableReplyParent?,
     ): CanonicalMessageV2EnterBaseline? {
         require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
         if (channelId.isBlank() || channelId != channelId.trim()) return null
         if (!isEnabledForServer(partition.serverId)) return null
-        return canary.beginCatchUpBaseline(partition, channelId, nonMember = isKnownNonMember(partition.serverId, channelId))
+        if (replyParent != null && replyParent.parentChannelId == channelId) return null
+        return canary.beginCatchUpBaseline(
+            partition,
+            channelId,
+            nonMember = isKnownNonMember(partition.serverId, channelId),
+            replyParentScopeId = replyParent?.parentChannelId,
+            parentNonMember = replyParent != null && isKnownNonMember(partition.serverId, replyParent.parentChannelId),
+        )
     }
+
+    /** Task #14c: the canary's late-ack catch-up requests (see [CanonicalMessageV2ProductionCanary.threadJoinConfirmations]). */
+    override fun threadJoinConfirmations(): Flow<CanonicalMessageV2ThreadJoinConfirmed> = canary.threadJoinConfirmations
 
     override suspend fun abandonLatestPageBaseline(baseline: CanonicalMessageV2EnterBaseline) =
         canary.abandonEnterBaseline(baseline)
@@ -1016,7 +1029,9 @@ internal class CanonicalMessageV2AdjacentPageWriter(
      * connection had seen `rooms:joined`), the committed page is the window's new realtime baseline: frames
      * buffered during the fetch are replayed and the window is continuous again
      * ([CanonicalMessageV2ProductionCanary.onEnterCommitted]). Without one, #3008's external commit.
-     * The baseline is abandoned on every path that does not commit.
+     * The baseline is abandoned on every path that does not commit. Task #14c: a reply thread's catch-up passes the
+     * baseline [beginLatestPageBaseline] registered with the same parent; its commit follows the thread rule (the
+     * late-ack catch-up: [CanonicalMessageV2ProductionCanary.threadJoinConfirmations]).
      */
     override suspend fun applyLatestPageAfterBaseline(
         partition: DurablePartitionKey,
@@ -1044,9 +1059,10 @@ internal class CanonicalMessageV2AdjacentPageWriter(
         stillCurrent: () -> Boolean,
     ) {
         require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
-        // A baseline is only ever for this exact top-level channel of this partition.
+        // A baseline is only ever for this exact channel of this partition, of the same scope family (task #14c: a
+        // reply thread's names the same parent channel).
         val ownBaseline = baseline?.takeIf {
-            replyParent == null && it.partition == partition && it.scopeId == channelId
+            it.partition == partition && it.scopeId == channelId && it.replyParentScopeId == replyParent?.parentChannelId
         }
         val kindLabel = if (replyParent != null) " scopeKind=thread" else ""
         fun log(outcome: String) {
@@ -1143,6 +1159,8 @@ internal class CanonicalMessageV2AdjacentPageWriter(
                             ownBaseline,
                             frame,
                             nonMemberAtCommit = isKnownNonMember(partition.serverId, channelId),
+                            parentNonMemberAtCommit =
+                                replyParent != null && isKnownNonMember(partition.serverId, replyParent.parentChannelId),
                         )
                     } else {
                         canary.onExternalCommit(scope)

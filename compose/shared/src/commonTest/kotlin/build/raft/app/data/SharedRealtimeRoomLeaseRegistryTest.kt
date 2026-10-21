@@ -117,6 +117,73 @@ class SharedRealtimeRoomLeaseRegistryTest {
         assertTrue(registry.release(page).isEmpty())
     }
 
+    /**
+     * Task #14c, paired: the same reply-thread page (thread room + parent channel, both "not a member" in the
+     * directory) releases its lease. The thread room it marked stays joined; the parent channel is left as before.
+     */
+    @Test
+    fun aReplyThreadRoomIsKeptOnPageCloseWhileItsParentChannelIsStillLeft() {
+        val left = mutableListOf<String>()
+        fun registry() = SharedRealtimeRoomLeaseRegistry("shell-a", onLeave = { _, roomId -> left += roomId }) { _, _ -> true }
+        val page = owner("thread-pager-1", generation = 1)
+
+        val marked = registry()
+        marked.keepJoinedUntilClear("server-a", "thread-1")
+        assertEquals(listOf(join("channel-1"), join("thread-1")), marked.acquire(page, listOf("channel-1", "thread-1")))
+        assertEquals(listOf(leave("channel-1")), marked.release(page))
+        assertEquals(listOf("channel-1"), left, "only the parent's leave reaches the offline cache")
+
+        // Twin: the identical page without the mark leaves both rooms (today's rule for any non-member room).
+        left.clear()
+        val unmarked = registry()
+        unmarked.acquire(page, listOf("channel-1", "thread-1"))
+        assertEquals(listOf(leave("channel-1"), leave("thread-1")), unmarked.release(page))
+        assertEquals(listOf("channel-1", "thread-1"), left)
+    }
+
+    @Test
+    fun aKeptThreadRoomIsLeftByServerAndShellTeardownOpenOrClosed() {
+        val left = mutableListOf<String>()
+        val registry = SharedRealtimeRoomLeaseRegistry("shell-a", onLeave = { _, roomId -> left += roomId }) { _, _ -> true }
+        val closedPage = owner("thread-pager-1", generation = 1)
+        val openPage = owner("thread-pager-2", generation = 1)
+        registry.keepJoinedUntilClear("server-a", "thread-1")
+        registry.keepJoinedUntilClear("server-a", "thread-2")
+        registry.acquire(closedPage, listOf("channel-1", "thread-1"))
+        assertEquals(listOf(leave("channel-1")), registry.release(closedPage))
+        registry.acquire(openPage, listOf("thread-2"))
+
+        // Another server's teardown leaves nothing of server-a.
+        assertTrue(registry.clearServer("server-b").isEmpty())
+        // The closed page's kept room (owned by nobody) and the open page's room are both left, each once.
+        assertEquals(setOf(leave("thread-1"), leave("thread-2")), registry.clearServer("server-a").toSet())
+        assertEquals(listOf("channel-1", "thread-1", "thread-2"), left.sortedBy { it })
+        assertTrue(registry.clearServer("server-a").isEmpty(), "the marks went with the teardown")
+
+        // After teardown the room is an ordinary room again: a new lease's release leaves it.
+        registry.acquire(closedPage, listOf("thread-1"))
+        assertEquals(listOf(leave("thread-1")), registry.release(closedPage))
+
+        // Shell teardown (clear) leaves a kept room too.
+        registry.keepJoinedUntilClear("server-a", "thread-3")
+        registry.acquire(openPage, listOf("thread-3"))
+        assertTrue(registry.release(openPage).isEmpty())
+        assertEquals(listOf(leave("thread-3")), registry.clear())
+        assertTrue(registry.clear().isEmpty())
+    }
+
+    @Test
+    fun aKeptThreadRoomStillFollowsTheMemberRuleOnTeardown() {
+        // Teardown leaves a kept room exactly like a released one today: never a room the user belongs to.
+        val registry = SharedRealtimeRoomLeaseRegistry("shell-a") { _, roomId -> roomId != "member-thread" }
+        val page = owner("thread-pager-1", generation = 1)
+        registry.keepJoinedUntilClear("server-a", "member-thread")
+        registry.keepJoinedUntilClear("server-a", "browsed-thread")
+        registry.acquire(page, listOf("member-thread", "browsed-thread"))
+        assertTrue(registry.release(page).isEmpty())
+        assertEquals(listOf(leave("browsed-thread")), registry.clearServer("server-a"))
+    }
+
     @Test
     fun shellTeardownAlsoKeepsMemberRooms() {
         val registry = SharedRealtimeRoomLeaseRegistry("shell-a") { _, roomId -> roomId == "public-browsed" }

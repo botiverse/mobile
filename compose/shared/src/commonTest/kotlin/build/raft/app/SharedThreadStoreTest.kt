@@ -15128,7 +15128,11 @@ class SharedThreadStoreTest {
         val baselineEvents = mutableListOf<String>()
         var onBegin: (() -> Unit)? = null
 
-        override suspend fun beginLatestPageBaseline(partition: DurablePartitionKey, channelId: String): CanonicalMessageV2EnterBaseline? {
+        override suspend fun beginLatestPageBaseline(
+            partition: DurablePartitionKey,
+            channelId: String,
+            replyParent: ThreadDurableReplyParent?,
+        ): CanonicalMessageV2EnterBaseline? {
             onBegin?.invoke()
             val baseline = baselineToRegister?.invoke(partition, channelId) ?: return null
             baselineEvents += "begin"
