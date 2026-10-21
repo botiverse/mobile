@@ -107,4 +107,25 @@ class HomeChannelRowMarksTest {
         assertFalse(item.mentioned)
         assertEquals(0, item.followedThreadUnreadCount)
     }
+
+    @Test
+    fun fixtureRowsMapMentionAndFollowedThreadsFromGeneratedData() {
+        val channels = VisualFixtureData.HomeChannelList.CHANNELS.map(::homeChannelListChannel).associateBy { it.name }
+        val release = channels.getValue("release")
+        assertTrue(release.mentioned)
+        assertEquals(5, release.unreadCount)
+        val mobile = channels.getValue("mobile")
+        assertEquals(2, mobile.followedThreadUnreadCount)
+        assertEquals(0, mobile.unreadCount)
+        assertEquals("joint", channels.getValue("partners-sync").kind)
+        assertEquals("private", channels.getValue("roadmap").channelType)
+        assertTrue(channels.getValue("ops-alerts").activityMuted)
+    }
+
+    @Test
+    fun fixtureDirectMessagesMapPeerKinds() {
+        val dms = VisualFixtureData.HomeChannelList.DIRECT_MESSAGES.map(::homeChannelListDirectMessage)
+        assertEquals(listOf("agent", "agent", "agent", "human"), dms.map { it.peerType })
+        assertEquals(4, dms.single { it.name == "Builder" }.unreadCount)
+    }
 }
