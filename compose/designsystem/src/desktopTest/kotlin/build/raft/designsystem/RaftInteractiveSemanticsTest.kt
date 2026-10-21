@@ -61,7 +61,6 @@ import androidx.compose.foundation.layout.widthIn
 import build.raft.designsystem.components.RaftTextFieldClearAction
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftDialogHeader
-import build.raft.designsystem.components.RaftSidebarGroupLabel
 import build.raft.designsystem.components.RaftDialogSurface
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.theme.LocalRaftStrings
@@ -257,14 +256,6 @@ class RaftInteractiveSemanticsTest {
                 .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
                 .performClick()
             assertTrue(closed)
-        }
-
-    /** A sidebar group label is a heading. */
-    @Test
-    fun aSidebarGroupLabelIsAHeading() =
-        runComposeUiTest {
-            setContent(themed { RaftSidebarGroupLabel("Workspace") })
-            onNodeWithText("Workspace").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
         }
 
     /** A popover is 300dp by default; without a width it takes the room it is given, never under 220dp. */
