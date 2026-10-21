@@ -19,6 +19,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -227,6 +235,7 @@ internal fun RaftButtonBox(
     onLongClick: (() -> Unit)? = null,
     onLongClickLabel: String? = null,
     widenTouchTarget: Boolean = false,
+    join: RaftButtonJoin = RaftButtonJoin.None,
     content: @Composable () -> Unit,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
@@ -240,19 +249,38 @@ internal fun RaftButtonBox(
     // drops the tap while busy, and semantics say disabled, so no click action is offered.
     val isFocused = raftIsFocused(source)
     val focused = enabled && isFocused
-    val shape = RoundedCornerShape(RaftRadius.Control)
+    val shape = join.shape()
     Box(
         modifier =
             modifier
                 .raftFocusRing(focused, RaftRadius.Control, RaftTheme.colors)
                 .raftDieCutEdge(look.outerRing, RaftRadius.Control)
                 .background(look.fill, shape)
-                .raftPressOverlay(pressed, look.pressOverlay, RaftRadius.Control)
-                .border(RaftStroke.Control, look.edge, shape)
+                .then(
+                    if (join == RaftButtonJoin.None) {
+                        Modifier.raftPressOverlay(pressed, look.pressOverlay, RaftRadius.Control)
+                    } else {
+                        Modifier.background(if (pressed) look.pressOverlay else Color.Transparent, shape)
+                    },
+                )
+                .then(
+                    if (join == RaftButtonJoin.Start) {
+                        Modifier.raftBorderWithoutStartEdge(RaftStroke.Control, look.edge, RaftRadius.Control)
+                    } else {
+                        Modifier.border(RaftStroke.Control, look.edge, shape)
+                    },
+                )
                 .semantics { if (loading) disabled() }
                 .then(
                     if (widenTouchTarget) {
-                        Modifier.raftTouchTarget(enabled && !loading, source, onClick, onLongClick = onLongClick?.let { long -> { if (!loading) long() } })
+                        Modifier.raftTouchTarget(
+                            enabled && !loading,
+                            source,
+                            onClick,
+                            onLongClick = onLongClick?.let { long -> { if (!loading) long() } },
+                            // A control joined on its start edge leaves that side's taps to its neighbour.
+                            expandStart = join != RaftButtonJoin.Start,
+                        )
                     } else {
                         Modifier
                     },
@@ -287,6 +315,54 @@ internal fun RaftButtonBox(
         }
     }
 }
+
+/**
+ * Which edge a button shares with a neighbour (raft-ui split buttons such as
+ * MessageListJumpPillGroup): [End] squares the end corners (`rounded-e-none`), [Start] squares
+ * the start corners and draws no start edge (`rounded-s-none border-s-0`), so the two read as
+ * one control split by the first one's edge.
+ */
+internal enum class RaftButtonJoin {
+    None,
+    End,
+    Start,
+}
+
+internal fun RaftButtonJoin.shape(): Shape {
+    val r = RaftRadius.Control
+    return when (this) {
+        RaftButtonJoin.None -> RoundedCornerShape(r)
+        RaftButtonJoin.End -> RoundedCornerShape(topStart = r, bottomStart = r, topEnd = 0.dp, bottomEnd = 0.dp)
+        RaftButtonJoin.Start -> RoundedCornerShape(topStart = 0.dp, bottomStart = 0.dp, topEnd = r, bottomEnd = r)
+    }
+}
+
+/**
+ * The [width] border of a [RaftButtonJoin.Start] button: top, end and bottom, inside the box,
+ * with [radius] on the end corners and none on the start side (`border-s-0`).
+ */
+internal fun Modifier.raftBorderWithoutStartEdge(width: Dp, color: Color, radius: Dp): Modifier =
+    drawBehind {
+        val stroke = width.toPx()
+        val half = stroke / 2f
+        val corner = CornerRadius((radius.toPx() - half).coerceAtLeast(0f))
+        val ltr = layoutDirection == LayoutDirection.Ltr
+        // The start side runs a stroke past the box, so the clip below removes that edge.
+        val left = if (ltr) -stroke else half
+        val right = if (ltr) size.width - half else size.width + stroke
+        val rect =
+            RoundRect(
+                left = left,
+                top = half,
+                right = right,
+                bottom = size.height - half,
+                topLeftCornerRadius = if (ltr) CornerRadius.Zero else corner,
+                topRightCornerRadius = if (ltr) corner else CornerRadius.Zero,
+                bottomRightCornerRadius = if (ltr) corner else CornerRadius.Zero,
+                bottomLeftCornerRadius = if (ltr) CornerRadius.Zero else corner,
+            )
+        clipRect { drawPath(Path().apply { addRoundRect(rect) }, color, style = Stroke(stroke)) }
+    }
 
 /**
  * raft-ui 0.8.0 Button. Its colour says what kind of action it is ([RaftButtonVariant]),
