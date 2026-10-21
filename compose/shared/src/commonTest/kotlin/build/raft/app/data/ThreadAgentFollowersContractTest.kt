@@ -13,10 +13,11 @@ import kotlin.test.assertTrue
 class ThreadAgentFollowersContractTest {
     // Exact field shape from slock 94d8ec1da8680ff3c94b0ae7200beb8fe933300e,
     // routes/channels.threads.api.test.ts and channelService.getManagedThreadAgentFollowers.
+    // `status` is the agents.status lifecycle enum (active / inactive / stopped), not live activity.
     private val body = """{"threads":[{"threadChannelId":"thread","canManage":true,"agents":[
-        {"id":"local","name":"local-agent","displayName":null,"status":"idle","avatarUrl":null,
+        {"id":"local","name":"local-agent","displayName":null,"status":"active","avatarUrl":null,
          "serverId":"ours","serverName":"Our server","serverSlug":"ours","isCurrentServer":true,"canRemove":true},
-        {"id":"peer","name":"peer-agent","displayName":"Peer","status":"working","avatarUrl":"https://example.test/a.png",
+        {"id":"peer","name":"peer-agent","displayName":"Peer","status":"inactive","avatarUrl":"https://example.test/a.png",
          "serverId":"theirs","serverName":"Partner server","serverSlug":"partner","isCurrentServer":false,"canRemove":false}
     ]}]}"""
 

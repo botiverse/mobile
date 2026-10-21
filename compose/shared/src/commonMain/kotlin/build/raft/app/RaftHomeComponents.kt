@@ -7151,16 +7151,6 @@ private fun DirectMessageAgentMeta(
     )
 }
 
-@Composable
-private fun ChannelAvatar(avatarWireValue: String?, label: String, presence: RaftAppPresence? = null, showPresence: Boolean = true) {
-    RaftAvatarWithStatus(
-        statusColor = if (showPresence) presence?.homeRowColor else null,
-        avatarSize = ChannelAvatarSize
-    ) {
-        RaftAppAvatar(avatarWireValue, label)
-    }
-}
-
 internal fun raftMemberAvatarCacheSubject(
     kind: MemberKind?,
     memberId: String?

@@ -35,7 +35,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberKind
 import build.raft.app.base.Utils
 import build.raft.app.data.RealThreadAgentFollowersRepository
@@ -85,6 +84,8 @@ internal fun ThreadAgentFollowersRoute(
     threadId: String?, serverId: String?, accountId: String?,
     storeScope: RaftShellStoreScope, active: Boolean,
     onOpenAgentProfile: (MemberDetailIdentity) -> Unit = {},
+    /** Task #20: the thread's live member-status source (the one its message avatars read). */
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
 ) {
     if (threadId.isNullOrBlank() || serverId.isNullOrBlank() || accountId.isNullOrBlank()) return
     val pager = LocalActivity.current.getPager() as Pager
@@ -122,7 +123,7 @@ internal fun ThreadAgentFollowersRoute(
         if (active) store.dispatch(ThreadAgentFollowersIntent.Refresh)
         else store.dispatch(ThreadAgentFollowersIntent.Close)
     }
-    ThreadAgentFollowersHeader(state, store::dispatch, onOpenAgentProfile)
+    ThreadAgentFollowersHeader(state, store::dispatch, onOpenAgentProfile, agentStatusResolver)
 }
 
 private data class FollowersOverlay(
@@ -130,6 +131,7 @@ private data class FollowersOverlay(
     val anchor: RaftPopoverAnchorResolver?,
     val dispatch: (ThreadAgentFollowersIntent) -> Unit,
     val openAgentProfile: (ThreadAgentFollower) -> Unit,
+    val agentStatusResolver: RaftAgentStatusResolver,
 )
 private class FollowersOverlayOwner {
     var value by mutableStateOf<FollowersOverlay?>(null)
@@ -145,7 +147,9 @@ internal fun ThreadFollowersOverlayHost(content: @Composable () -> Unit) {
             content()
             owner.value?.let { overlay ->
                 val anchor = if (overlay.state.open) overlay.anchor?.resolveCurrentPlacement() else null
-                if (anchor != null) FollowersPopover(overlay.state, anchor, overlay.dispatch, overlay.openAgentProfile)
+                if (anchor != null) {
+                    FollowersPopover(overlay.state, anchor, overlay.dispatch, overlay.openAgentProfile, overlay.agentStatusResolver)
+                }
                 overlay.state.notice?.let { notice ->
                     FollowerNoticeView(
                         notice = notice,
@@ -210,6 +214,7 @@ internal fun ThreadAgentFollowersHeader(
     state: ThreadAgentFollowersState,
     dispatch: (ThreadAgentFollowersIntent) -> Unit,
     onOpenAgentProfile: (MemberDetailIdentity) -> Unit = {},
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
 ) {
     val agents = state.roster?.agents.orEmpty()
     val owner = LocalFollowersOverlay.current
@@ -226,7 +231,7 @@ internal fun ThreadAgentFollowersHeader(
             latestOpenAgentProfile(threadFollowerProfileIdentity(agent))
         }
     }
-    SideEffect { owner?.value = FollowersOverlay(state, resolver, stableDispatch, openAgentProfile) }
+    SideEffect { owner?.value = FollowersOverlay(state, resolver, stableDispatch, openAgentProfile, agentStatusResolver) }
     DisposableEffect(owner) { onDispose { owner?.value = null } }
     if (agents.isEmpty() && !state.open && state.error != ThreadFollowersError.Load) return
     // Keep the live anchor while an empty popover is open, but never leave an empty trigger.
@@ -268,6 +273,7 @@ private fun FollowersPopover(
     anchor: RaftPopoverAnchor,
     dispatch: (ThreadAgentFollowersIntent) -> Unit,
     onOpenAgentProfile: (ThreadAgentFollower) -> Unit,
+    agentStatusResolver: RaftAgentStatusResolver,
 ) {
     val agents = state.roster?.agents.orEmpty()
     val theme = LocalRaftTheme.current
@@ -328,13 +334,20 @@ private fun FollowersPopover(
                         val removeLabel =
                             if (canRemove) stringResource(MR.strings.thread_followers_remove, agent.label)
                             else stringResource(MR.strings.thread_followers_peer_remove_unavailable, server)
-                        val indicator = followerStatusIndicator(agent.status)
+                        // Task #20: the same live source (and external-agent tiering) as the
+                        // message avatar; collected as state so the row follows it while open.
+                        val indicator = threadFollowerStatusIndicator(
+                            agent,
+                            rememberRaftAgentStatusIndicatorState(
+                                threadFollowerStatusResolver(agent, agentStatusResolver), agent.id,
+                            ),
+                        )
                         // raft-ui ListRow (web ChannelMemberRow with onRowClick): the whole row opens
                         // the profile and shows the pressed overlay; the remove X is its own ghost button.
                         RaftListRow(
                             title = agent.label,
                             onClick = { onOpenAgentProfile(agent) },
-                            subtitle = indicator?.localizedMemberStatusLabel() ?: agent.status,
+                            subtitle = indicator?.localizedMemberStatusLabel(),
                             leading = {
                                 RaftAvatarWithStatus(
                                     statusColor = indicator?.color,
@@ -400,8 +413,20 @@ private fun FollowerAvatar(agent: ThreadAgentFollower, compact: Boolean) {
         fallbackFill = raftAvatarFallbackFill(MemberKind.Agent))
 }
 
-/** The follower endpoint carries display status, not external-agent execution mode. */
-internal fun followerStatusIndicator(wireStatus: String): RaftAgentStatusIndicatorState? =
-    AgentStatus.fromWireValue(wireStatus)?.let {
-        raftAgentStatusIndicatorState(it, it.presence, external = false)
-    }
+/**
+ * Task #20: the followers endpoint's `status` is the agent's DB lifecycle column (active /
+ * inactive / stopped), not its live activity, and it is a one-shot snapshot — so it never
+ * drives the dot or the caption. A follower on this server reads the live member-status
+ * source the thread's message avatars read; a peer server's agent is not in this server's
+ * store and shows no status (web ThreadAgentFollowers shows none for any follower).
+ */
+internal fun threadFollowerStatusResolver(
+    agent: ThreadAgentFollower,
+    liveResolver: RaftAgentStatusResolver,
+): RaftAgentStatusResolver = if (agent.isCurrentServer) liveResolver else EmptyRaftAgentStatusResolver
+
+/** The follower row's indicator; null (no dot, no caption) until the live source has the agent. */
+internal fun threadFollowerStatusIndicator(
+    agent: ThreadAgentFollower,
+    live: RaftAgentStatusIndicatorState?,
+): RaftAgentStatusIndicatorState? = live.takeIf { agent.isCurrentServer }

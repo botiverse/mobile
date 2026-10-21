@@ -950,38 +950,35 @@ private fun RaftComputerAgentRow(
     agentStatusResolver: RaftAgentStatusResolver,
     onClick: () -> Unit,
 ) {
-    val live = rememberRaftAgentStatusIndicatorState(agentStatusResolver, agent.id)
+    val live = raftComputerAgentStatusIndicator(agent, rememberRaftAgentStatusIndicatorState(agentStatusResolver, agent.id))
     RaftListRow(
         title = agent.name,
         onClick = onClick,
         divider = divider,
         subtitle = raftComputerAgentIdentityLabel(agent.runtime, agent.model),
         leading = { RaftComputerAgentAvatar(agent) },
-        trailing = { RaftComputerAgentStatus(agent, live) },
+        trailing = if (live != null) { { RaftComputerAgentStatus(live) } } else null,
     )
 }
 
 /**
- * The live activity from the members store (web `StatusDot activity` + `formatActivityText`); until
- * that store has observed the agent, the agents-list `status` (active / inactive) alone.
+ * SSOT audit: the row's status is the live activity from the members store only, like every
+ * Home surface ([projectHomeAgentStatusIndicatorState]). Until that store has observed the
+ * agent the row is neutral (no dot, no text): the agents-list `status` is the lifecycle column
+ * (active / inactive), not liveness, and must not paint Online / Offline.
  */
+internal fun raftComputerAgentStatusIndicator(
+    agent: SettingsComputerAgentSnapshot,
+    live: RaftAgentStatusIndicatorState?,
+): RaftAgentStatusIndicatorState? =
+    projectHomeAgentStatusIndicatorState(showPresence = true, memberId = agent.id, canonicalState = live)
+
+/** The live activity (web `StatusDot activity` + `formatActivityText`). */
 @Composable
-private fun RaftComputerAgentStatus(agent: SettingsComputerAgentSnapshot, live: RaftAgentStatusIndicatorState?) {
+private fun RaftComputerAgentStatus(live: RaftAgentStatusIndicatorState) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-        val text: String
-        if (live != null) {
-            RaftStatusIndicator(color = live.color, size = 10.dp, pulsing = live.pulsing)
-            text = live.localizedMemberStatusLabel()
-        } else {
-            val active = agent.statusLabel?.trim()?.lowercase() == "active"
-            RaftStatusDot(presence = if (active) RaftPresence.Online else RaftPresence.Offline)
-            text =
-                if (active) {
-                    stringResource(MR.strings.member_row_status_online)
-                } else {
-                    stringResource(MR.strings.member_row_status_offline)
-                }
-        }
+        RaftStatusIndicator(color = live.color, size = 10.dp, pulsing = live.pulsing)
+        val text = live.localizedMemberStatusLabel()
         RaftText(
             text,
             modifier = Modifier.widthIn(max = 120.dp),

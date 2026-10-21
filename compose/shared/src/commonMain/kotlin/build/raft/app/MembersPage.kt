@@ -6488,6 +6488,7 @@ private fun MembersDetailContent(
                     } else if (pageTab == MembersAgentDetailTab.Activity) {
                         MembersAgentActivityTab(
                             detail = detail,
+                            agentStatusIndicatorState = agentStatusObservedState,
                             loadState = agentActivityLoadState,
                             overview = activityOverview,
                             onOpenComputer = onOpenComputer,
@@ -7265,82 +7266,6 @@ private fun MembersRaftAvatar(
             )
         }
     )
-}
-
-@Composable
-private fun MembersDetailSummary(
-    member: MemberProfile,
-    detail: AgentDetailSnapshot?,
-    deleted: Boolean,
-    agentStatusIndicatorState: RaftAgentStatusIndicatorState?,
-    memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
-    modifier: Modifier = Modifier
-) {
-    val summary = detail?.summary
-    val statusLabel =
-        if (deleted) {
-            stringResource(MR.strings.member_status_deleted)
-        } else {
-            membersLiveAgentStatusLabel(
-                indicatorState = agentStatusIndicatorState,
-                summaryStatus = summary?.status,
-                summaryActivity = summary?.activity,
-                summaryActivityDetail = summary?.activityDetail,
-                fallback = MembersUnknownAgentStatusLabel
-            )
-        }
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .raftCardSurface(fill = if (deleted) RaftColor.FillMuted else RaftColor.Card)
-            .padding(RaftAppSpacing.Md),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)
-    ) {
-        MembersAvatar(
-            member = member,
-            avatarSize = 58.dp,
-            statusDisplayState =
-                agentStatusIndicatorState?.toMembersAgentStatusDisplayState()
-                    ?: unknownMembersAgentStatusIndicatorState().toMembersAgentStatusDisplayState(),
-            statusIndicatorState = agentStatusIndicatorState,
-            memberAvatarResolver = memberAvatarResolver
-        )
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = member.displayName,
-                    style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-                MemberKindBadge(member.kind)
-            }
-            Text(
-                text = member.detailHandle,
-                style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 18.sp),
-                color = RaftColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = member.description?.takeIf { it.isNotBlank() } ?: member.detailRoleLabel,
-                style = RaftType.Body.withRaftFontWeight(FontWeight.Normal).copy(fontSize = 13.sp, lineHeight = 18.sp),
-                color = RaftColor.TextBlack,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = statusLabel,
-                style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                color = if (deleted) RaftColor.AccentRed else RaftColor.TextMutedGray,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
 }
 
 @Composable
@@ -9407,13 +9332,16 @@ private fun MembersAgentProfileHeader(
     onUploadAvatar: suspend () -> DataResult<MemberProfile>,
     onUnavailableAction: (String) -> Unit
 ) {
-    val statusLabel = membersLiveAgentStatusLabel(
+    val rawStatusLabel = membersLiveAgentStatusLabel(
         indicatorState = agentStatusIndicatorState,
         summaryStatus = summary?.status,
         summaryActivity = summary?.activity,
         summaryActivityDetail = null,
         fallback = MembersUnknownAgentStatusLabel
     )
+    // SSOT audit: the badge words localize like every other live-status caption.
+    val statusLabel =
+        agentStatusIndicatorState?.copy(label = rawStatusLabel)?.localizedMemberStatusLabel() ?: rawStatusLabel
     val scope = rememberCoroutineScope()
     val errorStrings = localizedErrorPresentationStrings()
     val avatarUploadCancelled = stringResource(MR.strings.member_error_avatar_upload_cancelled)
@@ -13465,6 +13393,8 @@ private fun MembersAgentAppLoginScopeChip(scope: String) {
 @Composable
 private fun MembersAgentActivityTab(
     detail: AgentDetailSnapshot?,
+    /** The detail page's observed live status (null = not observed: no dot). */
+    agentStatusIndicatorState: RaftAgentStatusIndicatorState?,
     loadState: MembersAgentActivityLoadState,
     overview: MembersAgentActivityOverviewBinding? = null,
     onOpenComputer: (() -> Unit)? = null,
@@ -13534,13 +13464,13 @@ private fun MembersAgentActivityTab(
                 binding = overview,
                 now = MembersAgentActivityNow(
                     label = membersLiveAgentStatusLabel(
-                        indicatorState = null,
+                        indicatorState = agentStatusIndicatorState,
                         summaryStatus = summary?.status,
                         summaryActivity = summary?.activity,
                         summaryActivityDetail = summary?.activityDetail,
                         fallback = MembersUnknownAgentStatusLabel
                     ),
-                    presence = membersAgentActivityNowPresence(summary?.activity)
+                    indicator = agentStatusIndicatorState
                 ),
                 hasRawActivity = detail?.activity?.isNotEmpty() == true,
                 hasComputer = !summary?.machineId.isNullOrBlank(),

@@ -14,7 +14,7 @@ import kotlin.test.assertEquals
 class ThreadFollowerRowActionsTest {
     private fun follower(id: String, serverId: String = "server-a", currentServer: Boolean = true, canRemove: Boolean = true) =
         ThreadAgentFollower(
-            id = id, name = id, status = "online", serverId = serverId,
+            id = id, name = id, status = "active", serverId = serverId,
             isCurrentServer = currentServer, canRemove = canRemove,
         )
 
