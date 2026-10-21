@@ -1781,9 +1781,19 @@ internal fun appShellBottomTabPerformanceRoute(tab: String): String =
 internal fun appShellBottomTabPerformancePhase(tab: String): String =
     "bottom_tab_${retainedAppShellSelectedTab(tab)}"
 
+/**
+ * Navigation rule (stdrc 2026-10-21): a page with Back at the top shows no bottom tab bar; a
+ * page without Back is a tab root and shows it. The roots (Home, Activity, Tasks, More = the
+ * Settings page) show the bar; an in-shell child page that carries Back hides it — Members
+ * pushed from More ([appShellMoreChildBackTarget]). Home secondary destinations and every other
+ * Back page (settings groups, Computers, threads, task details) are native pages pushed over the
+ * shell, so the bar stays mounted behind them. The wide nav rail never shows the bar (callers
+ * also gate on it).
+ */
 internal fun appShellBottomTabsVisible(
     selectedTab: String,
     selectedHomeDestination: String?,
+    navRailActive: Boolean = false,
 ): Boolean =
     when (retainedAppShellSelectedTab(selectedTab)) {
         // Home secondary destinations are native child pages. Keep the root tab bar mounted
@@ -1791,7 +1801,7 @@ internal fun appShellBottomTabsVisible(
         "home" ->
             selectedHomeDestination == null ||
                 retainedHomeSecondaryDestination(selectedHomeDestination) != null
-        else -> true
+        else -> appShellMoreChildBackTarget(selectedTab, navRailActive) == null
     }
 
 internal fun sharedHomeShouldStartOnActive(active: Boolean, sessionReady: Boolean, state: SharedHomeState): Boolean =
@@ -5975,6 +5985,7 @@ private fun RaftAppShellReadyContent(
         appShellBottomTabsVisible(
             selectedTab = selectedTab,
             selectedHomeDestination = selectedHomeDestination,
+            navRailActive = navRailActive,
         ) && !navRailActive
     val homeTabLabel = stringResource(MR.strings.tab_home)
     val tasksTabLabel = stringResource(MR.strings.tab_tasks)

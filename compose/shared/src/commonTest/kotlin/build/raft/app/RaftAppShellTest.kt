@@ -1731,48 +1731,34 @@ class RaftAppShellTest {
 
     @Test
     fun appShellBottomTabsStayMountedBehindNativeHomeChildPages() {
+        assertEquals(true, appShellBottomTabsVisible(selectedTab = "home", selectedHomeDestination = null))
+        assertEquals(true, appShellBottomTabsVisible(selectedTab = "home", selectedHomeDestination = "activity"))
+        assertEquals(false, appShellBottomTabsVisible(selectedTab = "home", selectedHomeDestination = "unknown"))
+    }
+
+    // stdrc 2026-10-21: a page with Back at the top shows no bottom tab bar; a tab root shows it.
+    @Test
+    fun appShellBottomTabsShowOnTabRootsAndHideOnInShellPagesWithBack() {
+        // Phone bar roots: no Back, bar shows (the home destination of another tab is ignored).
+        for (root in AppShellPhoneBottomTabKeys) {
+            assertEquals(true, appShellBottomTabsVisible(selectedTab = root, selectedHomeDestination = null), root)
+            assertEquals(true, appShellBottomTabsVisible(selectedTab = root, selectedHomeDestination = "activity"), root)
+        }
+        // Settings resolves to the More root on the phone; DMs is a legacy root.
+        assertEquals(true, appShellBottomTabsVisible(selectedTab = "settings", selectedHomeDestination = null))
+        assertEquals(true, appShellBottomTabsVisible(selectedTab = "dms", selectedHomeDestination = null))
+        // Members is pushed inside More with Back to More: no bar.
+        for (child in AppShellMoreChildTabKeys) {
+            assertEquals("more", appShellMoreChildBackTarget(child, navRailActive = false), child)
+            assertEquals(false, appShellBottomTabsVisible(selectedTab = child, selectedHomeDestination = null), child)
+        }
+        // On the wide rail Members is a rail root without Back (the rail, not the bar, navigates).
         assertEquals(
             true,
-            appShellBottomTabsVisible(
-                selectedTab = "home",
-                selectedHomeDestination = null,
-            )
+            appShellBottomTabsVisible(selectedTab = "members", selectedHomeDestination = null, navRailActive = true)
         )
-        assertEquals(
-            true,
-            appShellBottomTabsVisible(
-                selectedTab = "home",
-                selectedHomeDestination = "activity",
-            )
-        )
-        assertEquals(
-            false,
-            appShellBottomTabsVisible(
-                selectedTab = "home",
-                selectedHomeDestination = "unknown",
-            )
-        )
-        assertEquals(
-            true,
-            appShellBottomTabsVisible(
-                selectedTab = "settings",
-                selectedHomeDestination = null,
-            )
-        )
-        assertEquals(
-            true,
-            appShellBottomTabsVisible(
-                selectedTab = "settings",
-                selectedHomeDestination = null,
-            )
-        )
-        assertEquals(
-            true,
-            appShellBottomTabsVisible(
-                selectedTab = "tasks",
-                selectedHomeDestination = "activity",
-            )
-        )
+        // Unknown tab keys fall back to the Home root.
+        assertEquals(true, appShellBottomTabsVisible(selectedTab = "bogus", selectedHomeDestination = null))
     }
 
     @Test
