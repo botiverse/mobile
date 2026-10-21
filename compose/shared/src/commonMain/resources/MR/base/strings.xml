@@ -667,7 +667,12 @@
     <string name="thread_audio_playback_failed">Audio playback failed</string>
     <string name="thread_audio_attachment_fallback_name">Audio attachment</string>
     <string name="thread_audio_file_label">Audio file</string>
-    <string name="thread_action_back_to_bottom">Back to bottom</string>
+    <string name="thread_action_back_to_bottom">Back to Bottom</string>
+    <string name="thread_jump_new_messages_one">1 new message</string>
+    <string name="thread_jump_new_messages_many">%1$d new messages</string>
+    <string name="thread_jump_next_unread_thread">Next Unread Thread (%1$d)</string>
+    <string name="thread_jump_earliest_unread_thread">Earliest Unread Thread (%1$d)</string>
+    <string name="thread_jump_unread_thread_dismiss">Dismiss</string>
     <string name="thread_label_saved">Saved</string>
     <string name="thread_state_refreshing_original">Refreshing original message…</string>
     <string name="thread_error_refresh_original">Refresh failed: %1$s</string>

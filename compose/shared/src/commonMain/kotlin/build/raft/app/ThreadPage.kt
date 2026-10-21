@@ -1,6 +1,11 @@
 package build.raft.app
 
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.components.RaftMessageListJumpSide
+import build.raft.designsystem.components.RaftMessageListJumpPillGroup
+import build.raft.designsystem.components.RaftMessageListJumpPillDismiss
+import build.raft.designsystem.components.RaftMessageListJumpPill
+import build.raft.designsystem.components.RaftMessageListJumpControls
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
@@ -107,6 +112,7 @@ import build.raft.app.data.resolveThreadComposerDirectUpload
 import build.raft.app.data.ThreadComposerDirectUploadClientRequestIds
 import build.raft.app.data.newAttachmentUploadClientRequestId
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
+import build.raft.app.data.THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.RaftAgentsApiClient
 import build.raft.app.data.RaftAgentsNetworkApi
@@ -7784,6 +7790,39 @@ private fun SharedThreadRouteContentContent(
                     PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY
                 )
         }
+    // Jump pills (ThreadJumpPills.kt): the unread-thread pill follows the web, a channel only and
+    // gated by `thread_unread_badge_v0`; its threads and the conversation's unread come from Home.
+    val threadUnreadBadgeEnabled =
+        remember(featureFlagSnapshotRevision, currentServerId) {
+            currentServerId != null &&
+                sharedStores.serverFeatureFlags.isEnabled(
+                    ServerId(currentServerId),
+                    THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
+                )
+        }
+    val jumpHomeSnapshot =
+        (sharedHomeState.content as? SharedHomeContentState.Content)
+            ?.snapshot
+            ?.takeIf { snapshot -> snapshot.server.id.value == currentServerId }
+    val jumpChannelId = threadTimelineKey?.takeIf { it.isNotBlank() }
+    val jumpSurfaceKind = payload.surfaceKind
+    val jumpFollowedThreadUnread = jumpHomeSnapshot?.followedThreadUnread
+    val jumpConversationUnreadCount =
+        jumpHomeSnapshot?.let { snapshot ->
+            snapshot.channels.firstOrNull { it.channelId.value == jumpChannelId }?.unreadCount
+                ?: snapshot.directMessages.firstOrNull { it.channelId.value == jumpChannelId }?.unreadCount
+        } ?: 0
+    val jumpInputs =
+        remember(jumpChannelId, jumpSurfaceKind, threadUnreadBadgeEnabled, jumpFollowedThreadUnread, jumpConversationUnreadCount) {
+            ThreadJumpInputs(
+                channelId = jumpChannelId,
+                unreadThreadPillEnabled =
+                    threadUnreadBadgeEnabled && jumpChannelId != null && jumpSurfaceKind == RaftThreadSurfaceKind.Channel,
+                homeFollowedThreadUnread =
+                    jumpFollowedThreadUnread?.filterValues { thread -> thread.parentChannelId.value == jumpChannelId },
+                conversationUnreadCount = jumpConversationUnreadCount,
+            )
+        }
     val taskProjectionOwnerIdentity =
         remember(sharedStores.apiEnvironmentStore, currentSession?.user?.id) {
             currentSession?.user?.id
@@ -11202,6 +11241,7 @@ private fun SharedThreadRouteContentContent(
             longMessageCollapseEnabled = longMessageCollapseEnabled,
             longMessageCollapseConversationSetting = longMessageCollapseConversationSetting,
             singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+            jumpInputs = jumpInputs,
             newMessageMenuEnabled = newMessageMenuEnabled,
             currentServerSlug = currentServerSlug,
             translationStore = translationStore,
@@ -11328,6 +11368,16 @@ private fun SharedThreadRouteContentContent(
                             SharedThreadIntent.FocusMessage(
                                 messageId = sourceMessageId,
                                 switchToTab = RaftThreadTab.Chat.wireValue
+                            )
+                        )
+                    }
+                    action == ThreadJumpToUnreadThreadParentAction && !itemId.isNullOrBlank() -> {
+                        // The unread-thread pill: focus (scroll to and highlight) the parent
+                        // message through the route focus session, as a search hit does.
+                        threadViewModel.dispatch(
+                            SharedThreadIntent.FocusMessage(
+                                messageId = itemId,
+                                switchToTab = RaftThreadTab.Chat.wireValue,
                             )
                         )
                     }
@@ -14141,6 +14191,7 @@ private data class ThreadPageContentData(
     val longMessageCollapseEnabled: Boolean,
     val longMessageCollapseConversationSetting: RaftLongMessageCollapseConversationSetting?,
     val singleTapOpensThreadEnabled: Boolean,
+    val jumpInputs: ThreadJumpInputs,
     val newMessageMenuEnabled: Boolean,
     val currentServerSlug: String?,
     val translationStore: SharedMessageTranslationStore?,
@@ -14265,6 +14316,7 @@ fun ThreadPageContent(
     longMessageCollapseEnabled: Boolean = false,
     longMessageCollapseConversationSetting: RaftLongMessageCollapseConversationSetting? = null,
     singleTapOpensThreadEnabled: Boolean = false,
+    jumpInputs: ThreadJumpInputs = ThreadJumpInputs(),
     newMessageMenuEnabled: Boolean = false,
     currentServerSlug: String? = null,
     translationStore: SharedMessageTranslationStore? = null,
@@ -14348,6 +14400,7 @@ fun ThreadPageContent(
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
                 longMessageCollapseConversationSetting = longMessageCollapseConversationSetting,
                 singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                jumpInputs = jumpInputs,
                 newMessageMenuEnabled = newMessageMenuEnabled,
                 currentServerSlug = currentServerSlug,
                 translationStore = translationStore,
@@ -14475,6 +14528,7 @@ private fun ThreadPageContentContent(
     val longMessageCollapseEnabled = data.longMessageCollapseEnabled
     val longMessageCollapseConversationSetting = data.longMessageCollapseConversationSetting
     val singleTapOpensThreadEnabled = data.singleTapOpensThreadEnabled
+    val jumpInputs = data.jumpInputs
     val newMessageMenuEnabled = data.newMessageMenuEnabled
     val currentServerSlug = data.currentServerSlug
     val translationStore = data.translationStore
@@ -15228,6 +15282,7 @@ private fun ThreadPageContentContent(
                         contentExtrasVisible = contentExtrasVisible,
                         longMessageCollapseEnabled = longMessageCollapseEnabled,
                         singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                        jumpInputs = jumpInputs,
                         newMessageMenuEnabled = newMessageMenuEnabled,
                         inlineSearchVisible = inlineSearchVisible,
                         isMarkdownTagValid = isMarkdownTagValid,
@@ -16974,6 +17029,7 @@ private data class ThreadChatTabData(
     val contentExtrasVisible: Boolean,
     val longMessageCollapseEnabled: Boolean,
     val singleTapOpensThreadEnabled: Boolean,
+    val jumpInputs: ThreadJumpInputs,
     val newMessageMenuEnabled: Boolean,
     val inlineSearchVisible: Boolean,
     val markdownTagContextSignature: String,
@@ -17050,6 +17106,7 @@ fun ThreadChatTab(
     contentExtrasVisible: Boolean = true,
     longMessageCollapseEnabled: Boolean = false,
     singleTapOpensThreadEnabled: Boolean = false,
+    jumpInputs: ThreadJumpInputs = ThreadJumpInputs(),
     newMessageMenuEnabled: Boolean = false,
     inlineSearchVisible: Boolean = false,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
@@ -17116,6 +17173,7 @@ fun ThreadChatTab(
                 contentExtrasVisible = contentExtrasVisible,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
                 singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                jumpInputs = jumpInputs,
                 newMessageMenuEnabled = newMessageMenuEnabled,
                 inlineSearchVisible = inlineSearchVisible,
                 markdownTagContextSignature = markdownTagContextSignature,
@@ -17195,6 +17253,7 @@ private fun ThreadChatTabContent(
     val contentExtrasVisible = data.contentExtrasVisible
     val longMessageCollapseEnabled = data.longMessageCollapseEnabled
     val singleTapOpensThreadEnabled = data.singleTapOpensThreadEnabled
+    val jumpInputs = data.jumpInputs
     val newMessageMenuEnabled = data.newMessageMenuEnabled
     val inlineSearchVisible = data.inlineSearchVisible
     val isMarkdownTagValid = callbacks.isMarkdownTagValid
@@ -17372,6 +17431,7 @@ private fun ThreadChatTabContent(
                     contentExtrasVisible = contentExtrasVisible,
                     longMessageCollapseEnabled = longMessageCollapseEnabled,
                     singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                    jumpInputs = jumpInputs,
                     newMessageMenuEnabled = newMessageMenuEnabled,
                     inlineSearchVisible = inlineSearchVisible,
                     isMarkdownTagValid = isMarkdownTagValid,
@@ -17466,6 +17526,7 @@ private fun ThreadChatTabContent(
                     contentExtrasVisible = contentExtrasVisible,
                     longMessageCollapseEnabled = longMessageCollapseEnabled,
                     singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                    jumpInputs = jumpInputs,
                     newMessageMenuEnabled = newMessageMenuEnabled,
                     inlineSearchVisible = inlineSearchVisible,
                     isMarkdownTagValid = isMarkdownTagValid,
@@ -17554,6 +17615,7 @@ private fun ThreadChatTabContent(
                 contentExtrasVisible = contentExtrasVisible,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
                 singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                jumpInputs = jumpInputs,
                 newMessageMenuEnabled = newMessageMenuEnabled,
                 inlineSearchVisible = inlineSearchVisible,
                 isMarkdownTagValid = isMarkdownTagValid,
@@ -17852,6 +17914,7 @@ private data class ThreadMessagesListData(
     val contentExtrasVisible: Boolean,
     val longMessageCollapseEnabled: Boolean,
     val singleTapOpensThreadEnabled: Boolean,
+    val jumpInputs: ThreadJumpInputs,
     val newMessageMenuEnabled: Boolean,
     val inlineSearchVisible: Boolean,
     val markdownTagContextSignature: String,
@@ -17931,6 +17994,7 @@ fun ThreadMessagesList(
     contentExtrasVisible: Boolean = true,
     longMessageCollapseEnabled: Boolean = false,
     singleTapOpensThreadEnabled: Boolean = false,
+    jumpInputs: ThreadJumpInputs = ThreadJumpInputs(),
     newMessageMenuEnabled: Boolean = false,
     inlineSearchVisible: Boolean = false,
     isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultThreadMarkdownTagIsValid,
@@ -17998,6 +18062,7 @@ fun ThreadMessagesList(
                 contentExtrasVisible = contentExtrasVisible,
                 longMessageCollapseEnabled = longMessageCollapseEnabled,
                 singleTapOpensThreadEnabled = singleTapOpensThreadEnabled,
+                jumpInputs = jumpInputs,
                 newMessageMenuEnabled = newMessageMenuEnabled,
                 inlineSearchVisible = inlineSearchVisible,
                 markdownTagContextSignature = markdownTagContextSignature,
@@ -18078,6 +18143,7 @@ private fun ThreadMessagesListContent(
     val contentExtrasVisible = data.contentExtrasVisible
     val longMessageCollapseEnabled = data.longMessageCollapseEnabled
     val singleTapOpensThreadEnabled = data.singleTapOpensThreadEnabled
+    val jumpInputs = data.jumpInputs
     val newMessageMenuEnabled = data.newMessageMenuEnabled
     val inlineSearchVisible = data.inlineSearchVisible
     val isMarkdownTagValid = callbacks.isMarkdownTagValid
@@ -18692,6 +18758,47 @@ private fun ThreadMessagesListContent(
         )
     }
 
+    // Jump pills (ThreadJumpPills.kt). Page-local viewport state, like the back-to-bottom guard.
+    var newMessagesBelow by remember(threadInstanceKey) { mutableStateOf(ThreadNewMessagesBelow()) }
+    var unreadThreadJumpDismissedAtCount by remember(threadInstanceKey) { mutableStateOf<Int?>(null) }
+    var visibleMessageIndexes by remember(threadInstanceKey) { mutableStateOf<IntRange?>(null) }
+    val jumpParentCandidates =
+        remember(renderPayload.messages, replyMetadataByParentId) {
+            threadJumpParentCandidates(renderPayload.messages, replyMetadataByParentId)
+        }
+    val unreadThreadIds =
+        remember(jumpInputs, jumpParentCandidates) {
+            if (!jumpInputs.unreadThreadPillEnabled) {
+                emptySet()
+            } else {
+                threadConversationUnreadThreadIds(
+                    channelId = jumpInputs.channelId.orEmpty(),
+                    homeFollowedThreadUnread = jumpInputs.homeFollowedThreadUnread,
+                    loadedMessages = jumpParentCandidates,
+                )
+            }
+        }
+    // Web useMessagePlacement: which loaded messages are in view. Tracked only while the channel
+    // has unread threads; the range changes only when a row crosses the viewport edge.
+    val trackVisibleMessages = unreadThreadIds.isNotEmpty()
+    LaunchedEffect(threadInstanceKey, trackVisibleMessages, renderPayload.messages.size, renderPayload.firstMessageListItemIndex()) {
+        if (!trackVisibleMessages) {
+            if (visibleMessageIndexes != null) visibleMessageIndexes = null
+            return@LaunchedEffect
+        }
+        snapshotFlow {
+            val info = listState.layoutInfo
+            threadVisibleMessageIndexRange(
+                rows = info.visibleItemsInfo.map { item -> ThreadJumpVisibleRow(item.index, item.offset, item.size) },
+                viewportStart = info.viewportStartOffset,
+                viewportEnd = info.viewportEndOffset,
+                firstMessageListItemIndex = renderPayload.firstMessageListItemIndex(),
+                messageCount = renderPayload.messages.size,
+            )
+        }
+            .distinctUntilChanged()
+            .collect { range -> if (range != visibleMessageIndexes) visibleMessageIndexes = range }
+    }
     var backToBottomInteractionGuardActive by remember(threadInstanceKey) {
         mutableStateOf(false)
     }
@@ -21477,86 +21584,161 @@ private fun ThreadMessagesListContent(
                     listState.threadViewportGeometryDiagnostics(latestItemIndex)
             )
         }
-        if (
+        val backToBottomMounted =
             !shareSelectionCaptureActive &&
-            (!newerPageCycleActive || backToBottomInteractionGuardActive) &&
-            shouldKeepThreadBackToBottomOverlayMounted(
-                shouldShowButton = shouldShowBackToBottomButton,
-                interactionGuardActive = backToBottomInteractionGuardActive
+                (!newerPageCycleActive || backToBottomInteractionGuardActive) &&
+                shouldKeepThreadBackToBottomOverlayMounted(
+                    shouldShowButton = shouldShowBackToBottomButton,
+                    interactionGuardActive = backToBottomInteractionGuardActive
+                )
+        val onBackToBottomClick: () -> Unit = onClick@{
+            if (backToBottomInteractionGuardActive) return@onClick
+            // Keep both the visual button and its native dispatch
+            // capture sibling mounted until the scroll has settled.
+            // Removing them from inside the release callback lets the
+            // host finish the same pointer sequence on the message row
+            // underneath (Hands 71862159). Activity's "x updates"
+            // button follows the same lifetime rule: it clears its
+            // visibility state only after the scroll completes.
+            backToBottomInteractionGuardActive = true
+            // A focused Activity/message anchor owns the viewport for a
+            // short stabilization session. Back-to-bottom is an
+            // explicit replacement viewport intent, so retire that
+            // session before moving the list. Otherwise its next
+            // drift probe sees the focused row leave the viewport and
+            // immediately re-anchors above the bottom (Hands
+            // edecc106).
+            val retiredFocusedAnchorIdentity =
+                focusedAnchorIdentityForViewportReplacement(
+                    pendingIdentity = pendingFocusedMessageAnchorIdentityState.value,
+                    sessionIdentity = focusedAnchorSessionIdentity
+                )
+            if (retiredFocusedAnchorIdentity != null) {
+                scrollInterruptedFocusedMessageAnchorIdentity = retiredFocusedAnchorIdentity
+                activeFocusedMessageId = null
+            }
+            diagnosticsLogger(
+                "thread_back_to_bottom_click latestItemIndex=$latestItemIndex " +
+                    "retiredFocusedAnchor=${retiredFocusedAnchorIdentity != null} " +
+                    "canLoadMoreAfter=${renderPayload.canLoadMoreAfter}"
             )
-        ) {
-            ThreadBackToBottomButton(
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = RaftAppSpacing.Md),
-                onClick = onClick@{
-                    if (backToBottomInteractionGuardActive) return@onClick
-                    // Keep both the visual button and its native dispatch
-                    // capture sibling mounted until the scroll has settled.
-                    // Removing them from inside the release callback lets the
-                    // host finish the same pointer sequence on the message row
-                    // underneath (Hands 71862159). Activity's "x updates"
-                    // button follows the same lifetime rule: it clears its
-                    // visibility state only after the scroll completes.
-                    backToBottomInteractionGuardActive = true
-                    // A focused Activity/message anchor owns the viewport for a
-                    // short stabilization session. Back-to-bottom is an
-                    // explicit replacement viewport intent, so retire that
-                    // session before moving the list. Otherwise its next
-                    // drift probe sees the focused row leave the viewport and
-                    // immediately re-anchors above the bottom (Hands
-                    // edecc106).
-                    val retiredFocusedAnchorIdentity =
-                        focusedAnchorIdentityForViewportReplacement(
-                            pendingIdentity = pendingFocusedMessageAnchorIdentityState.value,
-                            sessionIdentity = focusedAnchorSessionIdentity
+            coroutineScope.launch {
+                try {
+                    val clickUserScrollGeneration = userScrollGeneration.value
+                    val canonicalTailLoaded = onJumpToLatest()
+                    if (
+                        !shouldCompleteThreadBackToBottom(
+                            canonicalTailLoaded = canonicalTailLoaded,
+                            clickUserScrollGeneration = clickUserScrollGeneration,
+                            currentUserScrollGeneration = userScrollGeneration.value
                         )
-                    if (retiredFocusedAnchorIdentity != null) {
-                        scrollInterruptedFocusedMessageAnchorIdentity = retiredFocusedAnchorIdentity
-                        activeFocusedMessageId = null
+                    ) {
+                        diagnosticsLogger(
+                            "thread_back_to_bottom_settlement result=yielded " +
+                                "canonicalTailLoaded=$canonicalTailLoaded " +
+                                "clickUserScrollGeneration=$clickUserScrollGeneration " +
+                                "currentUserScrollGeneration=${userScrollGeneration.value}"
+                        )
+                        return@launch
                     }
-                    diagnosticsLogger(
-                        "thread_back_to_bottom_click latestItemIndex=$latestItemIndex " +
-                            "retiredFocusedAnchor=${retiredFocusedAnchorIdentity != null} " +
-                            "canLoadMoreAfter=${renderPayload.canLoadMoreAfter}"
+                    allowBottomAutoAnchor = true
+                    dispatchViewportEvent(
+                        LazyViewportEvent.FollowLatest(canOverrideUserDragging = true)
                     )
-                    coroutineScope.launch {
-                        try {
-                            val clickUserScrollGeneration = userScrollGeneration.value
-                            val canonicalTailLoaded = onJumpToLatest()
-                            if (
-                                !shouldCompleteThreadBackToBottom(
-                                    canonicalTailLoaded = canonicalTailLoaded,
-                                    clickUserScrollGeneration = clickUserScrollGeneration,
-                                    currentUserScrollGeneration = userScrollGeneration.value
-                                )
-                            ) {
-                                diagnosticsLogger(
-                                    "thread_back_to_bottom_settlement result=yielded " +
-                                        "canonicalTailLoaded=$canonicalTailLoaded " +
-                                        "clickUserScrollGeneration=$clickUserScrollGeneration " +
-                                        "currentUserScrollGeneration=${userScrollGeneration.value}"
-                                )
-                                return@launch
-                            }
-                            allowBottomAutoAnchor = true
-                            dispatchViewportEvent(
-                                LazyViewportEvent.FollowLatest(canOverrideUserDragging = true)
-                            )
-                            val commandId = viewportControllerState.pendingCommand?.id
-                            if (commandId != null) {
-                                awaitViewportCommandSettlement(commandId)
-                            }
-                        } finally {
-                            // A new user drag can cancel the scroll mutation.
-                            // Always release the guard, but only after Android's
-                            // native release frame can no longer be retargeted.
-                            withContext(NonCancellable) {
-                                delay(ThreadBackToBottomReleaseGuardMillis)
-                                backToBottomInteractionGuardActive = false
-                            }
-                        }
+                    val commandId = viewportControllerState.pendingCommand?.id
+                    if (commandId != null) {
+                        awaitViewportCommandSettlement(commandId)
+                    }
+                } finally {
+                    // A new user drag can cancel the scroll mutation.
+                    // Always release the guard, but only after Android's
+                    // native release frame can no longer be retargeted.
+                    withContext(NonCancellable) {
+                        delay(ThreadBackToBottomReleaseGuardMillis)
+                        backToBottomInteractionGuardActive = false
                     }
                 }
+            }
+        }
+        // Web ChatPanel `newMessageCount`: arrivals below while the Back to Bottom pill shows.
+        val newMessagesTailSignature = renderPayload.messages.size to renderPayload.messages.lastOrNull()?.id
+        LaunchedEffect(threadInstanceKey, newMessagesTailSignature, shouldShowBackToBottomButton, renderPayload.canLoadMoreAfter) {
+            val next =
+                reduceThreadNewMessagesBelow(
+                    state = newMessagesBelow,
+                    messages =
+                        renderPayload.messages.map { message ->
+                            ThreadJumpArrival(messageId = message.id, countable = !message.hasLocalSendState())
+                        },
+                    awayFromBottom = shouldShowBackToBottomButton,
+                    canLoadMoreAfter = renderPayload.canLoadMoreAfter,
+                )
+            if (next != newMessagesBelow) newMessagesBelow = next
+        }
+        val bottomJumpCount =
+            threadBottomJumpCount(
+                canLoadMoreAfter = renderPayload.canLoadMoreAfter,
+                conversationUnreadCount = jumpInputs.conversationUnreadCount,
+                newMessagesBelow = newMessagesBelow.count,
             )
+        val unreadThreadJumpActive =
+            jumpInputs.unreadThreadPillEnabled &&
+                routeActive &&
+                hostForeground &&
+                !inlineSearchVisible &&
+                !shareSelectionCaptureActive
+        val unreadThreadJump =
+            if (unreadThreadJumpActive) {
+                projectThreadUnreadThreadJump(
+                    unreadThreadIds = unreadThreadIds,
+                    messages = jumpParentCandidates,
+                    visibleMessageIndexes = visibleMessageIndexes,
+                    dismissedAtCount = unreadThreadJumpDismissedAtCount,
+                )
+            } else {
+                null
+            }
+        val unreadThreadPill: @Composable (ThreadUnreadThreadJump) -> Unit = { jump ->
+            ThreadUnreadThreadJumpPill(
+                jump = jump,
+                onJump = {
+                    diagnosticsLogger(
+                        "thread_unread_thread_jump_click direction=${jump.direction} count=${jump.count} " +
+                            "target=${jump.targetMessageId.take(8)}"
+                    )
+                    onThreadEvent(ThreadJumpToUnreadThreadParentAction, jump.targetMessageId, null, null)
+                },
+                onDismiss = { unreadThreadJumpDismissedAtCount = jump.count },
+            )
+        }
+        val nextUnreadThread = unreadThreadJump?.takeIf { it.direction == ThreadUnreadThreadJumpDirection.Next }
+        if (backToBottomMounted || nextUnreadThread != null) {
+            // Kuikly-era rule kept: the native dispatch capture sits on the pills' ancestor path so
+            // a tap on a pill never also starts a gesture on the message row underneath.
+            RaftMessageListJumpControls(
+                modifier = Modifier.align(Alignment.BottomCenter).zIndex(ThreadJumpControlsZIndex).raftNativeDispatchCapture(),
+            ) {
+                if (backToBottomMounted) {
+                    RaftMessageListJumpPill(
+                        text =
+                            when {
+                                bottomJumpCount <= 0 -> stringResource(MR.strings.thread_action_back_to_bottom)
+                                bottomJumpCount == 1 -> stringResource(MR.strings.thread_jump_new_messages_one)
+                                else -> stringResource(MR.strings.thread_jump_new_messages_many, bottomJumpCount)
+                            },
+                        onClick = onBackToBottomClick,
+                    )
+                }
+                if (nextUnreadThread != null) unreadThreadPill(nextUnreadThread)
+            }
+        }
+        unreadThreadJump?.takeIf { it.direction == ThreadUnreadThreadJumpDirection.Earliest }?.let { earliest ->
+            RaftMessageListJumpControls(
+                modifier = Modifier.align(Alignment.TopCenter).zIndex(ThreadJumpControlsZIndex).raftNativeDispatchCapture(),
+                side = RaftMessageListJumpSide.Top,
+            ) {
+                unreadThreadPill(earliest)
+            }
         }
         reactionDetails?.let { details ->
             ThreadReactionDetailsTooltip(
@@ -23712,34 +23894,36 @@ internal fun threadRenderedBottomScrollOffset(
     )
 }
 
+/** The action the unread-thread pill sends: focus that parent message. */
+internal const val ThreadJumpToUnreadThreadParentAction = "focusUnreadThreadParent"
+
+/** Above the list rows and the inline search bar's neighbours, as the old floating pills. */
+private const val ThreadJumpControlsZIndex = 5f
+
+/** raft-ui MessageListJumpPillGroup: the unread-thread pill with its dismiss. */
 @Composable
-private fun ThreadBackToBottomButton(
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
+private fun ThreadUnreadThreadJumpPill(
+    jump: ThreadUnreadThreadJump,
+    onJump: () -> Unit,
+    onDismiss: () -> Unit,
 ) {
-    // Kuikly latches native-dispatch capture from the pointer's ACTION_DOWN
-    // hit path. A same-bounds sibling behind this button is not part of that
-    // path, so it cannot reliably prevent the native host from also starting
-    // a gesture on the message row underneath. Put the capture marker on the
-    // interactive button's own ancestor path; Compose still delivers the
-    // gesture to RaftAnchorButton, while Android's native dispatch stays
-    // captured for the complete DOWN..UP sequence.
-    RaftBrutalActionButton(
-        label = stringResource(MR.strings.thread_action_back_to_bottom),
-        onClick = onClick,
-        modifier = modifier.raftNativeDispatchCapture(),
-        backgroundColor = RaftColor.SurfaceWhite,
-        minWidth = 0.dp,
-        minHeight = ThreadFloatingPillButtonMinHeight,
-        textStyle = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack),
-        trailingContent = {
-            RaftLucideIcon(
-                "chevron-down",
-                modifier = Modifier.size(14.dp),
-                color = ThreadLegacyBlackIconArgb
-            )
-        }
-    )
+    RaftMessageListJumpPillGroup {
+        RaftMessageListJumpPill(
+            text =
+                when (jump.direction) {
+                    ThreadUnreadThreadJumpDirection.Next ->
+                        stringResource(MR.strings.thread_jump_next_unread_thread, jump.count)
+                    ThreadUnreadThreadJumpDirection.Earliest ->
+                        stringResource(MR.strings.thread_jump_earliest_unread_thread, jump.count)
+                },
+            onClick = onJump,
+            icon = if (jump.direction == ThreadUnreadThreadJumpDirection.Earliest) RaftGlyph.ArrowUp else RaftGlyph.ArrowDown,
+        )
+        RaftMessageListJumpPillDismiss(
+            label = stringResource(MR.strings.thread_jump_unread_thread_dismiss),
+            onClick = onDismiss,
+        )
+    }
 }
 
 internal fun threadVisibleReadTailMessageIndex(
@@ -23758,11 +23942,6 @@ internal fun threadVisibleReadTailMessageIndex(
 
 private const val ThreadBackToBottomReleaseGuardMillis = 64L
 
-/**
- * Compact floating thread pills (back-to-bottom).
- * artin 2026-09-02: nothing in this family needs the 42.dp action-button target.
- */
-internal val ThreadFloatingPillButtonMinHeight = 28.dp
 internal const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 12
