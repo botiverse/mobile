@@ -364,7 +364,10 @@ internal class CanonicalMessageV2ProductionCanary(
 
     private val roomLeaveLock = SynchronizedObject()
 
-    /** Guarded by [roomLeaveLock]: how many times the socket left each (server, room). */
+    /**
+     * Guarded by [roomLeaveLock]: how many times the socket left each (server, room). Never bounded or evicted: a
+     * missing entry reads as "never left", which would let a stale join ack confirm a thread window.
+     */
     private val roomLeaveCountByRoom = mutableMapOf<Pair<String, String>, Long>()
 
     init {
@@ -795,8 +798,17 @@ internal class CanonicalMessageV2ProductionCanary(
         )
     }
 
-    /** Holding [stateMutex]: what [noteChannelJoinAck] says about [channelId] on the socket of [epoch]. */
-    private fun threadJoinLocked(partition: DurablePartitionKey, channelId: SyncScopeId, epoch: Long?): CanonicalMessageV2ThreadJoin {
+    /**
+     * Holding [stateMutex]: what [noteChannelJoinAck] says about [channelId] on the socket of [epoch].
+     * [threadRoomLeaveCount] is the caller's single read of the room's leave count (the one it also records as the
+     * baseline's), so a leave noted concurrently cannot fall between the verdict and the recorded count.
+     */
+    private fun threadJoinLocked(
+        partition: DurablePartitionKey,
+        channelId: SyncScopeId,
+        epoch: Long?,
+        threadRoomLeaveCount: Long,
+    ): CanonicalMessageV2ThreadJoin {
         if (epoch == null) return CanonicalMessageV2ThreadJoin.Unconfirmed
         val signal = channelJoinSignalByChannel[partition to channelId]
         return when {
@@ -804,7 +816,7 @@ internal class CanonicalMessageV2ProductionCanary(
             !signal.joined -> CanonicalMessageV2ThreadJoin.Denied
             // Any leave of the room in this process, on any epoch, before or after the ack: never trusted (see
             // the class doc: a leave is not reliably tied to an epoch, nor an ack to the join it answers).
-            roomLeaveCount(partition.serverId, channelId) != 0L -> CanonicalMessageV2ThreadJoin.Unconfirmed
+            threadRoomLeaveCount != 0L -> CanonicalMessageV2ThreadJoin.Unconfirmed
             else -> CanonicalMessageV2ThreadJoin.Joined
         }
     }
@@ -818,7 +830,14 @@ internal class CanonicalMessageV2ProductionCanary(
 
     /** Task #14a: a reply thread's window also depends on its parent channel's room (replies may come through it). */
     private fun roomLeaveCount(serverId: String, roomId: String, replyParentScopeId: SyncScopeId?): Long =
-        roomLeaveCount(serverId, roomId) + (replyParentScopeId?.let { roomLeaveCount(serverId, it) } ?: 0L)
+        roomLeaveCounts(serverId, roomId, replyParentScopeId).let { (room, parent) -> room + parent }
+
+    /** The room's and its reply parent's leave counts, read together under one [roomLeaveLock] hold. */
+    private fun roomLeaveCounts(serverId: String, roomId: String, replyParentScopeId: SyncScopeId?): Pair<Long, Long> =
+        synchronized(roomLeaveLock) {
+            (roomLeaveCountByRoom[serverId to roomId] ?: 0L) to
+                (replyParentScopeId?.let { roomLeaveCountByRoom[serverId to it] } ?: 0L)
+        }
 
     /**
      * Task #168 hole A: an enter snapshot of [scopeId] is about to be requested. MUST be called before the
@@ -887,13 +906,20 @@ internal class CanonicalMessageV2ProductionCanary(
         val key = partition to scopeId
         if (enterBaselineByChannel[key]?.closed == false) return null
         val epoch = currentTransportEpochByPartition[partition]
+        // One read: the join verdict and the recorded count must see the same leaves (a leave between two reads
+        // would pass the verdict yet match the recorded count at commit, leaving a continuous window outside the room).
+        val (roomLeaves, parentLeaves) = roomLeaveCounts(partition.serverId, scopeId, replyParentScopeId)
         val threadJoin =
-            if (replyParentScopeId != null) threadJoinLocked(partition, scopeId, epoch) else CanonicalMessageV2ThreadJoin.Unconfirmed
+            if (replyParentScopeId != null) {
+                threadJoinLocked(partition, scopeId, epoch, roomLeaves)
+            } else {
+                CanonicalMessageV2ThreadJoin.Unconfirmed
+            }
         val baseline = CanonicalMessageV2EnterBaseline(
             partition = partition,
             scopeId = scopeId,
             epochAtRequest = epoch,
-            roomLeaveCountAtRequest = roomLeaveCount(partition.serverId, scopeId, replyParentScopeId),
+            roomLeaveCountAtRequest = roomLeaves + parentLeaves,
             nonMemberAtRequest = nonMember,
             roomsJoinedAtRequest = roomsJoinedLocked(partition, epoch),
             source = source,
