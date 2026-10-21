@@ -1297,8 +1297,13 @@ private fun SharedTasksBoardColumn(
             Modifier
                 .width(320.dp)
                 .fillMaxHeight()
+                .clip(RoundedCornerShape(RaftAppRadius.Container))
                 .background(RaftColor.SurfaceWhite)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.2f))
+                .border(
+                    RaftAppStroke.Default,
+                    RaftColor.BorderBlack.copy(alpha = 0.2f),
+                    RoundedCornerShape(RaftAppRadius.Container),
+                )
                 .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -1674,8 +1679,8 @@ private fun SharedTasksNotice(
             modifier
                 .fillMaxWidth()
                 // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1064
-                .background(RaftColor.AccentRed.copy(alpha = 0.12f))
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
+                .background(RaftColor.AccentRed.copy(alpha = 0.12f), RoundedCornerShape(RaftAppRadius.Container))
+                .border(RaftAppStroke.Default, RaftColor.BorderBlack, RoundedCornerShape(RaftAppRadius.Container))
                 .padding(RaftAppSpacing.Sm),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
@@ -1888,8 +1893,8 @@ private fun TasksCreateDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 36.dp)
-                        .background(RaftColor.AppBgLightBlue.copy(alpha = 0.6f))
-                        .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                        .background(RaftColor.AppBgLightBlue.copy(alpha = 0.6f), RoundedCornerShape(RaftAppRadius.Control))
+                        .border(RaftAppStroke.Thin, RaftColor.BorderBlack, RoundedCornerShape(RaftAppRadius.Control))
                         .padding(horizontal = RaftAppSpacing.Sm, vertical = 6.dp)
                 )
             }
