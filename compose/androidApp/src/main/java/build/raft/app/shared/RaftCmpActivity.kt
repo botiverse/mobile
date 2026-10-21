@@ -2800,7 +2800,13 @@ internal open class RaftCmpActivity :
                         if (animation.typeMask and WindowInsets.Type.ime() != 0) {
                             runningImeAnimations += animation
                             state.imeAnimationRunning = true
-                            expireAfter(animation.durationMillis.coerceAtLeast(0L) + IME_ANIMATION_END_GRACE_MILLIS)
+                            if (animation.durationMillis >= 0L) {
+                                expireAfter(animation.durationMillis + IME_ANIMATION_END_GRACE_MILLIS)
+                            } else {
+                                // User-driven (e.g. predictive back): duration is -1 and only
+                                // onEnd tells us when the finger lets go; drop the start timer.
+                                imeAnimationGeneration++
+                            }
                         }
                         return bounds
                     }
