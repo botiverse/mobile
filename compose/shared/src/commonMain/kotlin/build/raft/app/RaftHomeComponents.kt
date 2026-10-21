@@ -286,9 +286,12 @@ internal data class HomeConversationBadgeInput(
 internal fun homeConversationMutedIndicatorIcon(muted: Boolean): RaftLucideIconName? =
     if (muted) RaftLucideIconName.BellOff else null
 
-/** The Home list's Search and Activity entry rows show only where the phone bottom bar does not. */
-internal fun homeSidebarShowsSearchAndActivityRows(searchAndActivityInBottomBar: Boolean): Boolean =
-    !searchAndActivityInBottomBar
+/**
+ * The Home list's Search and Activity entry rows show only where the shell's own navigation (the
+ * phone bottom bar or the wide rail, [appShellNavCarriesSearchAndActivity]) does not carry them.
+ */
+internal fun homeSidebarShowsSearchAndActivityRows(searchAndActivityOnShellNav: Boolean): Boolean =
+    !searchAndActivityOnShellNav
 
 /** Activity row aside: the pink unread count, or the quiet total when nothing is unread. */
 internal data class HomeActivitySidebarProjection(
@@ -1481,10 +1484,11 @@ internal data class RaftStructuralHomeShellData(
     val selectedTabKey: String = "home",
     val showBottomBar: Boolean = true,
     /**
-     * The phone bottom bar carries Search (action) and Activity (tab), so the list drops its
-     * Search and Activity entry rows (Jasper 2026-10-20). False on wide layouts without the bar.
+     * The shell's navigation carries Search and Activity (the phone bar's tabs, Jasper
+     * 2026-10-20; the wide rail's entries, nav spec §5), so the list drops its Search and
+     * Activity entry rows and keeps only Saved. False where neither is on screen.
      */
-    val searchAndActivityInBottomBar: Boolean = true,
+    val searchAndActivityOnShellNav: Boolean = true,
     val externalFocusLossDismissEpoch: Int = 0,
     val outerPadding: Dp = RaftAppSpacing.Md,
     val labels: RaftHomeShellLabels = RaftHomeShellLabels(),
@@ -1604,7 +1608,7 @@ internal fun RaftStructuralHomeShell(
     showLoadingSkeletons: Boolean = false,
     selectedTabKey: String = "home",
     showBottomBar: Boolean = true,
-    searchAndActivityInBottomBar: Boolean = showBottomBar,
+    searchAndActivityOnShellNav: Boolean = showBottomBar,
     externalFocusLossDismissEpoch: Int = 0,
     bottomContentPadding: Dp = if (showBottomBar) RaftAppSize.BottomBarHeight + RaftAppSpacing.Md else RaftAppSpacing.Lg,
     outerPadding: Dp = RaftAppSpacing.Md,
@@ -1713,7 +1717,7 @@ internal fun RaftStructuralHomeShell(
                 showLoadingSkeletons = showLoadingSkeletons,
                 selectedTabKey = selectedTabKey,
                 showBottomBar = showBottomBar,
-                searchAndActivityInBottomBar = searchAndActivityInBottomBar,
+                searchAndActivityOnShellNav = searchAndActivityOnShellNav,
                 externalFocusLossDismissEpoch = externalFocusLossDismissEpoch,
                 outerPadding = outerPadding,
                 labels = labels,
@@ -1826,7 +1830,7 @@ private fun RaftStructuralHomeShellContent(
     val showLoadingSkeletons = data.showLoadingSkeletons
     val selectedTabKey = data.selectedTabKey
     val showBottomBar = data.showBottomBar
-    val searchAndActivityInBottomBar = data.searchAndActivityInBottomBar
+    val searchAndActivityOnShellNav = data.searchAndActivityOnShellNav
     val externalFocusLossDismissEpoch = data.externalFocusLossDismissEpoch
     val outerPadding = data.outerPadding
     val labels = data.labels
@@ -2423,9 +2427,9 @@ private fun RaftStructuralHomeShellContent(
                                 // header; the first row's own 1dp margin puts its box 5dp down.
                                 item { Spacer(Modifier.height(HomeListTopPadding)) }
                                 // Jasper 2026-10-20: with the phone bar on screen, Search and Activity
-                                // live there (Search action, Activity tab); only Saved stays here. Wide
-                                // layouts without the bar keep both rows.
-                                if (homeSidebarShowsSearchAndActivityRows(searchAndActivityInBottomBar)) {
+                                // live there (Search and Activity tabs); only Saved stays here. The wide
+                                // rail carries both too (nav spec §5), so it drops them as well.
+                                if (homeSidebarShowsSearchAndActivityRows(searchAndActivityOnShellNav)) {
                                     item { HomeSidebarEntryRow(RaftLucideIconName.Search, labels.search, selected = sidebarSelection.topAction == RaftHomeSidebarTopSelection.Search, modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClickWithDismiss else null) }
                                     // artin 2026-10-20: without the phone bar the Home 动态 row is the Activity entry (muscle
                                     // memory); it opens that same kept-alive tab via openHomeSecondaryDestination(Activity).

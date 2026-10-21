@@ -156,6 +156,18 @@ internal fun <T> List<T>.orderedLikePhoneBar(key: (T) -> String): List<T> =
         AppShellRailOrder.indexOf(key(item)).let { if (it < 0) AppShellRailOrder.size else it }
     }
 
+/**
+ * Search and Activity are already on the shell's own navigation: the phone bar's tabs, or the
+ * wide rail's entries (nav spec 2026-10-21 §5). The Home list then drops its Search and Activity
+ * rows so the two-pane layout does not list them twice; Saved is on neither and keeps its row.
+ */
+internal fun appShellNavCarriesSearchAndActivity(navRailActive: Boolean): Boolean =
+    if (navRailActive) {
+        (AppShellRailTabKeys + AppShellRailSearchKey).containsAll(listOf("activity", AppShellRailSearchKey))
+    } else {
+        AppShellPhoneBottomBarKeys.containsAll(listOf("activity", AppShellSearchTabKey))
+    }
+
 /** Where a conversation search's "Search all" shows its query in the app shell. */
 internal enum class AppShellSearchHandoffTarget { SearchTab, RailInlineSearch }
 

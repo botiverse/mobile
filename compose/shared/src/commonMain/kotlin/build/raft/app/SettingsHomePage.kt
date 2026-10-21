@@ -7236,8 +7236,9 @@ private fun RaftAppShellReadyContent(
                                 prefersChineseCommunity = prefersChineseCommunity,
                                 serverDrawerEnabled = serverDrawerEnabled,
                                 homeServerAvatarEnabled = homeServerAvatarEnabled,
-                                // The phone bar (not the wide rail) carries Search and Activity.
-                                searchAndActivityInBottomBar = !navRailActive,
+                                // The phone bar or the wide rail carries Search and Activity (nav
+                                // spec §5): the list keeps only Saved, never a second copy.
+                                searchAndActivityOnShellNav = appShellNavCarriesSearchAndActivity(navRailActive),
                                 threadUnreadBadgeEnabled = homeThreadUnreadBadgeEnabled,
                                 sidebarMarkAllReadEnabled = homeSidebarMarkAllReadEnabled,
                                 onIntent = { intent ->
@@ -7660,6 +7661,18 @@ private fun RaftAppShellReadyContent(
                     // tab host's middle area with its own list pane; the shared workspace
                     // detail slot to its right keeps working via adaptiveSplitListDetail.
                     // Narrow or flag-off never reaches here — the push path handles those.
+                    // The inline Search / Saved lists mark the row whose conversation is open in
+                    // the detail beside them, like Home and Activity (one selection per list: their
+                    // row keys are not shared).
+                    val railInlineSearchSelection =
+                        remember { RaftInlineListSelection { adaptiveWorkspaceStore.snapshot().workspace?.selection?.identity?.key } }
+                    val railInlineSavedSelection =
+                        remember { RaftInlineListSelection { adaptiveWorkspaceStore.snapshot().workspace?.selection?.identity?.key } }
+                    val railInlineOpenDetailKey = adaptiveWorkspaceState?.selection?.identity?.key
+                    SideEffect {
+                        railInlineSearchSelection.openDetailKey = railInlineOpenDetailKey
+                        railInlineSavedSelection.openDetailKey = railInlineOpenDetailKey
+                    }
                     val railInlineDestination =
                         when (railInlineSecondaryDestination) {
                             AppShellRailSearchKey -> HomeDestinationSearch
@@ -7675,6 +7688,12 @@ private fun RaftAppShellReadyContent(
                                 adaptivePane = shellScope.adaptivePane,
                                 searchQueryRequest = searchTabQueryRequest.takeIf { railInlineDestination == HomeDestinationSearch },
                                 onSearchQueryApplied = { searchTabQueryRequest = null },
+                                inlineListSelection =
+                                    if (railInlineDestination == HomeDestinationSearch) {
+                                        railInlineSearchSelection
+                                    } else {
+                                        railInlineSavedSelection
+                                    },
                                 inlineOpenRequest = { request, source ->
                                     openHomeMessageRequest(request, source)
                                 },
@@ -19875,7 +19894,7 @@ private fun SharedHomeScreen(
     serverDrawerEnabled: Boolean = false,
     homeServerAvatarEnabled: Boolean = false,
     /** The phone bottom bar is on screen: the list drops its Search / Activity rows. */
-    searchAndActivityInBottomBar: Boolean = false,
+    searchAndActivityOnShellNav: Boolean = false,
     /** Server flag `thread_unread_badge_v0`: channel rows show followed-thread unread (web parity). */
     threadUnreadBadgeEnabled: Boolean = false,
     /** Server flag `sidebar_mark_all_read_v0`: with the thread badge on, rows offer "Mark All as Read". */
@@ -19980,7 +19999,7 @@ private fun SharedHomeScreen(
             if (session != null) {
                 SharedHomeSessionShell(
                     session = session,
-                    searchAndActivityInBottomBar = searchAndActivityInBottomBar,
+                    searchAndActivityOnShellNav = searchAndActivityOnShellNav,
                     scrollToTopRequest = scrollToTopRequest,
                     serverSwitcherExpanded = serverSwitcherExpanded,
                     serverDrawerEnabled = serverDrawerEnabled,
@@ -20019,7 +20038,7 @@ private fun SharedHomeScreen(
         is SharedHomeContentState.Empty ->
             SharedHomeSessionShell(
                 session = current.session,
-                searchAndActivityInBottomBar = searchAndActivityInBottomBar,
+                searchAndActivityOnShellNav = searchAndActivityOnShellNav,
                 scrollToTopRequest = scrollToTopRequest,
                 serverSwitcherExpanded = serverSwitcherExpanded,
                 serverDrawerEnabled = serverDrawerEnabled,
@@ -20054,7 +20073,7 @@ private fun SharedHomeScreen(
             if (current.session != null) {
                 SharedHomeSessionShell(
                     session = current.session,
-                    searchAndActivityInBottomBar = searchAndActivityInBottomBar,
+                    searchAndActivityOnShellNav = searchAndActivityOnShellNav,
                     scrollToTopRequest = scrollToTopRequest,
                     serverSwitcherExpanded = serverSwitcherExpanded,
                     serverDrawerEnabled = serverDrawerEnabled,
@@ -20297,7 +20316,7 @@ private fun SharedHomeScreen(
                 hideEmptySections = hideEmptySections,
                 canArchiveChannels = snapshot.server.permissions.canManageSettings,
                 showBottomBar = false,
-                searchAndActivityInBottomBar = searchAndActivityInBottomBar,
+                searchAndActivityOnShellNav = searchAndActivityOnShellNav,
                 externalFocusLossDismissEpoch = externalFocusLossDismissEpoch,
                 bottomContentPadding = bottomContentPadding,
                 outerPadding = 0.dp,
@@ -21069,6 +21088,9 @@ internal fun SharedHomeSearchPanel(
     visibleTick: Int = 0,
     // The opened-row mark, hoisted like [listState] where the page content is rebuilt on return.
     returnHighlightState: HomeSearchReturnHighlight? = null,
+    // The rail's inline Search (two-pane): the row whose conversation is open beside the list is
+    // selected while it stays open. Null on the phone, where a result covers the list.
+    inlineListSelection: RaftInlineListSelection? = null,
     // The phone Search tab root: the field sits in the tab head (the 56dp frame bar).
     tabHead: Boolean = false,
     // A conversation-scoped pushed search: shows the "In #channel" scope and a "Search all"
@@ -21423,7 +21445,11 @@ internal fun SharedHomeSearchPanel(
                                 key = { index -> "frequent:${frequentEntityResults[index].key}" },
                             ) { index ->
                                 val frequentKey = "frequent:${frequentEntityResults[index].key}"
-                                Box(Modifier.homeSearchReturnHighlight(returnHighlight, frequentKey)) {
+                                Box(
+                                    Modifier
+                                        .raftInlineListSelected(inlineListSelection?.selectedRowKey == frequentKey)
+                                        .homeSearchReturnHighlight(returnHighlight, frequentKey)
+                                ) {
                                 SharedHomeSearchEntityRow(
                                     result = frequentEntityResults[index],
                                     query = "",
@@ -21435,7 +21461,7 @@ internal fun SharedHomeSearchPanel(
                                     onOpen = {
                                         searchInputFocus.release()
                                         returnHighlight.markOpened(frequentKey)
-                                        onOpenEntity(frequentEntityResults[index])
+                                        inlineListSelection.opening(frequentKey) { onOpenEntity(frequentEntityResults[index]) }
                                     },
                                     onContextMenu = null,
                                 )
@@ -21448,7 +21474,11 @@ internal fun SharedHomeSearchPanel(
                             SharedHomeSearchSectionLabel(stringResource(MR.strings.search_section_entities))
                         }
                         items(entityResults.size, key = { index -> entityResults[index].key }) { index ->
-                            Box(Modifier.homeSearchReturnHighlight(returnHighlight, entityResults[index].key)) {
+                            Box(
+                                Modifier
+                                    .raftInlineListSelected(inlineListSelection?.selectedRowKey == entityResults[index].key)
+                                    .homeSearchReturnHighlight(returnHighlight, entityResults[index].key)
+                            ) {
                             SharedHomeSearchEntityRow(
                                 result = entityResults[index],
                                 query = state.query,
@@ -21459,7 +21489,7 @@ internal fun SharedHomeSearchPanel(
                                 onOpen = {
                                     searchInputFocus.release()
                                     returnHighlight.markOpened(entityResults[index].key)
-                                    onOpenEntity(entityResults[index])
+                                    inlineListSelection.opening(entityResults[index].key) { onOpenEntity(entityResults[index]) }
                                 },
                                 onContextMenu =
                                     searchEntityPinTarget(entityResults[index])
@@ -21488,7 +21518,11 @@ internal fun SharedHomeSearchPanel(
                         when (group) {
                             is HomeSearchResultGroup.Message -> {
                                 item(key = group.item.key) {
-                                    Box(Modifier.homeSearchReturnHighlight(returnHighlight, group.item.key)) {
+                                    Box(
+                                        Modifier
+                                            .raftInlineListSelected(inlineListSelection?.selectedRowKey == group.item.key)
+                                            .homeSearchReturnHighlight(returnHighlight, group.item.key)
+                                    ) {
                                     SharedHomeSearchMessageResultRow(
                                         item = group.item,
                                         query = state.query,
@@ -21499,7 +21533,7 @@ internal fun SharedHomeSearchPanel(
                                         onOpen = {
                                             searchInputFocus.release()
                                             returnHighlight.markOpened(group.item.key)
-                                            onOpenItem(group.item)
+                                            inlineListSelection.opening(group.item.key) { onOpenItem(group.item) }
                                         }
                                     )
                                     }
@@ -21507,7 +21541,11 @@ internal fun SharedHomeSearchPanel(
                             }
                             is HomeSearchResultGroup.Thread -> {
                                 item(key = group.key) {
-                                    Box(Modifier.homeSearchReturnHighlight(returnHighlight, group.key)) {
+                                    Box(
+                                        Modifier
+                                            .raftInlineListSelected(inlineListSelection?.selectedRowKey == group.key)
+                                            .homeSearchReturnHighlight(returnHighlight, group.key)
+                                    ) {
                                     SharedHomeThreadResultGroup(
                                         group = group,
                                         query = state.query,
@@ -21518,7 +21556,7 @@ internal fun SharedHomeSearchPanel(
                                         onOpenItem = { item ->
                                             searchInputFocus.release()
                                             returnHighlight.markOpened(group.key)
-                                            onOpenItem(item)
+                                            inlineListSelection.opening(group.key) { onOpenItem(item) }
                                         }
                                     )
                                     }
@@ -22060,7 +22098,10 @@ internal fun SharedHomeSavedPanel(
     listState: LazyListState = rememberLazyListState(),
     onTitleClick: (() -> Unit)? = null,
     onCopyLink: (InboxItem) -> Unit = {},
-    onCopyMarkdown: (InboxItem) -> Unit = {}
+    onCopyMarkdown: (InboxItem) -> Unit = {},
+    // The rail's inline Saved (two-pane): the row whose conversation is open beside the list is
+    // selected, and only while it stays open. Null (the pushed phone page) keeps the tapped row.
+    inlineListSelection: RaftInlineListSelection? = null,
 ) {
     LaunchedEffect(Unit) {
         onIntent(SharedHomeSearchSavedIntent.OpenSaved)
@@ -22165,13 +22206,15 @@ internal fun SharedHomeSavedPanel(
                         val item = projectedItems[index]
                         SharedHomeSavedResultCard(
                             item = item,
-                            selected = selectedItemKey == item.key || activeMenu?.item?.key == item.key,
+                            selected =
+                                (inlineListSelection?.selectedRowKey ?: selectedItemKey) == item.key ||
+                                    activeMenu?.item?.key == item.key,
                             cacheServerId = cacheServerId,
                             memberAvatarResolver = memberAvatarResolver,
                             onUnsave = { onIntent(SharedHomeSearchSavedIntent.Unsave(item)) },
                             onOpen = {
-                                selectedItemKey = item.key
-                                onOpenItem(item)
+                                if (inlineListSelection == null) selectedItemKey = item.key
+                                inlineListSelection.opening(item.key) { onOpenItem(item) }
                             },
                             onContextMenu = { anchor -> activeMenu = SharedHomeSavedContextMenuState(item, anchor) },
                             timeContext = timeContext
@@ -24385,7 +24428,7 @@ private fun SharedHomeSessionShell(
     // skeleton rows under the CHANNELS / DIRECT MESSAGES headers so the
     // post-sign-in transition matches the React app instead of a bare shell.
     loadingSkeletons: Boolean = false,
-    searchAndActivityInBottomBar: Boolean = false,
+    searchAndActivityOnShellNav: Boolean = false,
     inlineError: RaftHomeInlineError? = null,
     onInlineErrorAction: () -> Unit = {},
     onServerBadgeClick: () -> Unit,
@@ -24424,7 +24467,7 @@ private fun SharedHomeSessionShell(
         prefersChineseCommunity = prefersChineseCommunity,
         topSafeAreaOverride = topSafeAreaOverride,
         showBottomBar = false,
-        searchAndActivityInBottomBar = searchAndActivityInBottomBar,
+        searchAndActivityOnShellNav = searchAndActivityOnShellNav,
         bottomContentPadding = bottomContentPadding,
         outerPadding = 0.dp,
         labels = RaftHomeShellLabels.localized(),
@@ -25711,8 +25754,11 @@ private fun AppShellCachedHomePreviewContent(
             serverDrawerEnabled = false,
             homeServerAvatarEnabled = false,
             // Match the list the restored shell will show (desktop mode defaults on, so the wide
-            // dual-pane layout uses the rail and keeps the rows).
-            searchAndActivityInBottomBar = shellScope.adaptivePane.layout != RaftAdaptivePaneLayout.DualPane,
+            // dual-pane layout uses the rail, which carries Search and Activity like the bar).
+            searchAndActivityOnShellNav =
+                appShellNavCarriesSearchAndActivity(
+                    navRailActive = shellScope.adaptivePane.layout == RaftAdaptivePaneLayout.DualPane
+                ),
             onIntent = {},
             onNotificationDismiss = {},
             onOpenSearch = {},

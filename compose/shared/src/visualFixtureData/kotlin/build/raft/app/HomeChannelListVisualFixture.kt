@@ -110,7 +110,7 @@ internal fun HomeChannelListVisualContent() {
         contentRefreshEnabled = false,
         selectedTabKey = "home",
         showBottomBar = true,
-        searchAndActivityInBottomBar = true,
+        searchAndActivityOnShellNav = true,
         outerPadding = 0.dp
     )
 }
