@@ -21523,14 +21523,8 @@ private fun SharedHomeSearchToolbar(
         if (onClose != null) {
             RaftBackButton(onClick = onClose, label = stringResource(MR.strings.common_back))
         }
-        RaftStickerTile(fill = RaftColor.Brand, size = RaftIconTileSize.Sm) {
-            RaftLucideIcon(
-                RaftLucideIconName.Search,
-                color = raftArgbHex(RaftColor.StickerInk),
-                strokeWidth = 2f,
-                modifier = Modifier.size(RaftIconTileSize.Sm.icon)
-            )
-        }
+        // No location tile: the search field already says where you are (web search page,
+        // raft-design: a page whose head is a search field carries no location icon).
         SharedHomeSearchInput(
             query = editor.value,
             loading = loading,
