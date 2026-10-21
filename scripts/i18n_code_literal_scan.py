@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit production Kotlin and ArkTS for likely user-visible English literals.
+"""Audit production Kotlin for likely user-visible English literals.
 
 This is a review scanner, not a compiler parser. It deliberately narrows the
 search to production source roots and UI-shaped sinks (Text, Button, title,
@@ -91,7 +91,6 @@ EXACT_TECHNICAL_LITERALS = {
     "MCP",
     "Markdown",
     "OAuth",
-    "OHOS",
     "POST",
     "Raft",
     "SDK",
@@ -162,7 +161,7 @@ def decoded_literal(token: str) -> str:
 
 
 def visible_literal_text(value: str) -> str:
-    """Remove Kotlin/ArkTS template expressions while retaining visible copy."""
+    """Remove Kotlin template expressions while retaining visible copy."""
     result: list[str] = []
     index = 0
     while index < len(value):
@@ -200,7 +199,7 @@ def is_pure_english_candidate(value: str) -> bool:
         return False
     if URL_RE.search(stripped) or EMAIL_RE.fullmatch(stripped):
         return False
-    if stripped.startswith(("app.string.", "sys.string.", "resources/")):
+    if stripped.startswith("resources/"):
         return False
     # Paths, package/class names, JSON keys, and machine identifiers generally
     # contain separators but no whitespace. Keep normal single-word labels such
@@ -215,7 +214,7 @@ def is_pure_english_candidate(value: str) -> bool:
 
 
 def source_language(path: Path) -> str:
-    return "arkts" if path.suffix == ".ets" else "kotlin"
+    return "kotlin"
 
 
 def parse_literal_at(
@@ -234,8 +233,7 @@ def parse_literal_at(
             depth = 1
             index += 2
             while index < len(line) and depth > 0:
-                nested_delimiters = {'"'} if language == "kotlin" else {'"', "'", "`"}
-                if line[index] in nested_delimiters:
+                if line[index] == '"':
                     end, inner = parse_literal_at(line, index, line[index], language)
                     nested.append((index, line[index:end]))
                     nested.extend(inner)
@@ -254,7 +252,7 @@ def parse_literal_at(
 
 
 def literal_tokens(line: str, language: str) -> list[tuple[int, str]]:
-    delimiters = {'"'} if language == "kotlin" else {'"', "'", "`"}
+    delimiters = {'"'}
     tokens: list[tuple[int, str]] = []
     index = 0
     while index < len(line):
@@ -462,7 +460,7 @@ def parse_mr_value_index(path: Path) -> dict[str, tuple[str, ...]]:
 
 def markdown_report(findings: list[Finding], scanned_files: int, suppressed_count: int) -> str:
     lines = [
-        "# Kotlin / ArkTS user-visible English literal scan",
+        "# Kotlin user-visible English literal scan",
         "",
         f"Scanned production files: **{scanned_files}** · findings: **{len(findings)}** · "
         f"reviewed exceptions: **{suppressed_count}**",
@@ -516,7 +514,7 @@ def main(argv: list[str] | None = None) -> int:
         root = relative_root if relative_root.is_absolute() else repo_root / relative_root
         if not root.exists():
             continue
-        source_files.extend(path for path in root.rglob("*") if path.suffix in {".kt", ".ets"})
+        source_files.extend(path for path in root.rglob("*") if path.suffix == ".kt")
     source_files = sorted(set(source_files))
 
     findings: list[Finding] = []

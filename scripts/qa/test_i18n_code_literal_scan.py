@@ -26,16 +26,9 @@ class I18nCodeLiteralScanTest(unittest.TestCase):
         self.assertEqual("high", findings[0].confidence)
         self.assertEqual("Loading settings", findings[0].literal)
 
-    def test_arkts_single_quoted_text_is_detected(self) -> None:
-        findings = self.scan(".ets", "Text('No recent activity')\n")
-        self.assertEqual(1, len(findings))
-        self.assertEqual("arkts", findings[0].language)
-
     def test_localized_resource_reference_is_not_reported(self) -> None:
-        kotlin_findings = self.scan(".kt", 'Text(stringResource(MR.strings.settings_title))\n')
-        arkts_findings = self.scan(".ets", "Text($r('app.string.settings_title'))\n")
-        self.assertEqual([], kotlin_findings)
-        self.assertEqual([], arkts_findings)
+        findings = self.scan(".kt", 'Text(stringResource(MR.strings.settings_title))\n')
+        self.assertEqual([], findings)
 
     def test_adjacent_resource_reference_does_not_hide_hardcode_in_either_order(self) -> None:
         localized = "Text(stringResource(MR.strings.settings_title))"
@@ -79,20 +72,6 @@ class I18nCodeLiteralScanTest(unittest.TestCase):
         )
         findings = self.scan(".kt", source)
         self.assertEqual(["Retry · ${row.code}"], [item.literal for item in findings])
-
-    def test_arkts_backtick_templates_and_escape_are_tokenized(self) -> None:
-        source = '\n'.join(
-            [
-                "Text(`${pageIndex + 1}`)",
-                "Text(`Retry · ${row.code}`)",
-                r"Text(`Press \`Run\` now`)",
-            ]
-        )
-        findings = self.scan(".ets", source)
-        self.assertEqual(
-            ["Retry · ${row.code}", "Press `Run` now"],
-            [item.literal for item in findings],
-        )
 
     def test_kotlin_conditional_template_reports_visible_branch_literals(self) -> None:
         findings = self.scan(".kt", 'Text("${if (ok) \"Ready\" else \"Failed\"}")')

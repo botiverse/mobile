@@ -162,7 +162,7 @@ async function main() {
   const parseYaml = yamlModule.parse || yamlModule.default?.parse;
   const stringifyYaml = yamlModule.stringify || yamlModule.default?.stringify;
   if (typeof parseYaml !== "function" || typeof stringifyYaml !== "function") throw new Error("YAML parser unavailable");
-  const platform = String(data.run.app_slug || "").includes("ios") ? "ios" : String(data.run.app_slug || "").includes("ohos") ? "ohos" : "android";
+  const platform = String(data.run.app_slug || "").includes("ios") ? "ios" : "android";
   const cases = [];
   for (const rc of data.cases || []) {
     const current = await stamp(`/api/cases/${encodeURIComponent(rc.case_id)}`);

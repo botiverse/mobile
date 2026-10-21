@@ -207,8 +207,6 @@ find_readelf() {
     "${SLOCK_LLVM_READELF:-}"
     "${ANDROID_HOME:-}/ndk-bundle/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-readelf"
     "${ANDROID_HOME:-}/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-readelf"
-    "${DEVECO_SDK_HOME:-}/default/openharmony/native/llvm/bin/llvm-readelf"
-    "/Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/native/llvm/bin/llvm-readelf"
     "llvm-readelf"
     "readelf"
   )

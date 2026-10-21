@@ -246,7 +246,7 @@ function rankedSources(rootMatches) {
 }
 
 export function isForbiddenSourcePath(sourcePath) {
-  return /(^|\/)(?:test|tests|__tests__|commonTest|androidTest|iosTest|jvmTest|jsTest|desktopTest|nativeTest|ohosTest|wasmTest)(\/|$)|(?:Test|Tests)\.(?:kt|kts|java|ts|tsx|js|jsx)$/i.test(sourcePath)
+  return /(^|\/)(?:test|tests|__tests__|commonTest|androidTest|iosTest|jvmTest|jsTest|desktopTest|nativeTest|wasmTest)(\/|$)|(?:Test|Tests)\.(?:kt|kts|java|ts|tsx|js|jsx)$/i.test(sourcePath)
     || /(^|\/)(?:baseline|baselines|snapshots?)(\/|$)|platformDivergences\.json$|sharedCases\.json$/i.test(sourcePath);
 }
 

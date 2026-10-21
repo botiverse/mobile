@@ -44,8 +44,6 @@ def main() -> None:
     combined = "\n".join(sources.values())
 
     forbidden = (
-        "scripts/prepare_ktor_ohos_fork.sh",
-        "third_party/ktor-ohos",
         "sqldelight-ktor-mavenlocal",
         'cp -a "$repo/io/ktor"',
         'cp -a "$forkdeps/io/ktor"',
@@ -53,8 +51,8 @@ def main() -> None:
     for value in forbidden:
         require(value not in combined, f"active CI still builds or hydrates Ktor locally: {value}")
 
-    # No workflow hydrates mavenLocal at all. Ktor can therefore only re-enter through a checked-in consumer or the public
-    # NetworkKMM metadata, both verified below.
+    # No workflow hydrates mavenLocal at all. Ktor can therefore only re-enter through a checked-in consumer, verified
+    # below; the pinned public NetworkKMM module must still resolve at its expected version.
     for path, source in sources.items():
         for value in (".m2/repository", "mavenLocal()", "io/ktor", "io.ktor"):
             require(
@@ -72,33 +70,16 @@ def main() -> None:
         ".properties",
         ".xml",
         ".json",
-        ".json5",
     }
     for path in (ROOT / "compose").rglob("*"):
         if not path.is_file() or path.suffix not in consumer_suffixes or "build" in path.parts:
             continue
         source = path.read_text(errors="replace").lower()
         require("io.ktor" not in source, f"checked-in consumer metadata references io.ktor: {path}")
-        require(
-            "2.3.7-slock-ohos" not in source,
-            f"checked-in consumer metadata references the local Ktor fork: {path}",
-        )
 
     for version in NETWORK_VERSIONS:
         module = json.loads(read_public(version, "module"))
         require(module.get("component", {}).get("version") == version, "NetworkKMM module version drift")
-        public_metadata = (
-            json.dumps(module, sort_keys=True).lower()
-            + read_public(version, "pom").decode().lower()
-        )
-        require(
-            "2.3.7-slock-ohos" not in public_metadata,
-            f"NetworkKMM {version} names the local Ktor fork",
-        )
-        require(
-            "ktor-client-core-ohosarm64" not in public_metadata,
-            f"NetworkKMM {version} depends on a local Ktor OHOS physical variant",
-        )
 
     print("no-local-Ktor CI contract: PASS")
 
