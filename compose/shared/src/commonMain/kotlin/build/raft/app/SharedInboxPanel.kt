@@ -941,11 +941,24 @@ private fun SharedActivityPanelContent(
         rememberLazyListState(),
     )
     val scrollToTopScope = rememberCoroutineScope()
-    // Bottom-tab double tap scrolls the same list the title tap does (the selected filter's page).
+    // artin 2026-10-21: on the Activity tab, the head tap and the bottom-bar/rail re-tap walk the
+    // selected page's unread rows (ActivityUnreadJump.kt); the page's list consumes this
+    // generation. A page without a list (loading/empty/error) keeps the plain scroll-to-top.
+    var unreadJumpRequest by remember { mutableStateOf(0) }
+    val selectedPageHasList =
+        activitySelectedPageHasList(state, conversationListPending)
+    suspend fun onHeadOrTabRetap() {
+        if (mainTab && selectedPageHasList) {
+            unreadJumpRequest += 1
+        } else {
+            activityScrollToTopTarget(state.selectedFilter, pageListStates).animateScrollToTopExpressive()
+        }
+    }
+    // Bottom-tab double tap targets the same list the title tap does (the selected filter's page).
     val scrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
     LaunchedEffect(scrollToTopRequest) {
         if (scrollToTopRequestFence.consume(scrollToTopRequest)) {
-            activityScrollToTopTarget(state.selectedFilter, pageListStates).animateScrollToTopExpressive()
+            onHeadOrTabRetap()
         }
     }
     Column(
@@ -959,10 +972,7 @@ private fun SharedActivityPanelContent(
             topSafeAreaPadding = topSafeAreaPadding,
             refreshing = refreshPresentation.headerRefreshing,
             onTitleClick = {
-                scrollToTopScope.launch {
-                    activityScrollToTopTarget(state.selectedFilter, pageListStates)
-                        .animateScrollToTopExpressive()
-                }
+                scrollToTopScope.launch { onHeadOrTabRetap() }
             }
         )
         RaftAppShellBodyTopBanner()
@@ -1015,6 +1025,7 @@ private fun SharedActivityPanelContent(
                     externalSelectedThreadId = externalSelectedThreadId,
                     conversationList = conversationList,
                     channelMute = channelMute,
+                    unreadJumpRequest = unreadJumpRequest,
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
@@ -1038,6 +1049,11 @@ private fun SharedActivityPanelContent(
  * cannot be re-cut from a call site (#2224 review blocker 1: the previous
  * design had callers hand in a LazyListState that attached to nothing).
  */
+/** The selected filter's page renders [SharedActivityList] (not a loading/empty/error body). */
+internal fun activitySelectedPageHasList(state: SharedActivityState, conversationListPending: Boolean): Boolean =
+    !conversationListPending &&
+        projectActivityStateForFilterPage(state, state.selectedFilter).snapshot?.items?.isNotEmpty() == true
+
 internal fun <T> activityScrollToTopTarget(
     selectedFilter: InboxFilter,
     pageStates: List<T>,
@@ -1063,6 +1079,7 @@ private fun SharedActivityBodyContent(
     externalSelectedThreadId: String? = null,
     conversationList: ActivityConversationListPresentation? = null,
     channelMute: ActivityChannelMuteControl? = null,
+    unreadJumpRequest: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val snapshot = state.snapshot
@@ -1142,7 +1159,8 @@ private fun SharedActivityBodyContent(
                     foregroundEpoch = foregroundEpoch,
                     externalSelectedThreadId = externalSelectedThreadId,
                     conversationList = conversationList,
-                    channelMute = channelMute
+                    channelMute = channelMute,
+                    unreadJumpRequest = unreadJumpRequest
                 )
         }
     }
@@ -1288,7 +1306,8 @@ private fun SharedActivityList(
     foregroundEpoch: Long,
     externalSelectedThreadId: String? = null,
     conversationList: ActivityConversationListPresentation? = null,
-    channelMute: ActivityChannelMuteControl? = null
+    channelMute: ActivityChannelMuteControl? = null,
+    unreadJumpRequest: Int = 0
 ) {
     val presentationServerId = snapshot.server.id.value
     val panelFirstRenderMark = remember { TimeSource.Monotonic.markNow() }
@@ -1677,6 +1696,47 @@ private fun SharedActivityList(
             conversationListEntries?.map(ActivityConversationListEntry::key) ?: renderedItems.map(InboxItem::key)
         }
     val lazyItemKeysState = rememberUpdatedState(lazyItemKeys)
+    // Unread-row walk (ActivityUnreadJump.kt). Intent owner: the user's head tap / tab re-tap,
+    // one generation per tap, consumed only when observed after this list mounted (no remount
+    // replay) and only by the active page. User-override fence: the scroll runs under the list's
+    // scroll mutex, so a drag cancels it (and the mark); a newer tap restarts this effect.
+    val unreadJumpFence = remember { AppShellScrollToTopRequestFence(unreadJumpRequest) }
+    var unreadJumpCursorKey by
+        remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
+            mutableStateOf<String?>(null)
+        }
+    val unreadJumpHighlight = remember { HomeSearchReturnHighlight() }
+    LaunchedEffect(unreadJumpRequest) {
+        if (!unreadJumpFence.consume(unreadJumpRequest) || !active) return@LaunchedEffect
+        val listContext = conversationList?.context
+        val entries =
+            conversationListEntries?.map { entry ->
+                when (entry) {
+                    is ActivityConversationListEntry.Section -> ActivityUnreadJumpEntry(entry.key, unread = false)
+                    is ActivityConversationListEntry.Row ->
+                        ActivityUnreadJumpEntry(entry.key, unread = entry.item.activityRowDisplaysUnread(listContext))
+                }
+            } ?: renderedItems.map { item -> ActivityUnreadJumpEntry(item.key, unread = item.activityRowDisplaysUnread(null)) }
+        val target =
+            activityNextUnreadJumpTarget(
+                entries = entries,
+                firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset,
+                visibleItemKeys = listState.layoutInfo.visibleItemsInfo.mapNotNullTo(mutableSetOf()) { it.key as? String },
+                cursorKey = unreadJumpCursorKey,
+            )
+        when (target) {
+            ActivityUnreadJumpTarget.Top -> {
+                unreadJumpCursorKey = null
+                listState.animateScrollToTopExpressive()
+            }
+            is ActivityUnreadJumpTarget.Row -> {
+                unreadJumpCursorKey = target.key
+                listState.animateScrollToItem(target.index)
+                unreadJumpHighlight.flash(target.key)
+            }
+        }
+    }
     val newActivityAboveKeysState = rememberUpdatedState(newActivityAboveKeys)
     val showNewActivityPill by
         remember(listState) {
@@ -1787,6 +1847,7 @@ private fun SharedActivityList(
                                 ActivityConversationListRow(
                                     item = item,
                                     model = model,
+                                    contentModifier = Modifier.homeSearchReturnHighlight(unreadJumpHighlight, item.key),
                                     divider = entry.divider,
                                     selected = selectedItemKey == item.key,
                                     menuOpen = activeMenuItem?.key == item.key,
@@ -1813,6 +1874,7 @@ private fun SharedActivityList(
                 itemsIndexed(items = renderedItems, key = { _, item -> item.key }) { index, item ->
                     SharedActivityRow(
                         item = item,
+                        modifier = Modifier.homeSearchReturnHighlight(unreadJumpHighlight, item.key),
                         senderProfiles = senderProfiles,
                         dmPeerNames = dmPeerNames,
                         selected = selectedItemKey == item.key,
