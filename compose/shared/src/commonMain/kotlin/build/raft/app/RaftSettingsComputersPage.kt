@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -78,6 +79,8 @@ import build.raft.designsystem.components.RaftDescriptionList
 import build.raft.designsystem.components.RaftDescriptionListDirection
 import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.RaftListRow
@@ -428,6 +431,10 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
             refreshing = refreshing,
         )
     fun refresh() = settingsViewModel.dispatch(SharedSettingsIntent.Refresh)
+    val agentStatusResolver =
+        remember(environment.serverMembersStore, currentServerId) {
+            raftScopedAgentStatusResolver(environment.serverMembersStore, currentServerId)
+        }
     SettingsDetailShell(
         title = (model as? RaftComputerDetailModel.Content)?.computer?.name
             ?: stringResource(MR.strings.settings_computers_detail_computer),
@@ -443,6 +450,7 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                 bottomContentPadding = raftBottomSafeAreaPadding() + RaftAppSpacing.Lg,
                 onRetry = ::refresh,
                 onIntent = settingsViewModel::dispatch,
+                agentStatusResolver = agentStatusResolver,
                 onOpenAgent = { agent ->
                     val serverId = currentServerId
                     val pageData =
@@ -474,6 +482,8 @@ internal fun RaftSettingsComputerDetailContent(
     onRetry: () -> Unit,
     onIntent: (SharedSettingsIntent) -> Unit,
     onOpenAgent: (SettingsComputerAgentSnapshot) -> Unit,
+    /** Live agent activity for the agent rows (the members store); empty in fixtures. */
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
 ) {
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         when (model) {
@@ -501,7 +511,7 @@ internal fun RaftSettingsComputerDetailContent(
                     )
                 }
             is RaftComputerDetailModel.Content ->
-                RaftComputerDetailBody(model, actionState, refreshErrorCode, bottomContentPadding, onIntent, onOpenAgent)
+                RaftComputerDetailBody(model, actionState, refreshErrorCode, bottomContentPadding, agentStatusResolver, onIntent, onOpenAgent)
         }
     }
 }
@@ -512,6 +522,7 @@ private fun RaftComputerDetailBody(
     actionState: SharedSettingsActionState?,
     refreshErrorCode: String?,
     bottomContentPadding: Dp,
+    agentStatusResolver: RaftAgentStatusResolver,
     onIntent: (SharedSettingsIntent) -> Unit,
     onOpenAgent: (SettingsComputerAgentSnapshot) -> Unit,
 ) {
@@ -537,6 +548,42 @@ private fun RaftComputerDetailBody(
                     )
                 }
             }
+        // Web MachineDetailPanel order: Name, Description, Info, Agents, Workspaces, Actions.
+        item(key = "name") {
+            RaftComputerEditableSection(
+                key = machineId,
+                title = stringResource(MR.strings.settings_computers_section_name),
+                editLabel = stringResource(MR.strings.settings_computers_edit_name),
+                canEdit = canEdit,
+                value = computer.name,
+                emptyText = null,
+                label = stringResource(MR.strings.settings_computers_label_name),
+                placeholder = stringResource(MR.strings.settings_computers_placeholder_name),
+                multiline = false,
+                allowBlank = false,
+                saveState = currentAction?.takeIf { it.action == COMPUTER_ACTION_RENAME },
+                onSave = { onIntent(SharedSettingsIntent.RenameComputer(SettingsComputerRenameRequest(machineId, it))) },
+            )
+        }
+        item(key = "description") {
+            RaftComputerEditableSection(
+                key = machineId,
+                title = stringResource(MR.strings.settings_computers_section_description),
+                editLabel = stringResource(MR.strings.settings_computers_edit_description),
+                canEdit = canEdit,
+                value = computer.description.orEmpty(),
+                emptyText = stringResource(MR.strings.settings_computers_state_no_description),
+                label = stringResource(MR.strings.settings_computers_label_description),
+                placeholder = stringResource(MR.strings.settings_computers_placeholder_description),
+                multiline = true,
+                allowBlank = true,
+                maxLength = RAFT_COMPUTER_DESCRIPTION_MAX_LENGTH,
+                saveState = currentAction?.takeIf { it.action == COMPUTER_ACTION_DESCRIPTION },
+                onSave = {
+                    onIntent(SharedSettingsIntent.UpdateComputerDescription(SettingsComputerDescriptionUpdateRequest(machineId, it)))
+                },
+            )
+        }
         item(key = "info") {
             RaftSection(title = stringResource(MR.strings.settings_computers_section_info)) {
                 RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
@@ -554,53 +601,7 @@ private fun RaftComputerDetailBody(
                 }
             }
         }
-        item(key = "name") {
-            RaftSection(title = stringResource(MR.strings.settings_computers_section_name)) {
-                if (canEdit) {
-                    RaftComputerEditableText(
-                        key = machineId,
-                        initial = computer.name,
-                        label = stringResource(MR.strings.settings_computers_label_name),
-                        placeholder = stringResource(MR.strings.settings_computers_placeholder_name),
-                        multiline = false,
-                        allowBlank = false,
-                        saving = actionState?.let { it.action == COMPUTER_ACTION_RENAME && it.itemId == machineId && it.inProgress } == true,
-                        onSave = { onIntent(SharedSettingsIntent.RenameComputer(SettingsComputerRenameRequest(machineId, it))) },
-                    )
-                } else {
-                    RaftText(computer.name, style = RaftTheme.typography.callout, color = RaftTheme.colors.foreground)
-                }
-            }
-        }
-        item(key = "description") {
-            RaftSection(title = stringResource(MR.strings.settings_computers_section_description)) {
-                if (canEdit) {
-                    RaftComputerEditableText(
-                        key = machineId,
-                        initial = computer.description.orEmpty(),
-                        label = stringResource(MR.strings.settings_computers_label_description),
-                        placeholder = stringResource(MR.strings.settings_computers_placeholder_description),
-                        multiline = true,
-                        allowBlank = true,
-                        maxLength = RAFT_COMPUTER_DESCRIPTION_MAX_LENGTH,
-                        saving =
-                            actionState?.let { it.action == COMPUTER_ACTION_DESCRIPTION && it.itemId == machineId && it.inProgress } == true,
-                        onSave = {
-                            onIntent(
-                                SharedSettingsIntent.UpdateComputerDescription(SettingsComputerDescriptionUpdateRequest(machineId, it))
-                            )
-                        },
-                    )
-                } else {
-                    RaftText(
-                        computer.description ?: stringResource(MR.strings.settings_computers_state_no_description),
-                        style = RaftTheme.typography.callout,
-                        color = if (computer.description == null) RaftTheme.colors.foregroundHint else RaftTheme.colors.foreground,
-                    )
-                }
-            }
-        }
-        item(key = "agents") { RaftComputerAgentsSection(snapshot, onOpenAgent) }
+        item(key = "agents") { RaftComputerAgentsSection(snapshot, agentStatusResolver, onOpenAgent) }
         item(key = "workspaces") {
             RaftComputerWorkspacesSection(
                 snapshot = snapshot,
@@ -719,6 +720,79 @@ private fun RaftComputerDetailHeader(computer: RaftComputerRowModel) {
     }
 }
 
+/**
+ * A Name / Description section as web MachineDetailPanel draws it: the value as text with a small
+ * pencil after the title (only when [canEdit]); the pencil opens the editor ([RaftComputerEditableText]),
+ * which goes back to text on Cancel or once its save succeeds. An empty value shows [emptyText] in hint.
+ */
+@Composable
+private fun RaftComputerEditableSection(
+    key: String,
+    title: String,
+    editLabel: String,
+    canEdit: Boolean,
+    value: String,
+    emptyText: String?,
+    label: String,
+    placeholder: String,
+    multiline: Boolean,
+    allowBlank: Boolean,
+    saveState: SharedSettingsActionState?,
+    maxLength: Int? = null,
+    onSave: (String) -> Unit,
+) {
+    val saving = saveState?.inProgress == true
+    val failed = saveState?.let { !it.inProgress && it.hasComputerActionError() } == true
+    var editing by remember(key) { mutableStateOf(false) }
+    var wasSaving by remember(key) { mutableStateOf(saving) }
+    LaunchedEffect(saving, failed) {
+        if (raftComputerEditorClosesAfterSave(wasSaving = wasSaving, saving = saving, failed = failed)) editing = false
+        wasSaving = saving
+    }
+    val showEditor = canEdit && editing
+    RaftBackHandler(enabled = showEditor && !saving, label = "settings_computer_edit_field") { editing = false }
+    RaftSection(
+        title = title,
+        titleAction =
+            if (canEdit && !editing) {
+                {
+                    RaftIconButton(
+                        onClick = { editing = true },
+                        tooltip = editLabel,
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftIconButtonSize.Xs,
+                    ) {
+                        RaftComputersIcon(RaftLucideIconName.Pencil, size = 14.dp)
+                    }
+                }
+            } else {
+                null
+            },
+    ) {
+        if (showEditor) {
+            RaftComputerEditableText(
+                key = key,
+                initial = value,
+                label = label,
+                placeholder = placeholder,
+                multiline = multiline,
+                allowBlank = allowBlank,
+                saving = saving,
+                maxLength = maxLength,
+                onSave = onSave,
+                onCancel = { editing = false },
+            )
+        } else {
+            val shown = value.takeIf { it.isNotBlank() }
+            RaftText(
+                shown ?: emptyText.orEmpty(),
+                style = RaftTheme.typography.callout,
+                color = if (shown == null) RaftTheme.colors.foregroundHint else RaftTheme.colors.foreground,
+            )
+        }
+    }
+}
+
 @Composable
 private fun RaftComputerEditableText(
     key: String,
@@ -730,6 +804,7 @@ private fun RaftComputerEditableText(
     saving: Boolean,
     maxLength: Int? = null,
     onSave: (String) -> Unit,
+    onCancel: () -> Unit,
 ) {
     var value by remember(key) { mutableStateOf(initial) }
     // The saved value the field last adopted. A background reload (realtime, refresh) moves
@@ -754,24 +829,34 @@ private fun RaftComputerEditableText(
                 RaftTextField(value = value, onValueChange = onValueChange, placeholder = placeholder, enabled = !saving)
             }
         }
-        if (maxLength != null) {
-            // The web editor's `n/500` counter.
-            RaftText(
-                "${value.length}/$maxLength",
-                modifier = Modifier.fillMaxWidth(),
-                style = RaftTheme.typography.monoMeta,
-                color = if (tooLong) RaftTheme.colors.dangerStrong else RaftTheme.colors.foregroundHint,
-                textAlign = TextAlign.End,
-            )
-        }
-        if (changed || saving) {
+        // Web: Save (accent) and Cancel, with the description's `n/500` counter at the end.
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             RaftButton(
                 text = stringResource(MR.strings.common_save),
-                onClick = { onSave(trimmed) },
+                // An unchanged value has nothing to save: Save just closes the editor.
+                onClick = { if (changed) onSave(trimmed) else onCancel() },
+                variant = RaftButtonVariant.Primary,
                 enabled = (allowBlank || trimmed.isNotBlank()) && !tooLong,
                 loading = saving,
                 loadingLabel = stringResource(MR.strings.settings_computers_action_saving),
             )
+            RaftButton(
+                text = stringResource(MR.strings.common_cancel),
+                onClick = onCancel,
+                enabled = !saving,
+            )
+            if (maxLength != null) {
+                Spacer(Modifier.weight(1f))
+                RaftText(
+                    "${value.length}/$maxLength",
+                    style = RaftTheme.typography.monoMeta,
+                    color = if (tooLong) RaftTheme.colors.dangerStrong else RaftTheme.colors.foregroundHint,
+                )
+            }
         }
     }
 }
@@ -779,6 +864,7 @@ private fun RaftComputerEditableText(
 @Composable
 private fun RaftComputerAgentsSection(
     snapshot: SettingsComputerDetailSnapshot,
+    agentStatusResolver: RaftAgentStatusResolver,
     onOpenAgent: (SettingsComputerAgentSnapshot) -> Unit,
 ) {
     val agents = snapshot.agents
@@ -801,18 +887,70 @@ private fun RaftComputerAgentsSection(
             else ->
                 RaftListRowGroup(Modifier.fillMaxWidth()) {
                     agents.forEachIndexed { index, agent ->
-                        RaftListRow(
-                            title = agent.name,
-                            onClick = { onOpenAgent(agent) },
+                        RaftComputerAgentRow(
+                            agent = agent,
                             divider = index > 0,
-                            subtitle = agent.runtime?.takeIf { it.isNotBlank() },
-                            description = agent.description?.takeIf { it.isNotBlank() },
-                            leading = { RaftComputerAgentAvatar(agent) },
-                            trailing = { RaftListRowChevron() },
+                            agentStatusResolver = agentStatusResolver,
+                            onClick = { onOpenAgent(agent) },
                         )
                     }
                 }
         }
+    }
+}
+
+/**
+ * An agent on this computer, as web `MachineAgentRow` draws it: avatar, name, one
+ * "runtime · model" line, and the activity dot with its short text on the right. The row opens
+ * the agent; there is no description line and no chevron.
+ */
+@Composable
+private fun RaftComputerAgentRow(
+    agent: SettingsComputerAgentSnapshot,
+    divider: Boolean,
+    agentStatusResolver: RaftAgentStatusResolver,
+    onClick: () -> Unit,
+) {
+    val live = rememberRaftAgentStatusIndicatorState(agentStatusResolver, agent.id)
+    RaftListRow(
+        title = agent.name,
+        onClick = onClick,
+        divider = divider,
+        subtitle = raftComputerAgentIdentityLabel(agent.runtime, agent.model),
+        leading = { RaftComputerAgentAvatar(agent) },
+        trailing = { RaftComputerAgentStatus(agent, live) },
+    )
+}
+
+/**
+ * The live activity from the members store (web `StatusDot activity` + `formatActivityText`); until
+ * that store has observed the agent, the agents-list `status` (active / inactive) alone.
+ */
+@Composable
+private fun RaftComputerAgentStatus(agent: SettingsComputerAgentSnapshot, live: RaftAgentStatusIndicatorState?) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        val text: String
+        if (live != null) {
+            RaftStatusIndicator(color = live.color, size = 10.dp, pulsing = live.pulsing)
+            text = live.localizedMemberStatusLabel()
+        } else {
+            val active = agent.statusLabel?.trim()?.lowercase() == "active"
+            RaftStatusDot(presence = if (active) RaftPresence.Online else RaftPresence.Offline)
+            text =
+                if (active) {
+                    stringResource(MR.strings.member_row_status_online)
+                } else {
+                    stringResource(MR.strings.member_row_status_offline)
+                }
+        }
+        RaftText(
+            text,
+            modifier = Modifier.widthIn(max = 120.dp),
+            style = RaftTheme.typography.monoMeta,
+            color = RaftTheme.colors.foregroundHint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -856,32 +994,8 @@ private fun RaftComputerWorkspacesSection(
     RaftSection(
         title = stringResource(MR.strings.settings_computers_section_workspaces),
         count = snapshot.workspaces.size.takeIf { snapshot.workspacesScanned && it > 0 }?.toString(),
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            val error = snapshot.workspacesError
-            when {
-                !snapshot.workspacesScanned ->
-                    RaftComputersInlineNotice(
-                        title = stringResource(MR.strings.settings_computers_workspace_scan_title),
-                        detail = stringResource(MR.strings.settings_computers_workspace_scan_detail),
-                    )
-                error != null ->
-                    RaftComputersInlineNotice(
-                        title = stringResource(MR.strings.settings_computers_error_load_workspaces),
-                        detail = raftComputerErrorCodeMessage(error.computerErrorCode, error.screenError, error.permissionBlocker),
-                    )
-                snapshot.workspaces.isEmpty() ->
-                    RaftComputersInlineNotice(
-                        title = stringResource(MR.strings.settings_computers_empty_workspaces),
-                        detail = stringResource(MR.strings.settings_computers_empty_workspaces_detail),
-                    )
-                else ->
-                    RaftListRowGroup(Modifier.fillMaxWidth()) {
-                        snapshot.workspaces.forEachIndexed { index, workspace ->
-                            RaftComputerWorkspaceRow(workspace, divider = index > 0)
-                        }
-                    }
-            }
+        // Web `SectionHeader action`: a small outline Scan / Rescan button at the end of the heading.
+        action = {
             RaftButton(
                 text =
                     if (snapshot.workspacesScanned) {
@@ -892,8 +1006,38 @@ private fun RaftComputerWorkspacesSection(
                 onClick = onScan,
                 loading = scanning,
                 loadingLabel = stringResource(MR.strings.settings_computers_action_scanning),
-                leadingIcon = { RaftComputersIcon(RaftLucideIconName.Search) },
+                leadingIcon = { RaftComputersIcon(RaftLucideIconName.RefreshCw) },
             )
+        },
+    ) {
+        val error = snapshot.workspacesError
+        when {
+            !snapshot.workspacesScanned ->
+                // Web shows the scan prompt only while no scan is running.
+                if (!scanning) {
+                    RaftComputersInlineNotice(
+                        title = stringResource(MR.strings.settings_computers_workspace_scan_title),
+                        detail = stringResource(MR.strings.settings_computers_workspace_scan_detail),
+                    )
+                } else {
+                    Unit
+                }
+            error != null ->
+                RaftComputersInlineNotice(
+                    title = stringResource(MR.strings.settings_computers_error_load_workspaces),
+                    detail = raftComputerErrorCodeMessage(error.computerErrorCode, error.screenError, error.permissionBlocker),
+                )
+            snapshot.workspaces.isEmpty() ->
+                RaftComputersInlineNotice(
+                    title = stringResource(MR.strings.settings_computers_empty_workspaces),
+                    detail = stringResource(MR.strings.settings_computers_empty_workspaces_detail),
+                )
+            else ->
+                RaftListRowGroup(Modifier.fillMaxWidth()) {
+                    snapshot.workspaces.forEachIndexed { index, workspace ->
+                        RaftComputerWorkspaceRow(workspace, divider = index > 0)
+                    }
+                }
         }
     }
 }

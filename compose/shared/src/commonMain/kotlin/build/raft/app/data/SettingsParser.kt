@@ -403,6 +403,8 @@ private data class WireSettingsAgent(
     val description: String? = null,
     val status: String = "inactive",
     val runtime: String? = null,
+    /** The agent's model id (server `GET /agents` row `model`, routes/agents.ts `withAgentProjection`). */
+    val model: String? = null,
     val machineId: String? = null,
     val creatorType: String? = null,
     val creatorId: String? = null,
@@ -425,6 +427,7 @@ private fun WireSettingsAgent.toSettingsComputerAgentSnapshot(): SettingsCompute
         statusLabel = status,
         ownerLabel = creatorId,
         runtime = runtime,
+        model = model?.takeIf { it.isNotBlank() },
         avatarUrl = avatarUrl,
         description = description,
     )

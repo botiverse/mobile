@@ -1126,7 +1126,7 @@ class SettingsRepositoryDataSourceTest {
                 """.trimIndent(),
                 agentsJson = """
                     [
-                      {"id":"agent-1","name":"settings-integrator","displayName":"Settings Integrator","machineId":"machine-1","status":"active","creatorId":"Android"},
+                      {"id":"agent-1","name":"settings-integrator","displayName":"Settings Integrator","machineId":"machine-1","status":"active","runtime":"claude","model":"opus","creatorId":"Android"},
                       {"id":"agent-2","name":"Other Agent","machineId":"machine-2","status":"active"}
                     ]
                 """.trimIndent()
@@ -1152,6 +1152,9 @@ class SettingsRepositoryDataSourceTest {
         assertEquals(false, detail.workspacesScanned)
         assertEquals(1, detail.agents.size)
         assertEquals("Settings Integrator", detail.agents.first().name)
+        // `GET /agents` rows carry the agent's model id as top-level `model` (server routes/agents.ts).
+        assertEquals("claude", detail.agents.first().runtime)
+        assertEquals("opus", detail.agents.first().model)
         assertEquals("Settings real-data wiring", detail.agents.first().memberProfile?.description)
         assertEquals("settings-integrator", detail.agents.first().memberProfile?.handle)
         assertTrue(detail.sections.any { it.key == "machine_status_events" })

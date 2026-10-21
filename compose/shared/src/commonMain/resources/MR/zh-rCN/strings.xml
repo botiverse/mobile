@@ -1931,6 +1931,8 @@
     <string name="settings_computers_action_saving">正在保存</string>
     <string name="settings_computers_section_description">描述</string>
     <string name="settings_computers_label_description">计算机描述</string>
+    <string name="settings_computers_edit_name">编辑计算机名称</string>
+    <string name="settings_computers_edit_description">编辑计算机描述</string>
     <string name="settings_computers_placeholder_description">这台计算机用于什么？</string>
     <string name="settings_computers_state_no_description">暂无描述</string>
     <string name="settings_computers_section_info">信息</string>

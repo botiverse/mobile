@@ -180,8 +180,15 @@ private fun visualComputerDetail() =
             ),
         agents =
             listOf(
-                SettingsComputerAgentSnapshot(id = "agent-jony", name = "Jony", runtime = "claude", description = "Designs the app."),
-                SettingsComputerAgentSnapshot(id = "agent-wug", name = "Wug", runtime = "codex"),
+                SettingsComputerAgentSnapshot(
+                    id = "agent-jony",
+                    name = "Jony",
+                    statusLabel = "active",
+                    runtime = "claude",
+                    model = "opus",
+                    description = "Designs the app.",
+                ),
+                SettingsComputerAgentSnapshot(id = "agent-wug", name = "Wug", statusLabel = "inactive", runtime = "codex"),
             ),
         sections = emptyList(),
         workspacesScanned = true,

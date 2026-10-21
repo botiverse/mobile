@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -42,6 +43,11 @@ fun RaftSectionEyebrow(
  * A profile page section: a full-width [RaftSeparator] above (unless [separator] is
  * false, for the first), then `px-5 py-4` holding [RaftSectionEyebrow] and, 12dp under
  * it (`mb-3`), the [content].
+ *
+ * [titleAction] sits 8dp after the eyebrow (web MachineDetailPanel's pencil next to
+ * "Name": `flex items-center gap-2`); [action] sits at the end of the heading row (web
+ * `SectionHeader action`, e.g. a small Scan button). Both are vertically centred on the
+ * eyebrow.
  */
 @Composable
 fun RaftSection(
@@ -49,12 +55,29 @@ fun RaftSection(
     modifier: Modifier = Modifier,
     count: String? = null,
     separator: Boolean = true,
+    titleAction: (@Composable () -> Unit)? = null,
+    action: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(modifier.fillMaxWidth()) {
         if (separator) RaftSeparator()
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp)) {
-            RaftSectionEyebrow(title, Modifier.padding(bottom = 12.dp), count = count)
+            if (titleAction == null && action == null) {
+                RaftSectionEyebrow(title, Modifier.padding(bottom = 12.dp), count = count)
+            } else {
+                Row(
+                    Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RaftSectionEyebrow(title, count = count)
+                    titleAction?.invoke()
+                    if (action != null) {
+                        Spacer(Modifier.weight(1f))
+                        action()
+                    }
+                }
+            }
             content()
         }
     }

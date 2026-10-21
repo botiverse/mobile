@@ -1931,6 +1931,8 @@
     <string name="settings_computers_action_saving">保存中</string>
     <string name="settings_computers_section_description">説明</string>
     <string name="settings_computers_label_description">コンピューターの説明</string>
+    <string name="settings_computers_edit_name">コンピューター名を編集</string>
+    <string name="settings_computers_edit_description">コンピューターの説明を編集</string>
     <string name="settings_computers_placeholder_description">このコンピューターは何に使いますか？</string>
     <string name="settings_computers_state_no_description">説明はありません</string>
     <string name="settings_computers_section_info">情報</string>

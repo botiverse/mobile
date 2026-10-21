@@ -1431,6 +1431,8 @@ data class SettingsComputerAgentSnapshot(
     val statusLabel: String? = null,
     val ownerLabel: String? = null,
     val runtime: String? = null,
+    /** The agent's model id (wire `model`); null when the row carries none. */
+    val model: String? = null,
     val avatarUrl: String? = null,
     val description: String? = null,
     val memberProfile: MemberProfile? = null

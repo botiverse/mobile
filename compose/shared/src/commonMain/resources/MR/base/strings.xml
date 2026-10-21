@@ -1931,6 +1931,8 @@
     <string name="settings_computers_action_saving">Saving</string>
     <string name="settings_computers_section_description">Description</string>
     <string name="settings_computers_label_description">Computer description</string>
+    <string name="settings_computers_edit_name">Edit computer name</string>
+    <string name="settings_computers_edit_description">Edit computer description</string>
     <string name="settings_computers_placeholder_description">What should this computer be used for?</string>
     <string name="settings_computers_state_no_description">No description</string>
     <string name="settings_computers_section_info">Info</string>
