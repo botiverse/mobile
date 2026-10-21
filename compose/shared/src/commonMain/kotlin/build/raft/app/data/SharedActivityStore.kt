@@ -95,6 +95,9 @@ class SharedActivityStore internal constructor(
         DataResult.Empty(EmptyReason.NoMessages)
     },
     private var replyThreadFreshnessLedger: SharedThreadFreshnessLedger = SharedThreadFreshnessLedger(),
+    // Shared with every visible thread page (owned by SharedThreadPayloadStore): while one is loading
+    // its first content, reply prewarm does not START new loads.
+    private var foregroundLoadGate: SharedForegroundLoadGate = SharedForegroundLoadGate(),
     private val tailPrewarmDepthCap: Int = SharedActivityTailPrewarmDepthCap,
     private var persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = emptyList(),
     onUnreadCountsChanged: () -> Unit = {},
@@ -157,6 +160,8 @@ class SharedActivityStore internal constructor(
     private val failedReplyPrewarmGenerations =
         mutableMapOf<ActivityReplyThreadPrewarmKey, SharedThreadContentGeneration>()
     private val replyPrewarmJobs = mutableMapOf<ActivityReplyThreadPrewarmKey, Job>()
+    /** Prewarms past the semaphore and the foreground gate, i.e. actually loading. */
+    private var replyPrewarmFetchingCount = 0
     private var tailPrewarmLoopJob: Job? = null
     private var tailInFlightJob: Job? = null
     private var tailDrainBarrier: Job? = null
@@ -182,6 +187,7 @@ class SharedActivityStore internal constructor(
         channelRepository: ChannelRepository? = this.channelRepository,
         prewarmReplyThread: (suspend (ActivityReplyThreadPrewarmMarker) -> DataResult<Unit>)? = null,
         replyThreadFreshnessLedger: SharedThreadFreshnessLedger? = null,
+        foregroundLoadGate: SharedForegroundLoadGate? = null,
         persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = this.persistSlices,
         readReceiptCoordinator: ReadReceiptCoordinator? = this.readReceiptCoordinator,
         readReceiptOwnerFactory: ((String, String) -> ReadReceiptOwner)? = this.readReceiptOwnerFactory,
@@ -204,6 +210,9 @@ class SharedActivityStore internal constructor(
         }
         if (replyThreadFreshnessLedger != null) {
             this.replyThreadFreshnessLedger = replyThreadFreshnessLedger
+        }
+        if (foregroundLoadGate != null) {
+            this.foregroundLoadGate = foregroundLoadGate
         }
         this.persistSlices = persistSlices
         this.readReceiptCoordinator = readReceiptCoordinator
@@ -356,10 +365,41 @@ class SharedActivityStore internal constructor(
         val key = marker.key
         val job =
             scope.launch(start = CoroutineStart.LAZY) {
+                val enqueuedAtMillis = foregroundLoadGate.nowMillis()
                 try {
-                    val result = replyPrewarmSemaphore.withPermit { prewarmReplyThread(marker) }
+                    val result =
+                        replyPrewarmSemaphore.withPermit {
+                            awaitForegroundLoadIdle(key)
+                            if (foregroundOpenedSince(key, enqueuedAtMillis)) return@withPermit null
+                            synchronized(replyPrewarmOwnerLock) { replyPrewarmFetchingCount += 1 }
+                            try {
+                                prewarmReplyThread(marker)
+                            } finally {
+                                synchronized(replyPrewarmOwnerLock) { replyPrewarmFetchingCount -= 1 }
+                            }
+                        }
                     if (activeReplyPrewarmMarker(key)?.contentGeneration !== marker.contentGeneration) return@launch
                     when (result) {
+                        null -> {
+                            // The user opened this thread while its prewarm was still queued: the open
+                            // owns that load (its result lands in the shared thread cache), so a second
+                            // identical request afterwards would be pure waste.
+                            val accepted =
+                                synchronized(replyPrewarmOwnerLock) {
+                                    if (activeReplyPrewarmMarkerLocked(key)?.contentGeneration !== marker.contentGeneration) {
+                                        return@synchronized false
+                                    }
+                                    marker.contentGeneration?.let { completedReplyPrewarmGenerations[key] = it }
+                                    failedReplyPrewarmGenerations.remove(key)
+                                    true
+                                }
+                            if (!accepted) return@launch
+                            diagnosticsLogger(
+                                "activity_reply_prewarm_result result=skipped reason=foreground_open_owns_load " +
+                                    "serverId=${key.serverId} parentChannelId=${key.parentChannelId} " +
+                                    "parentMessageId=${key.parentMessageId} threadChannelId=${key.threadChannelId}"
+                            )
+                        }
                         is DataResult.Content -> {
                             val accepted =
                                 synchronized(replyPrewarmOwnerLock) {
@@ -474,6 +514,45 @@ class SharedActivityStore internal constructor(
         job.start()
         return job
     }
+
+    /**
+     * Foreground priority: a visible conversation / thread page that is loading its first content
+     * must not compete with background prewarm. Prewarms already loading finish; this one waits
+     * (bounded by the gate's lease timeout) before it starts.
+     */
+    private suspend fun awaitForegroundLoadIdle(key: ActivityReplyThreadPrewarmKey) {
+        val gate = foregroundLoadGate
+        val foregroundLoads = gate.activeCount()
+        if (foregroundLoads == 0) return
+        val startedAt = gate.nowMillis()
+        diagnosticsLogger(
+            "activity_reply_prewarm_deferred reason=foreground_open queued=${queuedReplyPrewarmCount()} " +
+                "foregroundLoads=$foregroundLoads serverId=${key.serverId} parentChannelId=${key.parentChannelId} " +
+                "parentMessageId=${key.parentMessageId} threadChannelId=${key.threadChannelId}"
+        )
+        val outcome = gate.awaitIdle()
+        val reason = if (outcome == SharedForegroundGateWait.TimedOut) "timeout" else "released"
+        diagnosticsLogger(
+            "activity_reply_prewarm_resumed reason=$reason waitedMs=${gate.nowMillis() - startedAt} " +
+                "queued=${queuedReplyPrewarmCount()} serverId=${key.serverId} parentChannelId=${key.parentChannelId} " +
+                "parentMessageId=${key.parentMessageId} threadChannelId=${key.threadChannelId}"
+        )
+    }
+
+    private fun foregroundOpenedSince(key: ActivityReplyThreadPrewarmKey, sinceMillis: Long): Boolean =
+        foregroundLoadGate.foregroundOpenedSince(
+            sinceMillis = sinceMillis,
+            serverId = key.serverId,
+            threadId = key.threadChannelId,
+            parentChannelId = key.parentChannelId,
+            parentMessageId = key.parentMessageId,
+        )
+
+    /** Registered prewarms that have not started loading (waiting on the semaphore or the gate). */
+    private fun queuedReplyPrewarmCount(): Int =
+        synchronized(replyPrewarmOwnerLock) {
+            (replyPrewarmJobs.values.count { job -> !job.isCompleted } - replyPrewarmFetchingCount).coerceAtLeast(0)
+        }
 
     // Lower-priority click-progressive "tail": after row N is consumed, warm the remaining
     // eligible rows from N+1 top-first, reusing the exact

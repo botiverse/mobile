@@ -47,6 +47,8 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.ActivityReplyThreadPrewarmKey
 import build.raft.app.data.ActivityReplyThreadPrewarmMarker
+import build.raft.app.data.SharedActivityIntent
+import build.raft.app.data.SharedForegroundLoadGate
 import build.raft.app.data.DirectMessageSnapshot
 import build.raft.app.data.EmptyReason
 import build.raft.app.data.HomeNetworkResponse
@@ -133,6 +135,7 @@ import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
@@ -9745,6 +9748,272 @@ class SharedThreadStoreTest {
         releaseBlocker.complete(Unit)
         blocker.await()
         visibleScope.cancel()
+        appScope.cancel()
+    }
+
+    private fun foregroundGateReplyRepository(): FakeConversationRepository =
+        FakeConversationRepository(
+            threadResult =
+                DataResult.Content(
+                    threadSnapshot(
+                        threadId = "thread-m1",
+                        messages = listOf(message(threadId = "thread-m1", id = "reply-1", seq = 2, body = "reply body")),
+                        parentMessage = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body"),
+                        conversation =
+                            conversationSummary("thread-m1").copy(
+                                kind = ConversationKind.Thread,
+                                channelId = ChannelId("thread-m1"),
+                                thread =
+                                    ThreadConversation(
+                                        parentChannelId = ChannelId("channel-1"),
+                                        parentMessageId = MessageId("m1"),
+                                        streamChannelId = ChannelId("thread-m1")
+                                    )
+                            )
+                    )
+                )
+        )
+
+    private fun foregroundGateDataSource(
+        repository: FakeConversationRepository,
+        payloadStore: SharedThreadPayloadStore,
+        scopeName: String,
+        diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
+    ): SharedThreadDataSource =
+        testSharedThreadDataSource(
+            networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+            sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+            cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+            selectedServerStore = SelectedServerStore(RaftShellStoreScope.create(scopeName, "server-1")),
+            conversationRepository = repository,
+            payloadStore = payloadStore,
+            diagnosticsLogger = { message ->
+                projectionRejectingDiagnosticsLogger(message)
+                diagnosticsLogger(message)
+            }
+        )
+
+    @Test
+    fun replyThreadStartJoinsInFlightPrewarmOfSameThreadWithoutSecondRequest() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+        val repository = foregroundGateReplyRepository()
+        val logs = ConcurrentTestLogBuffer()
+        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-join-same", logs::add)
+        val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
+        val warmed = contentPayloadForRoute(base = route, body = "prewarmed reply body", id = "reply-warm", channelId = "thread-m1")
+        val fetchStarted = CompletableDeferred<Unit>()
+        val releaseFetch = CompletableDeferred<Unit>()
+        val ownerScopeId = dataSource.threadPayloadOwnerScopeIdForTest()
+        val prewarm =
+            async {
+                payloadStore.prewarm("server-1", "thread-m1", ownerScopeId) {
+                    fetchStarted.complete(Unit)
+                    releaseFetch.await()
+                    DataResult.Content(warmed)
+                }
+            }
+        fetchStarted.await()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+
+        val opened = async { store.accept(SharedThreadIntent.Start(route)) }
+        delay(50L)
+        assertEquals(emptyList(), repository.getReplyThreadRequests)
+        releaseFetch.complete(Unit)
+        withTimeout(10_000L) { opened.await() }
+
+        assertEquals(emptyList(), repository.getReplyThreadRequests, "the open must reuse the in-flight prewarm")
+        assertEquals("prewarmed reply body", store.state.value.payload.messages.single().body)
+        assertTrue(
+            logs.any { it == "thread_refresh_reuse_prewarm threadId=thread-m1 outcome=joined_in_flight reason=prewarm_content" }
+        )
+        prewarm.await()
+        scope.cancel()
+        appScope.cancel()
+    }
+
+    @Test
+    fun replyThreadStartOfDifferentThreadDoesItsOwnFetchWhilePrewarmIsInFlight() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+        val repository = foregroundGateReplyRepository()
+        val logs = ConcurrentTestLogBuffer()
+        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-join-other", logs::add)
+        val fetchStarted = CompletableDeferred<Unit>()
+        val releaseFetch = CompletableDeferred<Unit>()
+        val ownerScopeId = dataSource.threadPayloadOwnerScopeIdForTest()
+        val prewarm =
+            async {
+                payloadStore.prewarm("server-1", "thread-other", ownerScopeId) {
+                    fetchStarted.complete(Unit)
+                    releaseFetch.await()
+                    DataResult.Empty(EmptyReason.NoMessages)
+                }
+            }
+        fetchStarted.await()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+
+        withTimeout(10_000L) {
+            store.accept(SharedThreadIntent.Start(replyPayload(parentMessageId = "m1", threadId = "thread-m1")))
+        }
+
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests)
+        assertEquals("reply body", store.state.value.payload.messages.single().body)
+        assertTrue(logs.any { it == "thread_refresh_reuse_prewarm threadId=thread-m1 outcome=own_fetch reason=no_prewarm" })
+        releaseFetch.complete(Unit)
+        prewarm.await()
+        scope.cancel()
+        appScope.cancel()
+    }
+
+    @Test
+    fun replyThreadStartStopsWaitingOnStuckPrewarmAndFetchesItself() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val payloadStore =
+            SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L, prewarmJoinTimeoutMillis = 100L)
+        val repository = foregroundGateReplyRepository()
+        val logs = ConcurrentTestLogBuffer()
+        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-join-stuck", logs::add)
+        val fetchStarted = CompletableDeferred<Unit>()
+        val ownerScopeId = dataSource.threadPayloadOwnerScopeIdForTest()
+        val stuckPrewarm =
+            launch {
+                payloadStore.prewarm("server-1", "thread-m1", ownerScopeId) {
+                    fetchStarted.complete(Unit)
+                    awaitCancellation()
+                }
+            }
+        fetchStarted.await()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+
+        withTimeout(10_000L) {
+            store.accept(SharedThreadIntent.Start(replyPayload(parentMessageId = "m1", threadId = "thread-m1")))
+        }
+
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests)
+        assertEquals("reply body", store.state.value.payload.messages.single().body)
+        assertTrue(logs.any { it == "thread_refresh_reuse_prewarm threadId=thread-m1 outcome=own_fetch reason=join_timeout" })
+        stuckPrewarm.cancel()
+        scope.cancel()
+        appScope.cancel()
+    }
+
+    @Test
+    fun threadStartHoldsForegroundGateUntilLoadEndsAndReleasesOnFailure() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+        val repository = foregroundGateReplyRepository()
+        repository.getReplyThreadStarted = CompletableDeferred()
+        repository.releaseGetReplyThread = CompletableDeferred()
+        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-gate-failure")
+        val gate = payloadStore.foregroundLoadGate
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val logs = ConcurrentTestLogBuffer()
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+
+        val opened = async { store.accept(SharedThreadIntent.Start(replyPayload(parentMessageId = "m1", threadId = "thread-m1"))) }
+        withTimeout(10_000L) { repository.getReplyThreadStarted?.await() }
+        assertEquals(1, gate.activeCount(), "the foreground open holds the gate while it loads")
+
+        repository.threadResult = DataResult.Error(ScreenError(code = "thread_network", retryable = true))
+        repository.releaseGetReplyThread?.complete(Unit)
+        withTimeout(10_000L) { opened.await() }
+
+        assertEquals("error", store.state.value.payload.status)
+        assertEquals(0, gate.activeCount(), "a failed open must release the gate")
+        assertTrue(logs.any { it.startsWith("thread_foreground_load_released reason=start_finished ") })
+        scope.cancel()
+        appScope.cancel()
+    }
+
+    @Test
+    fun threadForegroundGateIsReleasedByFirstContentReadyCancellationAndClear() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        // One payload store (and so one gate) per variant: a shared one would serve the next
+        // variant's Start from the memory cache the previous variant wrote.
+        lateinit var gate: SharedForegroundLoadGate
+
+        suspend fun startBlocked(name: String): Triple<SharedThreadStore, CoroutineScope, FakeConversationRepository> {
+            val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+            gate = payloadStore.foregroundLoadGate
+            val repository = foregroundGateReplyRepository()
+            repository.getReplyThreadStarted = CompletableDeferred()
+            repository.releaseGetReplyThread = CompletableDeferred()
+            val dataSource = foregroundGateDataSource(repository, payloadStore, name)
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+            store.dispatch(SharedThreadIntent.Start(replyPayload(parentMessageId = "m1", threadId = "thread-m1")))
+            withTimeout(10_000L) { repository.getReplyThreadStarted?.await() }
+            assertEquals(1, gate.activeCount())
+            return Triple(store, scope, repository)
+        }
+
+        // First content ready (e.g. a cached frame rendered) releases before the load finishes.
+        val (readyStore, readyScope, readyRepository) = startBlocked("thread-fg-gate-ready")
+        readyStore.accept(SharedThreadIntent.FirstContentReady)
+        assertEquals(0, gate.activeCount())
+        readyRepository.releaseGetReplyThread?.complete(Unit)
+        readyScope.cancel()
+
+        // Cancellation of the load (page scope torn down without clear) releases via finally.
+        val (_, cancelledScope, _) = startBlocked("thread-fg-gate-cancel")
+        cancelledScope.cancel()
+        // Well inside the 5 s lease timeout, so only the real release can make this green.
+        withTimeout(2_000L) { while (gate.activeCount() != 0) delay(5L) }
+
+        // Page close.
+        val (closedStore, closedScope, _) = startBlocked("thread-fg-gate-clear")
+        closedStore.clear()
+        assertEquals(0, gate.activeCount())
+        closedScope.cancel()
+        appScope.cancel()
+    }
+
+    @Test
+    fun activityReplyPrewarmWaitsForAVisibleThreadStartThroughTheSharedPayloadStore() = runBlocking {
+        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+        val repository = foregroundGateReplyRepository()
+        repository.getReplyThreadStarted = CompletableDeferred()
+        repository.releaseGetReplyThread = CompletableDeferred()
+        val dataSource = foregroundGateDataSource(repository, payloadStore, "thread-fg-gate-activity")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val prewarmCalls = kotlinx.atomicfu.atomic(0)
+        val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val activity =
+            build.raft.app.data.activityStore(
+                scope = activityScope,
+                foregroundLoadGate = payloadStore.foregroundLoadGate,
+                prewarmReplyThread = {
+                    prewarmCalls.incrementAndGet()
+                    DataResult.Content(Unit)
+                }
+            )
+
+        val opened = async { store.accept(SharedThreadIntent.Start(replyPayload(parentMessageId = "m1", threadId = "thread-m1"))) }
+        withTimeout(10_000L) { repository.getReplyThreadStarted?.await() }
+        activity.dispatch(
+            SharedActivityIntent.PrewarmVisibleReplyThreads(
+                setOf(
+                    ActivityReplyThreadPrewarmMarker(
+                        ActivityReplyThreadPrewarmKey("server-1", "channel-2", "m2", "thread-m2")
+                    )
+                )
+            )
+        )
+        delay(100L)
+        assertEquals(0, prewarmCalls.value, "Activity prewarm must yield to the visible open")
+
+        repository.releaseGetReplyThread?.complete(Unit)
+        withTimeout(10_000L) { opened.await() }
+        withTimeout(5_000L) { while (prewarmCalls.value == 0) delay(5L) }
+        assertEquals(1, prewarmCalls.value)
+        activityScope.cancel()
+        scope.cancel()
         appScope.cancel()
     }
 
