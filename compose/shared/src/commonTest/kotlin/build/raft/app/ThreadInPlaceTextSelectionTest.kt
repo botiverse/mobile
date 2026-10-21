@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.ui.geometry.Rect
+import build.raft.app.resources.MR
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import kotlin.test.Test
@@ -89,18 +90,6 @@ class ThreadInPlaceTextSelectionTest {
         assertEquals("", threadInPlaceSelectionCopyText(emptyList(), renderedNodes, body))
         assertEquals("", threadInPlaceSelectionCopyText(listOf("", ""), renderedNodes, body))
         assertFalse(threadInPlaceSelectionCoversAll(emptyList(), emptyList()))
-    }
-
-    @Test
-    fun barOffersCopySelectAllAndMore() {
-        assertEquals(
-            listOf(
-                ThreadInPlaceSelectionBarAction.Copy,
-                ThreadInPlaceSelectionBarAction.SelectAll,
-                ThreadInPlaceSelectionBarAction.More
-            ),
-            ThreadInPlaceSelectionBarActions
-        )
     }
 
     @Test
@@ -301,5 +290,84 @@ class ThreadInPlaceTextSelectionTest {
         val bar = offset(Rect(0f, 800f, 40f, 900f))
         assertEquals(16, bar.x)
         assertInsideViewport(bar)
+    }
+
+    private val messageMenu = ThreadNewMessageMenuActionAvailability()
+    private val selectionMenu = threadInPlaceSelectionMenuAvailability(messageMenu)
+
+    @Test
+    fun copyToolKeySwitchesToCopySelectionOnlyWithASelection() {
+        assertEquals(
+            MR.strings.thread_action_copy_markdown,
+            ThreadNewMessageMenuTool.Copy.compactLabelResource(messageMenu)
+        )
+        assertEquals(
+            MR.strings.thread_text_selection_copy_selection,
+            ThreadNewMessageMenuTool.Copy.compactLabelResource(selectionMenu)
+        )
+    }
+
+    @Test
+    fun selectToolIsPresentWithoutASelectionAndAbsentWithOne() {
+        assertTrue(ThreadNewMessageMenuTool.Select in messageMenu.primaryTools())
+        assertTrue(messageMenu.enabled(ThreadNewMessageMenuTool.Select))
+
+        assertFalse(ThreadNewMessageMenuTool.Select in selectionMenu.primaryTools())
+        assertFalse(ThreadNewMessageMenuTool.Select in selectionMenu.secondaryTools())
+        assertFalse(selectionMenu.enabled(ThreadNewMessageMenuTool.Select))
+    }
+
+    @Test
+    fun selectionMenuLeadsWithSelectAllAndKeepsTheMessageTools() {
+        assertEquals(
+            listOf(
+                ThreadNewMessageMenuTool.SelectAll,
+                ThreadNewMessageMenuTool.Copy,
+                ThreadNewMessageMenuTool.Reply,
+                ThreadNewMessageMenuTool.Forward,
+                ThreadNewMessageMenuTool.Save,
+                ThreadNewMessageMenuTool.Translate
+            ),
+            selectionMenu.primaryTools()
+        )
+        assertTrue(selectionMenu.enabled(ThreadNewMessageMenuTool.SelectAll))
+        assertEquals(
+            MR.strings.thread_text_selection_select_all,
+            ThreadNewMessageMenuTool.SelectAll.compactLabelResource(selectionMenu)
+        )
+        assertFalse(selectionMenu.more)
+        assertTrue(selectionMenu.copy)
+        // Outside a selection the long-press menu is unchanged.
+        assertEquals(ThreadNewMessageMenuToolOrder, messageMenu.primaryTools())
+        assertFalse(messageMenu.enabled(ThreadNewMessageMenuTool.SelectAll))
+        // Secondary tools that apply to the message stay available in selection context.
+        val withLink = threadInPlaceSelectionMenuAvailability(messageMenu.copy(copyLink = true))
+        assertTrue(ThreadNewMessageMenuTool.CopyLink in withLink.secondaryTools())
+    }
+
+    @Test
+    fun selectAllAndCopyRouteToTheSelectionCallbacks() {
+        val routed = mutableListOf<String>()
+        val callbacks =
+            ThreadNewMessageMenuToolCallbacks(
+                onCopy = { routed += "copy_selection" },
+                onReply = { routed += "reply" },
+                onForward = { routed += "forward" },
+                onSave = { routed += "save" },
+                onTranslate = { routed += "translate" },
+                onSelect = { routed += "select" },
+                onSelectAll = { routed += "select_all" }
+            )
+        selectionMenu.primaryTools().forEach { it.dispatch(callbacks) }
+        assertEquals(listOf("select_all", "copy_selection", "reply", "forward", "save", "translate"), routed)
+    }
+
+    @Test
+    fun copyInTheSelectionMenuCopiesTheSelectionAndFallsBackToTheWholeMessage() {
+        assertEquals(
+            "paragraph.",
+            threadInPlaceSelectionCopyText(listOf("", "paragraph."), renderedNodes, body, emptySelectionFallback = body)
+        )
+        assertEquals(body, threadInPlaceSelectionCopyText(emptyList(), renderedNodes, body, emptySelectionFallback = body))
     }
 }
