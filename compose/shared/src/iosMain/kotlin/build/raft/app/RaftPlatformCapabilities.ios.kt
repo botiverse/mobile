@@ -8,6 +8,7 @@ import platform.CoreFoundation.CFStringGetRangeOfComposedCharactersAtIndex
 import platform.CoreFoundation.kCFAllocatorDefault
 import platform.CoreFoundation.kCFStringEncodingUTF8
 import platform.Foundation.NSProcessInfo
+import platform.UIKit.UIApplication
 import build.raft.app.components.RaftPullToRefreshStyle
 
 internal actual fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle =
@@ -24,7 +25,10 @@ internal actual fun raftPlatformThreadImeProgrammaticViewportPolicy():
 internal actual fun raftPlatformAppShellChildPagePrewarmMode(): AppShellChildPagePrewarmMode =
     AppShellChildPagePrewarmMode.Canary
 
-internal actual fun raftPlatformSupportsMultiShellHost(): Boolean = true
+// Multiple windows exist only where iOS supports multiple scenes (iPad); an iPhone has one window,
+// so the "Multiple app windows" setting and "open in new window" are not offered there.
+internal actual fun raftPlatformSupportsMultiShellHost(): Boolean =
+    UIApplication.sharedApplication.supportsMultipleScenes
 
 internal actual fun raftPlatformSupportsConversationForwardGesture(): Boolean = true
 

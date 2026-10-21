@@ -1741,7 +1741,7 @@
     <string name="settings_mobile_multi_shell_host">多应用窗口</string>
     <string name="settings_mobile_desktop_mode">大屏下启用桌面模式</string>
     <string name="settings_mobile_desktop_mode_detail">在大屏上显示左侧导航栏及并排列表与详情。关闭后保持单栏移动布局与底部标签栏。</string>
-    <string name="settings_mobile_multi_shell_host_detail">在独立的 Android 应用窗口中打开不同工作空间。已打开的窗口会保留到你手动关闭。</string>
+    <string name="settings_mobile_multi_shell_host_detail">在独立的应用窗口中打开不同工作空间。已打开的窗口会保留到你手动关闭。</string>
     <string name="settings_mobile_server_drawer">多服务器首页抽屉</string>
     <string name="settings_mobile_server_drawer_detail">在首页使用新的多服务器左侧抽屉。关闭后继续使用当前的服务器切换浮层。</string>
     <string name="settings_mobile_new_message_menu">新消息菜单</string>
