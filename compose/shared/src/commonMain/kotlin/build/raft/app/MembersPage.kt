@@ -38,6 +38,12 @@ import build.raft.app.components.RaftUiSelectionPopover
 import build.raft.app.components.RaftUiSelectionOption
 import build.raft.app.components.TabPager
 import build.raft.app.components.TabPagerGesturePolicy
+import build.raft.app.data.AgentTurnStopFeedback
+import build.raft.app.data.AgentTurnStopIntent
+import build.raft.app.data.AgentTurnStopState
+import build.raft.app.data.AgentTurnStopStore
+import build.raft.app.data.RaftAgentControlsApi
+import build.raft.app.data.canStopAgentTurn
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AgentActivityEntry
 import build.raft.app.data.AgentActivityOverviewIntent
@@ -2993,7 +2999,8 @@ private class MemberDetailRouteProvider(
     val runtimeAccountUsageStore: SharedRuntimeAccountUsageStore? = null,
     val computersOwner: suspend () -> SharedComputersOwner? = { null },
     val serverFeatureFlags: build.raft.app.data.SharedServerFeatureFlags? = null,
-    val activityOverviewRepository: build.raft.app.data.AgentActivityOverviewRepository? = null
+    val activityOverviewRepository: build.raft.app.data.AgentActivityOverviewRepository? = null,
+    val agentControlsApi: RaftAgentControlsApi? = null
 ) {
     /** The identity the shared network client currently authenticates as (task #137 usage reads). */
     suspend fun currentRuntimeAccountUsageOwner(): SharedComputersOwner? = computersOwner()
@@ -3645,6 +3652,7 @@ private fun rememberMemberDetailRouteProvider(
             logger = { message -> bridge.log("member_detail_$message") }
         )
     }
+    val agentControlsApi = remember(networkClient) { RaftAgentControlsApi(networkClient) }
     val avatarNativeCache =
         remember(bridge, scope) {
             BridgeRaftAvatarNativeCache(
@@ -3674,7 +3682,8 @@ private fun rememberMemberDetailRouteProvider(
         storeScope,
         agentsApiClient,
         runtimeAccountUsageStore,
-        activityOverviewRepository
+        activityOverviewRepository,
+        agentControlsApi
     ) {
         MemberDetailRouteProvider(
             computersOwner = { sharedStores.computersOwner(storeScope) },
@@ -3701,7 +3710,8 @@ private fun rememberMemberDetailRouteProvider(
             agentsApiClient = agentsApiClient,
             runtimeAccountUsageStore = runtimeAccountUsageStore,
             serverFeatureFlags = sharedStores.serverFeatureFlags,
-            activityOverviewRepository = activityOverviewRepository
+            activityOverviewRepository = activityOverviewRepository,
+            agentControlsApi = agentControlsApi
         )
     }
 }
@@ -3743,6 +3753,10 @@ internal fun MemberDetailPageContent(
     val provider = rememberMemberDetailRouteProvider(pager, bridge, storeScopeOverride)
     val closeDetail = onClose ?: { provider.bridge.closePage() }
     val routeScope = rememberCoroutineScope()
+    val agentTurnStopStore =
+        remember(provider, routeScope) {
+            provider.agentControlsApi?.let { api -> AgentTurnStopStore(api::interruptTurn, routeScope) }
+        }
     val memberIdentity = payload.identity
     val activeServerId by provider.selectedServerStore.currentServerId.collectAsState()
     var routeState by remember(memberIdentity) {
@@ -4345,6 +4359,10 @@ internal fun MemberDetailPageContent(
                         ),
                         createAgentFormStore = provider.createAgentFormStore,
                         externalSetupServerUrl = provider.apiEnvironmentStore.current().webUrl,
+                        remoteControls = MembersAgentRemoteControls(
+                            serverRole = current.server.role,
+                            turnStopStore = agentTurnStopStore
+                        ),
                         agentProfileEditAuthority = agentProfileEditAuthority,
                         canViewPrivateAgentSurfaces = { _, detail ->
                             current.accessMode.allowsPrivateAgentSurfaces &&
@@ -5701,6 +5719,24 @@ private class MembersAgentDetailCallbacks(
     val onReportAgentIssue: (suspend (SharedAgentIssueReportRequest) -> DataResult<AgentIssueReportResult>)?
 )
 
+/** Agent remote controls the detail page offers beyond the lifecycle actions (web parity). */
+internal class MembersAgentRemoteControls(
+    /** The viewer's role on the agent's server; mirrors the server capability matrix. */
+    val serverRole: String?,
+    val turnStopStore: AgentTurnStopStore?
+)
+
+@Composable
+private fun membersAgentTurnStopMessages(): Map<AgentTurnStopFeedback, String> =
+    mapOf(
+        AgentTurnStopFeedback.Interrupted to stringResource(MR.strings.agent_stop_turn_interrupted),
+        AgentTurnStopFeedback.Restarted to stringResource(MR.strings.agent_stop_turn_restarted),
+        AgentTurnStopFeedback.NotRunning to stringResource(MR.strings.agent_stop_turn_not_running),
+        AgentTurnStopFeedback.UpgradeRequired to stringResource(MR.strings.agent_stop_turn_upgrade_required),
+        AgentTurnStopFeedback.ComputerOffline to stringResource(MR.strings.agent_stop_turn_computer_offline),
+        AgentTurnStopFeedback.Failed to stringResource(MR.strings.agent_stop_turn_failed)
+    )
+
 private class MembersDetailActions(
     val onBack: () -> Unit,
     val onOpenDirectMessage: () -> Unit,
@@ -5757,7 +5793,8 @@ private fun MembersDetailContent(
     // `agentScopes` / `updateAgentScopes` / `resetAgentScopes`. When null
     // the Permissions tab renders an "Agent API not available" error banner.
     agentsApiClient: build.raft.app.data.RaftAgentsApiClient? = null,
-    externalSetupServerUrl: String? = null
+    externalSetupServerUrl: String? = null,
+    remoteControls: MembersAgentRemoteControls? = null
 ) {
     val agentMachineRuntimes = runtimeModels.agentMachineRuntimes
     val agentRuntimeModelsByRuntime = runtimeModels.agentRuntimeModelsByRuntime
@@ -5854,6 +5891,17 @@ private fun MembersDetailContent(
         if (isExternalAgent) agentStatusIndicatorState else managedAgentStatusObservedState
     val canViewPrivate = member.kind == MemberKind.Agent && canViewPrivateAgentSurfaces(member, detail)
     val canManage = member.kind == MemberKind.Agent && !deleted && canManageAgent(member, detail)
+    val turnStopStore = remoteControls?.turnStopStore
+    val fallbackTurnStopState = remember { MutableStateFlow(AgentTurnStopState()) }
+    val turnStopState by (turnStopStore?.state ?: fallbackTurnStopState).collectAsState()
+    val turnStopMessages = membersAgentTurnStopMessages()
+    LaunchedEffect(turnStopState.feedback, turnStopState.feedbackAgentId) {
+        val feedback = turnStopState.feedback ?: return@LaunchedEffect
+        if (turnStopState.feedbackAgentId == member.id) {
+            onUnavailableAction(turnStopMessages.getValue(feedback))
+        }
+        turnStopStore?.dispatch(AgentTurnStopIntent.ConsumeFeedback)
+    }
     val scope = rememberCoroutineScope()
     val pager = LocalActivity.current.getPager() as Pager
     val fallbackAgentDetailStore = remember { SharedAgentDetailStore() }
@@ -6590,12 +6638,24 @@ private fun MembersDetailContent(
                     deleted = deleted,
                     hasResolvedPresence = true
                 )
+            val canStopTurn =
+                member.kind == MemberKind.Agent &&
+                    turnStopStore != null &&
+                    canStopAgentTurn(
+                        serverRole = remoteControls.serverRole,
+                        isCreator = currentUserId != null && detail?.summary?.creatorId == currentUserId,
+                        isExternalAgent = isExternalAgent,
+                        deleted = deleted,
+                        online = menuPrimary == MembersAgentLifecycleAction.Stop
+                    )
             val menuItems =
                 buildMembersManagementMenuItems(
                     primaryAction = menuPrimary,
                     canManage = canManage,
                     deleted = deleted,
-                    inProgress = lifecycleInFlight != null
+                    inProgress = lifecycleInFlight != null,
+                    canStopTurn = canStopTurn,
+                    stopTurnInProgress = turnStopState.inFlightAgentId != null
                 ).map { item ->
                     RaftUiMenuItem(
                         id = item.id,
@@ -6614,7 +6674,8 @@ private fun MembersDetailContent(
                         id = id,
                         primaryAction = menuPrimary,
                         openRestartResetDialog = { openRestartResetDialog() },
-                        runLifecycleAction = { runLifecycleAction(it) }
+                        runLifecycleAction = { runLifecycleAction(it) },
+                        stopTurn = { turnStopStore?.dispatch(AgentTurnStopIntent.Stop(member.id)) }
                     )
                 },
                 onDismiss = {
@@ -6769,9 +6830,21 @@ internal fun buildMembersManagementMenuItems(
     primaryAction: MembersAgentLifecycleAction?,
     canManage: Boolean,
     deleted: Boolean,
-    inProgress: Boolean
+    inProgress: Boolean,
+    canStopTurn: Boolean = false,
+    stopTurnInProgress: Boolean = false
 ): List<MembersManagementMenuItemSpec> {
-    if (deleted || !canManage) return emptyList()
+    if (deleted) return emptyList()
+    // Web AgentProfileOverflowMenu: Stop Current Turn sits under the runtime
+    // controls and is offered on its own to people who may only stop turns.
+    val stopTurnItem =
+        MembersManagementMenuItemSpec(
+            id = MEMBERS_STOP_TURN_MENU_ID,
+            label = MR.strings.agent_stop_turn.desc(),
+            icon = RaftLucideIconName.Square,
+            enabled = !stopTurnInProgress
+        ).takeIf { canStopTurn }
+    if (!canManage) return listOfNotNull(stopTurnItem)
     val items = mutableListOf<MembersManagementMenuItemSpec>()
     if (primaryAction != null) {
         items += MembersManagementMenuItemSpec(
@@ -6791,15 +6864,23 @@ internal fun buildMembersManagementMenuItems(
         icon = RaftLucideIconName.RotateCcw,
         enabled = !inProgress
     )
+    if (stopTurnItem != null) items += stopTurnItem
     return items
 }
+
+internal const val MEMBERS_STOP_TURN_MENU_ID = "stop_turn"
 
 private fun handleMembersManagementMenuSelection(
     id: String,
     primaryAction: MembersAgentLifecycleAction?,
     openRestartResetDialog: () -> Unit,
-    runLifecycleAction: (MembersAgentLifecycleAction) -> Unit
+    runLifecycleAction: (MembersAgentLifecycleAction) -> Unit,
+    stopTurn: () -> Unit = {}
 ) {
+    if (id == MEMBERS_STOP_TURN_MENU_ID) {
+        stopTurn()
+        return
+    }
     if (id == MembersAgentLifecycleAction.Restart.actionKey) {
         openRestartResetDialog()
         return

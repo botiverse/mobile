@@ -2650,4 +2650,11 @@
     <string name="joint_invite_error_server_not_found">Server “%1$s” wasn’t found. Check the slug.</string>
     <string name="joint_invite_error_cannot_invite_self">You can’t invite this server to its own joint channel.</string>
     <string name="joint_create_failed">Failed to create joint channel</string>
+    <string name="agent_stop_turn">Stop Current Turn</string>
+    <string name="agent_stop_turn_interrupted">Stopped the current turn.</string>
+    <string name="agent_stop_turn_not_running">Nothing was running.</string>
+    <string name="agent_stop_turn_failed">Couldn\'t stop the current turn.</string>
+    <string name="agent_stop_turn_restarted">To stop the turn, the agent was restarted. Its conversation context is kept.</string>
+    <string name="agent_stop_turn_upgrade_required">This agent\'s Computer needs an upgrade to stop a single turn. You can stop the whole agent instead.</string>
+    <string name="agent_stop_turn_computer_offline">This agent\'s Computer is offline.</string>
 </resources>

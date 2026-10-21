@@ -2650,4 +2650,11 @@
     <string name="joint_invite_error_server_not_found">サーバー「%1$s」が見つかりませんでした。スラッグを確認してください。</string>
     <string name="joint_invite_error_cannot_invite_self">このサーバーを、自身の共同チャンネルに招待することはできません。</string>
     <string name="joint_create_failed">共同チャンネルを作成できませんでした</string>
+    <string name="agent_stop_turn">現在のターンを停止</string>
+    <string name="agent_stop_turn_interrupted">現在のターンを停止しました。</string>
+    <string name="agent_stop_turn_not_running">実行中の処理はありませんでした。</string>
+    <string name="agent_stop_turn_failed">現在のターンを停止できませんでした。</string>
+    <string name="agent_stop_turn_restarted">ターンを停止するため、エージェントを再起動しました。会話のコンテキストは保持されています。</string>
+    <string name="agent_stop_turn_upgrade_required">このエージェントのコンピューターは、ターンだけを停止するにはアップグレードが必要です。エージェント全体を停止することもできます。</string>
+    <string name="agent_stop_turn_computer_offline">このエージェントのコンピューターはオフラインです。</string>
 </resources>
