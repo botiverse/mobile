@@ -32,6 +32,7 @@ import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import coil3.compose.rememberAsyncImagePainter
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -252,6 +253,7 @@ fun RaftCachedImage(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Fit,
+    colorFilter: ColorFilter? = null,
     onImageStateChange: ((AsyncImagePainter.State) -> Unit)? = null
 ) {
     val painter = rememberAsyncImagePainter(source)
@@ -266,7 +268,8 @@ fun RaftCachedImage(
         painter = painter,
         contentDescription = contentDescription,
         modifier = modifier,
-        contentScale = contentScale
+        contentScale = contentScale,
+        colorFilter = colorFilter
     )
 }
 
