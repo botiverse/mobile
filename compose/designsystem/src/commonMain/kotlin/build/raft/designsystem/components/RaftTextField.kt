@@ -27,6 +27,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.graphics.Color
@@ -522,11 +523,17 @@ private fun RaftInputBox(
                 ) { leading() }
             }
             if (prefix != null) {
-                // raft-ui 0.13: a text prefix takes at most half the field, then ellipsizes
-                // (the input's equal weight keeps the other half).
+                // raft-ui 0.13: a text prefix takes at most half the field, then ellipsizes. A
+                // cap, not a weight: a weight would hold half the field for a short prefix too
+                // and leave the input only the other half.
                 AddonText(
                     prefix,
-                    Modifier.weight(1f, fill = false).padding(start = if (leading != null) 8.dp else edge, end = 2.dp),
+                    Modifier
+                        .layout { measurable, constraints ->
+                            val placeable = measurable.measure(constraints.copy(minWidth = 0, maxWidth = constraints.maxWidth / 2))
+                            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+                        }
+                        .padding(start = if (leading != null) 8.dp else edge, end = 2.dp),
                     look.addon,
                 )
             }
