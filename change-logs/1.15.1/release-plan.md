@@ -45,7 +45,7 @@ Reviewed notes: `android/` and `ios/` in this directory (zh-CN, en, ja).
 | Android Hands `preview` | 11501001, release `8e2a78ac` | active 100% (same APK as `main`, SHA-256 `d8c5bd2d…`) |
 | Android Hands `main` | 11501001, release `012955d1` | active 100% (owner approved via Lagoon, task #61; artin "ok" 2026-10-21 12:44Z) |
 | Google Play | 11501002 (Play variant, same source) | `internal` only; `closed` / `production` wait for the Hands Play adapter fix |
-| iOS TestFlight | 1.15.1 (1) | internal group; external group Insiders submitted to Beta App Review (WAITING_FOR_REVIEW), testers notified automatically on approval |
+| iOS TestFlight | 1.15.1 (1) internal; **1.15.1 (2) external** | (1) passed Beta App Review 2026-10-22 06:14Z. Owner chose to ship (2) to the external group Insiders instead (pinyin fix verified by artin); auto-approved and testers notified 06:15Z |
 
 QA: Lagoon Android smoke on staging passed (install, cold start, login, tabs, search keyboard, 3 resumes, Activity, send, pull-to-refresh, live theme switch). #3394 verified on API 34/31 emulators and an Android 12 cloud phone. Not covered: agent stop/migrate (no online agent on staging).
 
@@ -58,4 +58,4 @@ QA: Lagoon Android smoke on staging passed (install, cold start, login, tabs, se
 
 ## Exceptions
 
-None yet.
+1. **iOS external carrier is 1.15.1 (2), not from `release/1.15.1`.** It was built from Lagoon's branch `agent/lagoon/ios-ime-textfieldstate` @ `53054b59` (#3439, pinyin input fix, plus newer `main`). Owner: artin, 2026-10-21 21:50Z ("直接用这个包"). Its What to Test is the full 1.15.1 list plus the (2) additions (Lagoon's combined list); see `ios/` notes.
