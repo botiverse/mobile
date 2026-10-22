@@ -2,6 +2,8 @@ package build.raft.app.data
 
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
+import build.raft.app.model.MessageType
+import build.raft.app.parsedMessageTypeOrNull
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import kotlinx.coroutines.withContext
@@ -457,6 +459,28 @@ internal data class ThreadMessagesPage(
     val messageCount: Int
         get() = messages.size
 }
+
+/**
+ * Task #59, the rule of botiverse/slock #10809, for a send response (the sender's own message):
+ * a chat message that is not an assistant's delegated send reopens its DM, or for a thread
+ * reply the parent DM. [fallbackChannelId] covers a message without `channelId`;
+ * [parentConversationId] is the reply's parent conversation, null for a top-level send.
+ */
+internal fun ThreadMessagesPage.ownSentConversationIds(
+    fallbackChannelId: String,
+    parentConversationId: String?,
+): Set<String> =
+    messages
+        .asSequence()
+        .filter { message ->
+            message.senderType == "user" &&
+                message.messageType.parsedMessageTypeOrNull() == MessageType.Chat &&
+                message.delegatedBy == null
+        }
+        .flatMap { message -> sequenceOf(message.channelId ?: fallbackChannelId, parentConversationId) }
+        .filterNotNull()
+        .filter { it.isNotBlank() }
+        .toSet()
 
 internal data class ThreadAttachmentOpenTarget(
     val url: String,

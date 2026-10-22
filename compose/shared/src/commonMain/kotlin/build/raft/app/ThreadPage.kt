@@ -116,6 +116,7 @@ import build.raft.app.data.newAttachmentUploadClientRequestId
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
 import build.raft.app.data.ThreadApiResult
+import build.raft.app.data.ownSentConversationIds
 import build.raft.app.data.RaftAgentsApiClient
 import build.raft.app.data.RaftAgentsNetworkApi
 import build.raft.app.data.RaftRealtimeEvents
@@ -9435,6 +9436,17 @@ private fun SharedThreadRouteContentContent(
                         expectedRoute = sendRoute
                     )
                 )
+                // Task #59: replying in a hidden DM shows it in Home's DM list right away.
+                val ownSentChannelIds =
+                    sentPage.ownSentConversationIds(
+                        fallbackChannelId = context.channelId,
+                        parentConversationId = sendBasePayload.parentChannelId.takeIf { sendRoute.surfaceKind == RaftThreadSurfaceKind.ReplyThread }
+                    )
+                if (ownSentChannelIds.isNotEmpty()) {
+                    sharedHomeStore?.dispatch(
+                        SharedHomeIntent.OwnMessagesSent(sendProvenance.serverId, ownSentChannelIds)
+                    )
+                }
                 bridge.performanceMarker(
                     phase = "composer_send",
                     routeName = "kuikly_thread",
