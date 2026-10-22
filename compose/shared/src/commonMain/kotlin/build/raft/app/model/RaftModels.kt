@@ -135,6 +135,8 @@ data class ConversationSummary(
      * Only meaningful for `type == "channel"`; never true for DMs / threads.
      */
     val guestVisible: Boolean = false,
+    /** Channel row `guestJoinable` (see [build.raft.app.data.HomeChannelWireDto.guestJoinable]). */
+    val guestJoinable: Boolean = false,
     val activityNotificationPreference: ChannelActivityNotificationPreference = ChannelActivityNotificationPreference.Unsupported,
     val permissions: ConversationPermissions = ConversationPermissions(),
     /**
@@ -173,7 +175,14 @@ data class ConversationPermissions(
 data class ChannelCapabilities(
     val addChannelMembers: Boolean? = null,
     val removeChannelMembers: Boolean? = null,
-    val changeChannelMemberRoles: Boolean? = null
+    val changeChannelMemberRoles: Boolean? = null,
+    /** Channel settings (web EditChannelDialog `effectiveCapabilities`): rename / describe. */
+    val editChannelMetadata: Boolean? = null,
+    val archiveChannels: Boolean? = null,
+    val deleteChannels: Boolean? = null,
+    val changeChannelVisibility: Boolean? = null,
+    val manageGuestAccess: Boolean? = null,
+    val federateChannels: Boolean? = null,
 )
 
 // Member Models

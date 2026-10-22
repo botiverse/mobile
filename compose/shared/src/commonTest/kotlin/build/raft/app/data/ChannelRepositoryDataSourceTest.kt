@@ -339,6 +339,80 @@ class ChannelRepositoryDataSourceTest {
         assertEquals("Canonical description", body["description"]?.jsonPrimitive?.content)
     }
 
+    /** The `channels` row the routes answer with (`res.json(updated)`; packages/server/src/db/schema.ts `channels`). */
+    private val canonicalChannelRow =
+        """{"id":"channel-1","serverId":"server-1","name":"triage","description":"Intake","type":"channel",""" +
+            """"guestVisible":true,"guestJoinable":true,"parentMessageId":null,"parentChannelId":null,""" +
+            """"createdAt":"2026-10-01T08:00:00.000Z","archivedAt":null,"archivedByUserId":null,""" +
+            """"archivedByAgentId":null,"deletedAt":null}"""
+
+    @Test
+    fun guestPolicyPatchSendsOnlyTheChangedFlagsAndReadsTheRow() = runBlocking {
+        val network = FakeChannelNetworkClient(responseBody = canonicalChannelRow)
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        val result =
+            repository.updateChannelGuestPolicy(
+                ChannelId("channel-1"),
+                ChannelGuestPolicyUpdate(guestVisible = true, guestJoinable = true),
+            )
+
+        val row = assertIs<DataResult.Content<HomeChannelRow>>(result).data
+        assertTrue(row.guestVisible)
+        assertTrue(row.guestJoinable)
+        assertEquals(
+            listOf(RecordedChannelRequest(DataRequestPriority.Foreground, "PATCH", "channels/channel-1")),
+            network.requests,
+        )
+        val body = network.bodies.single().asJsonObject()
+        assertEquals(setOf("guestVisible", "guestJoinable"), body.keys)
+
+        repository.updateChannelGuestPolicy(ChannelId("channel-1"), ChannelGuestPolicyUpdate(guestJoinable = false))
+        assertEquals(setOf("guestJoinable"), network.bodies.last().asJsonObject().keys)
+        assertEquals("false", network.bodies.last().asJsonObject()["guestJoinable"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun guestPolicyLimitConflictKeepsTheServerCode() = runBlocking {
+        val network =
+            FakeChannelNetworkClient(
+                responseCode = 409,
+                responseBody = null,
+                responseErrorBody =
+                    """{"error":"Guest-joinable channel limit reached","code":"guest_joinable_channel_limit_reached","limit":3}""",
+            )
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        val result =
+            repository.updateChannelGuestPolicy(ChannelId("channel-1"), ChannelGuestPolicyUpdate(guestVisible = true, guestJoinable = true))
+
+        assertEquals("guest_joinable_channel_limit_reached", assertIs<DataResult.Error>(result).error.code)
+    }
+
+    @Test
+    fun unarchivePostsAndReadsTheRestoredRow() = runBlocking {
+        val network = FakeChannelNetworkClient(responseBody = canonicalChannelRow)
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        val row = assertIs<DataResult.Content<HomeChannelRow>>(repository.unarchiveChannel(ChannelId("channel-1"))).data
+
+        assertEquals(ChannelId("channel-1"), row.channelId)
+        assertEquals(false, row.archived)
+        assertEquals(
+            listOf(RecordedChannelRequest(DataRequestPriority.Foreground, "POST", "channels/channel-1/unarchive")),
+            network.requests,
+        )
+    }
+
+    @Test
+    fun unarchiveRejectsAnotherChannelsRow() = runBlocking {
+        val network = FakeChannelNetworkClient(responseBody = canonicalChannelRow.replace("channel-1", "channel-9"))
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        assertIs<DataResult.Error>(repository.unarchiveChannel(ChannelId("channel-1")))
+        Unit
+    }
+
     @Test
     fun updateChannelProfileSendsEmptyDescriptionToClearIt() = runBlocking {
         val network =

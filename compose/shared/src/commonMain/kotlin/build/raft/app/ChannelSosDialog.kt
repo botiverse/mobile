@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -9,7 +10,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import build.raft.app.components.RaftBrutalTextarea
+import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.ChannelSosState
 import build.raft.app.data.ChannelSosIntent
 import build.raft.app.data.ChannelSosPhase
 import build.raft.app.data.ChannelSosStore
@@ -20,6 +22,9 @@ import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftDialog
+import build.raft.designsystem.components.RaftDialogSize
+import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import com.tencent.tmm.kmmresource.compose.stringResource
@@ -40,16 +45,19 @@ internal fun ChannelSosDialog(
         if (state.closed) onClose()
     }
     val busy = state.stopping || state.resuming
+    RaftDesignSystemTheme {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    RaftUnifiedDialog(
+    RaftDialog(
+        onDismissRequest = { if (!busy) onClose() },
         title =
             stringResource(
                 if (state.phase == ChannelSosPhase.Confirm) MR.strings.channel_sos_stop_all_agents else MR.strings.channel_sos_agents_stopped
             ),
-        onDismiss = { if (!busy) onClose() },
-        dismissEnabled = !busy,
-        maxWidth = 384.dp
+        size = RaftDialogSize.Sm,
+        dismissOnClickOutside = !busy,
+        closeLabel = stringResource(MR.strings.common_close),
+        footer = { ChannelSosDialogFooter(state, busy, store, onClose) },
     ) {
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)) {
             if (state.phase == ChannelSosPhase.Confirm) {
@@ -81,13 +89,12 @@ internal fun ChannelSosDialog(
                         size = RaftBannerSize.Sm
                     )
                 }
-                RaftBrutalTextarea(
+                RaftTextarea(
                     value = state.guidance,
                     onValueChange = { store.dispatch(ChannelSosIntent.UpdateGuidance(it)) },
                     placeholder = stringResource(MR.strings.channel_sos_guidance_placeholder),
                     enabled = !state.resuming,
-                    fieldHeight = 104.dp,
-                    maxLines = 4
+                    minHeight = 104.dp,
                 )
             }
             if (state.errorCode != null) {
@@ -101,7 +108,17 @@ internal fun ChannelSosDialog(
                 )
             }
         }
-        RaftDialogFooter {
+    }
+    }
+}
+
+@Composable
+private fun RowScope.ChannelSosDialogFooter(
+    state: ChannelSosState,
+    busy: Boolean,
+    store: ChannelSosStore,
+    onClose: () -> Unit,
+) {
             if (state.phase == ChannelSosPhase.Confirm) {
                 RaftButton(
                     text = stringResource(MR.strings.common_cancel),
@@ -136,8 +153,6 @@ internal fun ChannelSosDialog(
                     loadingLabel = stringResource(MR.strings.channel_sos_resuming)
                 )
             }
-        }
-    }
 }
 
 @Composable

@@ -40,6 +40,7 @@ import build.raft.designsystem.components.RaftConversationKindIcon
 import build.raft.designsystem.components.RaftInboxItemLeadingDefaults
 import build.raft.designsystem.components.RaftInboxItemLeadingBadge
 import build.raft.designsystem.components.RaftInboxItemLeading
+import build.raft.designsystem.components.RaftAvatarEmpty
 import build.raft.designsystem.components.RaftMessageDelegatedAvatar
 import build.raft.designsystem.components.RaftAvatarGroup
 import build.raft.designsystem.components.RaftAvatarGroupCount
@@ -462,6 +463,27 @@ class DisplayComponentScreenshotTest {
                         RaftAvatarGroupCount("+3", RaftAvatarSize.Sm)
                     }
                 }
+            }
+        }
+
+    /**
+     * raft-ui empty identity (`rf-avatar--empty`, web members strip "Add Member" tile): at md
+     * next to a real md face and a `+N` count, then pressed, disabled, and at sm / lg.
+     */
+    @Test
+    fun avatarEmpty() =
+        capture("avatar_empty") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                RaftAvatar(RaftAvatarType.Human, RaftAvatarSize.Md, initials = "A")
+                RaftAvatarGroupCount("+12", RaftAvatarSize.Md)
+                RaftAvatarEmpty(RaftAvatarSize.Md, contentDescription = "Add Member", onClick = {})
+                CompositionLocalProvider(LocalRaftPressedPreview provides true) {
+                    RaftAvatarEmpty(RaftAvatarSize.Md, contentDescription = "Add Member", onClick = {})
+                }
+                RaftAvatarEmpty(RaftAvatarSize.Md, contentDescription = "Add Member", enabled = false, onClick = {})
+                RaftAvatarEmpty(RaftAvatarSize.Sm, contentDescription = "Add Member")
+                RaftAvatarEmpty(RaftAvatarSize.Lg, contentDescription = "Add Member")
+                Caption("Default, pressed, disabled, sm, lg")
             }
         }
 

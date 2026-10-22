@@ -78,6 +78,47 @@ private suspend fun RaftNetworkClient.updateChannelProfile(
         bodyText = buildChannelProfileUpdateBody(request)
     )
 
+private suspend fun RaftNetworkClient.unarchiveChannel(priority: DataRequestPriority, channelId: ChannelId): HomeNetworkResponse =
+    request(priority, "channels/${channelId.value}/unarchive", method = "POST")
+
+private suspend fun RaftNetworkClient.updateChannelGuestPolicy(
+    priority: DataRequestPriority,
+    channelId: ChannelId,
+    update: ChannelGuestPolicyUpdate,
+): HomeNetworkResponse =
+    request(
+        priority,
+        "channels/${channelId.value}",
+        method = "PATCH",
+        bodyText = buildChannelGuestPolicyUpdateBody(update),
+    )
+
+/**
+ * Guest policy of a regular channel (botiverse/slock `packages/server/src/routes/channels.ts`
+ * `PATCH /:id`, `const { name, description, visibility, guestVisible, guestJoinable } = req.body`):
+ * only the flags that change; both must be booleans, and a guest-joinable channel must also be
+ * guest-visible (the server answers 400 otherwise, 409 `guest_joinable_channel_limit_reached`
+ * over the plan's limit).
+ */
+data class ChannelGuestPolicyUpdate(
+    val guestVisible: Boolean? = null,
+    val guestJoinable: Boolean? = null,
+)
+
+@Serializable
+internal data class ChannelGuestPolicyUpdateBody(
+    val guestVisible: Boolean? = null,
+    val guestJoinable: Boolean? = null,
+)
+
+private val channelGuestPolicyJson = Json { explicitNulls = false }
+
+internal fun buildChannelGuestPolicyUpdateBody(update: ChannelGuestPolicyUpdate): String =
+    channelGuestPolicyJson.encodeToString(
+        ChannelGuestPolicyUpdateBody.serializer(),
+        ChannelGuestPolicyUpdateBody(guestVisible = update.guestVisible, guestJoinable = update.guestJoinable),
+    )
+
 private suspend fun RaftNetworkClient.openDirectMessage(priority: DataRequestPriority, bodyText: String): HomeNetworkResponse =
     request(priority, "channels/dm", method = "POST", bodyText = bodyText)
 
@@ -193,6 +234,41 @@ class RealChannelRepository(
             mapper = { bodyText ->
                 parseSharedChannelArchiveResult(bodyText, channelId)
                     ?: throw IllegalStateException("Archive channel response missing channel")
+            }
+        )
+    }
+
+    /** `POST channels/:id/unarchive`; the server answers with the updated channel row. */
+    suspend fun unarchiveChannel(channelId: ChannelId): DataResult<HomeChannelRow> {
+        currentContext() ?: return authRequired()
+        if (channelId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
+        return executeChannel(
+            emptyReason = EmptyReason.NoChannels,
+            block = { networkClient.unarchiveChannel(DataRequestPriority.Foreground, channelId) },
+            source = "channel_unarchive",
+            mapper = { bodyText ->
+                parseSharedChannelRowResult(bodyText)
+                    ?.takeIf { it.channelId == channelId }
+                    ?: throw IllegalStateException("Unarchive channel response missing channel")
+            }
+        )
+    }
+
+    /** `PATCH channels/:id` with [ChannelGuestPolicyUpdate]; the server answers with the updated channel row. */
+    suspend fun updateChannelGuestPolicy(
+        channelId: ChannelId,
+        update: ChannelGuestPolicyUpdate,
+    ): DataResult<HomeChannelRow> {
+        currentContext() ?: return authRequired()
+        if (channelId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
+        return executeChannel(
+            emptyReason = EmptyReason.NoChannels,
+            block = { networkClient.updateChannelGuestPolicy(DataRequestPriority.Foreground, channelId, update) },
+            source = "channel_update_guest_policy",
+            mapper = { bodyText ->
+                parseSharedChannelRowResult(bodyText)
+                    ?.takeIf { it.channelId == channelId }
+                    ?: throw IllegalStateException("Update channel response missing channel")
             }
         )
     }

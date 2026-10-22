@@ -24,10 +24,6 @@
       "legacyComponentCalls": 0,
       "thickInkBorders": 1
     },
-    "compose/shared/src/commonMain/kotlin/build/raft/app/ChannelSettingsPage.kt": {
-      "legacyComponentCalls": 6,
-      "thickInkBorders": 1
-    },
     "compose/shared/src/commonMain/kotlin/build/raft/app/InAppBrowserPage.kt": {
       "legacyComponentCalls": 3,
       "thickInkBorders": 0

@@ -5,6 +5,7 @@ import build.raft.app.data.AuthenticatedRouteAuthorityGateway
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.AuthenticatedRouteOperationRunner
 import build.raft.app.data.ChannelActivityMuteSettings
+import build.raft.app.data.ChannelGuestPolicyUpdate
 import build.raft.app.data.ChannelProfileUpdateRequest
 import build.raft.app.data.ChannelProfileUpdateResult
 import build.raft.app.data.ChannelVisibility
@@ -23,9 +24,13 @@ import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerChannelMembersHandoff
 import build.raft.app.data.SharedServerMembersLoadStatus
+import build.raft.app.data.encodeServerPublicGuestGateEvaluateBody
+import build.raft.app.data.parseSharedServerGuestGateEnabled
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.RaftOwnerScopedBoundedCache
 import build.raft.app.data.RaftOwnerScopedCacheOwner
+import build.raft.app.data.ChannelSlackBridgeState
+import build.raft.app.data.SlackBridgeChannelPairingRepository
 import build.raft.app.data.map
 import build.raft.app.data.normalizedOrNull
 import build.raft.app.data.toHomeChannelRow
@@ -37,6 +42,27 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+
+/** Web `handleGuestVisibleChange`: `{ guestVisible: true }` or `{ guestVisible: false, guestJoinable: false }`. */
+internal fun channelSettingsGuestVisibleUpdate(visible: Boolean): ChannelGuestPolicyUpdate =
+    if (visible) ChannelGuestPolicyUpdate(guestVisible = true) else ChannelGuestPolicyUpdate(guestVisible = false, guestJoinable = false)
+
+/** Web `handleGuestJoinableChange`: `{ guestVisible: true, guestJoinable: true }` or `{ guestJoinable: false }`. */
+internal fun channelSettingsGuestJoinableUpdate(joinable: Boolean): ChannelGuestPolicyUpdate =
+    if (joinable) ChannelGuestPolicyUpdate(guestVisible = true, guestJoinable = true) else ChannelGuestPolicyUpdate(guestJoinable = false)
+
+/** A Slack channel pick to apply on Save; [slackChannelId] null disconnects. */
+internal data class ChannelSlackBridgeSelection(val slackChannelId: String?)
+
+/** What Save changed: the profile as the server has it, and the Slack pick when it was applied. */
+internal data class ChannelSettingsSaveResult(
+    val profile: ChannelProfileUpdateResult,
+    val slackBridge: ChannelSlackBridgeState?,
+    val slackBridgeApplied: Boolean,
+)
+
+/** Save went through for the name / description but the Slack Bridge step did not (web `channel.bridge.partialFailure`). */
+internal const val CHANNEL_SETTINGS_SLACK_BRIDGE_PARTIAL_FAILURE = "slack_bridge_partial_failure"
 
 internal enum class ChannelSettingsLoadStatus {
     Loading,
@@ -56,6 +82,12 @@ internal enum class ChannelSettingsAction {
     Delete,
     /** Joint channels: `POST channels/:id/disconnect` takes the place of Delete (web EditChannelDialog). */
     Disconnect,
+    /** `POST channels/:id/leave` (web ChatPanel `leaveChannel`). */
+    Leave,
+    /** `POST channels/:id/unarchive` (web EditChannelDialog `handleUnarchive`). */
+    Unarchive,
+    /** `PATCH channels/:id` `{ guestVisible?, guestJoinable? }` (web EditChannelDialog `updateGuestPolicy`). */
+    GuestAccess,
 }
 
 internal sealed interface ChannelSettingsEffect {
@@ -74,6 +106,10 @@ internal data class ChannelSettingsSnapshot(
     val sidebarOrder: SettingsServerSidebarOrderSnapshot,
     val canManage: Boolean,
     val memberSlice: SharedServerChannelMembersSlice,
+    /** `server_guest_v0` for this server (web `serverGuestEnabled`); off until evaluated. */
+    val guestAccessEnabled: Boolean = false,
+    /** The Slack channel pick when the Slack Bridge is on and at `health`; null otherwise. */
+    val slackBridge: ChannelSlackBridgeState? = null,
 )
 
 internal sealed interface ChannelSettingsSharedHandoff {
@@ -204,6 +240,8 @@ internal data class ChannelSettingsState(
     val channel: HomeChannelRow? = null,
     val sidebarOrder: SettingsServerSidebarOrderSnapshot? = null,
     val canManage: Boolean = false,
+    val guestAccessEnabled: Boolean = false,
+    val slackBridge: ChannelSlackBridgeState? = null,
     val memberSlice: SharedServerChannelMembersSlice = SharedServerChannelMembersSlice(channelId = ""),
     val refreshing: Boolean = false,
     val writeActionsEnabled: Boolean = false,
@@ -220,6 +258,18 @@ internal data class ChannelSettingsState(
     val errorCode: String? = null,
     val effect: ChannelSettingsEffect? = null,
 ) {
+    fun permissions(): ChannelSettingsPermissions =
+        channel?.let { channelSettingsPermissions(it, canManage) } ?: ChannelSettingsPermissions()
+
+    /** Web `canManageGuestAccess`: the flag, the capability, a live regular channel with a guest policy. */
+    fun showsGuestAccess(): Boolean {
+        val current = channel ?: return false
+        return guestAccessEnabled &&
+            permissions().manageGuestAccess &&
+            !current.archived &&
+            channelSettingsGuestPolicyApplies(current)
+    }
+
     fun isPinned(channelId: String): Boolean =
         sidebarOrder?.typedPinnedOrLegacy()?.any {
             it.kind == "channel" && it.id == channelId
@@ -238,8 +288,23 @@ internal sealed interface ChannelSettingsIntent {
     data object Refresh : ChannelSettingsIntent
     data object ToggleMute : ChannelSettingsIntent
     data object TogglePin : ChannelSettingsIntent
-    data class UpdateProfile(val name: String, val description: String) : ChannelSettingsIntent
+    /**
+     * Web panel Save: name / description, and with [slackBridge] the Slack channel pick
+     * ([ChannelSlackBridgeSelection]); unchanged parts are not sent.
+     */
+    data class UpdateProfile(
+        val name: String,
+        val description: String,
+        val slackBridge: ChannelSlackBridgeSelection? = null,
+    ) : ChannelSettingsIntent
     data object MakePrivate : ChannelSettingsIntent
+    data object MakePublic : ChannelSettingsIntent
+    data object Leave : ChannelSettingsIntent
+    data object Unarchive : ChannelSettingsIntent
+    /** Web `handleGuestVisibleChange`: off also turns guest joining off. */
+    data class SetGuestVisible(val visible: Boolean) : ChannelSettingsIntent
+    /** Web `handleGuestJoinableChange`: on also makes the channel guest-visible. */
+    data class SetGuestJoinable(val joinable: Boolean) : ChannelSettingsIntent
     data object Archive : ChannelSettingsIntent
     data object Delete : ChannelSettingsIntent
     data object Disconnect : ChannelSettingsIntent
@@ -252,7 +317,12 @@ internal interface ChannelSettingsDataSource {
     suspend fun setMuted(muted: Boolean): DataResult<ChannelActivityMuteSettings>
     suspend fun setPinned(pinned: Boolean): DataResult<SettingsServerSidebarOrderSnapshot>
     suspend fun updateProfile(name: String, description: String): DataResult<ChannelProfileUpdateResult>
+    suspend fun applySlackBridge(channel: HomeChannelRow, slackChannelId: String?): DataResult<ChannelSlackBridgeState?>
     suspend fun makePrivate(): DataResult<Unit>
+    suspend fun makePublic(): DataResult<Unit>
+    suspend fun leave(): DataResult<Unit>
+    suspend fun unarchive(): DataResult<HomeChannelRow>
+    suspend fun updateGuestPolicy(update: ChannelGuestPolicyUpdate): DataResult<HomeChannelRow>
     suspend fun archive(): DataResult<Unit>
     suspend fun delete(): DataResult<Unit>
     suspend fun disconnect(): DataResult<Unit>
@@ -293,12 +363,26 @@ internal class RealChannelSettingsDataSource(
                 priority = DataRequestPriority.Visible,
                 channelId = route.channelId,
             )
+            val permissions = channelSettingsPermissions(channel, receipt.canManageSettings)
+            val guestAccessEnabled =
+                permissions.manageGuestAccess &&
+                    channelSettingsGuestPolicyApplies(channel) &&
+                    serverGuestFeatureEnabled(networkClient)
+            val slackBridge =
+                if (channelSettingsSlackBridgeApplies(channel, permissions)) {
+                    SlackBridgeChannelPairingRepository(networkClient, route.serverId)
+                        .loadState(route.channelId, channelSettingsSlackVisibility(channel))
+                } else {
+                    null
+                }
             DataResult.Content(
                 ChannelSettingsSnapshot(
                     channel = channel,
                     sidebarOrder = sidebarOrder,
                     canManage = receipt.canManageSettings,
                     memberSlice = memberResult.toChannelSettingsMemberSlice(route),
+                    guestAccessEnabled = guestAccessEnabled,
+                    slackBridge = slackBridge,
                 )
             )
         }
@@ -341,6 +425,37 @@ internal class RealChannelSettingsDataSource(
                 .map { Unit }
         }
 
+    override suspend fun applySlackBridge(
+        channel: HomeChannelRow,
+        slackChannelId: String?,
+    ): DataResult<ChannelSlackBridgeState?> =
+        runner.run { _, networkClient ->
+            SlackBridgeChannelPairingRepository(networkClient, route.serverId)
+                .apply(route.channelId, channelSettingsSlackVisibility(channel), slackChannelId)
+        }
+
+    override suspend fun makePublic(): DataResult<Unit> =
+        runner.run { _, networkClient ->
+            channelRepository(networkClient)
+                .updateChannel(route.channelId, ChannelVisibility.Public)
+                .map { Unit }
+        }
+
+    override suspend fun leave(): DataResult<Unit> =
+        runner.run { _, networkClient ->
+            channelRepository(networkClient).leaveChannel(route.channelId).map { Unit }
+        }
+
+    override suspend fun unarchive(): DataResult<HomeChannelRow> =
+        runner.run { _, networkClient ->
+            channelRepository(networkClient).unarchiveChannel(route.channelId)
+        }
+
+    override suspend fun updateGuestPolicy(update: ChannelGuestPolicyUpdate): DataResult<HomeChannelRow> =
+        runner.run { _, networkClient ->
+            channelRepository(networkClient).updateChannelGuestPolicy(route.channelId, update)
+        }
+
     override suspend fun archive(): DataResult<Unit> =
         runner.run { _, networkClient ->
             channelRepository(networkClient).archiveChannel(route.channelId).map { Unit }
@@ -356,6 +471,26 @@ internal class RealChannelSettingsDataSource(
             build.raft.app.data.RealJointChannelRepository(networkClient) { logger("joint $it") }
                 .disconnect(route.channelId)
         }
+
+    /** `server_guest_v0` evaluated like Settings › Server public page does (platform "web"); failures read as off. */
+    private suspend fun serverGuestFeatureEnabled(networkClient: build.raft.app.data.RaftNetworkClient): Boolean {
+        val response =
+            try {
+                networkClient.request(
+                    priority = DataRequestPriority.Visible,
+                    path = "feature-flags/evaluate",
+                    method = "POST",
+                    serverIdOverride = route.serverId,
+                    bodyText = encodeServerPublicGuestGateEvaluateBody(route.serverId),
+                )
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                return false
+            }
+        if (!response.isSuccessful) return false
+        return response.bodyText?.let(::parseSharedServerGuestGateEnabled) == true
+    }
 
     private fun channelRepository(networkClient: build.raft.app.data.RaftNetworkClient): RealChannelRepository =
         RealChannelRepository(
@@ -443,18 +578,55 @@ internal class ChannelSettingsStore(
             ChannelSettingsIntent.MakePrivate -> {
                 if (!mutableState.value.writeActionsEnabled) return
                 val channel = mutableState.value.channel ?: return
-                if (channelSettingsCanMakePrivate(channel)) {
+                if (channelSettingsShowsVisibilityAction(channel, mutableState.value.permissions()) && channelSettingsCanMakePrivate(channel)) {
                     launchAction(ChannelSettingsAction.Visibility, call = dataSource::makePrivate)
+                }
+            }
+            ChannelSettingsIntent.MakePublic -> {
+                if (!mutableState.value.writeActionsEnabled) return
+                val channel = mutableState.value.channel ?: return
+                if (channelSettingsShowsVisibilityAction(channel, mutableState.value.permissions()) && channelSettingsCanMakePublic(channel)) {
+                    launchAction(ChannelSettingsAction.Visibility, call = dataSource::makePublic)
                 }
             }
             ChannelSettingsIntent.Archive -> {
                 if (!mutableState.value.writeActionsEnabled) return
-                launchAction(ChannelSettingsAction.Archive, call = dataSource::archive)
+                val channel = mutableState.value.channel ?: return
+                if (channelSettingsShowsArchiveAction(channel, mutableState.value.permissions()) && !channel.archived) {
+                    launchAction(ChannelSettingsAction.Archive, call = dataSource::archive)
+                }
+            }
+            ChannelSettingsIntent.Leave -> {
+                if (!mutableState.value.writeActionsEnabled) return
+                val channel = mutableState.value.channel ?: return
+                if (channelSettingsCanLeave(channel)) launchAction(ChannelSettingsAction.Leave, call = dataSource::leave)
+            }
+            ChannelSettingsIntent.Unarchive -> {
+                if (!mutableState.value.writeActionsEnabled) return
+                val channel = mutableState.value.channel ?: return
+                if (channel.archived && channelSettingsShowsArchiveAction(channel, mutableState.value.permissions())) {
+                    launchAction(ChannelSettingsAction.Unarchive, call = dataSource::unarchive)
+                }
+            }
+            is ChannelSettingsIntent.SetGuestVisible -> {
+                if (!mutableState.value.writeActionsEnabled || !mutableState.value.showsGuestAccess()) return
+                val channel = mutableState.value.channel ?: return
+                if (channel.guestVisible == intent.visible) return
+                val update = channelSettingsGuestVisibleUpdate(intent.visible)
+                launchAction(ChannelSettingsAction.GuestAccess) { dataSource.updateGuestPolicy(update) }
+            }
+            is ChannelSettingsIntent.SetGuestJoinable -> {
+                if (!mutableState.value.writeActionsEnabled || !mutableState.value.showsGuestAccess()) return
+                val channel = mutableState.value.channel ?: return
+                if (channelSettingsIsAllChannel(channel)) return
+                if (channel.guestJoinable == intent.joinable) return
+                val update = channelSettingsGuestJoinableUpdate(intent.joinable)
+                launchAction(ChannelSettingsAction.GuestAccess) { dataSource.updateGuestPolicy(update) }
             }
             ChannelSettingsIntent.Delete -> {
                 if (!mutableState.value.writeActionsEnabled) return
                 val channel = mutableState.value.channel ?: return
-                if (channelSettingsCanDelete(channel)) {
+                if (channelSettingsCanDelete(channel) && channelSettingsShowsDeleteAction(channel, mutableState.value.permissions())) {
                     launchAction(ChannelSettingsAction.Delete, call = dataSource::delete)
                 }
             }
@@ -563,6 +735,8 @@ internal class ChannelSettingsStore(
             channel = channel,
             sidebarOrder = sidebarOrder,
             canManage = canManage,
+            guestAccessEnabled = guestAccessEnabled,
+            slackBridge = slackBridge,
             memberSlice = memberSlice,
             writeActionsEnabled = false,
         )
@@ -573,6 +747,8 @@ internal class ChannelSettingsStore(
             channel = channel,
             sidebarOrder = sidebarOrder,
             canManage = canManage,
+            guestAccessEnabled = guestAccessEnabled,
+            slackBridge = slackBridge,
             memberSlice = memberSlice,
             writeActionsEnabled = true,
         )
@@ -605,10 +781,40 @@ internal class ChannelSettingsStore(
                 profileErrorCode = null,
                 effect = null,
             )
-        launchMutation(ChannelSettingsAction.Profile) {
-            dataSource.updateProfile(intent.name, intent.description)
+        val channel = mutableState.value.channel
+        val profileChanged =
+            channel == null ||
+                intent.name.trim() != channel.name.removePrefix("#").trim() ||
+                intent.description.trim() != channel.subtitle.orEmpty().trim()
+        val bridge = intent.slackBridge?.takeIf { mutableState.value.slackBridge != null && channel != null }
+        partialProfile = null
+        launchMutation<ChannelSettingsSaveResult>(ChannelSettingsAction.Profile) {
+            val profile =
+                if (profileChanged) {
+                    when (val result = dataSource.updateProfile(intent.name, intent.description)) {
+                        is DataResult.Content -> result.data
+                        else -> return@launchMutation result.withoutContent<ChannelProfileUpdateResult, ChannelSettingsSaveResult>()
+                    }
+                } else {
+                    ChannelProfileUpdateResult(route.channelId, channel!!.name, channel.subtitle)
+                }
+            if (bridge == null) {
+                DataResult.Content(ChannelSettingsSaveResult(profile, slackBridge = null, slackBridgeApplied = false))
+            } else {
+                when (val applied = dataSource.applySlackBridge(channel!!, bridge.slackChannelId)) {
+                    is DataResult.Content ->
+                        DataResult.Content(ChannelSettingsSaveResult(profile, applied.data, slackBridgeApplied = true))
+                    else -> {
+                        partialProfile = profile.takeIf { profileChanged }
+                        DataResult.Error(ScreenError(code = CHANNEL_SETTINGS_SLACK_BRIDGE_PARTIAL_FAILURE, retryable = true))
+                    }
+                }
+            }
         }
     }
+
+    /** The profile Save did write when its Slack Bridge step failed afterwards. */
+    private var partialProfile: ChannelProfileUpdateResult? = null
 
     private fun <T> launchAction(
         action: ChannelSettingsAction,
@@ -674,13 +880,15 @@ internal class ChannelSettingsStore(
                         effect = ChannelSettingsEffect.Updated(action),
                     )
                 ChannelSettingsAction.Profile -> {
-                    val profile = value as ChannelProfileUpdateResult
+                    val saved = value as ChannelSettingsSaveResult
+                    val profile = saved.profile
                     current.copy(
                         channel =
                             current.channel?.copy(
                                 name = profile.name,
                                 subtitle = profile.description,
                             ),
+                        slackBridge = if (saved.slackBridgeApplied) saved.slackBridge else current.slackBridge,
                         actionInFlight = null,
                         profileStatus = ChannelProfileUpdateStatus.Succeeded,
                         profileErrorCode = null,
@@ -689,21 +897,34 @@ internal class ChannelSettingsStore(
                 }
                 ChannelSettingsAction.Visibility ->
                     current.copy(
-                        channel = current.channel?.copy(channelType = "private"),
+                        channel =
+                            current.channel?.let { channel ->
+                                channel.copy(channelType = if (channelSettingsIsPrivate(channel)) "channel" else "private")
+                            },
                         actionInFlight = null,
                         effect = ChannelSettingsEffect.Updated(action),
                     )
+                ChannelSettingsAction.GuestAccess -> {
+                    val updated = value as HomeChannelRow
+                    current.copy(
+                        channel =
+                            current.channel?.copy(
+                                guestVisible = updated.guestVisible,
+                                guestJoinable = updated.guestJoinable,
+                            ),
+                        actionInFlight = null,
+                        effect = ChannelSettingsEffect.Updated(action),
+                    )
+                }
                 ChannelSettingsAction.Archive,
                 ChannelSettingsAction.Delete,
-                ChannelSettingsAction.Disconnect ->
+                ChannelSettingsAction.Disconnect,
+                ChannelSettingsAction.Leave,
+                ChannelSettingsAction.Unarchive ->
                     current.copy(actionInFlight = null, effect = ChannelSettingsEffect.Close)
             }
         mutableState.value = next
-        if (
-            action == ChannelSettingsAction.Archive ||
-            action == ChannelSettingsAction.Delete ||
-            action == ChannelSettingsAction.Disconnect
-        ) {
+        if (next.effect == ChannelSettingsEffect.Close) {
             snapshotCache.remove(owner, route)
         } else {
             next.toSnapshotOrNull()?.let { snapshot -> snapshotCache.put(owner, route, snapshot) }
@@ -718,6 +939,8 @@ internal class ChannelSettingsStore(
             sidebarOrder = currentSidebarOrder,
             canManage = canManage,
             memberSlice = memberSlice,
+            guestAccessEnabled = guestAccessEnabled,
+            slackBridge = slackBridge,
         )
     }
 
@@ -727,8 +950,15 @@ internal class ChannelSettingsStore(
             mutableState.value = authorityRejectedState()
             return
         }
+        // Web: "The channel was saved, but its Slack bridge was not enabled" — keep the saved name.
+        val saved = partialProfile.takeIf { action == ChannelSettingsAction.Profile }
+        partialProfile = null
         mutableState.value =
             mutableState.value.copy(
+                channel =
+                    saved?.let { profile ->
+                        mutableState.value.channel?.copy(name = profile.name, subtitle = profile.description)
+                    } ?: mutableState.value.channel,
                 actionInFlight = null,
                 // A failed toggle shows its old value again.
                 pendingMuted = null,
