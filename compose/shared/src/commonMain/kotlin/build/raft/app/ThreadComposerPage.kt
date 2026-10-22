@@ -73,6 +73,7 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -3676,7 +3677,7 @@ private fun ComposerMemberSuggestionRow(
 ) {
     // Web `MentionCandidateBody` (raft-ui ComposerSuggestion* parts): title, a soft muted
     // actor-type badge, the description and the source server as hint metas, and the
-    // `@handle` in a mono aside. Not-in-channel rows are dimmed by the row overlay.
+    // `@handle` in a mono aside. Not-in-channel rows are dimmed to 60%, their avatar to 60% of that.
     val description = member.description?.trim()?.replace(ComposerSuggestionWhitespaceRegex, " ")?.takeIf { it.isNotBlank() }
     val serverLabel = member.sourceServerLabel?.trim()?.takeIf { it.isNotBlank() }
     val actorTypeLabel =
@@ -3702,20 +3703,23 @@ private fun ComposerMemberSuggestionRow(
         mutedOverlay = true,
         onClick = onClick
     ) {
-        RaftAvatarWithStatus(
-            statusColor = agentStatus?.color,
-            avatarSize = ComposerMemberSuggestionAvatarSize,
-            statusSize = ComposerMemberSuggestionStatusSize,
-            statusPulsing = agentStatus?.pulsing == true
-        ) {
-            RaftAppAvatar(
-                avatarWireValue = member.avatarWireValue,
-                label = member.displayName.ifBlank { member.avatarLabel },
+        // web `MentionCandidateAvatar muted`: the avatar dims once more (`opacity-60`) inside the row's.
+        Box(modifier = if (muted) Modifier.alpha(0.6f) else Modifier) {
+            RaftAvatarWithStatus(
+                statusColor = agentStatus?.color,
                 avatarSize = ComposerMemberSuggestionAvatarSize,
-                fallbackFill = raftAvatarFallbackFill(member.kind),
-                cacheSubject = raftMemberAvatarCacheSubject(member.kind, member.memberId),
-                cacheServerId = member.sourceServerId
-            )
+                statusSize = ComposerMemberSuggestionStatusSize,
+                statusPulsing = agentStatus?.pulsing == true
+            ) {
+                RaftAppAvatar(
+                    avatarWireValue = member.avatarWireValue,
+                    label = member.displayName.ifBlank { member.avatarLabel },
+                    avatarSize = ComposerMemberSuggestionAvatarSize,
+                    fallbackFill = raftAvatarFallbackFill(member.kind),
+                    cacheSubject = raftMemberAvatarCacheSubject(member.kind, member.memberId),
+                    cacheServerId = member.sourceServerId
+                )
+            }
         }
         if (muted) {
             // web: `ComposerSuggestionIcon variant="auxiliary"` UserX after the avatar.
@@ -4899,19 +4903,13 @@ private fun ComposerSuggestionInteractiveRow(
             contentAlignment = Alignment.CenterStart
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                // web `opacity-60` on not-in-channel options. An overlay box sized with
+                // `fillMaxSize` didn't reliably cover a row that only has a minimum height,
+                // so those rows showed at full strength.
+                modifier = Modifier.fillMaxWidth().then(if (muted && mutedOverlay) Modifier.alpha(0.6f) else Modifier),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 content()
-            }
-            if (muted && mutedOverlay) {
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            // web `opacity-60` on not-in-channel options.
-                            .background(RaftColor.Popover.copy(alpha = 0.40f))
-                )
             }
         }
     }
