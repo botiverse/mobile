@@ -4,6 +4,7 @@ import org.intellij.markdown.IElementType
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
+import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
 
 /** A source-accurate inline reference recognized by the Raft Markdown dialect. */
@@ -19,7 +20,7 @@ data class RaftMarkdownInlineRef(
  *
  * GFM parses first and therefore owns nesting. Raft recognition runs only on
  * source ranges not claimed by Markdown links/definitions, images, code,
- * autolinks, or HTML. The dialect does not need to duplicate Markdown
+ * math, autolinks, or HTML. The dialect does not need to duplicate Markdown
  * delimiter matching or maintain an exclusion scanner for each new construct.
  */
 object RaftMarkdownDialect {
@@ -64,6 +65,10 @@ private val RaftMarkdownOwningTypes: Set<IElementType> =
         MarkdownElementTypes.IMAGE,
         MarkdownTokenTypes.HTML_TAG,
         GFMTokenTypes.GFM_AUTOLINK,
+        // Math is source, like code: an `@name` in a formula is not a mention
+        // (web: raft-shared markdownStructure CODE_TYPES, slock #10813).
+        GFMElementTypes.INLINE_MATH,
+        GFMElementTypes.BLOCK_MATH,
     )
 
 internal fun String.raftMarkdownSyntaxCandidateRanges(start: Int = 0, end: Int = length): List<IntRange> {

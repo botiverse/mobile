@@ -12,6 +12,7 @@ import org.intellij.markdown.parser.constraints.CommonMarkdownConstraints
 import org.intellij.markdown.parser.constraints.MarkdownConstraints
 import org.intellij.markdown.parser.constraints.getCharsEaten
 import org.intellij.markdown.parser.markerblocks.MarkerBlockProvider
+import org.intellij.markdown.parser.markerblocks.providers.MathFenceProvider
 import org.intellij.markdown.parser.sequentialparsers.SequentialParser
 import kotlin.math.min
 
@@ -31,7 +32,8 @@ class GFMMarkerProcessor(
     override val paragraphLazyContinuationAllowed: (MarkdownConstraints, MarkdownConstraints) -> Boolean =
         paragraphLazyContinuationPolicy
 
-    private val markerBlockProviders = listOf(GitHubAlertMarkerProvider())
+    // Raft: `MathFenceProvider` adds `$$` math blocks (botiverse/slock raftMath()).
+    private val markerBlockProviders = listOf(GitHubAlertMarkerProvider(), MathFenceProvider())
             .plus(super.getMarkerBlockProviders())
             .plus(listOf(tableMarkerProvider))
 

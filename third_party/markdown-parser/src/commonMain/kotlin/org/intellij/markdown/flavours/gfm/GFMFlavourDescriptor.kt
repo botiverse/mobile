@@ -42,9 +42,11 @@ open class GFMFlavourDescriptor(
 
     override val sequentialParserManager = object : SequentialParserManager() {
         override fun getParserSequence(): List<SequentialParser> {
-            return listOf(AutolinkParser(listOf(MarkdownTokenTypes.AUTOLINK, GFMTokenTypes.GFM_AUTOLINK)),
+            // Raft: math first. A formula owns its text the way a code span
+            // does: an autolink, link or emphasis inside it is TeX source.
+            return listOf(MathParser(),
+                    AutolinkParser(listOf(MarkdownTokenTypes.AUTOLINK, GFMTokenTypes.GFM_AUTOLINK)),
                     BacktickParser(),
-                    MathParser(),
                     ImageParser(),
                     InlineLinkParser(),
                     ReferenceLinkParser(),

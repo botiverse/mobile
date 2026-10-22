@@ -157,6 +157,8 @@ import kotlinx.coroutines.launch
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import org.intellij.markdown.MarkdownElementTypes
+import com.tencent.kuiklybase.markdown.model.RaftGFMFlavourDescriptor
+import org.intellij.markdown.parser.MarkdownParser
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.IElementType
 import org.intellij.markdown.ast.ASTNode
@@ -536,7 +538,56 @@ fun String.normalizeThreadMarkdownBody(): String {
             (!contains('\n') && !contains('\r') && contains("\\n"))
     if (!shouldDecodeEscapedLineBreaks) return this
 
-    return replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\r")
+    val literal = threadEscapedLineBreakLiteralRanges()
+    if (literal.isEmpty()) {
+        return replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\r")
+    }
+    // Task #775: `\neq`, `\nu` in a formula and `\n` in code are source, not escaped
+    // line breaks; decode only outside them.
+    return buildString(length) {
+        var cursor = 0
+        for (range in literal) {
+            append(this@normalizeThreadMarkdownBody.substring(cursor, range.first).decodeThreadEscapedLineBreaks())
+            append(this@normalizeThreadMarkdownBody, range.first, range.last + 1)
+            cursor = range.last + 1
+        }
+        append(this@normalizeThreadMarkdownBody.substring(cursor).decodeThreadEscapedLineBreaks())
+    }
+}
+
+private fun String.decodeThreadEscapedLineBreaks(): String =
+    replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\r")
+
+/**
+ * Source ranges of the still-escaped body that are literal: code spans, and inline math the
+ * Markdown parser finds (same rules as rendering). A `$$` span whose text starts with an
+ * escaped line break is left out: once decoded it is a `$$` block, whose lines are decoded.
+ */
+private fun String.threadEscapedLineBreakLiteralRanges(): List<IntRange> {
+    if (!contains('$') && !contains('`')) return emptyList()
+    val tree = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(this)
+    val ranges = mutableListOf<IntRange>()
+    fun visit(node: ASTNode) {
+        when (node.type) {
+            MarkdownElementTypes.CODE_SPAN -> {
+                ranges += node.startOffset until node.endOffset
+                return
+            }
+            GFMElementTypes.INLINE_MATH -> {
+                val opening = node.children.firstOrNull()
+                val single = opening != null && opening.endOffset - opening.startOffset == 1
+                if (single || !startsWith("\\n", opening?.endOffset ?: node.startOffset) &&
+                    !startsWith("\\r", opening?.endOffset ?: node.startOffset)
+                ) {
+                    ranges += node.startOffset until node.endOffset
+                }
+                return
+            }
+        }
+        node.children.forEach(::visit)
+    }
+    visit(tree)
+    return ranges.sortedBy { it.first }
 }
 
 private fun threadEscapedMarkdownLineBreakRegex(): Regex =

@@ -36,6 +36,12 @@ Only these vendored files intentionally differ from frozen upstream:
 - `src/commonMain/kotlin/org/intellij/markdown/flavours/gfm/lexer/_GFMLexer.kt`
 - `src/commonMain/kotlin/org/intellij/markdown/flavours/space/lexer/_SFMLexer.kt`
 - `src/commonMain/kotlin/org/intellij/markdown/lexer/_MarkdownLexer.kt`
+- `src/commonMain/kotlin/org/intellij/markdown/parser/sequentialparsers/impl/EmphStrongDelimiterParser.kt`
+  and the added `CjkFriendlyEmphasis.kt` (CJK-friendly emphasis, #3483)
+- `src/commonMain/kotlin/org/intellij/markdown/parser/sequentialparsers/impl/MathParser.kt`,
+  `flavours/gfm/GFMFlavourDescriptor.kt`, `flavours/gfm/GFMElementTypes.kt`, and the added
+  `parser/markerblocks/providers/MathFenceProvider.kt` and
+  `parser/markerblocks/impl/MathFenceMarkerBlock.kt` (math, task #775)
 
 `GFMMarkerProcessor` adds a typed table-provider constructor seam whose default
 remains the stock `GitHubTableMarkerProvider()`. Slock supplies a composed
@@ -56,6 +62,14 @@ The three generated lexer files contain only the mechanical Kotlin migration
 `String.toLowerCase()` to `String.lowercase()`. This is required because this
 repository treats the former API's deprecation as a compilation error; it does
 not change the parser grammar or lexer state machine.
+
+Math (task #775) follows the web's `raftMath()` (botiverse/slock #10813):
+`MathParser` applies Obsidian's dollar rules to inline `$…$` / `$$…$$`, always
+emitting `INLINE_MATH`, and runs first in the GFM inline sequence;
+`MathFenceProvider` (wired in `GFMMarkerProcessor`) parses `$$` blocks as
+micromark-extension-math's `mathFlow` into `BLOCK_MATH` with the new
+`MATH_FENCE_START` / `MATH_FENCE_CONTENT` / `MATH_FENCE_END` tokens. See
+`docs/raft-markdown-dialect.md` "Math".
 
 ## Rebuilding the vendor tree
 

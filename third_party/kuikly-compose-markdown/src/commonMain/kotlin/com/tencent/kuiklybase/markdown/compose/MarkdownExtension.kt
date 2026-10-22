@@ -27,6 +27,7 @@ import org.intellij.markdown.MarkdownTokenTypes.Companion.EOL
 import org.intellij.markdown.MarkdownTokenTypes.Companion.HORIZONTAL_RULE
 import org.intellij.markdown.MarkdownTokenTypes.Companion.TEXT
 import org.intellij.markdown.ast.ASTNode
+import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.flavours.gfm.GFMElementTypes.TABLE
 
 typealias ContentProvider = () -> String
@@ -58,6 +59,7 @@ fun handleElement(
         EOL -> components.eol(model)
         CODE_FENCE -> components.codeFence(model)
         CODE_BLOCK -> components.codeBlock(model)
+        GFMElementTypes.BLOCK_MATH -> components.blockMath(model)
         ATX_1 -> components.heading1(model)
         ATX_2 -> components.heading2(model)
         ATX_3 -> components.heading3(model)
@@ -120,6 +122,7 @@ fun handleElement(
         EOL -> components.eol(model)
         CODE_FENCE -> components.codeFence(model)
         CODE_BLOCK -> components.codeBlock(model)
+        GFMElementTypes.BLOCK_MATH -> components.blockMath(model)
         ATX_1 -> components.heading1(model)
         ATX_2 -> components.heading2(model)
         ATX_3 -> components.heading3(model)
