@@ -171,7 +171,7 @@ class ChannelSettingsStoreTest {
         listOf(
             dataSource.load(),
             dataSource.setMuted(true),
-            dataSource.togglePinned(),
+            dataSource.setPinned(true),
             dataSource.updateProfile("renamed", "description"),
             dataSource.makePrivate(),
             dataSource.archive(),
@@ -427,6 +427,29 @@ class ChannelSettingsStoreTest {
     }
 
     @Test
+    fun aToggleShowsItsNewValueAtOnceAndAFailurePutsTheOldOneBack() = runBlocking {
+        val pinResult = CompletableDeferred<DataResult<SettingsServerSidebarOrderSnapshot>>()
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()), pinResult = pinResult)
+        val store = store(dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        yield()
+        // The fixture's channel is pinned.
+        assertTrue(store.state.value.displayPinned("channel-1"))
+
+        store.dispatch(ChannelSettingsIntent.TogglePin)
+        // artin: the switch flips on the tap, before the server answers.
+        assertFalse(store.state.value.displayPinned("channel-1"))
+        yield()
+        assertEquals(listOf(false), dataSource.pinRequests, "the request asks for the value the switch shows")
+
+        pinResult.complete(DataResult.Error(ScreenError("network")))
+        yield()
+        assertTrue(store.state.value.displayPinned("channel-1"), "a failure shows the old value again")
+        assertEquals(ChannelSettingsAction.Pin, assertIs<ChannelSettingsEffect.Failure>(store.state.value.effect).action)
+        store.clear()
+    }
+
+    @Test
     fun authorityInvalidationDropsLateLoadResult() = runBlocking {
         val cache = ChannelSettingsSnapshotCache()
         cache.put(routeOwner(), route(), snapshot("#cached"))
@@ -619,7 +642,7 @@ class ChannelSettingsStoreTest {
         network.paths.clear()
         network.methods.clear()
         network.bodies.clear()
-        val pinned = assertIs<DataResult.Content<SettingsServerSidebarOrderSnapshot>>(dataSource.togglePinned()).data
+        val pinned = assertIs<DataResult.Content<SettingsServerSidebarOrderSnapshot>>(dataSource.setPinned(true)).data
         assertTrue(pinned.pinned.any { it.kind == "channel" && it.id == "channel-1" })
         assertEquals(listOf("servers/server-1/sidebar-order", "servers/server-1/sidebar-order"), network.paths)
         assertEquals(listOf("GET", "PATCH"), network.methods)
@@ -761,8 +784,11 @@ private class FakeChannelSettingsDataSource(
         )
     }
 
-    override suspend fun togglePinned(): DataResult<SettingsServerSidebarOrderSnapshot> {
+    val pinRequests = mutableListOf<Boolean>()
+
+    override suspend fun setPinned(pinned: Boolean): DataResult<SettingsServerSidebarOrderSnapshot> {
         pinCalls += 1
+        pinRequests += pinned
         return pinResult?.await() ?: DataResult.Content(SettingsServerSidebarOrderSnapshot())
     }
 
