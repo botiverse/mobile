@@ -21,6 +21,9 @@ import androidx.compose.ui.test.runComposeUiTest
 import build.raft.designsystem.components.LocalRaftCopyHandler
 import build.raft.designsystem.components.RaftCopyHandler
 import build.raft.designsystem.components.RaftDescriptionList
+import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftReadOnlyField
+import androidx.compose.foundation.layout.Column
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftStrings
@@ -143,6 +146,68 @@ class RaftCopyableTest {
             val fact = onNodeWithText("darwin").fetchSemanticsNode()
             runOnIdle { fact.config[SemanticsActions.CustomActions].single { it.label == "Copy" }.action() }
             assertEquals(listOf("darwin", "darwin"), copied)
+        }
+
+    @Test
+    fun readOnlyFieldsCopyTheirValueTheRawValueOrNothing() =
+        runComposeUiTest {
+            val copied = mutableListOf<String>()
+            setContent {
+                RaftTheme {
+                    CompositionLocalProvider(LocalRaftCopyHandler provides RaftCopyHandler { copied += it }) {
+                        Column {
+                            // A client ID: the shown value.
+                            RaftReadOnlyField("rft_9c2b9a8f")
+                            // A handle shown bare copies with its "@".
+                            RaftReadOnlyField("alice", copyText = "@alice")
+                            // A placeholder copies nothing.
+                            RaftReadOnlyField("Not provided", copyText = null)
+                        }
+                    }
+                }
+            }
+            listOf("rft_9c2b9a8f", "alice", "Not provided").forEach { shown ->
+                onNodeWithText(shown, useUnmergedTree = true).performTouchInput { longClick() }
+                waitForIdle()
+            }
+            assertEquals(listOf("rft_9c2b9a8f", "@alice"), copied)
+        }
+
+    @Test
+    fun aListRowTitleAndSubtitleCopyWhileTheRowStillOpens() =
+        runComposeUiTest {
+            val copied = mutableListOf<String>()
+            var opens = 0
+            setContent {
+                RaftTheme {
+                    CompositionLocalProvider(LocalRaftCopyHandler provides RaftCopyHandler { copied += it }) {
+                        Column {
+                            // A channel member row: the name and its one handle copy, the tap opens the profile.
+                            RaftListRow(
+                                title = "Ada Lovelace",
+                                subtitle = "@ada",
+                                titleCopyText = "Ada Lovelace",
+                                subtitleCopyText = "@ada",
+                                onClick = { opens += 1 },
+                            )
+                            // Without titleCopyText a row's title doesn't copy.
+                            RaftListRow(title = "Notifications", onClick = {})
+                        }
+                    }
+                }
+            }
+            val title = onNodeWithText("Ada Lovelace", useUnmergedTree = true)
+            title.performTouchInput { click() }
+            waitForIdle()
+            assertEquals(1, opens, "a tap on the title still opens the row")
+            assertEquals(emptyList(), copied)
+
+            title.performTouchInput { longClick() }
+            onNodeWithText("@ada", useUnmergedTree = true).performTouchInput { longClick() }
+            onNodeWithText("Notifications", useUnmergedTree = true).performTouchInput { longClick() }
+            waitForIdle()
+            assertEquals(listOf("Ada Lovelace", "@ada"), copied)
+            assertEquals(1, opens, "a long press copies and does not open the row")
         }
 }
 

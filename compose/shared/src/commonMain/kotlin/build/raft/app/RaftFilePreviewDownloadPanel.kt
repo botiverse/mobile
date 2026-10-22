@@ -27,6 +27,7 @@ import build.raft.app.downloads.raftDownloadSizeLabel
 import build.raft.app.downloads.raftDownloadSpeedLabel
 import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
@@ -227,6 +228,8 @@ internal fun RaftFilePreviewFileDownloadCard(
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     RaftText(
                         text = name.ifBlank { stringResource(MR.strings.file_preview_fallback_file) },
+                        // A long press copies the file name (not the "File" stand-in).
+                        modifier = Modifier.raftCopyable(name),
                         style = typography.headline,
                         color = colors.foreground,
                         textAlign = TextAlign.Center,

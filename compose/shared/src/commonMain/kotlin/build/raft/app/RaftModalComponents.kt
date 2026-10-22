@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.LocalRaftCopyHandler
+import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.app.resources.MR
 import com.tencent.tmm.kmmresource.compose.stringResource
@@ -394,10 +396,17 @@ internal fun RaftUnifiedDialog(
     contentSpacing: Dp = 16.dp,
     keyboardAvoidanceEnabled: Boolean = false,
     hostRoute: String = RaftUnifiedDialogGenericHostRoute,
+    // Long-press copy (raftCopyable) of the title / overline when they show an identifier
+    // (a task number, a channel); null (default): not copyable.
+    titleCopyText: String? = null,
+    overlineCopyText: String? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     // raft-ui dialog titles keep the source case (never ALL CAPS).
     val displayTitle = title
+    // Read here, like topInset below: ModalView rehosts the content in a separate native window,
+    // so the page's copy handler (host pasteboard + "Copied") is provided again inside it.
+    val copyHandler = LocalRaftCopyHandler.current
     // Resolve and capture the pager inset before entering Kuikly's native ModalView. Reading a
     // composition local from inside the hosted Modal content is too late: ModalView rehosts that
     // content in a separate native window, where the page host's top-inset local is not retained.
@@ -407,43 +416,12 @@ internal fun RaftUnifiedDialog(
     val hostState = LocalRaftUnifiedDialogHostState.current
     if (hostState == null) {
         Modal(onWillDismiss = { if (dismissEnabled) onDismiss() }) {
-            RaftUnifiedDialogSurface(
-                title = displayTitle,
-                overline = overline,
-                onDismiss = onDismiss,
-                modifier = modifier,
-                dismissEnabled = dismissEnabled,
-                overlayAlpha = overlayAlpha,
-                minWidth = minWidth,
-                maxWidth = maxWidth,
-                outerPadding = outerPadding,
-                contentPadding = contentPadding,
-                headerPadding = headerPadding,
-                titleFontSize = titleFontSize,
-                titleLineHeight = titleLineHeight,
-                titleMaxLines = titleMaxLines,
-                contentSpacing = contentSpacing,
-                keyboardAvoidanceEnabled = keyboardAvoidanceEnabled,
-                topInset = topInset,
-                hostBottomInset = raftUnifiedDialogHostBottomInset(0.dp, bottomSafeArea),
-                handleBack = false,
-                content = content
-            )
-        }
-        return
-    }
-    val currentDialogContent =
-        rememberUpdatedState<@Composable () -> Unit> {
-            // The app-shell host decides global ordering above child pages and tabs, but the
-            // dialog must still enter Kuikly's native ModalView. Rendering the surface directly
-            // in the host leaves native editors/blank regions in the same render tree as the
-            // underlay; fixing those holes with parent nativeDispatchCapture also blocks precise
-            // TextField cursor gestures. ModalView provides the intended two-layer boundary: a
-            // full-window native touch barrier below independently interactive dialog content.
-            Modal(onWillDismiss = { if (dismissEnabled) onDismiss() }) {
+            CompositionLocalProvider(LocalRaftCopyHandler provides copyHandler) {
                 RaftUnifiedDialogSurface(
                     title = displayTitle,
                     overline = overline,
+                    titleCopyText = titleCopyText,
+                    overlineCopyText = overlineCopyText,
                     onDismiss = onDismiss,
                     modifier = modifier,
                     dismissEnabled = dismissEnabled,
@@ -459,14 +437,53 @@ internal fun RaftUnifiedDialog(
                     contentSpacing = contentSpacing,
                     keyboardAvoidanceEnabled = keyboardAvoidanceEnabled,
                     topInset = topInset,
-                    hostBottomInset =
-                        raftUnifiedDialogHostBottomInset(
-                            LocalRaftUnifiedDialogHostBottomInset.current,
-                            bottomSafeArea
-                        ),
+                    hostBottomInset = raftUnifiedDialogHostBottomInset(0.dp, bottomSafeArea),
                     handleBack = false,
                     content = content
                 )
+            }
+        }
+        return
+    }
+    val currentDialogContent =
+        rememberUpdatedState<@Composable () -> Unit> {
+            // The app-shell host decides global ordering above child pages and tabs, but the
+            // dialog must still enter Kuikly's native ModalView. Rendering the surface directly
+            // in the host leaves native editors/blank regions in the same render tree as the
+            // underlay; fixing those holes with parent nativeDispatchCapture also blocks precise
+            // TextField cursor gestures. ModalView provides the intended two-layer boundary: a
+            // full-window native touch barrier below independently interactive dialog content.
+            Modal(onWillDismiss = { if (dismissEnabled) onDismiss() }) {
+                CompositionLocalProvider(LocalRaftCopyHandler provides copyHandler) {
+                    RaftUnifiedDialogSurface(
+                        title = displayTitle,
+                        overline = overline,
+                        titleCopyText = titleCopyText,
+                        overlineCopyText = overlineCopyText,
+                        onDismiss = onDismiss,
+                        modifier = modifier,
+                        dismissEnabled = dismissEnabled,
+                        overlayAlpha = overlayAlpha,
+                        minWidth = minWidth,
+                        maxWidth = maxWidth,
+                        outerPadding = outerPadding,
+                        contentPadding = contentPadding,
+                        headerPadding = headerPadding,
+                        titleFontSize = titleFontSize,
+                        titleLineHeight = titleLineHeight,
+                        titleMaxLines = titleMaxLines,
+                        contentSpacing = contentSpacing,
+                        keyboardAvoidanceEnabled = keyboardAvoidanceEnabled,
+                        topInset = topInset,
+                        hostBottomInset =
+                            raftUnifiedDialogHostBottomInset(
+                                LocalRaftUnifiedDialogHostBottomInset.current,
+                                bottomSafeArea
+                            ),
+                        handleBack = false,
+                        content = content
+                    )
+                }
             }
         }
     val hostKey = remember { RaftUnifiedDialogHostKey() }
@@ -506,6 +523,8 @@ internal fun RaftDialogFooter(
 private fun RaftUnifiedDialogSurface(
     title: String,
     overline: String?,
+    titleCopyText: String?,
+    overlineCopyText: String?,
     onDismiss: () -> Unit,
     modifier: Modifier,
     dismissEnabled: Boolean,
@@ -606,7 +625,7 @@ private fun RaftUnifiedDialogSurface(
                                 color = RaftColor.ForegroundHint,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(bottom = 4.dp).fillMaxWidth()
+                                modifier = Modifier.padding(bottom = 4.dp).fillMaxWidth().raftCopyable(overlineCopyText)
                             )
                         }
                         Text(
@@ -624,7 +643,7 @@ private fun RaftUnifiedDialogSurface(
                                     )
                                 },
                             color = RaftColor.TextBlack,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().raftCopyable(titleCopyText),
                             maxLines = titleMaxLines,
                             overflow = TextOverflow.Ellipsis
                         )

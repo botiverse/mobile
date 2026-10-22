@@ -127,6 +127,7 @@ internal data class ChannelMemberBadge(val text: String, val kind: ChannelMember
  * Trailing: the role tag, then Remove as a visible ghost icon button. On the web the
  * remove button is hover-only with a mouse but shown at rest below `md` (touch), which is
  * what this page does; a long press on it names the action ([RaftIconButton] tooltip).
+ * A long press on the name copies it (the row's tap still opens the profile).
  */
 @Composable
 internal fun ChannelMembersRow(
@@ -145,6 +146,7 @@ internal fun ChannelMembersRow(
     removeLabel: String? = null,
     onRemove: (() -> Unit)? = null,
     onClick: (() -> Unit)? = null,
+    subtitleCopyText: String? = null,
 ) {
     RaftListRow(
         title = title,
@@ -152,6 +154,8 @@ internal fun ChannelMembersRow(
         enabled = !removing,
         divider = divider,
         text = RaftListRowText.Member,
+        titleCopyText = title,
+        subtitleCopyText = subtitleCopyText,
         subtitle = subtitle?.takeIf { it.isNotBlank() },
         leading = {
             RaftAvatarWithStatus(

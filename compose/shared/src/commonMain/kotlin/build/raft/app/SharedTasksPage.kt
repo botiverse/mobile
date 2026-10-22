@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.components.RaftSlotIcon
@@ -1806,6 +1807,7 @@ private fun TasksStatusDialog(
             item {
                 Text(
                     text = task.tasksMeaningfulDisplayTitle(),
+                    modifier = Modifier.raftCopyable(task.tasksMeaningfulDisplayTitle()),
                     style = RaftType.ButtonBold,
                     color = RaftColor.TextBlack,
                     maxLines = 2,

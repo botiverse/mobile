@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftDialogSheet
@@ -5640,9 +5641,11 @@ private fun HomeServerDrawerServerHeader(
         ) {
             ServerSwitcherAvatarTile(section.server)
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Text(section.server.name, style = RaftType.ButtonBold, color = RaftColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // A long press copies the name / the raw slug (shown as "/slug"); a tap still opens.
+                Text(section.server.name, modifier = Modifier.raftCopyable(section.server.name), style = RaftType.ButtonBold, color = RaftColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     "/${section.server.slug}",
+                    modifier = Modifier.raftCopyable(section.server.slug),
                     style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp),
                     color = RaftColor.TextMutedGray,
                     maxLines = 1,
@@ -6087,7 +6090,8 @@ private fun ServerSwitcherRow(
                     color = if (selected) RaftColor.StickerInk else RaftColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
+                    // A long press copies the name / the raw slug (shown as "/slug"); a tap still switches.
+                    modifier = Modifier.weight(1f, fill = false).raftCopyable(server.name)
                 )
                 if (server.publicPageLive) {
                     Spacer(Modifier.width(HomeServerPublicPageGlobeGap))
@@ -6096,6 +6100,7 @@ private fun ServerSwitcherRow(
             }
             Text(
                 "/${server.slug}",
+                modifier = Modifier.raftCopyable(server.slug),
                 style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Normal),
                 color = (if (selected) RaftColor.StickerInk else RaftColor.TextBlack).copy(alpha = 0.4f),
                 maxLines = 1,

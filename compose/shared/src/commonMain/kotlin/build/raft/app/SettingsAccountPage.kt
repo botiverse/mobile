@@ -9,6 +9,7 @@ import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.designsystem.components.RaftSwitch
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftTextLinkVariant
+import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.RaftCachedImage
 import build.raft.app.base.Utils
@@ -501,6 +502,7 @@ private fun SettingsAccountProfileCard(
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     profile.displayName.ifBlank { stringResource(MR.strings.settings_account_title) },
+                    modifier = Modifier.raftCopyable(profile.displayName),
                     style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 15.sp, lineHeight = 20.sp, color = RaftColor.TextBlack),
                     color = RaftColor.TextBlack,
                     maxLines = 1,
@@ -509,6 +511,8 @@ private fun SettingsAccountProfileCard(
                 settingsAccountHeaderHandleLabel(profile.handle)?.let {
                     Text(
                         it,
+                        // The handle copies with its "@", as shown.
+                        modifier = Modifier.raftCopyable(it),
                         style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                         color = RaftColor.TextMutedGray,
                         maxLines = 1,
@@ -523,6 +527,8 @@ private fun SettingsAccountProfileCard(
         RaftBrutalReadOnlyField(
             label = payload.handleLabel,
             value = profile.handle.removePrefix("@").ifBlank { payload.handlePlaceholder.removePrefix("@") },
+            // Copies "@handle" (the handle's form everywhere else); nothing for the placeholder.
+            copyText = settingsAccountHeaderHandleLabel(profile.handle),
             textStyle = settingsAccountInputTextStyle(RaftColor.TextMutedGray),
             textColor = RaftColor.TextMutedGray
         )
@@ -655,6 +661,7 @@ private fun SettingsEmailField(
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 value.ifBlank { placeholder },
+                modifier = Modifier.raftCopyable(value),
                 style = settingsAccountInputTextStyle().copy(fontSize = 15.sp),
                 color = RaftColor.TextBlack,
                 maxLines = 1,
@@ -850,6 +857,8 @@ private fun SettingsConnectedAccountRow(
                 )
                 Text(
                     connectedAccountStatusDetail(account, connected),
+                    // "Connected as x": copies x, not the sentence.
+                    modifier = Modifier.raftCopyable(account.identifier.takeIf { connected }),
                     style = RaftType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray),
                     color = RaftColor.TextMutedGray,
                     maxLines = 1,

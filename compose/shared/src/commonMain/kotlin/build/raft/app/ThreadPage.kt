@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.components.RaftMessageListJumpSide
+import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftMessageListJumpPillGroup
 import build.raft.designsystem.components.RaftMessageListJumpPillDismiss
 import build.raft.designsystem.components.RaftMessageListJumpPill
@@ -5328,6 +5329,8 @@ internal fun ThreadMembersPageContent(
                                 member.provider?.takeIf { it.isNotBlank() }?.let { ChannelMemberBadge(it, ChannelMemberBadgeKind.Provider) }
                             ),
                             divider = index > 0,
+                            // One handle: a long press copies it ("@handle"); several share the line.
+                            subtitleCopyText = member.handles.singleOrNull()?.let { "@${it.removePrefix("@")}" },
                         )
                     }
                 }
@@ -16294,7 +16297,11 @@ internal fun ThreadPageHeader(
                 modifier =
                     Modifier
                         .weight(1f)
-                        .clickable(enabled = onTitleClick != null) { onTitleClick?.invoke() },
+                        // A long press copies the channel / DM name; the tap (scroll to top) stays.
+                        .raftCopyable(
+                            threadHeaderCopyText(headerDisplay.title, headerDisplay.surfaceKind).takeIf { replyThreadPreviewTitle == null },
+                            onClick = onTitleClick,
+                        ),
                 // raft-ui `PanelHeaderContent`: the 22dp title line sits straight on the 18dp meta line.
                 verticalArrangement = Arrangement.Top
             ) {
@@ -16393,6 +16400,25 @@ private fun ThreadActivityMutedBadge() {
         )
     }
 }
+
+/**
+ * What a long press on the conversation header copies: a channel's or DM peer's name, raw.
+ * Null for a reply thread (its title previews the parent message, a message body) and for the
+ * generic stand-ins ("Channel", "Direct Message") shown before the name loads.
+ */
+internal fun threadHeaderCopyText(title: String, surfaceKind: String): String? =
+    title.trim().takeIf {
+        it.isNotEmpty() &&
+            surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
+            !it.isGenericThreadHeaderFallbackLabel()
+    }
+
+/**
+ * What a long press on the task detail dialog's title copies: "#5" for "Task #5" (the task's
+ * reference form, as a handle keeps its "@"); the channel name when the task has no number.
+ */
+internal fun threadTaskDetailTitleCopyText(taskNumber: Int?, channelName: String?): String? =
+    taskNumber?.let { "#$it" } ?: channelName?.trim()?.takeIf { it.isNotEmpty() }
 
 internal fun localizedThreadHeaderTitle(
     title: String,
@@ -34123,8 +34149,11 @@ private fun ThreadTaskDetailDialog(
     val headerOverline = task.taskNumber?.let { task.channelName?.takeIf { name -> name.isNotBlank() }?.let { "#$it" } }
     RaftUnifiedDialog(
         title = taskNumberLabel ?: task.channelName.orEmpty(),
+        // Long press: "Task #5" copies "#5" (how a task is referenced); the overline the channel name.
+        titleCopyText = threadTaskDetailTitleCopyText(task.taskNumber, task.channelName),
         uppercaseTitle = false,
         overline = headerOverline,
+        overlineCopyText = task.channelName?.takeIf { headerOverline != null },
         titleFontSize = 14,
         titleLineHeight = 18,
         titleMaxLines = 1,
@@ -34139,6 +34168,7 @@ private fun ThreadTaskDetailDialog(
                 // Task title now lives in the body (header is identifier-only).
                 Text(
                     text = task.tasksMeaningfulDisplayTitle(),
+                    modifier = Modifier.raftCopyable(task.tasksMeaningfulDisplayTitle()),
                     style = RaftType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 20.sp),
                     color = RaftColor.TextBlack,
                     maxLines = 3,
@@ -34222,7 +34252,7 @@ private fun ThreadTaskDetailDialog(
                                 color = RaftColor.TextBlack,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(start = 6.dp)
+                                modifier = Modifier.padding(start = 6.dp).raftCopyable(creator.displayName)
                             )
                         }
                     }

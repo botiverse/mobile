@@ -1165,11 +1165,13 @@ internal fun RaftBrutalReadOnlyField(
     horizontalPadding: Dp = 12.dp,
     verticalPadding: Dp = 8.dp,
     textStyle: TextStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
-    textColor: Color = RaftColor.TextMutedGray
+    textColor: Color = RaftColor.TextMutedGray,
+    // Long-press copy (raftCopyable): the shown value by default; null for a placeholder.
+    copyText: String? = value
 ) {
     // raft-ui: the disabled-field value under a `sm` label (CopyableCode / read-only Input).
     RaftField(label = label.takeIf { it.isNotBlank() }, modifier = modifier.fillMaxWidth(), labelSize = RaftFieldLabelSize.Sm) {
-        RaftReadOnlyField(text = value, maxLines = maxLines)
+        RaftReadOnlyField(text = value, maxLines = maxLines, copyText = copyText)
     }
 }
 

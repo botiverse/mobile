@@ -112,6 +112,8 @@ class SettingsHomePageDiagnosticsTest {
             rows.map { it.detail },
         )
         assertEquals(listOf("OFF", "ON"), rows.map { it.status })
+        // A long press on a row copies its raw key, not the display name or the status.
+        assertEquals(rows.map { it.detail }, rows.map { it.copyValue })
         assertFalse(rows.any { it.title.contains("future registered", ignoreCase = true) })
     }
 
