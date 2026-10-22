@@ -127,7 +127,7 @@ internal fun SharedComputersState.selectComputerServerSlice(serverId: String?): 
 internal fun SharedComputersState.selectComputerPickerSlice(serverId: String?): SharedComputersPickerSlice {
     val slice = selectComputerServerSlice(serverId)
     return SharedComputersPickerSlice(
-        machines = slice.machines.toCreateAgentMachineOptions(),
+        machines = slice.machines.inComputerListOrder().toCreateAgentMachineOptions(),
         status = slice.status,
         hasSnapshot = slice.hasSnapshot,
         refreshing = slice.refreshing,
@@ -730,6 +730,15 @@ private fun DataResult<ComputerListSummary>.logOutcome(): String =
 private fun String?.normalizedComputerServerId(): String? =
     this?.trim()?.takeIf { it.isNotBlank() }
 
+/**
+ * The order of every computer list (web `orderSidebarMachineIds`, artin task #53): the computers
+ * the current user attached first, then everyone else's, each keeping the server's order. A phone
+ * is never a computer itself, so unlike the desktop it pins none. The Members page orders its
+ * agent groups by this list too ([build.raft.app.groupedAgentMembers]).
+ */
+internal fun List<ComputerSummary>.inComputerListOrder(): List<ComputerSummary> =
+    sortedBy { if (it.attachedByCurrentUser) 0 else 1 }
+
 private fun List<ComputerSummary>.toCreateAgentMachineOptions(): List<SharedCreateAgentMachineOption> =
     map { machine ->
         SharedCreateAgentMachineOption(
@@ -749,7 +758,7 @@ private fun SharedComputersServerSlice.toSettingsComputersResult(): DataResult<S
     if (hasSnapshot) {
         DataResult.Content(
             SettingsComputersSnapshot(
-                computers = machines.map { it.toSettingsComputerSnapshot() },
+                computers = machines.inComputerListOrder().map { it.toSettingsComputerSnapshot() },
                 canAddComputer = false,
                 addComputerUnavailableReason = null,
                 latestDaemonVersion = latestDaemonVersion,

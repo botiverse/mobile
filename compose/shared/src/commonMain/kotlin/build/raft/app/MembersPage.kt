@@ -5592,7 +5592,7 @@ internal fun MembersListContent(
                     )
                 }
                 if (agentsExpanded) {
-                    groupedAgentMembers(agents) { machineId ->
+                    groupedAgentMembers(agents, machineOrder = createAgentMachines.map { it.id }) { machineId ->
                         createAgentMachines.firstOrNull { it.id == machineId }?.name
                     }.forEach { group ->
                         item("group_${group.key}") {
@@ -15210,9 +15210,10 @@ private fun RaftSpinnerIcon(
  */
 internal fun groupedAgentMembers(
     members: List<MemberProfile>,
+    machineOrder: List<String> = emptyList(),
     machineName: (machineId: String) -> String? = { null }
-): List<MembersAgentGroup> =
-    members
+): List<MembersAgentGroup> {
+    val groups = members
         .groupBy { member ->
             member.membersComputerId
                 ?: member.membersComputerName
@@ -15229,6 +15230,21 @@ internal fun groupedAgentMembers(
                 members = groupedMembers
             )
         }
+    // Web `orderAgentMachineGroups` (artin task #53): the groups follow the Computers list
+    // ([machineOrder], see `inComputerListOrder`), a computer it doesn't show after the known ones
+    // in the order it first appeared, and the group without a computer last.
+    val rank = machineOrder.withIndex().associate { (index, id) -> id to index }
+    return groups
+        .withIndex()
+        .sortedWith(
+            compareBy<IndexedValue<MembersAgentGroup>>(
+                { if (it.value.key == build.raft.app.data.MembersAgentMachineGroupNoMachineKey) 1 else 0 },
+                { rank[it.value.key] ?: Int.MAX_VALUE },
+                { it.index },
+            )
+        )
+        .map { it.value }
+}
 
 internal const val membersNoComputerGroupLabel = "no computer"
 

@@ -34,6 +34,21 @@ class MembersAgentMachineGroupCollapseTest {
     }
 
     @Test
+    fun groupsFollowTheComputersListWithNoComputerLast() {
+        // artin task #53: the agent groups follow the Computers list (mine first); a computer the
+        // list doesn't show comes after the known ones, the group without a computer last.
+        val agents =
+            listOf(
+                member("none"),
+                member("a1", "computer:Old Box", "computer-id:machine-1"),
+                member("a2", "computer:Hidden", "computer-id:machine-9"),
+                member("a3", "computer:My Mac", "computer-id:machine-3")
+            )
+        val groups = groupedAgentMembers(agents, machineOrder = listOf("machine-3", "machine-1"))
+        assertEquals(listOf("machine-3", "machine-1", "machine-9", MembersAgentMachineGroupNoMachineKey), groups.map { it.key })
+    }
+
+    @Test
     fun groupKeyFallsBackToNameThenNoMachineSentinel() {
         val agents =
             listOf(
