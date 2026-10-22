@@ -444,25 +444,25 @@ internal class ChannelSettingsStore(
                 if (!mutableState.value.writeActionsEnabled) return
                 val channel = mutableState.value.channel ?: return
                 if (channelSettingsCanMakePrivate(channel)) {
-                    launchAction(ChannelSettingsAction.Visibility, dataSource::makePrivate)
+                    launchAction(ChannelSettingsAction.Visibility, call = dataSource::makePrivate)
                 }
             }
             ChannelSettingsIntent.Archive -> {
                 if (!mutableState.value.writeActionsEnabled) return
-                launchAction(ChannelSettingsAction.Archive, dataSource::archive)
+                launchAction(ChannelSettingsAction.Archive, call = dataSource::archive)
             }
             ChannelSettingsIntent.Delete -> {
                 if (!mutableState.value.writeActionsEnabled) return
                 val channel = mutableState.value.channel ?: return
                 if (channelSettingsCanDelete(channel)) {
-                    launchAction(ChannelSettingsAction.Delete, dataSource::delete)
+                    launchAction(ChannelSettingsAction.Delete, call = dataSource::delete)
                 }
             }
             ChannelSettingsIntent.Disconnect -> {
                 if (!mutableState.value.writeActionsEnabled || !mutableState.value.canManage) return
                 val channel = mutableState.value.channel ?: return
                 if (channelSettingsCanDisconnect(channel)) {
-                    launchAction(ChannelSettingsAction.Disconnect, dataSource::disconnect)
+                    launchAction(ChannelSettingsAction.Disconnect, call = dataSource::disconnect)
                 }
             }
             ChannelSettingsIntent.ClearProfileStatus ->
