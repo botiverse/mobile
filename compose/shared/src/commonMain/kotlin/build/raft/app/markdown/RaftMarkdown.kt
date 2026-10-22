@@ -1,5 +1,7 @@
 package build.raft.app.markdown
 
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import build.raft.app.RaftTextSize
 import build.raft.app.RaftColor
 import build.raft.app.RaftLucideIcon
@@ -2695,7 +2697,8 @@ private val RaftMarkdownCodeBlockBackground: Color get() = RaftAppThemeState.col
 private val RaftMarkdownCodeBlockForeground: Color get() = RaftAppThemeState.colors.codeForeground
 /** web MarkdownContent th/td `px-2 py-1`. */
 internal val RaftMarkdownTableCellPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-private val RaftMarkdownCodeBlockPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 48.dp, bottom = 8.dp)
+// The end column holds the 28dp copy action 6dp from the edge, plus 6dp before the code.
+private val RaftMarkdownCodeBlockPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 40.dp, bottom = 8.dp)
 internal val RaftMarkdownMinimumInlineLineHeight = 22.sp
 private val RaftMarkdownDividerColor: Color get() = RaftColor.BorderBlack.copy(alpha = 0.22f)
 private val RaftMarkdownDividerThickness = 2.dp
@@ -2746,17 +2749,24 @@ private fun RaftMarkdownCodeBlockContent(
     }
     Box(modifier = Modifier.fillMaxWidth()) {
         RaftMarkdownCodeSurface(code = code, style = style)
+        val pressSource = remember { MutableInteractionSource() }
+        val pressed by pressSource.collectIsPressedAsState()
         Box(
-            // Generous transparent hit target hugging the block's top-right
-            // (the code surface is dark #111827 — translucent white icon).
+            // raft-ui 0.20 CodeBlock: the copy action is a 28dp ghost button 6dp from the block's
+            // corner at radius-chip, in a column of its own (the code keeps its end padding), and
+            // presses with the medium tier.
             modifier =
                 Modifier
                     .align(Alignment.TopEnd)
-                    .clickable {
+                    .padding(top = RaftMarkdownCodeSurfaceVerticalInset + RaftMarkdownCodeActionInset, end = RaftMarkdownCodeActionInset)
+                    .size(RaftMarkdownCodeActionSize)
+                    .clip(RoundedCornerShape(RaftMarkdownCodeActionRadius))
+                    .background(if (pressed) RaftAppThemeState.colors.fillPressed else Color.Transparent)
+                    .clickable(interactionSource = pressSource, indication = null) {
                         bridge.copyToPasteboard(code)
                         copied = true
-                    }
-                    .padding(top = 14.dp, end = 10.dp, bottom = 10.dp, start = 10.dp)
+                    },
+            contentAlignment = Alignment.Center,
         ) {
             RaftLucideIcon(
                 name = if (copied) RaftLucideIconName.Check else RaftLucideIconName.Copy,
@@ -2767,6 +2777,11 @@ private fun RaftMarkdownCodeBlockContent(
         }
     }
 }
+
+private val RaftMarkdownCodeSurfaceVerticalInset = 8.dp
+private val RaftMarkdownCodeActionInset = 6.dp
+private val RaftMarkdownCodeActionSize = 28.dp
+private val RaftMarkdownCodeActionRadius = 6.dp
 
 /**
  * Code block surface. Replaces the vendor `MarkdownCode`, whose background is
@@ -2779,7 +2794,7 @@ private fun RaftMarkdownCodeSurface(code: String, style: TextStyle) {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(vertical = 8.dp)
+                .padding(vertical = RaftMarkdownCodeSurfaceVerticalInset)
                 .clip(shape)
                 .background(RaftMarkdownCodeBlockBackground)
                 .border(1.dp, RaftColor.BorderHairline, shape)
