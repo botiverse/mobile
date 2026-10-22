@@ -40,3 +40,17 @@ Not in scope: Android widget status colour, Activity deep link to the reply (tas
 ## Exceptions
 
 None yet.
+
+## Shipped (2026-10-22)
+
+- `release/1.15.2` cut at `b07ba70f`; #3469 (prefixed input half width) cherry-picked → head `6b0d24f7`, tag `v1.15.2`.
+- Android 1.15.2 (11502002): Hands `main` and `preview` active 100% at 04:28Z, same APK (SHA-256 `43998b4f…`). Owner: artin 04:26Z "这个版本直接推全吧" (via Lagoon). Build 1 (11502001) drafts superseded.
+- iOS 1.15.2 (1) and (2): TestFlight internal only. External stays on the 1.15.1 sequence.
+- Google Play: not pushed.
+- Notes: `android/` and `ios/` (artin's final version; gated features left out: assistant-sent marker, mark all as read, usage-data switch).
+- Deferred to 1.15.3: Activity double-tap to top, Markdown list bullets (#3471).
+
+## Exceptions
+
+1. **R8 mapping not on Hands at activation.** The 237 MB mapping exceeded the upload path (502/413). Hands #783 adds post-publish symbol attach; the mapping is attached to build `4b5bd304` once deployed. Until then crashes are retraced by hand from the kept mapping (CI artifact `android-release-apk-mapping`, run 39720890879).
+2. **CI Hands publish failed for both builds** (same cause); drafts were created manually from the CI APK.
