@@ -1,6 +1,9 @@
 package build.raft.app
 
 import build.raft.app.data.InboxItem
+import kotlin.time.Duration
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /**
  * artin 2026-10-21: while Activity is the selected tab, re-tapping its bottom-bar/rail tab or
@@ -14,6 +17,11 @@ import build.raft.app.data.InboxItem
  * user-override fence is the scroll mutex (a drag cancels the animation) plus the per-tap
  * LaunchedEffect key (a newer tap cancels the older one). The target is decided per tap from the
  * live layout and the walk's keyed cursor; nothing is re-issued from a changing index.
+ *
+ * artin 2026-10-22: a DOUBLE tap (tab re-tap or head tap) scrolls back to the top instead
+ * ([ActivityRetapGesture]). The first tap walks at once (no wait to rule out a second one); a
+ * second tap within the platform double-tap timeout overrides it: as a newer request it cancels
+ * the walk still animating and animates the list to the top.
  */
 internal sealed interface ActivityUnreadJumpTarget {
     /** No unread row at or below the walk position and nothing left to load: scroll to the top. */
@@ -139,3 +147,44 @@ internal data class ActivityUnreadJumpPaging(
  */
 internal fun InboxItem.activityRowDisplaysUnread(conversationListContext: ActivityConversationListContext?): Boolean =
     unreadCount > 0 && (conversationListContext == null || !activityConversationMuted(conversationListContext))
+
+/** What one Activity tab re-tap / head tap does. */
+internal enum class ActivityRetapAction {
+    /** A single tap: walk to the next unread row (falls back to the top). */
+    WalkNextUnread,
+
+    /** The second tap of a double tap: scroll the list back to the top. */
+    ScrollToTop,
+}
+
+/**
+ * Tells a single tap from a double tap on one tap target (the Activity tab, or the Activity head)
+ * without delaying the single tap: every tap answers at once. A tap within [onTap]'s timeout of
+ * the previous single tap is the second tap of a double tap ([ActivityRetapAction.ScrollToTop]);
+ * it closes the pair, so a third quick tap walks again. Both the Compose bar/rail and the iOS
+ * UITabBar deliver re-taps through the shell's tab callback, so the timing is measured here, in
+ * shared code, for every platform.
+ */
+internal class ActivityRetapGesture(private val timeSource: TimeSource = TimeSource.Monotonic) {
+    private var lastSingleTap: TimeMark? = null
+
+    fun onTap(doubleTapTimeout: Duration): ActivityRetapAction {
+        val previous = lastSingleTap
+        return if (previous != null && previous.elapsedNow() <= doubleTapTimeout) {
+            lastSingleTap = null
+            ActivityRetapAction.ScrollToTop
+        } else {
+            lastSingleTap = timeSource.markNow()
+            ActivityRetapAction.WalkNextUnread
+        }
+    }
+}
+
+/**
+ * One request to the Activity list per tap: [generation] grows by one per tap (consumed through
+ * [AppShellScrollToTopRequestFence]); [toTop] is set for the second tap of a double tap.
+ */
+internal data class ActivityUnreadJumpRequest(val generation: Int = 0, val toTop: Boolean = false) {
+    fun next(action: ActivityRetapAction): ActivityUnreadJumpRequest =
+        ActivityUnreadJumpRequest(generation = generation + 1, toTop = action == ActivityRetapAction.ScrollToTop)
+}

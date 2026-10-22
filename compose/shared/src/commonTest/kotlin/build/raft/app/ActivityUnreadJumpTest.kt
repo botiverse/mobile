@@ -9,6 +9,9 @@ import build.raft.app.model.InboxItemKind
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import kotlin.test.Test
+import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.test.runTest
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -224,5 +227,59 @@ class ActivityUnreadJumpTest {
             )
         )
         assertFalse(activitySelectedPageHasList(SharedActivityState(loading = true), conversationListPending = false))
+    }
+
+    // artin 2026-10-22: single re-tap walks, double re-tap goes back to the top (virtual time).
+
+    private val doubleTapTimeout = 300.milliseconds
+
+    @Test
+    fun singleRetapWalksAtOnce() = runTest {
+        val gesture = ActivityRetapGesture(testScheduler.timeSource)
+        assertEquals(ActivityRetapAction.WalkNextUnread, gesture.onTap(doubleTapTimeout))
+        assertEquals(ActivityUnreadJumpRequest(generation = 1, toTop = false), ActivityUnreadJumpRequest().next(ActivityRetapAction.WalkNextUnread))
+    }
+
+    @Test
+    fun doubleRetapWithinTimeoutScrollsToTop() = runTest {
+        val gesture = ActivityRetapGesture(testScheduler.timeSource)
+        var request = ActivityUnreadJumpRequest()
+        request = request.next(gesture.onTap(doubleTapTimeout))
+        assertFalse(request.toTop)
+        delay(200)
+        request = request.next(gesture.onTap(doubleTapTimeout))
+        // A newer generation (restarts the list effect, cancelling the walk) asking for the top.
+        assertEquals(ActivityUnreadJumpRequest(generation = 2, toTop = true), request)
+        // Exactly at the timeout still counts as the second tap.
+        delay(1_000)
+        gesture.onTap(doubleTapTimeout)
+        delay(300)
+        assertEquals(ActivityRetapAction.ScrollToTop, gesture.onTap(doubleTapTimeout))
+    }
+
+    @Test
+    fun twoRetapsBeyondTimeoutWalkTwice() = runTest {
+        val gesture = ActivityRetapGesture(testScheduler.timeSource)
+        assertEquals(ActivityRetapAction.WalkNextUnread, gesture.onTap(doubleTapTimeout))
+        delay(301)
+        assertEquals(ActivityRetapAction.WalkNextUnread, gesture.onTap(doubleTapTimeout))
+    }
+
+    @Test
+    fun thirdQuickRetapAfterDoubleTapWalksAgain() = runTest {
+        val gesture = ActivityRetapGesture(testScheduler.timeSource)
+        gesture.onTap(doubleTapTimeout)
+        delay(100)
+        assertEquals(ActivityRetapAction.ScrollToTop, gesture.onTap(doubleTapTimeout))
+        delay(100)
+        assertEquals(ActivityRetapAction.WalkNextUnread, gesture.onTap(doubleTapTimeout))
+    }
+
+    @Test
+    fun retapRequestGenerationIsFencedAgainstRemountReplay() {
+        val request = ActivityUnreadJumpRequest(generation = 3, toTop = true)
+        val fence = AppShellScrollToTopRequestFence(request.generation)
+        assertFalse(fence.consume(request.generation))
+        assertTrue(fence.consume(request.next(ActivityRetapAction.WalkNextUnread).generation))
     }
 }
