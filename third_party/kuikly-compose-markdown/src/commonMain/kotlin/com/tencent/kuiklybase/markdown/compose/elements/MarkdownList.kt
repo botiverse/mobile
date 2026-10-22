@@ -18,12 +18,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
+import com.tencent.kuiklybase.markdown.compose.LocalMarkdownColors
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownComponents
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownPadding
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownTypography
@@ -215,7 +218,7 @@ private fun MarkdownBullet(depth: Int, style: TextStyle) {
         }
     }
     val metrics = markdownBulletMetrics(fontSize = fontSize, lineHeight = lineHeight, listIndent = listIndent)
-    val color = style.color
+    val color = markdownBulletColor(style.color, LocalMarkdownColors.current.text)
     // The slot is one first-line box tall, so the marker is centered on the first line
     // whatever the font scale; the marker hangs at the slot's end, `gap` before the text.
     Box(
@@ -235,6 +238,15 @@ private fun MarkdownBullet(depth: Int, style: TextStyle) {
         }
     }
 }
+
+/**
+ * The marker is painted, not typeset, so it must resolve its colour the way list text does
+ * ([MarkdownBasicText]: style colour, else [LocalMarkdownColors] text). Painting with an
+ * unspecified style colour draws nothing: callers whose base style carries no colour (the file
+ * preview, the default `RaftType.Body`) lost every bullet while their text still rendered.
+ */
+fun markdownBulletColor(styleColor: Color, markdownTextColor: Color): Color =
+    styleColor.takeOrElse { markdownTextColor }.takeOrElse { Color.Black }
 
 /** Browser `list-style-type` per nesting level: `disc` → `circle` → `square` (and square below). */
 enum class MarkdownBulletShape { Disc, Circle, Square }
