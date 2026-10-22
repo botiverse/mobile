@@ -130,7 +130,7 @@ class RaftInteractiveSemanticsTest {
             )
             onNodeWithText("Select a runtime").performClick()
             val row = onNodeWithText("Codex").fetchSemanticsNode().boundsInRoot.width / density.density
-            assertEquals(348f, row, 1f, "trigger 360dp less the 6dp padding each side")
+            assertEquals(352f, row, 1f, "trigger 360dp less the 4dp padding each side (raft-ui 0.20)")
         }
 
     @Test
