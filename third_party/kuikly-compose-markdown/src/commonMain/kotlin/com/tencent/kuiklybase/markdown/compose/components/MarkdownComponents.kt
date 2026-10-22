@@ -20,6 +20,8 @@ import com.tencent.kuiklybase.markdown.compose.elements.MarkdownTable
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownText
 import com.tencent.kuiklybase.markdown.compose.elements.listDepth
 import com.tencent.kuiklybase.markdown.model.MarkdownTypography
+import com.tencent.kuiklybase.markdown.model.raftBlockMathSource
+import build.raft.app.markdown.RaftDisplayMath
 import com.tencent.kuiklybase.markdown.shaded.immutable.ImmutableMap
 import com.tencent.kuiklybase.markdown.shaded.immutable.persistentMapOf
 import org.intellij.markdown.IElementType
@@ -50,6 +52,7 @@ fun markdownComponents(
     eol: MarkdownComponent = CurrentComponentsBridge.eol,
     codeFence: MarkdownComponent = CurrentComponentsBridge.codeFence,
     codeBlock: MarkdownComponent = CurrentComponentsBridge.codeBlock,
+    blockMath: MarkdownComponent = CurrentComponentsBridge.blockMath,
     heading1: MarkdownComponent = CurrentComponentsBridge.heading1,
     heading2: MarkdownComponent = CurrentComponentsBridge.heading2,
     heading3: MarkdownComponent = CurrentComponentsBridge.heading3,
@@ -76,6 +79,7 @@ fun markdownComponents(
     eol = eol,
     codeFence = codeFence,
     codeBlock = codeBlock,
+    blockMath = blockMath,
     heading1 = heading1,
     heading2 = heading2,
     heading3 = heading3,
@@ -105,6 +109,8 @@ interface MarkdownComponents {
     val eol: MarkdownComponent
     val codeFence: MarkdownComponent
     val codeBlock: MarkdownComponent
+    /** A `$$` math block (task #775). */
+    val blockMath: MarkdownComponent
     val heading1: MarkdownComponent
     val heading2: MarkdownComponent
     val heading3: MarkdownComponent
@@ -133,6 +139,7 @@ private class DefaultMarkdownComponents(
     override val eol: MarkdownComponent,
     override val codeFence: MarkdownComponent,
     override val codeBlock: MarkdownComponent,
+    override val blockMath: MarkdownComponent,
     override val heading1: MarkdownComponent,
     override val heading2: MarkdownComponent,
     override val heading3: MarkdownComponent,
@@ -167,6 +174,9 @@ object CurrentComponentsBridge {
     }
     val codeBlock: MarkdownComponent = {
         MarkdownCodeBlock(it.content, it.node, style = it.typography.code)
+    }
+    val blockMath: MarkdownComponent = {
+        RaftDisplayMath(raftBlockMathSource(it.node, it.content), style = it.typography.paragraph)
     }
     val heading1: MarkdownComponent = {
         MarkdownHeader(it.content, it.node, style = it.typography.h1)

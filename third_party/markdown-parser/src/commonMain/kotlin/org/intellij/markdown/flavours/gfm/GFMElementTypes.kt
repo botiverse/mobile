@@ -23,6 +23,18 @@ object GFMTokenTypes {
     @JvmField
     val DOLLAR: IElementType = MarkdownElementType("DOLLAR", true)
 
+    /** The opening `$$` line of a [GFMElementTypes.BLOCK_MATH] (Raft). */
+    @JvmField
+    val MATH_FENCE_START: IElementType = MarkdownElementType("MATH_FENCE_START", true)
+
+    /** One formula line of a [GFMElementTypes.BLOCK_MATH], fence indent removed (Raft). */
+    @JvmField
+    val MATH_FENCE_CONTENT: IElementType = MarkdownElementType("MATH_FENCE_CONTENT", true)
+
+    /** The closing `$$` line of a [GFMElementTypes.BLOCK_MATH] (Raft). */
+    @JvmField
+    val MATH_FENCE_END: IElementType = MarkdownElementType("MATH_FENCE_END", true)
+
     @JvmField
     val ALERT_TITLE: IElementType = MarkdownElementType("ALERT_TITLE", true)
 }

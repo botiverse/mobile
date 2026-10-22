@@ -36,6 +36,8 @@ published package metadata (Maven POM `<licenses>`, npm registry `license`, Coco
 | com.caverock:androidsvg-aar | 1.4 | Apache-2.0 |
 | com.tencent:mmkv | 2.4.0 | BSD-3-Clause |
 | org.jetbrains:markdown (coordinate reference only; sources vendored) | 0.7.5 | Apache-2.0 |
+| io.github.huarangmeng:latex-renderer / latex-parser / latex-base (message math) | 1.6.1 | MIT |
+| KaTeX fonts (`compose/designsystem/src/commonMain/composeResources/font/katex_*.ttf`, from the `katex` npm package) | 0.19.0 | MIT |
 | Test-only: junit 4.13.2 (EPL-1.0), androidx.test.* (Apache-2.0), org.robolectric:robolectric 4.14.1 (MIT), androidx.benchmark / uiautomator (Apache-2.0) | — | as listed |
 | Gradle plugins: AGP 8.13.2, Kotlin 2.1.21, KSP, Compose plugin 1.7.3, SQLDelight 2.1.0, google-services 4.5.0 | — | Apache-2.0 (google-services plugin: Apache-2.0) |
 

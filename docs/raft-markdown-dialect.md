@@ -1,6 +1,6 @@
 # Raft Markdown dialect
 
-Date: 2026-07-25
+Date: 2026-07-25 (math: 2026-10-22)
 Owner: KMP / Kuikly shared
 Status: Implemented
 
@@ -72,10 +72,11 @@ Higher entries own lower entries:
 
 1. code blocks and fenced code;
 2. inline code;
-3. images and Markdown links (inline, short-reference, full-reference);
-4. link definitions, autolinks, and inline/block HTML;
-5. Raft inline references;
-6. ordinary text.
+3. math (`$…$`, `$$…$$`, `$$` blocks; see "Math" below);
+4. images and Markdown links (inline, short-reference, full-reference);
+5. link definitions, autolinks, and inline/block HTML;
+6. Raft inline references;
+7. ordinary text.
 
 Ownership is derived from AST ancestry. A Raft token below a Markdown-owned
 node is rendered as that parent's literal child and is not collected as a
@@ -134,6 +135,56 @@ recognize refs directly adjacent to Han/Kana/Hangul letters, change the dialect
 spec and cross-platform conformance tests together rather than silently
 changing Android-only behavior.
 
+## Math
+
+Task #775. The rules are the web's, botiverse/slock #10813 (pinned head
+`cdfb107ecda6e49cf3c7eecfb7857f9eff98e3a2`), `raftMath()` in
+`packages/shared/src/markdownMath.ts`: Obsidian's (Pandoc's) dollar rules on
+micromark-extension-math.
+
+- `$$…$$` is math wherever it appears. On its own lines it is a block
+  (`BLOCK_MATH`), otherwise inline math (`INLINE_MATH`).
+- `$…$` is inline math only when the opening `$` is not followed by
+  whitespace and the closing `$` is not preceded by whitespace and not
+  followed by an ASCII digit. So `$x^2$` is math, while `$5 到 $10`, `$5,$10`
+  and `$5-$10` stay text.
+- Single-dollar math stays on one line. A dollar run of another length inside
+  a formula is part of it, and a closing candidate that fails the rules does
+  not end the search.
+- `\$` is a literal dollar.
+- A block opens with two or more `$` (indented at most three spaces, then any
+  text without a `$`), closes with at least as many `$` and nothing else on
+  the line, may interrupt a paragraph, and runs to the end of its container
+  when unclosed. Its lines are TeX, never Markdown. `$$x$$` alone on a line
+  is not a fence: it is inline math in a paragraph.
+
+These are parser rules in the vendored JetBrains parser, at the same layer as
+the CJK-friendly emphasis rule: `MathParser` (inline; the first sequential
+parser, so a formula owns any emphasis, link or autolink syntax inside it) and
+`MathFenceProvider` / `MathFenceMarkerBlock` (blocks). There is no regex or
+source pre-pass. The formula text comes from the AST
+(`raftInlineMathSource` / `raftBlockMathSource`, which give mdast-util-math's
+`value`: one space of padding trimmed from each side of inline math, block
+fence indent and container markers removed).
+
+Math is Markdown-owned, like code: an `@name` or `#12` inside a formula is TeX,
+not a reference, so `RaftMarkdownDialect` collects no ref under `INLINE_MATH`
+or `BLOCK_MATH` (web: `markdownStructure` treats `math`/`inlineMath` as code
+when the server decides who a message notifies). Mobile has no other place
+that derives mentions from Markdown; notifications use the server's
+`mentions`.
+
+Known difference: code spans are shielded at the lexer, so a backtick pair
+always wins over math. On the web whichever opens first wins, so
+``$a `b$` c`` is math there and a code span here.
+
+Rendering (`RaftMarkdownMath.kt`): KaTeX layout with the KaTeX 0.19.0 fonts,
+1.21× the surrounding text as KaTeX's CSS, in the text colour; inline math on
+the text baseline, blocks centred and scrolling sideways. A formula the web's
+KaTeX settings reject (`throwOnError: false`, `trust: false`: unknown
+commands, `\href`, `\url`, `\includegraphics`, `\html*`) shows its source in
+KaTeX's errorColor.
+
 ## Typed rich-text contract
 
 Recognized and context-valid candidates become `RaftRef` tokens in
@@ -146,6 +197,10 @@ identity remains the original source tag. Active/highlighted chrome is derived
 after validation and never changes parsing.
 
 ## Conformance tests
+
+`MarkdownMathTest` is the web's `markdownMath.test.ts` ported case for case,
+plus the block shapes; `MarkdownMathRenderTest` owns the placeholder, price
+and error behaviour; `ThreadMathMessageScreenshotTest` holds the goldens.
 
 `RaftMarkdownDialectTest` owns syntax/precedence coverage:
 

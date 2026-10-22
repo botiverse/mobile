@@ -30,6 +30,8 @@ gson = "2.11.0"
 socketIoClient = "2.1.2"
 sqldelight = "2.1.0"
 coil = "3.6.3"
+# huarangmeng/latex: message math (task #775). Pure Kotlin, MIT.
+hrmLatex = "1.6.1"
 androidsvg = "1.4"
 mmkv = "2.4.0"
 firebaseBom = "34.15.0"
@@ -92,6 +94,7 @@ cmp-lifecycle-runtime-compose = { group = "org.jetbrains.androidx.lifecycle", na
 androidx-compose-runtime = { group = "androidx.compose.runtime", name = "runtime", version.ref = "androidxComposeRuntime" }
 coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
 coil-svg = { group = "io.coil-kt.coil3", name = "coil-svg", version.ref = "coil" }
+hrm-latex-renderer = { group = "io.github.huarangmeng", name = "latex-renderer", version.ref = "hrmLatex" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }

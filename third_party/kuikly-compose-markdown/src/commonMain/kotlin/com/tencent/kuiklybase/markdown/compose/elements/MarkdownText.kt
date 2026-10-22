@@ -1,5 +1,6 @@
 package com.tencent.kuiklybase.markdown.compose.elements
 
+import build.raft.app.markdown.raftInlineMathContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -182,6 +183,8 @@ fun MarkdownText(
     if (extendedInlineContent != null) {
         inlineContent.putAll(extendedInlineContent)
     }
+    // Task #775: formulas (INLINE_MATH placeholders), in this text's size and colour.
+    inlineContent.putAll(raftInlineMathContent(content, style, baseColor))
 
     MarkdownBasicText(
         text = content,

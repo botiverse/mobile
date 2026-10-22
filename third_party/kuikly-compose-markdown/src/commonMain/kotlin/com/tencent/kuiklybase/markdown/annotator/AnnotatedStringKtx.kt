@@ -17,6 +17,7 @@ import com.tencent.kuiklybase.markdown.model.ReferenceLinkHandler
 import com.tencent.kuiklybase.markdown.model.RaftGFMFlavourDescriptor
 import com.tencent.kuiklybase.markdown.model.RaftMarkdownTokenTypes
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
+import com.tencent.kuiklybase.markdown.model.raftInlineMathSource
 import com.tencent.kuiklybase.markdown.utils.CJK_URL_BOUNDARY_PUNCTUATION
 import com.tencent.kuiklybase.markdown.utils.isCjkTextOrWhitespace
 import com.tencent.kuiklybase.markdown.utils.MARKDOWN_TAG_IMAGE_URL
@@ -30,6 +31,7 @@ import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.ASTNode
 import org.intellij.markdown.ast.findChildOfType
+import org.intellij.markdown.ast.getTextInNode
 import org.intellij.markdown.flavours.MarkdownFlavourDescriptor
 import org.intellij.markdown.flavours.gfm.GFMElementTypes
 import org.intellij.markdown.flavours.gfm.GFMTokenTypes
@@ -39,6 +41,9 @@ import build.raft.app.markdown.RAFT_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK
 import build.raft.app.markdown.RAFT_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG
 import build.raft.app.markdown.RAFT_INLINE_BOX_ANNOTATION_TAG
 import build.raft.app.markdown.raftMarkdownInlineCodeEdgeStyle
+import build.raft.app.markdown.raftInlineMathContentId
+import build.raft.app.markdown.raftMathFormulaRenders
+import build.raft.app.markdown.RaftMathErrorColor
 import build.raft.app.raftFirstComposedCharacterEnd
 import build.raft.app.raftInlineCodeCharWrapBridgeThreshold
 import build.raft.app.raftInlineCodeUsesEdgePaddingBridge
@@ -522,6 +527,28 @@ fun AnnotatedString.Builder.buildMarkdownAnnotatedString(
                             end = length
                         )
                     }
+
+                    // Task #775 (slock #10813): a formula is one inline
+                    // placeholder; its TeX is the alternate text, shown as is
+                    // where no math renderer is installed.
+                    GFMElementTypes.INLINE_MATH -> {
+                        val source = raftInlineMathSource(child, content)
+                        if (raftMathFormulaRenders(source)) {
+                            // Shown in the code style it parsed as until the
+                            // formula is laid out (web: before KaTeX loads).
+                            pushStyle(annotatorSettings.codeSpanStyle)
+                            appendInlineContent(raftInlineMathContentId(source), source)
+                            pop()
+                        } else {
+                            // KaTeX (throwOnError: false) shows the source in its errorColor.
+                            pushStyle(SpanStyle(color = RaftMathErrorColor))
+                            append(source)
+                            pop()
+                        }
+                    }
+
+                    // A `$` that opens no formula ("$5 to $10") is text.
+                    GFMTokenTypes.DOLLAR -> append(child.getTextInNode(content).toString())
 
                     MarkdownElementTypes.AUTOLINK -> appendAutoLink(content, child, annotatorSettings)
                     MarkdownElementTypes.INLINE_LINK -> appendMarkdownLink(content, child, annotatorSettings)
