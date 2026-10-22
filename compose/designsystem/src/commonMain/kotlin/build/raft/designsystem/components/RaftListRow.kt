@@ -147,7 +147,8 @@ fun RaftListRowGroup(
  * focus draws a 2dp inset `foreground` outline (rows touch their group's edge).
  * [selected] is the item open beside the list: an `info-soft` wash, no border, no press
  * overlay, and `selected` in semantics; the wash (over the surface under it) becomes
- * [LocalRaftSurfaceColor] for the row's parts. [enabled] = false greys every part and drops the tone, and the fill stays.
+ * [LocalRaftSurfaceColor] for the row's parts. [menuOpen]: the row's menu (long press, ⋯) is open:
+ * `fill-row-open` (raft-ui 0.13), under a selection. [enabled] = false greys every part and drops the tone, and the fill stays.
  * A selected or disabled row never shows its [badge] (no count or @).
  */
 @Composable
@@ -170,6 +171,7 @@ fun RaftListRow(
     badge: (@Composable () -> Unit)? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null,
     interactionSource: MutableInteractionSource? = null,
+    menuOpen: Boolean = false,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -194,6 +196,7 @@ fun RaftListRow(
                 .fillMaxWidth()
                 .heightIn(min = variant.minHeight)
                 .then(if (selected) Modifier.background(colors.infoSoft).semantics { this.selected = true } else Modifier)
+                .then(if (menuOpen && !selected) Modifier.background(colors.fillRowOpen) else Modifier)
                 .raftPressOverlay(pressed, raftPressOverlayColor(RaftPressSurface.Paper, colors), 0.dp)
                 .then(if (divider && ruleStart != null) Modifier.topHairline(colors.lineHairline, ruleStart) else Modifier)
                 .raftInsetFocusOutline(focused, colors.foreground)

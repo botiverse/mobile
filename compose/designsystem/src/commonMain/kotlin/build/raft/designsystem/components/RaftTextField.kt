@@ -522,7 +522,13 @@ private fun RaftInputBox(
                 ) { leading() }
             }
             if (prefix != null) {
-                AddonText(prefix, Modifier.padding(start = if (leading != null) 8.dp else edge, end = 2.dp), look.addon)
+                // raft-ui 0.13: a text prefix takes at most half the field, then ellipsizes
+                // (the input's equal weight keeps the other half).
+                AddonText(
+                    prefix,
+                    Modifier.weight(1f, fill = false).padding(start = if (leading != null) 8.dp else edge, end = 2.dp),
+                    look.addon,
+                )
             }
         }
         Box(
@@ -630,5 +636,13 @@ fun RaftTextFieldClearAction(
 
 @Composable
 private fun AddonText(text: String, modifier: Modifier, color: Color) {
-    RaftText(text, modifier, style = RaftTheme.typography.monoCode, color = color, maxLines = 1, softWrap = false)
+    RaftText(
+        text,
+        modifier,
+        style = RaftTheme.typography.monoCode,
+        color = color,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Ellipsis,
+    )
 }

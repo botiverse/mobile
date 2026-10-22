@@ -65,6 +65,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -197,6 +198,14 @@ fun RaftMenuItem(
             onDispose { nav.entries -= entry }
         }
     }
+    // A field Select's options share the field type (select.tsx `chrome: field`:
+    // `text-field font-field` on the item text, so the chosen one stays 400).
+    val labelStyle =
+        if (LocalRaftMenuFieldType.current) {
+            RaftTheme.typography.field
+        } else {
+            RaftTheme.typography.callout.copy(fontWeight = if (checked) FontWeight.Bold else FontWeight.Medium)
+        }
     Row(
         modifier
             .fillMaxWidth()
@@ -217,7 +226,7 @@ fun RaftMenuItem(
             .clickable(source, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics { if (checked) selected = true }
             .then(if (divider) Modifier.padding(top = RaftStroke.Hairline) else Modifier)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 10.dp, vertical = raftOptionInset(labelStyle)),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -229,16 +238,10 @@ fun RaftMenuItem(
         RaftText(
             text,
             Modifier.weight(1f),
-            // A field Select's options share the field type (select.tsx `chrome: field`:
-            // `text-field font-field` on the item text, so the chosen one stays 400).
-            style =
-                if (LocalRaftMenuFieldType.current) {
-                    RaftTheme.typography.field
-                } else {
-                    RaftTheme.typography.callout.copy(fontWeight = if (checked) FontWeight.Bold else FontWeight.Medium)
-                },
+            style = labelStyle,
             color = ink,
-            maxLines = 1,
+            // raft-ui 0.13: a long option wraps to two lines, then clamps.
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
         if (shortcut != null) {
@@ -616,3 +619,18 @@ private class RaftMenuPositionProvider(
         popupContentSize: IntSize,
     ): IntOffset = raftMenuPosition(anchorBounds, windowSize, popupContentSize, gap, windowMargin, insets, layoutDirection == LayoutDirection.Rtl, safeArea)
 }
+
+
+/**
+ * raft-ui `py-option-inset`: the space above and below an option's text, what a 36dp row leaves
+ * around one line of the option's type ((36 - line height) / 2: 8dp around a 20 line, 6dp around
+ * 24). One line is exactly 36dp; a second line adds its own height and nothing else.
+ */
+@Composable
+internal fun raftOptionInset(style: TextStyle): Dp {
+    val density = LocalDensity.current
+    val line = with(density) { style.lineHeight.toDp() }
+    return ((RaftOptionHeight - line) / 2).coerceAtLeast(0.dp)
+}
+
+internal val RaftOptionHeight = 36.dp
