@@ -62,10 +62,13 @@ interface RaftDescriptionListScope {
         details: @Composable RowScope.() -> Unit,
     )
 
-    /** A fact with a text value; [mono] for machine values (IDs, emails, paths); null is "—". */
+    /**
+     * A fact with a text value; [mono] for machine values (IDs, emails, paths); null is "—".
+     * The value is long-press copyable unless [copyable] is false.
+     */
     @Composable
-    fun Item(term: String, value: String?, mono: Boolean = false) {
-        Item(term) { RaftDescriptionValue(value, mono = mono) }
+    fun Item(term: String, value: String?, mono: Boolean = false, copyable: Boolean = true) {
+        Item(term) { RaftDescriptionValue(value, mono = mono, copyable = copyable) }
     }
 }
 
@@ -149,15 +152,23 @@ private class HorizontalSlots(private val content: @Composable RaftDescriptionLi
     }
 }
 
-/** A text value: `text-callout` `foreground`, Space Mono for machine values, "—" in hint ink when empty. */
+/**
+ * A text value: `text-callout` `foreground`, Space Mono for machine values, "—" in hint ink when
+ * empty. A value is long-press copyable ([raftCopyable], the value only) unless [copyable] is false.
+ */
 @Composable
-fun RaftDescriptionValue(text: String?, modifier: Modifier = Modifier, mono: Boolean = false) {
+fun RaftDescriptionValue(text: String?, modifier: Modifier = Modifier, mono: Boolean = false, copyable: Boolean = true) {
     val typography = RaftTheme.typography
     val colors = RaftTheme.colors
     if (text.isNullOrEmpty()) {
         RaftText("—", modifier = modifier, style = typography.callout, color = colors.foregroundHint)
     } else {
-        RaftText(text, modifier = modifier, style = if (mono) typography.monoMeta else typography.callout, color = colors.foreground)
+        RaftText(
+            text,
+            modifier = modifier.raftCopyable(text, enabled = copyable),
+            style = if (mono) typography.monoMeta else typography.callout,
+            color = colors.foreground,
+        )
     }
 }
 

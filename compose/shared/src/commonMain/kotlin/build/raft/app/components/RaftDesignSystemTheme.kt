@@ -10,6 +10,9 @@ import androidx.compose.runtime.remember
 import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.app.resources.MR
 import build.raft.app.cmp.RaftCmpRouter
+import build.raft.app.host.HostFeedbackCapability
+import build.raft.designsystem.components.LocalRaftCopyHandler
+import build.raft.designsystem.components.RaftCopyHandler
 import build.raft.designsystem.theme.LocalRaftMisuse
 import build.raft.designsystem.theme.LocalRaftStrings
 import build.raft.designsystem.theme.RaftAppearance
@@ -102,10 +105,30 @@ internal fun raftAppDesignSystemStrings(): RaftStrings =
         loading = stringResource(MR.strings.common_loading),
         cancel = stringResource(MR.strings.common_cancel),
         dismiss = stringResource(MR.strings.common_dismiss),
+        copy = stringResource(MR.strings.common_copy),
     )
 
 /** Provides [raftAppDesignSystemStrings] as [LocalRaftStrings] to [content]. */
 @Composable
 internal fun RaftProvideDesignSystemStrings(content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalRaftStrings provides raftAppDesignSystemStrings(), content = content)
+}
+
+/**
+ * The design system's long-press copy ([build.raft.designsystem.components.raftCopyable]) through
+ * the native host: [HostFeedbackCapability.copyToPasteboard], then the host toast "Copied"
+ * (`common_copied`), the same pair every other Copy in the app uses. Provided round every page
+ * (the pager host).
+ */
+@Composable
+internal fun RaftProvideDesignSystemCopy(feedback: HostFeedbackCapability, content: @Composable () -> Unit) {
+    val copied = stringResource(MR.strings.common_copied)
+    val handler =
+        remember(feedback, copied) {
+            RaftCopyHandler { text ->
+                feedback.copyToPasteboard(text)
+                feedback.toast(copied)
+            }
+        }
+    CompositionLocalProvider(LocalRaftCopyHandler provides handler, content = content)
 }
