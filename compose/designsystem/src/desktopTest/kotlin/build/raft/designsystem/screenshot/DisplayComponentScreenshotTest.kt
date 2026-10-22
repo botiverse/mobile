@@ -35,6 +35,11 @@ import build.raft.designsystem.components.RaftAgentStateChip
 import build.raft.designsystem.components.RaftAgentTag
 import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarBadgeBox
+import build.raft.designsystem.components.RaftConversationKindGlyph
+import build.raft.designsystem.components.RaftConversationKindIcon
+import build.raft.designsystem.components.RaftInboxItemLeadingDefaults
+import build.raft.designsystem.components.RaftInboxItemLeadingBadge
+import build.raft.designsystem.components.RaftInboxItemLeading
 import build.raft.designsystem.components.RaftMessageDelegatedAvatar
 import build.raft.designsystem.components.RaftAvatarGroup
 import build.raft.designsystem.components.RaftAvatarGroupCount
@@ -486,6 +491,47 @@ class DisplayComponentScreenshotTest {
                     DelegatedOwner(surface = rowFill) { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Xxs, image = pixelFace) }
                     DelegatedOwner(surface = rowFill, deleted = true) { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Xxs) }
                     Caption("On a highlighted row")
+                }
+            }
+        }
+
+    /**
+     * raft-ui InboxItemLeading + InboxItemLeadingBadge: a channel thread (tile + badge), a DM
+     * thread with a person and with an agent (avatar + badge, no presence light), and for
+     * contrast a plain agent DM (presence light) and a plain channel (no badge); then the
+     * same badge on a selected (`info-soft`) row, whose ring stays the canvas.
+     */
+    @Test
+    fun inboxItemLeading() =
+        capture("inbox_item_leading") {
+            val threadBadge: @Composable () -> Unit = {
+                RaftInboxItemLeadingBadge {
+                    RaftConversationKindIcon(RaftConversationKindGlyph.Thread, size = RaftInboxItemLeadingDefaults.BadgeIcon)
+                }
+            }
+            val channelTile: @Composable () -> Unit = {
+                RaftIconTile(size = RaftIconTileSize.Md) { RaftGlyphIcon(RaftGlyph.Hash, size = RaftIconTileSize.Md.icon) }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RaftInboxItemLeading(badge = threadBadge) { channelTile() }
+                    RaftInboxItemLeading(badge = threadBadge) { RaftAvatar(RaftAvatarType.Human, RaftAvatarSize.Md, initials = "SK") }
+                    RaftInboxItemLeading(badge = threadBadge) { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Md) }
+                    Caption("Threads")
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RaftInboxItemLeading { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Md, presence = RaftPresence.Online) }
+                    RaftInboxItemLeading { channelTile() }
+                    Caption("DM, channel")
+                }
+                Row(
+                    Modifier.background(RaftTheme.colors.infoSoft.compositeOver(RaftTheme.colors.layerCanvas)).padding(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(24.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RaftInboxItemLeading(badge = threadBadge) { channelTile() }
+                    RaftInboxItemLeading(badge = threadBadge) { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Md) }
+                    Caption("Selected row")
                 }
             }
         }

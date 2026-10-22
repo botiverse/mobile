@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.RaftTimeContext
@@ -205,13 +206,62 @@ private fun ActivityRowsVisualContent(appearance: RaftAppAppearance) {
                 lastMessagePreview = "部署了，而且刚又测了一遍确认现在还生效。",
                 lastMessageAt = "2026-10-21T16:17:00Z",
             ),
+            // A thread in a channel: the channel tile with the thread badge, "#channel ·" kept.
+            InboxItem(
+                key = "thread:channel",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-channel"),
+                channelName = "thread",
+                unreadCount = 2,
+                parentChannelId = ChannelId("mobile"),
+                parentChannelName = "mobile",
+                parentChannelKind = ConversationKind.Channel,
+                parentMessagePreview = "Activity 里私聊的 thread 怎么显示",
+                latestActivityPreview = "按 Jasper 的规则来，头像跟着会话走。",
+                latestActivitySenderName = "Scout",
+                latestActivitySenderId = "agent-scout",
+                latestActivitySenderKind = MemberKind.Agent,
+                latestActivityAt = "2026-10-21T15:40:00Z",
+            ),
+            // A thread in a DM: the peer's face with the thread badge, no "@peer ·" before the sender.
+            InboxItem(
+                key = "thread:dm",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-dm"),
+                channelName = "thread",
+                unreadCount = 1,
+                parentChannelId = ChannelId("dm-lagoon"),
+                parentChannelName = "Lagoon",
+                parentChannelKind = ConversationKind.DirectMessage,
+                parentMessagePreview = "goldens 帮我再录一遍",
+                latestActivityPreview = "录好了，亮色和暗色都在。",
+                latestActivitySenderName = "Lagoon",
+                latestActivitySenderId = "agent-lagoon",
+                latestActivitySenderKind = MemberKind.Agent,
+                latestActivityAt = "2026-10-21T15:12:00Z",
+            ),
+        )
+    // The Home DM row of the thread's parent DM (an agent peer that is online).
+    val context =
+        ActivityConversationListContext(
+            dmPeersByChannelId =
+                mapOf(
+                    "dm-lagoon" to
+                        ActivityConversationDmPeer(
+                            peerId = "agent-lagoon",
+                            peerIsAgent = true,
+                            avatarWireValue = null,
+                            displayName = "Lagoon",
+                            activityMuted = false,
+                        ),
+                ),
         )
     RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light) {
         Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
             rows.forEachIndexed { index, item ->
                 ActivityConversationListRow(
                     item = item,
-                    model = item.activityConversationRowModel(ActivityConversationListContext.Empty, InboxFilter.All),
+                    model = item.activityConversationRowModel(context, InboxFilter.All),
                     divider = index > 0,
                     selected = false,
                     timeContext = timeContext,

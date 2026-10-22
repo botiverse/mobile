@@ -236,7 +236,7 @@ class ActivityConversationListTest {
     @Test
     fun mutedConversationShowsNoCountAndStaysQuietButKeepsTheMention() {
         // web: channels by `channels.find(...).activityMuted`, DMs by their `dmChannels` row; a thread
-        // follows its parent channel only (a DM parent's mute is not a channel mute).
+        // follows its parent channel, or the DM it lives in (`?? threadDmChannel`).
         val mutedPeerContext =
             context.copy(dmPeersByChannelId = mapOf("dm-fable" to fablePeer.copy(activityMuted = true)))
         val threadInDm =
@@ -251,7 +251,15 @@ class ActivityConversationListTest {
                 Case("thread in a muted channel", thread, context, muted = true),
                 Case("muted channel", channel("channel:random", "random", unread = 1, mention = true), context, muted = true),
                 Case("muted DM peer", dm("dm:fable", "dm-fable", senderId = "agent-fable", unread = 1).copy(hasMention = true), mutedPeerContext, muted = true),
-                Case("thread whose parent is a muted DM", threadInDm, mutedPeerContext, muted = false),
+                Case("thread whose parent is a muted DM", threadInDm, mutedPeerContext, muted = true),
+                Case("thread whose parent DM is not muted", threadInDm, context, muted = false),
+                // A thread in a channel never takes a DM's mute, even with the same id.
+                Case(
+                    "channel thread beside a muted DM",
+                    thread.copy(parentChannelId = ChannelId("dm-fable")),
+                    mutedPeerContext,
+                    muted = false,
+                ),
                 Case("unmuted channel", channel("channel:android", "android", unread = 1, mention = true), context, muted = false),
             )
         for (case in cases) {
@@ -293,6 +301,97 @@ class ActivityConversationListTest {
         assertEquals("Sender user-other", sender.name)
         // DM rows already lead with a face: no inline sender avatar.
         assertNull(sender.avatar)
+    }
+
+    private val threadInFableDm =
+        thread.copy(
+            parentChannelId = ChannelId("dm-fable"),
+            parentChannelName = "fable-raw",
+            parentChannelKind = ConversationKind.DirectMessage,
+            latestActivitySenderName = "Fable",
+            latestActivitySenderId = "agent-fable",
+        )
+
+    @Test
+    fun threadRowsLeadWithTheirConversationAndDropOnlyWhatTheLeadingImageSays() {
+        data class Case(
+            val name: String,
+            val item: InboxItem,
+            val peer: ActivityConversationDmPeer?,
+            val label: String,
+            val labelVisible: Boolean,
+            val dmTile: Boolean,
+        )
+        val cases =
+            listOf(
+                // A channel thread: the channel tile and "#design ·", as before.
+                Case("channel thread", thread, peer = null, label = "#design", labelVisible = true, dmTile = false),
+                // A DM thread: the peer's face; "@Fable" leaves the line (the face says it), named by Home.
+                Case("DM thread", threadInFableDm, peer = fablePeer, label = "@Fable", labelVisible = false, dmTile = true),
+                // The DM is not loaded yet: the DM tile (not `#`) and the visible label.
+                Case(
+                    "DM thread, DM not loaded",
+                    threadInFableDm.copy(parentChannelId = ChannelId("dm-unknown")),
+                    peer = null,
+                    label = "@fable-raw",
+                    labelVisible = true,
+                    dmTile = true,
+                ),
+            )
+        for (case in cases) {
+            val model = case.item.activityConversationRowModel(context.copy(mutedChannelIds = emptySet()), InboxFilter.All)
+            assertEquals(ActivityConversationLeadingKind.Thread, model.leadingKind, case.name)
+            assertEquals(case.peer, model.dmPeer, case.name)
+            assertEquals(case.label, model.threadChannelLabel, case.name)
+            assertEquals(case.labelVisible, model.threadChannelLabelVisible, case.name)
+            assertEquals(case.dmTile, model.threadInDirectMessage, case.name)
+            // Both carry the thread badge in the corner, and a thread row never shows a presence light.
+            assertTrue(model.leadingThreadBadge, case.name)
+            assertFalse(model.leadingPresence, case.name)
+            assertEquals("Root message", model.title, case.name)
+        }
+    }
+
+    @Test
+    fun dmThreadKeepsTheSenderWithoutASecondFace() {
+        // Either side may have replied last, so the DM thread keeps "Fable: …" even from the peer;
+        // the leading face is the peer, so no inline face before the name.
+        for (senderId in listOf("agent-fable", "user-other")) {
+            val model =
+                threadInFableDm.copy(latestActivitySenderId = senderId).activityConversationRowModel(context, InboxFilter.All)
+            val sender = assertIs<ActivityConversationSender.Named>(model.sender, senderId)
+            assertEquals("Fable", sender.name, senderId)
+            assertNull(sender.avatar, senderId)
+        }
+        // A channel thread keeps its inline sender face.
+        val channelSender = assertIs<ActivityConversationSender.Named>(thread.activityConversationRowModel(context, InboxFilter.All).sender)
+        assertEquals(MemberKind.Agent, channelSender.avatar?.senderKind)
+    }
+
+    @Test
+    fun onlyAnAgentDmRowShowsThePresenceLight() {
+        val dmRow = dm("dm:fable", "dm-fable", senderId = "agent-fable").activityConversationRowModel(context, InboxFilter.All)
+        assertTrue(dmRow.leadingPresence)
+        assertFalse(dmRow.leadingThreadBadge)
+        val humanDm = context.copy(dmPeersByChannelId = mapOf("dm-fable" to fablePeer.copy(peerIsAgent = false)))
+        assertFalse(dm("dm:fable", "dm-fable", senderId = "x").activityConversationRowModel(humanDm, InboxFilter.All).leadingPresence)
+        assertFalse(threadInFableDm.activityConversationRowModel(context, InboxFilter.All).leadingPresence)
+    }
+
+    @Test
+    fun accessibilityBodyStillNamesTheDmTheLineHides() {
+        val model = threadInFableDm.activityConversationRowModel(context, InboxFilter.All)
+        val label = "${model.threadChannelLabel} ·"
+        // Visible line: no "@Fable ·"; what a screen reader hears: with it.
+        assertEquals(
+            "Fable: Latest reply",
+            activityConversationBodyText(
+                sender = "Fable",
+                preview = model.preview.orEmpty(),
+                channelLabel = label.takeIf { model.threadChannelLabelVisible },
+            ).text,
+        )
+        assertEquals("@Fable · Fable: Latest reply", activityConversationAccessibilityBody(label, "Fable", model.preview.orEmpty()))
     }
 
     @Test
