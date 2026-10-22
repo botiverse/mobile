@@ -137,6 +137,8 @@ private data class WireAgent(
      * last use. Drives the online window; realtime `agent:seen` supersedes it.
      */
     val lastSeenAt: String? = null,
+    /** slock `agents.managedByAppInstallId` (app-managed bot); null/absent for ordinary agents and guest projections. */
+    val managedByAppInstallId: String? = null,
     val runtimeProfile: WireAgentRuntimeProfileSummary? = null,
     val createdAgents: List<WireAgentCreatedSummary> = emptyList(),
 )
@@ -825,6 +827,7 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         membershipStatus = if (deletedAt.isNullOrBlank()) null else "deleted",
         agentDeletedAt = deletedAt?.takeIf { it.isNotBlank() },
         lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },
+        managedByAppInstallId = managedByAppInstallId?.takeIf { it.isNotBlank() },
         model = firstNonBlank(model, runtimeProfile?.current?.model),
         permissionBadges = listOfNotNull(
             runtime?.takeIf { it.isNotBlank() },

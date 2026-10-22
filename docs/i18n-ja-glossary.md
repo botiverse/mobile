@@ -35,6 +35,7 @@ new product concept gets a Japanese rendering.
 | Quote | 引用 | |
 | Draft | 下書き | |
 | Unread | 未読 | Mark as read = 既読にする |
+| Read (receipt: someone else has read it) | 既読 | Not read yet = 未読 (web read_receipts_v0) |
 | Notification | 通知 | |
 | Join / Leave (channel, server) | 参加 / 退出 | |
 | Sign in / Sign out | ログイン / ログアウト | One pair everywhere; never サインイン |

@@ -406,6 +406,12 @@ data class MemberProfile(
      * otherwise "Last active {time}". Realtime `agent:seen` updates it.
      */
     val lastSeenAt: String? = null,
+    /**
+     * App-managed bot (botiverse/slock `agents.managed_by_app_install_id`, sent as
+     * `managedByAppInstallId` on `GET /agents` and `GET /agents/:id` for non-guests). Web hides
+     * the read_receipts_v0 mention badge for these (`MentionLink.tsx` `isManagedBot`).
+     */
+    val managedByAppInstallId: String? = null,
     val createdAgents: List<AgentProfile> = emptyList(),
     val permissionBadges: List<String> = emptyList(),
     val serverId: ServerId? = null,
@@ -726,6 +732,25 @@ data class DirectMessageCreated(val channelId: ChannelId) : RealtimeEvent
 
 @Serializable
 data class ThreadFollowersUpdated(val threadChannelId: ChannelId) : RealtimeEvent
+
+/** Read receipts (`read_receipts_v0`) peer kind; the server exposes only agents. */
+@Serializable
+enum class ReadReceiptPeerKind { Human, Agent }
+
+/**
+ * `scope_read:updated` (botiverse/slock `services/readReceiptService.ts` `emitScopeReadUpdated`):
+ * either one peer's advanced watermark ([peerKind], [peerId], [maxReadSeq] all set) or, for a scope
+ * above the per-peer limit, [summaryChanged] (re-fetch the anonymous summary). The mapper only
+ * builds those two shapes.
+ */
+@Serializable
+data class ScopeReadUpdated(
+    val scopeId: String,
+    val peerKind: ReadReceiptPeerKind? = null,
+    val peerId: String? = null,
+    val maxReadSeq: Long? = null,
+    val summaryChanged: Boolean = false,
+) : RealtimeEvent
 
 @Serializable
 data class ThreadUpdated(

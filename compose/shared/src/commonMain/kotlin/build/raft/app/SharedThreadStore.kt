@@ -14864,6 +14864,7 @@ internal fun Message.toRaftThreadMessageItem(currentUserId: String?): RaftThread
         reactions = reactions.toRealtimeThreadReactionItems(currentUserId).orEmpty(),
         commentRef = commentRef?.toRaftThreadCommentRef(),
         forwardBundle = forwardBundle,
+        mentions = mentions,
         pendingSendContext = pendingSendContext,
         pendingSendErrorCode = metadata[ThreadLocalSendErrorMetadataKey]?.takeIf { it.isNotBlank() },
         pendingSendErrorMessage = metadata[ThreadLocalSendErrorMessageMetadataKey]?.takeIf { it.isNotBlank() }

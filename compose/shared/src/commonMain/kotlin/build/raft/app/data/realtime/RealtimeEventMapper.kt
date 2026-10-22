@@ -73,11 +73,13 @@ import build.raft.app.model.ThreadFollowersUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.canonical.message.CanonicalMessageCarry
+import build.raft.app.data.ScopeReadUpdatedWire
 import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.WireForwardMessageBundle
 import build.raft.app.data.projectAgentActivityStatus
 import build.raft.app.data.toThreadActionCard
 import build.raft.app.data.toForwardMessageBundle
+import build.raft.app.data.toScopeReadUpdated
 import build.raft.app.data.toMessageMetadata
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
@@ -204,6 +206,9 @@ class RealtimeEventMapper(
             RealtimeSocketEvents.ThreadFollowersUpdated ->
                 decodeOrNull(ThreadFollowersUpdatedDto.serializer(), element)
                     ?.threadChannelId?.takeIf { it.isNotBlank() }?.let { ThreadFollowersUpdated(ChannelId(it)) }
+            // read_receipts_v0 (slock services/readReceiptService.ts emitScopeReadUpdated).
+            RealtimeSocketEvents.ScopeReadUpdated ->
+                decodeOrNull(ScopeReadUpdatedWire.serializer(), element)?.toScopeReadUpdated()
             RealtimeSocketEvents.ThreadUpdated ->
                 decodeOrNull(ThreadUpdatedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.ChannelUpdated ->

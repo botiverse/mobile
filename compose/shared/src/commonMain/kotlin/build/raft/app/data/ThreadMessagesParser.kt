@@ -123,6 +123,8 @@ internal data class WireMessage(
     val externalAuthor: WireExternalAuthor? = null,
     /** RFC 077 `DelegatedByLabel | null`: the assistant that sent it for the sender. */
     val delegatedBy: WireDelegatedBy? = null,
+    /** Resolved mention facts; see [WireMessageMention]. */
+    val mentions: List<WireMessageMention> = emptyList(),
 )
 
 @Serializable
@@ -345,7 +347,8 @@ private fun WireMessage.toMessageItem(
         reactions = reactions.map { it.toReactionItem(currentUserId) }.filter { it.count > 0 },
         attachments = attachments.mapIndexed { i, a -> a.toAttachmentItem(i) },
         commentRef = commentRef?.toMessageCommentRef(),
-        forwardBundle = forwardBundle.toForwardMessageBundle() ?: actionMetadata.toForwardMessageBundle()
+        forwardBundle = forwardBundle.toForwardMessageBundle() ?: actionMetadata.toForwardMessageBundle(),
+        mentions = mentions.toMessageMentions(),
     )
 }
 

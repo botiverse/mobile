@@ -2418,6 +2418,9 @@
     <string name="thread_followers_restore_failed">エージェントを復元できませんでした。一覧を更新しました。</string>
     <string name="thread_followers_empty">このスレッドをフォロー中のエージェントはいません。</string>
     <string name="thread_followers_peer_server">相手のサーバー</string>
+    <string name="thread_message_read_status">既読</string>
+    <string name="thread_mention_agent_read">既読</string>
+    <string name="thread_mention_agent_unread">未読</string>
     <string name="thread_followers_removed">%1$s をこのスレッドのフォロワーから削除しました。</string>
     <string name="thread_followers_restored">%1$s のフォローを復元しました。</string>
     <string name="thread_followers_peer_remove_unavailable">このフォロワーを削除するには %1$s に切り替えてください。</string>
