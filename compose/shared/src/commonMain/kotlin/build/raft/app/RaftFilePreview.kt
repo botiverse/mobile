@@ -2459,7 +2459,8 @@ private fun RaftFilePreviewStandalonePageContent() {
     suspend fun openPayloadExternally(
         currentPayload: RaftFilePreviewPayload,
         policy: RaftFilePreviewExternalOpenPolicy,
-        operation: AttachmentOperationToken
+        operation: AttachmentOperationToken,
+        share: Boolean = false
     ): String? {
         val downloadId =
             if (policy.trackProgress) {
@@ -2512,6 +2513,7 @@ private fun RaftFilePreviewStandalonePageContent() {
                         mimeType = currentPayload.externalMimeType,
                         downloadId = downloadId,
                         requirePublicDownload = policy.requirePublicDownload,
+                        share = share,
                         onProgress =
                             if (policy.trackProgress) {
                                 { progress -> downloadProgressMailbox.offer(operation, progress) }
@@ -2852,7 +2854,7 @@ private fun RaftFilePreviewStandalonePageContent() {
         activeExternalOperationJob.value = operationJob
         operationJob.start()
     }
-    fun requestExternalOpen() {
+    fun requestExternalOpen(share: Boolean = false) {
         val policy = raftFilePreviewExternalOpenPolicy(visiblePublicDownloadState)
         val rejectionReason =
             raftFilePreviewExternalOpenRejectionReason(
@@ -2865,6 +2867,8 @@ private fun RaftFilePreviewStandalonePageContent() {
         if (!traceRaftFilePreviewExternalOpenAdmission(rejectionReason, policy, bridge::log)) return
         val owner = attachmentOwner ?: return
         val admittedPolicy = policy ?: return
+        // Share hands over the file already on the device; it never starts a download.
+        if (share && !admittedPolicy.requirePublicDownload) return
         externalOperation = "open"
         downloadMessage = ""
         nextDownloadGeneration += 1L
@@ -2892,7 +2896,7 @@ private fun RaftFilePreviewStandalonePageContent() {
         val operationJob =
             coroutineScope.launch(start = CoroutineStart.LAZY) {
                 try {
-                    val error = openPayloadExternally(requestPayload, admittedPolicy, operation)
+                    val error = openPayloadExternally(requestPayload, admittedPolicy, operation, share)
                     if (!attachmentOperationCommitAllowed(operation, activeAttachmentOperation?.operationId.orEmpty())) return@launch
                     if (error == null) {
                         downloadStatus = "idle"
@@ -3926,7 +3930,7 @@ private fun RaftFilePreviewStandalonePageContent() {
                         if (canOpenWith) {
                             when (raftFilePreviewPrimaryAction(downloadUiState)) {
                                 RaftFilePreviewPrimaryAction.Save -> ({ requestExternalSave() })
-                                RaftFilePreviewPrimaryAction.Open -> ::requestExternalOpen
+                                RaftFilePreviewPrimaryAction.Open -> ({ requestExternalOpen() })
                                 null -> ({})
                             }
                         } else {
@@ -3936,6 +3940,12 @@ private fun RaftFilePreviewStandalonePageContent() {
                     onResumeDownload = { requestDownloadControl("resume") },
                     onStopDownload = { requestDownloadControl("stop") },
                     onImageGalleryIndexChange = ::selectImageGalleryIndex,
+                    onShare =
+                        if (raftFilePreviewShowsShareAction(canOpenWith, downloadUiState)) {
+                            { requestExternalOpen(share = true) }
+                        } else {
+                            null
+                        },
                     modifier = Modifier.fillMaxSize()
                 )
                 RaftFilePreviewImageGalleryCacheKeepAlive(
@@ -7703,6 +7713,8 @@ internal fun RaftFilePreviewPayloadContent(
     onStopDownload: (() -> Unit)? = null,
     onImageGalleryIndexChange: ((Int) -> Unit)? = null,
     onExternalBrowserOpen: (() -> Unit)? = null,
+    /** Share the downloaded file (system share sheet); offered on the file page once downloaded. */
+    onShare: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val onToggleDownload = if (downloadPaused) onResumeDownload else onPauseDownload
@@ -7997,6 +8009,7 @@ internal fun RaftFilePreviewPayloadContent(
                     },
                 actionEnabled = primaryActionEnabled,
                 onAction = onDownload,
+                onShare = onShare,
                 downloadPaused = downloadPaused,
                 onToggleDownload = onToggleDownload,
                 onStopDownload = onStopDownload,
@@ -9769,6 +9782,7 @@ internal fun RaftFilePreviewGenericCard(
     secondaryActionIcon: RaftLucideIconName? = null,
     secondaryActionEnabled: Boolean = true,
     onSecondaryAction: (() -> Unit)? = null,
+    onShare: (() -> Unit)? = null,
     downloadPaused: Boolean = false,
     onToggleDownload: (() -> Unit)? = null,
     onStopDownload: (() -> Unit)? = null,
@@ -9806,6 +9820,7 @@ internal fun RaftFilePreviewGenericCard(
         secondaryActionIcon = secondaryActionIcon,
         secondaryActionEnabled = secondaryActionEnabled,
         onSecondaryAction = onSecondaryAction,
+        onShare = onShare,
         onPause = onToggleDownload.takeIf { !downloadPaused },
         onResume = onToggleDownload.takeIf { downloadPaused },
         onCancel = onStopDownload,

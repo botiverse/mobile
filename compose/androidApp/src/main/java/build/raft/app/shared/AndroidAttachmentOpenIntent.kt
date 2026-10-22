@@ -93,7 +93,13 @@ internal fun androidAttachmentOpenIntents(
             if (spec.grantsReadPermission) Intent.FLAG_GRANT_READ_URI_PERMISSION else 0
     val target =
         Intent(spec.action.intentAction).apply {
-            setDataAndType(attachmentUri, spec.source.mimeType)
+            if (spec.action == AndroidAttachmentOpenIntentAction.Send) {
+                type = spec.source.mimeType
+                putExtra(Intent.EXTRA_STREAM, attachmentUri)
+                putExtra(Intent.EXTRA_TITLE, spec.source.displayName)
+            } else {
+                setDataAndType(attachmentUri, spec.source.mimeType)
+            }
             if (spec.placesContentUriInClipData) {
                 clipData = ClipData.newUri(context.contentResolver, spec.source.displayName, attachmentUri)
             }

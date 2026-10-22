@@ -495,6 +495,7 @@
     <string name="attachment_no_app_toast">No app can open this attachment</string>
     <string name="attachment_open_failed_toast">Unable to open attachment</string>
     <string name="attachment_open_with_chooser_title">Open with</string>
+    <string name="attachment_share_chooser_title">Share</string>
     <string name="attachment_save_as_unavailable_title">Save with Raft</string>
     <string name="attachment_save_as_unavailable_message">Raft couldn’t open the system file picker. Retry or cancel.</string>
     <string name="attachment_save_as_retry">Retry</string>

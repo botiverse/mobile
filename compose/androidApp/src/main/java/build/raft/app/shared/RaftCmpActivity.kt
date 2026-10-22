@@ -7672,13 +7672,20 @@ internal class RaftBridgeModule(
         val startedAt = System.currentTimeMillis()
         val requestedFileName = source.displayName
         val openMimeType = source.mimeType
-        val isPackageArchive = isAndroidPackageArchive(requestedFileName, openMimeType)
-        val openSpec = androidAttachmentOpenLaunchSpec(source, isPackageArchive)
+        val share = request.optBoolean("share", false)
+        // Share sends any file, an apk included, to the chooser; only Open installs a package.
+        val isPackageArchive = !share && isAndroidPackageArchive(requestedFileName, openMimeType)
+        val openSpec = androidAttachmentOpenLaunchSpec(source, isPackageArchive, share = share)
         val openIntents =
                 androidAttachmentOpenIntents(
                         context = appContext,
                         spec = openSpec,
-                        chooserTitle = appContext.getString(R.string.attachment_open_with_chooser_title)
+                        chooserTitle =
+                                if (share) {
+                                    appContext.getString(R.string.attachment_share_chooser_title)
+                                } else {
+                                    appContext.getString(R.string.attachment_open_with_chooser_title)
+                                }
                 )
         val result =
                 AndroidAttachmentSourceLauncher(

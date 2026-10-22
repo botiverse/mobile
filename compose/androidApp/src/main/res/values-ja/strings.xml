@@ -494,6 +494,7 @@
     <string name="attachment_no_app_toast">この添付ファイルを開けるアプリがありません</string>
     <string name="attachment_open_failed_toast">添付ファイルを開けませんでした</string>
     <string name="attachment_open_with_chooser_title">アプリで開く</string>
+    <string name="attachment_share_chooser_title">共有</string>
     <string name="attachment_save_as_unavailable_title">Raft で保存</string>
     <string name="attachment_save_as_unavailable_message">システムのファイル選択画面を開けませんでした。再試行するか、キャンセルしてください。</string>
     <string name="attachment_save_as_retry">再試行</string>

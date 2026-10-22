@@ -1,12 +1,17 @@
 package build.raft.app.downloads
 
 import build.raft.app.data.InMemoryRaftKeyValueStore
+import build.raft.app.RaftFilePreviewDownloadPhase
+import build.raft.app.RaftFilePreviewDownloadStatusTerms
+import build.raft.app.raftThreadAttachmentCardDownloadLabel
+import build.raft.app.toFilePreviewDownloadView
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -265,6 +270,56 @@ class RaftDownloadCenterTest {
         assertEquals("2.0 GB", raftDownloadSizeLabel(2L * 1024 * 1024 * 1024))
         assertEquals("850.0 KB/s", raftDownloadSpeedLabel(850L * 1024))
         assertNull(raftDownloadSpeedLabel(0))
+    }
+
+    @Test
+    fun attachmentSelectorDrivesTheCardAndFilePageProgressStates() = runTest {
+        val center = center()
+        val task = ScriptedTask()
+        val terms = RaftFilePreviewDownloadStatusTerms(downloading = "Downloading", paused = "Paused", saving = "Saving")
+        suspend fun entry() = center.attachmentEntry(ownerKey = "owner-1", attachmentId = "att-a1").first()
+
+        assertNull(entry(), "nothing downloaded yet")
+        assertNull(raftThreadAttachmentCardDownloadLabel(entry(), terms))
+
+        center.start(descriptor(), task)
+        runCurrent()
+        assertEquals("Downloading...", raftThreadAttachmentCardDownloadLabel(entry(), terms), "no total yet")
+        assertNull(center.attachmentEntry(ownerKey = "owner-2", attachmentId = "att-a1").first(), "another principal sees nothing")
+
+        task.progress!!(RaftDownloadProgressUpdate(downloadedBytes = 256, totalBytes = 1024, bytesPerSecond = 128))
+        assertEquals("Downloading 25%", raftThreadAttachmentCardDownloadLabel(entry(), terms))
+        val active = entry()!!.toFilePreviewDownloadView()
+        assertEquals(RaftFilePreviewDownloadPhase.Active, active.phase)
+        assertEquals(25, active.percent)
+        assertEquals(256L, active.downloadedBytes)
+        assertEquals(1024L, active.totalBytes)
+        assertTrue(active.inProgress)
+
+        center.pause("a1")
+        assertEquals("Paused 25%", raftThreadAttachmentCardDownloadLabel(entry(), terms))
+        assertEquals(RaftFilePreviewDownloadPhase.Paused, entry()!!.toFilePreviewDownloadView().phase)
+
+        center.resume("a1")
+        task.progress!!(RaftDownloadProgressUpdate(downloadedBytes = 1024, totalBytes = 1024, saving = true))
+        assertEquals("Saving 100%", raftThreadAttachmentCardDownloadLabel(entry(), terms))
+        assertEquals(RaftFilePreviewDownloadPhase.Saving, entry()!!.toFilePreviewDownloadView().phase)
+
+        task.finish(RaftDownloadOutcome.Completed())
+        runCurrent()
+        assertEquals(RaftDownloadStatus.Completed, entry()!!.status)
+        assertNull(raftThreadAttachmentCardDownloadLabel(entry(), terms), "a finished download leaves the card")
+        assertFalse(entry()!!.toFilePreviewDownloadView().inProgress)
+
+        task.rearm()
+        center.retry("a1")
+        runCurrent()
+        task.finish(RaftDownloadOutcome.Failed(hostStatus = "download_failed", message = "network lost"))
+        runCurrent()
+        val failed = entry()!!.toFilePreviewDownloadView()
+        assertEquals(RaftFilePreviewDownloadPhase.Failed, failed.phase, "the file page offers Retry")
+        assertEquals("network lost", failed.errorMessage)
+        assertNull(raftThreadAttachmentCardDownloadLabel(entry(), terms))
     }
 
     private fun CoroutineScope.launchAwait(

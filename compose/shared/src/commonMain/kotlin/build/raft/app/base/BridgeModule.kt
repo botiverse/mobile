@@ -501,6 +501,8 @@ internal class BridgeModule : Module() {
         mimeType: String? = null,
         downloadId: String? = null,
         requirePublicDownload: Boolean = false,
+        /** Hand the file to the system share sheet instead of a viewer (Android ACTION_SEND). */
+        share: Boolean = false,
         onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)? = null
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
@@ -513,6 +515,7 @@ internal class BridgeModule : Module() {
             methodArgs.put("trackProgress", onProgress != null)
             methodArgs.put("downloadId", resolvedDownloadId)
             methodArgs.put("requirePublicDownload", requirePublicDownload)
+            if (share) methodArgs.put("share", true)
             methodArgs.putAttachmentOwner(owner)
             mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
             var callbackRef: CallbackRef? = null

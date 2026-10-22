@@ -16,6 +16,8 @@ import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.gesture.raftBackSwipeRegion
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY
+import build.raft.app.downloads.RaftDownloadCenterProcess
+import build.raft.app.downloads.RaftDownloadStatus
 import build.raft.app.data.KnownEntityScope
 import build.raft.app.data.homeStateForPage
 import build.raft.app.data.RaftKnownEntityResolver
@@ -6232,6 +6234,15 @@ private fun SharedThreadRouteContentContent(
     val attachmentOwner = remember(attachmentOwnerVersion, storeScope.shellInstanceId) {
         currentAttachmentOwnerLease(storeScope)
     }
+    val attachmentDownloadOwnerKey = attachmentOwner?.principalKey?.value
+    val attachmentDownloadHost =
+        remember(attachmentDownloadOwnerKey) {
+            attachmentDownloadOwnerKey?.let { ownerKey ->
+                ThreadAttachmentDownloadHost { attachmentId ->
+                    RaftDownloadCenterProcess.center.attachmentEntry(ownerKey, attachmentId)
+                }
+            }
+        }
     val translationStore = remember(sharedStores) { sharedStores.messageTranslationStore }
     val realtimeDomainEventOwner =
         remember(sharedStores, storeScope) { sharedStores.realtimeDomainEventOwner(storeScope) }
@@ -8930,17 +8941,11 @@ private fun SharedThreadRouteContentContent(
     }
     fun openAttachmentNoPreview(attachment: RaftThreadAttachmentItem) {
         if (attachment.id.isBlank()) return
-        val lazyPreviewKind =
-            when {
-                attachment.isMarkdownAttachment() -> "markdown"
-                attachment.isTextLikeAttachment() || attachment.isHtmlAttachment() -> "text"
-                attachment.isPreviewableVideoAttachment() -> "video"
-                attachment.isPreviewableAudioAttachment() -> "audio"
-                else -> "file"
-            }
+        // A tap never downloads in the conversation: previewable files open their preview, any
+        // other file its file page, where Download shows progress (task #75).
         pager.openRaftFilePreviewPage(
             attachment.toThreadAttachmentLazyPreviewPayload(
-                kind = lazyPreviewKind,
+                kind = attachment.threadAttachmentOpenRoute().requestedPreviewKind,
                 attachmentCommentsEnabled = attachmentCommentsEnabled
             )
         )
@@ -11148,6 +11153,7 @@ private fun SharedThreadRouteContentContent(
                         state = inlineImageFallbackState,
                         requestFallback = ::requestInlineImageFallback
                     ),
+                LocalThreadAttachmentDownloadHost provides attachmentDownloadHost,
                 LocalRaftMessagePermalinkLabelResolver provides messagePermalinkLabelResolver,
                 LocalRaftMarkdownTaskStatuses provides markdownTaskStatuses,
                 LocalRaftMarkdownRenderConfig provides
@@ -30293,9 +30299,6 @@ private fun ThreadMessageCommentRefChip(
 internal fun RaftThreadAttachmentItem.isImageAttachment(): Boolean =
     raftFilePreviewIsImageAttachment(fileName = name, mimeType = mimeType)
 
-private fun RaftThreadAttachmentItem.isPdfAttachment(): Boolean =
-    mimeType.substringBefore(';').trim().equals("application/pdf", ignoreCase = true)
-
 private fun RaftThreadAttachmentItem.normalizedMimeType(): String =
     mimeType.substringBefore(';').trim().lowercase()
 
@@ -30311,16 +30314,8 @@ internal fun RaftThreadAttachmentItem.isPreviewableAudioAttachment(): Boolean =
 internal fun RaftThreadAttachmentItem.isPreviewableVideoAttachment(): Boolean =
     raftFilePreviewIsPreviewableVideoAttachment(fileName = name, mimeType = mimeType)
 
-private fun RaftThreadAttachmentItem.isPreviewableDocumentAttachment(): Boolean =
-    isPdfAttachment() ||
-        isMarkdownAttachment() ||
-        isTextLikeAttachment()
-
 internal fun RaftThreadAttachmentItem.isHtmlAttachment(): Boolean =
     normalizedMimeType() == "text/html" || name.endsWith(".html", ignoreCase = true) || name.endsWith(".htm", ignoreCase = true)
-
-private fun RaftThreadAttachmentItem.threadAttachmentUsesPreviewAffordance(): Boolean =
-    isPreviewableDocumentAttachment() || isHtmlAttachment() || isPreviewableVideoAttachment() || isPreviewableAudioAttachment()
 
 internal fun RaftThreadAttachmentItem.genericAttachmentMetaLine(): String =
     displaySizeLabel()
@@ -30680,24 +30675,47 @@ private fun ThreadAttachmentChip(
     }
     val isOpening = openState.threadAttachmentIsOpening()
     val meta = attachment.threadAttachmentChipMetaLine(stringResource(MR.strings.file_preview_html))
+    // A download started on the file page keeps running in the download centre; the card only
+    // mirrors it (task #75). The card itself never downloads.
+    val downloadHost = LocalThreadAttachmentDownloadHost.current
+    val centerEntryFlow = remember(downloadHost, attachment.id) { downloadHost?.entry(attachment.id) }
+    val centerEntry = centerEntryFlow?.collectAsState(initial = null)?.value
+    val centerLabel =
+        raftThreadAttachmentCardDownloadLabel(
+            entry = centerEntry,
+            terms =
+                RaftFilePreviewDownloadStatusTerms(
+                    downloading = stringResource(MR.strings.file_preview_download_downloading),
+                    paused = stringResource(MR.strings.file_preview_download_paused),
+                    saving = stringResource(MR.strings.file_preview_download_saving)
+                )
+        )
     // Download progress and open failures take the size's place on the meta line, as the web's
     // "Uploading · 64%" does.
-    val statusLabel = openState.localizedThreadAttachmentStatusLabel()
-    val previewDescription = stringResource(MR.strings.file_preview_action_open)
-    val downloadDescription = stringResource(MR.strings.file_preview_action_download)
-    val actions =
-        buildList {
-            if (attachment.threadAttachmentUsesPreviewAffordance()) {
-                add(RaftAttachmentPreviewCardAction(RaftLucideIconName.Eye, "$previewDescription ${attachment.name}", onOpen))
-            }
-            add(RaftAttachmentPreviewCardAction(RaftLucideIconName.Download, "$downloadDescription ${attachment.name}", onDownload))
+    val statusLabel = centerLabel ?: openState.localizedThreadAttachmentStatusLabel()
+    // raft-ui MessageAttachmentCard: one affordance icon, Eye for a file with an in-app preview,
+    // Download for one that opens its file page. Both only open the page (web AttachmentChip).
+    val route = attachment.threadAttachmentOpenRoute()
+    val affordance =
+        if (route is RaftThreadAttachmentOpenRoute.Preview) {
+            RaftAttachmentPreviewCardAction(
+                RaftLucideIconName.Eye,
+                "${stringResource(MR.strings.file_preview_action_open)} ${attachment.name}",
+                onOpen
+            )
+        } else {
+            RaftAttachmentPreviewCardAction(
+                RaftLucideIconName.Download,
+                "${stringResource(MR.strings.file_preview_action_download)} ${attachment.name}",
+                onOpen
+            )
         }
     RaftAttachmentPreviewCard(
         title = attachment.name,
         meta = statusLabel ?: meta,
-        actions = actions,
-        loading = isOpening,
-        failed = openState.threadAttachmentOpenFailed(),
+        actions = listOf(affordance),
+        loading = isOpening || centerEntry?.status == RaftDownloadStatus.Downloading,
+        failed = centerLabel == null && openState.threadAttachmentOpenFailed(),
         onClick = if (isOpening) ({}) else onOpen
     )
 }
