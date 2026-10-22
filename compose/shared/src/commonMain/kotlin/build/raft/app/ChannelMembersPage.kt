@@ -35,6 +35,7 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftListRowText
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.components.RaftTextField
@@ -120,7 +121,7 @@ internal data class ChannelMemberBadge(val text: String, val kind: ChannelMember
 
 /**
  * Web `ChannelMemberRow` in page mode: a design-system [RaftListRow] (35dp avatar with the
- * agent's activity light, the name, the activity or description line, a hairline from where
+ * agent's activity light, the name in 15/20, the activity or description line, a hairline from where
  * the text starts), the whole row opening the profile.
  *
  * Trailing: the role tag, then Remove as a visible ghost icon button. On the web the
@@ -150,6 +151,7 @@ internal fun ChannelMembersRow(
         onClick = onClick,
         enabled = !removing,
         divider = divider,
+        text = RaftListRowText.Member,
         subtitle = subtitle?.takeIf { it.isNotBlank() },
         leading = {
             RaftAvatarWithStatus(

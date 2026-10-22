@@ -107,7 +107,8 @@ private fun ChannelMembersVisualContent() {
             filteredMembers = members,
             filteredExternal = emptyList(),
             externalMemberCount = 0,
-            candidates = emptyList(),
+            // One server member not in the channel yet, so Add Member is enabled (web `hasAvailable`).
+            candidates = listOf(RaftThreadMemberItem("human-quill", "Quill", handle = "quill")),
             rosterQuery = TextFieldValue(""),
             onQueryChange = {},
             agentsExpanded = true,

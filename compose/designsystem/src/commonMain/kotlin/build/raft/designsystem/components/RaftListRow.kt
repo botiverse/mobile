@@ -59,6 +59,22 @@ enum class RaftListRowVariant(
     Entry(null, 0.dp),
 }
 
+/**
+ * The type of a [RaftListRow]'s title and subtitle.
+ */
+enum class RaftListRowText {
+    /** raft-ui ListRow: title `text-body` 16/24 semibold, subtitle Space Mono 12/16 ink-3. */
+    Default,
+
+    /**
+     * The web members page row (`ChannelMemberRow`: `MEMBER_ROW_TITLE_CLASS` /
+     * `MEMBER_ROW_SUB_CLASS`): title `text-subhead` 15/20 semibold, subtitle `text-caption`
+     * 12/16 ink-3 in the sans face (a role, a description or an agent's activity, not a
+     * machine label).
+     */
+    Member,
+}
+
 /** What the place is to the person (raft-ui `RowTone`). */
 enum class RaftRowTone {
     Default,
@@ -145,6 +161,8 @@ fun RaftListRowGroup(
  *   default variant and from the edge (16dp) in [RaftListRowVariant.Plain]; entry rows
  *   never have one.
  *
+ * [text]: [RaftListRowText.Member] sets the title and subtitle as the web members page does.
+ *
  * States (States, ListRow): [onClick] = null is a display-only row (no press, no focus;
  * its controls are the targets). Press lays `fill-pressed` over the whole row; keyboard
  * focus draws a 2dp inset `foreground` outline (rows touch their group's edge).
@@ -175,6 +193,7 @@ fun RaftListRow(
     trailing: (@Composable RowScope.() -> Unit)? = null,
     interactionSource: MutableInteractionSource? = null,
     menuOpen: Boolean = false,
+    text: RaftListRowText = RaftListRowText.Default,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -231,7 +250,7 @@ fun RaftListRow(
                     RaftText(
                         title,
                         modifier = Modifier.weight(1f),
-                        style = typography.body.copy(fontWeight = inks.titleWeight),
+                        style = (if (text == RaftListRowText.Member) typography.subhead else typography.body).copy(fontWeight = inks.titleWeight),
                         color = inks.ink,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -241,7 +260,7 @@ fun RaftListRow(
                 if (subtitle != null) {
                     RaftText(
                         subtitle,
-                        style = typography.monoMeta,
+                        style = if (text == RaftListRowText.Member) typography.caption else typography.monoMeta,
                         color = inks.ink3,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,

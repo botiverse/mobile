@@ -5196,14 +5196,13 @@ internal fun ThreadMembersPageContent(
         LazyColumn(
             state = rosterListState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(bottom = 12.dp + if (canAddMembers) 0.dp else bottomSafeArea),
+            contentPadding = PaddingValues(bottom = 12.dp + if (canAddMembers && !membersLoading) 0.dp else bottomSafeArea),
         ) {
             if (membersFailed) {
                 item {
                     ChannelMembersEmptyState(
                         icon = RaftLucideIconName.TriangleAlert,
                         title = stringResource(MR.strings.common_error),
-                        detail = stringResource(MR.strings.thread_members_refresh_detail),
                         actionLabel = stringResource(MR.strings.common_retry),
                         onAction = onRefresh,
                     )
@@ -5234,6 +5233,7 @@ internal fun ThreadMembersPageContent(
                         RaftSidebarSectionHeader(
                             title = stringResource(MR.strings.thread_members_humans), count = humans.size,
                             expanded = humansExpanded, onExpandedChange = onHumansExpandedChange,
+                            countSeparator = " · ",
                         )
                     }
                     if (humansExpanded) items(humans.size, key = { humans[it].memberKey }) { index ->
@@ -5253,6 +5253,7 @@ internal fun ThreadMembersPageContent(
                         RaftSidebarSectionHeader(
                             title = stringResource(MR.strings.thread_members_agents), count = agents.size,
                             expanded = agentsExpanded, onExpandedChange = onAgentsExpandedChange,
+                            countSeparator = " · ",
                         )
                     }
                     if (agentsExpanded) items(agents.size, key = { agents[it].memberKey }) { index ->
@@ -5272,6 +5273,7 @@ internal fun ThreadMembersPageContent(
                         RaftSidebarSectionHeader(
                             title = stringResource(MR.strings.thread_members_external), count = filteredExternal.size,
                             expanded = externalExpanded, onExpandedChange = onExternalExpandedChange,
+                            countSeparator = " · ",
                         )
                     }
                     if (externalExpanded) items(filteredExternal.size, key = { "external:${filteredExternal[it].id}" }) { index ->
@@ -5298,9 +5300,10 @@ internal fun ThreadMembersPageContent(
                 }
             }
         }
-        if (canAddMembers) {
+        // Web: hidden while the roster loads, disabled when nobody is left to add.
+        if (canAddMembers && !membersLoading) {
             ChannelMembersAddBar(
-                enabled = addMemberStatus != "adding",
+                enabled = addMemberStatus != "adding" && candidates.isNotEmpty(),
                 bottomSafeArea = bottomSafeArea,
                 onClick = { onAddVisibleChange(!addDialogVisible) },
             )
