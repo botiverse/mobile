@@ -126,14 +126,6 @@ const val RUNTIME_FORM_V2_FEATURE_FLAG_KEY: String = "runtime_form_v2_web"
 const val ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY: String = "activity_overview_web_v0"
 
 /**
- * Activity as a conversation list: one row per conversation with an avatar, a one-line preview and the
- * unread count, sidebar-pinned conversations first. The same per-server key the web reads (slock
- * `ACTIVITY_CONVERSATION_LIST_FLAG_KEY`, drizzle 0362: `randomization_unit = 'server'`, default off).
- * Off (the default, and before the first evaluation) Activity keeps its card rows.
- */
-const val ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY: String = "activity_conversation_list_v0"
-
-/**
  * Followed-thread unread on the Home channel rows: the `[thread] N` segment and the thread @ mark. The
  * same per-server key the web reads (slock `packages/web/src/store/serverFeatureFlags.ts`
  * `THREAD_UNREAD_BADGE_FLAG_KEY`, default off), so both clients show the mark together.
@@ -173,7 +165,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY,
     RUNTIME_FORM_V2_FEATURE_FLAG_KEY,
     ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY,
-    ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY,
     THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY,
     SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY,
     AGENT_MIGRATION_FEATURE_FLAG_KEY,

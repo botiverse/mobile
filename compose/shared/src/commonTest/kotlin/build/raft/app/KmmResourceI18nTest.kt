@@ -87,16 +87,6 @@ class KmmResourceI18nTest {
     }
 
     @Test
-    fun unfollowedActivityChipStringResourceIsGenerated() {
-        val resource = MR.strings.thread_row_unfollowed
-        assertNotNull(resource, "Unfollowed Activity chip must use a generated resource")
-        assertTrue(
-            resource.desc() is ResourceStringDesc,
-            "Unfollowed Activity chip must resolve through the localized resource catalog"
-        )
-    }
-
-    @Test
     fun relativeTimeResourcesAndPlaceholdersAreGenerated() {
         listOf(
             MR.strings.thread_timestamp_now,

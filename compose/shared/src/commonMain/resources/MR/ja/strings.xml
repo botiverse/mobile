@@ -403,7 +403,6 @@
     <string name="thread_error_copy_link">リンクをコピーできませんでした</string>
     <string name="thread_error_no_text_select">選択できるテキストがありません</string>
     <string name="thread_feedback_followed">スレッドをフォローしました</string>
-    <string name="thread_row_unfollowed">フォロー解除済み</string>
     <string name="thread_error_follow">スレッドをフォローできませんでした</string>
     <string name="thread_feedback_unfollowed">スレッドのフォローを解除しました</string>
     <string name="thread_error_unfollow">スレッドのフォローを解除できませんでした</string>
@@ -894,10 +893,6 @@
     <string name="activity_filter_mentions">メンション</string>
     <string name="activity_updates_one">↑ 新着 %1$d 件</string>
     <string name="activity_updates_many">↑ 新着 %1$d 件</string>
-    <string name="activity_replies_one">%1$d 件の返信</string>
-    <string name="activity_replies_many">%1$d 件の返信</string>
-    <string name="activity_mention_you">あなた</string>
-    <string name="activity_new_count">新着 %1$d 件</string>
     <string name="activity_list_pinned">ピン留め</string>
     <string name="activity_list_all_conversations">すべての会話</string>
     <string name="activity_list_system_sender">システム</string>

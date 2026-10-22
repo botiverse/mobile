@@ -161,9 +161,8 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun ordinaryRegisteredFlagsRequireExplicitResolvedEnablement() = runTest {
-        // activity_conversation_list_v0 is the web key verbatim (slock serverFeatureFlags.ts
-        // ACTIVITY_CONVERSATION_LIST_FLAG_KEY; drizzle 0362 seeds it server-randomized, default off).
-        assertEquals("activity_conversation_list_v0", ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY)
+        // activity_conversation_list_v0 is no longer read: the conversation list is the only Activity.
+        assertFalse("activity_conversation_list_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         assertEquals("activity_overview_web_v0", ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY)
         // slock serverFeatureFlags.ts THREAD_UNREAD_BADGE_FLAG_KEY (staging 259f9fe0), default off.
         assertEquals("thread_unread_badge_v0", THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY)
@@ -172,7 +171,6 @@ class SharedServerFeatureFlagsTest {
         for (
             key in listOf(
                 WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY,
-                ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY,
                 ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY,
                 THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY,
                 SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY,
@@ -207,7 +205,7 @@ class SharedServerFeatureFlagsTest {
     @Test
     fun snapshotRevisionAdvancesOnAcceptedEvaluationsAndOnTheFirstSettledFailure() = runTest {
         val accepted = SharedServerFeatureFlags(
-            FakeApi(ok("""{"evaluations":[{"key":"$ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY","enabled":true}]}"""))
+            FakeApi(ok("""{"evaluations":[{"key":"$THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY","enabled":true}]}"""))
         )
         assertEquals(0L, accepted.snapshotRevision.value)
         accepted.prefetch(server)
@@ -222,14 +220,14 @@ class SharedServerFeatureFlagsTest {
             assertEquals(1L, failed.snapshotRevision.value, "$response")
             failed.prefetch(server, forceRefresh = true)
             assertEquals(1L, failed.snapshotRevision.value, "$response")
-            assertFalse(failed.isEnabled(server, ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY), "$response")
+            assertFalse(failed.isEnabled(server, THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY), "$response")
         }
     }
 
     @Test
     fun decisionStaysPendingUntilAnEvaluationSettlesOrALastKnownValueExists() = runTest {
-        val key = ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY
-        assertTrue(key in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS, "the layout flag must survive a cold start")
+        // A default-off flag; the cold-start part below keeps it on disk explicitly.
+        val key = THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY
         class ThrowingApi : RaftFeatureFlagsApi {
             override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
                 throw IllegalStateException("offline")
@@ -260,7 +258,7 @@ class SharedServerFeatureFlagsTest {
         fun process(api: RaftFeatureFlagsApi) =
             SharedServerFeatureFlags(
                 api = api,
-                lastKnown = ServerFeatureFlagLastKnownStore(store = disk, currentBinding = { binding }),
+                lastKnown = ServerFeatureFlagLastKnownStore(store = disk, currentBinding = { binding }, keys = setOf(key)),
             )
         process(FakeApi(ok("""{"evaluations":[{"key":"$key","enabled":true}]}"""))).prefetch(server)
         val coldStart = process(FakeApi(HomeNetworkResponse(code = 0, bodyText = null)))

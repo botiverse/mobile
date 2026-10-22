@@ -2,9 +2,6 @@ package build.raft.app.data
 
 import build.raft.app.SharedThreadFreshnessLedger
 import build.raft.app.FakeChannelRepository
-import build.raft.app.SharedActivityFooterSlot
-import build.raft.app.activityFooterSlots
-import build.raft.app.activityTaskBadgeText
 import build.raft.app.toConversationSummary
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId

@@ -30,7 +30,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * activity_conversation_list_v0: list mapping and pinned ordering, mirroring the web ThreadsInbox
+ * Activity conversation list: list mapping and pinned ordering, mirroring the web ThreadsInbox
  * `layout="list"` branch and `isSidebarPinnedInboxItem` (slock packages/web/src/components/thread).
  */
 class ActivityConversationListTest {
@@ -612,20 +612,10 @@ class ActivityConversationListTest {
             val model = case.item.activityConversationRowModel(case.context, InboxFilter.All)
             assertEquals(case.symbol, model.channelSymbol, case.name)
             assertEquals(case.item.kind == InboxItemKind.Thread, model.leadingThreadBadge, case.name)
-            // The card layout: a channel card's title icon is the same glyph; a thread card keeps the
-            // thread icon (web ThreadsInbox card title).
-            val card = case.item.activityCardModel(homeChannelSymbols = case.context.channelSymbolsByChannelId)
-            if (case.item.kind == InboxItemKind.Thread) {
-                assertEquals(ActivityCardTitleGlyph.Thread, card.titleGlyph, case.name)
-            } else {
-                assertEquals(ActivityCardTitleGlyph.Channel, card.titleGlyph, case.name)
-                assertEquals(case.symbol, card.channelSymbol, case.name)
-            }
         }
         // DM rows are unchanged: the DM tile / face, never a channel glyph.
         val dmRow = dm("dm:x", "dm-x", senderId = "agent-x").copy(channelType = "dm")
         assertEquals("#", dmRow.activityConversationRowModel(homeContext, InboxFilter.All).channelSymbol)
-        assertEquals(ActivityCardTitleGlyph.DirectMessage, dmRow.activityCardModel().titleGlyph)
     }
 
     @Test
@@ -683,21 +673,18 @@ class ActivityConversationListTest {
         // Loaded order: a, #android (pinned), b. Displayed: #android under "Pinned", then a, b.
         val loaded = listOf(replyThread("a"), channel("channel:android", "android"), replyThread("b"))
         val entries = activityConversationListEntries(loaded, context)
-        assertEquals(listOf("channel:android", "thread:a", "thread:b"), activityRowsInDisplayOrder(loaded, entries).map { it.key })
-        // Card layout (no entries): the loaded order itself.
-        assertEquals(loaded, activityRowsInDisplayOrder(loaded, null))
+        assertEquals(listOf("channel:android", "thread:a", "thread:b"), activityRowsInDisplayOrder(entries).map { it.key })
 
-        data class Case(val clickedKey: String, val listLayout: Boolean, val prewarmed: List<String>)
+        data class Case(val clickedKey: String, val prewarmed: List<String>)
         val cases =
             listOf(
                 // The pinned row is shown first: the next row the person sees is a, not b.
-                Case(clickedKey = "channel:android", listLayout = true, prewarmed = listOf("reply-a")),
-                Case(clickedKey = "channel:android", listLayout = false, prewarmed = listOf("reply-b")),
-                Case(clickedKey = "thread:a", listLayout = true, prewarmed = listOf("reply-b")),
-                Case(clickedKey = "thread:b", listLayout = true, prewarmed = emptyList()),
+                Case(clickedKey = "channel:android", prewarmed = listOf("reply-a")),
+                Case(clickedKey = "thread:a", prewarmed = listOf("reply-b")),
+                Case(clickedKey = "thread:b", prewarmed = emptyList()),
             )
         for (case in cases) {
-            val order = activityRowsInDisplayOrder(loaded, entries.takeIf { case.listLayout })
+            val order = activityRowsInDisplayOrder(entries)
             val prewarmed =
                 activityReplyThreadPrewarmNextAfterClick(items = order, clickedKey = case.clickedKey, serverId = "server-1")
             assertEquals(case.prewarmed, prewarmed.map { it.key.threadChannelId }, "$case")

@@ -605,35 +605,7 @@ internal class ComposeHomeActivityVisualPage : BasePager() {
     }
 }
 
-@Page("compose_home_activity_hit_target_visual", supportInLocal = true)
-internal class ComposeHomeActivityHitTargetVisualPage : BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { HomeActivityHitTargetVisualContent() }
-    }
-}
-
-// #65: dedicated sender-avatar fixture. Exercises every Activity-row avatar
-// branch (human placeholder, two agent pixel avatars, app "SY" placeholder for
-// unknown + mention/system senders) with read + unread rows on one narrow
-// screen. This is additive Android evidence for a Mobile-only experiment.
-@Page("compose_home_activity_avatar_visual", supportInLocal = true)
-internal class ComposeHomeActivityAvatarVisualPage : BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { HomeActivityAvatarVisualContent(activitySenderAvatarsEnabled = true) }
-    }
-}
-
-@Page("compose_home_activity_avatar_off_visual", supportInLocal = true)
-internal class ComposeHomeActivityAvatarOffVisualPage : BasePager() {
-    override fun willInit() {
-        super.willInit()
-        setContent { HomeActivityAvatarVisualContent(activitySenderAvatarsEnabled = false) }
-    }
-}
-
-// activity_conversation_list_v0: Activity as the web ThreadsInbox list layout (flag on), with and
+// Activity as the web ThreadsInbox list layout, with and
 // without sidebar pins (the Pinned / All conversations sections only appear with pins).
 @Page("compose_home_activity_conversation_list_visual", supportInLocal = true)
 internal class ComposeHomeActivityConversationListVisualPage : BasePager() {

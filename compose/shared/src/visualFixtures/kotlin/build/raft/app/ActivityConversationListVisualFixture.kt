@@ -18,7 +18,7 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.TaskStatus
 
 /*
- * activity_conversation_list_v0 visual fixture: Activity rendered as the web ThreadsInbox list layout.
+ * Activity conversation-list visual fixture: Activity rendered as the web ThreadsInbox list layout.
  * One screen covers every row branch: a pinned channel and a pinned agent DM (Pinned section), an
  * unread thread with a task badge, @ marker, draft pencil, the sender's face and a body long enough to
  * wrap to two lines, a muted channel with unread (bell-off, no count), a DM whose last message came from

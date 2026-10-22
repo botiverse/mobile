@@ -284,38 +284,6 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun activityDoneClickIdentityTracksLazyRowIdentity() {
-        val first = activityItem(key = "channel:first")
-        val second = activityItem(key = "channel:second")
-        val owner = activityPresentationOwnerIdentity("account-a", "server-a", InboxFilter.All)
-
-        assertEquals(
-            "activity-done:channel:first|owner:$owner|presentation:0",
-            first.activityDoneClickIdentity(presentationOwnerIdentity = owner),
-        )
-        assertNotEquals(
-            first.activityDoneClickIdentity(presentationOwnerIdentity = owner),
-            second.activityDoneClickIdentity(presentationOwnerIdentity = owner),
-        )
-        assertEquals(
-            first.activityDoneClickIdentity(presentationOwnerIdentity = owner),
-            first.copy(lastMessagePreview = "display-only update")
-                .activityDoneClickIdentity(presentationOwnerIdentity = owner),
-        )
-        assertNotEquals(
-            first.activityDoneClickIdentity(0, owner),
-            first.activityDoneClickIdentity(1, owner),
-        )
-        assertNotEquals(
-            first.activityDoneClickIdentity(0, owner),
-            first.activityDoneClickIdentity(
-                0,
-                activityPresentationOwnerIdentity("account-b", "server-a", InboxFilter.All),
-            ),
-        )
-    }
-
-    @Test
     fun replyPrewarmMarkerRequiresVisiblePlannerEligibleUnreadThreadIdentity() {
         val unreadReply =
             InboxItem(
@@ -1566,32 +1534,6 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun activityFooterSlotsMatchReactOrderForThreadRows() {
-        val item =
-            InboxItem(
-                key = "thread:activity-1",
-                kind = InboxItemKind.Thread,
-                channelId = ChannelId("thread-channel-1"),
-                channelName = "thread-stream",
-                replyCount = 12,
-                taskNumber = 177,
-                taskStatus = TaskStatus.InProgress,
-                hasMention = true,
-                unreadCount = 3
-            )
-
-        assertEquals(
-            listOf(
-                SharedActivityFooterSlot.Task,
-                SharedActivityFooterSlot.Replies,
-                SharedActivityFooterSlot.Mention,
-                SharedActivityFooterSlot.New
-            ),
-            item.activityFooterSlots()
-        )
-    }
-
-    @Test
     fun unfollowedThreadGetsExactlyOneStatusSlotAndNoOrdinaryAttentionSlots() {
         val item =
             InboxItem(
@@ -1609,7 +1551,6 @@ class SharedInboxPanelTest {
         assertEquals(0, item.unreadCount)
         assertFalse(item.hasMention)
         assertEquals(null, item.firstUnreadMessageId)
-        assertEquals(listOf(SharedActivityFooterSlot.Replies, SharedActivityFooterSlot.Unfollowed), item.activityFooterSlots())
         assertEquals(
             SharedActivityFooterBadgeVisual(RaftBrutalTone.Stone, RaftLucideIconName.BellOff),
             SharedActivityFooterSlot.Unfollowed.badgeVisual()
@@ -1696,77 +1637,6 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun activityFooterSlotsPutDraftPencilAtRowBottomEnd() {
-        val item =
-            InboxItem(
-                key = "thread:activity-1",
-                kind = InboxItemKind.Thread,
-                channelId = ChannelId("thread-channel-1"),
-                channelName = "thread-stream",
-                replyCount = 12,
-                hasMention = true,
-                unreadCount = 3,
-                hasDraft = true
-            )
-
-        assertEquals(
-            listOf(
-                SharedActivityFooterSlot.Replies,
-                SharedActivityFooterSlot.Mention,
-                SharedActivityFooterSlot.New,
-                SharedActivityFooterSlot.Draft
-            ),
-            item.activityFooterSlots()
-        )
-    }
-
-    @Test
-    fun activityFooterSlotsHideTaskWhenTaskStatusBadgesDisabled() {
-        val item =
-            InboxItem(
-                key = "thread:activity-1",
-                kind = InboxItemKind.Thread,
-                channelId = ChannelId("thread-channel-1"),
-                channelName = "thread-stream",
-                replyCount = 12,
-                taskNumber = 177,
-                taskStatus = TaskStatus.InProgress,
-                hasMention = true,
-                unreadCount = 3
-            )
-
-        assertEquals(
-            listOf(
-                SharedActivityFooterSlot.Replies,
-                SharedActivityFooterSlot.Mention,
-                SharedActivityFooterSlot.New
-            ),
-            item.activityFooterSlots(activityTaskStatusBadgesEnabled = false)
-        )
-    }
-
-    @Test
-    fun activityThreadTaskBadgeUsesSingleLineReactLabel() {
-        val item =
-            InboxItem(
-                key = "thread:activity-1",
-                kind = InboxItemKind.Thread,
-                channelId = ChannelId("thread-channel-1"),
-                channelName = "thread-stream",
-                replyCount = 12,
-                taskNumber = 177,
-                taskStatus = TaskStatus.InReview,
-                taskClaimedByName = "Claude Assistant"
-            )
-
-        assertEquals("#177 @Claude Assistant", item.activityTaskBadgeText())
-        assertEquals(
-            listOf(SharedActivityFooterSlot.Task, SharedActivityFooterSlot.Replies),
-            item.activityFooterSlots()
-        )
-    }
-
-    @Test
     fun activityMentionActionRowUsesSenderSideActionShape() {
         val item =
             InboxItem(
@@ -1797,7 +1667,6 @@ class SharedInboxPanelTest {
 
         assertEquals("Can someone ping @missing-human?", item.primaryPreviewText())
         assertEquals(null, item.primaryActivityPreviewText().senderName)
-        assertEquals(emptyList(), item.activityFooterSlots())
 
         val request = item.toHomeMessageOpenRequestForTest()
         assertEquals("message-1", request.anchorMessageId)

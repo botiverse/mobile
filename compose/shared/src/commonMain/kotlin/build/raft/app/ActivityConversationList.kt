@@ -85,7 +85,7 @@ import build.raft.designsystem.theme.RaftTheme
 import com.tencent.tmm.kmmresource.compose.stringResource
 
 /*
- * Activity conversation list (server flag `activity_conversation_list_v0`): the KMP port of the web
+ * Activity conversation list, the only Activity layout: the KMP port of the web
  * `ThreadsInbox` `layout="list"` branch (slock packages/web/src/components/thread/ThreadsInbox.tsx,
  * raft-ui InboxItem density="compact"). One row per conversation: a leading avatar or channel tile, the
  * name, a one-line preview, the time and the unread count, sidebar-pinned conversations first.
@@ -130,7 +130,7 @@ internal data class ActivityConversationListContext(
 }
 
 /**
- * Non-null when Activity renders as a conversation list (flag on). Null keeps the card rows unchanged.
+ * What the conversation-list rows read beyond the item: the Home list context and the agent status.
  */
 @Immutable
 internal data class ActivityConversationListPresentation(
@@ -174,13 +174,6 @@ internal fun HomeSnapshot.activityChannelSymbolsByChannelId(): Map<String, Strin
     channels.associate { channel ->
         channel.channelId.value to channel.homeChannelSymbol(serverPublicPageLive = server.publicPageLive)
     }
-
-/**
- * [HomeSnapshot.activityChannelSymbolsByChannelId] of this Activity's server, for the card layout
- * (the list layout reads it from [ActivityConversationListContext]). Empty until Home has loaded:
- * cards then use the item's own channel type.
- */
-internal val LocalActivityChannelSymbols = compositionLocalOf<Map<String, String>> { emptyMap() }
 
 /**
  * The list context the layout may paint with, from the Home content of the shell, or null while it is
@@ -281,14 +274,11 @@ internal fun activityConversationListEntries(
 }
 
 /**
- * The rows in the order the person sees them: the conversation-list rows (pinned first) when that layout
- * is on, else the loaded order. "Prewarm the next thread after the clicked one" follows this order.
+ * The rows in the order the person sees them: the conversation-list rows, pinned first. "Prewarm the next
+ * thread after the clicked one" follows this order.
  */
-internal fun activityRowsInDisplayOrder(
-    renderedItems: List<InboxItem>,
-    conversationListEntries: List<ActivityConversationListEntry>?,
-): List<InboxItem> =
-    conversationListEntries?.mapNotNull { entry -> (entry as? ActivityConversationListEntry.Row)?.item } ?: renderedItems
+internal fun activityRowsInDisplayOrder(conversationListEntries: List<ActivityConversationListEntry>): List<InboxItem> =
+    conversationListEntries.mapNotNull { entry -> (entry as? ActivityConversationListEntry.Row)?.item }
 
 /** What leads the row: the DM peer's face, else a neutral tile for the kind of place. */
 internal enum class ActivityConversationLeadingKind { Thread, DirectMessage, Channel }

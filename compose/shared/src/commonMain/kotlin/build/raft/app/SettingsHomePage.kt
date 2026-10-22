@@ -3164,7 +3164,6 @@ private fun RaftAppShellReadyContent(
     var compactConsecutiveMessages by remember { mutableStateOf(false) }
     var foregroundMessageBannersEnabled by remember { mutableStateOf(false) }
     var activityTaskStatusBadgesEnabled by remember { mutableStateOf(DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED) }
-    var activitySenderAvatarsEnabled by remember { mutableStateOf(false) }
     var serverDrawerEnabled by remember { mutableStateOf(DEFAULT_SERVER_DRAWER_ENABLED) }
     var homeServerAvatarEnabled by remember { mutableStateOf(DEFAULT_HOME_SERVER_AVATAR_ENABLED) }
     var conversationForwardGestureEnabled by remember { mutableStateOf(false) }
@@ -4623,7 +4622,6 @@ private fun RaftAppShellReadyContent(
                     foregroundBannerStore.dismiss()
                 }
                 activityTaskStatusBadgesEnabled = chatLayout.activityTaskStatusBadgesEnabled
-                activitySenderAvatarsEnabled = chatLayout.activitySenderAvatarsEnabled
                 serverDrawerEnabled = chatLayout.serverDrawerEnabled
                 homeServerAvatarEnabled = chatLayout.homeServerAvatarEnabled
                     }
@@ -7636,7 +7634,6 @@ private fun RaftAppShellReadyContent(
                             shellScope = shellScope,
                             storeScope = navigationStoreScope,
                             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
-                            activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
                             externalSelectedThreadId =
                                 adaptiveWorkspaceState?.selection?.identity?.threadId,
                             // The two-pane layout owns the highlight: none once the detail closes.
@@ -27264,183 +27261,6 @@ internal fun RaftActivityTabVisualContent() {
                 ),
             onSelect = {},
             modifier = Modifier.fillMaxWidth()
-        )
-    }
-}
-
-@Composable
-internal fun HomeActivityHitTargetVisualContent() {
-    var openedKey by remember { mutableStateOf<String?>(null) }
-    Box(modifier = Modifier.width(342.dp).height(620.dp)) {
-        SharedHomeActivityPanel(
-            snapshot = homeActivityVisualSnapshot,
-            onOpenItem = { item -> openedKey = item.key },
-            onClose = {},
-            foregroundEpoch = 0L,
-            modifier = Modifier.fillMaxSize()
-        )
-        openedKey?.let { key ->
-            Text(
-                text = "ACTIVITY_HIT_TARGET_OPENED:$key",
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .raftCardSurface(fill = RaftColor.Brand)
-                        .padding(4.dp),
-                style = RaftType.Caption.copy(fontSize = 8.sp, lineHeight = 10.sp),
-                color = RaftColor.StickerInk
-            )
-        }
-    }
-}
-
-// #65 sender-avatar fixture: exercises every Activity-row avatar branch in the
-// Mobile-only appearance experiment. One screen carries read + unread rows so the muted-read title and
-// the bold-unread title are visible together, and the leading avatar column
-// covers: human placeholder (Human sender, no wire value), real agent pixel
-// avatars (two distinct deterministic specs), an agent kind present but
-// missing its avatar wire value (user-icon placeholder, NOT collapsed to
-// system), and the app "SY" placeholder for both an unknown-kind sender and a
-// mention-action (system) sender. The first
-// row also carries a long two-line preview plus the full Task/Replies/Mention/
-// New/Draft badge run and the Done button, at the narrow 342dp fixture width,
-// to prove the avatar column does not crowd or clip the content column.
-private val homeActivityAvatarVisualSnapshot = InboxSnapshot(
-    server = homeSearchVisualServer,
-    items =
-        listOf(
-            // Unread thread, Human sender WITHOUT an avatar wire value ->
-            // human User-icon placeholder. Long two-line preview + full badge
-            // run (Task/Replies/Mention/New/Draft) + Done, bold unread title.
-            InboxItem(
-                key = "activity-avatar-thread-human",
-                kind = InboxItemKind.Thread,
-                channelId = ChannelId("thread-msg-avatar-human"),
-                channelName = "thread",
-                unreadCount = 3,
-                hasMention = true,
-                hasDraft = true,
-                firstUnreadMessageId = MessageId("msg-avatar-reply"),
-                threadChannelId = ChannelId("thread-msg-avatar-human"),
-                parentChannelId = ChannelId("channel-design"),
-                parentChannelName = "design",
-                parentChannelKind = ConversationKind.Channel,
-                parentMessageId = MessageId("msg-avatar-parent"),
-                parentMessagePreview = "Captured the sender-avatar visual artifact and queued the React parity follow-up for staging.",
-                latestActivityMessageId = MessageId("msg-avatar-reply"),
-                latestActivityPreview = "Review the avatar column before release.",
-                latestActivityAt = "2 hours ago",
-                latestActivitySenderName = "artin",
-                latestActivitySenderId = "visual-user",
-                latestActivitySenderKind = MemberKind.Human,
-                replyCount = 5,
-                taskNumber = 612,
-                taskStatus = TaskStatus.InProgress,
-                taskClaimedByName = "Mahua"
-            ),
-            // Unread channel, Agent sender with a real pixel avatar (default
-            // "robot" spec) -> agent pixel avatar, bold unread title.
-            InboxItem(
-                key = "activity-avatar-channel-agent",
-                kind = InboxItemKind.Channel,
-                channelId = ChannelId("channel-android"),
-                channelName = "android-artifacts",
-                unreadCount = 1,
-                firstUnreadMessageId = MessageId("msg-avatar-android"),
-                lastMessageId = MessageId("msg-avatar-android"),
-                lastMessagePreview = "Published the new render artifact to staging.",
-                lastMessageAt = "3 hours ago",
-                lastMessageSenderName = "Cindy",
-                lastMessageSenderId = "agent-cindy",
-                lastMessageSenderKind = MemberKind.Agent,
-                lastMessageSenderAvatarWireValue = "pixel:robot"
-            ),
-            // Read DM, Agent sender with a distinct deterministic pixel avatar
-            // -> agent pixel avatar, muted (gray) read title.
-            InboxItem(
-                key = "activity-avatar-dm-agent-read",
-                kind = InboxItemKind.DirectMessage,
-                channelId = ChannelId("dm-agent-fable"),
-                channelName = "Fable",
-                lastMessageId = MessageId("msg-avatar-dm"),
-                lastMessagePreview = "Storyboard for the launch thread is ready to review.",
-                lastMessageAt = "yesterday",
-                lastMessageSenderName = "Fable",
-                lastMessageSenderId = "agent-fable",
-                lastMessageSenderKind = MemberKind.Agent,
-                lastMessageSenderAvatarWireValue = "pixel:random:fixture-fable"
-            ),
-            // Read DM, Agent sender WITH a kind but NO avatar wire value
-            // (missing profile/avatar) -> RaftAppAvatar default user-icon
-            // placeholder, NOT the app "SY". Proves a normal channel/DM keeps
-            // its sender kind for the human/agent fallback and does not
-            // collapse to system. Mirrors @Mahua's #65 review note.
-            InboxItem(
-                key = "activity-avatar-dm-agent-no-avatar",
-                kind = InboxItemKind.DirectMessage,
-                channelId = ChannelId("dm-agent-quill"),
-                channelName = "Quill",
-                lastMessageId = MessageId("msg-avatar-noavatar"),
-                lastMessagePreview = "Notes from the design sync are in the shared doc.",
-                lastMessageAt = "yesterday",
-                lastMessageSenderName = "Quill",
-                lastMessageSenderId = "agent-quill",
-                lastMessageSenderKind = MemberKind.Agent
-                // NOTE: deliberately no lastMessageSenderAvatarWireValue ->
-                // RaftAppAvatar renders the default user-icon placeholder, not
-                // the app "SY".
-            ),
-            // Read channel, sender kind/id absent -> app "SY" placeholder
-            // (unknown sender), muted read title.
-            InboxItem(
-                key = "activity-avatar-channel-unknown-read",
-                kind = InboxItemKind.Channel,
-                channelId = ChannelId("channel-releases"),
-                channelName = "releases",
-                lastMessageId = MessageId("msg-avatar-release"),
-                lastMessagePreview = "Build #4821 completed for the release candidate.",
-                lastMessageAt = "yesterday"
-            ),
-            // Unread mention-action -> forced system/app "SY" placeholder with
-            // the Mention + New badges.
-            InboxItem(
-                key = "activity-avatar-mention-system",
-                kind = InboxItemKind.MentionAction,
-                channelId = ChannelId("channel-general"),
-                channelName = "general",
-                unreadCount = 1,
-                hasMention = true,
-                lastMessageId = MessageId("msg-avatar-mention"),
-                lastMessagePreview = "@you the avatar column needs a final pass.",
-                lastMessageAt = "4 hours ago"
-            )
-        ),
-    totalCount = 6,
-    totalUnreadCount = 3,
-    hasMore = false
-)
-
-private val homeActivityAvatarVisualDraftProjection =
-    setOf(
-        SharedThreadComposerDraftRecord(
-            key = "reply:msg-avatar-parent",
-            sendChannelId = "thread-msg-avatar-human",
-            parentMessageId = "msg-avatar-parent"
-        )
-    ).toSharedThreadComposerDraftProjection()
-
-@Composable
-internal fun HomeActivityAvatarVisualContent(activitySenderAvatarsEnabled: Boolean) {
-    Box(modifier = Modifier.width(342.dp).height(800.dp)) {
-        SharedHomeActivityPanel(
-            snapshot = homeActivityAvatarVisualSnapshot,
-            onOpenItem = {},
-            onClose = {},
-            activityTaskStatusBadgesEnabled = true,
-            activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
-            draftProjection = homeActivityAvatarVisualDraftProjection,
-            foregroundEpoch = 0L,
-            modifier = Modifier.fillMaxSize()
         )
     }
 }
