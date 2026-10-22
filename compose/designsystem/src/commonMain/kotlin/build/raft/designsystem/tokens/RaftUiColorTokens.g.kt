@@ -2,9 +2,9 @@
 // Regenerate: python3 tools/design-tokens/gen_tokens.py
 // Sources (tools/design-tokens/manifest.json):
 //   npm:tailwindcss@4.3.3/theme.css sha256=443d7af364200f8e
-//   npm:@botiverse/raft-ui@0.18.0/dist/styles.css sha256=2fc15ee9546c460b
-//   npm:@botiverse/raft-ui@0.18.0/dist/foundation.css sha256=ef3d8974a294d24b
-//   botiverse/slock@f5c4e69c0a2df5f60b041467d02641fcc0245d7f:packages/web/src/index.css sha256=e0c22a67b7c14810
+//   npm:@botiverse/raft-ui@0.20.0/dist/styles.css sha256=49dc07ca172c4e57
+//   npm:@botiverse/raft-ui@0.20.0/dist/foundation.css sha256=ef4cdb058f5a1e49
+//   botiverse/slock@42695027722fd96919f1be05676adfca1c769be8:packages/web/src/index.css sha256=e0c22a67b7c14810
 
 package build.raft.designsystem.tokens
 
@@ -35,9 +35,9 @@ object RaftUiPalette {
     /** `--accent-950` */
     val accent950 = Color(0xFF2F0014)
     /** `--accent-active` */
-    val accentActive = Color(0xFFE389AE)
+    val accentActive = Color(0xFFE88BB1)
     /** `--accent-hover` */
-    val accentHover = Color(0xFFE389AE)
+    val accentHover = Color(0xFFE88BB1)
     /** `--attention-100` */
     val attention100 = Color(0xFFFFE1E8)
     /** `--attention-200` */
@@ -61,9 +61,9 @@ object RaftUiPalette {
     /** `--attention-950` */
     val attention950 = Color(0xFF2F0014)
     /** `--attention-active` */
-    val attentionActive = Color(0xFFE389AE)
+    val attentionActive = Color(0xFFE88BB1)
     /** `--attention-hover` */
-    val attentionHover = Color(0xFFE389AE)
+    val attentionHover = Color(0xFFE88BB1)
     /** `--brand-100` */
     val brand100 = Color(0xFFFFF6E3)
     /** `--brand-200` */
@@ -87,13 +87,13 @@ object RaftUiPalette {
     /** `--brand-950` */
     val brand950 = Color(0xFF1C1500)
     /** `--brand-active` */
-    val brandActive = Color(0xFFE3BD3A)
+    val brandActive = Color(0xFFE8C13B)
     /** `--brand-edge` */
     val brandEdge = Color(0xFF141111)
     /** `--brand-glow` */
     val brandGlow = Color(0xFFFFD440)
     /** `--brand-hover` */
-    val brandHover = Color(0xFFE3BD3A)
+    val brandHover = Color(0xFFE8C13B)
     /** `--color-accent` */
     val accent = Color(0xFFFF99C3)
     /** `--color-amber-100` */
@@ -919,11 +919,11 @@ object RaftUiPalette {
     /** `--danger` */
     val danger = Color(0xFFF97264)
     /** `--danger-active` */
-    val dangerActive = Color(0xFFDE665A)
+    val dangerActive = Color(0xFFE2685C)
     /** `--danger-foreground` */
     val dangerForeground = Color(0xFF141111)
     /** `--danger-hover` */
-    val dangerHover = Color(0xFFDE665A)
+    val dangerHover = Color(0xFFE2685C)
     /** `--foreground-on-frame-active` */
     val foregroundOnFrameActive = Color(0xFF141111)
     /** `--inactive` */
@@ -933,9 +933,9 @@ object RaftUiPalette {
     /** `--info` */
     val info = Color(0xFF27CCF3)
     /** `--info-active` */
-    val infoActive = Color(0xFF25B6D8)
+    val infoActive = Color(0xFF25B9DC)
     /** `--info-hover` */
-    val infoHover = Color(0xFF25B6D8)
+    val infoHover = Color(0xFF25B9DC)
     /** `--line-frame-active` */
     val lineFrameActive = Color(0xFF141111)
     /** `--palette-cream-100` */
@@ -1169,13 +1169,13 @@ object RaftUiPalette {
     /** `--primary-950` */
     val primary950 = Color(0xFF1C1500)
     /** `--primary-active` */
-    val primaryActive = Color(0xFFE3BD3A)
+    val primaryActive = Color(0xFFE8C13B)
     /** `--primary-edge` */
     val primaryEdge = Color(0xFF141111)
     /** `--primary-glow` */
     val primaryGlow = Color(0xFFFFD440)
     /** `--primary-hover` */
-    val primaryHover = Color(0xFFE3BD3A)
+    val primaryHover = Color(0xFFE8C13B)
     /** `--secondary-100` */
     val secondary100 = Color(0xFFEFEDEB)
     /** `--secondary-200` */
@@ -1200,10 +1200,12 @@ object RaftUiPalette {
     val secondary950 = Color(0xFF141312)
     /** `--sticker-ink` */
     val stickerInk = Color(0xFF141111)
+    /** `--sticker-medium` */
+    val stickerMedium = Color(0x1A141111)
     /** `--sticker-paper` */
     val stickerPaper = Color(0xFFFFFFFF)
     /** `--sticker-pressed` */
-    val stickerPressed = Color(0x1F141111)
+    val stickerPressed = Color(0x1A141111)
     /** `--success` */
     val success = Color(0xFFA9D877)
     /** `--success-foreground` */
@@ -1213,11 +1215,11 @@ object RaftUiPalette {
     /** `--warning` */
     val warning = Color(0xFFF8A16F)
     /** `--warning-active` */
-    val warningActive = Color(0xFFDD9064)
+    val warningActive = Color(0xFFE19366)
     /** `--warning-foreground` */
     val warningForeground = Color(0xFF141111)
     /** `--warning-hover` */
-    val warningHover = Color(0xFFDD9064)
+    val warningHover = Color(0xFFE19366)
 }
 
 /**
@@ -1248,8 +1250,12 @@ sealed class RaftUiThemeColors {
     abstract val dangerSoft: Color
     /** `--danger-strong` */
     abstract val dangerStrong: Color
+    /** `--fill-frame-medium` */
+    abstract val fillFrameMedium: Color
     /** `--fill-frame-pressed` */
     abstract val fillFramePressed: Color
+    /** `--fill-medium` */
+    abstract val fillMedium: Color
     /** `--fill-message-hover` */
     abstract val fillMessageHover: Color
     /** `--fill-muted` */
@@ -1262,6 +1268,8 @@ sealed class RaftUiThemeColors {
     abstract val fillRowOpen: Color
     /** `--fill-strong` */
     abstract val fillStrong: Color
+    /** `--fill-subtle` */
+    abstract val fillSubtle: Color
     /** `--foreground` */
     abstract val foreground: Color
     /** `--foreground-active` */
@@ -1421,13 +1429,16 @@ sealed class RaftUiThemeColors {
         override val dangerMuted = Color(0xFFFBBDB9)
         override val dangerSoft = Color(0xFFFDDEDD)
         override val dangerStrong = Color(0xFFB5321A)
-        override val fillFramePressed = Color(0x1F141111)
-        override val fillMessageHover = Color(0x08141111)
+        override val fillFrameMedium = Color(0x1A141111)
+        override val fillFramePressed = Color(0x1A141111)
+        override val fillMedium = Color(0x14141111)
+        override val fillMessageHover = Color(0x0A141111)
         override val fillMuted = Color(0xFFF3F3F3)
         override val fillPressed = Color(0x14141111)
         override val fillRowHover = Color(0x0A141111)
-        override val fillRowOpen = Color(0x0D141111)
+        override val fillRowOpen = Color(0x0A141111)
         override val fillStrong = Color(0xFFEAEAEA)
+        override val fillSubtle = Color(0x0A141111)
         override val foreground = Color(0xFF141111)
         override val foregroundActive = Color(0xFF141111)
         override val foregroundDisabled = Color(0x4D141111)
@@ -1508,20 +1519,23 @@ sealed class RaftUiThemeColors {
         override val accentStrong = Color(0xFFFFACC7)
         override val attentionSoft = Color(0x29D0457C)
         override val attentionStrong = Color(0xFFFFACC7)
-        override val brandSoft = Color(0x29876F1F)
+        override val brandSoft = Color(0x33876F1F)
         override val brandStrong = Color(0xFFFFD440)
         override val codeForeground = Color(0xFFF0F3F6)
         override val codeSurface = Color(0xFF0A0C10)
         override val dangerMuted = Color(0x4CD33C30)
         override val dangerSoft = Color(0x2EC93126)
         override val dangerStrong = Color(0xFFF8A49D)
-        override val fillFramePressed = Color(0x14FAFAF7)
-        override val fillMessageHover = Color(0x06FAFAF7)
+        override val fillFrameMedium = Color(0x0FFAFAF7)
+        override val fillFramePressed = Color(0x0FFAFAF7)
+        override val fillMedium = Color(0x11FAFAF7)
+        override val fillMessageHover = Color(0x08FAFAF7)
         override val fillMuted = Color(0xFF32322F)
-        override val fillPressed = Color(0x14FAFAF7)
+        override val fillPressed = Color(0x11FAFAF7)
         override val fillRowHover = Color(0x08FAFAF7)
-        override val fillRowOpen = Color(0x0AFAFAF7)
+        override val fillRowOpen = Color(0x08FAFAF7)
         override val fillStrong = Color(0xFF3A3A37)
+        override val fillSubtle = Color(0x08FAFAF7)
         override val foreground = Color(0xFFE5E5E2)
         override val foregroundActive = Color(0xFFE5E5E2)
         override val foregroundDisabled = Color(0xFF636360)
@@ -1572,7 +1586,7 @@ sealed class RaftUiThemeColors {
         override val lineMuted = Color(0x1AFAFAF7)
         override val lineSeam = Color(0x42FAFAF7)
         override val lineStrong = Color(0xFFE5E5E2)
-        override val primarySoft = Color(0x29876F1F)
+        override val primarySoft = Color(0x33876F1F)
         override val primaryStrong = Color(0xFFFFD440)
         override val stickerEdge = Color(0x59FAFAF7)
         override val successMuted = Color(0x470C7D43)

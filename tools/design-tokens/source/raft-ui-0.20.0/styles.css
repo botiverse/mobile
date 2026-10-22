@@ -65,9 +65,14 @@
 
   /* Raft Design System shape scale: pixels are hard, containers are soft.
      sticker = avatars, channel tiles, checkboxes, counts, inline marks;
-     chip = 22px tags and status chips; control = buttons, fields, rows, menu
-     items; container = cards, menus, composer, banners; dialog = dialogs and
-     sheet tops. Round (rounded-full) is only for switches and radios. */
+     chip = chips, a popup's highlighted item, and every control embedded in
+     another component's frame (a field's buttons, the composer's, a floating
+     toolbar's, a card's corner action); control = buttons, fields and rows
+     that stand on their own; container = cards, menus, composer, banners;
+     dialog = dialogs and sheet tops. Round (rounded-full) is only for
+     switches and radios. A frame keeps its radius whatever it holds: the
+     element keeps its own, and the space around it adapts
+     (design/foundations/shape.md#inside-a-frame). */
   --radius-sticker: 4px;
   --radius-chip: 6px;
   --radius-control: 8px;
@@ -281,17 +286,15 @@
   --color-foreground-on-frame: var(--foreground-on-frame);
   --color-foreground-on-frame-muted: var(--foreground-on-frame-muted);
   --color-foreground-on-frame-active: var(--foreground-on-frame-active);
-  --color-fill-frame-pressed: var(--fill-frame-pressed);
-  --color-fill-pressed: var(--fill-pressed);
-  --color-fill-row-hover: var(--fill-row-hover);
-  --color-fill-message-hover: var(--fill-message-hover);
-  --color-fill-row-open: var(--fill-row-open);
+  --color-fill-subtle: var(--fill-subtle);
+  --color-fill-medium: var(--fill-medium);
+  --color-fill-frame-medium: var(--fill-frame-medium);
   --color-layer-code: var(--layer-code);
   --color-foreground-link: var(--foreground-link);
   --color-sticker-ink: var(--sticker-ink);
   --color-sticker-paper: var(--sticker-paper);
   --color-sticker-edge: var(--sticker-edge);
-  --color-sticker-pressed: var(--sticker-pressed);
+  --color-sticker-medium: var(--sticker-medium);
   --color-presence-online: var(--presence-online);
   --color-presence-busy: var(--presence-busy);
   --color-presence-error: var(--presence-error);
@@ -370,6 +373,15 @@
   --spacing-control-cta: var(--control-height-cta);
   --spacing-control-icon: var(--control-icon-size);
   --spacing-control-hit: var(--control-hit-inset);
+  /* A chip or a button embedded in a frame sits `embedded-inset` (6px) inside
+     the frame's outer edge on every side and from its sibling; in a field it
+     is `control-embedded` tall, 20px on a desktop and 32px on a phone, so the
+     field keeps the control height (design/foundations/shape.md#inside-a-frame).
+     Consumers: `ComboboxChips`, `ComboboxControl`, `ComboboxSelect`,
+     InputGroup's end addon, the composer, CodeBlock and the corner actions of
+     MessageAttachment. */
+  --spacing-control-embedded: var(--control-embedded-size);
+  --spacing-embedded-inset: var(--control-embedded-inset);
   /* ─── Option metric axis ────────────────────────────────────────────────────
      An option in a popup list (a Select, Combobox or ComboboxSelect option, a
      menu item) is as tall as its content, with the same space above and below
@@ -397,6 +409,12 @@
   --spacing-icon-inset: var(--icon-inset);
 
   /* Deprecated utility names, kept until raft-ui 1.0 (see codemods/token-names.mjs). */
+  --color-fill-pressed: var(--fill-medium);
+  --color-fill-frame-pressed: var(--fill-frame-medium);
+  --color-fill-row-hover: var(--fill-subtle);
+  --color-fill-row-open: var(--fill-subtle);
+  --color-fill-message-hover: var(--fill-subtle);
+  --color-sticker-pressed: var(--sticker-medium);
   --color-foreground-strong: var(--foreground);
   --color-foreground-icon: var(--foreground-muted);
   --color-foreground-placeholder: var(--foreground-hint);
@@ -542,28 +560,47 @@ textarea:-webkit-autofill:disabled {
   background-size: 16px 16px;
 }
 
-/* Raft Design System press feedback: hover and press lay one overlay over the
-   resting colour instead of swapping it, so a control keeps its identity.
-   Paper controls take the 8% ink wash (fill-pressed); colour stickers take
-   sticker-pressed (12% ink in both modes). */
+/* Raft Design System hover and press: two tiers, each a translucent ink
+   layer over the resting colour instead of a swap, so a control keeps its
+   identity and the step looks the same on white, the yellowish sidebar and a
+   card (design/foundations/states.md#hover-and-press).
+   overlay-subtle: hover on large things people read (rows, messages, readable
+   cards) and a row whose menu is open.
+   overlay-medium: hover on small controls and press on everything; on a colour
+   sticker overlay-sticker-medium, on the frame overlay-frame-medium.
+   Use the bg-fill-* colours instead on a transparent control whose fill fades
+   in with transition-colors. */
+@utility overlay-subtle {
+  background-image: linear-gradient(var(--fill-subtle), var(--fill-subtle));
+}
+
+@utility overlay-medium {
+  background-image: linear-gradient(var(--fill-medium), var(--fill-medium));
+}
+
+@utility overlay-sticker-medium {
+  background-image: linear-gradient(var(--sticker-medium), var(--sticker-medium));
+}
+
+@utility overlay-frame-medium {
+  background-image: linear-gradient(var(--fill-frame-medium), var(--fill-frame-medium));
+}
+
+/* Deprecated overlay names, kept until raft-ui 1.0 (see codemods/token-names.mjs). */
 @utility press-overlay {
-  background-image: linear-gradient(var(--fill-pressed), var(--fill-pressed));
-}
-
-/* A row laid over a solid surface (a list row on a card, a file row) hovers
-   with the lighter row step, as an overlay too, so press (press-overlay)
-   replaces it instead of stacking on it. */
-@utility row-hover-overlay {
-  background-image: linear-gradient(var(--fill-row-hover), var(--fill-row-hover));
-}
-
-/* The same row with its menu open: fill-row-open, as an overlay. */
-@utility row-open-overlay {
-  background-image: linear-gradient(var(--fill-row-open), var(--fill-row-open));
+  background-image: linear-gradient(var(--fill-medium), var(--fill-medium));
 }
 
 @utility press-overlay-sticker {
-  background-image: linear-gradient(var(--sticker-pressed), var(--sticker-pressed));
+  background-image: linear-gradient(var(--sticker-medium), var(--sticker-medium));
+}
+
+@utility row-hover-overlay {
+  background-image: linear-gradient(var(--fill-subtle), var(--fill-subtle));
+}
+
+@utility row-open-overlay {
+  background-image: linear-gradient(var(--fill-subtle), var(--fill-subtle));
 }
 
 /* Space and rules between siblings: stack-y-* / stack-x-* and rule-y / rule-x
