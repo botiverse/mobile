@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
@@ -57,12 +58,10 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.foundation.focusable
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -78,8 +77,6 @@ import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftSize
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
-import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.withTimeout
 
 // raft-ui MobileNav (raft-design #712, design D1a, #proj-raft-ui task #152): the phone bar's
 // last tab is the current server and opens the server popover (the "server panel"), not a
@@ -227,7 +224,9 @@ fun Modifier.raftMobileNavServerPopoverTarget(state: RaftMobileNavServerPopoverS
  * raft-ui `MobileNavItem`: one tab of the phone bar, a 56x32 slot holding the [icon] and the
  * label 4dp under it. The selected tab fills the slot with the brand sticker (2dp ink
  * border, 9dp radius); a press washes it. [attention] puts the attention pixel on the slot's
- * top-right corner; the selected tab never wears it (nav spec §4).
+ * top-right corner; the selected tab never wears it (nav spec §4). [badge] draws over the slot
+ * (a count on its top-right corner, placed by the caller). A disabled tab draws its icon and
+ * label in `foreground-disabled` and takes no press. Screen readers read the [label].
  */
 @Composable
 fun RaftMobileNavItem(
@@ -238,17 +237,29 @@ fun RaftMobileNavItem(
     modifier: Modifier = Modifier,
     attention: Boolean = false,
     attentionDescription: String? = null,
+    enabled: Boolean = true,
+    badge: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     val source = remember { MutableInteractionSource() }
-    val pressed = raftIsPressed(source)
+    val pressed = raftIsPressed(source) && enabled
+    val colors = RaftTheme.colors
     Column(
-        modifier.clickable(source, indication = null, role = Role.Tab, onClick = onClick).semantics { this.selected = selected },
+        modifier
+            .clickable(source, indication = null, enabled = enabled, role = Role.Tab, onClick = onClick)
+            .semantics { this.selected = selected },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(Modifier.size(RaftMobileNavDefaults.PillWidth, RaftMobileNavDefaults.PillHeight)) {
             RaftMobileNavPill(selected = selected, washed = pressed) {
-                icon(if (selected) RaftUiPalette.stickerInk else RaftTheme.colors.foregroundHint)
+                icon(
+                    when {
+                        !enabled -> colors.foregroundDisabled
+                        selected -> RaftUiPalette.stickerInk
+                        else -> colors.foregroundHint
+                    },
+                )
             }
+            badge?.invoke(this)
             if (attention && !selected) {
                 RaftAttentionPixel(
                     attentionDescription,
@@ -257,7 +268,7 @@ fun RaftMobileNavItem(
             }
         }
         Spacer(Modifier.height(RaftMobileNavDefaults.LabelGap))
-        RaftMobileNavLabel(label, selected)
+        RaftMobileNavLabel(label, selected, enabled = enabled, readable = true)
     }
 }
 
@@ -278,8 +289,9 @@ fun RaftMobileNavItem(
  *
  * Screen readers get one button named [contentDescription] ("Current server: Raft HQ"),
  * "collapsed"/"expanded" by [expandedDescription]/[collapsedDescription], and a long-press
- * action named [longPressLabel]. It is focusable; pass [focusRequester] to put focus back on
- * it (returning from a page the panel opened).
+ * action named [longPressLabel]. It is focusable, and Enter or Space from a hardware keyboard
+ * toggles the popover like a tap; pass [focusRequester] to put focus back on it (returning
+ * from a page the panel opened).
  */
 @Composable
 fun RaftMobileNavServerPopoverItem(
@@ -302,16 +314,26 @@ fun RaftMobileNavServerPopoverItem(
     val haptics = LocalHapticFeedback.current
     val currentOnHoldRelease by rememberUpdatedState(onHoldRelease)
     var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val clickSource = remember { MutableInteractionSource() }
     val gesture =
         Modifier
             .onGloballyPositioned { coordinates = it }
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            // The design system's click semantics: focusable, Enter / Space / D-pad centre from a
+            // hardware keyboard and the screen reader's click all toggle the popover like a tap
+            // (sindresorhus on #3509). Touches are the gesture's below: it runs first (it is the
+            // inner pointer input) and consumes every touch it acts on or turns down, so this
+            // never clicks a second time.
+            .clickable(clickSource, indication = null, role = Role.Button) { state.toggle() }
             .pointerInput(state) {
                 val slop = RaftMobileNavDefaults.LongPressSlop.toPx()
                 awaitEachGesture {
                     val down = awaitFirstDown()
-                    pressed = true
                     // Wait for the hold: a lift is a press, a move past the slop is not ours.
                     var outcome = HoldOutcome.Cancelled
+                    pressed = true
+                    // The press ends however the wait does, a cancelled gesture included (the
+                    // tab leaving, the state changing): the tab never stays washed.
                     try {
                         withTimeout(RaftMobileNavDefaults.LongPressMillis) {
                             while (true) {
@@ -327,23 +349,36 @@ fun RaftMobileNavServerPopoverItem(
                                     break
                                 }
                                 if ((change.position - down.position).getDistance() > slop) {
+                                    // Not a press: consumed so the click below doesn't take it on lift.
+                                    change.consume()
                                     outcome = HoldOutcome.Cancelled
                                     break
                                 }
                             }
                         }
-                    } catch (_: TimeoutCancellationException) {
+                    } catch (_: PointerEventTimeoutCancellationException) {
+                        // AwaitPointerEventScope's own withTimeout (it shadows kotlinx's here)
+                        // throws this, not kotlinx's TimeoutCancellationException.
                         outcome = HoldOutcome.Hold
+                    } finally {
+                        pressed = false
                     }
-                    pressed = false
                     when (outcome) {
                         HoldOutcome.Tap -> {
                             state.toggle()
                             return@awaitEachGesture
                         }
                         HoldOutcome.Cancelled -> return@awaitEachGesture
-                        // A hold while the panel is already open does nothing (Kirby 10-22).
-                        HoldOutcome.Hold -> if (state.open) return@awaitEachGesture
+                        // A hold while the panel is already open does nothing (Kirby 10-22): its
+                        // lift is swallowed so the click below doesn't close the panel.
+                        HoldOutcome.Hold ->
+                            if (state.open) {
+                                do {
+                                    val event = awaitPointerEvent()
+                                    event.changes.forEach { it.consume() }
+                                } while (event.changes.any { it.pressed })
+                                return@awaitEachGesture
+                            }
                     }
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     state.beginHold()
@@ -362,17 +397,13 @@ fun RaftMobileNavServerPopoverItem(
             }
             .semantics(mergeDescendants = true) {
                 this.contentDescription = contentDescription
-                role = Role.Button
                 val stateWord = if (state.open) expandedDescription else collapsedDescription
                 if (stateWord != null) stateDescription = stateWord
-                onClick { state.toggle(); true }
                 onLongClick(label = longPressLabel) {
                     if (!state.open) state.show()
                     true
                 }
             }
-            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
-            .focusable()
     if (compact) {
         Box(modifier.size(RaftMobileNavDefaults.RailCellSize).then(gesture), contentAlignment = Alignment.Center) {
             Box(
@@ -692,20 +723,26 @@ private fun raftMobileNavServerWash(pressed: Boolean, open: Boolean): Color =
 
 /** A tab label: `text-label` at 11.5/14, bold when selected, truncated; it keeps its size at any font scale. */
 @Composable
-private fun RaftMobileNavLabel(text: String, selected: Boolean) {
+private fun RaftMobileNavLabel(text: String, selected: Boolean, enabled: Boolean = true, readable: Boolean = false) {
     // Sized to the bar's fixed 58dp geometry: like a native tab bar it does not grow with the
     // system font size (it would run out of the bar).
     val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
     RaftText(
         text = text,
-        modifier = Modifier.clearAndSetSemantics { }.padding(horizontal = 2.dp),
+        // The server tab names itself (its contentDescription); a plain tab is read by its label.
+        modifier = (if (readable) Modifier else Modifier.clearAndSetSemantics { }).padding(horizontal = 2.dp),
         style =
             RaftTheme.typography.label.copy(
                 fontSize = RaftMobileNavDefaults.LabelFontSize / fontScale,
                 lineHeight = RaftMobileNavDefaults.LabelLineHeight / fontScale,
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
             ),
-        color = if (selected) RaftTheme.colors.foreground else RaftTheme.colors.foregroundHint,
+        color =
+            when {
+                !enabled -> RaftTheme.colors.foregroundDisabled
+                selected -> RaftTheme.colors.foreground
+                else -> RaftTheme.colors.foregroundHint
+            },
         maxLines = 1,
         softWrap = false,
         overflow = TextOverflow.Ellipsis,
