@@ -665,6 +665,11 @@ fun parseSharedChannelMemberSnapshot(
             .distinctBy { it.id.value },
         externalMembers = decoded.externalMembers.map { it.toModel() },
         canAddMembers = false,
+        liveActivityAgentIds =
+            decoded.agents
+                .filter { !it.activity.isNullOrBlank() }
+                .mapNotNull { it.id.trim().takeIf(String::isNotBlank) }
+                .toSet(),
     )
 }.getOrNull()
 

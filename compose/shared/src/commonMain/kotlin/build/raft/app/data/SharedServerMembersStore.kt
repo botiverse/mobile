@@ -38,6 +38,7 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.concurrent.Volatile
 import kotlin.time.TimeSource
 
 enum class SharedServerMembersLoadStatus {
@@ -120,7 +121,9 @@ data class SharedServerChannelMembersSlice(
     val canRemoveMembers: Boolean = false,
     val canAddMembersKnown: Boolean = false,
     val status: SharedServerMembersLoadStatus = SharedServerMembersLoadStatus.Idle,
-    val errorCode: String? = null
+    val errorCode: String? = null,
+    /** [ChannelMemberSnapshot.liveActivityAgentIds] of the response this slice holds. */
+    val liveActivityAgentIds: Set<String> = emptySet()
 ) {
     fun snapshotOrNull(): ChannelMemberSnapshot? =
         channelId.takeIf { it.isNotBlank() }?.let {
@@ -129,7 +132,8 @@ data class SharedServerChannelMembersSlice(
                 members = members,
                 externalMembers = externalMembers,
                 canAddMembers = canAddMembers,
-                canRemoveMembers = canRemoveMembers
+                canRemoveMembers = canRemoveMembers,
+                liveActivityAgentIds = liveActivityAgentIds
             )
         }
 }
@@ -538,6 +542,16 @@ class SharedServerMembersStore internal constructor(
     private val maxCachedServers: Int = SharedServerMembersMaxCachedServers
 ) {
     private val mutex = Mutex()
+
+    /**
+     * Presence transport each channel slice's peer-agent presence facts were written under.
+     * A reconnect rebaseline clears those facts, so a cached slice holding peer-server agents
+     * must refetch (and rewrite them) instead of being served from cache. Written under [mutex];
+     * immutable map so the lock-free cache probe reads a consistent snapshot.
+     */
+    @Volatile
+    private var channelPeerPresenceTransports:
+        Map<SharedServerChannelMembersScope, ProcessPresenceTransportEpoch?> = emptyMap()
     private val recencyLock = SynchronizedObject()
     // Server ids, least recently used first. Guarded by [recencyLock].
     private val serverRecency = LinkedHashSet<String>()
@@ -2065,6 +2079,50 @@ class SharedServerMembersStore internal constructor(
         return publication
     }
 
+    /**
+     * Joint channels list peer-server agents. They are not on this server's roster, so after a
+     * reconnect rebaseline the forced roster refill never repopulates them and every peer agent
+     * rendered the neutral "—". The channel-members response carries their live `activity`
+     * (non-guest projection only); write it through the roster refill's request-fenced current
+     * projection. Agents of this server are left to the roster refill (unchanged behaviour), and
+     * rows without live activity (guest projection, failed activity batch) write nothing.
+     */
+    private fun applyPeerAgentChannelPresence(
+        request: ProcessPresenceRosterProjectionRequest?,
+        serverId: String,
+        profiles: List<MemberProfile>,
+        liveActivityAgentIds: Set<String>
+    ) {
+        if (request == null || request.owner.serverId != serverId) return
+        applyAuthoritativeRosterPresence(
+            request = request,
+            serverId = serverId,
+            profiles =
+                profiles.filter { profile ->
+                    profile.isPeerServerLiveActivityAgent(serverId, liveActivityAgentIds)
+                }
+        )
+    }
+
+    /**
+     * Background-refreshes the current owner's loaded channel slices that list peer-server agents
+     * with live activity, so a reconnect rebaseline repopulates their presence facts.
+     */
+    suspend fun refreshPeerAgentChannelPresence(
+        serverId: ServerId,
+        reason: String
+    ) {
+        val serverKey = serverId.value.normalizedServerMembersId() ?: return
+        val channelIds =
+            currentOwnerChannelMemberSlices(ServerId(serverKey))
+                .filter { slice -> slice.hasPeerServerLiveActivityAgents(serverKey) }
+                .map { it.channelId }
+                .distinct()
+        channelIds.forEach { channelId ->
+            refreshChannelMembersBestEffort(ServerId(serverKey), ChannelId(channelId), reason)
+        }
+    }
+
     private fun applyAuthoritativeRosterPresence(
         request: ProcessPresenceRosterProjectionRequest?,
         serverId: String,
@@ -2170,6 +2228,18 @@ class SharedServerMembersStore internal constructor(
                     errorCode = null
                 )
             )
+            // Same request-time fence as the forced roster refill: captured BEFORE the request so a
+            // response that lands after a reconnect rebaseline, realtime write, or auth clear cannot
+            // write peer-agent presence facts.
+            val peerPresenceRequest =
+                presenceWrite(ServerId(serverKey))
+                    ?.takeIf { it.toChannelMembersOwnerBinding() == admittedBinding }
+                    ?.let { write ->
+                        presenceRegistry.captureRosterProjectionRequest(
+                            owner = write.owner,
+                            writeGeneration = write.writeGeneration
+                        )
+                    }
             val result =
                 try {
                     memberRepository.getChannelMembers(priority, ChannelId(channelKey))
@@ -2221,10 +2291,19 @@ class SharedServerMembersStore internal constructor(
                             canRemoveMembers = result.data.canRemoveMembers,
                             canAddMembersKnown = true,
                             status = SharedServerMembersLoadStatus.Loaded,
-                            errorCode = null
+                            errorCode = null,
+                            liveActivityAgentIds = result.data.liveActivityAgentIds
                         )
                     )
                     if (normalizedScope != scope) removeChannelSlice(scope)
+                    applyPeerAgentChannelPresence(
+                        request = peerPresenceRequest,
+                        serverId = serverKey,
+                        profiles = members,
+                        liveActivityAgentIds = result.data.liveActivityAgentIds
+                    )
+                    channelPeerPresenceTransports =
+                        channelPeerPresenceTransports + (normalizedScope to peerPresenceRequest?.transport)
                     logger(
                         "shared_server_channel_members_load_result serverId=$serverKey " +
                             "channelId=$normalizedChannelId result=content members=${members.size}"
@@ -2235,7 +2314,8 @@ class SharedServerMembersStore internal constructor(
                             members = members,
                             externalMembers = result.data.externalMembers,
                             canAddMembers = result.data.canAddMembers,
-                            canRemoveMembers = result.data.canRemoveMembers
+                            canRemoveMembers = result.data.canRemoveMembers,
+                            liveActivityAgentIds = result.data.liveActivityAgentIds
                         )
                     )
                 }
@@ -2439,6 +2519,13 @@ class SharedServerMembersStore internal constructor(
         val slice = _state.value.channelMemberSlices[scope] ?: return null
         if (slice.ownerWriteGeneration != ownerWriteGeneration) return null
         if (slice.status != SharedServerMembersLoadStatus.Loaded) return null
+        if (
+            slice.hasPeerServerLiveActivityAgents(scope.serverId) &&
+            channelPeerPresenceTransports[scope] != currentPresenceTransport(ServerId(scope.serverId))
+        ) {
+            // The peer-agent facts this slice wrote belong to a retired transport.
+            return null
+        }
         return slice.snapshotOrNull()
     }
 
@@ -3038,7 +3125,11 @@ class SharedServerMembersStore internal constructor(
             )
     }
 
+    private fun currentPresenceTransport(serverId: ServerId): ProcessPresenceTransportEpoch? =
+        presenceOwner(serverId)?.let { presenceRegistry.currentOwnerSnapshot(it).transport }
+
     private fun removeChannelSlice(scope: SharedServerChannelMembersScope) {
+        channelPeerPresenceTransports = channelPeerPresenceTransports - scope
         _state.value =
             _state.value.copy(
                 channelMemberSlices = _state.value.channelMemberSlices - scope
@@ -3145,6 +3236,21 @@ private fun String?.normalizedServerMembersId(): String? =
 
 private fun String?.normalizedChannelMembersEnvironmentId(): String? =
     this?.trim()?.trimEnd('/')?.takeIf { it.isNotBlank() }
+
+/** A live agent of a peer server (joint channel) — never on [serverId]'s roster. */
+private fun MemberProfile.isPeerServerLiveActivityAgent(
+    serverId: String,
+    liveActivityAgentIds: Set<String>
+): Boolean {
+    if (kind != MemberKind.Agent || !agentDeletedAt.isNullOrBlank()) return false
+    val sourceServerId = this.serverId?.value?.trim().orEmpty()
+    if (sourceServerId.isEmpty() || sourceServerId == serverId.trim()) return false
+    return id.value.trim() in liveActivityAgentIds
+}
+
+private fun SharedServerChannelMembersSlice.hasPeerServerLiveActivityAgents(serverId: String): Boolean =
+    liveActivityAgentIds.isNotEmpty() &&
+        members.any { it.isPeerServerLiveActivityAgent(serverId, liveActivityAgentIds) }
 
 private fun ProcessPresenceWrite.toChannelMembersOwnerBinding(): SharedServerChannelMembersOwnerBinding? {
     val environmentId = owner.environmentId.normalizedChannelMembersEnvironmentId() ?: return null

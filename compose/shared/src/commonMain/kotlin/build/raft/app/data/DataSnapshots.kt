@@ -1051,7 +1051,11 @@ data class ChannelMemberSnapshot(
     val canRemoveMembers: Boolean = false,
     /** Slack-bridge (or other provider) participants — display-only roster rows
      *  (web `channelExternalMembers`). Never selectable/removable. */
-    val externalMembers: List<ChannelExternalMemberProfile> = emptyList()
+    val externalMembers: List<ChannelExternalMemberProfile> = emptyList(),
+    /** Ids of agent rows that carried the server's live `activity` (the non-guest
+     *  `GET /channels/:id/members` merges it in; the guest projection omits it). An
+     *  explicit producer signal: only these rows may seed live presence facts. */
+    val liveActivityAgentIds: Set<String> = emptySet()
 )
 
 data class AgentSnapshot(

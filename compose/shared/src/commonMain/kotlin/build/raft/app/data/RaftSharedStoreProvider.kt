@@ -641,6 +641,22 @@ internal class RaftSharedStoreProvider private constructor(
                         )
                     }
                 }
+                // Peer-server agents of joint channels are not on this roster; their
+                // presence facts come back from the channel-members refetch.
+                launch {
+                    try {
+                        store.refreshPeerAgentChannelPresence(
+                            serverId = ServerId(grant.serverId),
+                            reason = "presence_transport_connected"
+                        )
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (error: Throwable) {
+                        sharedWarnLogger("SlockPresence", "presence_transport_rebaseline")(
+                            "serverId=${grant.serverId} peer_channel_refresh_failed=${error::class.simpleName ?: "unknown"}"
+                        )
+                    }
+                }
             }
         }
     }
