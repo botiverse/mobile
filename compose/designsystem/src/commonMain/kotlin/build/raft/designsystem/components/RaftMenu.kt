@@ -124,7 +124,8 @@ fun RaftMenuSurface(
             .then(if (width != null) Modifier.width(width) else Modifier.widthIn(min = minWidth).width(IntrinsicSize.Max)),
     ) {
         header?.invoke()
-        Column(Modifier.padding(6.dp), content = content)
+        // raft-ui 0.20 "inside a frame": the highlighted item sits 4dp inside the popup.
+        Column(Modifier.padding(4.dp), content = content)
     }
 }
 
@@ -187,7 +188,8 @@ fun RaftMenuItem(
     val highlighted = enabled && (isPressed || isFocused)
     val ink = if (enabled) colors.foreground else colors.foregroundDisabled
     val iconInk = if (enabled) colors.foregroundMuted else colors.foregroundDisabled
-    val shape = RoundedCornerShape(RaftRadius.Control)
+    // raft-ui 0.20: an item embedded in the popup's frame wears radius-chip (6dp).
+    val shape = RoundedCornerShape(RaftRadius.Chip)
     val nav = LocalRaftMenuNav.current
     val entry = remember(nav) { RaftMenuNav.Entry() }
     entry.text = text
@@ -269,7 +271,7 @@ fun RaftMenuSeparator(modifier: Modifier = Modifier) {
     Box(
         modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp)
+            .padding(vertical = 4.dp)
             .height(RaftStroke.Hairline)
             // `-mx-1.5`: drawn through the surface's 6dp padding to both edges. Drawn, not
             // measured, so the rule never asks for width (the popup hugs its rows).

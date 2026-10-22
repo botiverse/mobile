@@ -395,7 +395,7 @@ internal fun raftStickerItemLook(active: Boolean, enabled: Boolean, colors: Raft
 
 /**
  * The grey track of [RaftSegmentedControl] and [RaftToggleGroup]: `fill-muted`, radius
- * 11, 3dp padding (room for a sticker's die-cut edge), items 2dp apart, hugging them.
+ * 11, 3dp padding (room for a sticker's die-cut edge), items 3dp apart, hugging them.
  */
 @Composable
 private fun RaftTrack(modifier: Modifier, content: @Composable RowScope.() -> Unit) {
@@ -403,7 +403,8 @@ private fun RaftTrack(modifier: Modifier, content: @Composable RowScope.() -> Un
         modifier
             .background(RaftTheme.colors.fillMuted, RoundedCornerShape(11.dp))
             .padding(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        // raft-ui 0.20: segments 3dp apart, the same as the track's inset.
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
         verticalAlignment = Alignment.CenterVertically,
         content = content,
     )
