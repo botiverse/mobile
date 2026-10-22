@@ -494,6 +494,7 @@
     <string name="attachment_no_app_toast">没有应用可以打开此附件</string>
     <string name="attachment_open_failed_toast">无法打开附件</string>
     <string name="attachment_open_with_chooser_title">打开方式</string>
+    <string name="attachment_share_chooser_title">分享</string>
     <string name="attachment_save_as_unavailable_title">使用 Raft 保存</string>
     <string name="attachment_save_as_unavailable_message">Raft 无法打开系统文件选择器。请重试或取消。</string>
     <string name="attachment_save_as_retry">重试</string>

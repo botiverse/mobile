@@ -159,6 +159,15 @@ class RaftDownloadCenter internal constructor(
     fun entry(id: String): Flow<RaftDownloadEntry?> =
         state.map { snapshot -> snapshot.entries.firstOrNull { it.id == id } }.distinctUntilChanged()
 
+    /**
+     * Selector for the newest row of one attachment of one principal (a message card shows the
+     * progress of a download started on the file page); emits only when that row changes.
+     */
+    fun attachmentEntry(ownerKey: String, attachmentId: String): Flow<RaftDownloadEntry?> =
+        state
+            .map { snapshot -> snapshot.entries.firstOrNull { it.ownerKey == ownerKey && it.attachmentId == attachmentId } }
+            .distinctUntilChanged()
+
     /** Selector for one principal's rows. */
     fun entries(ownerKey: String?): Flow<List<RaftDownloadEntry>> =
         state.map { it.forOwner(ownerKey) }.distinctUntilChanged()

@@ -182,7 +182,8 @@ internal fun RaftFilePreviewDownloadProgressBlock(
 
 /**
  * The file page of an attachment that has no in-app preview (raft-ui: IconTile, headline name,
- * mono meta, a Card holding the download progress, a Banner for a failure, then the actions).
+ * mono meta, a Card holding the download progress, a Banner for a failure, then the actions:
+ * Download, or Open / Install and Share once the file is on the device).
  * Replaces the retired brutal card; every part is a design-system component.
  */
 @Composable
@@ -204,6 +205,7 @@ internal fun RaftFilePreviewFileDownloadCard(
     onResume: (() -> Unit)?,
     onCancel: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    onShare: (() -> Unit)? = null,
     animated: Boolean = true
 ) {
     RaftDesignSystemTheme {
@@ -288,6 +290,17 @@ internal fun RaftFilePreviewFileDownloadCard(
                         enabled = actionEnabled,
                         leadingIcon =
                             (if (failed) RaftLucideIconName.RotateCcw else actionIcon)?.let { icon -> { RaftDownloadIcon(icon) } }
+                    )
+                }
+                // Once the file is on the device: Share next to Open / Install (task #75).
+                if (onShare != null && !view.inProgress) {
+                    RaftButton(
+                        text = stringResource(MR.strings.common_share),
+                        onClick = onShare,
+                        modifier = Modifier.fillMaxWidth(),
+                        size = RaftButtonSize.Lg,
+                        enabled = actionEnabled,
+                        leadingIcon = { RaftDownloadIcon(RaftLucideIconName.Share2) }
                     )
                 }
                 if (secondaryActionLabel != null && onSecondaryAction != null && !view.inProgress) {

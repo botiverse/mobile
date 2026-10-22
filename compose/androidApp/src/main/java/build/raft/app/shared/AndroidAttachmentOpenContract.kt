@@ -45,7 +45,10 @@ internal data class AndroidAttachmentContentUriSource(
 /** The Android intent action selected without importing Android framework classes into the seam. */
 internal enum class AndroidAttachmentOpenIntentAction(val intentAction: String) {
     View("android.intent.action.VIEW"),
-    InstallPackage("android.intent.action.INSTALL_PACKAGE")
+    InstallPackage("android.intent.action.INSTALL_PACKAGE"),
+
+    /** The file page's Share: the downloaded file as `EXTRA_STREAM`, always through the chooser. */
+    Send("android.intent.action.SEND")
 }
 
 internal enum class AndroidAttachmentOpenAction(val wireName: String) {
@@ -260,17 +263,18 @@ internal data class AndroidAttachmentOpenLaunchSpec(
 
 internal fun androidAttachmentOpenLaunchSpec(
     source: AndroidAttachmentContentUriSource,
-    packageArchive: Boolean
+    packageArchive: Boolean,
+    share: Boolean = false
 ): AndroidAttachmentOpenLaunchSpec =
     AndroidAttachmentOpenLaunchSpec(
         source = source,
         action =
-            if (packageArchive) {
-                AndroidAttachmentOpenIntentAction.InstallPackage
-            } else {
-                AndroidAttachmentOpenIntentAction.View
+            when {
+                share -> AndroidAttachmentOpenIntentAction.Send
+                packageArchive -> AndroidAttachmentOpenIntentAction.InstallPackage
+                else -> AndroidAttachmentOpenIntentAction.View
             },
-        launchInChooser = !packageArchive,
+        launchInChooser = share || !packageArchive,
         grantsReadPermission = true,
         readGrantScope = AndroidAttachmentReadGrantScope.SelectedTarget,
         placesContentUriInClipData = true

@@ -93,6 +93,25 @@ class AndroidAttachmentOpenContractTest {
     }
 
     @Test
+    fun shareSpecSendsEvenAPackageThroughTheChooserWithAOneShotGrant() {
+        val packageSource =
+            source(
+                kind = AndroidAttachmentOpenSourceKind.PublicDownload,
+                uri = "content://downloads/app-apk",
+                displayName = "app.apk",
+                mimeType = "application/vnd.android.package-archive"
+            )
+        val shareSpec = androidAttachmentOpenLaunchSpec(packageSource, packageArchive = false, share = true)
+
+        assertEquals(AndroidAttachmentOpenIntentAction.Send, shareSpec.action)
+        assertEquals("android.intent.action.SEND", shareSpec.action.intentAction)
+        assertTrue(shareSpec.launchInChooser)
+        assertTrue(shareSpec.grantsReadPermission)
+        assertEquals(AndroidAttachmentReadGrantScope.SelectedTarget, shareSpec.readGrantScope)
+        assertTrue(shareSpec.placesContentUriInClipData)
+    }
+
+    @Test
     fun launchSourceRejectsRawFilePaths() {
         val result =
             runCatching {
