@@ -64,9 +64,24 @@ internal data class ThreadActionCard(
      * can differ from the server the card is viewed in.
      */
     val sourceServerId: String? = null,
+    /** Display name of [sourceServerId] at prepare time (wire `targetServerName`): "Acts on <name>". */
+    val targetServerName: String? = null,
+    /**
+     * The card's optimistic credential (wire `confirmationVersion`): sent back as
+     * `expectedConfirmationVersion` when it is run, so a card converted meanwhile is refused.
+     */
+    val confirmationVersion: Int? = null,
 ) {
     val isExecuted: Boolean
         get() = state.equals("executed", ignoreCase = true)
+
+    /** Wire `frozen`: its channel is being converted; nobody can run it until that ends. */
+    val isFrozen: Boolean
+        get() = state.equals("frozen", ignoreCase = true)
+
+    /** Wire `reconfirm_required`: something changed since it was prepared; it waits on Reconfirm. */
+    val needsReconfirmation: Boolean
+        get() = state.equals("reconfirm_required", ignoreCase = true)
 }
 
 @Serializable
@@ -90,6 +105,8 @@ internal data class WireActionCardMetadata(
     val kind: String? = null,
     val version: Int? = null,
     val sourceServerId: String? = null,
+    val targetServerName: String? = null,
+    val confirmationVersion: Int? = null,
     val forwardedItems: List<WireForwardedBundleItem> = emptyList(),
     /**
      * Keep the canonical action object intact at the wire boundary. Mobile has
@@ -190,6 +207,8 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
         presentationWarning = meta.presentation?.warning?.takeIf { it.isNotBlank() },
         genericApprovalAllowed = meta.presentation?.genericApprovalAllowed == true,
         sourceServerId = meta.sourceServerId?.takeIf { it.isNotBlank() },
+        targetServerName = meta.targetServerName?.takeIf { it.isNotBlank() },
+        confirmationVersion = meta.confirmationVersion,
     )
 }
 
@@ -233,6 +252,8 @@ internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
         putString("presentationWarning", presentationWarning)
         putBoolean("genericApprovalAllowed", genericApprovalAllowed)
         putString("sourceServerId", sourceServerId)
+        putString("targetServerName", targetServerName)
+        putString("confirmationVersion", confirmationVersion?.toString())
     }
 
 /** True when the projected message metadata carries an action card (any type). */
@@ -278,6 +299,8 @@ internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): Threa
         genericApprovalAllowed =
             metadata["${ActionCardMetadataPrefix}genericApprovalAllowed"]?.equals("true", ignoreCase = true) == true,
         sourceServerId = metadata["${ActionCardMetadataPrefix}sourceServerId"]?.takeIf { it.isNotBlank() },
+        targetServerName = metadata["${ActionCardMetadataPrefix}targetServerName"]?.takeIf { it.isNotBlank() },
+        confirmationVersion = metadata["${ActionCardMetadataPrefix}confirmationVersion"]?.toIntOrNull(),
     )
 }
 

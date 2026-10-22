@@ -193,6 +193,7 @@ private class RecordingActionCardApi : RaftIntegrationsActionsPushApi {
     override suspend fun revokeIntegrationGrant(grantId: String): HomeNetworkResponse = error("unused")
     override suspend fun agentIntegrations(agentId: MemberId): HomeNetworkResponse = error("unused")
     override suspend fun executeAction(messageId: MessageId, body: String): HomeNetworkResponse = error("unused")
+    override suspend fun reconfirmAction(messageId: MessageId): HomeNetworkResponse = error("unused")
     override suspend fun emitActionEvent(messageId: MessageId, body: String): HomeNetworkResponse = error("unused")
     override suspend fun pushVapidKey(): HomeNetworkResponse = error("unused")
     override suspend fun recordPushPromptEvent(body: String): HomeNetworkResponse = error("unused")

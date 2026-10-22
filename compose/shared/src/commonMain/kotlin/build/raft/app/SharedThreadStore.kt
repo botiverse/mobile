@@ -3508,7 +3508,7 @@ internal class SharedThreadDataSource(
                 markThreadActionCardExecuted(
                     actionsApi = actionsApi,
                     messageId = messageId,
-                    body = buildMarkAgentActionExecutedBody(agentId = created.data.id, agentName = resultName),
+                    body = buildMarkAgentActionExecutedBody(agentId = created.data.id, agentName = resultName, expectedConfirmationVersion = card.confirmationVersion),
                     executedCard = executedCard
                 )
             }
@@ -3525,6 +3525,11 @@ internal class SharedThreadDataSource(
         card: ThreadActionCard
     ): DataResult<ThreadActionCard> {
         return when {
+            // web ActionCard: a frozen card runs nothing; a reconfirm card's button reconfirms it.
+            card.isFrozen ->
+                DataResult.Error(ScreenError(code = "action_card_frozen", retryable = false))
+            card.needsReconfirmation ->
+                reconfirmThreadActionCard(messageId, card)
             card.type.equals("agent:create", ignoreCase = true) ->
                 DataResult.Error(ScreenError(code = "action_card_agent_create_dialog_required", retryable = false))
             card.type.equals("channel:create", ignoreCase = true) ->
@@ -3540,6 +3545,28 @@ internal class SharedThreadDataSource(
         }
     }
 
+    /**
+     * web ActionCard Reconfirm: POST /actions/:id/reconfirm brings a `reconfirm_required` card
+     * back to `prepared` under a new confirmation version; the response carries the card.
+     */
+    private suspend fun reconfirmThreadActionCard(
+        messageId: String,
+        card: ThreadActionCard
+    ): DataResult<ThreadActionCard> {
+        val actionsApi =
+            actionCardsApiClient
+                ?: return DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
+        return when (val result = actionsApi.reconfirmAction(MessageId(messageId))) {
+            is DataResult.Content ->
+                result.data.actionCard?.let { DataResult.Content(it) }
+                    ?: DataResult.Error(ScreenError(code = "action_card_reconfirm_empty", retryable = true))
+            is DataResult.Empty ->
+                DataResult.Error(ScreenError(code = "action_card_reconfirm_empty", retryable = true))
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
+    }
+
     private suspend fun executeInlineThreadActionCard(
         messageId: String,
         card: ThreadActionCard
@@ -3547,7 +3574,10 @@ internal class SharedThreadDataSource(
         val actionsApi =
             actionCardsApiClient
                 ?: return DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
-        return when (val result = actionsApi.executeAction(MessageId(messageId), buildExecuteActionBody(expectedState = "prepared"))) {
+        return when (val result = actionsApi.executeAction(
+            MessageId(messageId),
+            buildExecuteActionBody(expectedState = "prepared", expectedConfirmationVersion = card.confirmationVersion)
+        )) {
             is DataResult.Content ->
                 DataResult.Content(
                     result.data.actionCard
@@ -3609,7 +3639,7 @@ internal class SharedThreadDataSource(
                 markThreadActionCardExecuted(
                     actionsApi = actionsApi,
                     messageId = messageId,
-                    body = buildMarkAgentActionExecutedBody(agentId = created.data.id, agentName = resultName),
+                    body = buildMarkAgentActionExecutedBody(agentId = created.data.id, agentName = resultName, expectedConfirmationVersion = card.confirmationVersion),
                     executedCard = executedCard
                 )
             }
@@ -3660,7 +3690,8 @@ internal class SharedThreadDataSource(
                     body =
                         buildMarkChannelActionExecutedBody(
                             channelId = createdChannelId,
-                            channelName = createdChannelName
+                            channelName = createdChannelName,
+                            expectedConfirmationVersion = card.confirmationVersion
                         ),
                     executedCard = executedCard
                 )
@@ -3748,7 +3779,8 @@ internal class SharedThreadDataSource(
                     channelId = targetChannelId,
                     channelName = channelName,
                     addedHumanIds = addedHumans,
-                    addedAgentIds = addedAgents
+                    addedAgentIds = addedAgents,
+                    expectedConfirmationVersion = card.confirmationVersion
                 ),
             executedCard = executedCard
         )

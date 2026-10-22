@@ -66,6 +66,37 @@ class ThreadActionCardsTest {
     }
 
     @Test
+    fun conversionStateTargetServerAndConfirmationVersionSurviveTheMessageProjection() {
+        // packages/shared/src/actionCards.ts ActionCardMetadata: `state` "frozen" /
+        // "reconfirm_required", `targetServerName`, `confirmationVersion`.
+        for ((state, frozen, reconfirm) in listOf(Triple("frozen", true, false), Triple("reconfirm_required", false, true))) {
+            val wire =
+                json.decodeFromString<WireActionCardMetadata>(
+                    """
+                    {
+                      "kind":"action-card",
+                      "sourceServerId":"server-a",
+                      "targetServerName":"Raft HQ",
+                      "state":"$state",
+                      "confirmationVersion":4,
+                      "action":{"type":"channel:create","name":"launch","visibility":"public"}
+                    }
+                    """.trimIndent()
+                )
+            val card = assertNotNull(wire.toThreadActionCard())
+            val projected = assertNotNull(actionCardFromMessageMetadata(card.toMessageMetadata()))
+            for (it in listOf(card, projected)) {
+                assertEquals(frozen, it.isFrozen)
+                assertEquals(reconfirm, it.needsReconfirmation)
+                assertFalse(it.isExecuted)
+                assertEquals("Raft HQ", it.targetServerName)
+                assertEquals(4, it.confirmationVersion)
+                assertEquals("server-a", it.sourceServerId)
+            }
+        }
+    }
+
+    @Test
     fun futureServerCardUsesGenericApprovalWithoutAClientSpecificDto() {
         val wire =
             json.decodeFromString<WireActionCardMetadata>(
