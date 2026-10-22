@@ -66,6 +66,7 @@ import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.RaftIconTileVariant
 import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftListRowText
 import build.raft.designsystem.components.RaftListRowChevron
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftListRowValue
@@ -664,6 +665,40 @@ class DisplayComponentScreenshotTest {
                 }
             }
         }
+
+    /**
+     * The web members page roster (ChannelMembers presentation="page"): a group heading with
+     * the count after a separator ("Humans · 2") and [RaftListRowText.Member] rows (15/20 title,
+     * sans 12/16 sub-line), a role tag and a ghost remove button.
+     */
+    @Test
+    fun memberListRowLight() = memberListRow(RaftAppearance.Light)
+
+    @Test
+    fun memberListRowDark() = memberListRow(RaftAppearance.Dark)
+
+    private fun memberListRow(appearance: RaftAppearance) =
+            RaftScreenshot.capture("member_list_row_${appearance.name.lowercase()}", appearance) {
+                Column(Modifier.width(342.dp)) {
+                    RaftSidebarSectionHeader("Humans", expanded = true, onExpandedChange = {}, count = 2, countSeparator = " · ")
+                    RaftListRow(
+                        title = "Artea",
+                        subtitle = "Product Designer",
+                        onClick = {},
+                        text = RaftListRowText.Member,
+                        leading = { RaftAvatar(RaftAvatarType.Human, RaftAvatarSize.Md) },
+                        trailing = { RaftBadge("Channel Admin", appearance = RaftBadgeAppearance.Outline) },
+                    )
+                    RaftListRow(
+                        title = "Wug",
+                        subtitle = "Online",
+                        onClick = {},
+                        divider = true,
+                        text = RaftListRowText.Member,
+                        leading = { RaftAvatar(RaftAvatarType.Agent, RaftAvatarSize.Md, presence = RaftPresence.Online) },
+                    )
+                }
+            }
 
     @Test
     fun listRow() =

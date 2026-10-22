@@ -609,6 +609,9 @@ fun RaftSidebarItemMeta(text: String, modifier: Modifier = Modifier) {
  *   [count] in Space Mono 12 tabular, all `foreground-hint`, 6dp apart. It is one button
  *   spanning the header's height (so a finger can hit it), with the expand / collapse
  *   action and state in semantics, and the focus ring round its words.
+ * - [countSeparator]: printed inside the count, straight after the title with no gap
+ *   (web members page: `<SidebarSectionCount>{" · "}{count}</SidebarSectionCount>`, so
+ *   "Humans · 11"). Null (the sidebar): the count stands 6dp after the title.
  * - [attention]: the pink status pixel (`SidebarSectionAttention`) of a collapsed group
  *   holding something unread; hidden while [expanded].
  * - [actions]: the group's controls (`SidebarSectionControls`), always shown on a phone:
@@ -637,6 +640,7 @@ fun RaftSidebarSectionHeader(
     onLongClick: (() -> Unit)? = null,
     onLongClickLabel: String? = null,
     menuOpen: Boolean = false,
+    countSeparator: String? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -709,21 +713,26 @@ fun RaftSidebarSectionHeader(
                     }
                     if (icon != null) Box(contentAlignment = Alignment.Center) { icon() }
                 }
-                RaftText(
-                    title,
-                    modifier = Modifier.weight(1f, fill = false),
-                    style = typography.footnote.copy(fontWeight = FontWeight.Bold),
-                    color = hint,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (count != null) {
+                val countText = count?.let { (countSeparator ?: "") + it }
+                val countStyle = typography.monoMeta.copy(fontWeight = FontWeight.Normal, fontFeatureSettings = "tnum")
+                val titleText: @Composable (Modifier) -> Unit = { titleModifier ->
                     RaftText(
-                        count.toString(),
-                        style = typography.monoMeta.copy(fontWeight = FontWeight.Normal, fontFeatureSettings = "tnum"),
+                        title,
+                        modifier = titleModifier,
+                        style = typography.footnote.copy(fontWeight = FontWeight.Bold),
                         color = hint,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
+                }
+                if (countSeparator != null) {
+                    Row(Modifier.weight(1f, fill = false), verticalAlignment = Alignment.CenterVertically) {
+                        titleText(Modifier.weight(1f, fill = false))
+                        if (countText != null) RaftText(countText, style = countStyle, color = hint, maxLines = 1)
+                    }
+                } else {
+                    titleText(Modifier.weight(1f, fill = false))
+                    if (countText != null) RaftText(countText, style = countStyle, color = hint, maxLines = 1)
                 }
             }
         }
