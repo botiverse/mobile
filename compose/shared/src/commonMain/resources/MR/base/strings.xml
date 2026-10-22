@@ -1915,6 +1915,7 @@
     <string name="settings_computers_label_version">Computer Version</string>
     <string name="settings_computers_label_created">Created</string>
     <string name="settings_computers_label_runtimes">Detected Runtimes</string>
+    <string name="settings_computers_runtime_suffix_update_computer">&#160;(update computer)</string>
     <string name="settings_computers_state_unknown">Unknown</string>
     <string name="settings_computers_workspace_modified">Modified %1$s</string>
     <string name="settings_computers_file_count_one">%1$d file</string>

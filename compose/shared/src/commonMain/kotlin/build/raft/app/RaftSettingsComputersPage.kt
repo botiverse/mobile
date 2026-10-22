@@ -39,6 +39,7 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.COMPUTER_ACTION_DELETE
+import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
 import build.raft.app.data.COMPUTER_ACTION_DESCRIPTION
 import build.raft.app.data.COMPUTER_ACTION_RENAME
 import build.raft.app.data.COMPUTER_ACTION_SCAN_WORKSPACES
@@ -65,6 +66,7 @@ import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.isRefreshing
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.MemberId
+import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
 import build.raft.app.resources.MR
@@ -664,15 +666,12 @@ private fun RaftComputerDetailBody(
                 RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
                     Item(stringResource(MR.strings.settings_computers_label_os), snapshot.computer.platform?.takeIf { it.isNotBlank() })
                     Item(stringResource(MR.strings.settings_computers_label_version), raftComputerVersionLine(computer), mono = true)
-                    Item(
-                        stringResource(MR.strings.settings_computers_label_created),
-                        model.createdAt?.let { raftRelativeTimestampLabel(it) }?.takeIf { it.isNotBlank() },
-                    )
-                    Item(
-                        stringResource(MR.strings.settings_computers_label_runtimes),
-                        computer.runtimes.joinToString(", ").takeIf { it.isNotBlank() },
-                        mono = true,
-                    )
+                    // Web: the runtimes as chips, cyan-soft when detected, muted with why not otherwise.
+                    Item(stringResource(MR.strings.settings_computers_label_runtimes)) {
+                        raftComputerRuntimeChips(computer.runtimes).forEach { chip -> RaftComputerRuntimeBadge(chip) }
+                    }
+                    // Web: the date it was created ("Oct 22, 2026"), as on an agent's page.
+                    Item(stringResource(MR.strings.settings_computers_label_created), raftComputerCreatedDate(model.createdAt), mono = true)
                 }
                 // Web: an offline Computer's version row links the notes of the version it can move to.
                 upgrade.releaseNotes?.takeIf { !snapshot.computer.online }?.let { notes ->
@@ -770,6 +769,32 @@ private fun RaftComputerDetailBody(
             },
         )
     }
+}
+
+@Composable
+private fun RaftComputerRuntimeBadge(chip: RaftComputerRuntimeChip) {
+    val suffix =
+        when (chip.availability) {
+            RaftComputerRuntimeAvailability.Detected -> ""
+            RaftComputerRuntimeAvailability.NotInstalled -> stringResource(MR.strings.agent_create_suffix_not_installed)
+            RaftComputerRuntimeAvailability.UpdateComputer -> stringResource(MR.strings.settings_computers_runtime_suffix_update_computer)
+        }
+    RaftBadge(
+        text = chip.name + suffix,
+        appearance = RaftBadgeAppearance.Soft,
+        variant =
+            if (chip.availability == RaftComputerRuntimeAvailability.Detected) RaftBadgeVariant.Information else RaftBadgeVariant.Muted,
+    )
+}
+
+/** A created timestamp as a date in the viewer's zone, or null when there is none. */
+@Composable
+private fun raftComputerCreatedDate(createdAt: String?): String? {
+    val value = createdAt?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val context =
+        LocalRaftTimeContextProvider.current?.current
+            ?: RaftTimeContext(localOffsetMinutes = ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(defaultNowMillis(), 0))
+    return value.membersAgentCreatedDate(context).takeIf { it.isNotBlank() }
 }
 
 @Composable

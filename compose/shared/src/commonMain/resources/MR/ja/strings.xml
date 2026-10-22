@@ -1915,6 +1915,7 @@
     <string name="settings_computers_label_version">コンピューターのバージョン</string>
     <string name="settings_computers_label_created">作成日</string>
     <string name="settings_computers_label_runtimes">検出されたランタイム</string>
+    <string name="settings_computers_runtime_suffix_update_computer">（コンピューターの更新が必要）</string>
     <string name="settings_computers_state_unknown">不明</string>
     <string name="settings_computers_workspace_modified">%1$s に更新</string>
     <string name="settings_computers_file_count_one">%1$d 個のファイル</string>

@@ -12,6 +12,7 @@ import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsState
 import build.raft.app.model.ComputerRestartDone
+import build.raft.app.model.RUNTIMES
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.getModelLabel
 import build.raft.app.model.RealtimeRefreshRequired
@@ -47,6 +48,42 @@ internal data class RaftComputerRowModel(
     /** Last heartbeat (ISO timestamp) for an offline machine; null while online. */
     val lastSeenAt: String?,
 )
+
+/** Why a runtime the computer could run isn't detected on it (web `runtimeAvailabilitySuffix`). */
+internal enum class RaftComputerRuntimeAvailability {
+    Detected,
+
+    /** The computer looks for a binary and didn't find it. */
+    NotInstalled,
+
+    /** A runtime with no binary (built into the Computer): the computer's version predates it. */
+    UpdateComputer,
+}
+
+internal data class RaftComputerRuntimeChip(
+    val id: String,
+    val name: String,
+    val availability: RaftComputerRuntimeAvailability,
+)
+
+/**
+ * Web MachineDetailPanel "Detected Runtimes": every runtime a computer can run
+ * (`getMachineRuntimeDisplayOptions`: supported, not deprecated), in catalog order, each
+ * marked detected or why not, so the row shows what is missing as well as what is there.
+ */
+internal fun raftComputerRuntimeChips(detected: List<String>): List<RaftComputerRuntimeChip> =
+    RUNTIMES.filter { it.supported && !it.deprecated }.map { runtime ->
+        RaftComputerRuntimeChip(
+            id = runtime.id,
+            name = runtime.displayName,
+            availability =
+                when {
+                    runtime.id in detected -> RaftComputerRuntimeAvailability.Detected
+                    runtime.binary.isEmpty() -> RaftComputerRuntimeAvailability.UpdateComputer
+                    else -> RaftComputerRuntimeAvailability.NotInstalled
+                },
+        )
+    }
 
 internal sealed interface RaftComputersListModel {
     data object Loading : RaftComputersListModel

@@ -15027,7 +15027,7 @@ private fun String?.membersReminderShortDateTime(timeContext: RaftTimeContext): 
     return "${MembersReminderMonthNames[date.month - 1]} ${date.day}, ${membersReminderClock(hour, minute, timeContext.timeFormat)}"
 }
 
-private fun String.membersAgentCreatedDate(timeContext: RaftTimeContext): String {
+internal fun String.membersAgentCreatedDate(timeContext: RaftTimeContext): String {
     val trimmed = trim()
     if (trimmed.isEmpty()) return ""
     val epochMillis =

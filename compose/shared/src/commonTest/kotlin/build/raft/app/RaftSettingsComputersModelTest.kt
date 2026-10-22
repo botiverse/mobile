@@ -385,4 +385,25 @@ class RaftSettingsComputersModelTest {
         assertNull(raftComputerAgentStatusIndicator(agent, live = null))
         assertNull(raftComputerAgentStatusIndicator(agent.copy(statusLabel = "inactive"), live = null))
     }
+
+    @Test
+    fun runtimeChipsListEveryRuntimeAComputerCanRunAndWhyOneIsMissing() {
+        val chips = raftComputerRuntimeChips(listOf("claude", "builtin", "kimi-sdk", "kimi", "pi"))
+        // The web's display options: supported and not deprecated, in catalog order.
+        assertEquals(
+            listOf("claude", "codex", "grok", "builtin", "antigravity", "kimi-sdk", "cursor", "opencode", "pi"),
+            chips.map { it.id },
+        )
+        val byId = chips.associateBy { it.id }
+        assertEquals("Claude Code", byId.getValue("claude").name)
+        assertEquals(RaftComputerRuntimeAvailability.Detected, byId.getValue("claude").availability)
+        assertEquals(RaftComputerRuntimeAvailability.NotInstalled, byId.getValue("codex").availability)
+        // Built-in Pi and Kimi Code ship inside the Computer: missing means it predates them.
+        assertEquals(RaftComputerRuntimeAvailability.Detected, byId.getValue("kimi-sdk").availability)
+        assertEquals(RaftComputerRuntimeAvailability.Detected, byId.getValue("builtin").availability)
+        assertEquals(
+            RaftComputerRuntimeAvailability.UpdateComputer,
+            raftComputerRuntimeChips(emptyList()).first { it.id == "builtin" }.availability,
+        )
+    }
 }
