@@ -1,5 +1,6 @@
 package build.raft.app.network
 
+import build.raft.app.data.featureFlagClientOs
 import com.tencent.kmm.network.export.NetworkBody
 import com.tencent.kmm.network.export.NetworkMultipartPart
 import com.tencent.kmm.network.export.NetworkPriority
@@ -197,7 +198,7 @@ internal class NetworkKmmRaftHttpExecutor(
                             priority = priority.toNetworkKmmPriority()
                         )
                 )
-            withRaftNetworkUserAgent(traceHeaders).forEach { (name, value) -> request.setHeader(name, value) }
+            withRaftApiClientHeaders(traceHeaders).forEach { (name, value) -> request.setHeader(name, value) }
             val response =
                 executeNetworkRequest(
                     request = request,
@@ -284,7 +285,7 @@ internal class NetworkKmmRaftHttpExecutor(
                             priority = priority.toNetworkKmmPriority()
                         )
                 )
-            withRaftNetworkUserAgent(traceHeaders).forEach { (name, value) -> request.setHeader(name, value) }
+            withRaftApiClientHeaders(traceHeaders).forEach { (name, value) -> request.setHeader(name, value) }
             request.progress =
                 NetworkProgressCallbacks(
                     uploadProgress = { progress ->
@@ -542,6 +543,27 @@ internal fun withRaftNetworkUserAgent(
     val value = runCatching(userAgent).getOrNull()?.takeIf { it.isNotBlank() } ?: return headers
     return headers + (NETWORK_KMM_USER_AGENT_HEADER to value)
 }
+
+internal const val RAFT_CLIENT_PLATFORM_HEADER = "X-Raft-Client-Platform"
+
+/**
+ * Raft API requests name the native app they come from: `android` or `ios` ([featureFlagClientOs],
+ * the app's one platform name). The server records it as the `account_created` platform (botiverse/slock
+ * `signupClientPlatform`, which accepts exactly those lowercase values). Every API request carries it,
+ * so no signup or sign-in route can miss it. A caller's own value wins.
+ */
+internal fun withRaftClientPlatform(
+    headers: Map<String, String>,
+    platform: () -> String = ::featureFlagClientOs,
+): Map<String, String> {
+    if (headers.keys.any { it.equals(RAFT_CLIENT_PLATFORM_HEADER, ignoreCase = true) }) return headers
+    val value = runCatching(platform).getOrNull()?.takeIf { it.isNotBlank() } ?: return headers
+    return headers + (RAFT_CLIENT_PLATFORM_HEADER to value)
+}
+
+/** The app-identity headers every Raft API request ([execute] and multipart) carries. */
+internal fun withRaftApiClientHeaders(headers: Map<String, String>): Map<String, String> =
+    withRaftClientPlatform(withRaftNetworkUserAgent(headers))
 private const val NETWORK_KMM_TRACEPARENT_HEADER = "traceparent"
 
 internal fun networkKmmTraceHeaders(

@@ -51,4 +51,10 @@ class RaftNetworkUserAgentTest {
         assertSame(own, withRaftNetworkUserAgent(own) { "$androidBase Mobile" })
         assertSame(headers, withRaftNetworkUserAgent(headers) { error("no identity") })
     }
+
+    @Test
+    fun aCallersOwnClientPlatformWins() {
+        val own = mapOf("x-raft-client-platform" to "custom")
+        assertSame(own, withRaftClientPlatform(own) { "android" })
+    }
 }
