@@ -7812,8 +7812,20 @@ private fun SharedThreadRouteContentContent(
             snapshot.channels.firstOrNull { it.channelId.value == jumpChannelId }?.unreadCount
                 ?: snapshot.directMessages.firstOrNull { it.channelId.value == jumpChannelId }?.unreadCount
         } ?: 0
+    // Parents of unread threads the page has not loaded, from the followed-threads list (web
+    // FollowedThread.parentMessageId): without them the pill had no target for an older parent.
+    val jumpUnreadThreadParents by remember(threadViewModel) {
+        threadViewModel.unreadThreadParentsFlow()
+    }.collectAsState(threadViewModel.state.value.unreadThreadParents)
     val jumpInputs =
-        remember(jumpChannelId, jumpSurfaceKind, threadUnreadBadgeEnabled, jumpFollowedThreadUnread, jumpConversationUnreadCount) {
+        remember(
+            jumpChannelId,
+            jumpSurfaceKind,
+            threadUnreadBadgeEnabled,
+            jumpFollowedThreadUnread,
+            jumpConversationUnreadCount,
+            jumpUnreadThreadParents,
+        ) {
             ThreadJumpInputs(
                 channelId = jumpChannelId,
                 unreadThreadPillEnabled =
@@ -7821,8 +7833,34 @@ private fun SharedThreadRouteContentContent(
                 homeFollowedThreadUnread =
                     jumpFollowedThreadUnread?.filterValues { thread -> thread.parentChannelId.value == jumpChannelId },
                 conversationUnreadCount = jumpConversationUnreadCount,
+                unreadThreadParents = jumpUnreadThreadParents.filterValues { parent -> parent.parentChannelId == jumpChannelId },
             )
         }
+    // The unread threads whose parent is neither loaded nor resolved: look them up (single-flight
+    // in the store; each id at most once per page). Keyed by the id set, not the message list.
+    val jumpUnresolvedUnreadThreadIds =
+        remember(jumpInputs, timelineSlice.messages, replyMetadataByParentId) {
+            if (!jumpInputs.unreadThreadPillEnabled) {
+                emptySet()
+            } else {
+                val candidates = threadJumpParentCandidates(timelineSlice.messages, replyMetadataByParentId)
+                threadUnreadThreadIdsNeedingParents(
+                    unreadThreadIds =
+                        threadConversationUnreadThreadIds(
+                            channelId = jumpInputs.channelId.orEmpty(),
+                            homeFollowedThreadUnread = jumpInputs.homeFollowedThreadUnread,
+                            loadedMessages = candidates,
+                        ),
+                    messages = candidates,
+                    resolvedParents = jumpInputs.unreadThreadParents,
+                )
+            }
+        }
+    LaunchedEffect(threadViewModel, jumpUnresolvedUnreadThreadIds) {
+        if (jumpUnresolvedUnreadThreadIds.isNotEmpty()) {
+            threadViewModel.dispatch(SharedThreadIntent.ResolveUnreadThreadParents(jumpUnresolvedUnreadThreadIds))
+        }
+    }
     val taskProjectionOwnerIdentity =
         remember(sharedStores.apiEnvironmentStore, currentSession?.user?.id) {
             currentSession?.user?.id
@@ -11373,12 +11411,10 @@ private fun SharedThreadRouteContentContent(
                     }
                     action == ThreadJumpToUnreadThreadParentAction && !itemId.isNullOrBlank() -> {
                         // The unread-thread pill: focus (scroll to and highlight) the parent
-                        // message through the route focus session, as a search hit does.
+                        // message through the route focus session, as a search hit does; a parent
+                        // that is not loaded is loaded around first (web jumpToMessage).
                         threadViewModel.dispatch(
-                            SharedThreadIntent.FocusMessage(
-                                messageId = itemId,
-                                switchToTab = RaftThreadTab.Chat.wireValue,
-                            )
+                            SharedThreadIntent.JumpToMessage(messageId = itemId, switchToTab = RaftThreadTab.Chat.wireValue)
                         )
                     }
                     action == "openAttachmentComments" && !attachmentId.isNullOrBlank() -> {
@@ -21694,6 +21730,12 @@ private fun ThreadMessagesListContent(
                     messages = jumpParentCandidates,
                     visibleMessageIndexes = visibleMessageIndexes,
                     dismissedAtCount = unreadThreadJumpDismissedAtCount,
+                    unloadedParents = jumpInputs.unreadThreadParents,
+                    loadedRange =
+                        ThreadJumpLoadedRange(
+                            newestCreatedAtEpochMillis = renderPayload.messages.lastOrNull()?.createdAtEpochMillis,
+                            hasNewer = renderPayload.canLoadMoreAfter,
+                        ),
                 )
             } else {
                 null

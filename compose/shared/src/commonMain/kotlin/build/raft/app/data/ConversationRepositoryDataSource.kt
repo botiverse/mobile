@@ -150,12 +150,13 @@ private suspend fun RaftNetworkClient.channelThreads(
 private suspend fun RaftNetworkClient.followedThreads(
     priority: DataRequestPriority,
     limit: Int,
-    serverId: ServerId? = null
+    serverId: ServerId? = null,
+    unreadOnly: Boolean = false
 ): HomeNetworkResponse =
     request(
         priority,
         "channels/threads/followed",
-        query = listOf("limit" to limit.toString()),
+        query = listOf("limit" to limit.toString()) + if (unreadOnly) listOf("unreadOnly" to "1") else emptyList(),
         serverIdOverride = serverId
     )
 
@@ -962,6 +963,22 @@ class RealConversationRepository private constructor(
             block = { networkClient.followedThreads(DataRequestPriority.Visible, limit, context.server.id) },
             emptyWhen = { it.threads.isEmpty() },
             source = "followed_threads",
+            mapper = { bodyText -> parseFollowedThreadListSnapshotFromBody(bodyText, context) }
+        )
+    }
+
+    override suspend fun getUnreadFollowedThreads(
+        serverId: ServerId,
+        limit: Int
+    ): DataResult<ThreadListSnapshot> {
+        val context = sessionStore.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
+        return executeConversation(
+            emptyReason = EmptyReason.NoInboxItems,
+            block = {
+                networkClient.followedThreads(DataRequestPriority.Visible, limit, context.server.id, unreadOnly = true)
+            },
+            emptyWhen = { it.threads.isEmpty() },
+            source = "followed_threads_unread",
             mapper = { bodyText -> parseFollowedThreadListSnapshotFromBody(bodyText, context) }
         )
     }

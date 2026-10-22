@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.HomeFollowedThreadUnread
+import build.raft.app.data.InboxItem
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 
 /*
  * The conversation's jump pills, as on the web (botiverse/slock packages/web/src/components/
@@ -13,8 +15,10 @@ import build.raft.app.data.HomeFollowedThreadUnread
  *    the conversation's unread count);
  *  - beside it: "Next Unread Thread (N)" when a followed thread with unread replies has its parent
  *    message below the view; else, alone at the top, "Earliest Unread Thread (N)" when one is
- *    above. N counts every unread followed thread of the channel. A tap focuses (scrolls to and
- *    highlights) that parent; ✕ hides the pill until N changes.
+ *    above. N counts every unread followed thread of the channel. A parent that is not loaded is
+ *    resolved from the followed-threads list and placed above (older) or below (newer) the loaded
+ *    messages. A tap focuses (scrolls to and highlights) that parent, loading the messages around
+ *    it first when it is not loaded; ✕ hides the pill until N changes.
  *
  * The decisions are pure functions here; ThreadPage only feeds them and draws the result.
  */
@@ -116,39 +120,144 @@ internal data class ThreadUnreadThreadJump(
 )
 
 /**
+ * An unread followed thread's parent message as the followed-threads list names it (web
+ * `FollowedThread.parentMessageId` / `parentMessageCreatedAt`): how the pill reaches a parent the
+ * page has not loaded. Home's unread summary carries no parent message, so the page resolves these
+ * through its store (`SharedThreadIntent.ResolveUnreadThreadParents`).
+ */
+internal data class ThreadUnreadThreadParent(
+    val threadChannelId: String,
+    val parentChannelId: String,
+    val parentMessageId: String,
+    /** When the parent was posted; null from an older server. */
+    val parentCreatedAtEpochMillis: Long? = null,
+)
+
+/**
+ * The followed-threads rows of [parentChannelId] with unread replies, as pill parents by thread id
+ * (web `orderParentUnreadThreadsForJump`'s filter). Rows without a parent message are skipped.
+ */
+internal fun List<InboxItem>.toThreadUnreadThreadParents(parentChannelId: String): Map<String, ThreadUnreadThreadParent> {
+    val parents = LinkedHashMap<String, ThreadUnreadThreadParent>()
+    for (item in this) {
+        if (item.unreadCount <= 0 || item.parentChannelId?.value != parentChannelId) continue
+        val threadId = (item.threadChannelId ?: item.channelId).value.takeIf { it.isNotBlank() } ?: continue
+        val parentMessageId = item.parentMessageId?.value?.takeIf { it.isNotBlank() } ?: continue
+        parents[threadId] =
+            ThreadUnreadThreadParent(
+                threadChannelId = threadId,
+                parentChannelId = parentChannelId,
+                parentMessageId = parentMessageId,
+                parentCreatedAtEpochMillis = item.parentMessageCreatedAt?.let(::parseRaftTimestampEpochMillisOrNull),
+            )
+    }
+    return parents
+}
+
+/** Web `LoadedMessageRange`: where the loaded messages end, to place a parent that is not loaded. */
+internal data class ThreadJumpLoadedRange(
+    /** createdAt of the newest loaded message, if known. */
+    val newestCreatedAtEpochMillis: Long?,
+    /** Newer messages exist past the loaded ones (reading history). */
+    val hasNewer: Boolean,
+)
+
+/**
+ * Web `placeUnrendered`: a parent that is not loaded is below only while newer messages are not
+ * loaded and it is newer than the newest loaded one; otherwise it is in the older history above.
+ */
+internal fun threadUnloadedParentPlacement(
+    parentCreatedAtEpochMillis: Long?,
+    range: ThreadJumpLoadedRange,
+): ThreadJumpPlacement {
+    val newest = range.newestCreatedAtEpochMillis
+    return if (range.hasNewer && parentCreatedAtEpochMillis != null && newest != null && parentCreatedAtEpochMillis > newest) {
+        ThreadJumpPlacement.Below
+    } else {
+        ThreadJumpPlacement.Above
+    }
+}
+
+/**
+ * The unread threads whose parent is neither loaded (no loaded message carries the thread) nor
+ * already resolved in [resolvedParents]: the ones the page must look up for the pill to reach them.
+ */
+internal fun threadUnreadThreadIdsNeedingParents(
+    unreadThreadIds: Set<String>,
+    messages: List<ThreadJumpParentCandidate>,
+    resolvedParents: Map<String, ThreadUnreadThreadParent>,
+): Set<String> {
+    if (unreadThreadIds.isEmpty()) return emptySet()
+    val loadedThreadIds = messages.mapNotNullTo(HashSet()) { it.threadChannelId }
+    return unreadThreadIds.filterTo(LinkedHashSet()) { it !in loadedThreadIds && it !in resolvedParents }
+}
+
+/**
  * Web `ThreadUnreadJumpPill`: which unread-thread pill shows, if any.
  *
  * [messages] are the loaded messages top to bottom; [visibleMessageIndexes] the indexes of the
  * rows in view. A parent in view already shows its unread replies, so it is neither above nor
- * below. The nearest parent below wins ("Next"); only when none is below does the topmost one
- * above show ("Earliest"), so repeated taps walk the channel top to bottom. A thread whose parent
- * is not loaded still counts in N but cannot be a target here (Home's summary carries no parent
- * message id). [dismissedAtCount] hides the pill while N stays the count it was dismissed at.
+ * below. A parent that is not loaded is reached through [unloadedParents] (the followed-threads
+ * list) and placed by [loadedRange] ([threadUnloadedParentPlacement]): one older than the loaded
+ * messages is above all of them, one newer is below all of them. The nearest parent below wins
+ * ("Next"); only when none is below does the topmost one above show ("Earliest"), so repeated taps
+ * walk the channel top to bottom. A thread whose parent is neither loaded nor resolved still counts
+ * in N but is no target until it resolves. [dismissedAtCount] hides the pill while N stays the
+ * count it was dismissed at.
  */
 internal fun projectThreadUnreadThreadJump(
     unreadThreadIds: Set<String>,
     messages: List<ThreadJumpParentCandidate>,
     visibleMessageIndexes: IntRange?,
     dismissedAtCount: Int?,
+    unloadedParents: Map<String, ThreadUnreadThreadParent> = emptyMap(),
+    loadedRange: ThreadJumpLoadedRange = ThreadJumpLoadedRange(newestCreatedAtEpochMillis = null, hasNewer = false),
 ): ThreadUnreadThreadJump? {
     val count = unreadThreadIds.size
     if (count == 0 || dismissedAtCount == count || visibleMessageIndexes == null) return null
-    var nearestBelow: String? = null
-    var earliestAbove: String? = null
-    val seenThreads = HashSet<String>()
+    val messageIndexById = HashMap<String, Int>(messages.size)
+    messages.forEachIndexed { index, message -> messageIndexById.getOrPut(message.messageId) { index } }
+    // Each unread thread's loaded parent index: by the thread the row carries, else by the
+    // resolved parent id (a row whose thread metadata has not arrived yet).
+    val loadedIndexByThread = HashMap<String, Int>()
     for ((index, message) in messages.withIndex()) {
         val threadId = message.threadChannelId?.takeIf { it in unreadThreadIds } ?: continue
-        if (!seenThreads.add(threadId)) continue
-        when (threadJumpPlacement(index, visibleMessageIndexes)) {
-            ThreadJumpPlacement.Above -> if (earliestAbove == null) earliestAbove = message.messageId
-            ThreadJumpPlacement.Below -> if (nearestBelow == null) nearestBelow = message.messageId
-            ThreadJumpPlacement.Visible -> Unit
-        }
-        if (nearestBelow != null) break
+        loadedIndexByThread.getOrPut(threadId) { index }
     }
+    var nearestBelowIndex: Int? = null
+    var earliestAboveIndex: Int? = null
+    // Unloaded parents, ordered by parent time (unknown last), as web orders the followed list.
+    var unloadedBelow: ThreadUnreadThreadParent? = null
+    var unloadedAbove: ThreadUnreadThreadParent? = null
+    fun ThreadUnreadThreadParent.isEarlierThan(other: ThreadUnreadThreadParent?): Boolean =
+        other == null ||
+            (parentCreatedAtEpochMillis ?: Long.MAX_VALUE) < (other.parentCreatedAtEpochMillis ?: Long.MAX_VALUE)
+    for (threadId in unreadThreadIds) {
+        val parent = unloadedParents[threadId]
+        val index = loadedIndexByThread[threadId] ?: parent?.let { messageIndexById[it.parentMessageId] }
+        if (index != null) {
+            when (threadJumpPlacement(index, visibleMessageIndexes)) {
+                ThreadJumpPlacement.Above ->
+                    if (earliestAboveIndex == null || index < earliestAboveIndex) earliestAboveIndex = index
+                ThreadJumpPlacement.Below ->
+                    if (nearestBelowIndex == null || index < nearestBelowIndex) nearestBelowIndex = index
+                ThreadJumpPlacement.Visible -> Unit
+            }
+            continue
+        }
+        if (parent == null) continue
+        when (threadUnloadedParentPlacement(parent.parentCreatedAtEpochMillis, loadedRange)) {
+            ThreadJumpPlacement.Below -> if (parent.isEarlierThan(unloadedBelow)) unloadedBelow = parent
+            else -> if (parent.isEarlierThan(unloadedAbove)) unloadedAbove = parent
+        }
+    }
+    // A loaded parent below is nearer than any newer unloaded one; an unloaded parent above is
+    // older (higher) than every loaded one.
+    val nextTarget = nearestBelowIndex?.let { messages[it].messageId } ?: unloadedBelow?.parentMessageId
+    val earliestTarget = unloadedAbove?.parentMessageId ?: earliestAboveIndex?.let { messages[it].messageId }
     return when {
-        nearestBelow != null -> ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Next, count, nearestBelow)
-        earliestAbove != null -> ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Earliest, count, earliestAbove)
+        nextTarget != null -> ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Next, count, nextTarget)
+        earliestTarget != null -> ThreadUnreadThreadJump(ThreadUnreadThreadJumpDirection.Earliest, count, earliestTarget)
         else -> null
     }
 }
@@ -225,6 +334,8 @@ internal data class ThreadJumpInputs(
     val unreadThreadPillEnabled: Boolean = false,
     val homeFollowedThreadUnread: Map<String, HomeFollowedThreadUnread>? = null,
     val conversationUnreadCount: Int = 0,
+    /** Parents of this channel's unread threads resolved from the followed-threads list, by thread id. */
+    val unreadThreadParents: Map<String, ThreadUnreadThreadParent> = emptyMap(),
 )
 
 /** The loaded messages as thread-parent candidates, with the list's live reply state where it has one. */

@@ -72,6 +72,7 @@ import build.raft.app.data.ThreadIdentityProof
 import build.raft.app.data.ThreadRouteId
 import build.raft.app.data.ThreadReplySummariesSnapshot
 import build.raft.app.data.ThreadSnapshot
+import build.raft.app.data.ThreadListSnapshot
 import build.raft.app.data.RawMessagePage
 import build.raft.app.data.RawMessagePageWitness
 import build.raft.app.data.ThreadApiResult
@@ -3364,6 +3365,14 @@ internal class SharedThreadDataSource(
             )
         ) ?: DataResult.Error(ScreenError("channel_repository_unavailable", retryable = false))
 
+    /** The followed threads with unread replies on the current server (unread-thread pill parents). */
+    internal suspend fun fetchUnreadFollowedThreads(): DataResult<ThreadListSnapshot>? {
+        val repository = conversationRepository ?: return null
+        val context = captureReplyCacheProducerContext() ?: return null
+        val serverId = context.provenance.serverId.takeIf { it.isNotBlank() } ?: return null
+        return repository.getUnreadFollowedThreads(ServerId(serverId))
+    }
+
     suspend fun publishChannelProfileUpdate(result: ChannelProfileUpdateResult) {
         channelProfileUpdateSink(result)
     }
@@ -6381,7 +6390,13 @@ internal data class SharedThreadState(
      * 403 / 404 (see [isConversationAccessLost]). Its cached timeline is already evicted; the page
      * leaves with the "conversation is no longer available" notice. Reset by the next route start.
      */
-    val conversationAccessLost: Boolean = false
+    val conversationAccessLost: Boolean = false,
+    /**
+     * The unread-thread pill's parents of this channel's unread followed threads, by thread channel
+     * id, resolved from the followed-threads list for parents the page has not loaded (web
+     * `FollowedThread.parentMessageId`). Filled by [SharedThreadIntent.ResolveUnreadThreadParents].
+     */
+    val unreadThreadParents: Map<String, ThreadUnreadThreadParent> = emptyMap(),
 )
 
 /**
@@ -6597,6 +6612,19 @@ internal sealed interface SharedThreadIntent {
     data object ClearChannelProfileUpdateStatus : SharedThreadIntent
     data class SelectTab(val tab: String) : SharedThreadIntent
     data class FocusMessage(val messageId: String, val switchToTab: String? = null) : SharedThreadIntent
+
+    /**
+     * The unread-thread pill could not place these unread threads: their parents are not loaded.
+     * Looks them up once in the followed-threads list (single-flight; an id is asked for at most
+     * once per page) into [SharedThreadState.unreadThreadParents].
+     */
+    data class ResolveUnreadThreadParents(val threadChannelIds: Set<String>) : SharedThreadIntent
+
+    /**
+     * Web ChatPanel `jumpToMessage`: focus (scroll to and highlight) [messageId], on [switchToTab]
+     * when set; when it is not loaded, first replace the window with the messages around it.
+     */
+    data class JumpToMessage(val messageId: String, val switchToTab: String? = null) : SharedThreadIntent
     data class ApplyMembersPatch(
         val membersCount: Int,
         val members: List<RaftThreadMemberItem>,
@@ -6687,6 +6715,11 @@ internal class SharedThreadStore(
     fun highlightedMentionsFlow(): Flow<Set<String>> =
         state
             .map { threadState -> threadState.highlightedMentions }
+            .distinctUntilChanged()
+
+    fun unreadThreadParentsFlow(): Flow<Map<String, ThreadUnreadThreadParent>> =
+        state
+            .map { threadState -> threadState.unreadThreadParents }
             .distinctUntilChanged()
 
     // Event-driven drainer for durably journaled pending sends. Resends reuse the journaled
@@ -6869,6 +6902,8 @@ internal class SharedThreadStore(
             SharedThreadIntent.ClearChannelProfileUpdateStatus,
             is SharedThreadIntent.SelectTab,
             is SharedThreadIntent.FocusMessage,
+            is SharedThreadIntent.ResolveUnreadThreadParents,
+            is SharedThreadIntent.JumpToMessage,
             is SharedThreadIntent.ApplyMembersPatch,
             is SharedThreadIntent.SetAddMemberStatus,
             is SharedThreadIntent.SetRemoveMemberStatus,
@@ -6956,6 +6991,8 @@ internal class SharedThreadStore(
             SharedThreadIntent.ClearChannelProfileUpdateStatus -> clearChannelProfileUpdateStatus()
             is SharedThreadIntent.SelectTab -> selectTab(intent.tab)
             is SharedThreadIntent.FocusMessage -> focusMessage(intent.messageId, intent.switchToTab)
+            is SharedThreadIntent.ResolveUnreadThreadParents -> resolveUnreadThreadParents(intent.threadChannelIds)
+            is SharedThreadIntent.JumpToMessage -> jumpToMessage(intent.messageId, intent.switchToTab)
             is SharedThreadIntent.ApplyMembersPatch -> applyMembersPatch(intent)
             is SharedThreadIntent.SetAddMemberStatus -> setAddMemberStatus(intent.status, intent.errorCode)
             is SharedThreadIntent.SetRemoveMemberStatus ->
@@ -10879,6 +10916,101 @@ internal class SharedThreadStore(
         }
     }
 
+    /** Unread-thread ids already asked of the followed-threads list on this page (never re-asked). */
+    private val unreadThreadParentsRequested = mutableSetOf<String>()
+    private var unreadThreadParentsInFlight = false
+
+    private suspend fun resolveUnreadThreadParents(threadChannelIds: Set<String>) {
+        val routeIdentity = _state.value.payload.resolveThreadRouteIdentity()
+        if (routeIdentity.surfaceKind != RaftThreadSurfaceKind.Channel) return
+        val channelId = routeIdentity.timelineChannelId ?: return
+        if (unreadThreadParentsInFlight) return
+        val pending =
+            threadChannelIds.filterTo(LinkedHashSet()) { id ->
+                id.isNotBlank() && id !in unreadThreadParentsRequested && id !in _state.value.unreadThreadParents
+            }
+        if (pending.isEmpty()) return
+        unreadThreadParentsInFlight = true
+        unreadThreadParentsRequested += pending
+        try {
+            val result = dataSource.fetchUnreadFollowedThreads()
+            if (_state.value.payload.resolveThreadRouteIdentity() != routeIdentity) {
+                diagnosticsLogger?.invoke("thread_unread_thread_parents_drop reason=route_changed")
+                return
+            }
+            val threads = (result as? DataResult.Content)?.data?.threads
+            if (threads == null) {
+                diagnosticsLogger?.invoke(
+                    "thread_unread_thread_parents_result result=${result?.let { it::class.simpleName } ?: "unavailable"} " +
+                        "requested=${pending.size}"
+                )
+                return
+            }
+            val resolved = threads.toThreadUnreadThreadParents(channelId)
+            diagnosticsLogger?.invoke(
+                "thread_unread_thread_parents_result result=content requested=${pending.size} " +
+                    "resolved=${pending.count { it in resolved }} channelThreads=${resolved.size}"
+            )
+            val latest = _state.value
+            val merged = latest.unreadThreadParents + resolved
+            if (merged != latest.unreadThreadParents) {
+                reduceState(latest.copy(unreadThreadParents = merged))
+            }
+        } finally {
+            unreadThreadParentsInFlight = false
+        }
+    }
+
+    /**
+     * Web ChatPanel `jumpToMessage`. A loaded target is focused in place; otherwise, as
+     * [jumpToLatest] replaces the window with the tail, the route intent takes the target as its
+     * focus and one refresh loads the messages around it (the focused-route context load), after
+     * which the page's focus anchor scrolls to and highlights it.
+     */
+    private suspend fun jumpToMessage(messageId: String, switchToTab: String?) {
+        val target = messageId.trim().takeIf { it.isNotBlank() } ?: return
+        val initial = _state.value.payload
+        if (initial.messages.any { it.id == target }) {
+            focusMessage(target, switchToTab)
+            return
+        }
+        val tab = switchToTab?.takeIf { it.isNotBlank() }
+        val nonce = nextThreadFocusedMessageRequestNonce()
+        val focusRoute =
+            (lastRoutePayload ?: initial.withoutThreadTimelineContent())
+                .withRouteIntentFrom(initial)
+                .copy(
+                    selectedTab = tab ?: initial.selectedTab,
+                    focusedMessageId = target,
+                    focusedMessageRequestNonce = nonce,
+                )
+                .withoutTransientLocalSendingMessages()
+        lastRoutePayload = focusRoute
+        reducePayloadPatch { current ->
+            current.copy(
+                selectedTab = tab ?: current.selectedTab,
+                focusedMessageId = target,
+                focusedMessageRequestNonce = nonce,
+            )
+        }
+        // Invalidate an older focused refresh or incremental page request, as jumpToLatest does.
+        loadJob?.cancel()
+        loadJob = null
+        secondaryTimelineRefreshJob?.cancel()
+        secondaryTimelineRefreshJob = null
+        pendingSecondaryTimelineApply = null
+        val staleToken = advanceRouteStaleToken()
+        diagnosticsLogger?.invoke(
+            "thread_jump_to_message result=requested target=${target.take(8)} visibleMessages=${initial.messages.size}"
+        )
+        refresh(basePayload = focusRoute, staleToken = staleToken)
+        val loaded = _state.value.payload.messages.any { it.id == target }
+        diagnosticsLogger?.invoke(
+            "thread_jump_to_message result=${if (loaded) "applied" else "failed"} target=${target.take(8)} " +
+                "messages=${_state.value.payload.messages.size}"
+        )
+    }
+
     private suspend fun updateChannelProfile(intent: SharedThreadIntent.UpdateChannelProfile) {
         val current = _state.value
         val routeIdentity = current.payload.resolveThreadRouteIdentity()
@@ -11150,6 +11282,8 @@ internal class SharedThreadViewModel(
     fun replyMetadataFlow(): Flow<Map<String, ThreadReplyMetadata>> = store.replyMetadataFlow()
 
     fun highlightedMentionsFlow(): Flow<Set<String>> = store.highlightedMentionsFlow()
+
+    fun unreadThreadParentsFlow(): Flow<Map<String, ThreadUnreadThreadParent>> = store.unreadThreadParentsFlow()
 
     fun dispatch(intent: SharedThreadIntent) {
         store.dispatch(intent)

@@ -33,6 +33,8 @@ data class InboxItem(
     val parentMessagePreview: String? = null,
     val parentMessageSenderId: String? = null,
     val parentMessageSenderKind: MemberKind? = null,
+    /** Followed-thread rows: when the parent message was posted (its place in the parent channel). */
+    val parentMessageCreatedAt: String? = null,
     val latestActivityMessageId: MessageId? = null,
     val latestActivityPreview: String? = null,
     val latestActivityAt: String? = null,

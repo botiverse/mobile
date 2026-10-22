@@ -250,6 +250,17 @@ interface ConversationRepository {
     ): DataResult<ThreadSnapshot> = getThread(threadId, includeFollowedSummaries = false, limit = limit)
     suspend fun getChannelThreads(channelId: ChannelId, limit: Int = DEFAULT_PAGE_LIMIT): DataResult<ThreadListSnapshot>
     suspend fun getFollowedThreads(serverId: ServerId, limit: Int = DEFAULT_PAGE_LIMIT): DataResult<ThreadListSnapshot>
+
+    /**
+     * The followed threads with unread replies, every channel (`threads/followed?unreadOnly=1`): the
+     * channel page's unread-thread pill resolves parents it has not loaded from here (web
+     * `useParentUnreadThreadsForJump`). An older server ignores `unreadOnly`; callers filter on
+     * `unreadCount` themselves.
+     */
+    suspend fun getUnreadFollowedThreads(
+        serverId: ServerId,
+        limit: Int = UNREAD_FOLLOWED_THREADS_LIMIT
+    ): DataResult<ThreadListSnapshot> = getFollowedThreads(serverId, limit)
     suspend fun createOrOpenThread(channelId: ChannelId, parentMessageId: MessageId): DataResult<ThreadActionResult>
     suspend fun followThread(parentMessageId: MessageId): DataResult<ThreadActionResult>
     suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult>
@@ -673,6 +684,9 @@ enum class InboxFilter(val wireValue: String) {
 }
 
 const val DEFAULT_PAGE_LIMIT = 30
+
+/** Server `FOLLOWED_THREADS_MAX_LIMIT` (routes/channels.ts). */
+const val UNREAD_FOLLOWED_THREADS_LIMIT = 200
 
 data class AccountProfileUpdateRequest(
     val displayName: String,
