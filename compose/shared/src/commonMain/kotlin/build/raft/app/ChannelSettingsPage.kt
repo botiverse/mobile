@@ -234,7 +234,9 @@ private fun ChannelSettingsPageScreen() {
     val channel = settingsState.channel.takeIf { authorityAccepted }
     val memberSlice = settingsState.memberSlice
     val canManage = settingsState.canManage
-    val pinned = settingsState.isPinned(route.channelId.value)
+    // Optimistic: a tapped switch shows its new value while the request runs.
+    val pinned = settingsState.displayPinned(route.channelId.value)
+    val muted = settingsState.displayMuted
     var dialog by remember(route) { mutableStateOf<ChannelSettingsDialog?>(null) }
     val longMessageCollapseSetting =
         rememberRaftLongMessageCollapseConversationSetting(
@@ -330,6 +332,7 @@ private fun ChannelSettingsPageScreen() {
                         channel = channel,
                         memberSlice = memberSlice,
                         pinned = pinned,
+                        muted = muted,
                         longMessageCollapseSetting = longMessageCollapseSetting,
                         canManage = canManage,
                         canStopAllAgents =
@@ -458,6 +461,7 @@ private fun ChannelSettingsContent(
     channel: HomeChannelRow,
     memberSlice: SharedServerChannelMembersSlice,
     pinned: Boolean,
+    muted: Boolean,
     longMessageCollapseSetting: RaftLongMessageCollapseConversationSetting,
     canManage: Boolean,
     canStopAllAgents: Boolean,
@@ -498,7 +502,7 @@ private fun ChannelSettingsContent(
         item(key = "preferences") {
             ChannelPreferencesCard(
                 muteSupported = channel.activityMuteSupported,
-                muted = channel.activityMuted,
+                muted = muted,
                 pinned = pinned,
                 enabled = writeActionsEnabled,
                 longMessageCollapseSetting = longMessageCollapseSetting,

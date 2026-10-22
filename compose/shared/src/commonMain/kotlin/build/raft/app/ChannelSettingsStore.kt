@@ -208,6 +208,13 @@ internal data class ChannelSettingsState(
     val refreshing: Boolean = false,
     val writeActionsEnabled: Boolean = false,
     val actionInFlight: ChannelSettingsAction? = null,
+    /**
+     * Optimistic toggles (artin: the switches waited for the server): the value a tap asked for
+     * while its request runs, shown at once and dropped when the request ends (the result then
+     * holds the value, or the failure puts the old one back).
+     */
+    val pendingMuted: Boolean? = null,
+    val pendingPinned: Boolean? = null,
     val profileStatus: ChannelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
     val profileErrorCode: String? = null,
     val errorCode: String? = null,
@@ -217,6 +224,13 @@ internal data class ChannelSettingsState(
         sidebarOrder?.typedPinnedOrLegacy()?.any {
             it.kind == "channel" && it.id == channelId
         } == true
+
+    /** The mute switch: the pending value of a tap in flight, else the channel's. */
+    val displayMuted: Boolean
+        get() = pendingMuted ?: (channel?.activityMuted == true)
+
+    /** The pin switch: the pending value of a tap in flight, else the sidebar order's. */
+    fun displayPinned(channelId: String): Boolean = pendingPinned ?: isPinned(channelId)
 }
 
 internal sealed interface ChannelSettingsIntent {
@@ -236,7 +250,7 @@ internal sealed interface ChannelSettingsIntent {
 internal interface ChannelSettingsDataSource {
     suspend fun load(): DataResult<ChannelSettingsSnapshot>
     suspend fun setMuted(muted: Boolean): DataResult<ChannelActivityMuteSettings>
-    suspend fun togglePinned(): DataResult<SettingsServerSidebarOrderSnapshot>
+    suspend fun setPinned(pinned: Boolean): DataResult<SettingsServerSidebarOrderSnapshot>
     suspend fun updateProfile(name: String, description: String): DataResult<ChannelProfileUpdateResult>
     suspend fun makePrivate(): DataResult<Unit>
     suspend fun archive(): DataResult<Unit>
@@ -294,16 +308,16 @@ internal class RealChannelSettingsDataSource(
             channelRepository(networkClient).setChannelActivityMuted(route.channelId, muted)
         }
 
-    override suspend fun togglePinned(): DataResult<SettingsServerSidebarOrderSnapshot> =
+    override suspend fun setPinned(pinned: Boolean): DataResult<SettingsServerSidebarOrderSnapshot> =
         runner.run { _, networkClient ->
             val settingsRepository = settingsRepository(networkClient)
             val currentResult = settingsRepository.getServerSidebarOrder(route.serverId)
             val current = (currentResult as? DataResult.Content)?.data
                 ?: return@run currentResult.withoutContent()
             val target = SettingsServerSidebarPinnedItem(kind = "channel", id = route.channelId.value)
-            val pinned = current.typedPinnedOrLegacy()
-            val nextPinned =
-                if (pinned.any { it == target }) pinned.filterNot { it == target } else pinned + target
+            // The value the switch shows, not a flip of the server's: a tap is idempotent.
+            val others = current.typedPinnedOrLegacy().filterNot { it == target }
+            val nextPinned = if (pinned) others + target else others
             settingsRepository.updateServerSidebarOrder(
                 serverId = route.serverId,
                 request = SettingsServerSidebarOrderUpdateRequest(pinned = nextPinned),
@@ -412,12 +426,18 @@ internal class ChannelSettingsStore(
             ChannelSettingsIntent.Refresh -> load(force = true)
             ChannelSettingsIntent.ToggleMute -> {
                 if (!mutableState.value.writeActionsEnabled) return
-                val channel = mutableState.value.channel ?: return
-                launchAction(ChannelSettingsAction.Mute) { dataSource.setMuted(!channel.activityMuted) }
+                if (mutableState.value.channel == null) return
+                val muted = !mutableState.value.displayMuted
+                launchAction(ChannelSettingsAction.Mute, optimistic = { copy(pendingMuted = muted) }) {
+                    dataSource.setMuted(muted)
+                }
             }
             ChannelSettingsIntent.TogglePin -> {
                 if (!mutableState.value.writeActionsEnabled) return
-                launchAction(ChannelSettingsAction.Pin, dataSource::togglePinned)
+                val pinned = !mutableState.value.displayPinned(route.channelId.value)
+                launchAction(ChannelSettingsAction.Pin, optimistic = { copy(pendingPinned = pinned) }) {
+                    dataSource.setPinned(pinned)
+                }
             }
             is ChannelSettingsIntent.UpdateProfile -> updateProfile(intent)
             ChannelSettingsIntent.MakePrivate -> {
@@ -592,6 +612,7 @@ internal class ChannelSettingsStore(
 
     private fun <T> launchAction(
         action: ChannelSettingsAction,
+        optimistic: ChannelSettingsState.() -> ChannelSettingsState = { this },
         call: suspend () -> DataResult<T>,
     ) {
         if (
@@ -601,7 +622,7 @@ internal class ChannelSettingsStore(
         ) {
             return
         }
-        mutableState.value = mutableState.value.copy(actionInFlight = action, effect = null)
+        mutableState.value = mutableState.value.copy(actionInFlight = action, effect = null).optimistic()
         launchMutation(action, call)
     }
 
@@ -641,6 +662,7 @@ internal class ChannelSettingsStore(
                                 activityNotificationPreference = settings.activityNotificationPreference
                             ),
                         actionInFlight = null,
+                        pendingMuted = null,
                         effect = ChannelSettingsEffect.Updated(action),
                     )
                 }
@@ -648,6 +670,7 @@ internal class ChannelSettingsStore(
                     current.copy(
                         sidebarOrder = value as SettingsServerSidebarOrderSnapshot,
                         actionInFlight = null,
+                        pendingPinned = null,
                         effect = ChannelSettingsEffect.Updated(action),
                     )
                 ChannelSettingsAction.Profile -> {
@@ -707,6 +730,9 @@ internal class ChannelSettingsStore(
         mutableState.value =
             mutableState.value.copy(
                 actionInFlight = null,
+                // A failed toggle shows its old value again.
+                pendingMuted = null,
+                pendingPinned = null,
                 profileStatus =
                     if (action == ChannelSettingsAction.Profile) {
                         ChannelProfileUpdateStatus.Failed
