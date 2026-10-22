@@ -40,13 +40,16 @@ class ThreadMathMessageScreenshotTest {
     @Test
     fun mathDark() = capture("thread.math.dark", RaftAppAppearance.Dark)
 
-    private fun capture(name: String, appearance: RaftAppAppearance) =
+    private fun capture(name: String, appearance: RaftAppAppearance) {
+        // The formulas lay out once the KaTeX font bytes are read; until then they show as code.
+        kotlinx.coroutines.runBlocking { build.raft.app.markdown.awaitRaftMathFonts() }
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
                 RaftDesignSystemTheme { MathRows() }
             }
         }
+    }
 }
 
 private val mathBody =

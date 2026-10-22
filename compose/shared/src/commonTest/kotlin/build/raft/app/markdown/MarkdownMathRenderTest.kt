@@ -73,6 +73,24 @@ class MarkdownMathRenderTest {
         assertFalse(raftMathFormulaRenders("{".repeat(RaftMathFormulas.MAX_NESTING + 1) + "x" + "}".repeat(RaftMathFormulas.MAX_NESTING + 1)))
     }
 
+    @Test
+    fun escapedLineBreakDecodingLeavesFormulasAndCodeAlone() {
+        // One line, so a literal `\n` would otherwise be decoded as an escaped line break.
+        val oneLine = "\$a \\neq b\$ and \$\\nu\$"
+        assertEquals(oneLine, oneLine.normalizeThreadMarkdownBody())
+        assertEquals(listOf("inline:\\nu", "inline:a \\neq b"), inlineFormulas(oneLine.normalizeThreadMarkdownBody()))
+        // Outside them, escaped line breaks are still decoded.
+        assertEquals(
+            "x \$\\nu\$ and `a\\nb`\ny",
+            "x \$\\nu\$ and `a\\nb`\\ny".normalizeThreadMarkdownBody(),
+        )
+        // An escaped `$$` block becomes a block once decoded.
+        assertEquals("\$\$\nx\n\$\$", "\$\$\\nx\\n\$\$".normalizeThreadMarkdownBody())
+    }
+
+    private fun inlineFormulas(body: String): List<String> =
+        render(body).raftMarkdownInlineContentIds().map { "inline:" + it.removePrefix(RAFT_INLINE_MATH_CONTENT_ID_PREFIX) }.sorted()
+
     /** The paragraph as the message renderer builds it. */
     private fun render(body: String): AnnotatedString {
         val parserContent = MarkdownParserContent.from(body).parserContent

@@ -178,6 +178,11 @@ Known difference: code spans are shielded at the lexer, so a backtick pair
 always wins over math. On the web whichever opens first wins, so
 ``$a `b$` c`` is math there and a code span here.
 
+Known difference: inside a formula, `\$` is an escaped dollar here and the
+formula goes on, so `$a\$b$` is the formula `a\$b`. On the web micromark does
+not read escapes inside math, so the formula ends at that `$` (`a\`) and `b$`
+is text. Mobile keeps its reading: `\$` is how TeX writes a dollar.
+
 Rendering (`RaftMarkdownMath.kt`): KaTeX layout with the KaTeX 0.19.0 fonts,
 1.21× the surrounding text as KaTeX's CSS, in the text colour; inline math on
 the text baseline, blocks centred and scrolling sideways. A formula the web's

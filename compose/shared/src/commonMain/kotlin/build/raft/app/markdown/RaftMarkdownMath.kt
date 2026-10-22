@@ -8,7 +8,11 @@ import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
@@ -27,7 +31,9 @@ import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
 import build.raft.app.markdown.RaftMathFormulas.MAX_HEIGHT_EM
 import build.raft.app.markdown.RaftMathFormulas.MAX_WIDTH_EM
+import build.raft.designsystem.theme.RaftKatexFontBytes
 import build.raft.designsystem.theme.RaftKatexFonts
+import build.raft.designsystem.theme.loadRaftKatexFontBytes
 import build.raft.designsystem.theme.rememberRaftKatexFonts
 import com.hrm.latex.parser.LatexParser
 import com.hrm.latex.parser.model.LatexNode
@@ -41,6 +47,11 @@ import com.tencent.kuiklybase.markdown.compose.LocalMarkdownColors
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownTypography
 import com.tencent.kuiklybase.markdown.compose.elements.material.MarkdownBasicText
 import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.atomicfu.locks.synchronized
 
 /*
@@ -55,7 +66,8 @@ import kotlinx.atomicfu.locks.synchronized
  *  - it is drawn in the text colour, so it follows the theme;
  *  - a formula KaTeX would reject shows its source in KaTeX's errorColor (#cc0000), as the web
  *    does with `throwOnError: false`; until it is laid out it shows in the code style;
- *  - nothing loads until a formula is shown: the fonts are composed with the first formula.
+ *  - nothing loads until a formula is shown: the fonts are composed, and their bytes read, with
+ *    the first formula; until then it shows as its source in the code style (web: KaTeX loading).
  */
 
 internal const val RAFT_INLINE_MATH_CONTENT_ID_PREFIX = "raft.markdown.math:"
@@ -192,7 +204,7 @@ private object RaftMathLayouts {
 private fun raftMathTex(source: String, display: Boolean): String =
     if (display) "\\displaystyle $source" else "\\textstyle $source"
 
-private fun RaftKatexFonts.toLatexFontFamilies(): LatexFontFamilies =
+private fun RaftKatexFonts.toLatexFontFamilies(bytes: RaftKatexFontBytes): LatexFontFamilies =
     LatexFontFamilies(
         main = main,
         math = math,
@@ -206,16 +218,54 @@ private fun RaftKatexFonts.toLatexFontFamilies(): LatexFontFamilies =
         size2 = size2,
         size3 = size3,
         size4 = size4,
+        mainBytes = bytes.main,
+        mathBytes = bytes.math,
+        amsBytes = bytes.ams,
+        size1Bytes = bytes.size1,
+        size2Bytes = bytes.size2,
+        size3Bytes = bytes.size3,
+        size4Bytes = bytes.size4,
     )
 
+/**
+ * The KaTeX font bytes, read once per process when the first formula is shown (the web loads
+ * KaTeX on the first formula too). Layout waits for them: without the outlines the library
+ * guesses glyph bounds and draws `\sqrt{2}` with a radical far too tall.
+ */
+private object RaftMathFontBytes {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    var loaded: RaftKatexFontBytes? by mutableStateOf(null)
+        private set
+
+    private val load: Deferred<Unit> by lazy {
+        scope.async { loaded = loadRaftKatexFontBytes() }
+    }
+
+    fun start() {
+        load
+    }
+
+    suspend fun await() {
+        load.await()
+    }
+}
+
+/** Starts the KaTeX font read and waits for it (tests and warm-up; rendering never waits). */
+internal suspend fun awaitRaftMathFonts() {
+    RaftMathFontBytes.await()
+}
+
+/** The formula config, or null until the KaTeX fonts are ready (the formula shows as code). */
 @Composable
-private fun rememberRaftMathConfig(textSize: TextUnit, color: Color): LatexConfig {
+private fun rememberRaftMathConfig(textSize: TextUnit, color: Color): LatexConfig? {
     val fonts = rememberRaftKatexFonts()
-    return remember(fonts, textSize, color) {
+    LaunchedEffect(Unit) { RaftMathFontBytes.start() }
+    val bytes = RaftMathFontBytes.loaded ?: return null
+    return remember(fonts, bytes, textSize, color) {
         LatexConfig(
             fontSize = textSize * RAFT_MATH_FONT_SCALE,
             theme = LatexTheme.light(color = color, backgroundColor = Color.Transparent),
-            fontFamilies = fonts.toLatexFontFamilies(),
+            fontFamilies = fonts.toLatexFontFamilies(bytes),
         )
     }
 }
@@ -243,7 +293,7 @@ internal fun raftInlineMathContent(
         }
     if (sources.isEmpty()) return emptyMap()
     val color = style.color.takeOrElse { fallbackColor }
-    val config = rememberRaftMathConfig(style.raftMathTextSize(), color)
+    val config = rememberRaftMathConfig(style.raftMathTextSize(), color) ?: return emptyMap()
     val measurer = rememberLatexMeasurer(config)
     val density = LocalDensity.current
     val fontSizePx = with(density) { config.fontSize.toPx() }
@@ -299,6 +349,11 @@ internal fun RaftDisplayMath(source: String, style: TextStyle) {
             return@Box
         }
         val config = rememberRaftMathConfig(style.raftMathTextSize(), color)
+        if (config == null) {
+            // web: before KaTeX loads, the source in a mono `pre`.
+            RaftMathSourceText(source, style, color, LocalMarkdownTypography.current.code.fontFamily)
+            return@Box
+        }
         val measurer = rememberLatexMeasurer(config)
         val fontSizePx = with(LocalDensity.current) { config.fontSize.toPx() }
         val tex = raftMathTex(source, display = true)

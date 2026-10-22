@@ -95,3 +95,38 @@ fun rememberRaftKatexFonts(): RaftKatexFonts {
         )
     }
 }
+
+/**
+ * The bytes of the faces whose glyph outlines decide math layout (radical and delimiter sizes,
+ * ink bounds). Without them the layout estimates and picks too tall a radical for `\sqrt{2}`.
+ */
+class RaftKatexFontBytes(
+    val main: ByteArray?,
+    val math: ByteArray?,
+    val ams: ByteArray?,
+    val size1: ByteArray?,
+    val size2: ByteArray?,
+    val size3: ByteArray?,
+    val size4: ByteArray?,
+)
+
+/** Reads [RaftKatexFontBytes] from the bundled fonts; a face that cannot be read is null. */
+suspend fun loadRaftKatexFontBytes(): RaftKatexFontBytes {
+    suspend fun read(name: String): ByteArray? =
+        try {
+            Res.readBytes("font/$name.ttf")
+        } catch (cancelled: kotlin.coroutines.cancellation.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+    return RaftKatexFontBytes(
+        main = read("katex_main_regular"),
+        math = read("katex_math_italic"),
+        ams = read("katex_ams_regular"),
+        size1 = read("katex_size1_regular"),
+        size2 = read("katex_size2_regular"),
+        size3 = read("katex_size3_regular"),
+        size4 = read("katex_size4_regular"),
+    )
+}
