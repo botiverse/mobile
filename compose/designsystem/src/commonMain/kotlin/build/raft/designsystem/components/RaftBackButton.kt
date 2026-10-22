@@ -15,10 +15,11 @@ object RaftBackButtonDefaults {
     val IconSize: Dp = 22.dp
 
     /**
-     * raft `panelHeadEdges` + Back `-ml-[13px]`: the button sits this far from the screen
-     * edge, which puts its 22dp arrow 14dp in and mirrors the last trailing action.
+     * raft-ui 0.14 "ends of a header": the icon box, not the button, lands on the content
+     * margin, 16dp from a phone's edge. The 44dp button centres its 22dp arrow 11dp in, so it
+     * sits 5dp from the edge (was 3dp, which put the arrow 14dp in).
      */
-    val EdgeInset: Dp = 3.dp
+    val EdgeInset: Dp = 5.dp
 }
 
 /**

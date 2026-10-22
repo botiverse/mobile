@@ -1870,7 +1870,8 @@ private val ThreadHeaderActionLabelMinWidth = 44.dp
 // raft `panelHeadEdges` on a phone + `panelHeadActions mr-[-3px]` / Back `-ml-[13px]`: the
 // Back button and the last trailing action both sit 3dp from the screen edge, which puts each
 // 22dp icon box 14dp in and makes the two ends mirror (foundations/alignment "Top bar icon buttons").
-private val ThreadHeaderEdgeInset = 3.dp
+// raft-ui 0.14: Back and the last trailing action keep their 22dp glyph boxes on the 16dp line.
+private val ThreadHeaderEdgeInset = RaftBackButtonDefaults.EdgeInset
 // The inline search bar keeps its own compact controls (former 30dp head action, 16dp glyph)
 // so the 44dp header PanelAction does not inflate the bar under the search field.
 private val ThreadInlineSearchActionSize = 30.dp

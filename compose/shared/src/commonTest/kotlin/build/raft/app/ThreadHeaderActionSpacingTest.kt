@@ -14,8 +14,8 @@ class ThreadHeaderActionSpacingTest {
     fun headerActionsAre44dpPanelActionsWith22dpGlyphs() {
         assertEquals(44f, threadHeaderActionSizeDp())
         assertEquals(22f, threadHeaderActionIconSizeDp())
-        // Back and the last trailing action sit 3dp from the edge, so both glyph boxes are 14dp in.
-        assertEquals(14f, threadHeaderEdgeInsetDp() + (threadHeaderActionSizeDp() - threadHeaderActionIconSizeDp()) / 2f)
+        // Back and the last trailing action sit 5dp from the edge, so both glyph boxes are 16dp in.
+        assertEquals(16f, threadHeaderEdgeInsetDp() + (threadHeaderActionSizeDp() - threadHeaderActionIconSizeDp()) / 2f)
     }
 
     @Test
