@@ -172,4 +172,27 @@ internal fun interface ThreadDurablePageExtender {
         baseline: CanonicalMessageV2EnterBaseline?,
         stillCurrent: () -> Boolean,
     ) = applyLatestPage(partition, channelId, rawMessages, requestedLimit, replyParent, stillCurrent)
+
+    /**
+     * Task #14 part C: [rawMessages] is the `messages/context/{anchor}` page an anchored open (Activity row,
+     * `JumpToMessage`) fetched — the server's contiguous block around [anchorMessageId], with its own edge
+     * facts [hasOlder] / [hasNewer]. The store keeps ONE contiguous window per scope (no islands), so the
+     * page is persisted only when it provably joins the stored window: a fact stored inside the window is
+     * on the page (both blocks contiguous ⇒ their union is). Only facts OUTSIDE the stored window's range are
+     * added (insert-only): inside the range the window already is the complete record, so a message missing
+     * there was deleted, and a stored fact is never overwritten by this page. A page that does not join is
+     * not written (`not_joined`): replacing the window would drop newer facts, and marking the gap
+     * continuous would be a claim nothing proves. Never creates a window. Same admission as
+     * [extendWithAdjacentPage]. Implementations that do not persist pages write nothing.
+     */
+    suspend fun persistContextPage(
+        partition: DurablePartitionKey,
+        channelId: SyncScopeId,
+        anchorMessageId: String,
+        rawMessages: JsonArray,
+        hasOlder: Boolean,
+        hasNewer: Boolean,
+        replyParent: ThreadDurableReplyParent?,
+        stillCurrent: () -> Boolean,
+    ) = Unit
 }

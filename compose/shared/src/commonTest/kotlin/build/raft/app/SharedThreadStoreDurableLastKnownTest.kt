@@ -405,6 +405,89 @@ class SharedThreadStoreDurableLastKnownTest {
     }
 
     @Test
+    fun anchoredOpenWhoseWindowHoldsTheAnchorStandsInWithThePageAroundItBeforeTheNetwork() = runBlocking {
+        // Task #14 part C. 45 stored facts, anchor = seq 20: the first frame (captured before the network
+        // fetch runs) is the 30 facts around it (5..34), focused on it, with older paging open.
+        val logs = mutableListOf<String>()
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+        val loadingStateApplied = CompletableDeferred<RaftThreadScreenPayload>()
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource(
+                    api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
+                    reader = FakeReader(frames = mapOf(partition(ownerA) to largeFrame(count = 45))),
+                    identity = { ownerA },
+                    diagnosticsLogger = logs::add,
+                ),
+                scope = scope,
+                afterRefreshLoadingStateApplied = { payload -> loadingStateApplied.complete(payload) },
+            )
+        try {
+            store.accept(SharedThreadIntent.Start(basePayload().copy(focusedMessageId = "v2-20")))
+            val firstFrame = loadingStateApplied.await()
+            assertTrue(firstFrame.durableLastKnown)
+            assertEquals((5..34).map { "body $it" }, firstFrame.messages.map { it.body })
+            assertEquals("v2-20", firstFrame.focusedMessageId)
+            assertTrue(firstFrame.canLoadMoreBefore, "facts 1..4 are stored below the page")
+            assertFalse(firstFrame.canLoadMoreAfter)
+            assertTrue(
+                logs.any { it == "thread_anchor_open source=durable_window threadId=channel-1 anchor=v2-20 found=true" },
+                logs.toString(),
+            )
+            assertTrue(logs.any { "outcome=frame" in it && "messages=30" in it && "anchored=true" in it }, logs.toString())
+            // The network failed: the anchored stand-in stays.
+            assertEquals((5..34).map { "body $it" }, store.state.value.payload.messages.map { it.body })
+        } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun anchoredOpenWhoseWindowLacksTheAnchorKeepsTheNewestPage() = runBlocking {
+        // Twin of the test above: identical frame and wiring, the anchor is not a stored fact.
+        val logs = mutableListOf<String>()
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+        val loadingStateApplied = CompletableDeferred<RaftThreadScreenPayload>()
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource(
+                    api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
+                    reader = FakeReader(frames = mapOf(partition(ownerA) to largeFrame(count = 45))),
+                    identity = { ownerA },
+                    diagnosticsLogger = logs::add,
+                ),
+                scope = scope,
+                afterRefreshLoadingStateApplied = { payload -> loadingStateApplied.complete(payload) },
+            )
+        try {
+            store.accept(SharedThreadIntent.Start(basePayload().copy(focusedMessageId = "v2-missing")))
+            val firstFrame = loadingStateApplied.await()
+            assertTrue(firstFrame.durableLastKnown)
+            assertEquals((16..45).map { "body $it" }, firstFrame.messages.map { it.body })
+            assertEquals("v2-missing", firstFrame.focusedMessageId)
+            assertTrue(
+                logs.any { it == "thread_anchor_open source=durable_window threadId=channel-1 anchor=v2-missing found=false" },
+                logs.toString(),
+            )
+            assertTrue(logs.any { "outcome=frame" in it && "anchored=false" in it }, logs.toString())
+        } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun standInRangeCentersTheAnchorAndStaysFullAtTheWindowEdges() {
+        assertEquals(15 until 45, durableStandInRange(windowSize = 45, anchorIndex = -1, pageSize = 30))
+        assertEquals(4 until 34, durableStandInRange(windowSize = 45, anchorIndex = 19, pageSize = 30))
+        assertEquals(0 until 30, durableStandInRange(windowSize = 45, anchorIndex = 2, pageSize = 30))
+        assertEquals(15 until 45, durableStandInRange(windowSize = 45, anchorIndex = 44, pageSize = 30))
+        assertEquals(0 until 12, durableStandInRange(windowSize = 12, anchorIndex = 5, pageSize = 30))
+        assertTrue(durableStandInRange(windowSize = 0, anchorIndex = -1, pageSize = 30).isEmpty())
+    }
+
+    @Test
     fun frameOfAnotherSurfaceKindIsRefusedAndLogged() = runBlocking {
         // Positive control: a "channel" frame renders on the channel route (same logger wiring).
         val controlLogs = mutableListOf<String>()
