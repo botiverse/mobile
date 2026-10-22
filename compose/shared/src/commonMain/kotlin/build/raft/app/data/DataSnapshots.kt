@@ -1767,13 +1767,6 @@ data class SettingsMobileSnapshot(
             statusLabel = "Off",
             detail = "Open a message Thread by tapping its body once. When off, use the replies action or message menu."
         ),
-    val threadUnreadJump: SettingsMobileToggleSnapshot =
-        SettingsMobileToggleSnapshot(
-            enabled = false,
-            available = true,
-            statusLabel = "Off",
-            detail = "Show the floating unread-message jump control in Thread. Keep this off while the reading-window behavior is experimental."
-        ),
     val newMessageMenu: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
             enabled = false,

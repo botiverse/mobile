@@ -668,7 +668,11 @@
     <string name="thread_audio_attachment_fallback_name">音频附件</string>
     <string name="thread_audio_file_label">音频文件</string>
     <string name="thread_action_back_to_bottom">回到底部</string>
-    <string name="thread_action_unread_count">↓ %1$d 条新消息</string>
+    <string name="thread_jump_new_messages_one">1 条新消息</string>
+    <string name="thread_jump_new_messages_many">%1$d 条新消息</string>
+    <string name="thread_jump_next_unread_thread">下一个未读 thread（%1$d）</string>
+    <string name="thread_jump_earliest_unread_thread">最早的未读 thread（%1$d）</string>
+    <string name="thread_jump_unread_thread_dismiss">关闭</string>
     <string name="thread_label_saved">已收藏</string>
     <string name="thread_state_refreshing_original">正在刷新原消息…</string>
     <string name="thread_error_refresh_original">刷新失败：%1$s</string>
@@ -1758,8 +1762,6 @@
     <string name="settings_mobile_server_drawer_detail">在首页使用新的多服务器左侧抽屉。关闭后继续使用当前的服务器切换浮层。</string>
     <string name="settings_mobile_new_message_menu">新消息菜单</string>
     <string name="settings_mobile_new_message_menu_detail">长按消息时显示快捷表情和常用操作的双层紧凑菜单；关闭后使用经典消息菜单。</string>
-    <string name="settings_mobile_thread_unread_jump">Thread 未读跳转</string>
-    <string name="settings_mobile_thread_unread_jump_detail">在 Thread 中显示浮动未读消息跳转控件。可见窗口读取行为仍在试验期间，请保持关闭。</string>
     <string name="settings_mobile_conversation_forward_gesture">对话前进手势</string>
     <string name="settings_mobile_conversation_forward_gesture_detail">从对话返回首页后，从屏幕右边缘向左滑动，可重新打开最近的频道或私聊。</string>
     <string name="settings_mobile_conversation_forward_gesture_accessibility">Beta。控制对话前进手势。从对话返回首页后，从屏幕右边缘向左滑动，可重新打开最近的频道或私聊。</string>

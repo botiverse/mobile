@@ -202,7 +202,8 @@ Other checks:
 | `RaftSheet`, `RaftSheetSurface` | Drawer (bottom sheet) | Done | Top radius 16, stacked actions, slides up |
 | `RaftDialogSheet`, `RaftDialogSheetSurface` | Dialog, "On a phone" (2026-10-21) | Done | A phone dialog with a long list, several fields or steps: 90% of the window tall, top radius 16, slides up; 56dp head with × at the start, the title and the one commit button (32dp, primary) at the end, a seam under it, no footer; the content fills the rest and scrolls itself. A tap on the scrim does not close it; × and Back do |
 | `RaftToast` | Toast | Done | HUD surface (title only, icon, action with a 44dp touch target, description) and the pages' foreground banner on the popover surface |
-| `RaftGlyphIcon` | — | Done | The few Lucide icons the components draw (sort: `arrow-up-down`, `arrow-down-up`) |
+| `RaftMessageListJumpControls`, `RaftMessageListJumpPill`, `RaftMessageListJumpPillGroup`, `RaftMessageListJumpPillDismiss` | MessageList > Jump controls (wip) | Done | One pill for every jump (Back to Bottom, N New Messages, Next / Earliest Unread Thread (N)): Button `outline` / `md` (32dp, 1.5dp `line-strong` on `layer-card`, control radius, 13/18 bold, 16dp arrow, 12dp padding both sides), pressed `fill-pressed`, 44dp touch target. The group joins a dismiss (32dp square, no start edge, 16dp ✕ in `foreground-muted`, `foreground` pressed, its touch target reaching past its end only) on the pill's end edge. Controls: centred, 12dp from the list's bottom (or top) edge and sides; one row 8dp apart while it fits, else stacked 12dp apart with the first pill nearest the edge. No shadow, no animation |
+| `RaftGlyphIcon` | — | Done | The few Lucide icons the components draw (sort: `arrow-up-down`, `arrow-down-up`; jump: `arrow-down`, `arrow-up`) |
 | `RaftText` | — | Done | Text primitive |
 | Tabs drag-reorder, file list row, avatar picker, task card / board lane, toast host | | Not done | Later PRs |
 
@@ -343,6 +344,10 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
   The dialog's close button shows a "Close" tooltip; the web dialog's close button has
   none. An icon button with `onLongClick` gives the long press to that action and opens its
   tooltip only on hover.
+- **Jump pill focus ring on the joined edge.** A pill and its dismiss joined in a
+  `RaftMessageListJumpPillGroup` square their shared corners, but the keyboard focus ring
+  keeps the control radius on all four corners (the web's `shadow-focus` follows the
+  squared box). Touch never shows it.
 - **Small icon buttons.** raft-ui 0.10.3 renders `icon-xs` / `icon-sm` as `icon-md` (32dp)
   and its Button doc lists no smaller size. `RaftIconButtonSize.Sm` (28dp, 16dp icon) and
   `Xs` (24dp, 16dp icon) are the square buttons raft-ui draws inside components

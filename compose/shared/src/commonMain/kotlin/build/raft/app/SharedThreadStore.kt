@@ -7936,7 +7936,6 @@ internal class SharedThreadStore(
                     serverSeq = sinceSeq + 1L,
                 ),
             staleToken = staleToken,
-            tagAsGapRefill = false,
         )
         val after = _state.value.payload
         if (gapCatchUpRetryableFailures != failuresBefore || after.newerMessagesStatus == "error") {
@@ -9281,7 +9280,6 @@ internal class SharedThreadStore(
                 initialRequest = recoveryRequest,
                 staleToken = eventStaleToken,
                 recoveryId = recoveryId,
-                tagAsGapRefill = true,
             )
             return
         }
@@ -9722,7 +9720,6 @@ internal class SharedThreadStore(
                                         pageSize = result.data.requestedPageSize
                                     )
                                     .preserveStableTimelineFrom(currentPayload)
-                                    .withGapRefillTagFrom(currentPayload)
                             dataSource
                                 .cacheCanonicalPayload(merged, visiblePayloadOwnerScopeId)
                                 .withRouteContext(initial)
@@ -9822,7 +9819,7 @@ internal class SharedThreadStore(
             }
         }
         successorRecovery?.let { (successorInitial, request) ->
-            recoverRealtimeGap(successorInitial, request, staleToken, tagAsGapRefill = true)
+            recoverRealtimeGap(successorInitial, request, staleToken)
         }
         return outcome
     }
@@ -9899,7 +9896,7 @@ internal class SharedThreadStore(
                 serverSeq = serverSeq,
                 loading = false,
             ) ?: return
-        recoverRealtimeGap(initial, nextRequest, staleToken, tagAsGapRefill = true)
+        recoverRealtimeGap(initial, nextRequest, staleToken)
     }
 
     private suspend fun recoverRealtimeGapFromVisibleTail(replyCountGap: ReplyCountRealtimeGap) {
@@ -9924,7 +9921,6 @@ internal class SharedThreadStore(
                     serverSeq = sinceSeq + replyCountGap.replyCount.toLong().coerceAtLeast(1L)
             ),
             staleToken = staleToken,
-            tagAsGapRefill = true,
         )
     }
 
@@ -9952,10 +9948,6 @@ internal class SharedThreadStore(
                     serverSeq = sinceSeq + 1L
                 ),
             staleToken = staleToken,
-            // Resume/visible refresh arrivals are genuinely new to the user and
-            // keep counting toward ↓ x new (frozen task #232 contract); only
-            // foreground gap recovery is tagged as refill.
-            tagAsGapRefill = false,
             // Replies posted while backgrounded are not top-level messages, so the sync above can come
             // back empty while reply counts are stale (ad1df6b7): always re-read the reply summaries.
             backfillAfterRecovery = true,
@@ -9978,7 +9970,6 @@ internal class SharedThreadStore(
         initial: RaftThreadScreenPayload,
         initialRequest: RealtimeVisibleStreamGapRequest,
         staleToken: MviStaleToken,
-        tagAsGapRefill: Boolean,
         backfillAfterRecovery: Boolean = false,
     ) {
         val routeIdentity = initial.realtimeGapRouteIdentity()
@@ -10036,7 +10027,7 @@ internal class SharedThreadStore(
                     id
                 }
             } ?: return
-        runRealtimeGapRecovery(initial, initialRequest, staleToken, recoveryId, tagAsGapRefill)
+        runRealtimeGapRecovery(initial, initialRequest, staleToken, recoveryId)
     }
 
     /**
@@ -10064,7 +10055,6 @@ internal class SharedThreadStore(
         @Suppress("UNUSED_PARAMETER") initialRequest: RealtimeVisibleStreamGapRequest,
         staleToken: MviStaleToken,
         recoveryId: Long,
-        tagAsGapRefill: Boolean,
     ) {
         // Set when the response merged (or replaced in) messages the timeline did not have. Resume
         // arrivals land here, but nothing else re-triggers the secondary (thread summary / followed)
@@ -10212,12 +10202,6 @@ internal class SharedThreadStore(
                                         canLoadMoreAfter = true,
                                         newerMessagesStatus = "idle",
                                     )
-                            }.let { nextPayload ->
-                                if (tagAsGapRefill) {
-                                    nextPayload.withGapRefillTagFrom(currentPayload)
-                                } else {
-                                    nextPayload
-                                }
                             }
                         val selected =
                             dataSource
@@ -12966,22 +12950,6 @@ internal fun RaftThreadScreenPayload.gapCatchUpAnchorMessageId(): String? =
 /** Task #168 step 1: the gap catch-up page size — the enter snapshot's page, the server maximum. */
 internal const val SharedThreadGapCatchUpPageLimit: Int = 200
 
-/**
- * Task #232 arrival provenance: records IDs first merged by this payload
- * (relative to [base]) as gap-refill arrivals, which the ↓ x new projection
- * excludes. Live realtime events and resume refreshes never call this.
- */
-internal fun RaftThreadScreenPayload.withGapRefillTagFrom(
-    base: RaftThreadScreenPayload
-): RaftThreadScreenPayload {
-    val baseIds = base.messages.mapTo(mutableSetOf()) { it.id }
-    val added =
-        messages.mapTo(mutableSetOf()) { it.id } - baseIds
-    val newlyExcluded = added.filter { it.isNotBlank() }
-    if (newlyExcluded.isEmpty()) return this
-    return copy(gapRefillMessageIds = gapRefillMessageIds + newlyExcluded)
-}
-
 internal fun RaftThreadScreenPayload.mergePagedMessages(
     pageMessages: List<RaftThreadMessageItem>,
     before: Boolean,
@@ -13338,7 +13306,6 @@ internal fun RaftThreadScreenPayload.withContentSliceFrom(patch: RaftThreadScree
         durableLastKnown = patch.durableLastKnown,
         mainLoadFailed = patch.mainLoadFailed,
         messages = patch.messages,
-        gapRefillMessageIds = patch.gapRefillMessageIds,
         originMessage = patch.originMessage,
         originPreview = patch.originPreview,
         originParentMessageId = patch.originParentMessageId,

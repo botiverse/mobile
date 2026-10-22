@@ -1,6 +1,7 @@
 package build.raft.app
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -46,50 +47,15 @@ class ThreadBackToBottomPolicyTest {
     }
 
     @Test
-    fun unreadJumpButtonFailsClosedUntilTheLocalPreferenceIsEnabled() {
-        assertFalse(
-            shouldShowThreadUnreadJumpButton(
-                preferenceEnabled = false,
-                routeActive = true,
-                hostForeground = true,
-                unreadCount = 3,
-                targetMessageId = "message-3",
-                inlineSearchVisible = false,
-            )
-        )
-        assertTrue(
-            shouldShowThreadUnreadJumpButton(
-                preferenceEnabled = true,
-                routeActive = true,
-                hostForeground = true,
-                unreadCount = 3,
-                targetMessageId = "message-3",
-                inlineSearchVisible = false,
-            )
-        )
-    }
-
-    @Test
-    fun unreadJumpButtonRetainsExistingVisibilityGuardsWhenEnabled() {
-        assertFalse(
-            shouldShowThreadUnreadJumpButton(
-                preferenceEnabled = true,
-                routeActive = false,
-                hostForeground = true,
-                unreadCount = 1,
-                targetMessageId = "message-1",
-                inlineSearchVisible = false,
-            )
-        )
-        assertFalse(
-            shouldShowThreadUnreadJumpButton(
-                preferenceEnabled = true,
-                routeActive = true,
-                hostForeground = true,
-                unreadCount = 1,
-                targetMessageId = "message-1",
-                inlineSearchVisible = true,
-            )
+    fun visibleReadTailIgnoresBottomPaddingAndKeepsLastMessage() {
+        // Messages occupy list indexes 1..3; index 4 is the bottom scroll padding.
+        assertEquals(
+            2,
+            threadVisibleReadTailMessageIndex(
+                visibleListItemIndexes = listOf(1, 2, 3, 4),
+                firstMessageListItemIndex = 1,
+                messageCount = 3,
+            ),
         )
     }
 }

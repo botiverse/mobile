@@ -45,6 +45,7 @@ above and update the inventory when they establish a new ownership pattern.
 | Members Agent Activity tail | parked bottom feed | leaving tail/drag retires ownership; compliant |
 | Thread long-message expand/collapse anchor | direct expand/collapse action | toggled row visible + active-scroll fence; collapse yields to FollowingLatest; same-frame `requestScrollToItem` + controller `Anchor(message top)`; expanding (even the newest row) replaces FollowingLatest with that anchor, so auto-follow of new messages stops until the user returns to the bottom; compliant |
 | Thread header, inline search, back-to-bottom | direct user action | explicit viewport replacement; compliant |
+| Thread unread-thread jump pill (Next / Earliest Unread Thread) | direct user action | dispatches `SharedThreadIntent.FocusMessage(parent)`, so the scroll and highlight are owned by the route focused-message session below (nonce identity, user-scroll generation, active-scroll fence, bounded cap); the pill itself never scrolls; `ThreadJumpPillsTest` covers the target choice |
 | Thread share capture | bounded capture workflow | capture session owns viewport; compliant |
 | Thread older-page restore | key/offset restoration | captured/current user-scroll generation; compliant |
 | Thread ordinary bottom correction | parked bottom session | active-scroll + focused-owner fences; compliant |

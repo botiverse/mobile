@@ -131,7 +131,6 @@ class LocalPreferencesTest {
         assertEquals(true, snapshot.compactConsecutiveMessages)
         assertEquals(true, snapshot.longMessageCollapseEnabled)
         assertEquals(false, snapshot.singleTapOpensThreadEnabled)
-        assertEquals(false, snapshot.threadUnreadJumpEnabled)
         assertEquals(false, snapshot.newMessageMenuEnabled)
         assertEquals(false, snapshot.conversationForwardGestureEnabled)
         assertEquals(false, snapshot.foregroundMessageBannersEnabled)
@@ -145,18 +144,6 @@ class LocalPreferencesTest {
         assertEquals(TranslationModePreference.Manual, snapshot.translationMode)
         assertEquals(TranslationTargetLanguages.Browser, snapshot.translationTargetLanguage)
         assertTrue(snapshot.supportedAlignments.contains(MyMessageAlignmentPreference.Right))
-    }
-
-    @Test
-    fun threadUnreadJumpDefaultsOffButPreservesExplicitOn() = runBlocking {
-        val store = InMemoryRaftKeyValueStore()
-        val repository = PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(store))
-
-        assertEquals(false, repository.getChatLayoutPreference().threadUnreadJumpEnabled)
-
-        repository.setThreadUnreadJumpEnabled(true)
-
-        assertEquals(true, repository.getChatLayoutPreference().threadUnreadJumpEnabled)
     }
 
     @Test
@@ -341,7 +328,6 @@ class LocalPreferencesTest {
         val compact = repository.setCompactConsecutiveMessages(true)
         val longMessageCollapse = repository.setLongMessageCollapseEnabled(true)
         val singleTapOpensThread = repository.setSingleTapOpensThreadEnabled(true)
-        val threadUnreadJump = repository.setThreadUnreadJumpEnabled(true)
         val newMessageMenu = repository.setNewMessageMenuEnabled(true)
         val conversationForwardGesture = repository.setConversationForwardGestureEnabled(true)
         val foregroundMessageBanners = repository.setForegroundMessageBannersEnabled(true)
@@ -366,7 +352,6 @@ class LocalPreferencesTest {
         assertEquals(true, compact.compactConsecutiveMessages)
         assertEquals(true, longMessageCollapse.longMessageCollapseEnabled)
         assertEquals(true, singleTapOpensThread.singleTapOpensThreadEnabled)
-        assertEquals(true, threadUnreadJump.threadUnreadJumpEnabled)
         assertEquals(true, newMessageMenu.newMessageMenuEnabled)
         assertEquals(true, conversationForwardGesture.conversationForwardGestureEnabled)
         assertEquals(true, foregroundMessageBanners.foregroundMessageBannersEnabled)
@@ -384,7 +369,6 @@ class LocalPreferencesTest {
         assertEquals(true, restored.compactConsecutiveMessages)
         assertEquals(true, restored.longMessageCollapseEnabled)
         assertEquals(true, restored.singleTapOpensThreadEnabled)
-        assertEquals(true, restored.threadUnreadJumpEnabled)
         assertEquals(true, restored.newMessageMenuEnabled)
         assertEquals(true, restored.conversationForwardGestureEnabled)
         assertEquals(true, restored.foregroundMessageBannersEnabled)

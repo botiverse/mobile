@@ -262,7 +262,6 @@ data class ChatLayoutPreferenceSnapshot(
     val compactConsecutiveMessages: Boolean = true,
     val longMessageCollapseEnabled: Boolean = RAFT_LONG_MESSAGE_COLLAPSE_DEFAULT_ENABLED,
     val singleTapOpensThreadEnabled: Boolean = false,
-    val threadUnreadJumpEnabled: Boolean = false,
     val newMessageMenuEnabled: Boolean = false,
     val conversationForwardGestureEnabled: Boolean = false,
     val foregroundMessageBannersEnabled: Boolean = false,
@@ -295,9 +294,6 @@ interface ChatLayoutPreferenceStore {
     fun readSingleTapOpensThreadEnabledSync(): Boolean
     suspend fun readSingleTapOpensThreadEnabled(): Boolean
     suspend fun saveSingleTapOpensThreadEnabled(enabled: Boolean)
-    fun readThreadUnreadJumpEnabledSync(): Boolean
-    suspend fun readThreadUnreadJumpEnabled(): Boolean
-    suspend fun saveThreadUnreadJumpEnabled(enabled: Boolean)
     fun readNewMessageMenuEnabledSync(): Boolean
     suspend fun readNewMessageMenuEnabled(): Boolean
     suspend fun saveNewMessageMenuEnabled(enabled: Boolean)
@@ -398,16 +394,6 @@ class KeyValueChatLayoutPreferenceStore(
 
     override suspend fun saveSingleTapOpensThreadEnabled(enabled: Boolean) {
         store.putBoolean(KEY_SINGLE_TAP_OPENS_THREAD_ENABLED, enabled)
-    }
-
-    override fun readThreadUnreadJumpEnabledSync(): Boolean =
-        store.getBoolean(KEY_THREAD_UNREAD_JUMP_ENABLED, false)
-
-    override suspend fun readThreadUnreadJumpEnabled(): Boolean =
-        readThreadUnreadJumpEnabledSync()
-
-    override suspend fun saveThreadUnreadJumpEnabled(enabled: Boolean) {
-        store.putBoolean(KEY_THREAD_UNREAD_JUMP_ENABLED, enabled)
     }
 
     override fun readNewMessageMenuEnabledSync(): Boolean =
@@ -546,7 +532,6 @@ class KeyValueChatLayoutPreferenceStore(
         const val KEY_COMPACT_CONSECUTIVE_MESSAGES = "chatLayout:compact_consecutive_messages"
         const val KEY_LONG_MESSAGE_COLLAPSE_ENABLED = "chatLayout:long_message_collapse_enabled"
         const val KEY_SINGLE_TAP_OPENS_THREAD_ENABLED = "chatLayout:single_tap_opens_thread_enabled"
-        const val KEY_THREAD_UNREAD_JUMP_ENABLED = "chatLayout:thread_unread_jump_enabled"
         const val KEY_NEW_MESSAGE_MENU_ENABLED = "mobile:new_message_menu_enabled"
         const val KEY_LEGACY_INLINE_SELECTION_TOOLBAR_ENABLED =
             "mobile:inline_selection_toolbar_enabled"
@@ -573,7 +558,6 @@ interface ChatLayoutPreferenceRepository {
     suspend fun setCompactConsecutiveMessages(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setLongMessageCollapseEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setSingleTapOpensThreadEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
-    suspend fun setThreadUnreadJumpEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setNewMessageMenuEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setConversationForwardGestureEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setForegroundMessageBannersEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
@@ -598,7 +582,6 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
-            threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
@@ -623,7 +606,6 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
-            threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
@@ -647,7 +629,6 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
-            threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
@@ -671,7 +652,6 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = enabled,
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
-            threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
@@ -697,11 +677,6 @@ class PersistentChatLayoutPreferenceRepository(
         return getChatLayoutPreference()
     }
 
-    override suspend fun setThreadUnreadJumpEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
-        store.saveThreadUnreadJumpEnabled(enabled)
-        return getChatLayoutPreference()
-    }
-
     override suspend fun setNewMessageMenuEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
         store.saveNewMessageMenuEnabled(enabled)
         return getChatLayoutPreference()
@@ -720,7 +695,6 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
-            threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             foregroundMessageBannersEnabled = enabled,
@@ -744,7 +718,6 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
-            threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
@@ -798,7 +771,6 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             singleTapOpensThreadEnabled = store.readSingleTapOpensThreadEnabled(),
-            threadUnreadJumpEnabled = store.readThreadUnreadJumpEnabled(),
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
             conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),

@@ -106,7 +106,8 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 | Convert to task, done / reopen | `message/MessageItem.tsx` | done | `ThreadPage.kt` | `POST /tasks/convert-message` | – |
 | Long-message collapse | `CollapsibleMessageContent.tsx` + per-channel setting | done (mobile-local): height-based visual clip at the web's 320px (320dp, capped at 80% of a short viewport), global switch default on + per-channel/DM device-local override; not synced with the web's server-side per-channel pref | `RaftLongMessageCollapse.kt`, `data/RaftLongMessageCollapsePreferences.kt` | `/channels/:id/message-display-settings` unused | S |
 | Threads: open, reply, follow, agent followers | `message/ThreadPanel.tsx`, `thread/ThreadAgentFollowers.tsx` | done | `ThreadPage.kt`, `ThreadAgentFollowers.kt` | `/channels/threads/*` | – |
-| Thread inbox, done, jump-to-unread | `thread/ThreadsInbox.tsx`, `ThreadUnreadJumpPill.tsx` | done | `SharedInboxPanel.kt` | `/channels/inbox*` | – |
+| Thread inbox, done, jump-to-unread | `thread/ThreadsInbox.tsx` | done | `SharedInboxPanel.kt` | `/channels/inbox*` | – |
+| Conversation jump pills: Back to Bottom / N new messages, Next / Earliest Unread Thread (N) | `message/ChatPanel.tsx` `bottomButton`, `message/ThreadUnreadJumpPill.tsx` | partial: an unread thread whose parent message is not loaded counts in N but is not a jump target (Home's unread summary has no parent message id) | `ThreadJumpPills.kt`, designsystem `RaftMessageListJump.kt` | `channels/unread?summary=1` (via Home) | S |
 | Unfollowed threads list | `store/inboxStore.ts:878` | partial | `data/SharedActivityStore.kt` (flag only) | `GET /channels/inbox/unfollowed` unused | S |
 | Saved messages | `saved/SavedPanel.tsx` | done | `HomeSavedPage.kt` | `/channels/saved*` | – |
 | Attachment upload | `message/MessageInput.tsx` | done | `DirectAttachmentUploadCoordinator.kt` | `/attachments/upload-sessions*` | – |
@@ -134,7 +135,7 @@ Agent migration UI (L), joint-channel create/convert/disconnect (M–L), theme/d
 | Pinned conversations first in Activity | `ThreadsInbox.tsx:644-663` | TBC | – | `sidebar-order` | S |
 | Unread badges (sidebar, server) | `store/serverStore.ts:711` | done | `data/ProcessActivityUnreadStore.kt`, `ServerUnreadSummaryDto.kt` | `/servers/unread-summary` | – |
 | Read state across devices | `store/readStateSync.ts` | done | `network/sync/ReadStateSyncDomain.kt`, `ReadStateV1Store.kt` | `read_state:updated` | – |
-| Jump to first unread | `ThreadsInbox.tsx:681` | done | `data/ThreadReadAnchorStore.kt` | `messages/context/:id` | – |
+| Jump to first unread | `ThreadsInbox.tsx:681` | done | `data/SharedActivityStore.kt` (`firstUnreadMessageId`) | `messages/context/:id` | – |
 | Push: iOS (APNs) | `routes/push.ts` (server) | done | `data/IosPushRegistration.kt`, `compose/iosApp/iosApp/iOSApp.swift` | `/push/registrations` | – |
 | **Push: Android (FCM)** | RFC 045 | missing: token never registered | `compose/androidApp/.../push/RaftFirebaseMessagingService.kt` ("Server registration is intentionally left for the native push contract follow-up") | **server needs FCM provider** | M–L |
 | Server decides what notifies (RFC 045) | `notification:push` | done: mobile trusts the server event | `RaftVisibleConversationRegistry.kt:67-131` | existing | – |

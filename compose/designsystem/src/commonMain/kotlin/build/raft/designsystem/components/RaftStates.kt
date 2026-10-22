@@ -509,7 +509,8 @@ internal fun Modifier.raftTouchTarget(
     onClick: () -> Unit,
     minSize: Dp = RaftTouchTargetSize,
     onLongClick: (() -> Unit)? = null,
-): Modifier = this then RaftTouchTargetElement(minSize, enabled, interactionSource, onClick, onLongClick)
+    expandStart: Boolean = true,
+): Modifier = this then RaftTouchTargetElement(minSize, enabled, interactionSource, onClick, onLongClick, expandStart)
 
 private data class RaftTouchTargetElement(
     val minSize: Dp,
@@ -517,24 +518,32 @@ private data class RaftTouchTargetElement(
     val interactionSource: MutableInteractionSource,
     val onClick: () -> Unit,
     val onLongClick: (() -> Unit)?,
+    val expandStart: Boolean,
 ) : ModifierNodeElement<RaftTouchTargetNode>() {
-    override fun create() = RaftTouchTargetNode(minSize, enabled, interactionSource, onClick, onLongClick)
+    override fun create() = RaftTouchTargetNode(minSize, enabled, interactionSource, onClick, onLongClick, expandStart)
 
     override fun update(node: RaftTouchTargetNode) {
         node.minSize = minSize
         node.enabled = enabled
         node.interactionSource = interactionSource
         node.onClick = onClick
+        node.expandStart = expandStart
         node.updateLongClick(onLongClick)
     }
 }
 
+/**
+ * [expandStart] = false widens the target only past the end (raft-ui's `after:left-0`): a
+ * control joined to a neighbour on its start edge (the dismiss of a jump pill) must not
+ * take that neighbour's taps.
+ */
 private class RaftTouchTargetNode(
     var minSize: Dp,
     var enabled: Boolean,
     var interactionSource: MutableInteractionSource,
     var onClick: () -> Unit,
     private var onLongClick: (() -> Unit)?,
+    var expandStart: Boolean,
 ) : DelegatingNode(), PointerInputModifierNode, LayoutAwareModifierNode {
     private var size = IntSize.Zero
 
@@ -582,8 +591,9 @@ private class RaftTouchTargetNode(
     override val touchBoundsExpansion: TouchBoundsExpansion
         get() {
             val min = with(requireDensity()) { minSize.roundToPx() }
-            val x = ((min - size.width) / 2).coerceAtLeast(0)
             val y = ((min - size.height) / 2).coerceAtLeast(0)
+            if (!expandStart) return TouchBoundsExpansion(0, y, (min - size.width).coerceAtLeast(0), y)
+            val x = ((min - size.width) / 2).coerceAtLeast(0)
             return TouchBoundsExpansion(x, y, x, y)
         }
 
