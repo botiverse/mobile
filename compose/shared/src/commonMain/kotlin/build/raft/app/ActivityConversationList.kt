@@ -8,7 +8,6 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,11 +15,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
@@ -36,10 +33,12 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.text
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
@@ -66,18 +65,22 @@ import build.raft.app.model.TaskStatus
 import build.raft.app.model.agentAvatarFallbackWireValue
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.resources.MR
+import build.raft.designsystem.components.RaftConversationKindGlyph
+import build.raft.designsystem.components.RaftConversationKindIcon
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftIconTileSize
+import build.raft.designsystem.components.RaftInboxItemLeading
+import build.raft.designsystem.components.RaftInboxItemLeadingBadge
+import build.raft.designsystem.components.RaftInboxItemLeadingDefaults
 import build.raft.designsystem.components.RaftMentionMarker
 import build.raft.designsystem.components.RaftTouchTargetSize
 import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.components.raftUnreadCountText
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import build.raft.designsystem.tokens.RaftRadius
 import com.tencent.tmm.kmmresource.compose.stringResource
 
 /*
@@ -288,11 +291,25 @@ internal sealed interface ActivityConversationSender {
 @Immutable
 internal data class ActivityConversationRowModel(
     val leadingKind: ActivityConversationLeadingKind,
+    /**
+     * The DM peer whose face leads the row: a DM row's peer, or the peer of the DM a thread lives in
+     * (web `threadDmChannel`). Null: not a DM, or the DM is not loaded yet (the kind tile instead).
+     */
     val dmPeer: ActivityConversationDmPeer?,
     /** Thread: the root message preview; else the place name without its `#`/`@` prefix. Null: fallback. */
     val title: String?,
-    /** Thread rows only: "#channel" / "@peer", written before the preview as "#channel ·". */
+    /**
+     * Thread rows only: "#channel" / "@peer", written before the preview as "#channel ·". Always in the
+     * row's accessibility text; shown only when [threadChannelLabelVisible].
+     */
     val threadChannelLabel: String?,
+    /**
+     * False on a thread in a DM whose peer leads the row: the face already says the peer, so the line
+     * drops "@peer ·" (web `sr-only`). Channel threads, and DM threads whose DM is not loaded, show it.
+     */
+    val threadChannelLabelVisible: Boolean = threadChannelLabel != null,
+    /** The thread's parent is a DM: an unresolved DM thread leads with the DM tile, not `#`. */
+    val threadInDirectMessage: Boolean = false,
     val sender: ActivityConversationSender?,
     /** Null: the localized kind fallback. */
     val preview: String?,
@@ -310,7 +327,18 @@ internal data class ActivityConversationRowModel(
      * Friday)", text only (web ThreadsInbox `formatDelegatedSender`). Never on a system row.
      */
     val delegatedBy: MessageDelegatedBy? = null,
-)
+) {
+    /** The thread badge sits in the leading corner (on the channel tile or the DM peer's face). */
+    val leadingThreadBadge: Boolean
+        get() = leadingKind == ActivityConversationLeadingKind.Thread
+
+    /**
+     * An agent peer's presence light on the leading face: DM rows only. A thread row's corner holds the
+     * thread badge, one mark per corner (raft-ui InboxItemLeadingBadge, Jasper).
+     */
+    val leadingPresence: Boolean
+        get() = leadingKind == ActivityConversationLeadingKind.DirectMessage && dmPeer?.peerIsAgent == true
+}
 
 private fun String.stripActivityTitlePrefix(): String = trimStart('@', '#')
 
@@ -326,11 +354,26 @@ internal fun InboxItem.hasActivitySystemSender(): Boolean {
     return senderKind == MemberKind.System || senderId == "system"
 }
 
-/** The conversation (thread: its parent channel) or DM peer is muted; muted rows show no unread count. */
+/** web `threadDmChannel`: the Home DM row of the DM a thread lives in; null for other rows or while unloaded. */
+internal fun InboxItem.activityThreadDmPeer(context: ActivityConversationListContext): ActivityConversationDmPeer? =
+    if (kind == InboxItemKind.Thread && parentChannelKind == ConversationKind.DirectMessage) {
+        parentChannelId?.let { context.dmPeersByChannelId[it.value] }
+    } else {
+        null
+    }
+
+/**
+ * The conversation (thread: its parent channel or DM) or DM peer is muted; muted rows show no unread
+ * count. A thread in a muted DM is as quiet as the DM's own row (web `?? threadDmChannel`).
+ */
 internal fun InboxItem.activityConversationMuted(
     context: ActivityConversationListContext,
     dmPeer: ActivityConversationDmPeer? =
-        if (isActivityDirectMessageConversation()) context.dmPeersByChannelId[channelId.value] else null,
+        if (isActivityDirectMessageConversation()) {
+            context.dmPeersByChannelId[channelId.value]
+        } else {
+            activityThreadDmPeer(context)
+        },
 ): Boolean {
     val mutedChannelId = if (kind == InboxItemKind.Thread) parentChannelId?.value else channelId.value
     return (mutedChannelId != null && mutedChannelId in context.mutedChannelIds) || dmPeer?.activityMuted == true
@@ -351,7 +394,9 @@ internal fun InboxItem.activityConversationRowModel(
             directMessage -> ActivityConversationLeadingKind.DirectMessage
             else -> ActivityConversationLeadingKind.Channel
         }
-    val dmPeer = if (directMessage) context.dmPeersByChannelId[channelId.value] else null
+    val threadInDirectMessage = kind == InboxItemKind.Thread && parentChannelKind == ConversationKind.DirectMessage
+    val threadDmPeer = activityThreadDmPeer(context)
+    val dmPeer = if (directMessage) context.dmPeersByChannelId[channelId.value] else threadDmPeer
     val title =
         when {
             kind == InboxItemKind.Thread -> parentMessagePreview?.takeIf { it.isNotBlank() }
@@ -373,13 +418,15 @@ internal fun InboxItem.activityConversationRowModel(
     val sender =
         when {
             systemSender -> ActivityConversationSender.System
-            // web: a DM whose last message came from the peer shows the preview alone.
-            dmPeer != null && dmPeer.peerId != null && senderId == dmPeer.peerId -> null
+            // web: a DM whose last message came from the peer shows the preview alone. A DM thread keeps
+            // "Peer: …": either side may have replied last (Jasper).
+            directMessage && dmPeer != null && dmPeer.peerId != null && senderId == dmPeer.peerId -> null
             !self && senderName == null -> null
             else -> {
                 val identity = activitySenderAvatarIdentity(senderProfiles)
                 val faced = identity.senderKind == MemberKind.Agent || identity.senderKind == MemberKind.Human
-                val avatar = identity.takeIf { faced && leadingKind != ActivityConversationLeadingKind.DirectMessage }
+                // DM rows and DM threads already lead with the peer's face: no second, inline face.
+                val avatar = identity.takeIf { faced && leadingKind != ActivityConversationLeadingKind.DirectMessage && threadDmPeer == null }
                 if (self) {
                     ActivityConversationSender.Self(avatar)
                 } else {
@@ -399,7 +446,15 @@ internal fun InboxItem.activityConversationRowModel(
         leadingKind = leadingKind,
         dmPeer = dmPeer,
         title = title,
-        threadChannelLabel = if (kind == InboxItemKind.Thread) channelLabel(dmPeerNames) else null,
+        threadChannelLabel =
+            when {
+                kind != InboxItemKind.Thread -> null
+                // The Home DM row names the peer the face shows.
+                threadDmPeer?.displayName != null -> "@${threadDmPeer.displayName.stripActivityTitlePrefix()}"
+                else -> channelLabel(dmPeerNames)
+            },
+        threadChannelLabelVisible = kind == InboxItemKind.Thread && threadDmPeer == null,
+        threadInDirectMessage = threadInDirectMessage,
         sender = sender,
         preview = preview?.takeIf { it.isNotBlank() },
         muted = muted,
@@ -483,8 +538,7 @@ internal fun ActivityMemberFace(
 // Composables
 // ---------------------------------------------------------------------------------------------
 
-/** raft-ui `InboxItemLeading` is a 36dp (size-9) slot; the avatar / tile inside is the 35dp md step. */
-private val ConversationLeadingSlot = 36.dp
+/** The avatar / tile inside raft-ui's 36dp `InboxItemLeading` slot is the 35dp md step. */
 private val ConversationLeadingAvatar = 35.dp
 
 /** `before:left-16`: the hairline starts where the text column starts. */
@@ -564,6 +618,8 @@ internal fun ActivityConversationListRow(
     val selfLabel = stringResource(MR.strings.activity_list_self_sender)
     val openLabel = stringResource(MR.strings.common_open)
     val threadChannelText = model.threadChannelLabel?.let { stringResource(MR.strings.activity_list_thread_channel, it) }
+    // A DM thread's face says the peer, so its line drops "@peer ·"; screen readers still hear it.
+    val visibleThreadChannelText = threadChannelText?.takeIf { model.threadChannelLabelVisible }
     val fallback =
         when (item.kind) {
             InboxItemKind.Thread -> threadFallback
@@ -684,22 +740,29 @@ internal fun ActivityConversationListRow(
                         }
                     // Line 2+: the excerpt (up to two lines). The marks sit beside its first line only;
                     // the second line runs the full width, so the marks never narrow the whole excerpt.
+                    val senderText =
+                        when (val sender = model.sender) {
+                            ActivityConversationSender.System -> systemLabel
+                            is ActivityConversationSender.Self -> delegatedPreviewSender(selfLabel, model.delegatedBy)
+                            is ActivityConversationSender.Named -> delegatedPreviewSender(sender.name, model.delegatedBy)
+                            null -> null
+                        }
                     val bodyText =
                         activityConversationBodyText(
-                            channelLabel = threadChannelText,
-                            sender =
-                                when (val sender = model.sender) {
-                                    ActivityConversationSender.System -> systemLabel
-                                    is ActivityConversationSender.Self -> delegatedPreviewSender(selfLabel, model.delegatedBy)
-                                    is ActivityConversationSender.Named -> delegatedPreviewSender(sender.name, model.delegatedBy)
-                                    null -> null
-                                },
+                            channelLabel = visibleThreadChannelText,
+                            sender = senderText,
                             preview = model.preview ?: fallback,
                             senderStyle = SpanStyle(fontWeight = FontWeight.SemiBold, color = colors.foreground),
                             senderAvatar = senderAvatar != null,
                         )
                     ActivityExcerptBesideMarks(
                         text = bodyText,
+                        accessibilityText =
+                            if (threadChannelText != null && visibleThreadChannelText == null) {
+                                activityConversationAccessibilityBody(threadChannelText, senderText, model.preview ?: fallback)
+                            } else {
+                                null
+                            },
                         style = typography.callout,
                         color = bodyColor,
                         inlineContent = inlineContent,
@@ -754,6 +817,13 @@ internal fun activityConversationBodyText(
         append(preview)
     }
 
+/**
+ * What a screen reader hears for the body: the same line with the thread's "@peer ·" label even where
+ * the row hides it (web `sr-only`), so the row still names the DM it belongs to.
+ */
+internal fun activityConversationAccessibilityBody(channelLabel: String?, sender: String?, preview: String): String =
+    activityConversationBodyText(sender = sender, preview = preview, channelLabel = channelLabel).text
+
 @Composable
 private fun ActivityConversationLeading(
     model: ActivityConversationRowModel,
@@ -761,14 +831,28 @@ private fun ActivityConversationLeading(
     agentStatusResolver: RaftAgentStatusResolver,
 ) {
     val colors = RaftTheme.colors
-    Box(modifier = Modifier.size(ConversationLeadingSlot), contentAlignment = Alignment.Center) {
+    // raft-ui InboxItemLeading: the conversation the row lives in. A thread leads with its channel's
+    // tile or its DM peer's face, with the thread badge in the corner (raft-ui InboxItemLeadingBadge).
+    val threadBadge: (@Composable () -> Unit)? =
+        if (model.leadingThreadBadge) {
+            {
+                RaftInboxItemLeadingBadge {
+                    // raft-ui `ThreadIcon`, in the badge's `foreground` ink.
+                    RaftConversationKindIcon(RaftConversationKindGlyph.Thread, size = RaftInboxItemLeadingDefaults.BadgeIcon)
+                }
+            }
+        } else {
+            null
+        }
+    RaftInboxItemLeading(badge = threadBadge) {
         val peer = model.dmPeer
-        if (model.leadingKind == ActivityConversationLeadingKind.DirectMessage && peer != null) {
+        if (peer != null) {
             val label = peer.displayName ?: item.channelName
             val avatarKind = if (peer.peerIsAgent) MemberKind.Agent else MemberKind.Human
-            // Agents carry their status light, as on their sidebar row; people do not.
+            // An agent's DM row carries its status light, as on its sidebar row; people do not, and a
+            // DM thread's corner is the thread badge's.
             val status =
-                if (peer.peerIsAgent) {
+                if (model.leadingPresence) {
                     projectHomeAgentStatusIndicatorState(
                         showPresence = true,
                         memberId = peer.peerId,
@@ -795,10 +879,11 @@ private fun ActivityConversationLeading(
                 )
             }
         } else {
-            // A channel is a place, not a face: the neutral tile at the avatar's 35dp step.
+            // A channel is a place, not a face: the neutral tile at the avatar's 35dp step. A DM (or a
+            // thread in one) whose peer is not loaded yet shows the DM icon, never `#`.
             RaftIconTile(size = RaftIconTileSize.Md) {
                 RaftLucideIcon(
-                    if (model.leadingKind == ActivityConversationLeadingKind.DirectMessage) {
+                    if (model.leadingKind == ActivityConversationLeadingKind.DirectMessage || model.threadInDirectMessage) {
                         RaftLucideIconName.MessageCircle
                     } else {
                         RaftLucideIconName.Hash
@@ -806,24 +891,6 @@ private fun ActivityConversationLeading(
                     Modifier.size(18.dp),
                     color = raftArgbHex(colors.foregroundMuted),
                 )
-            }
-            if (model.leadingKind == ActivityConversationLeadingKind.Thread) {
-                Box(
-                    modifier =
-                        Modifier
-                            .align(Alignment.BottomEnd)
-                            .offset(x = 4.dp, y = 4.dp)
-                            .size(18.dp)
-                            .background(colors.layerCard, RoundedCornerShape(RaftRadius.Sticker))
-                            .border(1.dp, colors.lineSeam, RoundedCornerShape(RaftRadius.Sticker)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    RaftLucideIcon(
-                        RaftLucideIconName.MessageSquare,
-                        Modifier.size(11.dp),
-                        color = raftArgbHex(colors.foregroundMuted),
-                    )
-                }
             }
         }
     }
@@ -896,6 +963,8 @@ internal fun ActivityConversationRowModel.unreadCountLabel(): String? =
 @Composable
 private fun ActivityExcerptBesideMarks(
     text: AnnotatedString,
+    /** Non-null: what the excerpt reads as instead of its visible text (one node, all of it). */
+    accessibilityText: String? = null,
     style: TextStyle,
     color: Color,
     inlineContent: Map<String, InlineTextContent>,
@@ -909,17 +978,26 @@ private fun ActivityExcerptBesideMarks(
         val marksPlaceables = subcompose("marks", marks).map { it.measure(Constraints()) }
         val marksWidth = marksPlaceables.maxOfOrNull { it.width } ?: 0
         val loose = Constraints(maxWidth = width)
+        val readAs =
+            if (accessibilityText != null) {
+                Modifier.clearAndSetSemantics { this.text = AnnotatedString(accessibilityText) }
+            } else {
+                Modifier
+            }
+        val silent = if (accessibilityText != null) Modifier.clearAndSetSemantics { } else Modifier
         if (marksWidth == 0) {
             val body =
                 subcompose("body") {
-                    RaftText(
-                        text = text,
-                        style = style,
-                        color = color,
-                        maxLines = ActivityConversationPreviewMaxLines,
-                        overflow = TextOverflow.Ellipsis,
-                        inlineContent = inlineContent,
-                    )
+                    Box(readAs) {
+                        RaftText(
+                            text = text,
+                            style = style,
+                            color = color,
+                            maxLines = ActivityConversationPreviewMaxLines,
+                            overflow = TextOverflow.Ellipsis,
+                            inlineContent = inlineContent,
+                        )
+                    }
                 }.first().measure(loose)
             val height = maxOf(body.height, minLine)
             return@SubcomposeLayout layout(width, height) {
@@ -930,15 +1008,17 @@ private fun ActivityExcerptBesideMarks(
         val firstWidth = (width - marksWidth - gap).coerceAtLeast(0)
         val first =
             subcompose("first") {
-                RaftText(
-                    text = text,
-                    style = style,
-                    color = color,
-                    maxLines = 1,
-                    overflow = TextOverflow.Clip,
-                    inlineContent = inlineContent,
-                    onTextLayout = { layout -> firstLineEnd = layout.getLineEnd(0, visibleEnd = false) },
-                )
+                Box(readAs) {
+                    RaftText(
+                        text = text,
+                        style = style,
+                        color = color,
+                        maxLines = 1,
+                        overflow = TextOverflow.Clip,
+                        inlineContent = inlineContent,
+                        onTextLayout = { layout -> firstLineEnd = layout.getLineEnd(0, visibleEnd = false) },
+                    )
+                }
             }.first().measure(Constraints(maxWidth = firstWidth))
         val firstRow = maxOf(first.height, minLine)
         val rest = text.subSequence(firstLineEnd.coerceIn(0, text.length), text.length)
@@ -947,14 +1027,16 @@ private fun ActivityExcerptBesideMarks(
                 null
             } else {
                 subcompose("second") {
-                    RaftText(
-                        text = rest,
-                        style = style,
-                        color = color,
-                        maxLines = ActivityConversationPreviewMaxLines - 1,
-                        overflow = TextOverflow.Ellipsis,
-                        inlineContent = inlineContent,
-                    )
+                    Box(silent) {
+                        RaftText(
+                            text = rest,
+                            style = style,
+                            color = color,
+                            maxLines = ActivityConversationPreviewMaxLines - 1,
+                            overflow = TextOverflow.Ellipsis,
+                            inlineContent = inlineContent,
+                        )
+                    }
                 }.first().measure(loose)
             }
         layout(width, firstRow + (second?.height ?: 0)) {
