@@ -28,9 +28,29 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SharedRealtimeDomainEventOwnerTest {
+    @Test
+    fun hasGuardedSinksTracksOnlyTheCurrentRegistration() {
+        val owner = SharedRealtimeDomainEventOwner()
+        val appA = RealtimeGuardedDomainEventSinks(log = { })
+        val appB = RealtimeGuardedDomainEventSinks(log = { })
+        assertFalse(owner.hasGuardedSinks, "a fresh owner has no ready AppShell sinks")
+
+        owner.registerGuardedSinks(appA)
+        assertTrue(owner.hasGuardedSinks)
+
+        owner.registerGuardedSinks(appB)
+        owner.unregisterGuardedSinks(appA)
+        assertTrue(owner.hasGuardedSinks, "disposing a replaced AppShell must not clear its successor's sinks")
+
+        owner.unregisterGuardedSinks(appB)
+        assertFalse(owner.hasGuardedSinks)
+    }
+
     @Test
     fun oneWireEventMutatesProcessOnceAndProjectsToTwoShells() = runBlocking {
         val authority =

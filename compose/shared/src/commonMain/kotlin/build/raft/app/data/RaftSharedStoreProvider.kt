@@ -3107,6 +3107,14 @@ internal class SharedRealtimeDomainEventOwner(
         }
     }
 
+    /**
+     * True while an AppShell's ready content has its guarded Domain / Home-unread sinks registered.
+     * Before that, canonical-final AppShell surfaces fail closed (no delivered-ledger entry), so a
+     * caller that must observe a delivery waits on this instead of a fixed delay.
+     */
+    val hasGuardedSinks: Boolean
+        get() = guardedSinks != null
+
     fun registerGuardedSinks(sinks: RealtimeGuardedDomainEventSinks) {
         guardedSinks = sinks
     }

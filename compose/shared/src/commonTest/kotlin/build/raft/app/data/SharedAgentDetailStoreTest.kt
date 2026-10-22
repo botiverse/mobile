@@ -835,7 +835,11 @@ class SharedAgentDetailStoreTest {
             )
         )
 
+        assertEquals(0L, s.state.value.agentActivitySeqEpoch)
         s.dispatch(SharedAgentDetailIntent.ResetAgentActivitySeq)
+        assertEquals(1L, s.state.value.agentActivitySeqEpoch)
+        s.dispatch(SharedAgentDetailIntent.ResetAgentActivitySeq)
+        assertEquals(2L, s.state.value.agentActivitySeqEpoch, "a rebaseline of an already-empty seq map is still observable")
         s.dispatch(
             SharedAgentDetailIntent.ApplyAgentActivityUpdate(
                 event = activityEvent(AgentStatus.Offline, detail = "Disconnected", serverSeq = 1L),

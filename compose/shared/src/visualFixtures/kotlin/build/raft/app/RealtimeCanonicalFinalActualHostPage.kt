@@ -812,8 +812,26 @@ private fun RealtimeCanonicalFinalActualHostContent(run: ActualHostRun) {
                 scopeKey = sharedScope.shellInstanceId,
             )
 
+            val sharedDomainOwner = provider.realtimeDomainEventOwner(sharedScope)
+            check(!sharedDomainOwner.hasGuardedSinks) {
+                "pre-ready AppShell must not have guarded Domain sinks before ServerReady"
+            }
+            val agentSeqEpochBeforeReady = probeAgentStore.state.value.agentActivitySeqEpoch
             appShellAuthGateViewModel.accept(SharedAuthGateIntent.ServerReady(actualHostSession(run.nonce)))
-            delay(500)
+            // The ready replay is only observable once the AppShell's ready content has (1) registered
+            // its guarded Domain+Unread sinks (until then both surfaces fail closed) and (2) run its
+            // realtime reconcile, which rebaselines the agent activity seq (ResetAgentActivitySeq) and
+            // would otherwise wipe the repaired projection right after the replay. A fixed delay raced
+            // both on slow CI emulators (runs 39542075286, 39545066848, 39554186997, 39649442796,
+            // 39692703075). No callback signals "ready content applied", so poll both facts, bounded.
+            waitUntil(
+                "AppShell ready content after ServerReady: guarded Domain+Unread sinks registered " +
+                    "and agent activity seq rebaselined by the realtime reconcile",
+                timeoutMs = 10_000L,
+            ) {
+                sharedDomainOwner.hasGuardedSinks &&
+                    probeAgentStore.state.value.agentActivitySeqEpoch > agentSeqEpochBeforeReady
+            }
             run.dispatchCanonical(
                 provider = provider,
                 scope = sharedScope,
