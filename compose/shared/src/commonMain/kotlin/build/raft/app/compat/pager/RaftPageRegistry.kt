@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import build.raft.app.compat.ui.RaftProvidePageActive
 import build.raft.app.RaftProvideTextRendering
 import build.raft.app.components.RaftProvideDesignSystemMisuse
+import build.raft.app.components.RaftProvideDesignSystemCopy
 import build.raft.app.components.RaftProvideDesignSystemStrings
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.Lifecycle
@@ -204,9 +205,12 @@ fun RaftPagerHost(
             RaftProvideTextRendering {
                 // The design-system components' own words (optional, close, clear, loading).
                 RaftProvideDesignSystemStrings {
-                    // Debug builds fail on design-system misuse (a nameless icon button, ...).
-                    RaftProvideDesignSystemMisuse {
-                        (pager as? ComposeContainer)?.composedContent?.invoke()
+                    // Long-press copy (raftCopyable): host pasteboard + "Copied" toast.
+                    RaftProvideDesignSystemCopy(host.capabilities) {
+                        // Debug builds fail on design-system misuse (a nameless icon button, ...).
+                        RaftProvideDesignSystemMisuse {
+                            (pager as? ComposeContainer)?.composedContent?.invoke()
+                        }
                     }
                 }
             }

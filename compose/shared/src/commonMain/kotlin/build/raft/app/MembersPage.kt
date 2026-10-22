@@ -280,6 +280,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.isSpecified
 import build.raft.designsystem.components.RaftDescriptionList
+import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftDescriptionValue
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
@@ -7168,14 +7169,16 @@ private fun MembersHumanDetailHeader(
                     style = typography.headline,
                     color = colors.foreground,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.raftCopyable(member.displayName)
                 )
                 RaftText(
                     text = member.detailHandle,
                     style = typography.monoMeta,
                     color = colors.foregroundHint,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.raftCopyable(member.detailHandle)
                 )
             }
         },
@@ -8652,7 +8655,8 @@ private fun MembersHumanProfileSummary(
                 style = typography.headline,
                 color = colors.foreground,
                 maxLines = 2,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.raftCopyable(member.displayName)
             )
             Row(
                 modifier = Modifier.padding(top = 2.dp),
@@ -8665,7 +8669,7 @@ private fun MembersHumanProfileSummary(
                     color = colors.foregroundHint,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
+                    modifier = Modifier.weight(1f, fill = false).raftCopyable(member.detailHandle)
                 )
                 if (departure != null) {
                     RaftBadge(
@@ -9400,6 +9404,7 @@ private val MembersInfoValueLineHeight = 20.sp
 private fun MembersAgentInfoField(
     label: String,
     modifier: Modifier = Modifier,
+    copyText: String? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Column(modifier = modifier) {
@@ -9411,7 +9416,8 @@ private fun MembersAgentInfoField(
                 color = RaftTheme.colors.foregroundHint
             )
         }
-        content()
+        // [copyText]: the raw value a long press on the value copies (never the label).
+        Column(Modifier.raftCopyable(copyText), content = content)
     }
 }
 
@@ -9493,14 +9499,15 @@ private fun MembersAgentProfileHeader(
                     color = colors.foreground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.semantics { heading() }
+                    modifier = Modifier.semantics { heading() }.raftCopyable(member.displayName)
                 )
                 RaftText(
                     text = member.detailHandle,
                     style = typography.monoMeta,
                     color = colors.foregroundMuted,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.raftCopyable(member.detailHandle)
                 )
                 Row(
                     modifier = Modifier.padding(top = RaftAppSpacing.Sm),
@@ -9512,7 +9519,8 @@ private fun MembersAgentProfileHeader(
                         RaftBadge(
                             text = getRuntimeDisplayName(runtimeId),
                             appearance = RaftBadgeAppearance.Soft,
-                            variant = RaftBadgeVariant.Information
+                            variant = RaftBadgeVariant.Information,
+                            modifier = Modifier.raftCopyable(getRuntimeDisplayName(runtimeId))
                         )
                     }
                 }
@@ -10348,7 +10356,9 @@ private fun MembersAgentInfoSection(
                 // maxLines/ellipsis here on purpose — truncating a machine name
                 // hides exactly the part that distinguishes two similar hosts.
                 softWrap = true,
-                modifier = (if (onOpenComputer != null) Modifier.clickable(onClick = onOpenComputer) else Modifier)
+                // Long press copies the name; a tap still opens the computer.
+                modifier = Modifier
+                    .raftCopyable(machineName.takeIf { it != "—" }, onClick = onOpenComputer)
                     .fillMaxWidth()
             )
             // Status line (task #259). Truth source is the computers store, not
@@ -10420,7 +10430,7 @@ private fun MembersAgentInfoSection(
             verticalArrangement = Arrangement.spacedBy(MembersInfoFieldGapY)
         ) {
             summary?.createdAt?.membersAgentCreatedDate(timeContext)?.takeIf { it.isNotBlank() }?.let { createdDate ->
-                MembersAgentInfoField(label = stringResource(MR.strings.member_label_created)) {
+                MembersAgentInfoField(label = stringResource(MR.strings.member_label_created), copyText = createdDate) {
                     Text(
                         text = createdDate,
                         style = RaftType.Body.copy(
@@ -10435,8 +10445,8 @@ private fun MembersAgentInfoSection(
                 }
             }
             // Creator value stays a clickable identity chip (web opens the profile).
-            MembersAgentInfoField(label = stringResource(MR.strings.member_label_creator)) {
-                val creatorProfile = summary?.creator?.toStrictMemberProfile()
+            val creatorProfile = summary?.creator?.toStrictMemberProfile()
+            MembersAgentInfoField(label = stringResource(MR.strings.member_label_creator), copyText = creatorProfile?.displayName) {
                 if (creatorProfile != null) {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
@@ -11281,7 +11291,7 @@ private fun MembersAgentRuntimeConfigRows(
             )
         }
         if (modelLabel != null) {
-            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_model)) {
+            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_model), copyText = modelLabel) {
                 MembersAgentRuntimeChip(
                     label = modelLabel,
                     kind = MembersAgentRuntimeChipKind.Model
@@ -11315,8 +11325,8 @@ private fun MembersAgentRuntimeConfigRows(
             }
         }
         if (runtimeId == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
-            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_provider)) {
-                val providerId = runtimeConfig.provider.membersBuiltInProviderId()
+            val providerId = runtimeConfig.provider.membersBuiltInProviderId()
+            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_provider), copyText = providerId.ifBlank { null }) {
                 Text(
                     text = providerId.ifBlank { stringResource(MR.strings.member_label_default) },
                     style = RaftType.Caption.copy(
@@ -11331,9 +11341,9 @@ private fun MembersAgentRuntimeConfigRows(
             }
         }
         if (runtimeId == "pi") {
-            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_provider)) {
-                val providerId =
-                    (runtimeConfig.provider as? RuntimeProviderConfig.PiBuiltin)?.providerId
+            val providerId =
+                (runtimeConfig.provider as? RuntimeProviderConfig.PiBuiltin)?.providerId
+            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_provider), copyText = providerId) {
                 Text(
                     text = providerId ?: stringResource(MR.strings.member_label_default),
                     style = RaftType.Caption.copy(
@@ -11348,8 +11358,11 @@ private fun MembersAgentRuntimeConfigRows(
             }
         }
         if (runtimeId == "claude") {
-            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_provider)) {
-                val provider = runtimeConfig.provider as? RuntimeProviderConfig.Custom
+            val provider = runtimeConfig.provider as? RuntimeProviderConfig.Custom
+            MembersAgentRuntimeConfigField(
+                stringResource(MR.strings.member_label_provider),
+                copyText = provider?.apiUrl?.takeIf { it.isNotBlank() }
+            ) {
                 Text(
                     text = provider?.apiUrl?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.member_label_default),
                     style = RaftType.Caption.copy(
@@ -11363,8 +11376,8 @@ private fun MembersAgentRuntimeConfigRows(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_command)) {
-                val command = runtimeConfig.command?.takeIf { it.isNotBlank() }
+            val command = runtimeConfig.command?.takeIf { it.isNotBlank() }
+            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_command), copyText = command) {
                 Text(
                     text = command ?: stringResource(MR.strings.member_label_default),
                     style = RaftType.Caption.copy(
@@ -11410,6 +11423,7 @@ internal fun membersAgentRuntimeModelDisplayLabel(
 @Composable
 private fun MembersAgentRuntimeConfigField(
     label: String,
+    copyText: String? = null,
     content: @Composable () -> Unit
 ) {
     Column(
@@ -11424,7 +11438,8 @@ private fun MembersAgentRuntimeConfigField(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-        content()
+        // [copyText]: the raw value a long press on the value copies (never the label).
+        Box(Modifier.raftCopyable(copyText)) { content() }
     }
 }
 
@@ -11453,9 +11468,11 @@ private fun MembersAgentRuntimeEnvVars(summary: AgentDetailSummary?) {
                 envVarNames.forEach { name ->
                     // raft-ui Badge (outline) for env-var names: chip radius, hairline ring, Space Mono;
                     // the value is masked.
+                    // Long press copies the variable name (the value stays masked).
                     RaftBadge(
                         text = "$name=${membersMaskedEnvValue(envVars[name])}",
-                        appearance = RaftBadgeAppearance.Outline
+                        appearance = RaftBadgeAppearance.Outline,
+                        modifier = Modifier.raftCopyable(name)
                     )
                 }
             }

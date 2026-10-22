@@ -37,6 +37,8 @@ data class RaftStrings(
     val cancel: String = "Cancel",
     /** A banner's × ([build.raft.designsystem.components.RaftBanner] `onDismiss`, raft-ui `BannerClose`). */
     val dismiss: String = "Dismiss",
+    /** The long-press copy's screen-reader action ([build.raft.designsystem.components.raftCopyable]). */
+    val copy: String = "Copy",
 )
 
 /** The enclosing [RaftStrings]; English outside any provider (so outside [RaftTheme] too). */

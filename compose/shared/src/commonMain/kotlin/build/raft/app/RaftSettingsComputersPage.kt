@@ -83,6 +83,7 @@ import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftDescriptionList
+import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftDescriptionListDirection
 import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftField
@@ -781,6 +782,8 @@ private fun RaftComputerRuntimeBadge(chip: RaftComputerRuntimeChip) {
         }
     RaftBadge(
         text = chip.name + suffix,
+        // Long press copies the runtime name without the "(not installed)" style suffix.
+        modifier = Modifier.raftCopyable(chip.name),
         appearance = RaftBadgeAppearance.Soft,
         variant =
             if (chip.availability == RaftComputerRuntimeAvailability.Detected) RaftBadgeVariant.Information else RaftBadgeVariant.Muted,
@@ -812,6 +815,7 @@ private fun RaftComputerDetailHeader(computer: RaftComputerRowModel) {
                 color = RaftTheme.colors.foreground,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.raftCopyable(computer.name),
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 RaftComputerStatus(computer.online)
@@ -896,6 +900,8 @@ private fun RaftComputerEditableSection(
                 shown ?: emptyText.orEmpty(),
                 style = RaftTheme.typography.callout,
                 color = if (shown == null) RaftTheme.colors.foregroundHint else RaftTheme.colors.foreground,
+                // Long press copies the saved value (the name, the description), not the empty hint.
+                modifier = Modifier.raftCopyable(shown),
             )
         }
     }

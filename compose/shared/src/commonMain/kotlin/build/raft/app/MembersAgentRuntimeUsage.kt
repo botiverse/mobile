@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import androidx.compose.runtime.Composable
@@ -211,7 +212,8 @@ internal fun MembersAgentRuntimeUsageChip(
         label = label,
         kind = MembersAgentRuntimeChipKind.Runtime,
         statusColor = statusColor,
-        modifier = Modifier.clickable {
+        // Long press copies the runtime name (never the usage status); a tap opens usage.
+        modifier = Modifier.raftCopyable(label) {
             access?.log?.invoke("member_runtime_usage_tap offered=$offered load=${load.diagnosticsLabel()}")
             if (offered) dialogOpen = true
         }
