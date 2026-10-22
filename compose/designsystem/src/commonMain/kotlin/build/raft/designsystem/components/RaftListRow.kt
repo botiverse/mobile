@@ -163,6 +163,10 @@ fun RaftListRowGroup(
  *
  * [text]: [RaftListRowText.Member] sets the title and subtitle as the web members page does.
  *
+ * [titleCopyText] / [subtitleCopyText]: a long press on the title / subtitle copies that text
+ * ([raftCopyable]; a member's name, an `@handle`); the row's tap still opens. Null (default):
+ * not copyable.
+ *
  * States (States, ListRow): [onClick] = null is a display-only row (no press, no focus;
  * its controls are the targets). Press lays `fill-pressed` over the whole row; keyboard
  * focus draws a 2dp inset `foreground` outline (rows touch their group's edge).
@@ -194,6 +198,8 @@ fun RaftListRow(
     interactionSource: MutableInteractionSource? = null,
     menuOpen: Boolean = false,
     text: RaftListRowText = RaftListRowText.Default,
+    titleCopyText: String? = null,
+    subtitleCopyText: String? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -249,7 +255,7 @@ fun RaftListRow(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     RaftText(
                         title,
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).raftCopyable(titleCopyText),
                         style = (if (text == RaftListRowText.Member) typography.subhead else typography.body).copy(fontWeight = inks.titleWeight),
                         color = inks.ink,
                         maxLines = 1,
@@ -260,6 +266,7 @@ fun RaftListRow(
                 if (subtitle != null) {
                     RaftText(
                         subtitle,
+                        modifier = Modifier.raftCopyable(subtitleCopyText),
                         style = if (text == RaftListRowText.Member) typography.caption else typography.monoMeta,
                         color = inks.ink3,
                         maxLines = 1,

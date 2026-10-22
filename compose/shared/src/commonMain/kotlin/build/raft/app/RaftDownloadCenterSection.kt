@@ -18,6 +18,7 @@ import build.raft.app.downloads.raftDownloadSizeLabel
 import build.raft.app.downloads.raftDownloadSpeedLabel
 import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
@@ -136,6 +137,8 @@ private fun RaftDownloadCenterRow(
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 RaftText(
                     text = entry.fileName.ifBlank { stringResource(MR.strings.file_preview_fallback_file) },
+                    // A long press copies the file name (not the "File" stand-in).
+                    modifier = Modifier.raftCopyable(entry.fileName),
                     style = typography.body.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
                     color = colors.foreground,
                     maxLines = 1,

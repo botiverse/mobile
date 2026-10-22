@@ -5,6 +5,10 @@ import build.raft.designsystem.components.rememberRaftMobileNavServerPopoverStat
 import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.RaftReadOnlyField
+import build.raft.designsystem.components.raftCopyable
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import build.raft.designsystem.components.rememberRaftCopyAction
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
@@ -8965,6 +8969,7 @@ private fun SettingsNativeDetailPageContent(
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
                     publicAccess = publicAccess,
+                    webBaseUrl = webBaseUrl,
                 ) { action, itemId ->
                     when (action) {
                         SERVER_ACTION_PROFILE_SAVE ->
@@ -9269,6 +9274,8 @@ private fun SharedSettingsServerContent(
     onCreateJoinLink: (SettingsServerJoinLinkCreateRequest) -> Unit = {},
     /** Owner "Public access" section; null on surfaces that do not host it (Administration, fixtures). */
     publicAccess: SettingsServerPublicAccessBinding? = null,
+    /** The active Developer environment web URL; a relative join link copies against it. */
+    webBaseUrl: String = "",
     onAction: (String, String?) -> Unit
 ) {
     val visualFullHeight = settingsVisualFullHeightEnabled()
@@ -9336,6 +9343,7 @@ private fun SharedSettingsServerContent(
                             onMaxUsesChange = onJoinLinkMaxUsesChange,
                             onExpiresAtChange = onJoinLinkExpiresAtChange,
                             onCreate = onCreateJoinLink,
+                            webBaseUrl = webBaseUrl,
                             onAction = onAction
                         )
                     }
@@ -12930,7 +12938,8 @@ private fun SettingsServerProfileFormCard(
         )
         RaftBrutalReadOnlyField(
             label = stringResource(MR.strings.settings_server_label_slug),
-            value = currentSlug.ifBlank { stringResource(MR.strings.settings_server_state_not_provided) }
+            value = currentSlug.ifBlank { stringResource(MR.strings.settings_server_state_not_provided) },
+            copyText = currentSlug.takeIf { it.isNotBlank() }
         )
         if (actionState?.action == SERVER_ACTION_PROFILE_SAVE && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
@@ -13145,6 +13154,8 @@ private fun SettingsServerDeleteConfirmationDialog(
                         )
                         Text(
                             resolvedSlug,
+                            // The slug to type: a long press copies it (not the "server-slug" stand-in).
+                            modifier = Modifier.raftCopyable(expectedServerSlug),
                             style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
                             color = RaftColor.TextBlack,
                             maxLines = 1,
@@ -13338,6 +13349,8 @@ private fun SettingsServerActionRow(
     buttonIcon: RaftLucideIconName,
     buttonColor: Color,
     enabled: Boolean,
+    // Long-press copy of the title (raftCopyable): a name, an email, a link.
+    copyText: String? = null,
     onClick: () -> Unit
 ) {
     Row(
@@ -13346,7 +13359,7 @@ private fun SettingsServerActionRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(title, style = RaftType.Button.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
+            Text(title, modifier = Modifier.raftCopyable(copyText), style = RaftType.Button.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
             Text(detail, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
         }
         RaftBrutalActionButton(
@@ -13494,6 +13507,7 @@ private fun SettingsServerAdminsCard(
                     }
                 SettingsServerActionRow(
                     title = admin.name,
+                    copyText = admin.name,
                     detail = listOfNotNull(admin.detail, admin.role).joinToString(" · ").ifBlank { admin.role ?: stringResource(MR.strings.settings_server_role_admin) },
                     buttonLabel = if (canDemote) actionState.serverLocalizedStatusFor(SERVER_ACTION_MEMBER_ROLE, fallback, admin.id) else disabledLabel,
                     buttonIcon = RaftLucideIconName.UserMinus,
@@ -13525,6 +13539,7 @@ private fun SettingsServerInvitesCard(
             invites.forEach { invite ->
                 SettingsServerActionRow(
                     title = invite.email,
+                    copyText = invite.email,
                     detail =
                         listOfNotNull(
                             invite.inviterName?.let { MR.strings.settings_server_invited_by.format(listOf(it)).localized() },
@@ -13544,6 +13559,21 @@ private fun SettingsServerInvitesCard(
     }
 }
 
+/**
+ * What a long press on a join link copies: an absolute link as it is; a relative one against
+ * the active Developer environment [webBaseUrl] (the invite dialog's normaliser). Null with no
+ * environment URL to resolve it, so a relative link never copies against a hardcoded host.
+ */
+internal fun settingsServerJoinLinkCopyUrl(rawUrl: String?, webBaseUrl: String): String? {
+    val trimmed = rawUrl?.trim().orEmpty()
+    return when {
+        trimmed.isBlank() -> null
+        trimmed.startsWith("http://") || trimmed.startsWith("https://") -> trimmed
+        webBaseUrl.isBlank() -> null
+        else -> normalizeInviteHumanJoinUrl(trimmed, webBaseUrl)
+    }
+}
+
 @Composable
 private fun SettingsServerJoinLinksCard(
     links: List<SettingsServerJoinLinkSnapshot>,
@@ -13555,6 +13585,7 @@ private fun SettingsServerJoinLinksCard(
     onMaxUsesChange: (String) -> Unit,
     onExpiresAtChange: (String) -> Unit,
     onCreate: (SettingsServerJoinLinkCreateRequest) -> Unit,
+    webBaseUrl: String = "",
     onAction: (String, String?) -> Unit
 ) {
     val trimmedMaxUses = maxUses.trim()
@@ -13607,6 +13638,7 @@ private fun SettingsServerJoinLinksCard(
             links.forEach { link ->
                 SettingsServerActionRow(
                     title = link.url ?: link.label,
+                    copyText = settingsServerJoinLinkCopyUrl(link.url, webBaseUrl),
                     detail =
                         listOfNotNull(
                             link.maxUsesLabel,
@@ -14199,7 +14231,11 @@ private fun SharedSettingsRow(
         if (showDivider) {
             Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
         }
-        val copyable = row.copyValue.isNotBlank() && onCopyValue != null
+        // A row's copyValue copies on a long press on every settings page: the page's own
+        // handler when it passes one, else the design-system copy (host pasteboard + "Copied").
+        val copyAction = onCopyValue ?: rememberRaftCopyAction()
+        val haptics = LocalHapticFeedback.current
+        val copyable = row.copyValue.isNotBlank()
         val gestureOwner =
             rememberRaftGestureOwner(
                 surface = "settings-row",
@@ -14207,7 +14243,10 @@ private fun SharedSettingsRow(
                 callbacks =
                     SharedSettingsRowGestureCallbacks(
                         row = row,
-                        onCopyValue = onCopyValue,
+                        onCopyValue = { value ->
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            copyAction(value)
+                        },
                         onAction = onAction
                     )
             )
@@ -18392,6 +18431,7 @@ internal fun SharedSettingsDiagnosticsSnapshot.toLocalFeatureOverridesPayload():
                                 iconName = RaftLucideIconName.SlidersHorizontal,
                                 title = flag.localFeatureOverrideDisplayName(),
                                 detail = flag.key,
+                                copyValue = flag.key,
                                 status = flag.localFeatureOverrideFinalStatus(),
                                 enabled = true,
                             )

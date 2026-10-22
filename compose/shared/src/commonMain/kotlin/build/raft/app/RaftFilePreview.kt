@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
@@ -3731,6 +3732,8 @@ private fun RaftFilePreviewStandalonePageContent() {
     val downloadActive = downloadUiState == RaftFilePreviewDownloadUiState.Downloading
     RaftFilePreviewPageScaffold(
         title = if (composerImageEditMode) stringResource(MR.strings.file_preview_editor_title) else payload.previewHeaderTitle(),
+        // A long press on the title copies the file name (not the editor title or a stand-in).
+        titleCopyText = if (composerImageEditMode) null else payload.previewHeaderCopyText(),
         subtitle = if (composerImageEditMode) null else payload.previewHeaderSubtitle(),
         iconName = if (composerImageEditMode) RaftLucideIconName.Pencil else payload.previewIconName(),
         onBack = {
@@ -9062,6 +9065,19 @@ internal fun RaftFilePreviewPayload.previewHeaderTitle(): String {
     )
 }
 
+/** The file name the header's long press copies; null when the header shows a stand-in. */
+@Composable
+internal fun RaftFilePreviewPayload.previewHeaderCopyText(): String? {
+    val fallbackFile = stringResource(MR.strings.file_preview_fallback_file)
+    return raftFilePreviewHeaderCopyText(fallbackFile)
+}
+
+internal fun RaftFilePreviewPayload.raftFilePreviewHeaderCopyText(fallbackFile: String): String? {
+    if (name.isBlank() && path.isBlank() && externalFileName.isBlank() && title.isBlank()) return null
+    return raftFilePreviewHeaderTitle(fallbackFile = fallbackFile, localizedTitle = "")
+        .takeIf { it.isNotBlank() && it != fallbackFile }
+}
+
 internal fun RaftFilePreviewPayload.raftFilePreviewHeaderTitle(
     fallbackFile: String,
     localizedTitle: String,
@@ -9733,6 +9749,7 @@ internal fun RaftFilePreviewPageScaffold(
     subtitle: String? = null,
     iconName: RaftLucideIconName,
     onBack: () -> Unit,
+    titleCopyText: String? = null,
     modifier: Modifier = Modifier,
     contentPadding: androidx.compose.ui.unit.Dp = RaftAppSpacing.Md,
     trailingContent: (@Composable BoxScope.() -> Unit)? = null,
@@ -9747,6 +9764,7 @@ internal fun RaftFilePreviewPageScaffold(
             Column(modifier = Modifier.fillMaxSize()) {
                 RaftTopPageHeader(
                 title = title,
+                titleCopyText = titleCopyText,
                 subtitle = subtitle,
                 iconName = iconName,
                 backgroundColor = RaftColor.SurfaceWhite,
@@ -10308,6 +10326,7 @@ private fun RaftFilePreviewPanelHeader(
     ) {
         Text(
             text = name,
+            modifier = Modifier.raftCopyable(name),
             style = RaftType.Input.copy(fontSize = 16.sp, lineHeight = 20.sp),
             color = RaftColor.TextBlack,
             maxLines = 1,

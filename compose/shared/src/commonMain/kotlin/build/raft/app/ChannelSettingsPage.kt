@@ -43,6 +43,7 @@ import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftSkeletonVariant
 import build.raft.designsystem.components.RaftSwitch
+import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.data.ChannelSosStore
@@ -789,19 +790,23 @@ internal fun channelSettingsActionRows(model: ChannelSettingsUiModel): List<Chan
     }
 }
 
-/** Web overflow header: `#name` with its visibility as a neutral outline tag, the description under it. */
+/**
+ * Web overflow header: `#name` with its visibility as a neutral outline tag, the description under it.
+ * A long press copies the name (the raw name, without the `#`) or the description.
+ */
 @Composable
 private fun ChannelIdentityHeader(channel: HomeChannelRow) {
     val colors = RaftTheme.colors
     val description = channel.subtitle?.trim().takeUnless { it.isNullOrBlank() }
+    val rawName = channelSettingsCopyName(channel.name)
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             RaftText(
-                text = "#${channel.name.removePrefix("#")}",
-                modifier = Modifier.weight(1f, fill = false),
+                text = "#$rawName",
+                modifier = Modifier.weight(1f, fill = false).raftCopyable(rawName),
                 style = RaftTheme.typography.headline,
                 color = colors.foreground,
                 maxLines = 1,
@@ -811,6 +816,7 @@ private fun ChannelIdentityHeader(channel: HomeChannelRow) {
         }
         RaftText(
             text = description ?: stringResource(MR.strings.channel_settings_description_empty),
+            modifier = Modifier.raftCopyable(description),
             style = RaftTheme.typography.callout,
             color = if (description != null) colors.foregroundMuted else colors.foregroundHint,
             maxLines = 3,
@@ -818,6 +824,9 @@ private fun ChannelIdentityHeader(channel: HomeChannelRow) {
         )
     }
 }
+
+/** The channel name a long press copies: the raw name, no `#` (shown as `#name`). */
+internal fun channelSettingsCopyName(name: String): String = name.removePrefix("#")
 
 @Composable
 private fun channelSettingsStatusLabel(channel: HomeChannelRow): String =

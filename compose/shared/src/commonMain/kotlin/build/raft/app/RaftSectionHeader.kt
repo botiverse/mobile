@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.designsystem.components.RaftBackButton
+import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftBackButtonDefaults
 
 // raft-ui `sidebarSectionDisclosure`: a 14px chevron (`size-3.5`), `gap-1.5`, all in ink-3.
@@ -120,6 +121,8 @@ internal fun RaftTopPageHeader(
     trailingContent: (@Composable BoxScope.() -> Unit)? = null,
     onTitleClick: (() -> Unit)? = null,
     showBodyTopBanner: Boolean = true,
+    // Long-press copy (raftCopyable) of the title when it is an identifier (a file name).
+    titleCopyText: String? = null,
 ) {
     val topSafeArea =
         (topSafeAreaOverride ?: if (applyTopSafeArea) raftTopSafeAreaPadding() else 0.dp)
@@ -176,6 +179,7 @@ internal fun RaftTopPageHeader(
                 ) {
                     Text(
                         text = title,
+                        modifier = Modifier.raftCopyable(titleCopyText),
                         style = titleStyle,
                         color = RaftColor.TextBlack,
                         maxLines = 1,

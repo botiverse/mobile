@@ -81,6 +81,9 @@ fun RaftCodeBlock(
  * description, a path) wrap: the box is then at least 44dp and grows by its lines, 12dp
  * above and below them (a one-line value sits where it does in the 44dp box), and
  * ellipsizes past [maxLines] (`Int.MAX_VALUE`: never).
+ *
+ * A long press copies [copyText] ([raftCopyable]): the shown value by default; pass the raw
+ * value when the field shows a decorated one, or null when it shows a placeholder.
  */
 @Composable
 fun RaftReadOnlyField(
@@ -88,6 +91,7 @@ fun RaftReadOnlyField(
     modifier: Modifier = Modifier,
     mono: Boolean = false,
     maxLines: Int = 1,
+    copyText: String? = text,
 ) {
     val colors = RaftTheme.colors
     val shape = RoundedCornerShape(RaftRadius.Control)
@@ -98,6 +102,7 @@ fun RaftReadOnlyField(
             .then(if (wraps) Modifier.heightIn(min = 44.dp) else Modifier.height(44.dp))
             .background(colors.fillMuted, shape)
             .border(RaftStroke.Control, colors.lineHairline, shape)
+            .raftCopyable(copyText)
             .padding(horizontal = 12.dp + RaftStroke.Control)
             .then(if (wraps) Modifier.padding(vertical = 12.dp) else Modifier),
         contentAlignment = Alignment.CenterStart,
