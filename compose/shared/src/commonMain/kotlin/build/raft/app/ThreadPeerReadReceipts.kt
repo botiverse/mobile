@@ -31,7 +31,10 @@ import build.raft.app.data.RealtimeGuardedActiveThreadSink
 import build.raft.app.data.projectAgentReadReceipt
 import build.raft.app.data.projectPeerReadReceipt
 import build.raft.app.markdown.RaftMarkdownMentionReadStates
+import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.MessageMention
 import build.raft.app.model.ScopeReadUpdated
 import build.raft.app.model.ServerId
 import build.raft.app.resources.MR
@@ -54,13 +57,31 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 internal data class ThreadPeerReadReceiptsUi(
     val scope: PeerReadReceiptScope,
     val dmSurface: Boolean,
-    /** Mention lookup key (lowercase, no `@`) -> agent id, for the agents this page knows. */
-    val agentIdsByMentionKey: Map<String, String>,
+    /**
+     * Web `buildMentionMap` (ChatPanel `mentionMap`): every mentionable `name` (handle, exact) the
+     * page knows -> its identity; agents first, then humans (a human wins a shared name, as on web).
+     * Consulted only when the message's own resolved `mentions[]` has no entry for the name.
+     */
+    val directoryMentions: Map<String, MessageMention> = emptyMap(),
+    /** Agents with `managedByAppInstallId` (app-managed bots): no badge, web `isManagedBot`. */
+    val managedAgentIds: Set<String> = emptySet(),
 )
 
 internal val LocalThreadPeerReadReceipts = compositionLocalOf<ThreadPeerReadReceiptsUi?> { null }
 
-internal fun threadMentionReadLookupKey(label: String): String = label.trim().removePrefix("@").trim().lowercase()
+/** A mention token's name: the handle after `@`, matched exactly like web `MentionEntry` keys. */
+internal fun threadMentionTokenName(label: String): String = label.trim().removePrefix("@").trim()
+
+/**
+ * Web MessageItem: `structuredMentionMap.get(name) ?? mentionMap.get(name)`. The message's resolved
+ * `mentions[]` (ids from the server) win; the page directory is the fallback for rows that carry
+ * none (e.g. an optimistic or cached row).
+ */
+internal fun ThreadPeerReadReceiptsUi.resolveMention(message: RaftThreadMessageItem, label: String): MessageMention? {
+    val name = threadMentionTokenName(label)
+    if (name.isEmpty()) return null
+    return message.mentions.lastOrNull { it.name.trim() == name } ?: directoryMentions[name]
+}
 
 /** Web `agentReadBadgesEnabled`: only the human sender of the message sees its badges. */
 private fun RaftThreadMessageItem.showsPeerReadReceipts(): Boolean =
@@ -71,9 +92,10 @@ internal fun ThreadPeerReadReceiptsUi.mentionReadStates(message: RaftThreadMessa
     if (!message.showsPeerReadReceipts() || scope !is PeerReadReceiptScope.Peers) return null
     val seq = message.seq
     return RaftMarkdownMentionReadStates { label ->
-        agentIdsByMentionKey[threadMentionReadLookupKey(label)]?.let { agentId ->
-            projectAgentReadReceipt(scope, agentId, seq)
-        }
+        val mention = resolveMention(message, label) ?: return@RaftMarkdownMentionReadStates null
+        // Only agent mentions carry a badge; app-managed bots have no read semantics (yezizp 2026-10-21).
+        if (mention.type != "agent" || mention.id in managedAgentIds) return@RaftMarkdownMentionReadStates null
+        projectAgentReadReceipt(scope, mention.id, seq)
     }
 }
 
@@ -105,29 +127,32 @@ internal fun RaftThreadScreenPayload.peerReadReceiptScopeId(): String? {
     return scopeId
 }
 
-private fun RaftThreadScreenPayload.agentIdsByMentionKey(): Map<String, String> =
-    buildMap {
-        (members + memberCandidates)
-            .filter { it.kind == "agent" && it.id.isNotBlank() }
-            .forEach { member ->
-                listOf(member.id, member.handle, member.displayName)
-                    .map(::threadMentionReadLookupKey)
-                    .filter { it.isNotBlank() }
-                    .forEach { key -> putIfAbsentCompat(key, member.id) }
-            }
-        val peer = dmPeerIdentity
-        if (peer != null && peer.kind == MemberKind.Agent) {
-            listOfNotNull(peer.memberId.value, dmPeerName)
-                .map(::threadMentionReadLookupKey)
-                .filter { it.isNotBlank() }
-                .forEach { key -> putIfAbsentCompat(key, peer.memberId.value) }
-        }
+/**
+ * Web `buildMentionMap(agents, members, channelAgents, channelHumans)`: name -> identity, agents
+ * (server directory, then channel members) before humans so a human wins a shared name.
+ */
+internal fun threadMentionDirectory(
+    serverMembers: List<MemberProfile>,
+    channelMembers: List<RaftThreadMemberItem>,
+): Map<String, MessageMention> {
+    fun handleOf(value: String) = value.trim().removePrefix("@").trim()
+    val map = linkedMapOf<String, MessageMention>()
+    fun put(type: String, id: String, handle: String) {
+        val name = handleOf(handle)
+        if (name.isNotEmpty() && id.isNotBlank()) map[name] = MessageMention(type = type, id = id, name = name)
     }
-
-// Map.putIfAbsent is JVM-only; commonMain must also compile for Kotlin/Native.
-private fun MutableMap<String, String>.putIfAbsentCompat(key: String, value: String) {
-    if (key !in this) put(key, value)
+    serverMembers.filter { it.kind == MemberKind.Agent }.forEach { put("agent", it.id.value, it.handle) }
+    channelMembers.filter { it.kind == "agent" }.forEach { put("agent", it.id, it.handle) }
+    serverMembers.filter { it.kind == MemberKind.Human }.forEach { put("user", it.id.value, it.handle) }
+    channelMembers.filter { it.kind == "human" }.forEach { put("user", it.id, it.handle) }
+    return map
 }
+
+/** `managedByAppInstallId` agents of the server directory (`GET /agents`). */
+internal fun threadManagedAgentIds(serverMembers: List<MemberProfile>): Set<String> =
+    serverMembers
+        .filter { it.kind == MemberKind.Agent && !it.managedByAppInstallId.isNullOrBlank() }
+        .mapTo(mutableSetOf()) { it.id.value }
 
 /**
  * Binds the page to the shell's read-receipt store: hydrates the page's scope once its first page
@@ -143,6 +168,7 @@ internal fun rememberThreadPeerReadReceipts(
     serverId: String?,
     accountId: String?,
     active: Boolean,
+    serverMembersStore: SharedServerMembersStore?,
 ): ThreadPeerReadReceiptsUi? {
     val store = remember(sharedStores, storeScope) { sharedStores.peerReadReceiptStore(storeScope) }
     val environment by sharedStores.apiEnvironmentStore.state.collectAsState()
@@ -191,11 +217,24 @@ internal fun rememberThreadPeerReadReceipts(
     val state by store.state.collectAsState()
     val scope = if (enabled && state.owner == owner && scopeId != null) state.scopes[scopeId] else null
     val dmSurface = payload.isPeerReadReceiptDmSurface()
-    val mentionKeys = remember(payload.members, payload.memberCandidates, payload.dmPeerIdentity, payload.dmPeerName) {
-        payload.agentIdsByMentionKey()
+    val membersState = serverMembersStore?.state?.collectAsState()?.value
+    val serverMembers =
+        remember(membersState, owner) {
+            owner?.let { serverMembersStore?.currentServerMembers(ServerId(it.serverId)) }.orEmpty()
+        }
+    val directory = remember(serverMembers, payload.members, payload.memberCandidates) {
+        threadMentionDirectory(serverMembers, payload.members + payload.memberCandidates)
     }
-    return remember(scope, dmSurface, mentionKeys) {
-        scope?.let { ThreadPeerReadReceiptsUi(scope = it, dmSurface = dmSurface, agentIdsByMentionKey = mentionKeys) }
+    val managedAgentIds = remember(serverMembers) { threadManagedAgentIds(serverMembers) }
+    return remember(scope, dmSurface, directory, managedAgentIds) {
+        scope?.let {
+            ThreadPeerReadReceiptsUi(
+                scope = it,
+                dmSurface = dmSurface,
+                directoryMentions = directory,
+                managedAgentIds = managedAgentIds,
+            )
+        }
     }
 }
 

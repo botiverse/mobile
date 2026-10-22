@@ -2973,6 +2973,8 @@ internal data class RaftThreadMessageItem(
     val attachments: List<RaftThreadAttachmentItem> = emptyList(),
     val commentRef: RaftThreadMessageCommentRef? = null,
     val forwardBundle: ForwardMessageBundle? = null,
+    /** Resolved `mentions[]` of the message (name -> type/id); web `buildStructuredMentionMap`. */
+    val mentions: List<build.raft.app.model.MessageMention> = emptyList(),
     val deliveryState: String = ThreadMessageDeliverySent,
     val pendingSendContext: RaftThreadPendingSendContext? = null,
     val pendingSendErrorCode: String? = null,
@@ -11161,6 +11163,7 @@ private fun SharedThreadRouteContentContent(
                 serverId = currentServerId,
                 accountId = currentSession?.user?.id,
                 active = active,
+                serverMembersStore = serverMembersStore,
             )
         val threadProvidedValues = raftMarkdownProvidedValuesWith(
             arrayOf(

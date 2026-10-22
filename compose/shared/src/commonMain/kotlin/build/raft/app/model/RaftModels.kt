@@ -406,6 +406,12 @@ data class MemberProfile(
      * otherwise "Last active {time}". Realtime `agent:seen` updates it.
      */
     val lastSeenAt: String? = null,
+    /**
+     * App-managed bot (botiverse/slock `agents.managed_by_app_install_id`, sent as
+     * `managedByAppInstallId` on `GET /agents` and `GET /agents/:id` for non-guests). Web hides
+     * the read_receipts_v0 mention badge for these (`MentionLink.tsx` `isManagedBot`).
+     */
+    val managedByAppInstallId: String? = null,
     val createdAgents: List<AgentProfile> = emptyList(),
     val permissionBadges: List<String> = emptyList(),
     val serverId: ServerId? = null,

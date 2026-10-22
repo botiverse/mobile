@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.model.MessageMention
+
 import build.raft.app.MemberKindWireContract
 import build.raft.app.strictMemberKindOrNull
 import build.raft.app.strictMessageTypeOrNull
@@ -129,7 +131,30 @@ private data class MessagesWireMessage(
     val externalAuthor: WireExternalAuthor? = null,
     /** RFC 077 `DelegatedByLabel | null`: the assistant that sent it for the sender. */
     val delegatedBy: WireDelegatedBy? = null,
+    /** Resolved mention facts (`ResolvedMentionFact[]`). */
+    val mentions: List<WireMessageMention> = emptyList(),
 )
+
+/**
+ * One `mentions[]` entry of a REST message row: botiverse/slock `services/messageService.ts`
+ * `ResolvedMentionFact { type: "user" | "agent" | "external"; id; name }`, set on every
+ * `listMessages` row (`enrichWithSenderNames`) and on the send response
+ * (`buildPersistedMessageFrontendPayload`); asserted in `routes/messages.api.test.ts`.
+ */
+@Serializable
+internal data class WireMessageMention(
+    val type: String = "",
+    val id: String = "",
+    val name: String = "",
+)
+
+/** Drops entries without a type or id, as the realtime mapper does. */
+internal fun List<WireMessageMention>.toMessageMentions(): List<MessageMention> =
+    mapNotNull { mention ->
+        val type = mention.type.trim()
+        val id = mention.id.trim()
+        if (type.isEmpty() || id.isEmpty()) null else MessageMention(type = type, id = id, name = mention.name)
+    }
 
 @Serializable
 private data class MessagesWireReaction(
@@ -505,6 +530,7 @@ private fun MessagesWireMessage.toDomain(
         commentRef = commentRef?.toDomain(),
         externalAuthor = resolvedExternalAuthor,
         delegatedBy = delegatedBy.toMessageDelegatedBy(authorKind),
+        mentions = mentions.toMessageMentions(),
     )
 }
 

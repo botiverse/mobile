@@ -59,7 +59,12 @@ class ThreadReadReceiptsScreenshotTest {
         }
 }
 
-private val agentMentionKeys = mapOf("alpha" to "agent-alpha", "beta" to "agent-beta")
+private val mentionDirectory =
+    mapOf(
+        "alpha" to build.raft.app.model.MessageMention("agent", "agent-alpha", "alpha"),
+        "beta" to build.raft.app.model.MessageMention("agent", "agent-beta", "beta"),
+        "carol" to build.raft.app.model.MessageMention("user", "user-carol", "carol"),
+    )
 
 private fun row(
     id: String,
@@ -119,7 +124,7 @@ private fun ChannelRows() {
                     ),
                 ),
             dmSurface = false,
-            agentIdsByMentionKey = agentMentionKeys,
+            directoryMentions = mentionDirectory,
         )
     ReceiptRows(
         receipts,
@@ -136,7 +141,7 @@ private fun DmRows() {
         ThreadPeerReadReceiptsUi(
             scope = PeerReadReceiptScope.Peers(listOf(PeerReadState(ReadReceiptPeerKind.Agent, "agent-alpha", 11))),
             dmSurface = true,
-            agentIdsByMentionKey = agentMentionKeys,
+            directoryMentions = mentionDirectory,
         )
     ReceiptRows(
         receipts,
