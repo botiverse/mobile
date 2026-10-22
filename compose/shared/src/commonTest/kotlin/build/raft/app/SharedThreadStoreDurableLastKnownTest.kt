@@ -44,8 +44,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -512,14 +514,86 @@ class SharedThreadStoreDurableLastKnownTest {
                     diagnosticsLogger = logs::add,
                 ),
                 scope = scope,
+                diagnosticsLogger = logs::add,
             )
         try {
             store.accept(SharedThreadIntent.Start(basePayload().copy(focusedMessageId = "v2-20")))
             store.accept(SharedThreadIntent.ApplyRealtimeEvent(MessageNew(realtimeMessage(id = "rt-46", seq = 46))))
+            // The gap catch-up's latest page ("newer body") SUCCEEDS here (it parses off this thread: wait for its
+            // decision); the anchor page is detached from the tail, not replaced by that latest page.
+            withTimeoutOrNull(5_000L) {
+                // The catch-up logs from its parse dispatcher: read a snapshot, retry on a concurrent append.
+                while (runCatching { logs.toList() }.getOrDefault(emptyList()).none { it.startsWith("thread_gap_catchup threadId=channel-1 decision=") }) {
+                    kotlinx.coroutines.delay(10L)
+                }
+            }
+            assertTrue(logs.toList().any { it.startsWith("thread_gap_catchup threadId=channel-1 decision=detach") }, logs.toList().toString())
             val payload = store.state.value.payload
             assertFalse(payload.messages.any { it.id == "rt-46" }, logs.toString())
             assertEquals((5..34).map { "body $it" }, payload.messages.map { it.body })
         } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun cancelledNetworkNewerFetchOnAStandInNeverCachesTheStandIn() = runBlocking {
+        // Tail anchor page of a window that does not reach the newest message: nothing newer on disk, so the
+        // newer page goes to the network, which suspends; the page leaves (the load is cancelled).
+        val logs = mutableListOf<String>()
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+        val api = SharedThreadStoreTest.FakeThreadApi(channelMessagesResponseCode = 500)
+        api.releaseAfterMessages = CompletableDeferred()
+        api.afterMessagesStarted = CompletableDeferred()
+        val dataSource = dataSource(
+            api = api,
+            reader = FakeReader(frames = mapOf(partition(ownerA) to largeFrame(count = 45, hasLoadedNewest = false))),
+            identity = { ownerA },
+            diagnosticsLogger = logs::add,
+        )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        try {
+            store.accept(SharedThreadIntent.Start(basePayload().copy(focusedMessageId = "v2-44")))
+            assertTrue(store.state.value.payload.durableLastKnown)
+            assertTrue(store.state.value.payload.canLoadMoreAfter)
+            assertNull(dataSource.cachedPayload("channel-1"))
+            val loading = scope.launch { store.loadNewer() }
+            api.afterMessagesStarted!!.await()
+            assertTrue(logs.any { "thread_durable_newer_page threadId=channel-1 served=0 reason=exhausted" in it }, logs.toString())
+            loading.cancelAndJoin()
+            assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+            assertNull(dataSource.cachedPayload("channel-1"), "a stand-in is never committed to the memory cache")
+        } finally {
+            api.releaseAfterMessages?.complete(Unit)
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun cancelledNetworkNewerFetchOnACanonicalPageCachesAsToday() = runBlocking {
+        // Twin of the test above: identical cancelled newer fetch, on a network page instead of a stand-in.
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+        val api = SharedThreadStoreTest.FakeThreadApi()
+        val dataSource = dataSource(api = api, reader = FakeReader(frames = emptyMap()), identity = { ownerA })
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        try {
+            store.accept(SharedThreadIntent.Start(basePayload()))
+            assertFalse(store.state.value.payload.durableLastKnown)
+            assertEquals(false, assertNotNull(dataSource.cachedPayload("channel-1")).canLoadMoreAfter)
+            store.accept(SharedThreadIntent.SetPagingAvailability(canLoadMoreBefore = false, canLoadMoreAfter = true))
+            api.releaseAfterMessages = CompletableDeferred()
+            api.afterMessagesStarted = CompletableDeferred()
+            val loading = scope.launch { store.loadNewer() }
+            api.afterMessagesStarted!!.await()
+            loading.cancelAndJoin()
+            assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+            val cached = assertNotNull(dataSource.cachedPayload("channel-1"))
+            assertTrue(cached.canLoadMoreAfter, "the canonical page's newer-load state is committed as before")
+            assertEquals("idle", cached.newerMessagesStatus)
+        } finally {
+            api.releaseAfterMessages?.complete(Unit)
             scopeJob.cancelAndJoin()
         }
     }
@@ -751,7 +825,7 @@ class SharedThreadStoreDurableLastKnownTest {
         )
 
     /** Facts seq 1..[count], stored newest-first so the stand-in must order and trim by seq itself. */
-    private fun largeFrame(count: Int): ThreadDurableLastKnownFrame =
+    private fun largeFrame(count: Int, hasLoadedNewest: Boolean = true): ThreadDurableLastKnownFrame =
         ThreadDurableLastKnownFrame(
             scope = SyncScopeKey(partition(ownerA), "channel-1", "channel"),
             envelopes = (count downTo 1).map { index ->
@@ -769,7 +843,9 @@ class SharedThreadStoreDurableLastKnownTest {
                     context = CanonicalConversationContextV2.TopLevel(TopLevelScopeRefV2.Channel("server-1", "channel-1")),
                 )
             },
-            cursor = PersistedCursor(count.toLong(), 1, count.toLong(), hasLoadedOldest = true, epoch = "epoch-v2"),
+            cursor = PersistedCursor(
+                count.toLong(), 1, count.toLong(), hasLoadedOldest = true, hasLoadedNewest = hasLoadedNewest, epoch = "epoch-v2",
+            ),
         )
 
     private fun frame(body: String, scopeKind: String = "channel"): ThreadDurableLastKnownFrame {

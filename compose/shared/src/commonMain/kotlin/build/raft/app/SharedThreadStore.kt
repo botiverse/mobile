@@ -10005,6 +10005,8 @@ internal class SharedThreadStore(
         afterSeq: Long,
     ): ThreadNewerPageLoadOutcome? {
         val context = dataSource.captureReplyCacheProducerContext() ?: return null
+        // Like loadOlder: a second call while the disk read runs sees "loading" and is ignored.
+        reducePayloadPatch { currentPayload -> currentPayload.copy(newerMessagesStatus = "loading", errorCode = null) }
         val page =
             dataSource.durableNewerPageIfCurrent(
                 routeIdentity = existing.resolveThreadRouteIdentity(),
@@ -10012,7 +10014,14 @@ internal class SharedThreadStore(
                 afterSeq = afterSeq,
                 expectedOwnerScopeId = visiblePayloadOwnerScopeId,
                 replyParent = existing.durableReplyParentOrNull(),
-            ) ?: return null
+            )
+        if (page == null) {
+            // Nothing on disk: hand back to the network fetch, which sets its own loading state.
+            reducePayloadPatch { currentPayload ->
+                if (currentPayload.newerMessagesStatus == "loading") currentPayload.copy(newerMessagesStatus = "idle") else currentPayload
+            }
+            return null
+        }
         var addedIds: List<String> = emptyList()
         reducePayloadPatch { currentPayload ->
             if (
@@ -10225,7 +10234,9 @@ internal class SharedThreadStore(
                         active.routeIdentity == currentPayload.realtimeGapRouteIdentity() &&
                         currentPayload.newerMessagesStatus == "loading"
                     ) {
-                        reducePayloadPatch(cachePayload = true) { latestPayload ->
+                        // Also on cancellation (the page left mid-fetch): a stand-in (durable rows) is never committed to
+                        // the memory payload cache, or the next entry would use it and skip the disk read.
+                        reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
                             latestPayload.copy(newerMessagesStatus = "idle")
                         }
                     }
