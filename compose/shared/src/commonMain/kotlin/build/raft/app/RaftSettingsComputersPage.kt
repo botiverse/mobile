@@ -868,7 +868,7 @@ private fun RaftComputerEditableSection(
                         onClick = { editing = true },
                         tooltip = editLabel,
                         variant = RaftButtonVariant.Ghost,
-                        size = RaftIconButtonSize.Xs,
+                        size = RaftIconButtonSize.Md,
                     ) {
                         RaftComputersIcon(RaftLucideIconName.Pencil, size = 14.dp)
                     }

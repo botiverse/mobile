@@ -743,7 +743,7 @@ fun RaftSidebarSectionHeader(
 
 /**
  * A group header's control (`SidebarSectionControl`: ghost, `h-7 min-w-7`): a 28dp
- * ([RaftIconButtonSize.Sm], touch target widened to 44dp) [RaftIconButton]
+ * (touch target widened to 44dp) [RaftIconButton]
  * [RaftButtonVariant.Ghost] with a 16dp [glyph] in `foreground`, named
  * by [tooltip] (Title Case: "Sort Channels", "Create Channel"). Sort is
  * [RaftGlyph.ArrowUpDown] (or [RaftGlyph.ArrowDownUp]), create [RaftGlyph.Plus].
@@ -774,12 +774,13 @@ fun RaftSidebarSectionAction(
     enabled: Boolean = true,
     icon: @Composable () -> Unit,
 ) {
-    RaftIconButton(
+    RaftSizedIconButton(
         onClick = onClick,
         tooltip = tooltip,
+        box = 28.dp,
+        glyph = RaftSidebarSectionActionIconSize,
         modifier = modifier,
         variant = RaftButtonVariant.Ghost,
-        size = RaftIconButtonSize.Sm,
         enabled = enabled,
     ) {
         Box(Modifier.size(RaftSidebarSectionActionIconSize), contentAlignment = Alignment.Center) { icon() }
