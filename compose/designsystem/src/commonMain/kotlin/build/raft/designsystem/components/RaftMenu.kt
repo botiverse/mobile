@@ -211,7 +211,7 @@ fun RaftMenuItem(
     Row(
         modifier
             .fillMaxWidth()
-            .heightIn(min = 36.dp)
+            .heightIn(min = RaftOptionHeight)
             .then(
                 if (nav != null) {
                     Modifier

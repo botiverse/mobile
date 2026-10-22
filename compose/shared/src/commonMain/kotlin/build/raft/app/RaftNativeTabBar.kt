@@ -303,5 +303,8 @@ internal fun raftNativeTabBarSymbol(icon: RaftLucideIconName): RaftNativeTabBarS
         RaftLucideIconName.Search -> RaftNativeTabBarSymbol("magnifyingglass", "magnifyingglass")
         RaftLucideIconName.Inbox -> RaftNativeTabBarSymbol("tray", "tray.fill")
         RaftLucideIconName.Bookmark -> RaftNativeTabBarSymbol("bookmark", "bookmark.fill")
+        // D1a: the current-server tab. The system bar cannot draw the server's avatar; it shows
+        // the server glyph with the server's name as the title.
+        RaftLucideIconName.Server -> RaftNativeTabBarSymbol("server.rack", "server.rack")
         else -> RaftNativeTabBarSymbol("circle", "circle.fill")
     }

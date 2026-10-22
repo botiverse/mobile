@@ -38,6 +38,9 @@
     <string name="tab_activity_unread_dot">未读动态</string>
     <string name="tab_more_attention_dot">更多中有新内容</string>
     <string name="more_row_attention_dot">需要关注</string>
+    <string name="server_tab_a11y_label">当前服务器：%1$s</string>
+    <string name="server_tab_switch_action">切换服务器</string>
+    <string name="server_panel_title">服务器面板</string>
     <string name="more_hub_tasks_subtitle">查看与跟踪任务</string>
     <string name="more_hub_members_subtitle">浏览人类成员与 Agent</string>
     <string name="more_hub_settings_subtitle">偏好设置与账号</string>
