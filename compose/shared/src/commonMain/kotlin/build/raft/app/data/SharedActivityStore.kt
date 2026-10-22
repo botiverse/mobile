@@ -276,16 +276,27 @@ class SharedActivityStore internal constructor(
         }
     }
 
+    /** Applies a realtime intent and waits until the reconcile / load it may have started has settled. */
     suspend fun acceptRealtime(intent: SharedActivityIntent) {
+        applyLiveRealtime(intent)
+        if (intent is SharedActivityIntent.ApplyRealtimeEvent) {
+            synchronized(realtimeOwnerLock) { realtimeBackgroundReconcileJob }?.join()
+            awaitCurrentLoadIdle()
+        }
+    }
+
+    /**
+     * Live realtime ingress for the AppShell domain sink. It applies the realtime patch and returns; a
+     * background reconcile or Activity load keeps running in the store scope. The sink runs under the
+     * realtime authority registry lock, so waiting for that network work here would hold every later
+     * realtime event (feedback bc6e392e: up to 17 s).
+     */
+    suspend fun applyLiveRealtime(intent: SharedActivityIntent) {
         when (intent) {
-            is SharedActivityIntent.ApplyRealtimeEvent -> {
-                applyRealtimeEvent(intent)
-                synchronized(realtimeOwnerLock) { realtimeBackgroundReconcileJob }?.join()
-                awaitCurrentLoadIdle()
-            }
+            is SharedActivityIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent)
             is SharedActivityIntent.ApplyRealtimeSummaryEvent ->
                 applyRealtimeSummaryEvent(intent.event, intent.activeConversationId)
-            else -> error("acceptRealtime only accepts realtime intents")
+            else -> error("applyLiveRealtime only accepts realtime intents")
         }
     }
 

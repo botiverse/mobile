@@ -897,12 +897,23 @@ internal class SharedHomeStore(
         }
         if (event is MemberPresenceUpdated) return
         if (event is DirectMessageCreated) {
+            // The new DM row only arrives through a Home reload. Launch it instead of running it
+            // inline: this apply runs on the live realtime path (under the realtime authority
+            // registry lock), so an inline bootstrap would hold every later realtime event behind
+            // the Home network requests.
             val nextSwitch = _state.value.serverSwitchState.refresh()
             reduceState(_state.value.copy(serverSwitchState = nextSwitch))
-            load(
-                nextSwitch,
-                showRefreshAffordance = false
-            )
+            loadJob?.cancel()
+            agentDirectMessageStatusJob?.cancel()
+            agentDirectMessageStatusJob = null
+            loadJobLaunchIntent = null
+            val reloadIntent = SharedHomeIntent.ApplyRealtimeEvent(serverId.value, event)
+            loadJob =
+                scope.launch {
+                    withStateDiagnosticsContext(reloadIntent) {
+                        load(nextSwitch, showRefreshAffordance = false)
+                    }
+                }
             return
         }
         if (event is PerReceiverReadStateChanged) {
@@ -1411,7 +1422,9 @@ internal class SharedHomeStore(
             }
             RealtimeRefreshScope.Machines -> {
                 diagnosticsLogger("home_realtime_refresh_lightweight scope=${event.scope} reason=${event.reason}")
-                loadNotifications()
+                // Off the live realtime apply path (see DirectMessageCreated in applyRealtimeEvent);
+                // loadNotifications guards its own publication by request generation and authority.
+                scope.launch { loadNotifications() }
             }
             RealtimeRefreshScope.Home,
             RealtimeRefreshScope.ChannelMembers,
