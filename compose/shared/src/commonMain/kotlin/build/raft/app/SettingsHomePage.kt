@@ -16180,7 +16180,8 @@ private fun appShellAccountPayload(session: StoredAuthSession?): RaftSettingsAcc
         profile =
             RaftSettingsAccountProfile(
                 displayName = displayName,
-                handle = user?.email.orEmpty(),
+                // `handle` is the username field; the loaded account fills it from the profile's name.
+                handle = user?.name?.trim().orEmpty(),
                 email = user?.email.orEmpty(),
                 avatarLabel = displayName.take(2).uppercase(),
                 avatarUrl = user?.avatarUrl,
