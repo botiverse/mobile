@@ -76,7 +76,56 @@ internal interface ThreadDurableLastKnownReader {
         require(limit > 0)
         return readReplyThread(partition, threadChannelId, replyParent)?.olderPage(beforeSeq, limit)
     }
+
+    /**
+     * Task #14 part C: offline NEWER paging of an anchored stand-in that is not the window's tail — the oldest
+     * [limit] facts of the stored window newer than [afterSeq], ascending. Built on [read], same gates.
+     */
+    suspend fun readAfter(
+        partition: DurablePartitionKey,
+        channelId: SyncScopeId,
+        afterSeq: Long,
+        limit: Int,
+    ): ThreadDurableNewerPage? {
+        require(limit > 0)
+        return read(partition, channelId)?.newerPage(afterSeq, limit)
+    }
+
+    /** [readAfter] for a reply thread; built on [readReplyThread], so it has the same gates. */
+    suspend fun readReplyThreadAfter(
+        partition: DurablePartitionKey,
+        threadChannelId: SyncScopeId,
+        replyParent: ThreadDurableReplyParent,
+        afterSeq: Long,
+        limit: Int,
+    ): ThreadDurableNewerPage? {
+        require(limit > 0)
+        return readReplyThread(partition, threadChannelId, replyParent)?.newerPage(afterSeq, limit)
+    }
 }
+
+private fun ThreadDurableLastKnownFrame.newerPage(afterSeq: Long, limit: Int): ThreadDurableNewerPage {
+    val newer = windowEnvelopes().filter { it.fact.seq > afterSeq }.sortedBy { it.fact.seq }
+    val page = newer.take(limit)
+    return ThreadDurableNewerPage(
+        scope = scope,
+        envelopes = page,
+        hasNewerStored = newer.size > page.size,
+        hasLoadedNewest = cursor.hasLoadedNewest,
+    )
+}
+
+/**
+ * One offline newer page read from the stored window (task #14 part C). [hasNewerStored]: the window holds
+ * still-newer facts above [envelopes]; [hasLoadedNewest]: the stored cursor says the window reaches the
+ * conversation's newest message.
+ */
+internal data class ThreadDurableNewerPage(
+    val scope: SyncScopeKey,
+    val envelopes: List<CanonicalMessageEnvelopeV2>,
+    val hasNewerStored: Boolean,
+    val hasLoadedNewest: Boolean,
+)
 
 private fun ThreadDurableLastKnownFrame.olderPage(beforeSeq: Long, limit: Int): ThreadDurableOlderPage {
     val older = windowEnvelopes().filter { it.fact.seq < beforeSeq }.sortedBy { it.fact.seq }

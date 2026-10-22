@@ -76,6 +76,23 @@ class CanonicalMessageV2ContextPageRoundTripTest {
     }
 
     @Test
+    fun contextPageReachingPastBothEdgesExtendsBoth() = withFreshDatabase { database ->
+        val rig = Rig(database)
+        runBlocking {
+            rig.enter(listOf(50L, 60L))
+            rig.persist("m55", page(40, 50, 55, 60, 70), hasOlder = false, hasNewer = true)
+            val frame = assertNotNull(rig.reader.read(partition, "channel-1"))
+            // m55 lies inside the stored range but is not stored: the window is the record there (deleted).
+            assertEquals(listOf(40L, 50L, 60L, 70L), frame.envelopes.map { it.fact.seq })
+            assertEquals(40L, frame.cursor.oldestLoadedSeq)
+            assertEquals(true, frame.cursor.hasLoadedOldest)
+            assertEquals(70L, frame.cursor.newestLoadedSeq)
+            assertEquals(false, frame.cursor.hasLoadedNewest)
+            assertEquals(true, rig.logs.last().endsWith("outcome=committed reason=window_extended_both facts=2"), rig.logs.last())
+        }
+    }
+
+    @Test
     fun storedFactsAndTheWindowsRangeAreNeverRewrittenByTheContextPage() = withFreshDatabase { database ->
         val rig = Rig(database)
         runBlocking {

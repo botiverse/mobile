@@ -1726,6 +1726,14 @@ internal data class SharedThreadDurableOlderPage(
     val reachedOldest: Boolean,
 )
 
+/** Task #14 part C: one offline newer page for an anchored stand-in, projected like the stand-in. */
+internal data class SharedThreadDurableNewerPage(
+    val messages: List<RaftThreadMessageItem>,
+    val pageSize: Int,
+    /** Newer facts are still stored above this page, or the window does not reach the newest message. */
+    val canLoadMoreAfter: Boolean,
+)
+
 internal data class SharedThreadPageFetchResult(
     val payload: RaftThreadScreenPayload,
     val requestedPageSize: Int,
@@ -2788,13 +2796,15 @@ internal class SharedThreadDataSource(
         // Task #168 step 2b: older paging stays open while the window holds older facts than the ones
         // shown, or the window itself does not reach the channel's start (an online retry may still
         // fetch them). Loading older on the stand-in reads the window first (`durableOlderPageIfCurrent`).
-        // Newer paging stays closed on every stand-in (task #14 part C: also on an anchor page whose newer
-        // stored facts are not shown); the network answer replaces the stand-in wholesale.
         val canLoadMoreBefore = shownRange.first > 0 || !frame.cursor.hasLoadedOldest
+        // Task #14 part C, the mirror for newer: an anchor page that is not the window's tail (or a window that
+        // does not reach the newest message) is NOT the newest — newer paging reads the window first
+        // (`durableNewerPageIfCurrent`), and realtime appends are held like on any detached window.
+        val canLoadMoreAfter = shownRange.last < window.lastIndex || !frame.cursor.hasLoadedNewest
         diagnosticsLogger(
             "thread_durable_last_known threadId=$channelId outcome=frame scopeKind=${frame.scope.scopeKind} " +
                 "messages=${messages.size} stored=${frame.envelopes.size} latestSeq=${frame.cursor.latestSeq} " +
-                "canLoadMoreBefore=$canLoadMoreBefore anchored=${anchorIndex >= 0}"
+                "canLoadMoreBefore=$canLoadMoreBefore canLoadMoreAfter=$canLoadMoreAfter anchored=${anchorIndex >= 0}"
         )
         return routePayload.copy(
             status = "content",
@@ -2803,7 +2813,7 @@ internal class SharedThreadDataSource(
             messages = messages,
             canLoadMoreBefore = canLoadMoreBefore,
             durableReachedOldest = !canLoadMoreBefore,
-            canLoadMoreAfter = false,
+            canLoadMoreAfter = canLoadMoreAfter,
             olderMessagesStatus = "idle",
             newerMessagesStatus = "idle",
             errorCode = null,
@@ -2880,6 +2890,69 @@ internal class SharedThreadDataSource(
             canLoadMoreBefore = canLoadMoreBefore,
             reachedOldest = !canLoadMoreBefore,
         )
+    }
+
+    /**
+     * Task #14 part C: offline newer page for an anchored durable stand-in — the oldest page of stored facts
+     * newer than [afterSeq]. The mirror of [durableOlderPageIfCurrent] (same admission, reads only); `null`
+     * when nothing can be served from disk (the caller then asks the network). Every call logs one
+     * `thread_durable_newer_page` line.
+     */
+    internal suspend fun durableNewerPageIfCurrent(
+        routeIdentity: ThreadRouteIdentity,
+        context: ReplyCacheProducerContext,
+        afterSeq: Long,
+        expectedOwnerScopeId: String?,
+        replyParent: ThreadDurableReplyParent? = null,
+    ): SharedThreadDurableNewerPage? {
+        val channelId = routeIdentity.timelineChannelId
+        fun refuse(reason: String): SharedThreadDurableNewerPage? {
+            diagnosticsLogger(
+                "thread_durable_newer_page threadId=${channelId.orEmpty()} served=0 reason=$reason afterSeq=$afterSeq"
+            )
+            return null
+        }
+        val reader = durableLastKnownReader ?: return refuse("no_reader")
+        val ownerScopeId = context.provenance.threadPayloadOwnerScopeId
+        if (ownerScopeId == null || ownerScopeId != expectedOwnerScopeId) return refuse("owner_changed")
+        if (!routeIdentity.canRenderTimelineCandidates) return refuse("not_renderable")
+        val admission =
+            durableScopeAdmission(routeIdentity, replyParent)
+                ?: return refuse(
+                    if (routeIdentity.surfaceKind == RaftThreadSurfaceKind.ReplyThread) "no_reply_parent" else "not_top_level"
+                )
+        val allowedScopeKinds = routeIdentity.durableScopeKinds()
+        if (channelId == null) return refuse("no_channel")
+        val partition =
+            context.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+                ?: return refuse("no_partition")
+        if (!isCurrentReplyCacheProvenance(context.provenance)) return refuse("identity_changed")
+        val pageSize = threadPageSize(partition.serverId)
+        val page =
+            when (admission) {
+                DurableScopeAdmission.TopLevel -> reader.readAfter(partition, channelId, afterSeq, pageSize)
+                is DurableScopeAdmission.ReplyThread ->
+                    reader.readReplyThreadAfter(partition, channelId, admission.parent, afterSeq, pageSize)
+            } ?: return refuse("no_frame")
+        if (!isCurrentReplyCacheProvenance(context.provenance)) return refuse("identity_changed")
+        if (page.scope.scopeKind !in allowedScopeKinds) return refuse("surface_mismatch")
+        val messages =
+            page.envelopes.mapNotNull { envelope ->
+                envelope.toThreadMessageItem(
+                    currentUserId = context.provenance.principalId,
+                    diagnostics = diagnosticsLogger,
+                )
+            }.sortedByThreadTimeline()
+        if (messages.isEmpty()) {
+            return refuse(if (page.hasLoadedNewest) "exhausted_at_newest" else "exhausted")
+        }
+        val canLoadMoreAfter = page.hasNewerStored || !page.hasLoadedNewest
+        diagnosticsLogger(
+            "thread_durable_newer_page threadId=$channelId served=${messages.size} reason=" +
+                (if (page.hasNewerStored) "more_stored" else if (page.hasLoadedNewest) "reached_newest" else "window_end") +
+                " afterSeq=$afterSeq canLoadMoreAfter=$canLoadMoreAfter scopeKind=${page.scope.scopeKind}"
+        )
+        return SharedThreadDurableNewerPage(messages = messages, pageSize = pageSize, canLoadMoreAfter = canLoadMoreAfter)
     }
 
     suspend fun rememberedReplyThreadAccessFailure(
@@ -9922,6 +9995,47 @@ internal class SharedThreadStore(
         return true
     }
 
+    /**
+     * Task #14 part C: serve one newer page of an anchored offline stand-in from the durable window (the mirror
+     * of [loadOlderFromDurableStandIn]). Returns the outcome when the window answered, `null` when it has
+     * nothing newer (the caller then asks the network as before).
+     */
+    private suspend fun loadNewerFromDurableStandIn(
+        existing: RaftThreadScreenPayload,
+        afterSeq: Long,
+    ): ThreadNewerPageLoadOutcome? {
+        val context = dataSource.captureReplyCacheProducerContext() ?: return null
+        val page =
+            dataSource.durableNewerPageIfCurrent(
+                routeIdentity = existing.resolveThreadRouteIdentity(),
+                context = context,
+                afterSeq = afterSeq,
+                expectedOwnerScopeId = visiblePayloadOwnerScopeId,
+                replyParent = existing.durableReplyParentOrNull(),
+            ) ?: return null
+        var addedIds: List<String> = emptyList()
+        reducePayloadPatch { currentPayload ->
+            if (
+                !currentPayload.durableLastKnown ||
+                !routeStillCurrent(existing, "thread_page", "durable_newer_apply", currentPayload)
+            ) {
+                return@reducePayloadPatch currentPayload
+            }
+            val existingIds = currentPayload.messages.mapTo(mutableSetOf()) { it.id }
+            addedIds = page.messages.map { it.id }.filter { it.isNotBlank() && it !in existingIds }.distinct()
+            currentPayload
+                .mergePagedMessages(pageMessages = page.messages, before = false, pageSize = page.pageSize)
+                .copy(canLoadMoreAfter = page.canLoadMoreAfter)
+        }
+        if (addedIds.isEmpty()) {
+            diagnosticsLogger?.invoke(
+                "thread_durable_newer_page threadId=${existing.sourceThreadId.orEmpty()} served=0 reason=stand_in_replaced"
+            )
+            return ThreadNewerPageLoadOutcome.Ignored
+        }
+        return ThreadNewerPageLoadOutcome.Applied(addedIds)
+    }
+
     suspend fun loadNewer(): ThreadNewerPageLoadOutcome {
         val initial = _state.value.payload
         if (!initial.canLoadMoreAfter || initial.newerMessagesStatus == "loading") {
@@ -9933,6 +10047,11 @@ internal class SharedThreadStore(
                 currentPayload.copy(newerMessagesStatus = "error", errorCode = "missing_after_seq")
             }
             return ThreadNewerPageLoadOutcome.Failed
+        }
+        // Task #14 part C: while an anchored offline stand-in is shown, newer pages come from the durable
+        // window first; only when it has nothing newer does the ordinary network fetch run.
+        if (initial.durableLastKnown) {
+            loadNewerFromDurableStandIn(initial, afterSeq)?.let { return it }
         }
         val staleToken = routeStaleToken
         val routeIdentity = initial.realtimeGapRouteIdentity()
@@ -9964,7 +10083,8 @@ internal class SharedThreadStore(
                             routeIdentity = routeIdentity,
                             staleToken = staleToken,
                         )
-                    reducePayloadPatch(cachePayload = true) { latestPayload ->
+                    // A stand-in (durable rows) is never committed to the memory payload cache.
+                    reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
                         latestPayload.copy(newerMessagesStatus = "loading", errorCode = null)
                     }
                     id
@@ -10015,8 +10135,7 @@ internal class SharedThreadStore(
                                         pageSize = result.data.requestedPageSize
                                     )
                                     .preserveStableTimelineFrom(currentPayload)
-                            dataSource
-                                .cacheCanonicalPayload(merged, visiblePayloadOwnerScopeId)
+                            (if (currentPayload.durableLastKnown) merged else dataSource.cacheCanonicalPayload(merged, visiblePayloadOwnerScopeId))
                                 .withRouteContext(initial)
                                 .preserveStableTimelineFrom(currentPayload)
                         }
@@ -10028,7 +10147,7 @@ internal class SharedThreadStore(
                             currentPayload.copy(newerMessagesStatus = "error", errorCode = result.blocker.code)
                     }
                 var appliedToCurrentRoute = false
-                reducePayloadPatch(cachePayload = true) { latestPayload ->
+                reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
                     if (
                         !staleTokenStillCurrent(
                             staleToken,
