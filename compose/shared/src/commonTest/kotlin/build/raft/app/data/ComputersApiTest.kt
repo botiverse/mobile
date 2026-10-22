@@ -139,6 +139,47 @@ class ComputersApiTest {
     }
 
     @Test
+    fun machineCreatorMapsTheServerCreatorSummaryOrNone() = runPortableCoroutineTest {
+        // Wire shape per botiverse/slock 0e4aeb3af: GET /servers/:id/machines (routes/servers.ts) sends
+        // `creator: computerLinkedMachineCreators.get(m.id) ?? null`, a ComputerCreatorSummary
+        // (services/computerCredentialService.ts) `{type:"human", id, name, displayName|null, avatarUrl|null, gravatarHash}`.
+        val body =
+            """
+            {"machines":[
+              {"id":"c-1","name":"Studio","status":"online","isComputer":true,"computerVersion":"1.0.0",
+               "creator":{"type":"human","id":"user-1","name":"artin","displayName":"Artin","avatarUrl":"https://cdn.raft.build/avatars/user-1.png",
+               "gravatarHash":"9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"}},
+              {"id":"c-2","name":"Laptop","status":"offline","isComputer":true,"computerVersion":"0.1.0",
+               "creator":{"type":"human","id":"user-2","name":"maria","displayName":null,"avatarUrl":null,"gravatarHash":"abc123"}},
+              {"id":"c-3","name":"Spare","status":"offline","isComputer":true,"computerVersion":"0.1.0","creator":null},
+              {"id":"d-1","name":"Daemon","status":"online","isComputer":false,"daemonVersion":"0.1.0","creator":null}
+            ],"latestDaemonVersion":null,"latestComputerVersion":"9.9.9"}
+            """.trimIndent()
+        val summary =
+            assertIs<DataResult.Content<ComputerListSummary>>(
+                RaftComputersApiClient(RecordingComputersApi(machinesBody = body)).machines(ServerId("server-1"), DataRequestPriority.Visible)
+            ).data
+        val snapshots = summary.machines.map { it.toSettingsComputerSnapshot() }.associateBy { it.id }
+
+        assertEquals(
+            SettingsComputerCreatorSnapshot(
+                id = "user-1",
+                name = "artin",
+                displayName = "Artin",
+                avatarUrl = "https://cdn.raft.build/avatars/user-1.png",
+                gravatarHash = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+            ),
+            snapshots.getValue("c-1").creator
+        )
+        assertEquals(
+            SettingsComputerCreatorSnapshot(id = "user-2", name = "maria", displayName = null, avatarUrl = null, gravatarHash = "abc123"),
+            snapshots.getValue("c-2").creator
+        )
+        assertEquals(null, snapshots.getValue("c-3").creator)
+        assertEquals(null, snapshots.getValue("d-1").creator)
+    }
+
+    @Test
     fun typedComputersApiAcceptsRawRowShapeForRename() = runPortableCoroutineTest {
         // Server returns the raw machines DB row for PATCH (no status / statusVersion
         // enrichment). The typed API must accept this shape, NOT flag it as contract

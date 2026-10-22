@@ -7,6 +7,7 @@ import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsComputerAgentSnapshot
+import build.raft.app.data.SettingsComputerCreatorSnapshot
 import build.raft.app.data.SettingsComputerDetailSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputersSnapshot
@@ -234,6 +235,51 @@ class RaftSettingsComputersModelTest {
             RaftComputerDetailModel.Loading,
             raftComputerDetailModel(content, machineId = "m-2", targetServerId = null, currentServerId = "server-1"),
         )
+    }
+
+    @Test
+    fun detailShowsTheCreatorOfManagedComputersOnly() {
+        val hash = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+        fun model(snapshot: SettingsComputerSnapshot) =
+            assertIs<RaftComputerDetailModel.Content>(
+                raftComputerDetailModel(
+                    ScreenLoadState.Content(detail(snapshot.id).copy(computer = snapshot)),
+                    machineId = snapshot.id,
+                    targetServerId = null,
+                    currentServerId = "server-1",
+                )
+            )
+
+        val named =
+            model(
+                computer("c-1", isComputer = true).copy(
+                    creator = SettingsComputerCreatorSnapshot(id = "user-1", name = "artin", displayName = "Artin", gravatarHash = hash)
+                )
+            )
+        assertTrue(named.showsCreator)
+        val creator = requireNotNull(named.creator)
+        assertEquals("user-1", creator.id)
+        assertEquals("artin", creator.name)
+        assertEquals("Artin", creator.displayName)
+        assertTrue(creator.avatarWireValue.orEmpty().contains(hash), "a person without a photo falls back to their Gravatar")
+
+        // No display name: the handle stands in; no photo and no Gravatar: the placeholder person.
+        val bare =
+            model(
+                computer("c-2", isComputer = true).copy(
+                    creator = SettingsComputerCreatorSnapshot(id = "user-2", name = "maria", displayName = " ")
+                )
+            ).creator
+        assertEquals("maria", bare?.displayName)
+        assertNull(bare?.avatarWireValue)
+
+        // A managed Computer the server sends no creator for shows "No creator".
+        val orphan = model(computer("c-3", isComputer = true))
+        assertTrue(orphan.showsCreator)
+        assertNull(orphan.creator)
+
+        // A raw daemon keeps Created only.
+        assertFalse(model(computer("d-1")).showsCreator)
     }
 
     @Test

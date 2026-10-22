@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.SettingsComputerCreatorSnapshot
 import build.raft.app.data.SettingsComputerDetailSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.model.RaftTimeContext
@@ -38,7 +39,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * JVM screenshots of a computer's detail page (`settings.computer.info`): the Info section's
- * detected runtimes as chips and its created date, as on the web. Same capture, tolerance and
+ * detected runtimes as chips, its created date and its creator, as on the web. Same capture, tolerance and
  * [RobolectricComposeActivityRule] as [ActivityConversationRowsScreenshotTest]; CI uploads the
  * report folder as `shared-home-screenshots`.
  */
@@ -177,6 +178,8 @@ private fun ComputerDetailVisualContent(appearance: RaftAppAppearance) {
                     platform = "linux arm64",
                     runtimes = listOf("claude", "builtin", "kimi-sdk", "kimi", "pi"),
                     createdAt = "2026-10-08T09:14:00Z",
+                    // No photo or Gravatar, so the capture draws the placeholder person without a fetch.
+                    creator = SettingsComputerCreatorSnapshot(id = "user-1", name = "artin", displayName = "Artin"),
                 ),
             workspaces = emptyList(),
             agents = emptyList(),

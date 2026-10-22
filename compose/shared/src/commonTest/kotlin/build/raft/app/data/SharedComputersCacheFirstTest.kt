@@ -59,6 +59,11 @@ class SharedComputersCacheFirstTest {
         val cached = assertIs<DataResult.Content<SettingsComputersSnapshot>>(store.cachedSettingsComputersForServer(SERVER_A))
         assertEquals(listOf("Studio A"), cached.data.computers.map { it.name })
         assertEquals("sk_a", cached.data.computers.single().apiKeyPrefix)
+        assertEquals(
+            SettingsComputerCreatorSnapshot(id = "user-1", name = "artin", displayName = "Artin", avatarUrl = null, gravatarHash = "abc123"),
+            cached.data.computers.single().creator,
+            "the creator survives a cold start",
+        )
         assertEquals(0, second.api.calls(SERVER_A), "the cold-start paint needs no network")
         assertTrue(store.state.value.selectComputerServerSlice(SERVER_A).seededFromDurable)
         assertEquals(SharedComputersLoadStatus.Loaded, store.state.value.selectComputerServerSlice(SERVER_A).status)
@@ -231,7 +236,7 @@ class SharedComputersCacheFirstTest {
             return HomeNetworkResponse(
                 code = 200,
                 bodyText =
-                    """{"machines":[{"id":"m-$id","name":"$name","status":"online","statusVersion":1,"apiKeyPrefix":"$prefix","runtimes":["claude"],"daemonVersion":"0.53.0","hostname":"h.local","os":"darwin"}],"latestDaemonVersion":"0.53.0"}""",
+                    """{"machines":[{"id":"m-$id","name":"$name","status":"online","statusVersion":1,"apiKeyPrefix":"$prefix","runtimes":["claude"],"daemonVersion":"0.53.0","hostname":"h.local","os":"darwin","creator":{"type":"human","id":"user-1","name":"artin","displayName":"Artin","avatarUrl":null,"gravatarHash":"abc123"}}],"latestDaemonVersion":"0.53.0"}""",
             )
         }
 

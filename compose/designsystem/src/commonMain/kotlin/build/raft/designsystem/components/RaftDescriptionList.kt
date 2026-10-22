@@ -1,12 +1,10 @@
 package build.raft.designsystem.components
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -175,16 +173,33 @@ private fun DescriptionTerm(term: String, accessory: (@Composable () -> Unit)?, 
     }
 }
 
+/**
+ * The value: one line is centred in [minHeight]. Content taller than that (wrapped chips)
+ * keeps the inset a text line has in it above and below, so the next fact's label stays as
+ * far from the last line as from a one-line value.
+ */
 @Composable
 private fun DescriptionDetails(minHeight: Dp, content: @Composable RowScope.() -> Unit, modifier: Modifier = Modifier) {
+    val lineHeight = RaftTheme.typography.callout.lineHeight
     CompositionLocalProvider(LocalRaftContentColor provides RaftTheme.colors.foreground) {
-        // One line is centred in the minimum height; more lines wrap 6dp apart.
-        Box(modifier.heightIn(min = minHeight), contentAlignment = Alignment.CenterStart) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                itemVerticalAlignment = Alignment.CenterVertically,
-            ) { content() }
+        Layout(
+            content = {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) { content() }
+            },
+            modifier = modifier,
+        ) { measurables, constraints ->
+            val min = minHeight.roundToPx()
+            val row = measurables.single().measure(constraints.copy(minWidth = 0, minHeight = 0))
+            val inset = if (lineHeight.isSp) ((min - lineHeight.roundToPx()) / 2).coerceAtLeast(0) else 0
+            val height = if (row.height > min) row.height + inset * 2 else min
+            val top = if (row.height > min) inset else (min - row.height) / 2
+            layout(max(row.width, constraints.minWidth), height.coerceIn(constraints.minHeight, constraints.maxHeight)) {
+                row.place(0, top)
+            }
         }
     }
 }

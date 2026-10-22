@@ -1431,7 +1431,22 @@ data class SettingsComputerSnapshot(
     /** The list's `latestComputerVersion` (artifact hint), carried on each row for the detail page. */
     val latestComputerVersion: String? = null,
     /** The list's `latestComputerReleaseNotes` (notes for exactly [latestComputerVersion]), carried on each row. */
-    val latestComputerReleaseNotes: SettingsComputerReleaseNotesSnapshot? = null
+    val latestComputerReleaseNotes: SettingsComputerReleaseNotesSnapshot? = null,
+    /** Server `creator`: the human who attached a managed Computer; null when none (raw daemon, departed attacher). */
+    val creator: SettingsComputerCreatorSnapshot? = null
+)
+
+/**
+ * A managed Computer's creator as `GET servers/:id/machines` sends it (slock
+ * packages/server/src/services/computerCredentialService.ts `ComputerCreatorSummary`): a server
+ * member's public identity, always a human.
+ */
+data class SettingsComputerCreatorSnapshot(
+    val id: String,
+    val name: String,
+    val displayName: String? = null,
+    val avatarUrl: String? = null,
+    val gravatarHash: String? = null
 )
 
 /**

@@ -1914,6 +1914,9 @@
     <string name="settings_computers_label_os">OS</string>
     <string name="settings_computers_label_version">コンピューターのバージョン</string>
     <string name="settings_computers_label_created">作成日</string>
+    <string name="settings_computers_label_creator">作成者</string>
+    <string name="settings_computers_state_no_creator">作成者なし</string>
+    <string name="settings_computers_creator_handle">@%1$s</string>
     <string name="settings_computers_label_runtimes">検出されたランタイム</string>
     <string name="settings_computers_runtime_suffix_update_computer">（コンピューターの更新が必要）</string>
     <string name="settings_computers_state_unknown">不明</string>

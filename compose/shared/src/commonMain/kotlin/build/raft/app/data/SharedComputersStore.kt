@@ -644,7 +644,18 @@ internal data class RaftDurableComputer(
     val agentCount: Int = 0,
     val computerUpgradeAvailable: Boolean? = null,
     val remoteUpgradeSupported: Boolean? = null,
-    val latestComputerVersion: String? = null
+    val latestComputerVersion: String? = null,
+    /** The managed Computer's creator, so a cold start still shows it on the detail page. */
+    val creator: RaftDurableComputerCreator? = null
+)
+
+@Serializable
+internal data class RaftDurableComputerCreator(
+    val id: String,
+    val name: String,
+    val displayName: String? = null,
+    val avatarUrl: String? = null,
+    val gravatarHash: String? = null
 )
 
 private fun SharedComputersServerSlice.toDurableRecord(): RaftComputersDurableRecord =
@@ -671,7 +682,17 @@ private fun SharedComputersServerSlice.toDurableRecord(): RaftComputersDurableRe
                     agentCount = machine.agentCount,
                     computerUpgradeAvailable = machine.computerUpgradeAvailable,
                     remoteUpgradeSupported = machine.remoteUpgradeSupported,
-                    latestComputerVersion = machine.latestComputerVersion
+                    latestComputerVersion = machine.latestComputerVersion,
+                    creator =
+                        machine.creator?.let { creator ->
+                            RaftDurableComputerCreator(
+                                id = creator.id,
+                                name = creator.name,
+                                displayName = creator.displayName,
+                                avatarUrl = creator.avatarUrl,
+                                gravatarHash = creator.gravatarHash
+                            )
+                        }
                 )
             },
         machineCount = machineCount,
@@ -706,7 +727,17 @@ private fun RaftComputersDurableRecord.toServerSlice(): SharedComputersServerSli
                     agentCount = machine.agentCount,
                     computerUpgradeAvailable = machine.computerUpgradeAvailable,
                     remoteUpgradeSupported = machine.remoteUpgradeSupported,
-                    latestComputerVersion = machine.latestComputerVersion
+                    latestComputerVersion = machine.latestComputerVersion,
+                    creator =
+                        machine.creator?.let { creator ->
+                            SettingsComputerCreatorSnapshot(
+                                id = creator.id,
+                                name = creator.name,
+                                displayName = creator.displayName,
+                                avatarUrl = creator.avatarUrl,
+                                gravatarHash = creator.gravatarHash
+                            )
+                        }
                 )
             },
         machineCount = machineCount,

@@ -2851,7 +2851,8 @@ internal fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnaps
         remoteUpgradeSupported = remoteUpgradeSupported,
         versionGate = versionGate,
         latestComputerVersion = latestComputerVersion,
-        latestComputerReleaseNotes = latestComputerReleaseNotes
+        latestComputerReleaseNotes = latestComputerReleaseNotes,
+        creator = creator
     )
 
 private fun ComputerWorkspaceSummary.toSettingsWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot =

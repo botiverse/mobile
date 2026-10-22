@@ -4,6 +4,7 @@ import build.raft.app.data.COMPUTER_ACTION_DELETE
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.SettingsComputerCreatorSnapshot
 import build.raft.app.data.SettingsComputerDetailSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputersSnapshot
@@ -12,7 +13,9 @@ import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsState
 import build.raft.app.model.ComputerRestartDone
+import build.raft.app.model.MemberKind
 import build.raft.app.model.RUNTIMES
+import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.getModelLabel
 import build.raft.app.model.RealtimeRefreshRequired
@@ -176,7 +179,41 @@ internal sealed interface RaftComputerDetailModel {
          * notice instead of the destructive confirm (the server would answer 409 anyway).
          */
         val assignedAgentCount: Int = raftComputerAssignedAgentCount(snapshot),
+        /** Web: a managed Computer shows a Creator fact beside Created; a raw daemon keeps Created only. */
+        val showsCreator: Boolean = snapshot.computer.isComputer,
+        /** The human who attached it, opening their profile; null shows "No creator". */
+        val creator: RaftComputerCreatorModel? = snapshot.computer.creator?.toRaftComputerCreator(),
     ) : RaftComputerDetailModel
+}
+
+/**
+ * A Computer's creator as the detail page shows it (web MachineDetailPanel): the avatar, the
+ * display name (the handle when there is none) and `@name`.
+ */
+internal data class RaftComputerCreatorModel(
+    val id: String,
+    val name: String,
+    val displayName: String,
+    /** The uploaded avatar, else the Gravatar; null draws the person placeholder. */
+    val avatarWireValue: String?,
+)
+
+internal fun SettingsComputerCreatorSnapshot.toRaftComputerCreator(): RaftComputerCreatorModel? {
+    val cleanId = id.trim().takeIf { it.isNotBlank() } ?: return null
+    val cleanName = name.trim().takeIf { it.isNotBlank() } ?: return null
+    return RaftComputerCreatorModel(
+        id = cleanId,
+        name = cleanName,
+        displayName = displayName?.trim()?.takeIf { it.isNotBlank() } ?: cleanName,
+        avatarWireValue =
+            avatarWireValueForAvatarSlot(
+                kind = MemberKind.Human,
+                id = cleanId,
+                avatarWireValue = null,
+                avatarUrl = avatarUrl,
+                gravatarHash = gravatarHash,
+            ),
+    )
 }
 
 /**
