@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
@@ -47,24 +46,30 @@ class ChannelMembersPageScreenshotTest {
     @Test
     fun channelMembersDark() = capture("channel.members.dark", RaftAppAppearance.Dark)
 
-    private fun capture(name: String, appearance: RaftAppAppearance) =
-        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
-            val pager =
-                remember {
-                    object : Pager() {}.apply {
-                        pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) })
+    private fun capture(name: String, appearance: RaftAppAppearance) {
+        // zh-CN copy, restored here (not in a DisposableEffect: the activity outlives the
+        // capture) so later screenshot tests in the same JVM keep their locale.
+        val previousLocale = StringDesc.localeType
+        StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
+        try {
+            RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
+                val pager =
+                    remember {
+                        object : Pager() {}.apply {
+                            pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) })
+                        }
                     }
-                }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { ChannelMembersVisualContent() }
+                CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { ChannelMembersVisualContent() }
+            }
+        } finally {
+            StringDesc.localeType = previousLocale
         }
+    }
 }
 
 /** Fixed roster and agent activity, so the capture is deterministic. */
 @Composable
 private fun ChannelMembersVisualContent() {
-    val previousLocale = remember { StringDesc.localeType }
-    StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
-    DisposableEffect(Unit) { onDispose { StringDesc.localeType = previousLocale } }
     val members =
         remember {
             listOf(
