@@ -32924,7 +32924,7 @@ private fun ThreadRemoveMemberConfirmationDialog(
                 text = if (removing) {
                         stringResource(MR.strings.thread_members_removing)
                     } else {
-                        stringResource(MR.strings.member_action_remove_member)
+                        stringResource(MR.strings.thread_members_remove_confirm)
                     },
                 onClick = onConfirm,
                 enabled = !removing,
@@ -33615,7 +33615,7 @@ private fun ThreadSettingsDangerAction.localizedTitle(): String =
 private fun ThreadSettingsDangerAction.localizedButtonLabel(): String =
     when (this) {
         ThreadSettingsDangerAction.Visibility -> stringResource(MR.strings.thread_settings_make_private)
-        ThreadSettingsDangerAction.Archive -> stringResource(MR.strings.thread_settings_archive)
+        ThreadSettingsDangerAction.Archive -> stringResource(MR.strings.thread_settings_archive_confirm)
         ThreadSettingsDangerAction.Delete -> stringResource(MR.strings.thread_settings_delete)
     }
 

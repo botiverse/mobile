@@ -123,7 +123,7 @@ private fun CreateJointChannelDialog(
                     enabled = !state.submitting,
                 )
                 RaftButton(
-                    text = title,
+                    text = stringResource(MR.strings.joint_create_submit),
                     onClick = { onIntent(CreateJointChannelIntent.Submit) },
                     variant = RaftButtonVariant.Primary,
                     size = RaftButtonSize.Lg,

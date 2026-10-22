@@ -3311,7 +3311,7 @@ private fun RaftStructuralHomeShellContent(
                             size = RaftButtonSize.Lg
                         )
                         RaftButton(
-                            text = stringResource(MR.strings.common_delete),
+                            text = stringResource(MR.strings.home_section_delete_confirm),
                             onClick = {
                                 onSidebarSectionDelete(sectionDeleteSection.id)
                                 sectionDeleteConfirmId = null

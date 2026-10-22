@@ -819,8 +819,12 @@ private fun AgentMigrationStartDialog(
             RaftButton(
                 text =
                     stringResource(
-                        if (hostedSelected) MR.strings.agent_migration_hosted_start
-                        else MR.strings.agent_migration_detail_start_migration
+                        when {
+                            hostedSelected -> MR.strings.agent_migration_hosted_start
+                            // Title "Move Agent" offers both destinations, so the button keeps one.
+                            inputs.hostedAvailable -> MR.strings.agent_migration_detail_start_migration
+                            else -> MR.strings.agent_migration_move_confirm
+                        }
                     ),
                 onClick = {
                     val choice = selected ?: return@RaftButton

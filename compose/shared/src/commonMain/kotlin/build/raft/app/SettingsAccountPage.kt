@@ -116,15 +116,15 @@ internal data class RaftSettingsAccountPayload(
     val failedLabel: String = "Failed",
     val avatarInProgress: Boolean = false,
     val avatarErrorCode: String? = null,
-    val logoutTitle: String = "Log out",
+    val logoutTitle: String = "Sign out",
     // Mobile-appropriate wording: react web says "this browser", but on the
     // app the equivalent scope is the device — matches the app's existing
     // "on this device" copy (SettingsStoragePage / AuthDataSource). Do NOT
     // align this to react's "browser" (intentional platform copy divergence).
     val logoutDetail: String = "Sign out on this device. Your account and data stay; you can sign back in any time.",
-    val logoutLabel: String = "Log out",
-    val logoutConfirmMessage: String = "Sign out on this device? Your account and data are kept; you can log back in any time.",
-    val logoutConfirmLabel: String = "Log out",
+    val logoutLabel: String = "Sign Out",
+    val logoutConfirmMessage: String = "Sign out on this device? Your account and data are kept; you can sign back in any time.",
+    val logoutConfirmLabel: String = "Sign Out",
     val logoutCancelLabel: String = "Cancel",
     val changePasswordTitle: String = "Change password",
     val changePasswordSubtitle: String = "Requires current password before saving a new one",
@@ -192,9 +192,9 @@ private fun RaftSettingsAccountPayload.localizedPresentationCopy(): RaftSettings
         failedLabel = stringResource(MR.strings.settings_account_failed),
         logoutTitle = stringResource(MR.strings.settings_account_logout),
         logoutDetail = stringResource(MR.strings.settings_account_logout_detail),
-        logoutLabel = stringResource(MR.strings.settings_account_logout),
+        logoutLabel = stringResource(MR.strings.settings_account_logout_action),
         logoutConfirmMessage = stringResource(MR.strings.settings_account_logout_confirm),
-        logoutConfirmLabel = stringResource(MR.strings.settings_account_logout),
+        logoutConfirmLabel = stringResource(MR.strings.settings_account_logout_action),
         logoutCancelLabel = stringResource(MR.strings.common_cancel),
         changePasswordTitle = stringResource(MR.strings.settings_account_change_password),
         changePasswordSubtitle = stringResource(MR.strings.settings_account_change_password_detail),
