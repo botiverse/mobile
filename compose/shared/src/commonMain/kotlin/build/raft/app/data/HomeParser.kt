@@ -79,6 +79,11 @@ data class HomeChannelWireDto(
      * `guestVisible` && not archived (packages/web/src/components/layout/Sidebar.tsx:894).
      */
     val guestVisible: Boolean = false,
+    /**
+     * `channels.guest_joinable` (botiverse/slock packages/server/src/routes/channels.ts PATCH `/:id`
+     * reads/writes `guestJoinable`; web `channel.guestJoinable`): guests may join the channel.
+     */
+    val guestJoinable: Boolean = false,
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
     val activityMuteSupported: Boolean = false,
@@ -135,6 +140,11 @@ private data class HomeChannelDetailWireDto(
     val bridge: HomeChannelBridgeWireDto? = null,
     /** See [HomeChannelWireDto.guestVisible]. */
     val guestVisible: Boolean = false,
+    /**
+     * `channels.guest_joinable` (botiverse/slock packages/server/src/routes/channels.ts PATCH `/:id`
+     * reads/writes `guestJoinable`; web `channel.guestJoinable`): guests may join the channel.
+     */
+    val guestJoinable: Boolean = false,
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
     val activityMuteSupported: Boolean = false,
@@ -153,12 +163,27 @@ data class WireChannelCapabilities(
     val addChannelMembers: Boolean? = null,
     val removeChannelMembers: Boolean? = null,
     val changeChannelMemberRoles: Boolean? = null,
+    // The rest of `CHANNEL_MANAGEMENT_CAPABILITIES` (botiverse/slock
+    // packages/shared/src/channelPermissions.ts:29, serialized by
+    // `withHumanChannelAuthorization` in packages/server/src/routes/channels.ts).
+    val editChannelMetadata: Boolean? = null,
+    val archiveChannels: Boolean? = null,
+    val deleteChannels: Boolean? = null,
+    val changeChannelVisibility: Boolean? = null,
+    val manageGuestAccess: Boolean? = null,
+    val federateChannels: Boolean? = null,
 ) {
     fun toModel(): ChannelCapabilities =
         ChannelCapabilities(
             addChannelMembers = addChannelMembers,
             removeChannelMembers = removeChannelMembers,
-            changeChannelMemberRoles = changeChannelMemberRoles
+            changeChannelMemberRoles = changeChannelMemberRoles,
+            editChannelMetadata = editChannelMetadata,
+            archiveChannels = archiveChannels,
+            deleteChannels = deleteChannels,
+            changeChannelVisibility = changeChannelVisibility,
+            manageGuestAccess = manageGuestAccess,
+            federateChannels = federateChannels,
         )
 }
 
@@ -212,6 +237,7 @@ internal fun parseRaftChannelDetail(
             jointOverLimitGraceEndsAt = wire.jointOverLimitGraceEndsAt,
             bridge = wire.bridge,
             guestVisible = wire.guestVisible,
+            guestJoinable = wire.guestJoinable,
             activityMuted = wire.activityMuted,
             muteFromSeq = wire.muteFromSeq,
             activityMuteSupported = wire.activityMuteSupported,
@@ -363,6 +389,11 @@ fun parseSharedChannelArchiveResult(
     )
 }.getOrNull()
 
+/** A route that answers with one channel row (`res.json(updated)`: unarchive, PATCH). */
+fun parseSharedChannelRowResult(bodyText: String): HomeChannelRow? = runCatching {
+    homeJson.decodeFromString(HomeChannelWireDto.serializer(), bodyText).toChannelRow()
+}.getOrNull()
+
 @Serializable
 private data class WireOkResponse(
     val ok: Boolean = false,
@@ -418,6 +449,7 @@ private fun HomeChannelWireDto.toChannelRow(): HomeChannelRow {
         jointOverLimitGraceEndsAt = jointOverLimitGraceEndsAt?.takeIf { it.isNotBlank() },
         bridgeProvider = bridge.normalizedBridgeProviderOrNull(),
         guestVisible = guestVisible,
+        guestJoinable = guestJoinable,
         activityNotificationPreference =
             ChannelActivityNotificationPreference(
                 activityMuted = activityMuted,

@@ -2114,8 +2114,16 @@ internal data class ThreadMembersPageRoute(
     val localOffsetMinutes: Int,
     val todayEpochDay: Long?,
     val nowEpochMillis: Long?,
-    val timeFormat: String
+    val timeFormat: String,
+    /**
+     * Open straight into Add Member (web ChannelOverflowMenu `membersInitialView = "add"`, the
+     * members strip's dashed add tile); applied once, when the viewer may add members.
+     */
+    val openAddMember: Boolean = false,
 )
+
+/** pageData key for [ThreadMembersPageRoute.openAddMember]: `"add"` opens Add Member. */
+internal const val THREAD_MEMBERS_INITIAL_VIEW_KEY = "initialView"
 
 internal data class ThreadMemberRemovalConfirmation(
     val serverId: ServerId,
@@ -2273,7 +2281,8 @@ internal fun JSONObject.toThreadMembersPageRouteOrNull(): ThreadMembersPageRoute
         localOffsetMinutes = optString("localOffsetMinutes").toIntOrNull() ?: 0,
         todayEpochDay = optString("todayEpochDay").toLongOrNull(),
         nowEpochMillis = optString("nowEpochMillis").toLongOrNull(),
-        timeFormat = optString("timeFormat").takeIf { it.isNotBlank() } ?: RaftTimeFormat24Hour
+        timeFormat = optString("timeFormat").takeIf { it.isNotBlank() } ?: RaftTimeFormat24Hour,
+        openAddMember = optString(THREAD_MEMBERS_INITIAL_VIEW_KEY).trim() == "add",
     )
 }
 
@@ -4846,6 +4855,13 @@ private fun ThreadMembersPageScreen() {
         !authorityRejected &&
             channelMembersSlice.canAddMembersKnown &&
             channelMembersSlice.canAddMembers
+    var initialAddApplied by remember(route) { mutableStateOf(false) }
+    LaunchedEffect(route.openAddMember, canAddMembers) {
+        if (route.openAddMember && canAddMembers && !initialAddApplied) {
+            initialAddApplied = true
+            addDialogVisible = true
+        }
+    }
 
     LaunchedEffect(liveOwner, routeOwner) {
         if (liveOwner != routeOwner) {

@@ -2,6 +2,13 @@ package build.raft.designsystem.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -251,6 +258,66 @@ fun RaftAvatarAttentionLight(size: RaftAvatarSize, cutout: Color, contentDescrip
                 },
             ),
     )
+}
+
+/**
+ * raft-ui empty identity (`rf-avatar--empty`): the place a new member would take, at an
+ * avatar [size] — a `sticker-radius` square with a 1.5dp dashed `foreground-hint` edge and a
+ * `plus` in `foreground-hint`, no fill. Web ChannelOverflowMenu ends its members strip with
+ * it ("Add Member"). With [onClick] it is a button named [contentDescription]: press lays
+ * `fill-medium` inside (web `hover:bg-fill-medium`); disabled ([enabled] = false) draws the
+ * edge in `line-hairline` and the plus in `foreground-disabled`.
+ */
+@Composable
+fun RaftAvatarEmpty(
+    size: RaftAvatarSize,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    onClick: (() -> Unit)? = null,
+    interactionSource: MutableInteractionSource? = null,
+) {
+    val colors = RaftTheme.colors
+    val source = interactionSource ?: remember { MutableInteractionSource() }
+    val isPressed = raftIsPressed(source)
+    val pressed = onClick != null && enabled && isPressed
+    val edge = if (enabled) colors.foregroundHint else colors.lineHairline
+    val ink = if (enabled) colors.foregroundHint else colors.foregroundDisabled
+    val radius = RaftRadius.Sticker
+    val stroke = RaftStroke.Control
+    val click =
+        if (onClick != null) {
+            Modifier.clickable(
+                interactionSource = source,
+                indication = null,
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick,
+            )
+        } else {
+            Modifier
+        }
+    Box(
+        modifier
+            .size(size.edge)
+            .then(click)
+            .semantics { this.contentDescription = contentDescription }
+            .raftPressOverlay(pressed, colors.fillMedium, radius)
+            .drawBehind {
+                val inset = stroke.toPx() / 2f
+                val dash = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()))
+                drawRoundRect(
+                    color = edge,
+                    topLeft = Offset(inset, inset),
+                    size = Size(this.size.width - inset * 2f, this.size.height - inset * 2f),
+                    cornerRadius = CornerRadius((radius.toPx() - inset).coerceAtLeast(0f)),
+                    style = Stroke(width = stroke.toPx(), pathEffect = dash),
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        RaftGlyphIcon(RaftGlyph.Plus, size = size.iconSize + 2.dp, color = ink)
+    }
 }
 
 /** The corner light: a status pixel with a [cutout]-coloured outline around it. */

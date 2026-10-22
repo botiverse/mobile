@@ -5,6 +5,9 @@ import build.raft.app.data.AuthenticatedRouteAuthorityGateway
 import build.raft.app.data.AuthenticatedRouteAuthorityReceipt
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.ChannelActivityMuteSettings
+import build.raft.app.data.ChannelGuestPolicyUpdate
+import build.raft.app.data.ChannelSlackBridgeOption
+import build.raft.app.data.ChannelSlackBridgeState
 import build.raft.app.data.ChannelProfileUpdateResult
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
@@ -513,6 +516,198 @@ class ChannelSettingsStoreTest {
     }
 
     @Test
+    fun makePublicFlipsAPrivateChannelAndIgnoresAPublicOne() = runBlocking {
+        val privateSnapshot = snapshot().let { it.copy(channel = it.channel.copy(channelType = "private")) }
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(privateSnapshot))
+        val store = store(dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        yield()
+
+        store.dispatch(ChannelSettingsIntent.MakePrivate)
+        yield()
+        assertEquals(0, dataSource.makePrivateCalls)
+
+        store.dispatch(ChannelSettingsIntent.MakePublic)
+        yield()
+        assertEquals(1, dataSource.makePublicCalls)
+        assertEquals("channel", store.state.value.channel?.channelType)
+        assertEquals(ChannelSettingsEffect.Updated(ChannelSettingsAction.Visibility), store.state.value.effect)
+
+        store.dispatch(ChannelSettingsIntent.MakePublic)
+        yield()
+        assertEquals(1, dataSource.makePublicCalls)
+        store.clear()
+    }
+
+    @Test
+    fun leaveClosesSettingsAndIsRefusedForAllArchivedOrNotJoined() = runTest {
+        val cache = ChannelSettingsSnapshotCache()
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
+        val store = store(dataSource, cache = cache)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+
+        store.dispatch(ChannelSettingsIntent.Leave)
+        runCurrent()
+
+        assertEquals(1, dataSource.leaveCalls)
+        assertEquals(ChannelSettingsEffect.Close, store.state.value.effect)
+        assertNull(cache.get(routeOwner(), route()))
+
+        listOf(
+            snapshot("#all"),
+            snapshot().let { it.copy(channel = it.channel.copy(archived = true)) },
+            snapshot().let { it.copy(channel = it.channel.copy(joined = false)) },
+        ).forEach { refused ->
+            val refusedSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(refused))
+            val refusedStore = store(refusedSource)
+            refusedStore.dispatch(ChannelSettingsIntent.Load)
+            runCurrent()
+            refusedStore.dispatch(ChannelSettingsIntent.Leave)
+            runCurrent()
+            assertEquals(0, refusedSource.leaveCalls, refused.channel.name)
+            refusedStore.clear()
+        }
+        store.clear()
+    }
+
+    @Test
+    fun unarchiveNeedsAManagerAndAnArchivedChannel() = runTest {
+        val archived = snapshot().let { it.copy(channel = it.channel.copy(archived = true)) }
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(archived))
+        val store = store(dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+
+        store.dispatch(ChannelSettingsIntent.Unarchive)
+        runCurrent()
+        assertEquals(1, dataSource.unarchiveCalls)
+        assertEquals(ChannelSettingsEffect.Close, store.state.value.effect)
+
+        val member = archived.copy(canManage = false)
+        val memberSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(member))
+        val memberStore = store(memberSource)
+        memberStore.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+        memberStore.dispatch(ChannelSettingsIntent.Unarchive)
+        runCurrent()
+        assertEquals(0, memberSource.unarchiveCalls)
+
+        val live = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
+        val liveStore = store(live)
+        liveStore.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+        liveStore.dispatch(ChannelSettingsIntent.Unarchive)
+        runCurrent()
+        assertEquals(0, live.unarchiveCalls)
+        memberStore.clear()
+        liveStore.clear()
+        store.clear()
+    }
+
+    private fun slackSnapshot(): ChannelSettingsSnapshot =
+        snapshot().copy(
+            slackBridge =
+                ChannelSlackBridgeState(
+                    options = listOf(ChannelSlackBridgeOption("C1", "triage", membershipRequired = false, pairedElsewhere = false)),
+                    pairedSlackChannelId = null,
+                )
+        )
+
+    @Test
+    fun saveWithOnlyASlackPickSkipsTheProfilePatchAndAppliesTheBridge() = runTest {
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(slackSnapshot()))
+        dataSource.slackResult =
+            DataResult.Content(
+                ChannelSlackBridgeState(
+                    options = listOf(ChannelSlackBridgeOption("C1", "triage", membershipRequired = false, pairedElsewhere = false)),
+                    pairedSlackChannelId = "C1",
+                )
+            )
+        val store = store(dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+
+        store.dispatch(ChannelSettingsIntent.UpdateProfile("canonical", "", ChannelSlackBridgeSelection("C1")))
+        runCurrent()
+
+        assertEquals(0, dataSource.profileCalls)
+        assertEquals(listOf<String?>("C1"), dataSource.slackApplies)
+        assertEquals("C1", store.state.value.slackBridge?.pairedSlackChannelId)
+        assertEquals(ChannelProfileUpdateStatus.Succeeded, store.state.value.profileStatus)
+        store.clear()
+    }
+
+    @Test
+    fun aFailedSlackStepKeepsTheSavedNameAndReportsThePartialFailure() = runTest {
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(slackSnapshot()))
+        dataSource.slackResult = DataResult.Error(ScreenError(code = "slack_bridge_preflight_failed", retryable = false))
+        val store = store(dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+
+        store.dispatch(ChannelSettingsIntent.UpdateProfile("renamed", "", ChannelSlackBridgeSelection("C1")))
+        runCurrent()
+
+        assertEquals(1, dataSource.profileCalls)
+        assertEquals("renamed", store.state.value.channel?.name)
+        assertEquals(ChannelProfileUpdateStatus.Failed, store.state.value.profileStatus)
+        assertEquals(CHANNEL_SETTINGS_SLACK_BRIDGE_PARTIAL_FAILURE, store.state.value.profileErrorCode)
+        assertNull(store.state.value.slackBridge?.pairedSlackChannelId)
+        store.clear()
+    }
+
+    @Test
+    fun guestSwitchesSendTheWebPolicyPairsAndApplyTheServerRow() = runTest {
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot().copy(guestAccessEnabled = true)))
+        val store = store(dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+
+        store.dispatch(ChannelSettingsIntent.SetGuestJoinable(true))
+        runCurrent()
+        assertEquals(ChannelGuestPolicyUpdate(guestVisible = true, guestJoinable = true), dataSource.guestUpdates.last())
+        assertTrue(store.state.value.channel!!.guestVisible)
+        assertTrue(store.state.value.channel!!.guestJoinable)
+
+        store.dispatch(ChannelSettingsIntent.SetGuestVisible(false))
+        runCurrent()
+        assertEquals(ChannelGuestPolicyUpdate(guestVisible = false, guestJoinable = false), dataSource.guestUpdates.last())
+        assertFalse(store.state.value.channel!!.guestVisible)
+        assertFalse(store.state.value.channel!!.guestJoinable)
+
+        // No-op when the switch already shows the value.
+        store.dispatch(ChannelSettingsIntent.SetGuestVisible(false))
+        runCurrent()
+        assertEquals(2, dataSource.guestUpdates.size)
+        store.clear()
+    }
+
+    @Test
+    fun guestPolicyLimitFailureKeepsTheChannelAndReportsTheServerCode() = runTest {
+        val dataSource =
+            FakeChannelSettingsDataSource(
+                loadResult = DataResult.Content(snapshot().copy(guestAccessEnabled = true)),
+                guestPolicyResult = {
+                    DataResult.Error(ScreenError(code = "guest_joinable_channel_limit_reached", retryable = false))
+                },
+            )
+        val store = store(dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+
+        store.dispatch(ChannelSettingsIntent.SetGuestJoinable(true))
+        runCurrent()
+
+        assertFalse(store.state.value.channel!!.guestJoinable)
+        assertEquals(
+            ChannelSettingsEffect.Failure(ChannelSettingsAction.GuestAccess, "guest_joinable_channel_limit_reached"),
+            store.state.value.effect,
+        )
+        store.clear()
+    }
+
+    @Test
     fun jointChannelRejectsUnsupportedVisibilityAndDeleteBeforeDataSource() = runBlocking {
         val jointSnapshot =
             snapshot().copy(
@@ -636,7 +831,20 @@ class ChannelSettingsStoreTest {
 
         val loaded = assertIs<DataResult.Content<ChannelSettingsSnapshot>>(dataSource.load()).data
         assertEquals("canonical", loaded.channel.name)
-        assertEquals(listOf("channels/channel-1", "servers/server-1/sidebar-order", "channels/channel-1/members", "channels/channel-1"), network.paths)
+        // The guest-access and Slack Bridge flags are evaluated for a manager; both read as off here.
+        assertEquals(
+            listOf(
+                "channels/channel-1",
+                "servers/server-1/sidebar-order",
+                "channels/channel-1/members",
+                "channels/channel-1",
+                "feature-flags/evaluate",
+                "feature-flags/evaluate",
+            ),
+            network.paths,
+        )
+        assertFalse(loaded.guestAccessEnabled)
+        assertNull(loaded.slackBridge)
         assertTrue(network.paths.none { it == "home" || it.endsWith("/home") })
 
         network.paths.clear()
@@ -758,7 +966,24 @@ private class FakeChannelSettingsDataSource(
     private val loadGate: CompletableDeferred<DataResult<ChannelSettingsSnapshot>>? = null,
     private val pinResult: CompletableDeferred<DataResult<SettingsServerSidebarOrderSnapshot>>? = null,
     private val disconnectResult: DataResult<Unit> = DataResult.Content(Unit),
+    private val guestPolicyResult: (ChannelGuestPolicyUpdate) -> DataResult<HomeChannelRow> = { update ->
+        DataResult.Content(
+            HomeChannelRow(
+                threadId = ThreadId("channel-1"),
+                channelId = ChannelId("channel-1"),
+                name = "#canonical",
+                guestVisible = update.guestVisible ?: false,
+                guestJoinable = update.guestJoinable ?: false,
+            )
+        )
+    },
 ) : ChannelSettingsDataSource {
+    var makePublicCalls = 0
+    val slackApplies = mutableListOf<String?>()
+    var slackResult: DataResult<ChannelSlackBridgeState?> = DataResult.Content(null)
+    var leaveCalls = 0
+    var unarchiveCalls = 0
+    val guestUpdates = mutableListOf<ChannelGuestPolicyUpdate>()
     var loadCalls = 0
     var muteCalls = 0
     var pinCalls = 0
@@ -800,6 +1025,33 @@ private class FakeChannelSettingsDataSource(
     override suspend fun makePrivate(): DataResult<Unit> {
         makePrivateCalls += 1
         return DataResult.Content(Unit)
+    }
+
+    override suspend fun applySlackBridge(channel: HomeChannelRow, slackChannelId: String?): DataResult<ChannelSlackBridgeState?> {
+        slackApplies += slackChannelId
+        return slackResult
+    }
+
+    override suspend fun makePublic(): DataResult<Unit> {
+        makePublicCalls += 1
+        return DataResult.Content(Unit)
+    }
+
+    override suspend fun leave(): DataResult<Unit> {
+        leaveCalls += 1
+        return DataResult.Content(Unit)
+    }
+
+    override suspend fun unarchive(): DataResult<HomeChannelRow> {
+        unarchiveCalls += 1
+        return DataResult.Content(
+            HomeChannelRow(threadId = ThreadId("channel-1"), channelId = ChannelId("channel-1"), name = "#canonical")
+        )
+    }
+
+    override suspend fun updateGuestPolicy(update: ChannelGuestPolicyUpdate): DataResult<HomeChannelRow> {
+        guestUpdates += update
+        return guestPolicyResult(update)
     }
 
     override suspend fun archive(): DataResult<Unit> {

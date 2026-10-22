@@ -161,6 +161,8 @@ fun RaftSelectTrigger(
  * [RaftDropdownMenu] exactly as wide as the trigger (at least 220dp) listing [options] by
  * [optionLabel]; the current [value] is bold with a check, never a fill. Picking calls
  * [onValueChange] and closes the list; from the keyboard, focus goes back to the trigger.
+ * [optionEnabled] = false greys an option out and keeps it from being picked (raft-ui
+ * `SelectItem disabled`).
  */
 @Composable
 fun <T> RaftSelect(
@@ -173,6 +175,7 @@ fun <T> RaftSelect(
     enabled: Boolean = LocalRaftFieldState.current.enabled,
     invalid: Boolean = LocalRaftFieldState.current.invalid,
     label: String? = LocalRaftFieldState.current.label,
+    optionEnabled: (T) -> Boolean = { true },
 ) {
     var expanded by remember { mutableStateOf(false) }
     var triggerWidth by remember { mutableStateOf(0) }
@@ -202,6 +205,7 @@ fun <T> RaftSelect(
                 options.forEach { option ->
                     RaftMenuItem(
                         text = optionLabel(option),
+                        enabled = optionEnabled(option),
                         checked = option == value,
                         onClick = {
                             expanded = false
