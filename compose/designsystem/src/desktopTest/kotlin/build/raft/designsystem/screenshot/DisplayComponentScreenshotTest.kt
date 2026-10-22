@@ -589,7 +589,7 @@ class DisplayComponentScreenshotTest {
                     status = RaftBannerStatus.Warning,
                 )
                 RaftBanner(description = "Deleting Wug removes its messages from every channel.", status = RaftBannerStatus.Destructive)
-                RaftBanner(description = "Your changes are saved.", status = RaftBannerStatus.Success)
+                RaftBanner(description = "Your changes are saved.", status = RaftBannerStatus.Success, onDismiss = {})
                 RaftBanner(description = "Reports include the last 200 lines of the log.", status = RaftBannerStatus.Info, size = RaftBannerSize.Sm)
                 RaftBanner(description = "You have used 80% of this month's hours.", status = RaftBannerStatus.Default)
                 Caption("Panel notice")
