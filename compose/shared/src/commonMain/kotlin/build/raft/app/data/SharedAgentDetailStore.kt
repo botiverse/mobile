@@ -52,6 +52,12 @@ internal data class SharedAgentDetailState(
     val agentActivityObservedAt: Map<MemberId, Long> = emptyMap(),
     val agentActivityVersions: Map<MemberId, Long> = emptyMap(),
     val agentActivitySeq: Map<MemberId, Long> = emptyMap(),
+    /**
+     * Bumped by every [SharedAgentDetailIntent.ResetAgentActivitySeq] (a realtime reconnect /
+     * reconcile rebaseline). Lets an observer tell that a rebaseline happened even when
+     * [agentActivitySeq] was already empty.
+     */
+    val agentActivitySeqEpoch: Long = 0L,
     val detailLoadStatus: SharedAgentDetailLoadStatus = SharedAgentDetailLoadStatus.Idle,
     /**
      * [detail] is the agent's last canonical response replayed from the process cache (data-layer
@@ -386,7 +392,8 @@ internal class SharedAgentDetailStore(
             is SharedAgentDetailIntent.ApplyAgentActivityUpdate ->
                 current.applyAgentActivityUpdate(intent.event, intent.observedAtMillis)
             SharedAgentDetailIntent.ResetAgentActivitySeq -> current.copy(
-                agentActivitySeq = emptyMap()
+                agentActivitySeq = emptyMap(),
+                agentActivitySeqEpoch = current.agentActivitySeqEpoch + 1
             )
 
             is SharedAgentDetailIntent.StartLifecycleAction -> current.copy(
