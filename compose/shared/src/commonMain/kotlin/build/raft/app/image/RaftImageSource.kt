@@ -46,6 +46,14 @@ internal sealed interface RaftImageSource {
      * a new commit of the same content reuses the decoded image (task #403). Commit freshness is
      * validated by [RaftManagedImageCommitInterceptor] instead of being part of the key.
      */
+    /**
+     * `raft-sent-attachment:<attachmentId>`: an image this device just uploaded, served from the
+     * local copy in [RaftSentAttachmentLocalImages] instead of being downloaded again.
+     */
+    class SentAttachment(val attachmentId: String) : RaftImageSource {
+        override val cacheKey: String get() = raftSentAttachmentCacheKey(attachmentId)
+    }
+
     class ManagedAvatar(val model: String, val descriptor: RaftAvatarMountedRenderDescriptor) : RaftImageSource {
         override val cacheKey: String get() = raftManagedImageCacheKey(descriptor)
     }
@@ -59,6 +67,10 @@ internal fun raftImageSourceOf(model: String): RaftImageSource? {
     if (raw.isEmpty()) return null
     parseRaftAvatarMountedRenderModel(raw)?.let { descriptor ->
         return RaftImageSource.ManagedAvatar(raw, descriptor)
+    }
+    if (raw.startsWith(RaftSentAttachmentModelPrefix)) {
+        val attachmentId = raw.removePrefix(RaftSentAttachmentModelPrefix).trim()
+        return if (attachmentId.isEmpty()) null else RaftImageSource.SentAttachment(attachmentId)
     }
     if (raw.startsWith("<svg", ignoreCase = true)) return RaftImageSource.InlineSvg(raw)
     if (raw.startsWith(RaftAssetsScheme)) {

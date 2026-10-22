@@ -3020,6 +3020,32 @@ internal fun threadPendingSendOwnedTemporaryFileRefs(
         .toList()
 }
 
+internal const val ThreadSentImageLocalSeedRetireWaitMs = 5_000L
+
+/** Local image sources of the attachments in this send, keyed by their server attachment id. */
+internal fun threadSentAttachmentLocalImageSources(
+    attachments: List<SharedThreadComposerAttachment>,
+    attachmentIds: Collection<String>
+): List<build.raft.app.image.RaftSentAttachmentLocalSource> {
+    val acceptedIds = attachmentIds.toSet()
+    return attachments
+        .asSequence()
+        .filter { attachment -> attachment.id in acceptedIds }
+        .mapNotNull { attachment ->
+            val fileRef =
+                attachment.fileRef?.trim()?.takeIf(String::isNotBlank)
+                    ?: return@mapNotNull null
+            build.raft.app.image.RaftSentAttachmentLocalSource(
+                attachmentId = attachment.id,
+                fileRef = fileRef,
+                mimeType = attachment.mimeType,
+                sizeBytes = attachment.sizeBytes
+            )
+        }
+        .distinctBy { source -> source.attachmentId }
+        .toList()
+}
+
 internal fun threadComposerMessageBodyForSend(draftText: String, attachmentCount: Int): String {
     val cleanDraft = draftText.trim()
     if (cleanDraft.isNotBlank() || attachmentCount <= 0) return cleanDraft
@@ -9464,6 +9490,11 @@ private fun SharedThreadRouteContentContent(
                     )
                 }
                 if (context.ownedTemporaryFileRefs.isNotEmpty()) {
+                    // The local image copy for the sent bubble must be taken before the files go.
+                    build.raft.app.image.RaftSentAttachmentLocalImages.registry.awaitSeeded(
+                        attachmentIds = context.attachmentIds,
+                        timeoutMillis = ThreadSentImageLocalSeedRetireWaitMs
+                    )
                     bridge.retireFilePreviewTemporaryFiles(
                         sessionId = "thread-send-$localMessageId",
                         fileRefs = context.ownedTemporaryFileRefs
@@ -10508,6 +10539,14 @@ private fun SharedThreadRouteContentContent(
         // returned false above. CompleteSend only clears the durable record; the send
         // completion below still dispatches its own CompleteSend for mention actions.
         composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
+        // Before the request: the canonical echo may beat the HTTP response, and it must already
+        // resolve these attachment ids to the local image instead of downloading it again.
+        build.raft.app.image.RaftSentAttachmentLocalImages.registry.register(
+            threadSentAttachmentLocalImageSources(
+                attachments = currentDraftState.uploadedAttachments,
+                attachmentIds = attachmentIds
+            )
+        )
         sendPendingLocalMessage(
             localMessageId = localMessageId,
             context = pendingContext,
@@ -30594,24 +30633,28 @@ private fun ThreadImageAttachmentContent(
 ) {
     val fallbackHost = LocalThreadInlineImageFallbackHost.current
     val fallbackUrl = fallbackHost?.state?.resolvedUrls?.get(attachment.id)
-    val thumbnailUrl = attachment.thumbnailUrl?.takeIf { it.isNotBlank() }
+    // An image this device just uploaded renders from its local copy (by attachment id), so the
+    // canonical message neither re-downloads it nor asks for the signed inline URL.
+    val sentImages = build.raft.app.image.RaftSentAttachmentLocalImages.registry
+    val localModelFlow = remember(attachment.id) { sentImages.localModelFlow(attachment.id) }
+    val localModel by localModelFlow.collectAsState(initial = sentImages.localModel(attachment.id))
+    val sourcePlan =
+        threadInlineImageSourcePlan(
+            thumbnailUrl = attachment.thumbnailUrl,
+            fallbackUrl = fallbackUrl,
+            localModel = localModel
+        )
     val fallbackHostAvailable = fallbackHost != null
-    LaunchedEffect(attachment.id, thumbnailUrl, fallbackUrl, fallbackHostAvailable) {
-        if (
-            fallbackHostAvailable &&
-            shouldRequestThreadInlineImageFallbackForMissingThumbnail(
-                thumbnailUrl = thumbnailUrl,
-                fallbackUrl = fallbackUrl
-            )
-        ) {
+    LaunchedEffect(attachment.id, sourcePlan.requestRemoteFallback, fallbackHostAvailable) {
+        if (fallbackHostAvailable && sourcePlan.requestRemoteFallback) {
             fallbackHost?.requestFallback?.invoke(attachment.id)
         }
     }
     // The frame (fill, border, radius, press) is RaftMessageImageFrame's; the surface only
     // draws the image, so it brings no fill or border of its own.
     RaftAspectFitImagePreviewSurface(
-        source = thumbnailUrl,
-        fallbackSource = fallbackUrl,
+        source = sourcePlan.source,
+        fallbackSource = sourcePlan.fallbackSource,
         contentDescription = attachment.name,
         modifier = Modifier.fillMaxSize(),
         backgroundColor = Color.Transparent,

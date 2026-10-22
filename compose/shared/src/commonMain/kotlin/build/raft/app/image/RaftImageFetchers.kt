@@ -93,6 +93,7 @@ internal class RaftImageFetcherFactory : Fetcher.Factory<RaftImageSource> {
                         SourceFetchResult(data.text.encodeToByteArray().toImageSource(options), SVG_MIME, DataSource.MEMORY)
                 }
             is RaftImageSource.ManagedAvatar -> RaftManagedAvatarFetcher(data, options)
+            is RaftImageSource.SentAttachment -> RaftSentAttachmentFetcher(data, options)
         }
 }
 
@@ -212,6 +213,23 @@ private object RaftImageByteFlights {
             )
             throw failure
         }
+    }
+}
+
+/** Local bytes of an image this device just sent; never touches the network. */
+private class RaftSentAttachmentFetcher(
+    private val data: RaftImageSource.SentAttachment,
+    private val options: Options,
+) : Fetcher {
+    override suspend fun fetch(): FetchResult {
+        // A miss fails the load; the renderer then falls back to the remote thumbnail/inline URL.
+        val local = RaftSentAttachmentLocalImages.registry.read(data.attachmentId)
+            ?: error("Sent attachment local image unavailable")
+        return SourceFetchResult(
+            source = local.bytes.toImageSource(options),
+            mimeType = local.mimeType?.takeIf { it.isNotBlank() } ?: raftSniffImageMimeType(local.bytes),
+            dataSource = DataSource.DISK,
+        )
     }
 }
 
