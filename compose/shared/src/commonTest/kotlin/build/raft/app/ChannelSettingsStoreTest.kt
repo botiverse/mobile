@@ -433,17 +433,18 @@ class ChannelSettingsStoreTest {
         val store = store(dataSource)
         store.dispatch(ChannelSettingsIntent.Load)
         yield()
-        assertFalse(store.state.value.displayPinned("channel-1"))
+        // The fixture's channel is pinned.
+        assertTrue(store.state.value.displayPinned("channel-1"))
 
         store.dispatch(ChannelSettingsIntent.TogglePin)
         // artin: the switch flips on the tap, before the server answers.
-        assertTrue(store.state.value.displayPinned("channel-1"))
+        assertFalse(store.state.value.displayPinned("channel-1"))
         yield()
-        assertEquals(listOf(true), dataSource.pinRequests, "the request asks for the value the switch shows")
+        assertEquals(listOf(false), dataSource.pinRequests, "the request asks for the value the switch shows")
 
         pinResult.complete(DataResult.Error(ScreenError("network")))
         yield()
-        assertFalse(store.state.value.displayPinned("channel-1"), "a failure shows the old value again")
+        assertTrue(store.state.value.displayPinned("channel-1"), "a failure shows the old value again")
         assertEquals(ChannelSettingsAction.Pin, assertIs<ChannelSettingsEffect.Failure>(store.state.value.effect).action)
         store.clear()
     }
