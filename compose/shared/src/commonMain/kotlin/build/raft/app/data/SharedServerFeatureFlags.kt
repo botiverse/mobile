@@ -154,12 +154,6 @@ const val AGENT_MIGRATION_FEATURE_FLAG_KEY: String = "agent_migration_v0"
 /** Moving an agent to the cloud (slock `AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY`). */
 const val AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY: String = "agent_migration_hosted_v0"
 
-/**
- * RFC-067 "Share usage data" in Settings › Account (slock web `PRODUCT_ANALYTICS_SETTINGS_FLAG_KEY`,
- * `packages/web/src/store/serverFeatureFlags.ts`). Off hides the row, as on web.
- */
-const val PRODUCT_ANALYTICS_SETTINGS_FEATURE_FLAG_KEY: String = "product_analytics_settings_v0"
-
 /** Web-shared product flags plus mobile-only runtime safety flags evaluated in the same prefetch batch. */
 val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
@@ -184,7 +178,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SIDEBAR_MARK_ALL_READ_FEATURE_FLAG_KEY,
     AGENT_MIGRATION_FEATURE_FLAG_KEY,
     AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY,
-    PRODUCT_ANALYTICS_SETTINGS_FEATURE_FLAG_KEY,
 )
 
 /**

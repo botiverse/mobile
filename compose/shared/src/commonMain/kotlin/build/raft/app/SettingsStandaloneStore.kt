@@ -39,7 +39,6 @@ import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.KeyValuePushPreviewModePreferenceStore
 import build.raft.app.data.KeyValueThreadReverseLayoutPreferenceStore
 import build.raft.app.data.MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
-import build.raft.app.data.PRODUCT_ANALYTICS_SETTINGS_FEATURE_FLAG_KEY
 import build.raft.app.model.ServerId
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.data.runCatchingPreservingCancellation
@@ -173,12 +172,6 @@ internal fun rememberStandaloneSettingsEnvironment(
                 onHttp3UserChoiceChanged = { currentRaftNetworkTransportController()?.onHttp3UserChoiceChanged() },
                 threadReverseLayoutPreferenceStore = KeyValueThreadReverseLayoutPreferenceStore(sharedPreferenceStore),
                 pushPreviewModePreferenceStore = KeyValuePushPreviewModePreferenceStore(sharedPreferenceStore),
-                shareUsageDataSettingEnabled = {
-                    sharedStores.serverFeatureFlags.isEnabled(
-                        authStore.readSession()?.currentServerId?.let(::ServerId),
-                        PRODUCT_ANALYTICS_SETTINGS_FEATURE_FLAG_KEY
-                    )
-                },
                 threadReverseLayoutDefault = {
                     authStore.readSession()?.let { session ->
                         session.currentServerId?.let { serverId ->
