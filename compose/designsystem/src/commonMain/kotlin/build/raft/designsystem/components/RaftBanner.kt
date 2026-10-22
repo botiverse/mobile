@@ -1,6 +1,10 @@
 package build.raft.designsystem.components
 
 import androidx.compose.foundation.background
+import build.raft.designsystem.theme.LocalRaftStrings
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +23,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -94,8 +99,11 @@ internal fun raftBannerMetrics(size: RaftBannerSize): RaftBannerMetrics =
  * A soft tint of its [status] with a 1dp inset `line-hairline` ring and the container
  * radius; never an ink border. The status icon (20dp, 16dp at [RaftBannerSize.Sm]) leads,
  * in `foreground`; [title] is a bold first line, [description] the message in
- * `text-callout` (`text-footnote` at `Sm`), never capped in lines. [action] is a row under
- * the text for at most one 32dp `Default` button (never pink).
+ * `text-callout` (`text-footnote` at `Sm`), never capped in lines. [action] holds at most one
+ * 32dp `Default` button (never pink), with a ghost Dismiss before it when the banner can be
+ * dismissed: at the end of the last line while the text fits beside it in a wide banner,
+ * otherwise on its own line under the text, aligned to the end (raft-ui 0.19). [onDismiss]
+ * adds the frameless × of a banner with no [action] (raft-ui `BannerClose`).
  *
  * Destructive banners are announced assertively, the others politely (`role="alert"` /
  * `"status"`). Show at most one banner in one place.
@@ -109,7 +117,8 @@ fun RaftBanner(
     size: RaftBannerSize = RaftBannerSize.Md,
     showIcon: Boolean = status.glyph != null,
     action: (@Composable RowScope.() -> Unit)? = null,
-) = RaftBanner(AnnotatedString(description), status, modifier, title, size, showIcon, action)
+    onDismiss: (() -> Unit)? = null,
+) = RaftBanner(AnnotatedString(description), status, modifier, title, size, showIcon, action, onDismiss)
 
 /**
  * [RaftBanner] whose [description] carries a text action inside the sentence: a strong
@@ -125,6 +134,7 @@ fun RaftBanner(
     size: RaftBannerSize = RaftBannerSize.Md,
     showIcon: Boolean = status.glyph != null,
     action: (@Composable RowScope.() -> Unit)? = null,
+    onDismiss: (() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -147,24 +157,124 @@ fun RaftBanner(
         if (glyph != null) {
             RaftGlyphIcon(glyph, Modifier.padding(top = metrics.iconTop), size = metrics.icon, color = colors.foreground)
         }
-        Column(Modifier.weight(1f)) {
-            if (title != null) RaftText(title, style = text.copy(fontWeight = FontWeight.Bold), color = colors.foreground)
-            RaftText(description, style = text, color = colors.foreground)
-            if (action != null) {
-                Row(
-                    Modifier.padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    CompositionLocalProvider(
-                        LocalRaftContentColor provides colors.foreground,
-                        LocalRaftSurfaceColor provides raftBannerFill(status, colors).compositeOver(RaftTheme.surfaceColor),
-                    ) { action() }
+        val actionContent: (@Composable () -> Unit)? =
+            action?.let { content ->
+                {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CompositionLocalProvider(
+                            LocalRaftContentColor provides colors.foreground,
+                            LocalRaftSurfaceColor provides raftBannerFill(status, colors).compositeOver(RaftTheme.surfaceColor),
+                        ) { content() }
+                    }
+                }
+            }
+        RaftBannerBody(
+            title = title?.let { { RaftText(it, style = text.copy(fontWeight = FontWeight.Bold), color = colors.foreground) } },
+            description = description,
+            textStyle = text,
+            action = actionContent,
+            modifier = Modifier.weight(1f),
+        )
+        // raft-ui 0.19 BannerClose: a banner with no button may close with a frameless × at the
+        // end of the first line (an action and a close never share a banner).
+        if (onDismiss != null && action == null) {
+            RaftIconButton(
+                onClick = onDismiss,
+                tooltip = LocalRaftStrings.current.dismiss,
+                variant = RaftButtonVariant.Ghost,
+                size = RaftIconButtonSize.Md,
+                // banner.tsx `close`: `-my-[calc((--spacing(8)-1lh)/2)] -me-icon-inset`. Centred on
+                // the first line and taking only that line's height, so a one-line banner stays as
+                // tall as without it; its 16dp icon ends on the banner's padding, the 32dp box
+                // overhanging it by the 8dp around the icon.
+                modifier =
+                    Modifier.layout { measurable, constraints ->
+                        val line = text.lineHeight.roundToPx()
+                        val inset = ((RaftIconButtonSize.Md.box - 16.dp) / 2).roundToPx()
+                        val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                        layout(placeable.width - inset, line) { placeable.place(0, (line - placeable.height) / 2) }
+                    },
+            ) {
+                RaftGlyphIcon(RaftGlyph.X, size = 16.dp)
+            }
+        }
+    }
+}
+
+/**
+ * raft-ui 0.19 BannerAction placement: the buttons sit at the end of the last line of text,
+ * centred on it, while the text fits beside them on one line in a banner at least
+ * [RaftBannerInlineActionMinWidth] wide; otherwise they take a line of their own under the
+ * text, aligned to the end. (A phone banner is narrower than that, so its buttons always sit
+ * on their own line at the end.)
+ */
+@Composable
+private fun RaftBannerBody(
+    title: (@Composable () -> Unit)?,
+    description: AnnotatedString,
+    textStyle: TextStyle,
+    action: (@Composable () -> Unit)?,
+    modifier: Modifier,
+) {
+    val colors = RaftTheme.colors
+    SubcomposeLayout(modifier) { constraints ->
+        val width = constraints.maxWidth
+        val loose = Constraints(maxWidth = width)
+        val titlePlaceable = title?.let { subcompose("title", it).first().measure(loose) }
+        val actionPlaceable = action?.let { subcompose("action", it).first().measure(Constraints()) }
+        val gap = 8.dp.roundToPx()
+        var lastLineCenter = 0f
+        var lines = 1
+        val inline =
+            actionPlaceable != null &&
+                width >= RaftBannerInlineActionMinWidth.roundToPx() &&
+                run {
+                    // Measured at the width left of the buttons: does the text fit there on one line?
+                    subcompose("probe") {
+                        RaftText(
+                            description,
+                            style = textStyle,
+                            color = colors.foreground,
+                            onTextLayout = { layout ->
+                                lines = layout.lineCount
+                                lastLineCenter = (layout.getLineTop(layout.lineCount - 1) + layout.getLineBottom(layout.lineCount - 1)) / 2f
+                            },
+                        )
+                    }.first().measure(Constraints(maxWidth = (width - actionPlaceable.width - gap).coerceAtLeast(0)))
+                    lines == 1
+                }
+        val descriptionPlaceable =
+            subcompose("description") { RaftText(description, style = textStyle, color = colors.foreground) }
+                .first()
+                .measure(if (inline) Constraints(maxWidth = (width - actionPlaceable!!.width - gap).coerceAtLeast(0)) else loose)
+        val titleHeight = titlePlaceable?.height ?: 0
+        val textHeight = titleHeight + descriptionPlaceable.height
+        val actionTop = 8.dp.roundToPx()
+        val height =
+            when {
+                actionPlaceable == null -> textHeight
+                inline -> maxOf(textHeight, titleHeight + lastLineCenter.toInt() + actionPlaceable.height / 2)
+                else -> textHeight + actionTop + actionPlaceable.height
+            }
+        layout(width, height) {
+            titlePlaceable?.place(0, 0)
+            descriptionPlaceable.place(0, titleHeight)
+            if (actionPlaceable != null) {
+                if (inline) {
+                    actionPlaceable.place(width - actionPlaceable.width, titleHeight + lastLineCenter.toInt() - actionPlaceable.height / 2)
+                } else {
+                    actionPlaceable.place(width - actionPlaceable.width, textHeight + actionTop)
                 }
             }
         }
     }
 }
+
+/** raft-ui: inline actions from 452dp of banner content (a 480dp banner at `md`). */
+private val RaftBannerInlineActionMinWidth = 452.dp
 
 /**
  * raft-ui PanelNotice: something in one panel failed. A full-width strip directly under

@@ -84,6 +84,8 @@ import build.raft.designsystem.components.RaftTab
 import build.raft.designsystem.components.RaftTabStrip
 import build.raft.designsystem.components.RaftTabs
 import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftToggleGroup
 import build.raft.designsystem.components.RaftToggleGroupItem
 import build.raft.designsystem.theme.RaftAppearance
@@ -150,6 +152,26 @@ class RaftInteractiveSemanticsTest {
             val end = input.right / density.density
             assertTrue(start < 40f, "the input starts right after the short prefix, at ${start}dp")
             assertEquals(360f - 12f - 1.5f, end, 1f, "the input runs to the field's 12dp end padding inside the border")
+        }
+
+    /** BannerClose takes only its first line's height: a one-line banner is as tall with it as without. */
+    @Test
+    fun aBannersCloseButtonDoesNotGrowIt() =
+        runComposeUiTest {
+            var dismissed = false
+            setContent(
+                themed {
+                    Column(Modifier.width(360.dp)) {
+                        RaftBanner("Your changes are saved.", status = RaftBannerStatus.Success, modifier = Modifier.testTag("plain"))
+                        RaftBanner("Your changes are saved.", status = RaftBannerStatus.Success, modifier = Modifier.testTag("closable"), onDismiss = { dismissed = true })
+                    }
+                },
+            )
+            val plain = onNodeWithTag("plain").fetchSemanticsNode().boundsInRoot.height
+            val closable = onNodeWithTag("closable").fetchSemanticsNode().boundsInRoot.height
+            assertEquals(plain, closable, 0.5f, "the close button overhangs the line instead of growing the banner")
+            onNodeWithContentDescription("Dismiss").performClick()
+            assertTrue(dismissed, "the close button calls onDismiss")
         }
 
     @Test

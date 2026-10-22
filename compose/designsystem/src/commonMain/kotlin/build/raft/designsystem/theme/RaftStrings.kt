@@ -35,6 +35,8 @@ data class RaftStrings(
     val loading: String = "Loading",
     /** The ghost Cancel of a dialog's footer ([build.raft.designsystem.components.RaftDialogSheet] centred). */
     val cancel: String = "Cancel",
+    /** A banner's × ([build.raft.designsystem.components.RaftBanner] `onDismiss`, raft-ui `BannerClose`). */
+    val dismiss: String = "Dismiss",
 )
 
 /** The enclosing [RaftStrings]; English outside any provider (so outside [RaftTheme] too). */
