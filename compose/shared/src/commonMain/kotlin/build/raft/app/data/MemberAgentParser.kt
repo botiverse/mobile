@@ -667,7 +667,9 @@ fun parseSharedChannelMemberSnapshot(
         canAddMembers = false,
         liveActivityAgentIds =
             decoded.agents
-                .filter { !it.activity.isNullOrBlank() }
+                // Only activity that resolves to a runtime status: the lifecycle word
+                // `active` (or an unknown value) writes no fact, so it must not count.
+                .filter { normalizedAgentRuntimeStatus(activity = it.activity, lifecycleStatus = null) != null }
                 .mapNotNull { it.id.trim().takeIf(String::isNotBlank) }
                 .toSet(),
     )

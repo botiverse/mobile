@@ -552,6 +552,12 @@ class SharedServerMembersStore internal constructor(
     @Volatile
     private var channelPeerPresenceTransports:
         Map<SharedServerChannelMembersScope, ProcessPresenceTransportEpoch?> = emptyMap()
+
+    // Reconnect peer-slice refresh coalescing: server keys with a run in flight, and the newest
+    // transport a trigger asked for while it ran.
+    private val peerRefreshLock = SynchronizedObject()
+    private val peerRefreshActive = mutableSetOf<String>()
+    private val peerRefreshPending = mutableMapOf<String, ProcessPresenceTransportEpoch>()
     private val recencyLock = SynchronizedObject()
     // Server ids, least recently used first. Guarded by [recencyLock].
     private val serverRecency = LinkedHashSet<String>()
@@ -2105,20 +2111,84 @@ class SharedServerMembersStore internal constructor(
     }
 
     /**
+     * Reconnect repair for one store: the forced roster refill first (current-server presence is
+     * not held behind peer slice reloads, which each hold [mutex] across their request), then the
+     * peer-agent channel slices. A roster failure still lets the peer refresh run.
+     */
+    internal suspend fun refreshAfterPresenceTransportConnected(
+        serverId: ServerId,
+        transport: ProcessPresenceTransportEpoch,
+        reason: String
+    ): DataResult<Unit> {
+        val roster =
+            runCatchingPreservingCancellation {
+                refreshMembers(serverId, DataRequestPriority.Background, force = true, reason = reason)
+            }
+        refreshPeerAgentChannelPresence(serverId, transport, reason)
+        return roster.getOrThrow()
+    }
+
+    /**
      * Background-refreshes the current owner's loaded channel slices that list peer-server agents
      * with live activity, so a reconnect rebaseline repopulates their presence facts.
+     *
+     * [transport] is the connect event's epoch: once the registry moved past it, a newer connect
+     * owns the repair, so the run stops before its next slice. At most one run per server is in
+     * flight; a trigger arriving meanwhile is coalesced into one follow-up run for the newest
+     * transport (dropped when it is the transport already being repaired).
      */
-    suspend fun refreshPeerAgentChannelPresence(
+    internal suspend fun refreshPeerAgentChannelPresence(
         serverId: ServerId,
+        transport: ProcessPresenceTransportEpoch,
         reason: String
     ) {
         val serverKey = serverId.value.normalizedServerMembersId() ?: return
+        val requested = transport.normalizedOrNull() ?: return
+        synchronized(peerRefreshLock) {
+            if (serverKey in peerRefreshActive) {
+                peerRefreshPending[serverKey] = requested
+                return
+            }
+            peerRefreshActive += serverKey
+        }
+        var target: ProcessPresenceTransportEpoch? = requested
+        try {
+            while (target != null) {
+                val ran: ProcessPresenceTransportEpoch = target
+                refreshPeerAgentChannelSlices(serverKey, ran, reason)
+                target =
+                    synchronized(peerRefreshLock) {
+                        val next = peerRefreshPending.remove(serverKey)?.takeIf { it != ran }
+                        if (next == null) peerRefreshActive -= serverKey
+                        next
+                    }
+            }
+        } finally {
+            if (target != null) {
+                synchronized(peerRefreshLock) {
+                    peerRefreshActive -= serverKey
+                    peerRefreshPending.remove(serverKey)
+                }
+            }
+        }
+    }
+
+    private suspend fun refreshPeerAgentChannelSlices(
+        serverKey: String,
+        transport: ProcessPresenceTransportEpoch,
+        reason: String
+    ) {
         val channelIds =
             currentOwnerChannelMemberSlices(ServerId(serverKey))
                 .filter { slice -> slice.hasPeerServerLiveActivityAgents(serverKey) }
                 .map { it.channelId }
                 .distinct()
-        channelIds.forEach { channelId ->
+        for (channelId in channelIds) {
+            // Checked before every slice (the first included): a newer connect owns the repair.
+            if (currentPresenceTransport(ServerId(serverKey)) != transport) {
+                logger("shared_server_channel_members_peer_refresh serverId=$serverKey result=stale_transport_stopped")
+                return
+            }
             refreshChannelMembersBestEffort(ServerId(serverKey), ChannelId(channelId), reason)
         }
     }
@@ -2951,8 +3021,13 @@ class SharedServerMembersStore internal constructor(
                     memberSuggestionSlices = current.memberSuggestionSlices.filterKeys { it.serverId !in victimSet }
                 )
             }
+        pruneChannelPeerPresenceTransports()
         logger("shared_server_members_lru_evict servers=${victims.size}")
     }
+
+    /** Test seam: channel scopes holding a peer-presence transport record. */
+    internal fun channelPeerPresenceTransportScopesForTest(): Set<SharedServerChannelMembersScope> =
+        channelPeerPresenceTransports.keys
 
     /** Test seam: server ids held in memory, least recently used first. */
     internal fun cachedServerIdsForTest(): List<String> =
@@ -3028,6 +3103,7 @@ class SharedServerMembersStore internal constructor(
                         memberSuggestionSlices = current.memberSuggestionSlices.filterKeys { it.serverId != key }
                     )
                 }
+            pruneChannelPeerPresenceTransports()
             synchronized(recencyLock) { serverRecency.remove(key) }
         }
         durableStore?.evictServer(key, binding?.accountId)
@@ -3068,6 +3144,7 @@ class SharedServerMembersStore internal constructor(
                         ownedBySuccessor(scope.environmentId, scope.accountId, slice.ownerWriteGeneration)
                     }
             )
+        pruneChannelPeerPresenceTransports()
         synchronized(recencyLock) { serverRecency.retainAll(keptEntries.keys) }
         clearScopedReadCaches()
     }
@@ -3127,6 +3204,12 @@ class SharedServerMembersStore internal constructor(
 
     private fun currentPresenceTransport(serverId: ServerId): ProcessPresenceTransportEpoch? =
         presenceOwner(serverId)?.let { presenceRegistry.currentOwnerSnapshot(it).transport }
+
+    /** Drops transport records whose channel slice is gone (eviction / owner retirement). */
+    private fun pruneChannelPeerPresenceTransports() {
+        val slices = _state.value.channelMemberSlices
+        channelPeerPresenceTransports = channelPeerPresenceTransports.filterKeys { it in slices }
+    }
 
     private fun removeChannelSlice(scope: SharedServerChannelMembersScope) {
         channelPeerPresenceTransports = channelPeerPresenceTransports - scope

@@ -113,7 +113,24 @@ class SharedServerMembersJointPeerAgentPresenceTest {
     }
 
     @Test
-    fun guestProjectionWithoutActivityWritesNoFact() = runBlocking {
+    fun guestProjectionWritesNoFact() = runBlocking {
+        // Real guest shape (routes/channels.ts): serverId is the VIEWED server for every agent,
+        // lifecycle status only, no activity.
+        val guestRow =
+            """{"id":"peer-agent","serverId":"server-1","name":"peer-agent","displayName":"peer-agent",""" +
+                """"avatarUrl":null,"status":"stopped","profileProjection":"channel_summary",""" +
+                """"effectiveChannelRole":"member","canChangeChannelRole":false}"""
+        val (registry, _, store) = fixture(body(guestRow))
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport1)
+
+        assertIs<DataResult.Content<*>>(store.loadChannelMembers(serverId, channelId))
+
+        assertNull(registry.factFor(owner, "peer-agent"))
+        assertEquals(neutral, store.memberStatusFlow(serverId, "peer-agent").first())
+    }
+
+    @Test
+    fun peerRowWithoutActivityWritesNoFact() = runBlocking {
         // Lifecycle "stopped" alone would map to Offline; without live activity it must not write.
         val (registry, _, store) =
             fixture(body(agentJson("peer-agent", "server-2", activity = null, status = "stopped")))
@@ -129,12 +146,35 @@ class SharedServerMembersJointPeerAgentPresenceTest {
     fun lifecycleActiveWithoutResolvableActivityMatchesRosterRule() = runBlocking {
         // `active` in the activity slot is lifecycle, not liveness: the roster refill writes no
         // fact for it (normalizedAgentRuntimeStatus -> null), and neither does this path.
-        val (registry, _, store) = fixture(body(agentJson("peer-agent", "server-2", activity = "active")))
+        val (registry, repo, store) = fixture(body(agentJson("peer-agent", "server-2", activity = "active")))
         registry.rebaselineTransport(owner, registry.writeGeneration, transport1)
 
         store.loadChannelMembers(serverId, channelId)
 
         assertNull(registry.factFor(owner, "peer-agent"))
+        // It writes nothing, so it is not a peer-bearing slice: no refetch after a rebaseline.
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport2)
+        store.loadChannelMembers(serverId, channelId)
+        assertEquals(1, repo.fetches)
+    }
+
+    @Test
+    fun rebaselineDuringRequestSelfHealsOnNextLoad() = runBlocking {
+        val (registry, repo, store) = fixture(body(peerWorking))
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport1)
+        repo.hold = CompletableDeferred()
+        val load = async { store.loadChannelMembers(serverId, channelId) }
+        repo.started.await()
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport2)
+        repo.hold!!.complete(Unit)
+        load.await()
+        assertNull(registry.factFor(owner, "peer-agent"))
+
+        store.loadChannelMembers(serverId, channelId)
+        store.loadChannelMembers(serverId, channelId)
+
+        assertEquals(2, repo.fetches, "one refetch, then cached under the current transport")
+        assertEquals(AgentStatus.Working, registry.factFor(owner, "peer-agent")?.agentStatus)
     }
 
     @Test
@@ -285,10 +325,139 @@ class SharedServerMembersJointPeerAgentPresenceTest {
         registry.rebaselineTransport(owner, registry.writeGeneration, transport2)
         fetchedChannels.clear()
 
-        store.refreshPeerAgentChannelPresence(serverId, reason = "test_reconnect")
+        store.refreshPeerAgentChannelPresence(serverId, transport2, reason = "test_reconnect")
 
         assertEquals(listOf(channelId.value), fetchedChannels)
         assertEquals(AgentStatus.Working, registry.factFor(owner, "peer-agent")?.agentStatus)
+    }
+
+    /** Two peer-bearing slices; each fetch is logged, the first one can be held. */
+    private class TwoSliceRepo(private val bodyFor: (ChannelId) -> String) :
+        MemberRepository by PresenceNoopMemberRepository {
+        val log = mutableListOf<String>()
+        var holdFirst: CompletableDeferred<Unit>? = null
+        val firstStarted = CompletableDeferred<Unit>()
+
+        override suspend fun getMembers(
+            priority: DataRequestPriority,
+            serverId: ServerId
+        ): DataResult<MemberSnapshot> {
+            log += "roster:start"
+            kotlinx.coroutines.yield()
+            log += "roster:end"
+            return DataResult.Content(
+                MemberSnapshot(server = build.raft.app.model.ServerSummary(id = serverId, name = "Raft"), members = emptyList())
+            )
+        }
+
+        override suspend fun getChannelMembers(
+            priority: DataRequestPriority,
+            channelId: ChannelId
+        ): DataResult<ChannelMemberSnapshot> {
+            log += "channel:${channelId.value}"
+            val hold = holdFirst
+            if (hold != null) {
+                // Holds only the next fetch after arming (setup loads are never held).
+                holdFirst = null
+                firstStarted.complete(Unit)
+                hold.await()
+            }
+            return DataResult.Content(parseSharedChannelMemberSnapshot(bodyFor(channelId), channelId)!!)
+        }
+    }
+
+    private suspend fun twoPeerSlices(): Triple<ProcessMemberPresenceRegistry, TwoSliceRepo, SharedServerMembersStore> {
+        val registry = ProcessMemberPresenceRegistry()
+        val repo = TwoSliceRepo { body(peerWorking) }
+        val store = SharedServerMembersStore(repo, presenceRegistry = registry)
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport1)
+        store.loadChannelMembers(serverId, ChannelId("joint-a"))
+        store.loadChannelMembers(serverId, ChannelId("joint-b"))
+        repo.log.clear()
+        return Triple(registry, repo, store)
+    }
+
+    private fun TwoSliceRepo.channelFetches(channel: String) = log.count { it == "channel:$channel" }
+
+    @Test
+    fun reconnectRefreshRunsRosterRefillBeforePeerReloads() = runBlocking {
+        val (registry, repo, store) = twoPeerSlices()
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport2)
+
+        store.refreshAfterPresenceTransportConnected(serverId, transport2, reason = "test_reconnect")
+
+        assertEquals(listOf("roster:start", "roster:end", "channel:joint-a", "channel:joint-b"), repo.log)
+        assertEquals(AgentStatus.Working, registry.factFor(owner, "peer-agent")?.agentStatus)
+    }
+
+    @Test
+    fun staleConnectEventSkipsPeerRefresh() = runBlocking {
+        val (registry, repo, store) = twoPeerSlices()
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport2)
+
+        store.refreshPeerAgentChannelPresence(serverId, transport1, reason = "test_stale")
+
+        assertTrue(repo.log.isEmpty(), "transport moved past the connect event: ${repo.log}")
+    }
+
+    @Test
+    fun flappingConnectsRepairEachPeerSliceOnceForTheNewestTransport() = runBlocking {
+        val (registry, repo, store) = twoPeerSlices()
+        val transport3 = ProcessPresenceTransportEpoch("family-1", 3L)
+        val release = CompletableDeferred<Unit>()
+        repo.holdFirst = release
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport2)
+        val first = async { store.refreshPeerAgentChannelPresence(serverId, transport2, reason = "flap-2") }
+        repo.firstStarted.await()
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport3)
+        // Duplicate connect signals for the newest epoch coalesce into one follow-up run.
+        val later =
+            listOf("flap-3", "flap-3-dup", "flap-3-dup").map { reason ->
+                async { store.refreshPeerAgentChannelPresence(serverId, transport3, reason = reason) }
+            }
+        release.complete(Unit)
+        first.await()
+        later.forEach { it.await() }
+
+        // joint-a: the transport-2 fetch already in flight + one transport-3 repair; the stale run
+        // stopped before joint-b, which is repaired once.
+        assertEquals(2, repo.channelFetches("joint-a"), repo.log.toString())
+        assertEquals(1, repo.channelFetches("joint-b"), repo.log.toString())
+        assertEquals(AgentStatus.Working, registry.factFor(owner, "peer-agent")?.agentStatus)
+    }
+
+    @Test
+    fun duplicateTriggersWhileARunIsInFlightAreDropped() = runBlocking {
+        val (registry, repo, store) = twoPeerSlices()
+        val release = CompletableDeferred<Unit>()
+        repo.holdFirst = release
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport2)
+        val first = async { store.refreshPeerAgentChannelPresence(serverId, transport2, reason = "run") }
+        repo.firstStarted.await()
+        val duplicates =
+            List(3) { async { store.refreshPeerAgentChannelPresence(serverId, transport2, reason = "dup") } }
+        release.complete(Unit)
+        first.await()
+        duplicates.forEach { it.await() }
+
+        assertEquals(1, repo.channelFetches("joint-a"), repo.log.toString())
+        assertEquals(1, repo.channelFetches("joint-b"), repo.log.toString())
+    }
+
+    @Test
+    fun peerTransportRecordsArePrunedWithTheirSlices() = runBlocking {
+        val (registry, _, store) = fixture(body(peerWorking))
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport1)
+        store.loadChannelMembers(serverId, channelId)
+        assertEquals(1, store.channelPeerPresenceTransportScopesForTest().size)
+
+        store.dropServer(serverId)
+        assertTrue(store.channelPeerPresenceTransportScopesForTest().isEmpty())
+
+        store.loadChannelMembers(serverId, channelId)
+        assertEquals(1, store.channelPeerPresenceTransportScopesForTest().size)
+        store.retireAccountData()
+        assertTrue(store.channelPeerPresenceTransportScopesForTest().isEmpty())
     }
 
     private fun peerPresence(status: AgentStatus, serverSeq: Long) =
