@@ -749,7 +749,7 @@ internal fun RaftComboboxOptionRow(
                     Modifier
                 },
             )
-            .background(if (highlighted) colors.brandSoft else Color.Transparent, RoundedCornerShape(RaftRadius.Control))
+            .background(if (highlighted) colors.brandSoft else Color.Transparent, RoundedCornerShape(RaftRadius.Chip))
             .selectable(selected = selected, interactionSource = source, indication = null, enabled = enabled, onClick = onClick)
             .padding(horizontal = 10.dp, vertical = raftOptionInset(labelStyle)),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
