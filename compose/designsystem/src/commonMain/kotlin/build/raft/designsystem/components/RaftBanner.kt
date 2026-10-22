@@ -1,8 +1,6 @@
 package build.raft.designsystem.components
 
 import androidx.compose.foundation.background
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.foundation.layout.offset
 import build.raft.designsystem.theme.LocalRaftStrings
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Constraints
@@ -25,6 +23,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -187,8 +186,17 @@ fun RaftBanner(
                 tooltip = LocalRaftStrings.current.dismiss,
                 variant = RaftButtonVariant.Ghost,
                 size = RaftIconButtonSize.Md,
-                // Centred on the first line: a 32dp button around a shorter line overhangs it.
-                modifier = Modifier.offset(y = with(LocalDensity.current) { (text.lineHeight.toDp() - 32.dp) / 2 }),
+                // banner.tsx `close`: `-my-[calc((--spacing(8)-1lh)/2)] -me-icon-inset`. Centred on
+                // the first line and taking only that line's height, so a one-line banner stays as
+                // tall as without it; its 16dp icon ends on the banner's padding, the 32dp box
+                // overhanging it by the 8dp around the icon.
+                modifier =
+                    Modifier.layout { measurable, constraints ->
+                        val line = text.lineHeight.roundToPx()
+                        val inset = ((RaftIconButtonSize.Md.box - 16.dp) / 2).roundToPx()
+                        val placeable = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                        layout(placeable.width - inset, line) { placeable.place(0, (line - placeable.height) / 2) }
+                    },
             ) {
                 RaftGlyphIcon(RaftGlyph.X, size = 16.dp)
             }
