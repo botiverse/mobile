@@ -13,23 +13,17 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** Settings › Account "Share usage data": gate, null → on, optimistic save with rollback, consent invalidation. */
+/** Settings › Account "Share usage data": always shown, null → on, optimistic save with rollback, consent invalidation. */
 class SharedSettingsShareUsageDataTest {
     @Test
-    fun notChosenShowsTheSwitchOnAndTheFlagHidesIt() = runTest {
-        for (flagOn in listOf(true, false)) {
-            val harness = harness(choice = null, flagOn = flagOn)
-            harness.store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Account))
+    fun rowIsAlwaysVisibleAndNotChosenShowsOn() = runTest {
+        val harness = harness(choice = null)
+        harness.store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Account))
 
-            val payload = harness.payload()
-            assertEquals(flagOn, payload.usageDataVisible, "row follows product_analytics_settings_v0 (flagOn=$flagOn)")
-            if (flagOn) {
-                assertNull(harness.usageData()?.choice, "the store keeps the server's 'not chosen'")
-                assertTrue(payload.usageDataSharing, "not chosen is shown as on")
-            } else {
-                assertNull(harness.usageData())
-            }
-        }
+        val payload = harness.payload()
+        assertTrue(payload.usageDataVisible, "mobile shows the row without any server flag")
+        assertNull(harness.usageData()?.choice, "the store keeps the server's 'not chosen'")
+        assertTrue(payload.usageDataSharing, "not chosen is shown as on")
     }
 
     @Test
@@ -130,7 +124,7 @@ class SharedSettingsShareUsageDataTest {
             )
     }
 
-    private fun TestScope.harness(choice: Boolean?, flagOn: Boolean = true): Harness {
+    private fun TestScope.harness(choice: Boolean?): Harness {
         val repository =
             ShareUsageDataRepository(
                 FakeSettingsRepository(accountResult = DataResult.Content(accountSnapshot(choice)))
@@ -142,7 +136,6 @@ class SharedSettingsShareUsageDataTest {
                     SharedSettingsDataSource(
                         sessionStore = InMemoryRaftAuthSessionStore(settingsStoreSampleSession()),
                         settingsRepository = repository,
-                        shareUsageDataSettingEnabled = { flagOn },
                         onShareUsageDataChanged = { invalidations += 1 }
                     ),
                 scope = backgroundScope

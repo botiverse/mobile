@@ -693,12 +693,6 @@ class SharedSettingsDataSource(
     /** Re-sends the push registration so the server learns the new previewMode. */
     private val onPushPreviewModeChanged: () -> Unit = { RaftPushRegistrationLifecycle.onPreviewModeChanged() },
     /**
-     * Whether Settings › Account shows "Share usage data" for the current server: web gates it on the
-     * `product_analytics_settings_v0` server flag ([PRODUCT_ANALYTICS_SETTINGS_FEATURE_FLAG_KEY]).
-     * Hidden unless the host wires the flag.
-     */
-    private val shareUsageDataSettingEnabled: suspend () -> Boolean = { false },
-    /**
      * The server accepted a new "Share usage data" choice: the product-events client must ask
      * `/product-events/config` again so turning it off stops sending at once.
      */
@@ -730,19 +724,15 @@ class SharedSettingsDataSource(
     }
 
     suspend fun loadAccount(): DataResult<AccountSettingsSnapshot> =
-        (
-            settingsRepository?.getAccount()
-                ?: sessionStore.readSession()?.toAccountSettingsSnapshot()?.let { DataResult.Content(it) }
-                ?: DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
-        ).withUsageDataGate()
+        settingsRepository?.getAccount()
+            ?: sessionStore.readSession()?.toAccountSettingsSnapshot()?.let { DataResult.Content(it) }
+            ?: DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
 
     suspend fun updateProfile(request: AccountProfileUpdateRequest): DataResult<AccountSettingsSnapshot> =
-        (settingsRepository?.updateProfile(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable))
-            .withUsageDataGate()
+        settingsRepository?.updateProfile(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun changeAccountPassword(request: AccountPasswordChangeRequest): DataResult<AccountSettingsSnapshot> =
-        (settingsRepository?.changeAccountPassword(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable))
-            .withUsageDataGate()
+        settingsRepository?.changeAccountPassword(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     /** Saves "Share usage data"; on success the product-events consent cache is dropped. */
     suspend fun updateShareUsageData(enabled: Boolean): DataResult<AccountUsageDataSnapshot> {
@@ -751,12 +741,6 @@ class SharedSettingsDataSource(
                 ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
         if (result is DataResult.Content) onShareUsageDataChanged()
         return result
-    }
-
-    private suspend fun DataResult<AccountSettingsSnapshot>.withUsageDataGate(): DataResult<AccountSettingsSnapshot> {
-        if (this !is DataResult.Content || data.usageData == null) return this
-        val visible = runCatchingPreservingCancellation { shareUsageDataSettingEnabled() }.getOrDefault(false)
-        return if (visible) this else DataResult.Content(data.copy(usageData = null))
     }
 
     suspend fun uploadAccountAvatar(): DataResult<AccountSettingsSnapshot> {
@@ -778,7 +762,7 @@ class SharedSettingsDataSource(
                         source = "account_avatar_upload"
                     )
                 }
-                result.withUsageDataGate()
+                result
             }
             is DataResult.Empty -> DataResult.Empty(picked.reason)
             is DataResult.Error -> DataResult.Error(picked.error)
