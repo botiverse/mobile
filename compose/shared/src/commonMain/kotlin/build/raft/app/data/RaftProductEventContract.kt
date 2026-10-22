@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.network.RaftUserAgentDevice
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -16,13 +17,31 @@ import kotlinx.serialization.json.jsonObject
  *    `SETTINGS_PAGE_TABS` + `NATIVE_SETTINGS_PAGE_TABS`, `PRODUCT_EVENT_SOURCES`).
  *  - `packages/server/src/routes/productEvents.ts` + `services/productEventIngest.ts`:
  *    `GET /api/product-events/config` -> `{ clientEventsAllowed }`;
- *    `POST /api/product-events/batch` with `{ source, app_version?, events: [{ uuid, event,
- *    timestamp, client_session_id?, properties? }] }` (strict, max 100 events) -> `202 { accepted }`,
- *    `400` for a malformed body. Both need sign-in and `X-Server-Id`.
+ *    `POST /api/product-events/batch` with `{ source, app_version?, device_class?, events: [{ uuid,
+ *    event, timestamp, client_session_id?, properties? }] }` (strict, max 100 events) ->
+ *    `202 { accepted }`, `400` for a malformed body. Both need sign-in and `X-Server-Id`.
+ *    `device_class` comes from botiverse/slock #10790 @ [RAFT_PRODUCT_EVENTS_DEVICE_CLASS_SLOCK_SHA].
+ *    The batch never sends `platform`: the server derives it from `source`.
  *
  * Properties are registry enums/booleans only: no ids, paths or user-entered text.
  */
 const val RAFT_PRODUCT_EVENTS_SLOCK_SHA: String = "9fdf630244561c770e7223ed190b9920c35da29a"
+
+/**
+ * botiverse/slock #10790 head, where `clientEventBatchSchema` gained the optional batch-level
+ * `device_class: "phone" | "tablet"` (`packages/server/src/services/productEventIngest.ts`).
+ */
+const val RAFT_PRODUCT_EVENTS_DEVICE_CLASS_SLOCK_SHA: String = "9a30dba7deb45b2f7d3154a8a57ace55fb45b35c"
+
+/**
+ * The batch `device_class`: whether this app runs on a phone or a tablet, as the app decides it.
+ * The server prefers it over the User-Agent for `$device_type` (phone -> `mobile`, tablet -> `tablet`).
+ */
+@Serializable
+enum class RaftProductEventDeviceClass(val wire: String) {
+    @SerialName("phone") Phone("phone"),
+    @SerialName("tablet") Tablet("tablet"),
+}
 
 /** `PRODUCT_EVENT_SOURCES` values a native app may send (the batch `source`). */
 @Serializable
@@ -180,6 +199,8 @@ data class RaftProductEventBatchRequest(
     val source: RaftProductEventSource,
     @SerialName("app_version") val appVersion: String? = null,
     val events: List<RaftProductEventWire>,
+    /** Optional; left out when the platform has not said. */
+    @SerialName("device_class") val deviceClass: RaftProductEventDeviceClass? = null,
 )
 
 /** `GET /api/product-events/config` response. */
@@ -215,6 +236,17 @@ internal fun raftProductEventSourceForOs(os: String): RaftProductEventSource? =
         "ios" -> RaftProductEventSource.Ios
         "harmonyos", "ohos" -> RaftProductEventSource.HarmonyOs
         else -> null
+    }
+
+/**
+ * The `device_class` for the phone/tablet line the platform already draws for the User-Agent
+ * (Android: smallest width >= 600dp; iOS: `userInterfaceIdiom == .pad`). Null when not installed yet.
+ */
+internal fun raftProductEventDeviceClass(device: RaftUserAgentDevice?): RaftProductEventDeviceClass? =
+    when (device) {
+        RaftUserAgentDevice.AndroidPhone, RaftUserAgentDevice.IPhone -> RaftProductEventDeviceClass.Phone
+        RaftUserAgentDevice.AndroidTablet, RaftUserAgentDevice.IPad -> RaftProductEventDeviceClass.Tablet
+        null -> null
     }
 
 internal fun encodeRaftProductEventBatch(batch: RaftProductEventBatchRequest): String =

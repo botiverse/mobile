@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.ServerId
+import build.raft.app.network.platformRaftUserAgentDevice
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
@@ -82,11 +83,18 @@ object RaftProductEvents {
 @OptIn(ExperimentalUuidApi::class)
 private fun newRaftProductEventUuid(): String = Uuid.random().toString()
 
-/** `source` / `app_version` from the same app identity the User-Agent and feature flags carry. */
+/**
+ * `source` / `app_version` from the same app identity the User-Agent and feature flags carry, and
+ * `device_class` from the same platform phone/tablet decision the User-Agent token uses.
+ */
 internal fun currentRaftProductEventsClientInfo(): RaftProductEventsClientInfo? {
     val context = currentFeatureFlagClientContext()
     val source = raftProductEventSourceForOs(context.os) ?: return null
-    return RaftProductEventsClientInfo(source = source, appVersion = context.appVersion)
+    return RaftProductEventsClientInfo(
+        source = source,
+        appVersion = context.appVersion,
+        deviceClass = raftProductEventDeviceClass(platformRaftUserAgentDevice()),
+    )
 }
 
 private fun raftLogInfoProductEvents(message: String) {

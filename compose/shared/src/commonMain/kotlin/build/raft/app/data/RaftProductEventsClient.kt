@@ -17,10 +17,11 @@ interface RaftProductEventsTransport {
     suspend fun sendBatch(serverId: ServerId, batch: RaftProductEventBatchRequest): RaftProductEventsSendResult
 }
 
-/** Batch-level client facts: the registry `source` and the app version. */
+/** Batch-level client facts: the registry `source`, the app version and phone/tablet. */
 data class RaftProductEventsClientInfo(
     val source: RaftProductEventSource,
     val appVersion: String?,
+    val deviceClass: RaftProductEventDeviceClass? = null,
 )
 
 data class RaftProductEventsClientConfig(
@@ -299,6 +300,7 @@ class RaftProductEventsClient(
                     source = info.source,
                     appVersion = raftProductEventAppVersion(info.appVersion),
                     events = work.events.map { it.wire },
+                    deviceClass = info.deviceClass,
                 )
             when (val result = safeSend(work.transport, work.serverId, batch)) {
                 is RaftProductEventsSendResult.Accepted -> {
