@@ -46,6 +46,8 @@ object RaftWorkspaceButtonDefaults {
  *   and the chevron keep their size.
  * - [mark] (the public-page globe) sits 4dp after the name.
  * - The 16dp chevron is part of the button and always shows, 4dp after the name.
+ * - [open]: the server list is open; the button keeps its press fill until it closes, as
+ *   raft-ui's on-frame button does under `data-popup-open`.
  */
 @Composable
 fun RaftWorkspaceButton(
@@ -54,6 +56,7 @@ fun RaftWorkspaceButton(
     avatar: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     mark: (@Composable () -> Unit)? = null,
+    open: Boolean = false,
     interactionSource: MutableInteractionSource? = null,
 ) {
     val look = raftButtonLook(RaftButtonVariant.OnFrame, enabled = true, frameless = false, colors = RaftTheme.colors)
@@ -67,6 +70,7 @@ fun RaftWorkspaceButton(
         loading = false,
         loadingLabel = "",
         interactionSource = interactionSource,
+        open = open,
     ) {
         Row(
             modifier = Modifier.padding(start = inset, end = inset),

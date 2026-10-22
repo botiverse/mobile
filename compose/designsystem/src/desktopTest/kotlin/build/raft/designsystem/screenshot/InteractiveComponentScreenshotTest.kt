@@ -33,6 +33,9 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftFocusedPreview
 import build.raft.designsystem.components.LocalRaftPressedPreview
 import build.raft.designsystem.components.RaftAvatar
+import build.raft.designsystem.components.RaftAvatarAttentionLight
+import build.raft.designsystem.components.RaftAvatarBadgeBox
+import build.raft.designsystem.components.RaftWorkspaceButton
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftAvatarType
 import build.raft.designsystem.components.RaftBanner
@@ -570,6 +573,31 @@ class InteractiveComponentScreenshotTest {
             color = color,
         )
     }
+
+    /** raft-ui WorkspaceButton on the frame: at rest, open (its list showing), another server unread. */
+    @Test
+    fun workspaceButton() =
+        capture("workspace_button") {
+            Column(
+                Modifier.background(RaftTheme.colors.layerFrame).padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Caption("Rest, open, another server unread, open + unread")
+                listOf(false to false, true to false, false to true, true to true).forEach { (open, unread) ->
+                    RaftWorkspaceButton(
+                        name = "Botiverse",
+                        onClick = {},
+                        open = open,
+                        avatar = {
+                            RaftAvatarBadgeBox(
+                                size = RaftAvatarSize.Sm,
+                                badge = { if (unread) RaftAvatarAttentionLight(RaftAvatarSize.Sm, cutout = RaftTheme.colors.layerCanvas) },
+                            ) { RaftAvatar(RaftAvatarType.Human, RaftAvatarSize.Sm, initials = "B") }
+                        },
+                    )
+                }
+            }
+        }
 
     @Test
     fun select() =

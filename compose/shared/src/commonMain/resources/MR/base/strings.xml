@@ -2841,4 +2841,5 @@
     <string name="download_center_progress_bytes">%1$s of %2$s</string>
     <string name="file_preview_download_background_hint">You can leave this page: the download keeps going. Find it in Settings › Storage › Downloads.</string>
     <string name="file_preview_download_completed_hint">Saved. You can find it in Settings › Storage › Downloads.</string>
+    <string name="home_server_switcher_other_unread">Other servers have unread messages</string>
 </resources>

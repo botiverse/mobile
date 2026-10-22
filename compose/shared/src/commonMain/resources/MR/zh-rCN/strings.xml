@@ -2841,4 +2841,5 @@
     <string name="download_center_progress_bytes">%1$s / %2$s</string>
     <string name="file_preview_download_background_hint">可以离开此页面，下载会继续。可在 设置 › 存储 › 下载 中查看。</string>
     <string name="file_preview_download_completed_hint">已保存。可在 设置 › 存储 › 下载 中找到。</string>
+    <string name="home_server_switcher_other_unread">其他服务器有未读消息</string>
 </resources>
