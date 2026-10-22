@@ -116,7 +116,7 @@ internal data class RaftMarkdownTaskChipStyle(
 )
 
 internal const val RaftMarkdownTaskChipWordJoiner = "\u2060"
-internal val RaftMarkdownTaskChipPixelSize = 9.dp
+internal val RaftMarkdownTaskChipPixelSize = 10.dp
 private val RaftMarkdownTaskChipPixelStroke = 1.5.dp
 private val RaftMarkdownTaskChipPixelRadius = 1.25.dp
 private val RaftMarkdownTaskChipPaddingStart = 3.dp
@@ -297,7 +297,7 @@ private fun raftMarkdownTaskChipSpacer(width: Dp): InlineTextContent =
             )
     ) {}
 
-/** raft-ui `TaskStatusPixel`: 7.5px rect, 1.5px sticker-ink stroke, 1.25px radius (9px outer). */
+/** raft-ui `TaskStatusPixel`: 8.5px rect, 1.5px sticker-ink stroke, 1.25px radius (10px outer, raft-design #722). */
 @Composable
 internal fun RaftTaskStatusPixel(
     style: RaftTaskStatusPixelStyle,

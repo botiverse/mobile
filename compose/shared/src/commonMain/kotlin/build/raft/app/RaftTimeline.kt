@@ -37,7 +37,7 @@ import build.raft.designsystem.tokens.RaftUiPalette
  * agent activity log needs.
  */
 
-private val RaftTimelineMarker = 9.dp
+private val RaftTimelineMarker = 10.dp
 private val RaftTimelineLine = 20.dp
 private val RaftTimelineAxisOffset = (RaftTimelineLine - RaftTimelineMarker) / 2
 private val RaftTimelineGap = 12.dp

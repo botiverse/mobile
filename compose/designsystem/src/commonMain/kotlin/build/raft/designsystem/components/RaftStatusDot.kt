@@ -64,7 +64,7 @@ enum class RaftStatusVariant(val color: Color) {
 enum class RaftStatusSize(val edge: Dp, val radius: Dp, val border: Dp) {
     Xs(6.dp, 1.dp, RaftStroke.Hairline),
     Sm(8.dp, 2.dp, RaftStroke.Control),
-    Md(9.dp, 2.dp, RaftStroke.Control),
+    Md(10.dp, 2.dp, RaftStroke.Control),
     Lg(11.dp, 2.dp, RaftStroke.Control),
 }
 

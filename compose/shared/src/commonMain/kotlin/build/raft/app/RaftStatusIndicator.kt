@@ -35,8 +35,9 @@ internal object RaftStatusIndicatorTokens {
     // shape/edge are the raft ones; brutal-only previews pass their own.
     val Shape: RaftStatusIndicatorShape = RaftStatusIndicatorShape.Square
     // Avatar presence lights size per avatar step: see [RaftAvatarStep] / [RaftAvatarWithStatus].
-    // raft `md` presence / attention pixel is 9px.
-    val InlineSize: Dp = 9.dp
+    // raft-ui `md`: a status light beside text is 10px (raft-design #722).
+    val InlineSize: Dp = 10.dp
+    // On a server tile's corner it follows the tile, as an avatar's light does: 9px.
     val ServerUnreadSize: Dp = 9.dp
     val BorderWidth: Dp = RaftAppStroke.Control
     val BorderColor: Color

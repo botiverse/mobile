@@ -65,8 +65,8 @@ internal object RaftMetrics {
     /** Menu group label padding (`px-2.5 pt-2 pb-1`). */
     val MenuLabelPaddingTop = 8.dp
     val MenuLabelPaddingBottom = 4.dp
-    /** Status / attention pixel (`size-[9px]`). */
-    val StatusSize = 9.dp
+    /** Status / attention pixel beside text (`size-2.5`, raft-design #722). */
+    val StatusSize = 10.dp
     /** `--elevation-float`: 0 12px 32px -12px (offset, blur, spread). */
     val OverlayShadowOffsetY = 12.dp
     val OverlayShadowBlur = 32.dp
