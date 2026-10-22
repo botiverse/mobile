@@ -2,7 +2,7 @@
 - The last tab is now your current server: tap or long-press it to switch servers; Members, Computers, and Settings live here too
 - Messages support LaTeX math
 - Long-press a computer name, agent name, model name, and similar details to copy them
-- Tapping a file opens its detail page first, where you download it with progress
+- Tapping a file opens its detail page first, where you download it
 - Channel settings and channel members pages rebuilt to match the web
 
 🔧 Improved
