@@ -1,5 +1,8 @@
 package build.raft.app
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.text.TextStyle
@@ -567,6 +570,7 @@ internal fun ActivityConversationListRow(
             InboxItemKind.MentionAction -> actionFallback
             else -> conversationFallback
         }
+    var pressed by remember(item.key) { mutableStateOf(false) }
     ActivitySwipeToDoneBox(
         gestureKey = openGestureKey,
         onSwipeDone = onSwipeDone.takeIf { showDoneAction },
@@ -581,6 +585,8 @@ internal fun ActivityConversationListRow(
                         when {
                             selected -> Modifier.background(colors.infoSoft)
                             menuOpen -> Modifier.background(colors.fillRowOpen)
+                            // raft-ui 0.20: an inbox row presses with the medium tier.
+                            pressed -> Modifier.background(colors.fillPressed)
                             else -> Modifier
                         }
                     )
@@ -600,7 +606,7 @@ internal fun ActivityConversationListRow(
                 modifier =
                     Modifier
                         .weight(1f)
-                        .activityRowGestures(openGestureKey, captureMenuAnchor, onOpen, onOpenMenu)
+                        .activityRowGestures(openGestureKey, captureMenuAnchor, onOpen, onOpenMenu, onPressedChange = { pressed = it })
                         // One focusable button per row for screen readers: title, preview and marks read
                         // together, and the accessibility click opens the row like a tap.
                         .semantics(mergeDescendants = true) {

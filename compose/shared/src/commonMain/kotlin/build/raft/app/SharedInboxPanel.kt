@@ -2326,6 +2326,7 @@ private fun SharedActivityRow(
         )
     }
     val showDone = item.activityShowsDoneAction()
+    var pressed by remember(item.key) { mutableStateOf(false) }
     Box(
         modifier =
             modifier
@@ -2334,6 +2335,8 @@ private fun SharedActivityRow(
                     when {
                         selected -> RaftColor.InfoSoft
                         menuOpen -> RaftTheme.colors.fillRowOpen
+                        // raft-ui 0.20: an inbox row presses with the medium tier.
+                        pressed -> RaftTheme.colors.fillPressed
                         else -> Color.Transparent
                     }
                 )
@@ -2346,7 +2349,8 @@ private fun SharedActivityRow(
                         openGestureKey,
                         captureMenuAnchor,
                         onOpen,
-                        onOpenMenu
+                        onOpenMenu,
+                        onPressedChange = { pressed = it },
                     )
                     // The row reads as one button; the accessibility click opens it like a tap.
                     // The Done button stays its own control.
@@ -2690,9 +2694,12 @@ internal fun Modifier.activityRowGestures(
     gestureKey: String,
     captureMenuAnchor: Boolean,
     onClick: () -> Unit,
-    onOpenMenu: (RaftPopoverAnchor) -> Unit
+    onOpenMenu: (RaftPopoverAnchor) -> Unit,
+    /** raft-ui 0.20 InboxItem press: true from DOWN until the finger lifts or the gesture ends. */
+    onPressedChange: (Boolean) -> Unit = {},
 ): Modifier {
     val rootAnchor = remember(gestureKey) { RaftLiveRootAnchorRef(identity = gestureKey) }
+    val currentOnPressedChange by rememberUpdatedState(onPressedChange)
     val gestureOwner =
         rememberRaftGestureOwner(
             surface = "activity-row",
@@ -2716,7 +2723,12 @@ internal fun Modifier.activityRowGestures(
             // 500 ms long press.
             onPress = {
                 gesture = owner.beginGesture()
-                tryAwaitRelease()
+                currentOnPressedChange(true)
+                try {
+                    tryAwaitRelease()
+                } finally {
+                    currentOnPressedChange(false)
+                }
             },
             onTap = { (gesture ?: owner.beginGesture()).currentCallbacksOrNull()?.onClick() },
             onLongPress = { localOffset ->
