@@ -141,9 +141,10 @@
     <string name="settings_account_password_updated">Password updated!</string>
     <string name="settings_account_password_update_failed">Password update failed: %1$s</string>
     <string name="settings_account_session">Session</string>
-    <string name="settings_account_logout">Log out</string>
+    <string name="settings_account_logout">Sign out</string>
+    <string name="settings_account_logout_action">Sign Out</string>
     <string name="settings_account_logout_detail">Sign out on this device. Your account and data stay; you can sign back in any time.</string>
-    <string name="settings_account_logout_confirm">Sign out on this device? Your account and data are kept; you can log back in any time.</string>
+    <string name="settings_account_logout_confirm">Sign out on this device? Your account and data are kept; you can sign back in any time.</string>
     <string name="settings_usage_data_title">Share usage data</string>
     <string name="settings_usage_data_description">Help improve Raft by sharing which pages and features you use. Never includes your messages or other content.</string>
     <string name="settings_usage_data_learn_more">Learn more</string>
@@ -274,7 +275,7 @@
     <string name="settings_section_cancellation_scheduled_title">Cancellation Scheduled</string>
     <string name="thread_action_forward">Forward</string>
     <string name="thread_action_add_member">Add Member</string>
-    <string name="thread_action_save_changes">Save Changes</string>
+    <string name="thread_action_save_changes">Save</string>
     <string name="thread_action_open_with">Open with…</string>
     <string name="thread_action_select_message">Select Message</string>
     <string name="thread_action_search">Search</string>
@@ -544,6 +545,7 @@
     <string name="thread_settings_make_private_detail">Restrict this channel to selected members</string>
     <string name="thread_settings_archive_title">Archive Channel</string>
     <string name="thread_settings_archive">Archive Channel</string>
+    <string name="thread_settings_archive_confirm">Archive</string>
     <string name="thread_settings_archive_detail">Freeze writes and hide from sidebars</string>
     <string name="thread_settings_delete_title">Delete Channel</string>
     <string name="thread_settings_delete">Delete Channel</string>
@@ -858,6 +860,7 @@
     <string name="member_status_posted_status_update">Posted status update</string>
     <string name="member_status_product_review">Product review</string>
     <string name="member_action_remove_member">Remove Member</string>
+    <string name="thread_members_remove_confirm">Remove</string>
     <string name="member_report_issue_title">Report Issue</string>
     <string name="member_report_issue_agent_label">Agent</string>
     <string name="member_report_issue_description_label">Describe the issue</string>
@@ -872,7 +875,7 @@
     <string name="member_report_issue_runtime_transcript_unavailable">Unavailable until the agent is assigned to a machine.</string>
     <string name="member_report_issue_disclosure">This report may contain prompt history, file paths, and command output. Sensitive data redaction is best-effort and not guaranteed.</string>
     <string name="member_report_issue_consent">I understand and consent to sharing this data.</string>
-    <string name="member_report_issue_submit">Report Issue</string>
+    <string name="member_report_issue_submit">Report</string>
     <string name="member_report_issue_submitting">Submitting...</string>
     <string name="member_report_issue_failed">Unable to submit the report: %1$s</string>
     <string name="member_report_issue_success_title">Report submitted</string>
@@ -889,6 +892,7 @@
     <string name="member_action_switch_runtime_config">Switch Runtime Config</string>
     <string name="member_action_start_agent">Start Agent</string>
     <string name="member_action_stop_agent">Stop Agent</string>
+    <string name="member_action_stop_confirm">Stop</string>
     <string name="member_action_reset_runtime_session">Reset Runtime Session</string>
     <string name="member_action_save_runtime_change">Save Runtime Change</string>
     <string name="member_action_view_service">View service</string>
@@ -991,8 +995,10 @@
     <string name="member_action_report_issue">Report Issue</string>
     <string name="member_action_reporting">Reporting...</string>
     <string name="member_action_delete_agent">Archive Agent</string>
+    <string name="member_archive_confirm">Archive</string>
     <string name="member_action_deleting">Archiving...</string>
     <string name="member_action_restart_agent">Restart Agent</string>
+    <string name="member_action_restart_confirm">Restart</string>
     <string name="member_action_restart_session">Reset Session &amp; Restart</string>
     <string name="member_action_full_reset_restart">Full Reset &amp; Restart</string>
     <string name="member_action_restarting">Restarting...</string>
@@ -1106,6 +1112,7 @@
     <string name="member_archive_workspace_deleting">Deleting from %1$s...</string>
     <string name="member_archive_waiting_for_computer">Waiting for %1$s to come online.</string>
     <string name="member_archive_action_delete_workspace">Delete workspace from Computer</string>
+    <string name="member_archive_delete_workspace_confirm">Delete Workspace from Computer</string>
     <string name="member_archive_confirm_delete_workspace">The workspace is deleted from %1$s. This cannot be undone.</string>
     <string name="member_archive_error_workspace_missing">The workspace was not found on the Computer.</string>
     <string name="member_archive_error_delete_unconfirmed">The Computer took too long to confirm the delete. It may still be deleting, or may be done: delete the workspace again to check.</string>
@@ -1143,7 +1150,7 @@
     <string name="member_label_revision">rev %1$s</string>
     <string name="member_action_choose_avatar">Choose Avatar</string>
     <string name="member_action_saving">Saving...</string>
-    <string name="member_action_save_runtime_config">Save Runtime Config</string>
+    <string name="member_action_save_runtime_config">Save</string>
     <string name="member_action_diagnostics_copied">Diagnostics copied</string>
     <string name="member_action_issue_reported">Issue reported</string>
     <string name="member_dialog_edit_runtime_config">Edit Runtime Config</string>
@@ -1151,7 +1158,7 @@
     <string name="member_hint_runtime_restart">Changing runtime config may restart the agent so the next launch uses the new settings.</string>
     <string name="member_hint_chat_audit_only">Visible here as an activity/audit trail. These rows are intentionally not direct conversation links.</string>
     <string name="member_hint_no_scheduled_reminders">This agent hasn\'t scheduled anything. Reminders appear here in real time as soon as the agent schedules them.</string>
-    <string name="member_hint_connected_apps">Apps this agent has logged into with Raft Agent Login</string>
+    <string name="member_hint_connected_apps">Apps this agent has signed in to with Raft Agent Login</string>
     <string name="member_error_profile_open">Unable to open profile</string>
     <string name="member_notice_member_id_copied">Copied member ID</string>
     <string name="member_notice_diagnostics_copied">Copied agent diagnostics</string>
@@ -1384,7 +1391,7 @@
     <string name="auth_server_title_first">Create your first server</string>
     <string name="auth_server_title_choose">Choose server</string>
     <string name="auth_server_signed_in_as">Signed in as %1$s</string>
-    <string name="auth_action_sign_out">Sign out</string>
+    <string name="auth_action_sign_out">Sign Out</string>
     <string name="auth_action_retry">Retry</string>
     <string name="auth_server_loading">Loading your servers...</string>
     <string name="auth_server_create_hint">Create the workspace you want to enter. You can rename it later in Settings.</string>
@@ -1441,6 +1448,7 @@
     <string name="agent_create_placeholder_description">Leave blank for a general-purpose agent, or describe a role...</string>
     <string name="agent_create_error_description_length">Description must be at most %1$d characters.</string>
     <string name="agent_create_action_create">Create Agent</string>
+    <string name="agent_create_submit">Create</string>
     <string name="agent_create_action_create_external">Create external agent</string>
     <string name="agent_create_action_creating">Creating...</string>
     <string name="agent_create_error_limit">Agent limit reached (%1$d/%2$d on this server). Upgrade for more.</string>
@@ -1502,7 +1510,7 @@
     <string name="channel_create_placeholder_member_search">Search members by name</string>
     <string name="channel_create_error">Error: %1$s</string>
     <string name="channel_create_action_creating">Creating...</string>
-    <string name="channel_create_action_create">Create Channel</string>
+    <string name="channel_create_action_create">Create</string>
     <string name="settings_storage_clear_downloaded_files">Clear attachment staging</string>
     <string name="settings_storage_clear_image_cache">Clear image cache</string>
     <string name="settings_storage_clear_temp_files">Clear temp files and logs</string>
@@ -1517,7 +1525,7 @@
     <string name="translation_state_prefer_original">Prefer original</string>
     <string name="pagination_prev">Prev</string>
     <string name="pagination_next">Next</string>
-    <string name="announcement_action_got_it">Got it</string>
+    <string name="announcement_action_got_it">Got It</string>
     <string name="announcement_action_skip">Skip</string>
     <string name="tasks_label_new_tasks">New tasks</string>
     <string name="tasks_create_multiple_hint">Add one or more task titles. Empty rows are ignored.</string>
@@ -1591,10 +1599,11 @@
     <string name="home_sidebar_section_menu_action">%1$s options</string>
     <string name="home_section_rename">Rename / change icon…</string>
     <string name="home_section_delete">Delete section</string>
+    <string name="home_section_delete_confirm">Delete Section</string>
     <string name="home_section_delete_message">Delete "%1$s"? Its conversations will return to their default sections.</string>
     <string name="home_section_new_title">New section</string>
     <string name="home_section_edit_title">Edit section</string>
-    <string name="home_section_create">Create section</string>
+    <string name="home_section_create">Create</string>
     <string name="home_section_name_label">Name</string>
     <string name="home_section_name_placeholder">My Project</string>
     <string name="home_section_emoji_label">Emoji</string>
@@ -2400,7 +2409,7 @@
     <string name="members_select_detail">Select a member to view details</string>
     <string name="thread_members_heading">Members</string>
     <string name="thread_members_channel_admin">Channel admin</string>
-    <string name="thread_members_add_selected">Add selected (%1$d)</string>
+    <string name="thread_members_add_selected">Add Selected (%1$d)</string>
     <string name="thread_members_create_agent">Create a new Agent</string>
     <string name="thread_members_create_no_permission">You do not have permission to create agents.</string>
     <string name="thread_members_created_join_failed">Agent created, but joining this channel failed. Retry joining without creating another agent.</string>
@@ -2458,7 +2467,7 @@
     <string name="settings_public_visibility_confirm_title">Make this server public?</string>
     <string name="settings_public_visibility_confirm_description">These channels will become readable by anyone:</string>
     <string name="settings_public_visibility_confirm_audience_change">You marked these channels visible to Guests earlier. That choice will now apply to everyone, not only the Guests you invited. You will not be asked again for each channel.</string>
-    <string name="settings_public_visibility_confirm_action">Make public</string>
+    <string name="settings_public_visibility_confirm_action">Make Public</string>
     <string name="settings_public_visibility_confirm_saving">Making public…</string>
     <string name="settings_public_visibility_failed_load">Failed to load public access settings</string>
     <string name="settings_public_visibility_failed_update">Failed to update public access</string>
@@ -2575,7 +2584,7 @@
     <string name="invite_human_used_of">Used %1$d/%2$d</string>
     <string name="invite_human_expires_on">Expires %1$s</string>
     <string name="invite_human_send_link_hint">Send this link to your teammates to join the server.</string>
-    <string name="invite_human_send_invites">Send Invites</string>
+    <string name="invite_human_send_invites">Invite</string>
     <string name="invite_human_sending">Sending…</string>
     <string name="invite_human_enter_email_or_copy_link">Enter at least one email, or copy the invite link above.</string>
     <string name="invite_human_failed_prepare_link">Failed to prepare join link</string>
@@ -2630,6 +2639,7 @@
     <string name="joint_invite_accept_failed">Couldn’t accept the Joint Channel invite.</string>
     <string name="home_section_create_joint_channel">Create Joint Channel</string>
     <string name="joint_create_title">Create Joint Channel</string>
+    <string name="joint_create_submit">Create</string>
     <string name="joint_create_creating">Creating…</string>
     <string name="joint_create_free_allowance">Free servers can host 1 Joint Channel that other servers have joined, and join any number of others. Each Joint Channel can have up to 30 servers, at most 2 of them free.</string>
     <string name="joint_create_view_billing">View Billing</string>
@@ -2690,6 +2700,7 @@
     <string name="agent_migration_section_title">Agent migration</string>
     <string name="agent_migration_section_description">Move this agent and its workspace to another computer.</string>
     <string name="agent_migration_detail_start_migration">Move to Another Computer</string>
+    <string name="agent_migration_move_confirm">Move</string>
     <string name="agent_migration_detail_try_migration_again">Try Migration Again</string>
     <string name="agent_migration_migrate_elsewhere">Start a Different Migration</string>
     <string name="agent_migration_hosted_start_entry">Move Agent</string>
@@ -2768,9 +2779,9 @@
     <string name="agent_migration_hosted_canceled_message">The move to the cloud was canceled. The agent is still on %1$s.</string>
     <string name="agent_migration_reference_label">Migration ID</string>
     <string name="agent_migration_cancel_dialog_title">Cancel migration?</string>
-    <string name="agent_migration_cancel_dialog_confirm">Stop</string>
+    <string name="agent_migration_cancel_dialog_confirm">Cancel Migration</string>
     <string name="agent_migration_cancel_dialog_requesting">Canceling…</string>
-    <string name="agent_migration_cancel_dialog_keep_action">Continue</string>
+    <string name="agent_migration_cancel_dialog_keep_action">Keep Migrating</string>
     <string name="agent_migration_cancel_dialog_safety_title">Canceling is safe</string>
     <string name="agent_migration_cancel_dialog_safe_message">Raft will stop the migration from %1$s to %2$s and clean up on both computers. Your agent and its workspace stay on whichever computer has them now.</string>
     <string name="agent_migration_hosted_cancel_dialog_safe_message">Raft will stop moving the agent to the cloud. The agent and its workspace stay on %1$s, and it goes back to work there.</string>

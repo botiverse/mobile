@@ -1731,7 +1731,7 @@ internal fun SharedCreateAgentDialog(
                         if (submitting) {
                             stringResource(MR.strings.agent_create_action_creating)
                         } else {
-                            stringResource(MR.strings.agent_create_action_create)
+                            stringResource(MR.strings.agent_create_submit)
                         },
                     enabled = canSubmit,
                     minWidth = 126.dp,

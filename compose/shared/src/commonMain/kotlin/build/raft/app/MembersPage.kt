@@ -7430,10 +7430,10 @@ internal fun membersAgentArchiveHasComputerWorkspace(
 internal fun membersAgentArchiveRequestBody(choice: AgentArchiveWorkspaceChoice): String =
     choice.toRequestBody()
 
-// Mirrors React ConfirmDialog usage in AgentDetailPanel: title matches the
-// action button label, message is user-facing copy, warning banner shows the
-// message only (never repeats the title), and the confirm button carries the
-// action label with warning/destructive color.
+// Mirrors React ConfirmDialog usage in AgentDetailPanel: message is user-facing
+// copy, warning banner shows the message only (never repeats the title), and
+// the confirm button carries the action verb (Stop / Archive, #148) with
+// warning/destructive color.
 @Composable
 private fun membersLifecycleConfirmTitle(action: MembersAgentLifecycleAction, agentName: String): String =
     when (action) {
@@ -7541,10 +7541,11 @@ private fun MembersLifecycleConfirmation(
                 size = RaftButtonSize.Lg
             )
             RaftBrutalActionButton(
-                label = if (isArchive) {
-                    stringResource(MR.strings.member_action_delete_agent)
-                } else {
-                    membersLifecycleConfirmTitle(action, agentName)
+                // #148: the confirm button says the verb only; the title names the agent.
+                label = when {
+                    isArchive -> stringResource(MR.strings.member_archive_confirm)
+                    action == MembersAgentLifecycleAction.Stop -> stringResource(MR.strings.member_action_stop_confirm)
+                    else -> membersLifecycleConfirmTitle(action, agentName)
                 },
                 enabled = !busy,
                 backgroundColor = accent,
@@ -7788,7 +7789,7 @@ private fun MembersAgentArchiveSection(
                         size = RaftButtonSize.Lg
                     )
                     RaftBrutalActionButton(
-                        label = stringResource(MR.strings.member_archive_action_delete_workspace),
+                        label = stringResource(MR.strings.member_archive_delete_workspace_confirm),
                         enabled = !deleting,
                         backgroundColor = RaftColor.AccentRed,
                         leadingIcon = if (deleting) RaftLucideIconName.Loader else RaftLucideIconName.Trash2,
@@ -8310,7 +8311,7 @@ private fun MembersAgentLifecycleAction.restartResetTitle(): String =
 @Composable
 private fun MembersAgentLifecycleAction.restartResetButtonLabel(): String =
     when (this) {
-        MembersAgentLifecycleAction.Restart -> stringResource(MR.strings.member_action_restart_agent)
+        MembersAgentLifecycleAction.Restart -> stringResource(MR.strings.member_action_restart_confirm)
         MembersAgentLifecycleAction.ResetSession -> stringResource(MR.strings.member_action_restart_session)
         MembersAgentLifecycleAction.ResetFull -> stringResource(MR.strings.member_action_full_reset_restart)
         else -> localizedLabel()
