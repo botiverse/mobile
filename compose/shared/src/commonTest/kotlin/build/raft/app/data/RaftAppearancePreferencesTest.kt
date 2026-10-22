@@ -68,4 +68,22 @@ class RaftAppearancePreferencesTest {
         assertEquals(listOf(2, 0), hostCodes)
         RaftAppAppearanceRuntime.setHostListener(null)
     }
+
+    @Test
+    fun runtimeReportsWhetherAnOsSwitchWhileRunningChangesTheResolvedTheme() {
+        // Android handles uiMode as a config change, so the host relies on this report to
+        // repaint its native canvas and bar icons without recreating the page.
+        RaftAppThemeState.onSystemDarkChanged(false)
+        RaftAppThemeState.apply(RaftAppAppearance.System)
+        assertTrue(RaftAppAppearanceRuntime.onSystemDarkChanged(true))
+        assertTrue(RaftAppAppearanceRuntime.isDark)
+        assertFalse(RaftAppAppearanceRuntime.onSystemDarkChanged(true), "same OS setting again")
+        assertTrue(RaftAppAppearanceRuntime.onSystemDarkChanged(false))
+        assertFalse(RaftAppAppearanceRuntime.isDark)
+
+        // An explicit Light/Dark choice ignores the OS switch.
+        RaftAppThemeState.apply(RaftAppAppearance.Light)
+        assertFalse(RaftAppAppearanceRuntime.onSystemDarkChanged(true))
+        assertFalse(RaftAppAppearanceRuntime.isDark)
+    }
 }
