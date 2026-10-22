@@ -16,6 +16,7 @@ import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedHomeContentState
 import androidx.compose.runtime.Immutable
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.app.data.InboxSnapshot
 import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.activityVisibleSummaryCounts
@@ -449,6 +450,17 @@ internal fun SharedHomeActivityScreen(
                 ?: flowOf(emptyMap())
         }
     val activityMuteByChannelId by activityMuteSource.collectAsState(emptyMap())
+    // The Home sidebar's channel glyphs (lock, joint branch, public-page globe) for card rows; the
+    // list layout reads the same projection from its conversation-list context.
+    val activityChannelSymbolSource =
+        remember(sharedHomeStore, activitySummaryServerId) {
+            val serverId = activitySummaryServerId.value
+            sharedHomeStore?.state
+                ?.map { homeState -> homeState.content.activityChannelSymbolsByChannelId(serverId) }
+                ?.distinctUntilChanged()
+                ?: flowOf(emptyMap())
+        }
+    val activityChannelSymbols by activityChannelSymbolSource.collectAsState(emptyMap())
     val channelMute =
         remember(sharedHomeStore, activityMuteByChannelId) {
             sharedHomeStore?.let { store ->
@@ -563,7 +575,10 @@ internal fun SharedHomeActivityScreen(
             ActivityTabActiveEdge.None -> Unit
         }
     }
-    CompositionLocalProvider(LocalActivityAvatarSource provides activityAvatarSource) {
+    CompositionLocalProvider(
+        LocalActivityAvatarSource provides activityAvatarSource,
+        LocalActivityChannelSymbols provides activityChannelSymbols,
+    ) {
     SharedActivityPanelContent(
         state = safeOpenProjectedState,
         onOpenItem = { item ->
@@ -2239,6 +2254,12 @@ internal data class ActivityChannelMuteControl(
 )
 
 /** The joined channels of [activityServerId] from the Home content; empty for another server. */
+internal fun SharedHomeContentState?.activityChannelSymbolsByChannelId(activityServerId: String): Map<String, String> {
+    val content = this as? SharedHomeContentState.Content ?: return emptyMap()
+    if (activityServerId.isBlank() || content.snapshot.server.id.value != activityServerId) return emptyMap()
+    return content.snapshot.activityChannelSymbolsByChannelId()
+}
+
 internal fun SharedHomeContentState?.activityMuteByChannelId(activityServerId: String): Map<String, Boolean> {
     val content = this as? SharedHomeContentState.Content ?: return emptyMap()
     if (activityServerId.isBlank() || content.snapshot.server.id.value != activityServerId) return emptyMap()
@@ -2325,10 +2346,12 @@ private fun SharedActivityRow(
     val conversationFallback = stringResource(MR.strings.activity_fallback_conversation_update)
     val avatarPresentation = activitySenderAvatarPresentation(activitySenderAvatarsEnabled)
     val openLabel = stringResource(MR.strings.common_open)
-    val card = remember(item, senderProfiles, dmPeerNames, threadFallback, actionFallback, conversationFallback) {
+    val homeChannelSymbols = LocalActivityChannelSymbols.current
+    val card = remember(item, senderProfiles, dmPeerNames, homeChannelSymbols, threadFallback, actionFallback, conversationFallback) {
         item.activityCardModel(
             senderProfiles = senderProfiles,
             dmPeerNames = dmPeerNames,
+            homeChannelSymbols = homeChannelSymbols,
             threadFallback = threadFallback,
             actionFallback = actionFallback,
             conversationFallback = conversationFallback
@@ -2451,6 +2474,8 @@ internal data class ActivityCardModel(
     /** Thread rows: the parent conversation ("#design" / "@peer"); null otherwise. */
     val context: String?,
     val titleGlyph: ActivityCardTitleGlyph,
+    /** [ActivityCardTitleGlyph.Channel]: the channel's own glyph ([activityChannelSymbol]). */
+    val channelSymbol: String = "#",
     /** Thread: the root message preview; else the place name without its `#`/`@`. */
     val title: String,
     /** "sender: preview": the sender is drawn in full ink. */
@@ -2460,6 +2485,8 @@ internal data class ActivityCardModel(
 internal fun InboxItem.activityCardModel(
     senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap(),
     dmPeerNames: Map<String, String> = emptyMap(),
+    /** The Home sidebar's glyph per channel id ([LocalActivityChannelSymbols]). */
+    homeChannelSymbols: Map<String, String> = emptyMap(),
     threadFallback: String = "Thread update",
     actionFallback: String = "Action required",
     conversationFallback: String = "Conversation update"
@@ -2489,6 +2516,7 @@ internal fun InboxItem.activityCardModel(
                 directMessage -> ActivityCardTitleGlyph.DirectMessage
                 else -> ActivityCardTitleGlyph.Channel
             },
+        channelSymbol = if (thread || directMessage) "#" else activityChannelSymbol(homeChannelSymbols),
         title = title,
         body =
             ActivityPreviewText(
@@ -2513,8 +2541,11 @@ private fun SharedActivityCardTitle(card: ActivityCardModel, unread: Boolean) {
                 RaftConversationKindIcon(RaftConversationKindGlyph.Thread, modifier = glyphModifier, color = RaftColor.ForegroundHint)
             ActivityCardTitleGlyph.DirectMessage ->
                 RaftConversationKindIcon(RaftConversationKindGlyph.DirectMessage, modifier = glyphModifier, color = RaftColor.ForegroundHint)
+            // The channel's own icon, as on its Home row (web ChannelKindGlyph).
             ActivityCardTitleGlyph.Channel ->
-                RaftLucideIcon(RaftLucideIconName.Hash, modifier = glyphModifier, color = raftArgbHex(RaftColor.ForegroundHint))
+                CompositionLocalProvider(LocalRaftContentColor provides RaftColor.ForegroundHint) {
+                    HomeSidebarChannelGlyph(card.channelSymbol, size = 14.dp, modifier = Modifier.padding(top = 3.dp))
+                }
         }
         Text(
             text = card.title,

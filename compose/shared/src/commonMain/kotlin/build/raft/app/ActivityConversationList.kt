@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -117,6 +118,11 @@ internal data class ActivityConversationListContext(
     val dmPeersByChannelId: Map<String, ActivityConversationDmPeer> = emptyMap(),
     /** The signed-in member; their own last message reads "You: ..." instead of their name. */
     val currentMemberId: String? = null,
+    /**
+     * Home channel rows keyed by channel id: the glyph the Home sidebar draws for that channel
+     * ([homeChannelSymbol]: `#`, lock, joint branch, public-page hash-globe).
+     */
+    val channelSymbolsByChannelId: Map<String, String> = emptyMap(),
 ) {
     companion object {
         val Empty = ActivityConversationListContext()
@@ -159,8 +165,22 @@ internal fun HomeSnapshot?.toActivityConversationListContext(activityServerId: S
                     )
             },
         currentMemberId = snapshot.currentMember.id.value.takeIf { it.isNotBlank() },
+        channelSymbolsByChannelId = snapshot.activityChannelSymbolsByChannelId(),
     )
 }
+
+/** The Home sidebar's glyph per channel id ([homeChannelSymbol]), for Activity's channel icons. */
+internal fun HomeSnapshot.activityChannelSymbolsByChannelId(): Map<String, String> =
+    channels.associate { channel ->
+        channel.channelId.value to channel.homeChannelSymbol(serverPublicPageLive = server.publicPageLive)
+    }
+
+/**
+ * [HomeSnapshot.activityChannelSymbolsByChannelId] of this Activity's server, for the card layout
+ * (the list layout reads it from [ActivityConversationListContext]). Empty until Home has loaded:
+ * cards then use the item's own channel type.
+ */
+internal val LocalActivityChannelSymbols = compositionLocalOf<Map<String, String>> { emptyMap() }
 
 /**
  * The list context the layout may paint with, from the Home content of the shell, or null while it is
@@ -310,6 +330,11 @@ internal data class ActivityConversationRowModel(
     val threadChannelLabelVisible: Boolean = threadChannelLabel != null,
     /** The thread's parent is a DM: an unresolved DM thread leads with the DM tile, not `#`. */
     val threadInDirectMessage: Boolean = false,
+    /**
+     * The channel tile's glyph ([HomeSidebarChannelGlyph] symbol, [activityChannelSymbol]): the
+     * channel's own icon (a thread: its parent channel's), as the Home sidebar draws it.
+     */
+    val channelSymbol: String = "#",
     val sender: ActivityConversationSender?,
     /** Null: the localized kind fallback. */
     val preview: String?,
@@ -377,6 +402,26 @@ internal fun InboxItem.activityConversationMuted(
 ): Boolean {
     val mutedChannelId = if (kind == InboxItemKind.Thread) parentChannelId?.value else channelId.value
     return (mutedChannelId != null && mutedChannelId in context.mutedChannelIds) || dmPeer?.activityMuted == true
+}
+
+/**
+ * The channel's own glyph for an Activity row (web ThreadsInbox `ChannelKindIcon`, slock #10806), for
+ * the row's channel (a thread: its parent channel). The type is the item's own wire `channelType` /
+ * `parentChannelType` (private → lock, joint → branch, channel → `#`); the public-page globe needs the
+ * Home channel row (guestVisible, archived) and the server's live page, so it comes from the Home
+ * sidebar's symbol for that channel. An item without a wire type (built from a realtime event) uses
+ * the Home row's symbol, else its folded kind (joint), else `#`.
+ */
+internal fun InboxItem.activityChannelSymbol(homeChannelSymbols: Map<String, String>): String {
+    val thread = kind == InboxItemKind.Thread
+    val placeId = if (thread) parentChannelId else channelId
+    val wireType = if (thread) parentChannelType else channelType
+    val homeSymbol = placeId?.let { homeChannelSymbols[it.value] }
+    if (wireType == null) {
+        return homeSymbol ?: (if (thread) parentChannelKind else channelKind)?.toWireChannelKindOrNull().toRaftChannelSymbol()
+    }
+    val symbol = wireType.toRaftChannelSymbol()
+    return if (symbol == "#" && homeSymbol == HomeChannelSymbolHashGlobe) homeSymbol else symbol
 }
 
 /** The web `InboxRow` list-layout projection of one Activity item. Pure; unit-tested. */
@@ -455,6 +500,8 @@ internal fun InboxItem.activityConversationRowModel(
             },
         threadChannelLabelVisible = kind == InboxItemKind.Thread && threadDmPeer == null,
         threadInDirectMessage = threadInDirectMessage,
+        channelSymbol =
+            if (leadingKind == ActivityConversationLeadingKind.DirectMessage || threadInDirectMessage) "#" else activityChannelSymbol(context.channelSymbolsByChannelId),
         sender = sender,
         preview = preview?.takeIf { it.isNotBlank() },
         muted = muted,
@@ -540,6 +587,9 @@ internal fun ActivityMemberFace(
 
 /** The avatar / tile inside raft-ui's 36dp `InboxItemLeading` slot is the 35dp md step. */
 private val ConversationLeadingAvatar = 35.dp
+
+/** The glyph inside the 35dp channel / DM tile. */
+private val ConversationTileGlyph = 18.dp
 
 /** `before:left-16`: the hairline starts where the text column starts. */
 private val ConversationDividerStart = 64.dp
@@ -879,18 +929,15 @@ private fun ActivityConversationLeading(
                 )
             }
         } else {
-            // A channel is a place, not a face: the neutral tile at the avatar's 35dp step. A DM (or a
-            // thread in one) whose peer is not loaded yet shows the DM icon, never `#`.
+            // A channel is a place, not a face: the neutral tile at the avatar's 35dp step, with the
+            // channel's own glyph as the Home sidebar draws it. A DM (or a thread in one) whose peer is
+            // not loaded yet shows the DM icon, never `#`.
             RaftIconTile(size = RaftIconTileSize.Md) {
-                RaftLucideIcon(
-                    if (model.leadingKind == ActivityConversationLeadingKind.DirectMessage || model.threadInDirectMessage) {
-                        RaftLucideIconName.MessageCircle
-                    } else {
-                        RaftLucideIconName.Hash
-                    },
-                    Modifier.size(18.dp),
-                    color = raftArgbHex(colors.foregroundMuted),
-                )
+                if (model.leadingKind == ActivityConversationLeadingKind.DirectMessage || model.threadInDirectMessage) {
+                    RaftLucideIcon(RaftLucideIconName.MessageCircle, Modifier.size(ConversationTileGlyph), color = raftArgbHex(colors.foregroundMuted))
+                } else {
+                    HomeSidebarChannelGlyph(model.channelSymbol, size = ConversationTileGlyph)
+                }
             }
         }
     }

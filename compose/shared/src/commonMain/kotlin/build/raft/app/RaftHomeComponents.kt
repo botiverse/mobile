@@ -18,7 +18,7 @@ import build.raft.designsystem.components.RaftSidebarChannelItem
 import build.raft.designsystem.components.RaftWorkspaceButton
 import build.raft.designsystem.components.RaftWorkspaceButtonDefaults
 import build.raft.designsystem.components.RaftSidebarItem
-import build.raft.designsystem.components.RaftSidebarItemIcon
+import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftSidebarItemVariant
 import build.raft.designsystem.components.raftSidebarItemIconSize
 import build.raft.designsystem.components.RaftSidebarItemMarks
@@ -47,6 +47,7 @@ import build.raft.app.data.ChannelRepository
 import build.raft.app.data.DataResult
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.EmptyReason
+import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.HomeServerDrawerConversationSection
 import build.raft.app.data.HomeServerDrawerLoadStatus
@@ -4129,6 +4130,20 @@ internal fun RaftHomeConversationItem.homeChannelSymbol(serverPublicPageLive: Bo
         homeChannelSymbol()
     }
 
+/**
+ * The same row glyph symbol for a Home snapshot channel row, read through the sidebar item's
+ * kind / channelType / guestVisible / archived (as `toSharedHomeConversationItem` maps them), so
+ * other surfaces (Activity) pick exactly the icon the Home sidebar draws.
+ */
+internal fun HomeChannelRow.homeChannelSymbol(serverPublicPageLive: Boolean): String =
+    RaftHomeConversationItem(
+        id = channelId.value,
+        kind = kind.toWireChannelKindOrNull() ?: kind.toRaftSurfaceKind(),
+        channelType = channelType?.takeIf { it.isNotBlank() },
+        guestVisible = guestVisible,
+        archived = archived,
+    ).homeChannelSymbol(serverPublicPageLive)
+
 internal const val HomeChannelSymbolHashGlobe = "hash-globe"
 
 internal fun String?.toRaftChannelSymbol(): String =
@@ -6553,14 +6568,19 @@ private fun HomeSidebarChannelRow(
     }
 }
 
-/** The leading glyph of a channel row (`SidebarItemChannelIcon`) in the row's icon ink. */
+/**
+ * The glyph of a [homeChannelSymbol] (`SidebarItemChannelIcon`): `#`, lock, joint branch or the
+ * public-page hash-globe, at [size] in the current ink ([LocalRaftContentColor]). Home sidebar rows
+ * draw it at the row's icon size; Activity draws it in a list row's channel tile and as a card's
+ * title icon.
+ */
 @Composable
-private fun HomeSidebarChannelGlyph(symbol: String) {
+internal fun HomeSidebarChannelGlyph(symbol: String, size: Dp = raftSidebarItemIconSize(), modifier: Modifier = Modifier) {
     when (symbol) {
-        "#" -> RaftSidebarItemIcon(RaftGlyph.Hash)
-        "lock" -> RaftSidebarItemIcon(RaftGlyph.Lock)
-        HomeChannelSymbolHashGlobe -> RaftHashGlobeIcon(size = raftSidebarItemIconSize(), color = raftArgbHex(LocalRaftContentColor.current))
-        else -> RaftLucideIcon(symbol, Modifier.size(raftSidebarItemIconSize()), color = raftArgbHex(LocalRaftContentColor.current))
+        "#" -> RaftGlyphIcon(RaftGlyph.Hash, modifier = modifier, size = size)
+        "lock" -> RaftGlyphIcon(RaftGlyph.Lock, modifier = modifier, size = size)
+        HomeChannelSymbolHashGlobe -> RaftHashGlobeIcon(size = size, color = raftArgbHex(LocalRaftContentColor.current), modifier = modifier)
+        else -> RaftLucideIcon(symbol, modifier.size(size), color = raftArgbHex(LocalRaftContentColor.current))
     }
 }
 

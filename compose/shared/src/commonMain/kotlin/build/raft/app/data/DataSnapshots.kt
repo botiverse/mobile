@@ -14,6 +14,11 @@ data class InboxItem(
     val channelId: ChannelId,
     val channelName: String,
     val channelKind: ConversationKind? = null,
+    /**
+     * The wire `channelType` (`channel` | `private` | `joint` | `dm`, slock web inboxStore.ts).
+     * [channelKind] folds `private` into Channel; this keeps it for the row's channel icon.
+     */
+    val channelType: String? = null,
     val unreadCount: Int = 0,
     val hasMention: Boolean = false,
     val hasDraft: Boolean = false,
@@ -29,6 +34,8 @@ data class InboxItem(
     val parentChannelId: ChannelId? = null,
     val parentChannelName: String? = null,
     val parentChannelKind: ConversationKind? = null,
+    /** The wire `parentChannelType`, unfolded like [channelType]. */
+    val parentChannelType: String? = null,
     val parentMessageId: MessageId? = null,
     val parentMessagePreview: String? = null,
     val parentMessageSenderId: String? = null,

@@ -290,6 +290,7 @@ private fun WireInboxItem.toChannelOrDmDomain(diagnostics: (String) -> Unit): In
             } else {
                 parseConversationKindOrNull(channelType)
             },
+        channelType = channelType?.takeIf { it.isNotBlank() },
         unreadCount = unreadCount,
         hasMention = hasMention,
         firstUnreadMessageId = firstUnreadMessageId?.let(::MessageId),
@@ -326,6 +327,7 @@ private fun WireInboxItem.toThreadDomain(diagnostics: (String) -> Unit): InboxIt
         parentChannelId = parentChannelId?.let(::ChannelId),
         parentChannelName = parentChannelName,
         parentChannelKind = parseConversationKindOrNull(parentChannelType),
+        parentChannelType = parentChannelType?.takeIf { it.isNotBlank() },
         parentMessageId = parentMessageId?.let(::MessageId),
         parentMessagePreview = parentMessagePreview,
         parentMessageSenderId = parentMessageSenderId,
@@ -477,6 +479,7 @@ private fun WireSavedEntry.toInboxItem(diagnostics: (String) -> Unit): InboxItem
         channelId = ChannelId(channelId),
         channelName = channelName,
         channelKind = conversationKind,
+        channelType = channelType.takeIf { it.isNotBlank() },
         lastMessageId = MessageId(messageId),
         // The saved message itself is this row's open anchor. Thread rows must
         // carry it in latestActivityMessageId: resolveInboxAnchorMessageId
@@ -498,6 +501,7 @@ private fun WireSavedEntry.toInboxItem(diagnostics: (String) -> Unit): InboxItem
         parentChannelId = parentChannelId?.let(::ChannelId),
         parentChannelName = parentChannelName,
         parentChannelKind = parseConversationKindOrNull(parentChannelType),
+        parentChannelType = parentChannelType?.takeIf { it.isNotBlank() },
         parentMessageId = parentMessageId?.let(::MessageId),
     )
 }
@@ -569,6 +573,7 @@ private fun WireSearchResult.toInboxItem(diagnostics: (String) -> Unit): InboxIt
         channelId = ChannelId(channelId),
         channelName = channelName,
         channelKind = conversationKind,
+        channelType = channelType.takeIf { it.isNotBlank() },
         lastMessageId = MessageId(id),
         // The matched message is this row's open anchor — same contract as the
         // saved mapping above: thread rows anchor only via
@@ -588,6 +593,7 @@ private fun WireSearchResult.toInboxItem(diagnostics: (String) -> Unit): InboxIt
         parentChannelId = ChannelId(parentChannelId),
         parentChannelName = parentChannelName,
         parentChannelKind = parseConversationKindOrNull(parentChannelType),
+        parentChannelType = parentChannelType.takeIf { it.isNotBlank() },
         parentMessageId = parentMessageId?.let(::MessageId),
         parentMessagePreview = parentMessageContent,
         latestDelegatedBy = delegatedBy.toMessageDelegatedBy(),
