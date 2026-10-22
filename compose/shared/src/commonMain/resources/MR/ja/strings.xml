@@ -515,6 +515,10 @@
     <string name="thread_members_remove_confirm_detail">このメンバーへの通常のチャンネル配信は停止します。フォロー中のスレッドは自動的には解除されず、フォロー中の公開スレッドからは本人が解除または整理するまで通知が届く場合があります。非公開コンテンツは引き続き現在のアクセス権で保護されます。</string>
     <string name="thread_members_refresh_detail">この会話を更新して、もう一度お試しください。</string>
     <string name="thread_members_search_placeholder">メンバーを検索…</string>
+    <string name="thread_members_loading">メンバーを読み込み中…</string>
+    <string name="thread_members_empty">メンバーはいません</string>
+    <string name="thread_members_no_matches">「%1$s」に一致するメンバーはいません</string>
+    <string name="thread_members_remove_name">%1$s を削除</string>
     <string name="thread_members_external">Slack 参加者</string>
     <string name="thread_members_provider_slack">Slack</string>
     <string name="thread_add_member_search">検索</string>

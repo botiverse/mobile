@@ -511,6 +511,10 @@
     <string name="thread_members_remove_confirm_detail">Ordinary channel delivery stops for them. Existing followed threads are not automatically unfollowed; followed public threads can still notify them until they unfollow or manage those threads. Private content remains gated by current access.</string>
     <string name="thread_members_refresh_detail">REFRESH THIS CONVERSATION AND TRY AGAIN.</string>
     <string name="thread_members_search_placeholder">Search members…</string>
+    <string name="thread_members_loading">Loading members…</string>
+    <string name="thread_members_empty">No members</string>
+    <string name="thread_members_no_matches">No members match “%1$s”</string>
+    <string name="thread_members_remove_name">Remove %1$s</string>
     <string name="thread_members_external">Slack participants</string>
     <string name="thread_members_provider_slack">Slack</string>
     <string name="thread_add_member_search">Search</string>

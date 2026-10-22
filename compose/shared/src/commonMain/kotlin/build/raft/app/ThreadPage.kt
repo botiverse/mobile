@@ -360,6 +360,8 @@ import build.raft.designsystem.components.RaftMessageImageDimensions
 import build.raft.designsystem.components.RaftMessageImageFit
 import build.raft.designsystem.components.RaftMessageImageGallery
 import build.raft.designsystem.theme.LocalRaftColors
+import build.raft.designsystem.components.RaftSidebarSectionHeader
+import build.raft.app.components.RaftDesignSystemTheme
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -5155,17 +5157,13 @@ internal fun ThreadMembersPageContent(
     // task #175: the page draws under the system navigation bar; whichever
     // element sits last (the Add Member bar, else the roster) keeps clear of it.
     val bottomSafeArea = raftBottomSafeAreaPadding()
-    Column(modifier = Modifier.fillMaxSize()) {
-        RaftTopPageHeader(
+    // Web ChannelMembers presentation="page" (ChannelMembers.tsx, ChannelMemberList.tsx), drawn
+    // with compose/designsystem parts (ChannelMembersPage.kt).
+    RaftDesignSystemTheme {
+    Column(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
+        ChannelMembersPageHeader(
             title = stringResource(if (addDialogVisible) MR.strings.thread_action_add_member else MR.strings.thread_members_heading),
-            titleContent = {
-                Text(stringResource(if (addDialogVisible) MR.strings.thread_action_add_member else MR.strings.thread_members_heading),
-                    style = RaftType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp), color = RaftColor.TextBlack)
-                if (!addDialogVisible) RaftMemberCountBadge(members.size + externalMemberCount)
-                Spacer(Modifier.weight(1f))
-            },
-            iconName = RaftLucideIconName.Users,
-            backgroundColor = RaftColor.Frame,
+            count = (members.size + externalMemberCount).takeIf { !addDialogVisible && !membersLoading },
             refreshing = refreshing,
             onBack = {
                 if (addDialogVisible) {
@@ -5185,81 +5183,63 @@ internal fun ThreadMembersPageContent(
                 canCreateAgents = canCreateAgents, onCreateAgent = onCreateAgent,
             )
         } else {
-        Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
-            RaftBrutalSearchField(
-                value = rosterQuery,
-                placeholder = stringResource(MR.strings.thread_members_search_placeholder),
-                leadingIcon = RaftLucideIconName.Search,
-                onValueChange = onQueryChange,
-            )
-        }
-        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
+        ChannelMembersSearchBar(query = rosterQuery, onQueryChange = onQueryChange)
         if (removalGate.failure != null) {
-            Text(
-                text =
-                    if (removalGate.failure == ThreadMemberRemovalFailure.NoPermission) {
-                        stringResource(MR.strings.thread_members_remove_no_permission)
-                    } else {
-                        stringResource(MR.strings.thread_members_remove_failed)
-                    },
-                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
-                color = RaftColor.AccentRed,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)
+            ChannelMembersWarning(
+                if (removalGate.failure == ThreadMemberRemovalFailure.NoPermission) {
+                    stringResource(MR.strings.thread_members_remove_no_permission)
+                } else {
+                    stringResource(MR.strings.thread_members_remove_failed)
+                }
             )
         }
         LazyColumn(
             state = rosterListState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(
-                start = 16.dp, top = 12.dp, end = 16.dp,
-                bottom = 12.dp + if (canAddMembers) 0.dp else bottomSafeArea,
-            ),
-            verticalArrangement = Arrangement.spacedBy(0.dp)
+            contentPadding = PaddingValues(bottom = 12.dp + if (canAddMembers) 0.dp else bottomSafeArea),
         ) {
             if (membersFailed) {
                 item {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
-                    ) {
-                        ThreadModalEmptyState(
-                            title = stringResource(MR.strings.common_error),
-                            detail = stringResource(MR.strings.thread_members_refresh_detail),
-                        )
-                        RaftBrutalActionButton(
-                            label = stringResource(MR.strings.common_retry),
-                            onClick = onRefresh,
-                            minWidth = 0.dp,
-                        )
-                    }
+                    ChannelMembersEmptyState(
+                        icon = RaftLucideIconName.TriangleAlert,
+                        title = stringResource(MR.strings.common_error),
+                        detail = stringResource(MR.strings.thread_members_refresh_detail),
+                        actionLabel = stringResource(MR.strings.common_retry),
+                        onAction = onRefresh,
+                    )
                 }
             } else if (membersLoading) {
-                item {
-                    ThreadModalEmptyState(
-                        title = stringResource(MR.strings.thread_state_loading),
-                        detail = "",
-                    )
-                }
+                item { ChannelMembersLoading() }
             } else if (filteredMembers.isEmpty() && filteredExternal.isEmpty()) {
                 item {
-                    ThreadModalEmptyState(
-                        title = stringResource(MR.strings.thread_state_no_members),
-                        detail = stringResource(MR.strings.thread_members_refresh_detail)
-                    )
+                    val query = rosterQuery.text.trim()
+                    if (query.isNotEmpty() && (members.isNotEmpty() || externalMemberCount > 0)) {
+                        ChannelMembersEmptyState(
+                            icon = RaftLucideIconName.Search,
+                            title = stringResource(MR.strings.thread_members_no_matches, query),
+                        )
+                    } else {
+                        ChannelMembersEmptyState(
+                            icon = RaftLucideIconName.Users,
+                            title = stringResource(MR.strings.thread_members_empty),
+                        )
+                    }
                 }
             } else {
                 val agents = filteredMembers.filter { it.kind.equals("agent", ignoreCase = true) }
                 val humans = filteredMembers.filterNot { it.kind.equals("agent", ignoreCase = true) }
+                // Humans first, then agents, then bridge participants (web member page order).
                 if (humans.isNotEmpty()) {
-                    item { RaftCollapsibleSectionHeader(
-                        label = stringResource(MR.strings.thread_members_humans), count = humans.size,
-                        expanded = humansExpanded, onExpandedChange = onHumansExpandedChange,
-                        uppercaseLabel = false, countPrefix = " · ",
-                    ) }
+                    item(key = "section:humans") {
+                        RaftSidebarSectionHeader(
+                            title = stringResource(MR.strings.thread_members_humans), count = humans.size,
+                            expanded = humansExpanded, onExpandedChange = onHumansExpandedChange,
+                        )
+                    }
                     if (humansExpanded) items(humans.size, key = { humans[it].memberKey }) { index ->
                         ThreadMembersPagerRow(
                             member = humans[index],
+                            divider = index > 0,
                             agentStatusResolver = agentStatusResolver,
                             memberAvatarResolver = memberAvatarResolver,
                             removing = removalGate.inFlight && removalGate.pending?.memberRowId == humans[index].id,
@@ -5269,14 +5249,16 @@ internal fun ThreadMembersPageContent(
                     }
                 }
                 if (agents.isNotEmpty()) {
-                    item { RaftCollapsibleSectionHeader(
-                        label = stringResource(MR.strings.thread_members_agents), count = agents.size,
-                        expanded = agentsExpanded, onExpandedChange = onAgentsExpandedChange,
-                        uppercaseLabel = false, countPrefix = " · ",
-                    ) }
+                    item(key = "section:agents") {
+                        RaftSidebarSectionHeader(
+                            title = stringResource(MR.strings.thread_members_agents), count = agents.size,
+                            expanded = agentsExpanded, onExpandedChange = onAgentsExpandedChange,
+                        )
+                    }
                     if (agentsExpanded) items(agents.size, key = { agents[it].memberKey }) { index ->
                         ThreadMembersPagerRow(
                             member = agents[index],
+                            divider = index > 0,
                             agentStatusResolver = agentStatusResolver,
                             memberAvatarResolver = memberAvatarResolver,
                             removing = removalGate.inFlight && removalGate.pending?.memberRowId == agents[index].id,
@@ -5286,41 +5268,45 @@ internal fun ThreadMembersPageContent(
                     }
                 }
                 if (filteredExternal.isNotEmpty()) {
-                    item { RaftCollapsibleSectionHeader(
-                        label = stringResource(MR.strings.thread_members_external), count = filteredExternal.size,
-                        expanded = externalExpanded, onExpandedChange = onExternalExpandedChange,
-                    ) }
+                    item(key = "section:external") {
+                        RaftSidebarSectionHeader(
+                            title = stringResource(MR.strings.thread_members_external), count = filteredExternal.size,
+                            expanded = externalExpanded, onExpandedChange = onExternalExpandedChange,
+                        )
+                    }
                     if (externalExpanded) items(filteredExternal.size, key = { "external:${filteredExternal[it].id}" }) { index ->
                         val member = filteredExternal[index]
                         // SSOT audit: the live time context (as rememberRaftAgentStatusIndicatorState
                         // reads it), so the lime/cyan boundary moves on its minute tick.
                         val now = LocalRaftTimeContextProvider.current?.current?.nowEpochMillis ?: defaultNowMillis()
-                        RaftModalCompactMemberRow(
+                        ChannelMembersRow(
                             title = member.displayName,
                             subtitle = member.handles.joinToString(" · ") { "@${it.removePrefix("@")}" },
                             avatarWireValue = member.avatarUrl, avatarLabel = member.avatarLabel,
+                            avatarFill = RaftColor.AccentLavender,
+                            cacheSubject = null, cacheServerId = null,
                             statusColor = member.lastSeenAt?.let { seen ->
                                 if (isExternalAgentSeenOnline(seen, now)) RaftColor.AccentLime else RaftColor.AccentCyan
-                            }, sourceBadgeLabel = member.provider, clickEnabled = false,
+                            },
+                            statusPulsing = false,
+                            badges = listOfNotNull(
+                                member.provider?.takeIf { it.isNotBlank() }?.let { ChannelMemberBadge(it, ChannelMemberBadgeKind.Provider) }
+                            ),
+                            divider = index > 0,
                         )
                     }
                 }
             }
         }
         if (canAddMembers) {
-            Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
-            Box(Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 12.dp + bottomSafeArea)) {
-                RaftBrutalActionButton(
-                    label = stringResource(MR.strings.thread_action_add_member),
-                    modifier = Modifier.fillMaxWidth(),
-                    minHeight = 32.dp,
-                    leadingIcon = if (addDialogVisible) RaftLucideIconName.X else RaftLucideIconName.Plus,
-                    onClick = { onAddVisibleChange(!addDialogVisible) },
-                    enabled = addMemberStatus != "adding",
-                )
-            }
+            ChannelMembersAddBar(
+                enabled = addMemberStatus != "adding",
+                bottomSafeArea = bottomSafeArea,
+                onClick = { onAddVisibleChange(!addDialogVisible) },
+            )
         }
         }
+    }
     }
 }
 
@@ -32935,6 +32921,7 @@ private fun ThreadRemoveMemberConfirmationDialog(
 @Composable
 private fun ThreadMembersPagerRow(
     member: RaftThreadMemberItem,
+    divider: Boolean,
     agentStatusResolver: RaftAgentStatusResolver,
     memberAvatarResolver: RaftMemberAvatarResolver,
     removing: Boolean,
@@ -32955,30 +32942,29 @@ private fun ThreadMembersPagerRow(
         )
     val avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, member.id)
         ?: member.modalAvatarWireValue()
-    RaftModalCompactMemberRow(
-        title = member.displayName,
-        channelPageStyle = true,
-        avatarSize = 28.dp,
-        subtitle = subtitle,
-        sourceBadgeLabel = member.sourceServerLabel,
-        roleBadgeLabel = when (member.effectiveChannelRole) {
-            "owner", "admin" -> stringResource(MR.strings.thread_members_channel_admin)
-            "guest" -> stringResource(MR.strings.channel_member_role_guest)
+    val roleBadge =
+        when (member.effectiveChannelRole) {
+            "owner", "admin" -> ChannelMemberBadge(stringResource(MR.strings.thread_members_channel_admin), ChannelMemberBadgeKind.Admin)
+            "guest" -> ChannelMemberBadge(stringResource(MR.strings.channel_member_role_guest), ChannelMemberBadgeKind.External)
             else -> null
-        },
+        }
+    val serverBadge = member.sourceServerLabel?.takeIf { it.isNotBlank() }?.let { ChannelMemberBadge(it, ChannelMemberBadgeKind.External) }
+    ChannelMembersRow(
+        title = member.displayName,
+        subtitle = subtitle,
         avatarWireValue = avatarWireValue,
         avatarLabel = member.modalAvatarLabel(),
+        avatarFill = raftAvatarFallbackFill(member.kind.parsedMemberKindOrNull()),
         cacheSubject = raftMemberAvatarCacheSubject(member.kind.parsedMemberKindOrNull(), member.id),
         cacheServerId = member.sourceServerId,
-        avatarFill = raftAvatarFallbackFill(member.kind.parsedMemberKindOrNull()),
         statusColor = status?.color,
         statusPulsing = status?.pulsing == true,
-        enabled = !removing,
-        trailingIcon = RaftLucideIconName.UserMinus.takeIf { member.canRemove && !removing },
-        trailingText = if (removing) stringResource(MR.strings.thread_members_removing) else "",
-        onTrailingClick = if (member.canRemove && !removing) ({ onRemove(member) }) else null,
-        trailingContentDescription = stringResource(MR.strings.member_action_remove_member),
-        onClick = { onOpen(member) }
+        badges = listOfNotNull(serverBadge, roleBadge),
+        divider = divider,
+        removing = removing,
+        removeLabel = stringResource(MR.strings.thread_members_remove_name, member.displayName),
+        onRemove = if (member.canRemove && !removing) ({ onRemove(member) }) else null,
+        onClick = { onOpen(member) },
     )
 }
 
