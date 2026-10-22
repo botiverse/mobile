@@ -359,6 +359,17 @@ import androidx.compose.ui.layout.ContentScale
 import build.raft.designsystem.components.RaftAvatarBadgeBox
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftMessageDelegatedAvatar
+import build.raft.designsystem.components.RaftMessageActionCard
+import build.raft.designsystem.components.RaftMessageActionCardActions
+import build.raft.designsystem.components.RaftMessageActionCardDefaults
+import build.raft.designsystem.components.RaftMessageActionCardHeaderDescription
+import build.raft.designsystem.components.RaftMessageActionCardHint
+import build.raft.designsystem.components.RaftMessageActionCardNotice
+import build.raft.designsystem.components.RaftMessageActionCardProperties
+import build.raft.designsystem.components.RaftMessageActionCardProperty
+import build.raft.designsystem.components.RaftMessageActionCardScope
+import build.raft.designsystem.components.RaftMessageActionCardScopeList
+import build.raft.designsystem.components.RaftMessageActionCardStatusTone
 import build.raft.designsystem.components.RaftMessageDelegatedAvatarDefaults
 import build.raft.designsystem.components.RaftMessageImageDimensions
 import build.raft.designsystem.components.RaftMessageImageFit
@@ -21604,6 +21615,9 @@ private fun ThreadMessagesListContent(
                                 onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
                                 timestampLabel = message.timestampLabel,
                                 compactTimestampLabel = renderConfig.formatCompactTimestampLabel(message),
+                                actionCardExecutedTimeLabel =
+                                    message.threadActionCard()?.executedAt?.takeIf { it.isNotBlank() }
+                                        ?.let { renderConfig.formatTimestampLabel(it) }?.takeIf { it.isNotBlank() },
                                 onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                                 onDownloadAttachment = { onThreadEvent("downloadAttachment", null, it, null) },
                                 onRetryLocalSend = { onThreadEvent("retryLocalSend", message.id, null, null) },
@@ -24480,6 +24494,8 @@ private data class ThreadMessageCardData(
     val activeMarkdownTagKey: String?,
     val timestampLabel: String,
     val compactTimestampLabel: String,
+    /** When an action card on this message was done, as the thread writes a message's time. */
+    val actionCardExecutedTimeLabel: String? = null,
     val attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
     val pendingActionCardIds: Set<String>,
     val writeActionsEnabled: Boolean,
@@ -24561,6 +24577,7 @@ fun ThreadMessageCard(
     activeMarkdownTagKey: String? = null,
     timestampLabel: String = message.timestampLabel,
     compactTimestampLabel: String = timestampLabel,
+    actionCardExecutedTimeLabel: String? = null,
     onShowActions: (RaftPopoverAnchor) -> Unit,
     onOpenMember: (MemberDetailIdentity) -> Unit,
     onExternalAuthor: (RaftThreadMessageItem) -> Unit = {},
@@ -24631,6 +24648,7 @@ fun ThreadMessageCard(
                 activeMarkdownTagKey = activeMarkdownTagKey,
                 timestampLabel = timestampLabel,
                 compactTimestampLabel = compactTimestampLabel,
+                actionCardExecutedTimeLabel = actionCardExecutedTimeLabel,
                 attachmentOpenStates = attachmentOpenStates,
                 pendingActionCardIds = pendingActionCardIds,
                 writeActionsEnabled = writeActionsEnabled,
@@ -25216,9 +25234,8 @@ private fun ThreadMessageCardContent(
                                 card = actionCard,
                                 pending = message.id in pendingActionCardIds,
                                 commitEnabled = writeActionsEnabled,
+                                executedTimeLabel = data.actionCardExecutedTimeLabel,
                                 modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
-                                performanceKey = messagePerformanceKey,
-                                diagnosticsLogger = diagnosticsLogger,
                                 onCommit = { onCommitActionCard(message.id) }
                             )
                         } else if (richContentEnabled && forwardBundle != null) {
@@ -26039,299 +26056,212 @@ private fun ThreadMessageSendingIndicator(modifier: Modifier = Modifier) {
     }
 }
 
-private data class ThreadActionCardRenderCopy(
-    val title: String,
-    val details: String,
-    val pendingLabel: String,
-    val verb: String,
-    val committedLabel: String
-)
-
+/**
+ * An agent's action card in a message: the design system's [RaftMessageActionCard] (raft-ui
+ * MessageActionCard), laid out as web ActionCard does. The header carries the action's icon
+ * and title; a done card says Done with a success pixel, folds to its header and keeps who did
+ * it, when, and what came of it under the title; a card this person can't run says View only.
+ * The content lists the values to check (web useActionCardDetail), the agent's reason as a
+ * quote, an app login's permissions, and the confirm button: the default ink-outline button
+ * with the action's verb, never pink (the composer's send is the screen's one pink button).
+ */
 @Composable
-private fun ThreadActionCardView(
+internal fun ThreadActionCardView(
     card: ThreadActionCard,
     pending: Boolean,
     commitEnabled: Boolean = true,
+    executedTimeLabel: String? = null,
     modifier: Modifier = Modifier,
-    performanceKey: String? = null,
-    diagnosticsLogger: (String) -> Unit = {},
     onCommit: () -> Unit
 ) {
-    val localizedTitle = card.localizedActionCardTitle()
-    val localizedDetails = card.localizedActionCardDetails()
-    val localizedPendingLabel = card.localizedActionCardPendingLabel()
-    val localizedVerb = card.localizedActionCardVerb()
-    val localizedCommittedLabel = card.localizedActionCardCommittedLabel()
-    val renderCopy =
-        remember(
-            card,
-            performanceKey,
-            localizedTitle,
-            localizedDetails,
-            localizedPendingLabel,
-            localizedVerb,
-            localizedCommittedLabel
+    val title = card.localizedActionCardTitle()
+    val verb = card.localizedActionCardVerb()
+    val pendingLabel = card.localizedActionCardPendingLabel()
+    val properties = card.localizedActionCardProperties()
+    val doneLine = if (card.isExecuted) card.localizedActionCardDoneLine(executedTimeLabel).takeIf { it.isNotBlank() } else null
+    val viewOnly = !card.isExecuted && !commitEnabled
+    // Web: a done card folds by default; the fold then belongs to the reader.
+    var expanded by remember(card.isExecuted) { mutableStateOf(!card.isExecuted) }
+    val feedbackEntryEnabled = LocalThreadFeedbackCardEntryEnabled.current
+    RaftDesignSystemTheme {
+        RaftMessageActionCard(
+            title = title,
+            modifier = modifier,
+            icon = card.actionCardIconName()?.let { name ->
+                {
+                    RaftLucideIcon(
+                        name = name,
+                        color = raftArgbHex(RaftTheme.colors.foregroundMuted),
+                        modifier = Modifier.size(RaftMessageActionCardDefaults.HeaderGlyphSize)
+                    )
+                }
+            },
+            description = doneLine?.let { line -> { RaftMessageActionCardHeaderDescription(line, check = true) } },
+            status =
+                when {
+                    card.isExecuted -> stringResource(MR.strings.common_done)
+                    viewOnly -> stringResource(MR.strings.thread_action_card_view_only)
+                    else -> null
+                },
+            statusTone =
+                if (card.isExecuted) RaftMessageActionCardStatusTone.Success else RaftMessageActionCardStatusTone.Neutral,
+            expanded = expanded,
+            onExpandedChange = if (card.isExecuted || viewOnly) ({ expanded = it }) else null,
+            toggleLabel = stringResource(MR.strings.thread_action_card_toggle_details),
         ) {
-            val startedAt = TimeSource.Monotonic.markNow()
-            ThreadActionCardRenderCopy(
-                title = localizedTitle,
-                details = localizedDetails,
-                pendingLabel = localizedPendingLabel,
-                verb = localizedVerb,
-                committedLabel = localizedCommittedLabel
-            ).also { copy ->
-                val durationMs = startedAt.elapsedNow().inWholeMilliseconds
-                if (performanceKey != null && shouldLogThreadPerformance(durationMs)) {
-                    diagnosticsLogger(
-                        "thread_action_card_compute key=${performanceKey.orEmpty()} " +
-                            "type=${card.type} titleLength=${copy.title.length} " +
-                            "detailsLength=${copy.details.length} durationMs=$durationMs"
+            card.actionCardNotice()?.let { notice -> RaftMessageActionCardNotice(notice) }
+            if (properties.isNotEmpty()) {
+                RaftMessageActionCardProperties {
+                    properties.forEach { property ->
+                        RaftMessageActionCardProperty(
+                            label = property.label,
+                            value = property.value,
+                            mono = property.mono,
+                            valueColor = if (property.muted) RaftTheme.colors.foregroundHint else Color.Unspecified,
+                        )
+                    }
+                }
+            }
+            card.actionCardDraftHint()?.let { hint ->
+                RaftMessageActionCardHint(hint, label = stringResource(MR.strings.thread_action_card_reason))
+            }
+            if (card.isIntegrationApproveLoginAction()) {
+                val scopes = card.scopes.takeIf { it.isNotEmpty() } ?: listOf("openid", "profile", "identity")
+                RaftMessageActionCardScopeList(
+                    label = stringResource(MR.strings.thread_action_card_permissions, scopes.size),
+                    viewportDescription = stringResource(MR.strings.thread_action_card_permissions_label),
+                ) {
+                    scopes.forEach { scope ->
+                        RaftMessageActionCardScope(scope.trim(), localizedIntegrationScopeDescription(scope))
+                    }
+                }
+            }
+            if (!card.isExecuted && commitEnabled) {
+                RaftMessageActionCardActions {
+                    RaftButton(
+                        text = if (pending) pendingLabel else verb,
+                        onClick = onCommit,
+                        enabled =
+                            !pending &&
+                                (card.isSupportedCommitAction() || card.opensFeedbackCardEntry(feedbackEntryEnabled)),
                     )
                 }
             }
         }
-    Column(
-        modifier =
-            modifier
-                .raftCardSurface()
-                .padding(RaftAppSpacing.Sm),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
-        ) {
-            Text(
-                text = renderCopy.title,
-                style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
-                color = RaftColor.TextBlack,
-                modifier = Modifier.weight(1f),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (card.isExecuted) {
-                ThreadActionCardDoneBadge()
+    }
+}
+
+/** One row of an action card's properties (web `ActionCardProperty`). */
+private data class ThreadActionCardProperty(
+    val label: String,
+    val value: String,
+    val mono: Boolean = false,
+    /** A placeholder ("No description"), not data. */
+    val muted: Boolean = false,
+)
+
+/** The action's icon in the card header (web `ActionTypeIcon`); null draws the default one. */
+private fun ThreadActionCard.actionCardIconName(): RaftLucideIconName? =
+    when (type) {
+        "channel:create" -> RaftLucideIconName.Hash
+        "agent:create" -> RaftLucideIconName.Bot
+        "channel:add_member" -> RaftLucideIconName.UserPlus
+        "integration:approve_agent_login" -> RaftLucideIconName.KeyRound
+        "integration:register_app", "integration:update_app_registration" -> RaftLucideIconName.AppWindow
+        "integration:install_marketplace_app" -> RaftLucideIconName.Package
+        else -> null
+    }
+
+/** The values to check, per action (web useActionCardDetail); other actions list their metadata. */
+@Composable
+private fun ThreadActionCard.localizedActionCardProperties(): List<ThreadActionCardProperty> {
+    val descriptionLabel = stringResource(MR.strings.thread_action_card_field_description)
+    val humansLabel = stringResource(MR.strings.thread_action_card_field_humans)
+    val agentsLabel = stringResource(MR.strings.thread_action_card_field_agents)
+    return when (type) {
+        "channel:create" ->
+            buildList {
+                description?.takeIf { it.isNotBlank() }?.let { add(ThreadActionCardProperty(descriptionLabel, it)) }
+                if (initialHumans.isNotEmpty()) add(ThreadActionCardProperty(humansLabel, initialHumans.joinToString(", ")))
+                if (initialAgents.isNotEmpty()) add(ThreadActionCardProperty(agentsLabel, initialAgents.joinToString(", ")))
             }
-        }
-        val details = renderCopy.details
-        if (card.isIntegrationApproveLoginAction()) {
-            ThreadIntegrationLoginActionCardBody(card)
-        } else if (card.usesGenericActionCardPresentation()) {
-            ThreadGenericActionCardBody(card)
-        } else if (details.isNotBlank()) {
-            Text(
-                text = details,
-                style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray),
-                color = RaftColor.TextMutedGray
-            )
-        }
-        card.actionCardDraftHint()?.let { hint ->
-            ThreadActionCardHintBox(text = hint, italic = false)
-        }
-        if (card.isExecuted) {
-            val committed = renderCopy.committedLabel
-            if (committed.isNotBlank()) {
-                Text(
-                    text = committed,
-                    style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray),
-                    color = RaftColor.TextMutedGray
+        "agent:create" ->
+            buildList {
+                add(
+                    description?.takeIf { it.isNotBlank() }?.let { ThreadActionCardProperty(descriptionLabel, it) }
+                        ?: ThreadActionCardProperty(
+                            descriptionLabel,
+                            stringResource(MR.strings.thread_action_card_no_description),
+                            muted = true
+                        )
                 )
+                val required = requiredComputer?.takeIf { it.isNotBlank() }
+                val computer = required ?: suggestedComputer?.takeIf { it.isNotBlank() }
+                if (computer != null) {
+                    add(
+                        ThreadActionCardProperty(
+                            stringResource(
+                                if (required != null) {
+                                    MR.strings.thread_action_card_field_required_computer
+                                } else {
+                                    MR.strings.thread_action_card_field_suggested_computer
+                                }
+                            ),
+                            computer,
+                            mono = true
+                        )
+                    )
+                }
             }
-        } else if (commitEnabled) {
-            RaftBrutalActionButton(
-                label = if (pending) renderCopy.pendingLabel else renderCopy.verb,
-                onClick = onCommit,
-                enabled =
-                    !pending &&
-                        (
-                            card.isSupportedCommitAction() ||
-                                card.opensFeedbackCardEntry(LocalThreadFeedbackCardEntryEnabled.current)
-                        ),
-                backgroundColor = RaftColor.AccentPink,
-                disabledBackgroundColor = RaftColor.SurfaceCream,
-                minWidth = 0.dp,
-                minHeight = 34.dp,
-                textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = RaftColor.TextBlack)
-            )
-        }
-    }
-}
-
-@Composable
-private fun ThreadGenericActionCardBody(card: ThreadActionCard) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        val items = card.metadataItems
-        if (items.isEmpty()) {
-            ThreadActionCardMetaLine(
-                label = stringResource(MR.strings.thread_action_card_label_type),
-                value = card.type,
-                labelWidth = 92.dp
-            )
-        } else {
-            items.forEach { item ->
-                ThreadActionCardMetaLine(
-                    label = humanizeActionCardMetadataKey(item.key),
-                    value =
-                        if (item.redacted) {
-                            stringResource(MR.strings.thread_action_card_hidden_value)
-                        } else {
-                            item.value
-                        },
-                    labelWidth = 92.dp
-                )
+        "channel:add_member" ->
+            buildList {
+                channel?.takeIf { it.isNotBlank() }?.let {
+                    add(ThreadActionCardProperty(stringResource(MR.strings.thread_action_card_field_channel), "#${it.removePrefix("#")}"))
+                }
+                if (humans.isNotEmpty()) add(ThreadActionCardProperty(humansLabel, humans.joinToString(", ")))
+                if (agents.isNotEmpty()) add(ThreadActionCardProperty(agentsLabel, agents.joinToString(", ")))
             }
-        }
-        if (card.type.equals("integration:update_app_registration", ignoreCase = true)) {
-            ThreadActionCardHintBox(
-                text = stringResource(MR.strings.thread_action_card_legacy_unavailable_hint),
-                italic = false
+        "integration:approve_agent_login" -> {
+            val service = clientName?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.thread_action_card_app)
+            val agent = agentName?.takeIf { it.isNotBlank() }
+                ?: name.takeIf { it.isNotBlank() }
+                ?: stringResource(MR.strings.thread_action_card_agent)
+            listOf(
+                ThreadActionCardProperty(stringResource(MR.strings.thread_action_card_label_service), service),
+                ThreadActionCardProperty(stringResource(MR.strings.thread_action_card_label_agent), "@${agent.removePrefix("@")}", mono = true),
             )
-        } else {
-            card.presentationWarning?.takeIf { it.isNotBlank() }?.let { warning ->
-                ThreadActionCardHintBox(text = warning, italic = false)
+        }
+        else ->
+            if (metadataItems.isEmpty()) {
+                listOf(ThreadActionCardProperty(stringResource(MR.strings.thread_action_card_label_type), type, mono = true))
+            } else {
+                val hidden = stringResource(MR.strings.thread_action_card_hidden_value)
+                metadataItems.map { item ->
+                    ThreadActionCardProperty(
+                        label = humanizeActionCardMetadataKey(item.key),
+                        value = if (item.redacted) hidden else item.value,
+                        muted = item.redacted,
+                    )
+                }
             }
+    }
+}
+
+/** Raft's standing note on the card (web MessageActionCardNotice): an app login's grant, a warning. */
+@Composable
+private fun ThreadActionCard.actionCardNotice(): String? =
+    when {
+        type.equals("integration:update_app_registration", ignoreCase = true) ->
+            stringResource(MR.strings.thread_action_card_legacy_unavailable_hint)
+        isIntegrationApproveLoginAction() -> {
+            val service = clientName?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.thread_action_card_app)
+            val agent = agentName?.takeIf { it.isNotBlank() }
+                ?: name.takeIf { it.isNotBlank() }
+                ?: stringResource(MR.strings.thread_action_card_agent)
+            stringResource(MR.strings.thread_action_card_approval_hint, agent.removePrefix("@"), service)
         }
+        else -> presentationWarning?.takeIf { it.isNotBlank() }
     }
-}
-
-@Composable
-private fun ThreadIntegrationLoginActionCardBody(card: ThreadActionCard) {
-    val service = card.clientName?.takeIf { it.isNotBlank() }
-        ?: stringResource(MR.strings.thread_action_card_app)
-    val agent = card.agentName?.takeIf { it.isNotBlank() }
-        ?: card.name.takeIf { it.isNotBlank() }
-        ?: stringResource(MR.strings.thread_action_card_agent)
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        ThreadActionCardMetaLine(label = stringResource(MR.strings.thread_action_card_label_service), value = service)
-        ThreadActionCardMetaLine(label = stringResource(MR.strings.thread_action_card_label_agent), value = "@${agent.removePrefix("@")}")
-        Text(
-            text = stringResource(MR.strings.thread_action_card_label_scopes),
-            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray),
-            color = RaftColor.TextMutedGray
-        )
-        val scopes = card.scopes.takeIf { it.isNotEmpty() } ?: listOf("openid", "profile", "identity")
-        scopes.forEach { scope ->
-            ThreadIntegrationScopeCard(scope)
-        }
-        ThreadActionCardHintBox(
-            text = stringResource(
-                MR.strings.thread_action_card_approval_hint,
-                agent.removePrefix("@"),
-                service
-            ),
-            italic = true
-        )
-    }
-}
-
-@Composable
-private fun ThreadActionCardHintBox(text: String, italic: Boolean) {
-    val style =
-        if (italic) {
-            RaftType.Caption.copy(
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
-                color = RaftColor.TextMutedGray,
-                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-            )
-        } else {
-            RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray)
-        }
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(RaftColor.SurfaceWhite)
-                .padding(horizontal = 10.dp, vertical = 8.dp)
-    ) {
-        Text(
-            text = text,
-            style = style,
-            color = RaftColor.TextMutedGray
-        )
-    }
-}
-
-@Composable
-private fun ThreadActionCardMetaLine(label: String, value: String, labelWidth: Dp = 58.dp) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Top
-    ) {
-        Text(
-            text = "$label:",
-            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray),
-            color = RaftColor.TextMutedGray,
-            modifier = Modifier.width(labelWidth)
-        )
-        Text(
-            text = value,
-            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray),
-            color = RaftColor.TextMutedGray,
-            modifier = Modifier.weight(1f)
-        )
-    }
-}
-
-@Composable
-private fun ThreadIntegrationScopeCard(scope: String) {
-    val normalized = scope.trim()
-    val description = localizedIntegrationScopeDescription(normalized)
-    Column(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .raftCardSurface(fill = RaftColor.FillMuted, radius = RaftAppRadius.Control)
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        Text(
-            text = normalized,
-            style =
-                RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(
-                    fontSize = 12.sp,
-                    lineHeight = 14.sp,
-                    color = RaftColor.TextMutedGray,
-                    fontFamily = raftMonoFamilyForWeight(FontWeight.Bold)
-                ),
-            color = RaftColor.TextMutedGray
-        )
-        Text(
-            text = description,
-            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray),
-            color = RaftColor.TextMutedGray
-        )
-    }
-}
-
-@Composable
-private fun ThreadActionCardDoneBadge() {
-    Row(
-        modifier =
-            Modifier
-                // raft-ui success badge: sticker radius, sticker-ink edge.
-                .background(RaftColor.AccentLime, RoundedCornerShape(RaftAppRadius.Sticker))
-                .border(RaftAppStroke.Control, RaftColor.StickerInk, RoundedCornerShape(RaftAppRadius.Sticker))
-                .padding(horizontal = 6.dp, vertical = 3.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(3.dp)
-    ) {
-        RaftLucideIcon(RaftLucideIconName.Check, modifier = Modifier.size(10.dp), color = "#FF000000")
-        Text(
-            text = stringResource(MR.strings.common_done),
-            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
-            color = RaftColor.StickerInk,
-            maxLines = 1
-        )
-    }
-}
 
 private fun ThreadActionCard.actionCardVerb(): String =
     when (type) {
@@ -26424,49 +26354,6 @@ private fun ThreadActionCard.localizedActionCardTitle(): String =
             presentationTitle?.takeIf { it.isNotBlank() }
                 ?: stringResource(MR.strings.thread_action_card_title_generic, humanizeActionCardType(type))
     }
-
-@Composable
-private fun ThreadActionCard.localizedActionCardDetails(): String =
-    buildList {
-        description?.takeIf { it.isNotBlank() }?.let {
-            add(stringResource(MR.strings.thread_action_card_detail_description, it))
-        }
-        if (type.equals("agent:create", ignoreCase = true)) {
-            requiredComputer?.takeIf { it.isNotBlank() }?.let {
-                add(stringResource(MR.strings.thread_action_card_detail_required_computer, it))
-            }
-            if (requiredComputer.isNullOrBlank()) {
-                suggestedComputer?.takeIf { it.isNotBlank() }?.let {
-                    add(stringResource(MR.strings.thread_action_card_detail_suggested_computer, it))
-                }
-            }
-            if (description.isNullOrBlank()) {
-                add(stringResource(MR.strings.thread_action_card_detail_no_description))
-            }
-        }
-        if (initialHumans.isNotEmpty()) {
-            add(stringResource(MR.strings.thread_action_card_detail_humans, initialHumans.joinToString(", ")))
-        }
-        if (initialAgents.isNotEmpty()) {
-            add(stringResource(MR.strings.thread_action_card_detail_agents, initialAgents.joinToString(", ")))
-        }
-        if (humans.isNotEmpty()) {
-            add(stringResource(MR.strings.thread_action_card_detail_humans, humans.joinToString(", ")))
-        }
-        if (agents.isNotEmpty()) {
-            add(stringResource(MR.strings.thread_action_card_detail_agents, agents.joinToString(", ")))
-        }
-        if (type.equals("integration:approve_agent_login", ignoreCase = true)) {
-            clientName?.takeIf { it.isNotBlank() }?.let {
-                add(stringResource(MR.strings.thread_action_card_detail_service, it))
-            }
-            agentName?.takeIf { it.isNotBlank() }?.let {
-                add(stringResource(MR.strings.thread_action_card_detail_agent, it.removePrefix("@")))
-            }
-            val scopeLine = scopes.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "-"
-            add(stringResource(MR.strings.thread_action_card_detail_scopes, scopeLine))
-        }
-    }.joinToString("\n")
 
 private fun ThreadActionCard.actionCardPendingLabel(): String =
     when (type) {
@@ -26650,7 +26537,11 @@ private fun ThreadActionCard.actionCardCommittedLabel(): String =
     }
 
 @Composable
-private fun ThreadActionCard.localizedActionCardCommittedLabel(): String {
+/**
+ * The line under a done card's title (web ActionCard's done line): who ran it, when, and
+ * what came of it: "Committed by Ada · 10:51 → #release-review".
+ */
+private fun ThreadActionCard.localizedActionCardDoneLine(executedTimeLabel: String?): String {
     val committedBy = executedByUserName?.takeIf { it.isNotBlank() }?.let {
         stringResource(MR.strings.thread_action_card_committed_by, it)
     }
@@ -26687,11 +26578,12 @@ private fun ThreadActionCard.localizedActionCardCommittedLabel(): String {
                 resultName?.takeIf { it.isNotBlank() }
             else -> null
         }
+    val who = committedBy?.let { by -> executedTimeLabel?.let { "$by · $it" } ?: by }
     return when {
-        committedBy != null && result != null -> "$committedBy -> $result"
-        committedBy != null -> committedBy
+        who != null && result != null -> "$who → $result"
+        who != null -> who
         result != null -> stringResource(MR.strings.thread_action_card_result, result)
-        else -> ""
+        else -> executedTimeLabel.orEmpty()
     }
 }
 
