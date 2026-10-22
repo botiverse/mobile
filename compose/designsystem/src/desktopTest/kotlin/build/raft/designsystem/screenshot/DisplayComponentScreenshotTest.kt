@@ -672,8 +672,12 @@ class DisplayComponentScreenshotTest {
      * sans 12/16 sub-line), a role tag and a ghost remove button.
      */
     @Test
-    fun memberListRow() =
-        appearances.forEach { appearance ->
+    fun memberListRowLight() = memberListRow(RaftAppearance.Light)
+
+    @Test
+    fun memberListRowDark() = memberListRow(RaftAppearance.Dark)
+
+    private fun memberListRow(appearance: RaftAppearance) =
             RaftScreenshot.capture("member_list_row_${appearance.name.lowercase()}", appearance) {
                 Column(Modifier.width(342.dp)) {
                     RaftSidebarSectionHeader("Humans", expanded = true, onExpandedChange = {}, count = 2, countSeparator = " · ")
@@ -695,7 +699,6 @@ class DisplayComponentScreenshotTest {
                     )
                 }
             }
-        }
 
     @Test
     fun listRow() =
