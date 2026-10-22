@@ -4,13 +4,11 @@ import build.raft.app.toRaftAvatarLabel
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
-import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.model.messageStreamChannelId
-import build.raft.app.model.preferredAvatarWireValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineStart
@@ -292,7 +290,7 @@ class RealForwardMessageTargetRepository(
     private val directorySnapshots = mutableMapOf<String, ForwardMessageTargetDirectorySnapshot>()
 
     // One pre-normalised index per loaded authority. Search keystrokes filter it in
-    // memory; only a cold/expired index reaches the channel/DM/member APIs, and the
+    // memory; only a cold/expired index reaches the channel/DM APIs, and the
     // mutex makes that fill single-flight.
     private val searchIndexMutex = Mutex()
     private var searchIndex: ForwardMessageTargetSearchIndex? = null
@@ -302,11 +300,12 @@ class RealForwardMessageTargetRepository(
         currentSession() ?: return forwardAuthRequired()
         val directMessages = channelRepository.getDirectMessages(serverId).contentOrEmpty { it.directMessages }
         val channels = channelRepository.getChannels(serverId).contentOrEmpty { it.channels }
-        val members = memberRepository.getMembers(DataRequestPriority.Foreground, serverId).contentOrEmpty { it.members }
-        val membersById = members.associateBy { it.id }
+        // Never wait for the server member list here (the slowest source on a big server): DM
+        // rows carry their own peer name/avatar; an already-loaded roster only refines them.
+        val peerProfiles = cachedPeerProfiles(serverId)
         val items =
             (directMessages.mapNotNull { directMessage ->
-                directMessage.toRecentForwardTarget(serverId, directMessage.presenceMemberId?.let(membersById::get))
+                directMessage.toRecentForwardTarget(serverId, directMessage.presenceMemberId?.let(peerProfiles::get))
             } +
                 channels.mapNotNull { it.toRecentForwardTarget(serverId) })
                 .distinctBy { it.serverId.value + ":" + it.kind.name + ":" + it.id }
@@ -484,7 +483,6 @@ class RealForwardMessageTargetRepository(
                             serverId = serverId,
                             directMessages = directMessages,
                             channels = channels,
-                            members = emptyList(),
                             query = "",
                             limit = directMessages.size + channels.size
                         )
@@ -500,7 +498,7 @@ class RealForwardMessageTargetRepository(
         targets: List<ForwardMessageTarget>,
         now: Long
     ) {
-        // Only DMs/channels feed local search; member candidates are the server's job.
+        // Only DMs/channels feed local search; people are the server search's job.
         val localTargets = targets.filter { it.isForwardLocalSearchTarget() }
         val revision = localTargets.forwardDirectoryAuthorityRevision()
         searchIndexMutex.withLock {
@@ -697,6 +695,11 @@ class RealForwardMessageTargetRepository(
     private suspend fun currentSession(): StoredAuthSession? =
         sessionStore.readSession()
 
+    /**
+     * Empty-query directory: DMs + channels only. The server member list is deliberately not
+     * read (on a big server it dominated the picker's open time); people are reached by typing,
+     * which goes to the server search, matching web.
+     */
     private suspend fun localDirectoryTargets(serverId: ServerId): DataResult<List<ForwardMessageTarget>> {
         val directMessages =
             when (val result = channelRepository.getDirectMessages(serverId)) {
@@ -712,23 +715,20 @@ class RealForwardMessageTargetRepository(
                 is DataResult.Error -> return DataResult.Error(result.error)
                 is DataResult.NoPermission -> return DataResult.NoPermission(result.blocker)
             }
-        val members =
-            when (val result = memberRepository.getMembers(DataRequestPriority.Foreground, serverId)) {
-                is DataResult.Content -> result.data.members
-                is DataResult.Empty -> emptyList()
-                is DataResult.Error -> return DataResult.Error(result.error)
-                is DataResult.NoPermission -> return DataResult.NoPermission(result.blocker)
-            }
         val targets = fallbackForwardMessageTargets(
             serverId = serverId,
             directMessages = directMessages,
             channels = channels,
-            members = members,
+            peerProfiles = cachedPeerProfiles(serverId),
             query = "",
-            limit = directMessages.size + channels.size + members.size
+            limit = directMessages.size + channels.size
         )
         return DataResult.Content(targets)
     }
+
+    /** Already-in-memory roster keyed by member id; never fetches. */
+    private fun cachedPeerProfiles(serverId: ServerId): Map<MemberId, MemberProfile> =
+        memberRepository.cachedMembers(serverId).associateBy { it.id }
 
     private fun createLocalDirectorySnapshot(
         serverId: ServerId,
@@ -866,7 +866,10 @@ private fun HomeDirectMessageRow.toRecentForwardTarget(
         id = channelId.value,
         title = title,
         subtitle = subtitle?.takeIf { it.isNotBlank() } ?: "Recent DM",
-        avatarWireValue = peer?.avatar?.wireValue ?: peer?.avatarUrl,
+        avatarWireValue =
+            peer?.avatar?.wireValue
+                ?: peer?.avatarUrl
+                ?: directMessagePeerAvatarWireValue?.takeIf { it.isNotBlank() },
         avatarLabel = peer?.avatarLabel?.takeIf { it.isNotBlank() } ?: title.toRaftAvatarLabel(),
         channelId = channelId,
         channelKind = ConversationKind.DirectMessage,
@@ -930,21 +933,17 @@ internal fun fallbackForwardMessageTargets(
     serverId: ServerId,
     directMessages: List<HomeDirectMessageRow>,
     channels: List<HomeChannelRow>,
-    members: List<MemberProfile> = emptyList(),
+    /** Optional DM-peer enrichment from an in-memory roster; never a source of extra targets. */
+    peerProfiles: Map<MemberId, MemberProfile> = emptyMap(),
     query: String,
     limit: Int
 ): List<ForwardMessageTarget> {
-    val existingDmMemberIds = directMessages.mapNotNull { it.presenceMemberId }.toSet()
-    val membersById = members.associateBy { it.id }
     val matches =
         (
         directMessages.mapNotNull { directMessage ->
-            directMessage.toRecentForwardTarget(serverId, directMessage.presenceMemberId?.let(membersById::get))
+            directMessage.toRecentForwardTarget(serverId, directMessage.presenceMemberId?.let(peerProfiles::get))
         } +
-            channels.mapNotNull { it.toSearchForwardTarget(serverId) } +
-            members
-                .filterNot { it.id in existingDmMemberIds }
-                .mapNotNull { it.toForwardMemberCandidate(serverId) }
+            channels.mapNotNull { it.toSearchForwardTarget(serverId) }
         )
         .filter { it.matchesForwardQuery(query) }
         .dedupeForwardTargets()
@@ -1043,33 +1042,6 @@ private fun ForwardMessageTarget.isForwardPrivateChannel(): Boolean =
 private fun ForwardMessageTarget.isForwardPublicChannel(): Boolean =
     kind in setOf(ForwardMessageTargetKind.RecentChannel, ForwardMessageTargetKind.PublicChannelUnjoined) &&
         !isForwardJointChannel() && !isForwardPrivateChannel()
-
-private fun MemberProfile.toForwardMemberCandidate(serverId: ServerId): ForwardMessageTarget? {
-    val targetKind =
-        when (kind) {
-            MemberKind.Human -> ForwardMessageTargetKind.HumanDirectMessageCandidate
-            MemberKind.Agent -> ForwardMessageTargetKind.AgentDirectMessageCandidate
-            MemberKind.System -> return null
-            // External projections are never forward-target identities.
-            MemberKind.External -> return null
-        }
-    val title = displayName.trim().takeIf { it.isNotBlank() } ?: handle.trim().takeIf { it.isNotBlank() } ?: return null
-    return ForwardMessageTarget(
-        serverId = serverId,
-        kind = targetKind,
-        id = id.value,
-        title = title,
-        subtitle = handle.trim().takeIf { it.isNotBlank() }?.let { "@$it" }.orEmpty(),
-        avatarWireValue = preferredAvatarWireValue(avatar, avatarUrl),
-        avatarLabel = avatarLabel.ifBlank { title.toRaftAvatarLabel() },
-        channelKind = ConversationKind.DirectMessage,
-        channelType = "dm",
-        memberId = id,
-        dmExists = false,
-        canForwardNow = false,
-        requiredAction = ForwardMessageTargetRequiredAction.CreateDirectMessage
-    )
-}
 
 private fun ForwardMessageTarget.matchesForwardQuery(query: String): Boolean {
     val cleanQuery = query.trim()

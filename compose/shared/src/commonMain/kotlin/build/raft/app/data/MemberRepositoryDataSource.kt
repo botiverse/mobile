@@ -503,7 +503,9 @@ class RealMemberRepository(
     private val sessionStore: RaftAuthSessionStore,
     private val networkClient: RaftNetworkClient,
     private val warningLogger: (String) -> Unit = {},
-    private val logger: (String) -> Unit = {}
+    private val logger: (String) -> Unit = {},
+    /** In-memory roster lookup (e.g. the shared server-members store); must never fetch. */
+    private val cachedMembersProvider: (ServerId) -> List<MemberProfile> = { emptyList() }
 ) : MemberRepository {
     private val agentsApiClient = RaftAgentsApiClient(
         transport = RaftAgentsNetworkApi(networkClient),
@@ -579,6 +581,8 @@ class RealMemberRepository(
         )
         return mergedResult
     }
+
+    override fun cachedMembers(serverId: ServerId): List<MemberProfile> = cachedMembersProvider(serverId)
 
     override suspend fun getMemberProfile(
         priority: DataRequestPriority,

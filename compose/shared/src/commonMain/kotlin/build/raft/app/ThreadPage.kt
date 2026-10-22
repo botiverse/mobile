@@ -4252,11 +4252,12 @@ private fun ThreadPageScreen(
         )
     }
     val memberRepository =
-        remember(authStore, networkClient) {
+        remember(authStore, networkClient, serverMembersStore) {
             RealMemberRepository(
                 sessionStore = authStore,
                 networkClient = networkClient,
-                logger = { message -> bridge.log("thread_member_repository $message") }
+                logger = { message -> bridge.log("thread_member_repository $message") },
+                cachedMembersProvider = serverMembersStore::currentServerMembers
             )
         }
     val channelRepository =
