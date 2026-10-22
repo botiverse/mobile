@@ -927,8 +927,8 @@ internal open class RaftCmpActivity :
                 )
             }
         onBackPressedDispatcher.addCallback(this, hostSystemBackCallback)
-        // uiMode is not a handled config change, so an OS light/dark switch recreates the
-        // activity and lands here again: seed the theme before anything is drawn.
+        // Seed the OS light/dark setting before anything is drawn. Later OS switches arrive
+        // through onConfigurationChanged (uiMode is a handled config change, see the manifest).
         RaftAppAppearanceRuntime.onSystemDarkChanged(androidSystemDark())
         RaftAppAppearanceRuntime.ensureLoaded()
         setContentView(R.layout.activity_raft)
@@ -1141,8 +1141,7 @@ internal open class RaftCmpActivity :
         }
     }
 
-    private fun androidSystemDark(): Boolean =
-        (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    private fun androidSystemDark(): Boolean = isAndroidSystemDark(resources.configuration.uiMode)
 
     /**
      * Before the first frame: the window colour of the resolved app theme (light keeps the cream
@@ -1294,6 +1293,21 @@ internal open class RaftCmpActivity :
                 "host_new_intent page=${resolvedPageName(intent)} currentPage=${pageSpec?.pageName.orEmpty()}"
         )
         recreate()
+    }
+
+    /**
+     * uiMode is a handled config change (manifest), so an OS light/dark switch no longer
+     * recreates the host: the page keeps its tab, pushed pages and scroll positions. Compose
+     * follows the new [Configuration] by itself (isSystemInDarkTheme in RaftTheme); report the
+     * setting to the process-wide theme too, so native host surfaces (window canvas, bar icons)
+     * switch on the same frame under System appearance.
+     */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (RaftAppAppearanceRuntime.onSystemDarkChanged(isAndroidSystemDark(newConfig.uiMode))) {
+            applyHostCanvasColor(RaftAppAppearanceRuntime.canvasArgb)
+            applySystemBarAppearance(RaftAppAppearanceRuntime.isDark)
+        }
     }
 
     override fun onDestroy() {
@@ -2661,7 +2675,31 @@ internal open class RaftCmpActivity :
         }
         if (Build.VERSION.SDK_INT >= 30) {
             window.setDecorFitsSystemWindows(false)
+            keepContentRootEdgeToEdge()
         }
+    }
+
+    /**
+     * The window's content root (the platform layout around android.R.id.content) never pads
+     * itself by the system bars: pages own their insets (RaftAppSafeArea), so the host must stay
+     * edge-to-edge whatever the platform decided for the window.
+     *
+     * Android 15 enforces edge-to-edge for targetSdk 35+, which turns
+     * setDecorFitsSystemWindows() into a no-op. When a visible host is recreated (onNewIntent ->
+     * recreate(), e.g. picking a server on Choose server, which is a translucent page over the
+     * app shell), the platform keeps the old window and its ViewRootImpl, and early Android 15
+     * builds attach the new PhoneWindow to it with the default decorFitsSystemWindows = true
+     * before edge-to-edge enforcement is read from the theme. The content root then got the
+     * status bar as top padding (and the navigation bar as bottom padding) and every page was
+     * drawn shifted down, and no later setDecorFitsSystemWindows(false) could undo it. This
+     * listener replaces the content root's own inset fitting and passes the insets on untouched,
+     * which is what decorFitsSystemWindows = false means.
+     */
+    private fun keepContentRootEdgeToEdge() {
+        val contentRoot = findViewById<View?>(android.R.id.content)?.parent as? View ?: return
+        contentRoot.setOnApplyWindowInsetsListener(edgeToEdgeContentRootInsetsListener)
+        contentRoot.setPadding(0, 0, 0, 0)
+        contentRoot.requestApplyInsets()
     }
 
     // task #232: with setDecorFitsSystemWindows(false) (edge-to-edge, task
@@ -8756,3 +8794,11 @@ internal fun bridgeResultJson(result: Any?): String? =
         is Map<*, *> -> JSONObject(result).toString()
         else -> JSONObject.wrap(result)?.toString()
     }
+
+/** OS light/dark setting carried by a [Configuration.uiMode] value. */
+internal fun isAndroidSystemDark(uiMode: Int): Boolean =
+    (uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+
+/** Content-root insets policy of [RaftCmpActivity]: fit nothing, pass every inset on. */
+private val edgeToEdgeContentRootInsetsListener =
+    View.OnApplyWindowInsetsListener { _, insets -> insets }

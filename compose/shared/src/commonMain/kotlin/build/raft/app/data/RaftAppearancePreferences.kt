@@ -90,10 +90,11 @@ object RaftAppAppearanceRuntime {
         notifyHost()
     }
 
-    /** Hosts report the OS light/dark setting before the first composition (cold start). */
-    fun onSystemDarkChanged(dark: Boolean) {
-        RaftAppThemeState.onSystemDarkChanged(dark)
-    }
+    /**
+     * Hosts report the OS light/dark setting before the first composition (cold start) and when
+     * it changes while running; @return true when the resolved theme changed.
+     */
+    fun onSystemDarkChanged(dark: Boolean): Boolean = RaftAppThemeState.onSystemDarkChanged(dark)
 
     /** Resolved dark flag (choice + OS setting). */
     val isDark: Boolean
