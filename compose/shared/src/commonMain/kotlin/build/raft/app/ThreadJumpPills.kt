@@ -336,6 +336,8 @@ internal data class ThreadJumpInputs(
     val conversationUnreadCount: Int = 0,
     /** Parents of this channel's unread threads resolved from the followed-threads list, by thread id. */
     val unreadThreadParents: Map<String, ThreadUnreadThreadParent> = emptyMap(),
+    /** The focus request nonce of the last pill jump ([SharedThreadState.unreadThreadJumpFocusNonce]). */
+    val jumpFocusNonce: Int = 0,
 )
 
 /** The loaded messages as thread-parent candidates, with the list's live reply state where it has one. */

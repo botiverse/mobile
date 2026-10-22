@@ -6397,6 +6397,14 @@ internal data class SharedThreadState(
      * `FollowedThread.parentMessageId`). Filled by [SharedThreadIntent.ResolveUnreadThreadParents].
      */
     val unreadThreadParents: Map<String, ThreadUnreadThreadParent> = emptyMap(),
+    /**
+     * The focus request nonce ([RaftThreadScreenPayload.focusedMessageRequestNonce]) issued by the
+     * last unread-thread pill jump ([SharedThreadIntent.JumpToMessage]); 0 for none. The page lands
+     * that one focus request on the parent's thread replies summary instead of its top (artin
+     * task #73); every other focus keeps its own placement. Nonces are process-unique, so a stale
+     * value never matches a later focus.
+     */
+    val unreadThreadJumpFocusNonce: Int = 0,
 )
 
 /**
@@ -6720,6 +6728,11 @@ internal class SharedThreadStore(
     fun unreadThreadParentsFlow(): Flow<Map<String, ThreadUnreadThreadParent>> =
         state
             .map { threadState -> threadState.unreadThreadParents }
+            .distinctUntilChanged()
+
+    fun unreadThreadJumpFocusNonceFlow(): Flow<Int> =
+        state
+            .map { threadState -> threadState.unreadThreadJumpFocusNonce }
             .distinctUntilChanged()
 
     // Event-driven drainer for durably journaled pending sends. Resends reuse the journaled
@@ -10905,13 +10918,17 @@ internal class SharedThreadStore(
         reducePayloadPatch { it.copy(selectedTab = normalizedTab) }
     }
 
-    private fun focusMessage(messageId: String, switchToTab: String?) {
+    private fun focusMessage(
+        messageId: String,
+        switchToTab: String?,
+        nonce: Int = nextThreadFocusedMessageRequestNonce(),
+    ) {
         val normalizedMessageId = messageId.takeIf { it.isNotBlank() } ?: return
         reducePayloadPatch {
             it.copy(
                 selectedTab = switchToTab?.takeIf { tab -> tab.isNotBlank() } ?: it.selectedTab,
                 focusedMessageId = normalizedMessageId,
-                focusedMessageRequestNonce = nextThreadFocusedMessageRequestNonce()
+                focusedMessageRequestNonce = nonce
             )
         }
     }
@@ -10969,13 +10986,16 @@ internal class SharedThreadStore(
      */
     private suspend fun jumpToMessage(messageId: String, switchToTab: String?) {
         val target = messageId.trim().takeIf { it.isNotBlank() } ?: return
+        // Mark this focus request as the pill's before the payload carries it, so the page sees
+        // the mark by the time its focus anchor runs for this nonce (lands on the replies block).
+        val nonce = nextThreadFocusedMessageRequestNonce()
+        reduceState(_state.value.copy(unreadThreadJumpFocusNonce = nonce))
         val initial = _state.value.payload
         if (initial.messages.any { it.id == target }) {
-            focusMessage(target, switchToTab)
+            focusMessage(target, switchToTab, nonce)
             return
         }
         val tab = switchToTab?.takeIf { it.isNotBlank() }
-        val nonce = nextThreadFocusedMessageRequestNonce()
         val focusRoute =
             (lastRoutePayload ?: initial.withoutThreadTimelineContent())
                 .withRouteIntentFrom(initial)
@@ -11284,6 +11304,8 @@ internal class SharedThreadViewModel(
     fun highlightedMentionsFlow(): Flow<Set<String>> = store.highlightedMentionsFlow()
 
     fun unreadThreadParentsFlow(): Flow<Map<String, ThreadUnreadThreadParent>> = store.unreadThreadParentsFlow()
+
+    fun unreadThreadJumpFocusNonceFlow(): Flow<Int> = store.unreadThreadJumpFocusNonceFlow()
 
     fun dispatch(intent: SharedThreadIntent) {
         store.dispatch(intent)

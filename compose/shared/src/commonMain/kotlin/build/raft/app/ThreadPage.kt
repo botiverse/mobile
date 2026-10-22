@@ -452,6 +452,9 @@ private const val ThreadPerformanceSlowThresholdMs = 4L
 private const val ThreadFocusedMessageHighlightDurationMs = 2_000L
 private const val ThreadFocusedMessageHighlightFadeMs = 180
 private const val ThreadFocusedMessageCenterAttempts = 6
+
+/** Unread-thread jump (task #73): the least space kept below the parent's replies summary block. */
+private val ThreadRepliesFocusMinBottomReserve = 96.dp
 private const val ThreadComposerMentionActionFadeDelayMs = 450L
 private const val ThreadComposerMentionActionRemoveDelayMs = 750L
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
@@ -7817,6 +7820,9 @@ private fun SharedThreadRouteContentContent(
     val jumpUnreadThreadParents by remember(threadViewModel) {
         threadViewModel.unreadThreadParentsFlow()
     }.collectAsState(threadViewModel.state.value.unreadThreadParents)
+    val jumpFocusNonce by remember(threadViewModel) {
+        threadViewModel.unreadThreadJumpFocusNonceFlow()
+    }.collectAsState(threadViewModel.state.value.unreadThreadJumpFocusNonce)
     val jumpInputs =
         remember(
             jumpChannelId,
@@ -7825,6 +7831,7 @@ private fun SharedThreadRouteContentContent(
             jumpFollowedThreadUnread,
             jumpConversationUnreadCount,
             jumpUnreadThreadParents,
+            jumpFocusNonce,
         ) {
             ThreadJumpInputs(
                 channelId = jumpChannelId,
@@ -7834,6 +7841,7 @@ private fun SharedThreadRouteContentContent(
                     jumpFollowedThreadUnread?.filterValues { thread -> thread.parentChannelId.value == jumpChannelId },
                 conversationUnreadCount = jumpConversationUnreadCount,
                 unreadThreadParents = jumpUnreadThreadParents.filterValues { parent -> parent.parentChannelId == jumpChannelId },
+                jumpFocusNonce = jumpFocusNonce,
             )
         }
     // The unread threads whose parent is neither loaded nor resolved: look them up (single-flight
@@ -19282,6 +19290,22 @@ private fun ThreadMessagesListContent(
                                     listState.scrollThreadItemToFocusedViewport(targetIndex) {
                                         commandIsLiveOrTerminallyInvalidate()
                                     }
+                                LazyViewportAnchorPlacement.FocusedThreadReplies -> {
+                                    val minBottomReservePx =
+                                        with(threadDensity) { ThreadRepliesFocusMinBottomReserve.roundToPx() }
+                                    listState.scrollThreadItemToFocusedViewport(
+                                        itemIndex = targetIndex,
+                                        focusedScrollOffset = { itemSize, info ->
+                                            threadRepliesFocusedItemScrollOffset(
+                                                itemSize = itemSize,
+                                                viewportEnd = info.viewportEndOffset,
+                                                minBottomReservePx = minBottomReservePx
+                                            )
+                                        }
+                                    ) {
+                                        commandIsLiveOrTerminallyInvalidate()
+                                    }
+                                }
                                 LazyViewportAnchorPlacement.RenderedBottom ->
                                     listState.scrollThreadItemToRenderedBottom(
                                         itemIndex = targetIndex,
@@ -19917,13 +19941,21 @@ private fun ThreadMessagesListContent(
         renderPayload.focusedMessageId,
         renderPayload.focusedMessageRequestNonce,
         focusedMessageTargetSignature,
-        lazyItemCount
+        lazyItemCount,
+        jumpInputs.jumpFocusNonce
     ) {
         val targetMessageId = renderPayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         val targetIdentity =
             focusedMessageAnchorIdentity(
                 messageId = targetMessageId,
                 requestNonce = renderPayload.focusedMessageRequestNonce
+            )
+        // Task #73: the unread-thread pill's own focus request lands on the parent's replies
+        // summary; every other focus (links, search, Activity) keeps the top-aligned placement.
+        val basePlacement =
+            threadFocusedAnchorBasePlacement(
+                requestNonce = renderPayload.focusedMessageRequestNonce,
+                unreadThreadJumpFocusNonce = jumpInputs.jumpFocusNonce
             )
         if (
             !shouldRunFocusedMessageAnchor(
@@ -19970,8 +20002,12 @@ private fun ThreadMessagesListContent(
             activeFocusedMessageId = null
             return@LaunchedEffect
         }
-        if (focusedAnchorPlacementState.identity != targetIdentity) {
-            focusedAnchorPlacementState = resetThreadFocusedAnchorPlacement(targetIdentity)
+        if (
+            focusedAnchorPlacementState.identity != targetIdentity ||
+            (focusedAnchorPlacementState.placement != LazyViewportAnchorPlacement.RenderedBottom &&
+                focusedAnchorPlacementState.placement != basePlacement)
+        ) {
+            focusedAnchorPlacementState = resetThreadFocusedAnchorPlacement(targetIdentity, basePlacement)
         }
         dispatchViewportEvent(
             LazyViewportEvent.Anchor(
@@ -23353,10 +23389,13 @@ internal data class ThreadFocusedAnchorPlacementState(
     val renderedTailMessageId: String?
 )
 
-internal fun resetThreadFocusedAnchorPlacement(identity: String?): ThreadFocusedAnchorPlacementState =
+internal fun resetThreadFocusedAnchorPlacement(
+    identity: String?,
+    placement: LazyViewportAnchorPlacement = LazyViewportAnchorPlacement.Focused
+): ThreadFocusedAnchorPlacementState =
     ThreadFocusedAnchorPlacementState(
         identity = identity,
-        placement = LazyViewportAnchorPlacement.Focused,
+        placement = placement,
         offsetPx = 0,
         renderedTailMessageId = null
     )
@@ -23686,6 +23725,12 @@ private suspend fun ThreadListViewport.scrollLatestItemToRenderedBottom(
 
 private suspend fun ThreadListViewport.scrollThreadItemToFocusedViewport(
     itemIndex: Int,
+    focusedScrollOffset: (itemSize: Int, info: LazyListLayoutInfo) -> Int = { itemSize, info ->
+        threadFocusedItemScrollOffset(
+            itemSize = itemSize,
+            viewportHeight = info.viewportEndOffset - info.viewportStartOffset
+        )
+    },
     commandStillCurrent: () -> Boolean
 ): Boolean {
     if (itemIndex < 0 || layoutInfo.totalItemsCount <= itemIndex) {
@@ -23702,12 +23747,8 @@ private suspend fun ThreadListViewport.scrollThreadItemToFocusedViewport(
             if (!commandStillCurrent()) return false
             return@repeat
         }
-        val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
-        val offset =
-            threadFocusedItemScrollOffset(
-                itemSize = item.size,
-                viewportHeight = viewportHeight
-            )
+        // Re-read each attempt: the first scroll measures the row, later ones see its real size.
+        val offset = focusedScrollOffset(item.size, layoutInfo)
         scrollToItem(itemIndex, offset)
         if (!commandStillCurrent()) return false
         didScroll = true
@@ -23877,6 +23918,51 @@ internal fun threadFocusedItemScrollOffset(
     viewportHeight: Int
 ): Int {
     return 0
+}
+
+/**
+ * The focus placement for a request: the unread-thread pill's own request (its nonce is the
+ * store's [SharedThreadState.unreadThreadJumpFocusNonce]) lands on the replies summary; any other
+ * focus is top-aligned. Nonces are process-unique and positive, so 0 (no jump yet) never matches.
+ */
+internal fun threadFocusedAnchorBasePlacement(
+    requestNonce: Int,
+    unreadThreadJumpFocusNonce: Int
+): LazyViewportAnchorPlacement =
+    if (unreadThreadJumpFocusNonce != 0 && requestNonce == unreadThreadJumpFocusNonce) {
+        LazyViewportAnchorPlacement.FocusedThreadReplies
+    } else {
+        LazyViewportAnchorPlacement.Focused
+    }
+
+/** Share of the viewport kept below a jumped-to thread parent (task #73). */
+internal const val ThreadRepliesFocusBottomReserveFraction = 0.25f
+
+/**
+ * Unread-thread jump (artin task #73): the forward `scrollToItem` offset for a thread parent row of
+ * [itemSize] whose replies summary block is its bottom part, in a viewport whose visible content
+ * spans `0..`[viewportEnd] (the rendered bottom, as the bottom anchors use).
+ *
+ * The row's bottom never sits lower than `viewportEnd - reserve`, with `reserve` the larger of
+ * [ThreadRepliesFocusBottomReserveFraction] of the viewport and [minBottomReservePx] (room for the
+ * jump pills over the list end), capped at half the viewport. Within that limit a short row is
+ * centred whole; a taller one is pinned bottom-up at the limit, so its top scrolls off and the
+ * replies block sits around the middle-lower part of the viewport instead of at the bottom edge.
+ * Web centres the whole row (`scrollToMessage(id, { align: "center" })`), which for a tall parent
+ * leaves its replies block below the fold.
+ */
+internal fun threadRepliesFocusedItemScrollOffset(
+    itemSize: Int,
+    viewportEnd: Int,
+    minBottomReservePx: Int
+): Int {
+    if (itemSize <= 0 || viewportEnd <= 0) return 0
+    val reserve =
+        maxOf(minBottomReservePx, (viewportEnd * ThreadRepliesFocusBottomReserveFraction).roundToInt())
+            .coerceIn(0, viewportEnd / 2)
+    val centredTop = (viewportEnd - itemSize) / 2
+    val bottomLimitedTop = viewportEnd - reserve - itemSize
+    return -minOf(centredTop, bottomLimitedTop)
 }
 
 private fun ThreadListViewport.shouldShowThreadBackToBottom(latestItemIndex: Int): Boolean {
