@@ -193,7 +193,8 @@ fun RaftAgentStateChip(presence: RaftPresence, modifier: Modifier = Modifier) {
         modifier = modifier,
         appearance = RaftBadgeAppearance.Soft,
         variant = raftPresenceChipVariant(presence),
-        icon = { RaftStatusDot(presence = presence, size = RaftStatusSize.Sm) },
+        // raft-ui 0.20.1: a light beside text is 9dp, centred on the first line.
+        icon = { RaftStatusDot(presence = presence) },
     )
 }
 
