@@ -488,7 +488,9 @@ internal data class ComputerSummary(
     /** List-level `latestComputerVersion`, copied onto each row by [RaftComputersApiClient.machines]. */
     val latestComputerVersion: String? = null,
     /** List-level `latestComputerReleaseNotes`, copied onto each row by [RaftComputersApiClient.machines]. */
-    val latestComputerReleaseNotes: SettingsComputerReleaseNotesSnapshot? = null
+    val latestComputerReleaseNotes: SettingsComputerReleaseNotesSnapshot? = null,
+    /** The human who attached a managed Computer (server `creator`); null for raw daemons or a departed attacher. */
+    val creator: SettingsComputerCreatorSnapshot? = null
 )
 
 /** `POST …/computer/restart` accepted: [requestId] correlates the later `computer:restart:done`. */
@@ -672,8 +674,37 @@ private data class ComputerDto(
     val computerBroadcastPolicy: ComputerBroadcastPolicyDto? = null,
     val upgradeRequest: ComputerUpgradeRequestDto? = null,
     val remoteUpgradeSupported: Boolean? = null,
-    val versionGate: ComputerVersionGateDto? = null
+    val versionGate: ComputerVersionGateDto? = null,
+    // GET /:id/machines in routes/servers.ts: `creator: computerLinkedMachineCreators.get(m.id) ?? null`,
+    // the active attacher of a managed Computer (services/computerCredentialService.ts ComputerCreatorSummary).
+    val creator: ComputerCreatorDto? = null
 )
+
+/**
+ * slock packages/server/src/services/computerCredentialService.ts `ComputerCreatorSummary`:
+ * `{ type: "human", id, name, displayName: string | null, avatarUrl: string | null, gravatarHash }`.
+ */
+@Serializable
+private data class ComputerCreatorDto(
+    val type: String? = null,
+    val id: String,
+    val name: String,
+    val displayName: String? = null,
+    val avatarUrl: String? = null,
+    val gravatarHash: String? = null
+) {
+    fun toSnapshot(): SettingsComputerCreatorSnapshot? {
+        val cleanId = id.trim().takeIf { it.isNotBlank() } ?: return null
+        val cleanName = name.trim().takeIf { it.isNotBlank() } ?: return null
+        return SettingsComputerCreatorSnapshot(
+            id = cleanId,
+            name = cleanName,
+            displayName = displayName?.trim()?.takeIf { it.isNotBlank() },
+            avatarUrl = avatarUrl?.trim()?.takeIf { it.isNotBlank() },
+            gravatarHash = gravatarHash?.trim()?.takeIf { it.isNotBlank() }
+        )
+    }
+}
 
 @Serializable
 private data class ComputerBroadcastPolicyDto(
@@ -819,7 +850,8 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         computerBroadcastPolicy = computerBroadcastPolicy?.toSnapshot(),
         upgradeRequest = upgradeRequest?.toSnapshot(),
         remoteUpgradeSupported = remoteUpgradeSupported,
-        versionGate = versionGate?.toSnapshot()
+        versionGate = versionGate?.toSnapshot(),
+        creator = creator?.toSnapshot()
     )
 }
 

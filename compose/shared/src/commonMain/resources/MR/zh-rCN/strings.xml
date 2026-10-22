@@ -1914,6 +1914,9 @@
     <string name="settings_computers_label_os">操作系统</string>
     <string name="settings_computers_label_version">计算机版本</string>
     <string name="settings_computers_label_created">创建时间</string>
+    <string name="settings_computers_label_creator">创建者</string>
+    <string name="settings_computers_state_no_creator">没有创建者</string>
+    <string name="settings_computers_creator_handle">@%1$s</string>
     <string name="settings_computers_label_runtimes">检测到的运行时</string>
     <string name="settings_computers_runtime_suffix_update_computer">（需更新计算机）</string>
     <string name="settings_computers_state_unknown">未知</string>

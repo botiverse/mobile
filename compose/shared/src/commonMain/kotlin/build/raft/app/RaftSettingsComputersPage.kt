@@ -1,6 +1,11 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +32,10 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -103,6 +112,7 @@ import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.components.raftAvatarInitials
+import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
@@ -519,6 +529,23 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                         )
                     }
                 },
+                onOpenCreator = { creator ->
+                    val serverId = currentServerId
+                    val pageData =
+                        RaftMembersPayload(instanceId = "settings-computer-creator").toMemberDetailPageData(
+                            MemberDetailIdentity(MemberId(creator.id), MemberKind.Human, serverId?.let(::ServerId))
+                        )
+                    if (pageData == null) {
+                        bridge.log("settings_computers_open_creator_skip reason=invalid_creator")
+                    } else {
+                        pager.openRaftPage(
+                            pageName = MEMBER_DETAIL_PAGE,
+                            pageData = pageData,
+                            storeScopeOverride = environment.storeScope,
+                            onMissingScope = { bridge.log("settings_computers_open_creator_skip reason=missing_shell_scope") },
+                        )
+                    }
+                },
             )
         }
     }
@@ -533,6 +560,8 @@ internal fun RaftSettingsComputerDetailContent(
     onRetry: () -> Unit,
     onIntent: (SharedSettingsIntent) -> Unit,
     onOpenAgent: (SettingsComputerAgentSnapshot) -> Unit,
+    /** Opens the profile of a managed Computer's creator. */
+    onOpenCreator: (RaftComputerCreatorModel) -> Unit = {},
     /** Live agent activity for the agent rows (the members store); empty in fixtures. */
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     /** Restart / upgrade progress of the open Computer (the settings store's `computerControl`). */
@@ -573,6 +602,7 @@ internal fun RaftSettingsComputerDetailContent(
                     agentStatusResolver = agentStatusResolver,
                     onIntent = onIntent,
                     onOpenAgent = onOpenAgent,
+                    onOpenCreator = onOpenCreator,
                 )
         }
     }
@@ -588,6 +618,7 @@ private fun RaftComputerDetailBody(
     agentStatusResolver: RaftAgentStatusResolver,
     onIntent: (SharedSettingsIntent) -> Unit,
     onOpenAgent: (SettingsComputerAgentSnapshot) -> Unit,
+    onOpenCreator: (RaftComputerCreatorModel) -> Unit,
 ) {
     val computer = model.computer
     val snapshot = model.snapshot
@@ -673,6 +704,21 @@ private fun RaftComputerDetailBody(
                     }
                     // Web: the date it was created ("Oct 22, 2026"), as on an agent's page.
                     Item(stringResource(MR.strings.settings_computers_label_created), raftComputerCreatedDate(model.createdAt), mono = true)
+                    // Web: managed Computers name who attached them beside Created; raw daemons don't.
+                    if (model.showsCreator) {
+                        Item(stringResource(MR.strings.settings_computers_label_creator)) {
+                            val creator = model.creator
+                            if (creator != null) {
+                                RaftComputerCreatorLink(creator, onClick = { onOpenCreator(creator) })
+                            } else {
+                                RaftText(
+                                    stringResource(MR.strings.settings_computers_state_no_creator),
+                                    style = RaftTheme.typography.callout,
+                                    color = RaftTheme.colors.foregroundHint,
+                                )
+                            }
+                        }
+                    }
                 }
                 // Web: an offline Computer's version row links the notes of the version it can move to.
                 upgrade.releaseNotes?.takeIf { !snapshot.computer.online }?.let { notes ->
@@ -787,6 +833,72 @@ private fun RaftComputerRuntimeBadge(chip: RaftComputerRuntimeChip) {
         appearance = RaftBadgeAppearance.Soft,
         variant =
             if (chip.availability == RaftComputerRuntimeAvailability.Detected) RaftBadgeVariant.Information else RaftBadgeVariant.Muted,
+    )
+}
+
+/**
+ * Web MachineDetailPanel creator link: the person's 19dp avatar, their name in semibold and
+ * `@name` in mono hint ink, 6dp apart, as one frameless button that opens their profile. The
+ * 6dp side padding is pulled back out so the avatar lines up with the other values.
+ */
+@Composable
+private fun RaftComputerCreatorLink(creator: RaftComputerCreatorModel, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val shape = RoundedCornerShape(RaftRadius.Chip)
+    Row(
+        modifier =
+            Modifier
+                .offset(x = (-6).dp)
+                .clip(shape)
+                .background(if (pressed) RaftTheme.colors.fillMedium else Color.Transparent, shape)
+                .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RaftComputerCreatorAvatar(creator)
+        RaftText(
+            creator.displayName,
+            modifier = Modifier.weight(1f, fill = false),
+            style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
+            color = RaftTheme.colors.foreground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        RaftText(
+            stringResource(MR.strings.settings_computers_creator_handle, creator.name),
+            style = RaftTheme.typography.monoMeta,
+            color = RaftTheme.colors.foregroundHint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** A person's avatar: their photo or Gravatar, else the placeholder person (web GravatarAvatar). */
+@Composable
+private fun RaftComputerCreatorAvatar(creator: RaftComputerCreatorModel) {
+    val size = RaftAvatarSize.Xs
+    val avatarWireValue = creator.avatarWireValue
+    RaftAvatar(
+        type = RaftAvatarType.Human,
+        size = size,
+        image =
+            if (avatarWireValue != null) {
+                {
+                    RaftAppAvatar(
+                        avatarWireValue = avatarWireValue,
+                        label = "",
+                        // The face fills the inside of the sticker edge.
+                        avatarSize = size.edge - RaftStroke.Control * 2,
+                        borderWidth = 0.dp,
+                        cacheSubject = raftMemberAvatarCacheSubject(MemberKind.Human, creator.id),
+                    )
+                }
+            } else {
+                null
+            },
     )
 }
 
