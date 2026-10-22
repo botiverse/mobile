@@ -226,6 +226,8 @@ internal fun RaftButtonBox(
     onLongClickLabel: String? = null,
     widenTouchTarget: Boolean = false,
     join: RaftButtonJoin = RaftButtonJoin.None,
+    /** Show the press overlay while what the button opens is open (raft-ui `data-popup-open`). */
+    open: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
@@ -233,7 +235,7 @@ internal fun RaftButtonBox(
     // raft-ui shows the same overlay on `hover:` and `active:`.
     val isPressed = raftIsPressed(source)
     val isHovered = raftIsHovered(source)
-    val pressed = active && (isPressed || isHovered)
+    val pressed = active && (isPressed || isHovered || open)
     // `focus-visible:shadow-focus`. raft-ui keeps a loading button focusable but
     // `aria-disabled`: the clickable stays enabled (so focus stays on it when it turns busy),
     // drops the tap while busy, and semantics say disabled, so no click action is offered.

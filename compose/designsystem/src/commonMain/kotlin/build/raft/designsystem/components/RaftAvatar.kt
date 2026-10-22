@@ -224,6 +224,35 @@ private fun RaftAvatarFrame(
     }
 }
 
+/**
+ * raft-ui `AvatarBadge` drawn as the attention pixel (the web's `AttentionDot`): `attention`
+ * pink with the sticker-ink edge, in the corner an avatar of [size] gives its badge, cut out of
+ * [cutout] (the surface the avatar sits on). "Something here waits for you": the server
+ * switcher's avatar when another server has unread. Place it with [RaftAvatarBadgeBox], named by
+ * [contentDescription].
+ */
+@Composable
+fun RaftAvatarAttentionLight(size: RaftAvatarSize, cutout: Color, contentDescription: String? = null) {
+    val shape = RoundedCornerShape(RaftRadius.Xs)
+    Box(
+        Modifier
+            .size(size.badgeEdge)
+            .raftOuterRing(cutout, size.badgeCutout, RaftRadius.Xs)
+            .background(RaftUiPalette.attention, shape)
+            .border(size.badgeBorder, RaftUiPalette.stickerInk, shape)
+            .then(
+                if (contentDescription != null) {
+                    Modifier.semantics {
+                        this.contentDescription = contentDescription
+                        role = Role.Image
+                    }
+                } else {
+                    Modifier
+                },
+            ),
+    )
+}
+
 /** The corner light: a status pixel with a [cutout]-coloured outline around it. */
 @Composable
 private fun RaftAvatarPresenceLight(presence: RaftPresence, size: RaftAvatarSize, cutout: Color) {

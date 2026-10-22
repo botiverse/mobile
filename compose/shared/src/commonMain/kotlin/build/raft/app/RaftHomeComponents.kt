@@ -7,6 +7,9 @@ import build.raft.designsystem.components.RaftDialogSheet
 import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftAvatarAttentionLight
+import build.raft.designsystem.components.RaftAvatarBadgeBox
+import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftMentionMarker
@@ -2313,6 +2316,7 @@ private fun RaftStructuralHomeShellContent(
                         serverIdentity = currentHomeHeaderServer.takeIf { homeServerAvatarEnabled },
                         serverPublicPageLive = currentHomeHeaderServer.publicPageLive,
                         hasOtherServerUnread = serverSwitcherHasOtherUnread,
+                        serverSwitcherOpen = serverSwitcherExpanded,
                         notifications = visibleNotifications,
                         notificationCenterExpanded = notificationCenterExpanded,
                         refreshing = headerRefreshing,
@@ -4669,6 +4673,7 @@ private fun HomeTitlebar(
     serverIdentity: RaftServerSwitcherItem? = null,
     serverPublicPageLive: Boolean = false,
     hasOtherServerUnread: Boolean,
+    serverSwitcherOpen: Boolean = false,
     notifications: List<RaftHomeNotificationItem>,
     notificationCenterExpanded: Boolean = false,
     refreshing: Boolean,
@@ -4702,6 +4707,7 @@ private fun HomeTitlebar(
             HomeServerIdentityCluster(
                 server = homeTitlebarServerIdentity(serverIdentity, serverName, serverPublicPageLive),
                 unread = hasOtherServerUnread,
+                open = serverSwitcherOpen,
                 onClick = onServerBadgeClick,
                 onBlankClick = onBlankClick,
                 modifier = Modifier.weight(1f)
@@ -4738,6 +4744,7 @@ private fun HomeServerIdentityCluster(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     unread: Boolean = false,
+    open: Boolean = false,
     onBlankClick: (() -> Unit)? = null
 ) {
     // The caller hands this cluster the header's remaining width (weight). Only the
@@ -4767,11 +4774,23 @@ private fun HomeServerIdentityCluster(
         name = server.name,
         onClick = onClick,
         modifier = Modifier.offset(x = -RaftWorkspaceButtonDefaults.ContentInset),
+        // Web: the button keeps its press fill while the server list is open.
+        open = open,
         avatar = {
-            Box {
+            // Web: another server's unread rides on the avatar's badge corner (AttentionDot).
+            RaftAvatarBadgeBox(
+                size = RaftAvatarSize.Sm,
+                badge = {
+                    if (unread) {
+                        RaftAvatarAttentionLight(
+                            RaftAvatarSize.Sm,
+                            cutout = RaftTheme.colors.layerCanvas,
+                            contentDescription = stringResource(MR.strings.home_server_switcher_other_unread),
+                        )
+                    }
+                },
+            ) {
                 ServerSwitcherAvatarTile(server, size = RaftWorkspaceButtonDefaults.AvatarSize)
-                // Another server has unread activity.
-                if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
             }
         },
         mark =

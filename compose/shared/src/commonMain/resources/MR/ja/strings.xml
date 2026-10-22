@@ -2839,4 +2839,5 @@
     <string name="download_center_progress_bytes">%1$s / %2$s</string>
     <string name="file_preview_download_background_hint">このページを離れてもダウンロードは続きます。設定 › ストレージ › ダウンロード で確認できます。</string>
     <string name="file_preview_download_completed_hint">保存しました。設定 › ストレージ › ダウンロード で確認できます。</string>
+    <string name="home_server_switcher_other_unread">他のサーバーに未読メッセージがあります</string>
 </resources>
