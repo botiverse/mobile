@@ -24,12 +24,16 @@ private val raftImageLoaderInstalled = atomic(false)
 /** The loader [raftBuildImageLoader] built last (the singleton), for [raftClearImageCaches]. */
 private val raftBuiltImageLoader = atomic<ImageLoader?>(null)
 
+/** The installed Raft loader, or null before the first page host built it. */
+internal fun raftCurrentImageLoader(): ImageLoader? = raftBuiltImageLoader.value
+
 /**
  * Drops every decoded and on-disk image of the previous account: called when the session is
  * cleared (logout, forced sign-out) or replaced by a different account. Image URLs can be
  * account-scoped (attachments, avatars), so they must not survive into the next session.
  */
 suspend fun raftClearImageCaches() {
+    RaftSentAttachmentLocalImages.registry.clear()
     val loader = raftBuiltImageLoader.value ?: return
     withContext(Dispatchers.Default) {
         runCatching { loader.memoryCache?.clear() }

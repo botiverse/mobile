@@ -23,6 +23,39 @@ internal fun shouldRequestThreadInlineImageFallbackForMissingThumbnail(
     fallbackUrl: String?
 ): Boolean = thumbnailUrl.isNullOrBlank() && fallbackUrl.isNullOrBlank()
 
+/**
+ * What a thread inline image loads. An image this device just uploaded ([localModel], see
+ * `RaftSentAttachmentLocalImages`) renders from the local copy and never asks for the remote
+ * inline URL; the remote thumbnail / fallback stays as the error fallback.
+ */
+internal data class ThreadInlineImageSourcePlan(
+    val source: String?,
+    val fallbackSource: String?,
+    val requestRemoteFallback: Boolean
+)
+
+internal fun threadInlineImageSourcePlan(
+    thumbnailUrl: String?,
+    fallbackUrl: String?,
+    localModel: String?
+): ThreadInlineImageSourcePlan {
+    val thumbnail = thumbnailUrl?.takeIf { it.isNotBlank() }
+    val fallback = fallbackUrl?.takeIf { it.isNotBlank() }
+    val local = localModel?.takeIf { it.isNotBlank() }
+    if (local != null) {
+        return ThreadInlineImageSourcePlan(
+            source = local,
+            fallbackSource = thumbnail ?: fallback,
+            requestRemoteFallback = false
+        )
+    }
+    return ThreadInlineImageSourcePlan(
+        source = thumbnail,
+        fallbackSource = fallback,
+        requestRemoteFallback = shouldRequestThreadInlineImageFallbackForMissingThumbnail(thumbnail, fallback)
+    )
+}
+
 internal data class ThreadInlineImageFallbackHost(
     val state: ThreadInlineImageFallbackState,
     val requestFallback: (attachmentId: String) -> Unit
