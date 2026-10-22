@@ -22,9 +22,9 @@ import build.raft.designsystem.theme.RaftTheme
  * The few Lucide icons (ISC licence, lucide.dev; the same SVGs the app ships) that the
  * components themselves draw: the banner intents, the list and select chevrons, the @ marker,
  * the check of a checkbox and of a menu's current value, the dialog's close, a menu's search,
- * the top bar's Back arrow, the jump pills' arrows, a sidebar channel's `hash` / `lock` and a group header's sort
- * arrows. Each is the 24x24 outline drawn with Lucide's 2-unit round
- * stroke. App icons are not this module's business: pass them through the components' icon
+ * the top bar's Back arrow, the jump pills' arrows, a sidebar channel's `hash` / `lock`, a group header's sort
+ * arrows and an action card's default `zap`. Each is the 24x24 outline drawn with Lucide's
+ * 2-unit round stroke. App icons are not this module's business: pass them through the components' icon
  * slots.
  */
 enum class RaftGlyph(internal vararg val paths: String) {
@@ -69,6 +69,12 @@ enum class RaftGlyph(internal vararg val paths: String) {
 
     /** Lucide `arrow-up-down` (sort): the up arrow on the left; the app's sort controls draw this one. */
     ArrowUpDown("m21 16-4 4-4-4", "M17 20V4", "m3 8 4-4 4 4", "M7 4v16"),
+
+    /** Lucide `zap`: an action card's default header icon (raft-ui MessageActionCardHeaderIcon). */
+    Zap(
+        "M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7" +
+            "a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z",
+    ),
     ;
 
     internal val parsed: List<Path> by lazy { paths.map { PathParser().parsePathString(it).toPath() } }
