@@ -513,9 +513,10 @@ fun <T> RaftMultiComboboxSheet(
  * raft-ui ComboboxChips as a trigger: the field of a [RaftMultiCombobox]. The select
  * trigger's frame and states (44dp minimum, control radius, 1dp `line-field` on
  * `layer-card`, pressed, focus ring, [invalid] `danger-strong`, disabled `fill-muted`),
- * holding one chip per chosen value (28dp, chip radius, `fill-muted`, `text-footnote`
- * semibold, 6dp apart, wrapping onto more lines), 6dp in from the frame, and the chevron
- * 12dp from its end. Each chip ends in a 22dp remove button (a 14dp × in
+ * holding one chip per chosen value (32dp, chip radius, `fill-muted`, `text-footnote`
+ * semibold, 6dp apart, wrapping onto more lines), 6dp inside the frame's outer edge, so one
+ * line of chips keeps the field 44dp tall (raft-design Shape > Inside a frame), and the
+ * chevron 12dp from its end. Each chip ends in a 28dp remove button (a 14dp × in
  * `foreground-hint`, sticker radius) that calls [onRemove] with its index and is named
  * [removeLabel] of the chip; without [onRemove], or disabled, chips have none. With no
  * chips it shows the [placeholder] like the select trigger.
@@ -570,13 +571,13 @@ fun RaftComboboxChipsTrigger(
                 }
                 if (invalid && enabled) error(field.error ?: RaftInvalidValueMessage)
             }
-            // `py-1.5 pr-3 pl-1.5` inside the 1dp frame; the placeholder sits where the
-            // select trigger's text does.
+            // Chips sit `--control-embedded-inset` inside the outer edge, on the frame side of
+            // the 1.5dp border; the placeholder sits where the select trigger's text does.
             .padding(
-                start = (if (chips.isEmpty()) 14.dp else 6.dp) + RaftStroke.Field,
+                start = if (chips.isEmpty()) 14.dp + RaftStroke.Field else RaftTextFieldDefaults.EmbeddedInset,
                 end = 12.dp + RaftStroke.Field,
-                top = 6.dp + RaftStroke.Field,
-                bottom = 6.dp + RaftStroke.Field,
+                top = RaftTextFieldDefaults.EmbeddedInset,
+                bottom = RaftTextFieldDefaults.EmbeddedInset,
             ),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -593,8 +594,8 @@ fun RaftComboboxChipsTrigger(
         } else {
             FlowRow(
                 Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(RaftTextFieldDefaults.EmbeddedInset),
+                verticalArrangement = Arrangement.spacedBy(RaftTextFieldDefaults.EmbeddedInset),
             ) {
                 chips.forEachIndexed { index, chip ->
                     RaftComboboxChip(
@@ -610,13 +611,13 @@ fun RaftComboboxChipsTrigger(
     }
 }
 
-/** combobox.tsx `chip`: 28dp, chip radius, `fill-muted`, footnote semibold, 8dp in, the remove button 2dp from the end. */
+/** combobox.tsx `chip`: 32dp (`--control-embedded-size`), chip radius, `fill-muted`, footnote semibold, 8dp in, the remove button 2dp from the end. */
 @Composable
 private fun RaftComboboxChip(text: String, enabled: Boolean, onRemove: (() -> Unit)?, removeLabel: String) {
     val colors = RaftTheme.colors
     Row(
         Modifier
-            .heightIn(min = 28.dp)
+            .heightIn(min = RaftTextFieldDefaults.EmbeddedControlSize)
             .background(colors.fillMuted, RoundedCornerShape(RaftRadius.Chip))
             .padding(start = 8.dp, end = if (onRemove != null) 2.dp else 8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -634,7 +635,11 @@ private fun RaftComboboxChip(text: String, enabled: Boolean, onRemove: (() -> Un
     }
 }
 
-/** combobox.tsx `chipRemove`: 22dp, sticker radius, a 14dp × in `foreground-hint`; pressed `fill-pressed`, focus ring. */
+/**
+ * combobox.tsx `chipRemove`: 28dp (4dp under the chip), sticker radius, a 14dp × in
+ * `foreground-hint`; pressed `fill-pressed`. Its keyboard focus ring is a 2dp `foreground`
+ * ring drawn inside it, which the chip would clip outside.
+ */
 @Composable
 private fun RaftComboboxChipRemove(label: String, onClick: () -> Unit) {
     val colors = RaftTheme.colors
@@ -645,9 +650,9 @@ private fun RaftComboboxChipRemove(label: String, onClick: () -> Unit) {
     val focused = raftIsFocused(source)
     Box(
         Modifier
-            .size(22.dp)
-            .raftFocusRing(focused, RaftRadius.Sticker, colors)
+            .size(RaftTextFieldDefaults.EmbeddedControlSize - 4.dp)
             .raftPressOverlay(pressed, colors.fillPressed, RaftRadius.Sticker)
+            .raftInsetFocusOutline(focused, colors.foreground, RaftRadius.Sticker)
             .clickable(source, indication = null, role = Role.Button, onClick = onClick)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
