@@ -65,6 +65,8 @@ private data class WireInboxItem(
     val parentMessagePreview: String? = null,
     val parentMessageSenderType: String? = null,
     val parentMessageSenderId: String? = null,
+    // Followed-thread rows (channelService.ts FollowedThread): when the parent message was posted.
+    val parentMessageCreatedAt: String? = null,
     val latestActivityPreview: String? = null,
     val latestActivitySenderType: String? = null,
     val latestActivitySenderId: String? = null,
@@ -327,6 +329,7 @@ private fun WireInboxItem.toThreadDomain(diagnostics: (String) -> Unit): InboxIt
         parentMessageId = parentMessageId?.let(::MessageId),
         parentMessagePreview = parentMessagePreview,
         parentMessageSenderId = parentMessageSenderId,
+        parentMessageCreatedAt = parentMessageCreatedAt?.takeIf { it.isNotBlank() },
         parentMessageSenderKind =
             parentMessageSenderType.toSenderKind(
                 source = "inbox_parent_message_sender",

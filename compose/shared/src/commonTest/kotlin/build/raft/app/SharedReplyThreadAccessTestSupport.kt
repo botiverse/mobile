@@ -101,6 +101,10 @@ internal class ReplyThreadAccessConversationRepositoryRecorder(
     val replyRequests = mutableListOf<Pair<ChannelId, MessageId>>()
     val parentRequests = mutableListOf<Pair<MessageId, ChannelId?>>()
     val replyPriorities = mutableListOf<DataRequestPriority>()
+    var unreadFollowedResult: DataResult<ThreadListSnapshot> =
+        DataResult.Error(ScreenError(code = "unread_followed_unavailable", retryable = false))
+    var releaseUnreadFollowed: CompletableDeferred<Unit>? = null
+    val unreadFollowedRequests = mutableListOf<ServerId>()
 
     override suspend fun getReplyThread(
         parentChannelId: ChannelId,
@@ -172,6 +176,15 @@ internal class ReplyThreadAccessConversationRepositoryRecorder(
         serverId: ServerId,
         limit: Int
     ): DataResult<ThreadListSnapshot> = error("unused")
+
+    override suspend fun getUnreadFollowedThreads(
+        serverId: ServerId,
+        limit: Int
+    ): DataResult<ThreadListSnapshot> {
+        unreadFollowedRequests += serverId
+        releaseUnreadFollowed?.await()
+        return unreadFollowedResult
+    }
 
     override suspend fun createOrOpenThread(
         channelId: ChannelId,
