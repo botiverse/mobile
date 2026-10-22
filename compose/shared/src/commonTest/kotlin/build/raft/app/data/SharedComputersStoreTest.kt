@@ -101,6 +101,20 @@ class SharedComputersStoreTest {
     }
 
     @Test
+    fun computerListsPutTheComputersIAttachedFirst() {
+        // artin task #53 (web orderSidebarMachineIds): mine first, then the rest, server order kept.
+        fun machine(id: String, mine: Boolean) =
+            ComputerSummary(
+                id = id, name = id, status = ComputerStatus.Online, statusVersion = 0L, apiKeyPrefix = null,
+                runtimes = emptyList(), daemonVersion = null, computerVersion = null, isComputer = true,
+                hostname = null, os = null, description = null, lastHeartbeat = null, createdAt = null,
+                attachedByCurrentUser = mine,
+            )
+        val ordered = listOf(machine("a", false), machine("b", true), machine("c", false), machine("d", true)).inComputerListOrder()
+        assertEquals(listOf("b", "d", "a", "c"), ordered.map { it.id })
+    }
+
+    @Test
     fun startupPrewarmUsesBackgroundPriority() = runBlocking {
         val api = ControlledComputersApi()
         api.enqueue(HomeNetworkResponse(code = 200, bodyText = machinesBody))
