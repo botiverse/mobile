@@ -26,7 +26,7 @@ import org.robolectric.annotation.GraphicsMode
  * then a continuation row ending "(sent by Friday)" — grouped with each other, never with her
  * own); one from a deleted assistant (grayed default face, "sent by a deleted assistant").
  * Grouping runs through [shouldSuppressCompactThreadAuthor] like the message list.
- * Reports land in `build/reports/thread-delegated-screenshots/`; verify / record as
+ * Reports land in `build/reports/home-screenshots/` (uploaded by CI as `shared-home-screenshots`); verify / record as
  * [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -43,7 +43,7 @@ class ThreadDelegatedMessageScreenshotTest {
     fun delegatedThreadDark() = capture("thread.delegated-sending.dark", RaftAppAppearance.Dark)
 
     private fun capture(name: String, appearance: RaftAppAppearance) =
-        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/thread-delegated-screenshots", activities = activities) {
+        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
                 RaftDesignSystemTheme { DelegatedThreadRows() }
