@@ -2351,7 +2351,6 @@ private fun RaftAppShellReadyContent(
     // covering the middle pane) the live tab must survive width transitions — narrowing must
     // not clamp a user-reached Activity selection back to Home.
     var railActivityReached by remember { mutableStateOf(false) }
-    var hostNetworkStatus by remember { mutableStateOf(RaftAppShellNetworkStatus.Online) }
     val childTabShellId = remember(pager.pagerId) { "app-shell-child-tabs-${pager.pagerId}" }
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val storeScope = remember(pager.pageData.params.toString(), pager.pagerId) {
@@ -2483,6 +2482,10 @@ private fun RaftAppShellReadyContent(
         }
     }
     val appShellCoroutineScope = rememberCoroutineScope()
+    // Hands (artin 2026-10-22): raw host Offline waits out a 3s grace before the banner shows.
+    val networkBannerGate =
+        remember(appShellCoroutineScope) { RaftAppShellNetworkBannerGate(appShellCoroutineScope) }
+    val hostNetworkStatus by networkBannerGate.bannerStatus.collectAsState()
     val avatarNativeCache =
         remember(bridge, appShellCoroutineScope) {
             BridgeRaftAvatarNativeCache(
@@ -5726,16 +5729,17 @@ private fun RaftAppShellReadyContent(
         }
     }
 
-    DisposableEffect(hostNetworkEvents) {
+    DisposableEffect(hostNetworkEvents, networkBannerGate) {
         val callbackRef =
             hostNetworkEvents.addListener { signal ->
                 appShellCoroutineScope.launch {
-                    hostNetworkStatus =
+                    networkBannerGate.onHostStatus(
                         if (signal.online) {
                             RaftAppShellNetworkStatus.Online
                         } else {
                             RaftAppShellNetworkStatus.Offline
                         }
+                    )
                 }
             }
         onDispose { hostNetworkEvents.removeListener(callbackRef) }

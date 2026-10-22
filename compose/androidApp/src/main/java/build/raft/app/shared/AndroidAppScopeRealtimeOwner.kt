@@ -11,6 +11,7 @@ import android.net.NetworkCapabilities
 import android.os.Bundle
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
+import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
 import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.core.data.diagnostics.RaftResumeFrameProbe
 import build.raft.app.core.data.network.AndroidNetworkPrewarmController
@@ -148,9 +149,9 @@ internal object AndroidAppScopeRealtimeOwner {
 
                         override fun onCapabilitiesChanged(
                             network: Network,
-                            _networkCapabilities: NetworkCapabilities
+                            networkCapabilities: NetworkCapabilities
                         ) {
-                            onNetworkCapabilitiesChanged(appContext)
+                            onNetworkCapabilitiesChanged(appContext, networkCapabilities)
                         }
 
                         override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
@@ -609,11 +610,17 @@ internal object AndroidAppScopeRealtimeOwner {
         )
     }
 
-    fun onNetworkCapabilitiesChanged(context: Context) {
+    /**
+     * The callback is registered with registerDefaultNetworkCallback, so [capabilities] always
+     * describe the current default network. Use them directly instead of re-reading
+     * activeNetwork, which can briefly report the previous or no network during a Wi-Fi/cellular
+     * handover and turn a validation hiccup into an Offline signal (Hands, artin 2026-10-22).
+     */
+    fun onNetworkCapabilitiesChanged(context: Context, capabilities: NetworkCapabilities) {
         val appContext = context.applicationContext
         emitHostNetworkStatus(
             context = appContext,
-            online = appContext.isHostNetworkOnline(),
+            online = capabilities.isHostNetworkOnline(),
             source = "network_capabilities_changed"
         )
     }
@@ -624,6 +631,9 @@ internal object AndroidAppScopeRealtimeOwner {
             "app_scope_lifecycle event=network_lost visibility=$appVisibility"
         )
         val appContext = context.applicationContext
+        // onLost carries no capabilities and names the network that went away. Another network
+        // may already be the default by now, so re-read the active network here rather than
+        // assuming Offline; if none is up yet, the next onAvailable/onCapabilitiesChanged corrects it.
         emitHostNetworkStatus(
             context = appContext,
             online = appContext.isHostNetworkOnline(),
@@ -994,7 +1004,11 @@ internal object AndroidAppScopeRealtimeOwner {
     ) {
         if (!force && hostNetworkOnline == online) return
         hostNetworkOnline = online
-        RaftAppLog.d(
+        // Info level, written straight to local diagnostics: RaftAppLog.d/i are dropped in release
+        // builds unless verbose logging is on, and these transitions are what feedback zips need
+        // to explain an offline banner.
+        RaftAndroidLocalDiagnostics.recordLog(
+            "info",
             LOG_TAG,
             "app_scope_lifecycle event=host_network_status online=$online source=$source"
         )
@@ -1022,9 +1036,12 @@ internal object AndroidAppScopeRealtimeOwner {
             getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
         val activeNetwork = connectivityManager.activeNetwork ?: return false
         val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
-        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        return capabilities.isHostNetworkOnline()
     }
+
+    private fun NetworkCapabilities.isHostNetworkOnline(): Boolean =
+        hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
 
     internal fun shouldPostBackgroundUnreadNotification(
         hasAttachedConsumers: Boolean,
