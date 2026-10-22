@@ -320,7 +320,7 @@ fun RaftPanelNotice(
         verticalAlignment = Alignment.Top,
     ) {
         // The 9dp pixel centred on the 20dp first line.
-        Box(Modifier.width(9.dp).height(20.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.width(10.dp).height(20.dp), contentAlignment = Alignment.Center) {
             RaftStatusDot(variant = pixel)
         }
         if (stackActions && actions != null) {

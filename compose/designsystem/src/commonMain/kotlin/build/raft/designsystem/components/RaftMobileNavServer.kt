@@ -74,7 +74,6 @@ import androidx.compose.ui.unit.sp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
-import build.raft.designsystem.tokens.RaftSize
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
 
@@ -113,9 +112,12 @@ object RaftMobileNavDefaults {
     val LabelFontSize = 11.5.sp
     val LabelLineHeight = 14.sp
 
-    /** The attention pixel on the pill's top-right corner, from the slot's top-left. */
-    val DotOffsetX: Dp = 44.dp
-    val DotOffsetY: Dp = (-2).dp
+    /**
+     * The attention dot on the pill's top-right corner, from the slot's top-left: raft-ui `Status
+     * sm` (8px), the dot on an icon's corner (raft-design #722), centred where the 9px one was.
+     */
+    val DotOffsetX: Dp = 44.5.dp
+    val DotOffsetY: Dp = (-1.5).dp
 
     /** The wide rail's cell (touch target) and its visual tile. */
     val RailCellSize: Dp = 48.dp
@@ -665,7 +667,7 @@ fun RowScope.RaftMobileNavServerPopoverDestination(
         }
         if (attention) {
             // raft-ui: the Status dot at top-1, left-[calc(50%+6px)].
-            RaftAttentionPixel(null, Modifier.align(Alignment.TopCenter).offset(x = 6.dp + RaftSize.StatusPixel / 2, y = (-4).dp))
+            RaftAttentionPixel(null, Modifier.align(Alignment.TopCenter).offset(x = 6.dp + RaftStatusSize.Sm.edge / 2, y = (-4).dp))
         }
     }
 }
@@ -749,13 +751,13 @@ private fun RaftMobileNavLabel(text: String, selected: Boolean, enabled: Boolean
     )
 }
 
-/** The attention pixel (raft-ui `AttentionDot`): 9dp `attention` square with the ink edge. */
+/** The attention dot on an icon's corner (raft-ui `Status sm`): an 8dp `attention` square with the ink edge. */
 @Composable
 private fun RaftAttentionPixel(contentDescription: String?, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(RaftRadius.Xs)
     Box(
         modifier
-            .size(RaftSize.StatusPixel)
+            .size(RaftStatusSize.Sm.edge)
             .background(RaftUiPalette.attention, shape)
             .border(RaftStroke.Control, RaftUiPalette.stickerInk, shape)
             .then(

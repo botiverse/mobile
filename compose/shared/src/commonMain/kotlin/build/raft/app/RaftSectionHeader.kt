@@ -498,7 +498,7 @@ internal fun RaftCollapsibleSectionHeader(
         if (!expanded && showCollapsedUnreadDot) {
             RaftStatusIndicator(
                 color = RaftColor.AccentPink,
-                size = RaftStatusIndicatorTokens.ServerUnreadSize,
+                size = RaftStatusIndicatorTokens.InlineSize,
                 modifier = Modifier.padding(start = RaftAppSpacing.Xs)
             )
         }

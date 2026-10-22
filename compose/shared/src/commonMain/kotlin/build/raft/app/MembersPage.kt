@@ -12899,7 +12899,7 @@ private fun MembersAgentCreatedAgentRow(
             {
                 // Unknown is not Offline: no light until something is observed (task #256).
                 // raft-ui Status: still, never animated.
-                RaftStatusIndicator(color = observedDisplayState.color, size = 9.dp, pulsing = false)
+                RaftStatusIndicator(color = observedDisplayState.color, size = RaftStatusIndicatorTokens.InlineSize, pulsing = false)
             }
         } else {
             null

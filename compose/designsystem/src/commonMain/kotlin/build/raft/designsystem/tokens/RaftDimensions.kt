@@ -68,8 +68,8 @@ object RaftSize {
     val PageHeaderCompactHeight = 48.dp
     val BottomBarHeight = 53.dp
 
-    /** Presence / attention pixel. */
-    val StatusPixel = 9.dp
+    /** A status light beside text (raft-ui `Status md`, 10px since raft-design #722). */
+    val StatusPixel = 10.dp
 }
 
 /** One CSS `box-shadow` layer: `x y blur spread color`. */
