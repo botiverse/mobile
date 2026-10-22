@@ -21,7 +21,9 @@ class EmphStrongDelimiterParser: DelimiterParser() {
             rightIterator = rightIterator.advance()
             stepsToAdvance += 1
         }
-        val (canOpen, canClose) = canOpenClose(tokens, iterator, rightIterator, canSplitText = marker == '*')
+        // Raft: the CJK-friendly rule, as the web's remark-cjk-friendly (see CjkFriendlyEmphasis).
+        val (canOpen, canClose) =
+            CjkFriendlyEmphasis.canOpenClose(marker, before = iterator.charLookup(-1), after = rightIterator.charLookup(1))
         for (index in 0 until stepsToAdvance) {
             val info = Info(
                 tokenType = MarkdownTokenTypes.EMPH,
