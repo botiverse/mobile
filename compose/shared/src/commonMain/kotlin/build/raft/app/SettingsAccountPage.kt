@@ -271,7 +271,9 @@ private fun SettingsAccountScreen() {
         SettingsAccountContent(
             payload =
                 settingsState.account.toAccountPayload(
-                    session = null,
+                    // The signed-in session stands in until the account loads (as the in-shell page does),
+                    // instead of the empty placeholders (you@example.com) on every open.
+                    session = session.value,
                     actionState = settingsState.actionState,
                     errorStrings = localizedErrorPresentationStrings()
                 ),
