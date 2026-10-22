@@ -623,14 +623,20 @@ internal class RaftSharedStoreProvider private constructor(
         sharedInfoLogger("SlockPresence", "presence_transport_rebaseline")(
             "serverId=${grant.serverId} epoch=$transportEpoch result=${result.name} stores=${stores.size}"
         )
+        val connectedTransport =
+            ProcessPresenceTransportEpoch(
+                connectionFamilyId = grant.connectionFamilyId,
+                epoch = transportEpoch
+            )
         coroutineScope {
             stores.forEach { store ->
                 launch {
                     try {
-                        store.refreshMembers(
+                        // Roster refill first, then peer-server agents of joint channels (not on
+                        // this roster; their facts come back from the channel-members refetch).
+                        store.refreshAfterPresenceTransportConnected(
                             serverId = ServerId(grant.serverId),
-                            priority = DataRequestPriority.Background,
-                            force = true,
+                            transport = connectedTransport,
                             reason = "presence_transport_connected"
                         )
                     } catch (cancellation: CancellationException) {

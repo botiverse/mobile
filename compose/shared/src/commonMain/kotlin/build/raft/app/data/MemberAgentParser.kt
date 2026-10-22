@@ -665,6 +665,13 @@ fun parseSharedChannelMemberSnapshot(
             .distinctBy { it.id.value },
         externalMembers = decoded.externalMembers.map { it.toModel() },
         canAddMembers = false,
+        liveActivityAgentIds =
+            decoded.agents
+                // Only activity that resolves to a runtime status: the lifecycle word
+                // `active` (or an unknown value) writes no fact, so it must not count.
+                .filter { normalizedAgentRuntimeStatus(activity = it.activity, lifecycleStatus = null) != null }
+                .mapNotNull { it.id.trim().takeIf(String::isNotBlank) }
+                .toSet(),
     )
 }.getOrNull()
 
