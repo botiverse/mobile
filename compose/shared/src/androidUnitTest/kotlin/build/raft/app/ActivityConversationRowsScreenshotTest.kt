@@ -46,13 +46,14 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * JVM screenshots of Activity conversation-list rows (`screens.activity.rows`): marks beside the
- * excerpt's first line only, plain timestamps. Same capture, tolerance and
+ * excerpt's first line only, plain timestamps, and each channel tile in its channel's own glyph
+ * (`#`, joint branch, a private channel's lock under a thread badge). Same capture, tolerance and
  * [RobolectricComposeActivityRule] as [HomeChannelListScreenshotTest]; CI uploads the report
  * folder as `shared-home-screenshots`.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w390dp-h480dp-xxhdpi")
+@Config(sdk = [34], qualifiers = "w390dp-h560dp-xxhdpi")
 class ActivityConversationRowsScreenshotTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
@@ -185,11 +186,14 @@ private fun ActivityRowsVisualContent(appearance: RaftAppAppearance) {
                 lastMessagePreview = "长按选中按你说的改好了，PR #3411，等 Lagoon 审完会合进去，下一个测试包就有。",
                 lastMessageAt = "2026-10-21T16:31:00Z",
             ),
+            // A joint channel: the joint branch glyph, as on its Home row.
             InboxItem(
                 key = "channel:joint-hands",
                 kind = InboxItemKind.Channel,
                 channelId = ChannelId("joint-hands"),
                 channelName = "joint-hands",
+                channelKind = ConversationKind.Joint,
+                channelType = "joint",
                 unreadCount = 6,
                 lastMessageSenderName = "System",
                 lastMessageSenderKind = MemberKind.System,
@@ -223,6 +227,24 @@ private fun ActivityRowsVisualContent(appearance: RaftAppAppearance) {
                 latestActivitySenderKind = MemberKind.Agent,
                 latestActivityAt = "2026-10-21T15:40:00Z",
             ),
+            // A thread in a private channel: the lock tile with the thread badge.
+            InboxItem(
+                key = "thread:private",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-private"),
+                channelName = "thread",
+                unreadCount = 3,
+                parentChannelId = ChannelId("launch-room"),
+                parentChannelName = "launch-room",
+                parentChannelKind = ConversationKind.Channel,
+                parentChannelType = "private",
+                parentMessagePreview = "1.15.3 发版清单",
+                latestActivityPreview = "预览包测过了，等 artin 点头。",
+                latestActivitySenderName = "Volta",
+                latestActivitySenderId = "agent-volta",
+                latestActivitySenderKind = MemberKind.Agent,
+                latestActivityAt = "2026-10-21T15:30:00Z",
+            ),
             // A thread in a DM: the peer's face with the thread badge, no "@peer ·" before the sender.
             InboxItem(
                 key = "thread:dm",
@@ -241,9 +263,12 @@ private fun ActivityRowsVisualContent(appearance: RaftAppAppearance) {
                 latestActivityAt = "2026-10-21T15:12:00Z",
             ),
         )
-    // The Home DM row of the thread's parent DM (an agent peer that is online).
+    // The Home DM row of the thread's parent DM (an agent peer that is online), and the Home channel
+    // rows' glyphs (homeChannelSymbol): `launch-room` is private, `joint-hands` is joint.
     val context =
         ActivityConversationListContext(
+            channelSymbolsByChannelId =
+                mapOf("long-press" to "#", "joint-hands" to "git-branch", "release" to "#", "mobile" to "#", "launch-room" to "lock"),
             dmPeersByChannelId =
                 mapOf(
                     "dm-lagoon" to

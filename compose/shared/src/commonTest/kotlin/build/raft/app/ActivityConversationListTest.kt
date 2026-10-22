@@ -531,6 +531,104 @@ class ActivityConversationListTest {
     }
 
     @Test
+    fun channelTileUsesTheHomeSidebarGlyphOfTheChannelOrItsThreadsParent() {
+        val home =
+            homeSnapshot().let { snapshot ->
+                snapshot.copy(
+                    server = snapshot.server.copy(publicPageLive = true),
+                    channels =
+                        listOf(
+                            HomeChannelRow(threadId = ThreadId("general"), channelId = ChannelId("general"), name = "general", channelType = "channel"),
+                            HomeChannelRow(threadId = ThreadId("secret"), channelId = ChannelId("secret"), name = "secret", channelType = "private"),
+                            HomeChannelRow(
+                                threadId = ThreadId("joint-hands"),
+                                channelId = ChannelId("joint-hands"),
+                                name = "joint-hands",
+                                channelType = "channel",
+                                kind = ConversationKind.Joint,
+                            ),
+                            HomeChannelRow(
+                                threadId = ThreadId("lobby"),
+                                channelId = ChannelId("lobby"),
+                                name = "lobby",
+                                channelType = "channel",
+                                guestVisible = true,
+                            ),
+                        ),
+                )
+            }
+        val homeContext = home.toActivityConversationListContext("server-1")
+        // The projection is the Home sidebar's own helper, row for row.
+        assertEquals(
+            mapOf("general" to "#", "secret" to "lock", "joint-hands" to "git-branch", "lobby" to HomeChannelSymbolHashGlobe),
+            homeContext.channelSymbolsByChannelId,
+        )
+        // The public-page mark needs the server's page live, as on Home.
+        assertEquals(
+            "#",
+            home.copy(server = home.server.copy(publicPageLive = false))
+                .toActivityConversationListContext("server-1")
+                .channelSymbolsByChannelId["lobby"],
+        )
+
+        fun threadIn(parentId: String, parentKind: ConversationKind = ConversationKind.Channel) =
+            thread.copy(parentChannelId = ChannelId(parentId), parentChannelName = parentId, parentChannelKind = parentKind)
+
+        data class Case(val name: String, val item: InboxItem, val context: ActivityConversationListContext, val symbol: String)
+        val cases =
+            listOf(
+                Case("normal channel", channel("c:general", "general"), homeContext, "#"),
+                Case("private channel", channel("c:secret", "secret"), homeContext, "lock"),
+                Case("joint channel", channel("c:joint", "joint-hands"), homeContext, "git-branch"),
+                Case("public-page channel", channel("c:lobby", "lobby"), homeContext, HomeChannelSymbolHashGlobe),
+                // A thread row leads with its parent channel's glyph (and keeps the thread badge).
+                Case("thread in a private channel", threadIn("secret"), homeContext, "lock"),
+                Case("thread in a joint channel", threadIn("joint-hands", ConversationKind.Joint), homeContext, "git-branch"),
+                Case("thread in a normal channel", threadIn("general"), homeContext, "#"),
+                // Home does not list the channel: the item's own kind (joint) or `#`.
+                Case("unknown channel", channel("c:x", "elsewhere"), homeContext, "#"),
+                Case(
+                    "unknown joint channel",
+                    channel("c:j", "elsewhere").copy(channelKind = ConversationKind.Joint),
+                    ActivityConversationListContext.Empty,
+                    "git-branch",
+                ),
+                Case("unknown joint thread", threadIn("elsewhere", ConversationKind.Joint), ActivityConversationListContext.Empty, "git-branch"),
+                Case("no type and no Home row", channel("c:secret", "secret"), ActivityConversationListContext.Empty, "#"),
+                // The item's own wire type (web `channelType` / `parentChannelType`) needs no Home row.
+                Case("wire private, Home not loaded", channel("c:p", "elsewhere").copy(channelType = "private"), ActivityConversationListContext.Empty, "lock"),
+                Case("wire joint, Home not loaded", channel("c:j2", "elsewhere").copy(channelType = "joint"), ActivityConversationListContext.Empty, "git-branch"),
+                Case(
+                    "thread, wire private parent",
+                    threadIn("elsewhere").copy(parentChannelType = "private"),
+                    ActivityConversationListContext.Empty,
+                    "lock",
+                ),
+                // The wire type wins over Home; the globe still comes from the Home row (guestVisible).
+                Case("wire private over Home #", channel("c:g", "general").copy(channelType = "private"), homeContext, "lock"),
+                Case("wire channel on the public page", channel("c:l", "lobby").copy(channelType = "channel"), homeContext, HomeChannelSymbolHashGlobe),
+            )
+        for (case in cases) {
+            val model = case.item.activityConversationRowModel(case.context, InboxFilter.All)
+            assertEquals(case.symbol, model.channelSymbol, case.name)
+            assertEquals(case.item.kind == InboxItemKind.Thread, model.leadingThreadBadge, case.name)
+            // The card layout: a channel card's title icon is the same glyph; a thread card keeps the
+            // thread icon (web ThreadsInbox card title).
+            val card = case.item.activityCardModel(homeChannelSymbols = case.context.channelSymbolsByChannelId)
+            if (case.item.kind == InboxItemKind.Thread) {
+                assertEquals(ActivityCardTitleGlyph.Thread, card.titleGlyph, case.name)
+            } else {
+                assertEquals(ActivityCardTitleGlyph.Channel, card.titleGlyph, case.name)
+                assertEquals(case.symbol, card.channelSymbol, case.name)
+            }
+        }
+        // DM rows are unchanged: the DM tile / face, never a channel glyph.
+        val dmRow = dm("dm:x", "dm-x", senderId = "agent-x").copy(channelType = "dm")
+        assertEquals("#", dmRow.activityConversationRowModel(homeContext, InboxFilter.All).channelSymbol)
+        assertEquals(ActivityCardTitleGlyph.DirectMessage, dmRow.activityCardModel().titleGlyph)
+    }
+
+    @Test
     fun pinsAndSectionsWaitForHomeContentOfThisServer() {
         val ready = homeSnapshot().toActivityConversationListContext("server-1")
         val content = SharedHomeContentState.Content(snapshot = homeSnapshot(), session = session())

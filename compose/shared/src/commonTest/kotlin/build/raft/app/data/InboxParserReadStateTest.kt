@@ -56,6 +56,25 @@ class InboxParserReadStateTest {
         assertEquals(2, parsed.items.size)
     }
 
+    @Test
+    fun rowsKeepTheirWireChannelTypeThatTheKindFolds() {
+        // channelType / parentChannelType: "channel" | "private" | "joint" | "dm" (slock web
+        // inboxStore.ts @ 7a5a03a5a). channelKind folds private into Channel; the raw type keeps it.
+        val parsed =
+            parseSharedInboxSnapshot(
+                body(
+                    channelRow("c-1", null).replace("\"channelType\":\"channel\"", "\"channelType\":\"private\""),
+                    threadRow(null).replace("\"parentChannelType\":\"channel\"", "\"parentChannelType\":\"joint\""),
+                )
+            ) ?: error("inbox payload did not parse")
+        val channel = parsed.items.single { it.key == "channel:c-1" }
+        assertEquals("private", channel.channelType)
+        assertEquals(build.raft.app.model.ConversationKind.Channel, channel.channelKind)
+        val thread = parsed.items.single { it.key == "thread:t-1" }
+        assertEquals("joint", thread.parentChannelType)
+        assertEquals(build.raft.app.model.ConversationKind.Joint, thread.parentChannelKind)
+    }
+
     private fun present(latestActivity: String): String =
         """{"kind":"present","readStateVersion":3,"maxReadSeq":"41","latestActivity":$latestActivity}"""
 
