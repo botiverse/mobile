@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -249,23 +250,24 @@ internal fun RaftButtonBox(
     // drops the tap while busy, and semantics say disabled, so no click action is offered.
     val isFocused = raftIsFocused(source)
     val focused = enabled && isFocused
-    val shape = join.shape()
+    val radius = if (LocalRaftEmbeddedControl.current) RaftRadius.Chip else RaftRadius.Control
+    val shape = join.shape(radius)
     Box(
         modifier =
             modifier
-                .raftFocusRing(focused, RaftRadius.Control, RaftTheme.colors)
-                .raftDieCutEdge(look.outerRing, RaftRadius.Control)
+                .raftFocusRing(focused, radius, RaftTheme.colors)
+                .raftDieCutEdge(look.outerRing, radius)
                 .background(look.fill, shape)
                 .then(
                     if (join == RaftButtonJoin.None) {
-                        Modifier.raftPressOverlay(pressed, look.pressOverlay, RaftRadius.Control)
+                        Modifier.raftPressOverlay(pressed, look.pressOverlay, radius)
                     } else {
                         Modifier.background(if (pressed) look.pressOverlay else Color.Transparent, shape)
                     },
                 )
                 .then(
                     if (join == RaftButtonJoin.Start) {
-                        Modifier.raftBorderWithoutStartEdge(RaftStroke.Control, look.edge, RaftRadius.Control)
+                        Modifier.raftBorderWithoutStartEdge(RaftStroke.Control, look.edge, radius)
                     } else {
                         Modifier.border(RaftStroke.Control, look.edge, shape)
                     },
@@ -328,13 +330,26 @@ internal enum class RaftButtonJoin {
     Start,
 }
 
-internal fun RaftButtonJoin.shape(): Shape {
-    val r = RaftRadius.Control
-    return when (this) {
+internal fun RaftButtonJoin.shape(r: Dp = RaftRadius.Control): Shape =
+    when (this) {
         RaftButtonJoin.None -> RoundedCornerShape(r)
         RaftButtonJoin.End -> RoundedCornerShape(topStart = r, bottomStart = r, topEnd = 0.dp, bottomEnd = 0.dp)
         RaftButtonJoin.Start -> RoundedCornerShape(topStart = 0.dp, bottomStart = 0.dp, topEnd = r, bottomEnd = r)
     }
+
+/** Whether the buttons here sit inside another component's frame ([RaftEmbeddedControls]). */
+internal val LocalRaftEmbeddedControl = staticCompositionLocalOf { false }
+
+/**
+ * raft-design Shape > Inside a frame: the buttons in [content] are embedded in another
+ * component's frame (the end buttons of a field, the composer's buttons and its send
+ * button, the corner action of a card or of media) and wear `radius-chip` instead of
+ * `radius-control`, so one kind of small button has one corner wherever it sits. The frame
+ * keeps its own radius; place the buttons 6dp inside its outer edge and 6dp apart.
+ */
+@Composable
+fun RaftEmbeddedControls(content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalRaftEmbeddedControl provides true, content = content)
 }
 
 /**

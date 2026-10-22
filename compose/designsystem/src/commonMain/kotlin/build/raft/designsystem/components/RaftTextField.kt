@@ -61,6 +61,15 @@ object RaftTextFieldDefaults {
 
     /** An icon in an input-group addon (`size-4.5`). */
     val AddonIconSize: Dp = 18.dp
+
+    /**
+     * `--control-embedded-size`: a chip or a button embedded in a field, the field's height
+     * less [EmbeddedInset] above and below, so the field keeps its height.
+     */
+    val EmbeddedControlSize: Dp = 32.dp
+
+    /** `--control-embedded-inset`: how far an embedded chip or button sits inside the field's outer edge, and from its sibling. */
+    val EmbeddedInset: Dp = 6.dp
 }
 
 /** Resolved colours of a field box (input, input group, textarea) in one state. */
@@ -138,8 +147,8 @@ internal fun raftFieldBoxLook(enabled: Boolean, invalid: Boolean, colors: RaftUi
  *
  * [trailingAction] is InputGroup's button addon at the very end: a [RaftTextFieldAction]
  * (show the password, copy) or [RaftTextFieldClearAction] (show it once there is text). It
- * keeps its own 28dp size, 6dp from the border (its icon lines up with a [trailing] icon's),
- * after any [suffix] or [trailing] icon.
+ * is embedded in the field (raft-design Shape > Inside a frame): 32dp, 6dp inside the field's
+ * outer edge on every side, after any [suffix] or [trailing] icon.
  */
 @Composable
 fun RaftTextField(
@@ -498,10 +507,10 @@ private fun RaftInputBox(
 ) {
     // input-group.tsx: an addon is `px-3`, trimmed to 8dp (icon) / 2dp (text) on the
     // control's side, and the control drops its own padding on that side. All of it sits
-    // inside the 1dp border. A button addon at the end keeps 6dp to the border, so its 16dp
-    // icon (centred in 28dp) lines up with an 18dp icon addon's 12dp edge.
+    // inside the border. A button addon at the end is embedded in the field: 6dp inside its
+    // outer edge (`--control-embedded-inset`), so the 32dp button leaves 6dp above and below too.
     val edge = 12.dp + RaftStroke.Field
-    val actionEdge = 6.dp + RaftStroke.Field
+    val actionEdge = RaftTextFieldDefaults.EmbeddedInset
     val hasAction = trailingAction != null
     // Before a button addon, the addons on its side end 4dp from it.
     val endEdge = if (hasAction) 4.dp else edge
@@ -576,14 +585,15 @@ private fun RaftInputBox(
 }
 
 /**
- * raft-ui InputGroup button addon: a 28dp square (control radius) inside a field's box, for
- * the field's own action, at the end of a [RaftTextField] (`trailingAction`). [label] names
- * it in Title Case ("Show Password", "Copy Invite Link"); [icon] is drawn at 16dp in its ink.
+ * raft-ui InputGroup button addon: a 32dp square inside a field's box, for the field's own
+ * action, at the end of a [RaftTextField] (`trailingAction`). Embedded in the field's frame, it
+ * wears `radius-chip` (raft-design Shape > Inside a frame). [label] names it in Title Case
+ * ("Show Password", "Copy Invite Link"); [icon] is drawn at 16dp in its ink.
  *
  * - Rest: `foreground-muted` (combobox.tsx `clear`); pressed or hovered: `fill-pressed`
  *   under `foreground`. Keyboard focus: the focus ring.
  * - Disabled (by default when its [RaftField] is): `foreground-disabled`, no press.
- * - Its hit area is its 28dp: it is not widened, as it would take taps from the text.
+ * - Its hit area reaches 44dp, the field's height.
  */
 @Composable
 fun RaftTextFieldAction(
@@ -609,10 +619,10 @@ fun RaftTextFieldAction(
         }
     Box(
         modifier
-            .size(28.dp)
-            .raftFocusRing(focused, RaftRadius.Control, colors)
-            .raftPressOverlay(active, raftPressOverlayColor(RaftPressSurface.Paper, colors), RaftRadius.Control)
-            // 28dp drawn, 44dp to the touch (raft-design Spacing: draw small, hit 44).
+            .size(RaftTextFieldDefaults.EmbeddedControlSize)
+            .raftFocusRing(focused, RaftRadius.Chip, colors)
+            .raftPressOverlay(active, raftPressOverlayColor(RaftPressSurface.Paper, colors), RaftRadius.Chip)
+            // 32dp drawn, 44dp to the touch (raft-design Spacing: draw small, hit 44).
             .raftTouchTarget(enabled, source, onClick)
             .clickable(interactionSource = source, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics { contentDescription = label },

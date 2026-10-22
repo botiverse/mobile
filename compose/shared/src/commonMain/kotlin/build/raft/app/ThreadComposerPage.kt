@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftEmbeddedControls
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.app.base.Utils
@@ -89,9 +90,11 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.sp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.IPagerEventObserver
@@ -119,7 +122,7 @@ private val ThreadComposerVisualInputWidth = 321.dp
 // raft-ui `ComposerInput` `min-h-6`.
 private val ThreadComposerTextFieldMinHeight = 24.dp
 private val ThreadComposerTextFieldMaxHeight = 80.dp
-// raft-ui `ComposerIconButton` / `ComposerSubmit size="icon-sm"`: 32dp control-radius boxes with
+// raft-ui `ComposerIconButton` / `ComposerSubmit size="icon-sm"`: 32dp chip-radius boxes with
 // an 18dp glyph (`iconMd`, whose `after:-inset-1.5` hit area reaches 44dp; Compose's minimum
 // touch target extends the pointer bounds the same way).
 private val ThreadComposerToolbarMinHeight = 32.dp
@@ -128,9 +131,10 @@ private val ThreadComposerIconSize = 18.dp
 private val ThreadComposerActionShadowOffset = 2.dp
 // raft-ui `ComposerActions`: `gap-2`. Raft chrome casts no offset shadow, so this is the visible gap.
 private val ThreadComposerLeftActionGroupSpacing = 8.dp
-// raft-ui `ComposerIconButton`: the first tool is pulled `ml-[-5px]` so its glyph, not its empty
-// box, lines up with the text typed above it.
-private val ThreadComposerLeadingActionPull = 5.dp
+// raft-ui `Composer`: the card's padding round the text, and `--control-embedded-inset`, how far
+// the toolbar's buttons sit inside the card's outer edge (raft-design Shape > Inside a frame).
+private val ThreadComposerCardPadding = 8.dp
+private val ThreadComposerEmbeddedInset = 6.dp
 private const val ThreadComposerAttachmentTrayMaxWidthDp = 321
 private const val ThreadComposerAttachmentImageTileSizeDp = 64
 private const val ThreadComposerAttachmentFileTileWidthDp = 128
@@ -2770,7 +2774,12 @@ internal fun ThreadComposerContentLeaf(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) { composerFocusRequester.requestFocus() }
-                        .padding(8.dp),
+                        .padding(
+                            start = ThreadComposerCardPadding,
+                            top = ThreadComposerCardPadding,
+                            end = ThreadComposerCardPadding,
+                            bottom = ThreadComposerEmbeddedInset
+                        ),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     // Clear retires the logical callback session, not the native editor view. A
@@ -2894,108 +2903,110 @@ internal fun ThreadComposerContentLeaf(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    Row(
-                        modifier = Modifier.fillMaxWidth().heightIn(min = ThreadComposerToolbarMinHeight),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
+                    // raft-ui `ComposerToolbar`: its buttons are embedded in the composer's frame.
+                    RaftEmbeddedControls {
                         Row(
-                            modifier =
-                                Modifier
-                                    .heightIn(min = ThreadComposerToolbarMinHeight)
-                                    .offset(x = -ThreadComposerLeadingActionPull),
+                            modifier = Modifier.composerToolbarBleed().fillMaxWidth().heightIn(min = ThreadComposerToolbarMinHeight),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(ThreadComposerLeftActionGroupSpacing)
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            if (state.attachmentActionsEnabled) {
-                                // Gallery / camera / file, in that order (artin, task #1096). Camera
-                                // used to exist only as this button's long-press, which meant nobody
-                                // found it; the long-press stays so existing muscle memory keeps
-                                // working, and the dedicated button is what makes it discoverable.
-                                ComposerIconButton(
-                                    icon = RaftLucideIconName.ImagePlus,
-                                    enabled = composerEnabled,
-                                    contentDescription = stringResource(MR.strings.composer_add_image),
-                                    longClickLabel = stringResource(MR.strings.composer_take_photo),
-                                    onLongClick = {
-                                        onEvent(threadComposerImageAction(longPress = true), null, null, null)
-                                    },
-                                    onClick = {
-                                        onEvent(threadComposerImageAction(longPress = false), null, null, null)
-                                    }
-                                )
-                                ComposerIconButton(
-                                    icon = RaftLucideIconName.Camera,
-                                    enabled = composerEnabled,
-                                    contentDescription = stringResource(MR.strings.composer_take_photo),
-                                    onClick = {
-                                        // longPress = true is what makes this the camera: it emits
-                                        // captureImage, so capture keeps its existing confirm/cancel
-                                        // editor step and nothing reaches the pending tray until the
-                                        // user confirms. Flipping it to false silently turns this
-                                        // button into a second gallery entry.
-                                        //
-                                        // No test covers this call site. commonTest cannot drive
-                                        // Compose and the composer has no visual host, so nothing in
-                                        // the repo can reach ComposerIconButton. The helper's mapping
-                                        // is tested (ThreadPayloadTest), but the argument passed here
-                                        // is not -- do not read that test as guarding this line.
-                                        onEvent(threadComposerImageAction(longPress = true), null, null, null)
-                                    }
-                                )
-                                ComposerIconButton(
-                                    icon = RaftLucideIconName.Paperclip,
-                                    enabled = composerEnabled,
-                                    contentDescription = stringResource(MR.strings.composer_attach_file),
-                                    onClick = { onEvent("attachFile", null, null, null) }
-                                )
-                            }
-                        }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            if (surface.showTaskButton) {
-                                Row(
-                                    modifier = Modifier
-                                        .clickable(enabled = composerEnabled) {
-                                            val newValue = !asTask
-                                            if (onEditorAsTaskChange(editorSessionId, newValue)) {
-                                                onEvent("toggleAsTask", null, newValue, null)
-                                            }
-                                        }
-                                        .heightIn(min = 18.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    RaftAppCheckbox(
-                                        checked = asTask,
-                                        onCheckedChange = { checked ->
-                                            if (onEditorAsTaskChange(editorSessionId, checked)) {
-                                                onEvent("toggleAsTask", null, checked, null)
-                                            }
-                                        },
+                            Row(
+                                modifier =
+                                    Modifier
+                                        .heightIn(min = ThreadComposerToolbarMinHeight),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(ThreadComposerLeftActionGroupSpacing)
+                            ) {
+                                if (state.attachmentActionsEnabled) {
+                                    // Gallery / camera / file, in that order (artin, task #1096). Camera
+                                    // used to exist only as this button's long-press, which meant nobody
+                                    // found it; the long-press stays so existing muscle memory keeps
+                                    // working, and the dedicated button is what makes it discoverable.
+                                    ComposerIconButton(
+                                        icon = RaftLucideIconName.ImagePlus,
                                         enabled = composerEnabled,
-                                        size = 14.dp
+                                        contentDescription = stringResource(MR.strings.composer_add_image),
+                                        longClickLabel = stringResource(MR.strings.composer_take_photo),
+                                        onLongClick = {
+                                            onEvent(threadComposerImageAction(longPress = true), null, null, null)
+                                        },
+                                        onClick = {
+                                            onEvent(threadComposerImageAction(longPress = false), null, null, null)
+                                        }
                                     )
-                                    // raft-ui `ComposerToolbarLabel`: text-callout (14/20) semibold on
-                                    // foreground, foreground-disabled when the composer is off.
-                                    val labelColor = if (composerEnabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled
-                                    Text(
-                                        text = stringResource(MR.strings.thread_composer_as_task),
-                                        style =
-                                            RaftType.Caption
-                                                .withRaftFontWeight(FontWeight.SemiBold)
-                                                .copy(fontSize = 14.sp, lineHeight = 20.sp, color = labelColor),
-                                        color = labelColor
+                                    ComposerIconButton(
+                                        icon = RaftLucideIconName.Camera,
+                                        enabled = composerEnabled,
+                                        contentDescription = stringResource(MR.strings.composer_take_photo),
+                                        onClick = {
+                                            // longPress = true is what makes this the camera: it emits
+                                            // captureImage, so capture keeps its existing confirm/cancel
+                                            // editor step and nothing reaches the pending tray until the
+                                            // user confirms. Flipping it to false silently turns this
+                                            // button into a second gallery entry.
+                                            //
+                                            // No test covers this call site. commonTest cannot drive
+                                            // Compose and the composer has no visual host, so nothing in
+                                            // the repo can reach ComposerIconButton. The helper's mapping
+                                            // is tested (ThreadPayloadTest), but the argument passed here
+                                            // is not -- do not read that test as guarding this line.
+                                            onEvent(threadComposerImageAction(longPress = true), null, null, null)
+                                        }
+                                    )
+                                    ComposerIconButton(
+                                        icon = RaftLucideIconName.Paperclip,
+                                        enabled = composerEnabled,
+                                        contentDescription = stringResource(MR.strings.composer_attach_file),
+                                        onClick = { onEvent("attachFile", null, null, null) }
                                     )
                                 }
                             }
-                            ComposerSendButton(
-                                enabled = canSend,
-                                sending = state.composerMode == "sending" || state.composerMode == "uploading"
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                sendComposerMessage()
+                                if (surface.showTaskButton) {
+                                    Row(
+                                        modifier = Modifier
+                                            .clickable(enabled = composerEnabled) {
+                                                val newValue = !asTask
+                                                if (onEditorAsTaskChange(editorSessionId, newValue)) {
+                                                    onEvent("toggleAsTask", null, newValue, null)
+                                                }
+                                            }
+                                            .heightIn(min = 18.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        RaftAppCheckbox(
+                                            checked = asTask,
+                                            onCheckedChange = { checked ->
+                                                if (onEditorAsTaskChange(editorSessionId, checked)) {
+                                                    onEvent("toggleAsTask", null, checked, null)
+                                                }
+                                            },
+                                            enabled = composerEnabled,
+                                            size = 14.dp
+                                        )
+                                        // raft-ui `ComposerToolbarLabel`: text-callout (14/20) semibold on
+                                        // foreground, foreground-disabled when the composer is off.
+                                        val labelColor = if (composerEnabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled
+                                        Text(
+                                            text = stringResource(MR.strings.thread_composer_as_task),
+                                            style =
+                                                RaftType.Caption
+                                                    .withRaftFontWeight(FontWeight.SemiBold)
+                                                    .copy(fontSize = 14.sp, lineHeight = 20.sp, color = labelColor),
+                                            color = labelColor
+                                        )
+                                    }
+                                }
+                                ComposerSendButton(
+                                    enabled = canSend,
+                                    sending = state.composerMode == "sending" || state.composerMode == "uploading"
+                                ) {
+                                    sendComposerMessage()
+                                }
                             }
                         }
                     }
@@ -3005,6 +3016,18 @@ internal fun ThreadComposerContentLeaf(
     }
     }
 }
+
+/**
+ * The toolbar reaches past the card's [ThreadComposerCardPadding] on both sides, so its first
+ * and last buttons sit [ThreadComposerEmbeddedInset] inside the card's outer edge, as far as
+ * the bottom one (raft-ui `ComposerToolbar` `mx-[calc(var(--control-embedded-inset)-…)]`).
+ */
+private fun Modifier.composerToolbarBleed(): Modifier =
+    layout { measurable, constraints ->
+        val bleed = (ThreadComposerCardPadding - ThreadComposerEmbeddedInset).roundToPx()
+        val placeable = measurable.measure(constraints.offset(horizontal = bleed * 2))
+        layout(placeable.width - bleed * 2, placeable.height) { placeable.place(-bleed, 0) }
+    }
 
 internal fun composerSuggestionPanelHeight(
     panelState: ThreadComposerSuggestionPanelState,
