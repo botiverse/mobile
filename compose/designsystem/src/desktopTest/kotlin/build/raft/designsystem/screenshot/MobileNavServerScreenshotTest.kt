@@ -48,12 +48,13 @@ import kotlin.test.Test
 
 /**
  * raft-ui MobileNav server tab (raft-design #712, design D1a): the phone bar with the server
- * as its last tab (never selected; another server unread; a long name cut; the menu open) and
+ * as its last tab (never selected; another server unread; a long name cut; the popover open) and
  * the wide rail's compact entry; and the compact server popover (raft-design #712 59a248f9, Kirby 10-22):
  * servers at the option height with the slug under the name, the pages as one row of
  * icon-over-label destinations (Computers dotted), the footer rows, on a 375dp phone above the
  * bar, at most 60% of the screen. The
- * bar's other tabs use stand-in glyphs: app icons are the app's, not this module's.
+ * icons are the app's own Lucide paths ([AppIcon]): Members, Computers and Settings wear the
+ * users, monitor and gear icons of the old More rows.
  */
 class MobileNavServerScreenshotTest {
     private val appearances = listOf(RaftAppearance.Light, RaftAppearance.Dark)
@@ -144,21 +145,25 @@ class MobileNavServerScreenshotTest {
                         }
                         RaftMobileNavServerPopoverSeparator()
                         RaftMobileNavServerPopoverGroup {
-                            listOf("Join Community", "Switch or Create Server", "Invite Human").forEach { label ->
-                                RaftMobileNavServerPopoverRow(label = label, onClick = {}, leading = { RaftGlyphIcon(RaftGlyph.Plus) })
+                            listOf(
+                                "Join Community" to AppIcon.Globe,
+                                "Switch or Create Server" to AppIcon.Plus,
+                                "Invite Human" to AppIcon.UserPlus,
+                            ).forEach { (label, icon) ->
+                                RaftMobileNavServerPopoverRow(label = label, onClick = {}, leading = { AppIconImage(icon, 16.dp, RaftTheme.colors.foreground) })
                             }
                         }
                         RaftMobileNavServerPopoverSeparator()
                         RaftMobileNavServerPopoverDestinations {
                             listOf(
-                                Triple("Members", RaftGlyph.AtSign, false),
-                                Triple("Computers", RaftGlyph.Info, true),
-                                Triple("Settings", RaftGlyph.Hash, false),
+                                Triple("Members", AppIcon.Users, false),
+                                Triple("Computers", AppIcon.Monitor, true),
+                                Triple("Settings", AppIcon.Settings, false),
                             ).forEach { (label, glyph, attention) ->
                                 RaftMobileNavServerPopoverDestination(
                                     label = label,
                                     onClick = {},
-                                    icon = { RaftGlyphIcon(glyph, size = 20.dp) },
+                                    icon = { AppIconImage(glyph, 20.dp) },
                                     attention = attention,
                                     state = state,
                                     key = "page:$label",
@@ -189,16 +194,22 @@ class MobileNavServerScreenshotTest {
             Row(Modifier.fillMaxWidth().fillMaxHeight().padding(top = RaftStroke.Hairline + RaftMobileNavDefaults.TopPadding)) {
                 CompositionLocalProvider(LocalRaftPressedPreview provides false) {
                     listOf(
-                        Triple("Home", RaftGlyph.Hash, true),
-                        Triple("Activity", RaftGlyph.AtSign, false),
-                        Triple("Tasks", RaftGlyph.CircleCheck, false),
-                        Triple("Search", RaftGlyph.Search, false),
+                        Triple("Home", AppIcon.House, true),
+                        Triple("Activity", AppIcon.Activity, false),
+                        Triple("Tasks", AppIcon.SquareCheckBig, false),
+                        Triple("Search", null, false),
                     ).forEach { (label, glyph, selected) ->
                         RaftMobileNavItem(
                             label = label,
                             selected = selected,
                             onClick = {},
-                            icon = { ink -> RaftGlyphIcon(glyph, size = RaftMobileNavDefaults.IconSize, color = ink) },
+                            icon = { ink ->
+                                if (glyph == null) {
+                                    RaftGlyphIcon(RaftGlyph.Search, size = RaftMobileNavDefaults.IconSize, color = ink)
+                                } else {
+                                    AppIconImage(glyph, RaftMobileNavDefaults.IconSize, ink)
+                                }
+                            },
                             modifier = Modifier.weight(1f).fillMaxHeight(),
                         )
                     }
