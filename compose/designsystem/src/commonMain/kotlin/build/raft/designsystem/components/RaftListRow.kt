@@ -32,6 +32,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
@@ -128,7 +130,8 @@ fun RaftListRowGroup(
 /**
  * raft-ui 0.8.0 ListRow (and the AvatarListRow of the web pages): one row of a list, the
  * whole row the target. `px-4 py-3`, gap 12, items centred ([alignTop] puts the leading
- * and trailing parts on the first line, raft `align=start`).
+ * and trailing parts on the first line, raft `align=start`). A [RaftListRowVariant.Plain] row
+ * with a [description] centres them on the title's first line (raft-ui 0.21).
  *
  * - [leading]: a 35dp avatar or tile, or a 20dp icon (drawn in ink-3).
  * - Text column: [title] 16/24 semibold on one line (bold when [RaftRowTone.Unread]) with
@@ -184,7 +187,12 @@ fun RaftListRow(
     val focused = interactive && enabled && isFocused
     val ruleStart = variant.ruleStart
     val showBadge = badge != null && enabled && !selected
-    val align = if (alignTop) Alignment.Top else Alignment.CenterVertically
+    // raft-ui 0.21: a plain row with a description centres its ends on the title's first line,
+    // not on the title and description together (Alignment: a control and its label).
+    val endsOnTitleLine = variant == RaftListRowVariant.Plain && description != null && !alignTop
+    val align = if (alignTop || endsOnTitleLine) Alignment.Top else Alignment.CenterVertically
+    val titleLine = raftLineHeightDp(typography.body.lineHeight, typography.body.fontSize, LocalDensity.current)
+    val endModifier = if (endsOnTitleLine) Modifier.raftCenterOnLine(titleLine) else Modifier
     val surface = if (selected) colors.infoSoft.compositeOver(RaftTheme.surfaceColor) else RaftTheme.surfaceColor
     CompositionLocalProvider(
         LocalRaftListRowInks provides inks,
@@ -217,7 +225,7 @@ fun RaftListRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = align,
         ) {
-            if (leading != null) Box(contentAlignment = Alignment.Center) { leading() }
+            if (leading != null) Box(endModifier, contentAlignment = Alignment.Center) { leading() }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (alignTop) 4.dp else 2.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     RaftText(
@@ -258,11 +266,21 @@ fun RaftListRow(
                 }
             }
             if (trailing != null) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically, content = trailing)
+                Row(endModifier, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically, content = trailing)
             }
         }
     }
 }
+
+/**
+ * Centres the element on a [line] tall line at the top of its row, keeping its own size: a
+ * taller one (a 30dp switch on a 24dp line) reaches above the line by half the difference.
+ */
+private fun Modifier.raftCenterOnLine(line: Dp): Modifier =
+    layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        layout(placeable.width, placeable.height) { placeable.place(0, (line.roundToPx() - placeable.height) / 2) }
+    }
 
 /** Machine-written facts in Space Mono 12 tabular, ink-3: the time, a gray count. */
 @Composable

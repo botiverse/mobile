@@ -80,6 +80,8 @@ import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftMenuSeparator
 import build.raft.designsystem.components.RaftSelect
 import build.raft.designsystem.components.RaftSwitch
+import build.raft.designsystem.components.RaftListRowVariant
+import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftTab
 import build.raft.designsystem.components.RaftTabStrip
 import build.raft.designsystem.components.RaftTabs
@@ -172,6 +174,28 @@ class RaftInteractiveSemanticsTest {
             assertEquals(plain, closable, 0.5f, "the close button overhangs the line instead of growing the banner")
             onNodeWithContentDescription("Dismiss").performClick()
             assertTrue(dismissed, "the close button calls onDismiss")
+        }
+
+    /** raft-ui 0.21: a plain row with a description centres its switch on the title's first line. */
+    @Test
+    fun aPlainRowWithADescriptionCentresItsEndsOnTheTitle() =
+        runComposeUiTest {
+            setContent(
+                themed {
+                    Box(Modifier.width(360.dp)) {
+                        RaftListRow(
+                            "Desktop notifications",
+                            variant = RaftListRowVariant.Plain,
+                            description = "Get a notification for mentions and replies, even when the app is in the background.",
+                            wrapDescription = true,
+                            trailing = { RaftSwitch(true, {}, modifier = Modifier.testTag("switch"), label = "Desktop notifications") },
+                        )
+                    }
+                },
+            )
+            val title = onNodeWithText("Desktop notifications", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val switch = onNodeWithTag("switch", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            assertEquals(title.center.y, switch.center.y, 1f, "the switch sits on the title's line, not the middle of the row")
         }
 
     @Test

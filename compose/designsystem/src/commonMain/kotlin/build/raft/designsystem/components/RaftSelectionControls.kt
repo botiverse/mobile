@@ -135,10 +135,9 @@ private val RaftEaseSlide = CubicBezierEasing(0.32f, 0.72f, 0f, 1f)
  * value, not "you are here". Disabled greys it. Keyboard focus rings the box.
  *
  * Pass [onCheckedChange] = null when a parent row or card handles the tap (then it is
- * only the indicator). The box is exactly 20dp: raft-ui widens the hit area to 44 x 36dp
- * with an overhanging `::after`, which Compose foundation can't do without taking layout
- * room, so put a lone checkbox in a [RaftCheckboxRow] (the whole row toggles) or leave
- * room around it.
+ * only the indicator). The box is exactly 20dp; on its own its touch target reaches 44dp
+ * around it without taking layout room (raft-ui 0.21), so leave that room free. In a
+ * [RaftCheckboxRow] or a field item the whole row toggles instead.
  */
 @Composable
 fun RaftCheckbox(
@@ -153,16 +152,19 @@ fun RaftCheckbox(
     val interactive = onCheckedChange != null
     val label = LocalRaftFieldState.current.label
     RaftRegisterFieldItemTap(if (onCheckedChange != null && enabled) ({ onCheckedChange(!checked) }) else null)
+    val standalone = LocalRaftFieldItemTarget.current == null
     val toggle =
         if (onCheckedChange != null) {
-            Modifier.triStateToggleable(
-                state = raftToggleableState(checked, indeterminate),
-                interactionSource = source,
-                indication = null,
-                enabled = enabled,
-                role = Role.Checkbox,
-                onClick = { onCheckedChange(!checked) },
-            )
+            Modifier
+                .then(if (standalone) Modifier.raftTouchTarget(enabled, source, { onCheckedChange(!checked) }) else Modifier)
+                .triStateToggleable(
+                    state = raftToggleableState(checked, indeterminate),
+                    interactionSource = source,
+                    indication = null,
+                    enabled = enabled,
+                    role = Role.Checkbox,
+                    onClick = { onCheckedChange(!checked) },
+                )
         } else {
             Modifier
         }
@@ -253,7 +255,8 @@ private fun RaftCheckboxBox(
  * raft-ui 0.8.0 RadioGroup item: a 20dp circle with a 1.5dp `line-strong` edge and, when
  * [selected], an 8dp ink dot. One choice among a few that are all visible; put the radios
  * of one question in a [RaftRadioGroup]. As with [RaftCheckbox], [onClick] = null makes
- * it only the indicator (inside an option card or a [RaftRadioRow]).
+ * it only the indicator (inside an option card or a [RaftRadioRow]). On its own its touch
+ * target reaches 44dp around the circle, as a [RaftCheckbox]'s does.
  */
 @Composable
 fun RaftRadio(
@@ -269,6 +272,7 @@ fun RaftRadio(
     val select =
         if (onClick != null) {
             Modifier
+                .then(if (LocalRaftFieldItemTarget.current == null) Modifier.raftTouchTarget(enabled, source, onClick) else Modifier)
                 .selectable(selected, source, indication = null, enabled = enabled, role = Role.RadioButton, onClick = onClick)
                 .then(if (label != null) Modifier.semantics { contentDescription = label } else Modifier)
         } else {
@@ -369,7 +373,7 @@ fun RaftRadioGroup(modifier: Modifier = Modifier, content: @Composable ColumnSco
 
 /**
  * A checkbox and its label as one tappable row (the page hand-off's choice row, raft-ui
- * FieldItem): at least 44dp tall, 12dp vertical padding, the box 12dp before the text and
+ * FieldItem): at least 44dp tall, 12dp vertical padding, the box 8dp before the text and
  * centred on the label's first line (Alignment: a control and its label), whether the
  * label wraps or a description follows. [label] is
  * `text-subhead` semibold (sentence case), [description] `text-footnote`
@@ -445,7 +449,7 @@ private fun RaftChoiceRow(
     val labelStyle = typography.subhead.copy(fontWeight = FontWeight.SemiBold)
     RaftFirstLineRow(
         lineHeight = raftLineHeightDp(labelStyle.lineHeight, labelStyle.fontSize, LocalDensity.current),
-        gap = 12.dp,
+        gap = 8.dp,
         modifier = modifier.fillMaxWidth().heightIn(min = 44.dp).padding(vertical = 12.dp),
         control = control,
     ) {
