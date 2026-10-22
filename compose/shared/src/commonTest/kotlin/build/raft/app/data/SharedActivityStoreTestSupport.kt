@@ -142,7 +142,9 @@ internal fun activityStore(
 internal class FakeInboxRepository(
     private val initialSnapshots: List<InboxSnapshot>,
     private val moreSnapshots: List<InboxSnapshot> = emptyList(),
-    private val failDone: Boolean = false
+    private val failDone: Boolean = false,
+    /** Suspends `loadInitial` call number N (1-based) until it returns: a load still on the network. */
+    private val beforeInitialLoad: suspend (callNumber: Int) -> Unit = {}
 ) : InboxRepository {
     var initialLoadCount = 0
     var moreLoadCount = 0
@@ -156,14 +158,16 @@ internal class FakeInboxRepository(
         serverId: ServerId,
         filter: InboxFilter,
         limit: Int
-    ): DataResult<InboxSnapshot> =
-        DataResult.Content(
+    ): DataResult<InboxSnapshot> {
+        val snapshot =
             initialSnapshots.getOrElse(initialLoadCount++) { initialSnapshots.last() }
                 .also {
                     initialLoadServerIds += serverId
                     initialLoadLimits += limit
                 }
-        )
+        beforeInitialLoad(initialLoadCount)
+        return DataResult.Content(snapshot)
+    }
 
     override suspend fun loadMore(
         serverId: ServerId,

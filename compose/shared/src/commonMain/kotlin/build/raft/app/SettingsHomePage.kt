@@ -3285,12 +3285,13 @@ private fun RaftAppShellReadyContent(
                 searchSavedState = homeSearchSavedViewModel.state,
                 dispatchHome = homeStore::dispatch,
                 dispatchHomeVisibleRefresh = homeStore::dispatchVisibleForegroundRefresh,
-                acceptHome = { intent ->
-                    homeStore.accept(intent)
-                    homeStore.awaitRealtimeSettled()
-                },
+                // Live realtime applies run under the realtime authority registry lock: apply the
+                // patch and return. A Home/Activity load the event starts (or one already in flight)
+                // keeps running in its store scope; waiting for it here held every later realtime
+                // event behind Home bootstraps (feedback bc6e392e: up to 17 s).
+                acceptHome = homeStore::accept,
                 dispatchActivity = homeActivityStore::dispatch,
-                acceptActivityRealtime = homeActivityStore::acceptRealtime,
+                acceptActivityRealtime = homeActivityStore::applyLiveRealtime,
                 dispatchSearchSaved = homeSearchSavedViewModel::dispatch,
                 refreshActivitySummary = { serverId, reason ->
                     serverId
