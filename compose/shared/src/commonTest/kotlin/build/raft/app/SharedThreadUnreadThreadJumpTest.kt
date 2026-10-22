@@ -96,6 +96,11 @@ class SharedThreadUnreadThreadJumpTest {
             assertEquals("m2", store.state.value.payload.focusedMessageId)
             assertEquals("chat", store.state.value.payload.selectedTab)
             assertTrue(repository.parentRequests.isEmpty())
+            // Task #73: this focus request is marked as the pill's, so it lands on the replies block.
+            assertEquals(
+                store.state.value.payload.focusedMessageRequestNonce,
+                store.state.value.unreadThreadJumpFocusNonce,
+            )
         } finally {
             scopeJob.cancelAndJoin()
         }
@@ -120,6 +125,33 @@ class SharedThreadUnreadThreadJumpTest {
             assertEquals("p-old", payload.focusedMessageId)
             assertNotEquals(nonceBefore, payload.focusedMessageRequestNonce)
             assertEquals("chat", payload.selectedTab)
+            assertEquals(payload.focusedMessageRequestNonce, store.state.value.unreadThreadJumpFocusNonce)
+        } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun anOrdinaryFocusIsNotMarkedAsThePillsJump() = runTest {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
+        val store = SharedThreadStore(dataSource = dataSource(repository()), scope = scope, initialPayload = channelWindow())
+
+        try {
+            store.dispatch(SharedThreadIntent.JumpToMessage("m2", switchToTab = "chat"))
+            advanceUntilIdle()
+            val jumpNonce = store.state.value.unreadThreadJumpFocusNonce
+            // A later link / search focus gets a new nonce and keeps the top-aligned placement.
+            store.dispatch(SharedThreadIntent.FocusMessage("m1"))
+            advanceUntilIdle()
+
+            val payload = store.state.value.payload
+            assertEquals("m1", payload.focusedMessageId)
+            assertEquals(jumpNonce, store.state.value.unreadThreadJumpFocusNonce)
+            assertEquals(
+                LazyViewportAnchorPlacement.Focused,
+                threadFocusedAnchorBasePlacement(payload.focusedMessageRequestNonce, store.state.value.unreadThreadJumpFocusNonce),
+            )
         } finally {
             scopeJob.cancelAndJoin()
         }

@@ -46,7 +46,14 @@ internal enum class LazyViewportAnchorFallback {
 internal enum class LazyViewportAnchorPlacement {
     ExactOffset,
     Focused,
-    RenderedBottom
+    RenderedBottom,
+
+    /**
+     * Like [Focused], but lands the row's bottom (a thread parent's replies summary block) in
+     * view with a margin above the bottom edge (`threadRepliesFocusedItemScrollOffset`). Only the
+     * unread-thread pill's focus request uses it (artin task #73).
+     */
+    FocusedThreadReplies
 }
 
 internal enum class LazyViewportMutation {
