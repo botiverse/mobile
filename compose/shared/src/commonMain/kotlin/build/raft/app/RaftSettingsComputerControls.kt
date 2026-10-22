@@ -118,7 +118,7 @@ internal fun RaftComputerCommandLine(
                     onClick = { onCopy(command) },
                     tooltip = copyLabel,
                     variant = RaftButtonVariant.Ghost,
-                    size = RaftIconButtonSize.Xs,
+                    size = RaftIconButtonSize.Md,
                 ) {
                     RaftComputersIcon(RaftLucideIconName.Copy)
                 }
@@ -580,7 +580,7 @@ internal fun RaftComputerRecoveryGuideCard(context: RaftComputerControlsContext)
                         stringResource(MR.strings.settings_computers_recovery_guide_show)
                     },
                 variant = RaftButtonVariant.Ghost,
-                size = RaftIconButtonSize.Xs,
+                size = RaftIconButtonSize.Md,
             ) {
                 RaftComputersIcon(if (open) RaftLucideIconName.ChevronDown else RaftLucideIconName.ChevronRight)
             }

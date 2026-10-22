@@ -59,7 +59,6 @@ import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
-import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftCardVariant
 import build.raft.designsystem.components.RaftDescriptionList
@@ -612,7 +611,7 @@ class RaftDisplaySemanticsTest {
             assertEquals(listOf("RaftIconButton needs a name: pass tooltip or contentDescription"), reports.distinct())
         }
 
-    /** A 24dp button takes a tap 8dp above its box (inside the 44dp target). */
+    /** The sidebar section control's 28dp button takes a tap 6dp above its box (inside the 44dp target). */
     @Test
     fun aSmallIconButtonTakesTapsInItsWidenedTarget() =
         runComposeUiTest {
@@ -620,12 +619,12 @@ class RaftDisplaySemanticsTest {
             setContent(
                 themed {
                     Column(Modifier.padding(20.dp)) {
-                        RaftIconButton(onClick = { clicks++ }, tooltip = "Remove", size = RaftIconButtonSize.Xs) {}
+                        RaftSidebarSectionAction(RaftGlyph.Plus, tooltip = "Create Channel", onClick = { clicks++ })
                     }
                 },
             )
-            onNodeWithContentDescription("Remove").performTouchInput { click(Offset(centerX, -8.dp.toPx())) }
-            assertEquals(1, clicks, "a tap 8dp above the button clicks it")
+            onNodeWithContentDescription("Create Channel").performTouchInput { click(Offset(centerX, -6.dp.toPx())) }
+            assertEquals(1, clicks, "a tap 6dp above the button clicks it")
         }
 
     /** A read-only value is one 44dp line unless it may wrap; then the box grows by its lines. */

@@ -92,16 +92,11 @@ internal fun raftButtonSizeFor(minHeight: Dp): RaftButtonSize =
     }
 
 /**
- * raft-ui icon-button size for a legacy box size: below 28dp `xs` (24), below 32dp `sm` (28),
- * up to 38dp `icon-md` (32), above it `icon-lg` (44).
+ * raft-ui icon-button size for a legacy box size: up to 38dp `icon-md` (32; raft-ui 0.21 has no
+ * smaller icon button, `icon-xs` and `icon-sm` render as it), above it `icon-lg` (44).
  */
 internal fun raftIconButtonSizeFor(size: Dp): RaftIconButtonSize =
-    when {
-        size > 38.dp -> RaftIconButtonSize.Lg
-        size >= 32.dp -> RaftIconButtonSize.Md
-        size >= 28.dp -> RaftIconButtonSize.Sm
-        else -> RaftIconButtonSize.Xs
-    }
+    if (size > 38.dp) RaftIconButtonSize.Lg else RaftIconButtonSize.Md
 
 /**
  * A filter trigger in a toolbar filter row (Search, Tasks): the design-system

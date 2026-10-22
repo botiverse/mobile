@@ -88,22 +88,11 @@ enum class RaftButtonSize {
 }
 
 /**
- * raft-ui Button icon sizes. raft-ui's `icon-xs` / `icon-sm` are old names of [Md] (32dp);
- * [Sm] and [Xs] are the smaller square buttons raft-ui draws inside its components.
+ * raft-ui Button icon sizes (0.21: `icon-md` and `icon-lg`; `icon-xs` / `icon-sm` are old
+ * names of `icon-md`). There is no smaller icon button: a component that needs a 28dp one
+ * (the sidebar section control) sizes it itself.
  */
 enum class RaftIconButtonSize(internal val box: Dp, internal val glyph: Dp) {
-    /**
-     * 24dp with a 16dp icon: an action inside a card or an attachment row (raft-ui
-     * MessageAttachmentAction, `size-6`). Its touch target is widened to 44dp.
-     */
-    Xs(24.dp, 16.dp),
-
-    /**
-     * 28dp with a 16dp icon: a dense toolbar (raft-ui MessageItemToolbarButton, `size-7`, the
-     * hover toolbar's 28px buttons in Spacing). Its touch target is widened to 44dp.
-     */
-    Sm(28.dp, 16.dp),
-
     /** 32dp with an 18dp icon (36dp / 20dp on the frame). */
     Md(32.dp, 18.dp),
 
@@ -484,9 +473,6 @@ fun RaftButton(
  * - [onLongClick] is a second action on a long press (named [longClickLabel] for screen
  *   readers). The long press then belongs to the action: the tooltip opens only under a
  *   mouse or trackpad pointer.
- * - [RaftIconButtonSize.Sm] (28dp) and [RaftIconButtonSize.Xs] (24dp) widen their touch
- *   target to 44dp without growing (a tap there clicks; a long press needs the box); keep
- *   the space round them free.
  */
 @Composable
 fun RaftIconButton(
@@ -504,10 +490,49 @@ fun RaftIconButton(
     longClickLabel: String? = null,
     icon: @Composable () -> Unit,
 ) {
-    val look = raftButtonLook(variant, enabled, frameless = variant == RaftButtonVariant.Ghost, colors = RaftTheme.colors)
     val onFrame = variant == RaftButtonVariant.OnFrame && size == RaftIconButtonSize.Md
-    val box = if (onFrame) 36.dp else size.box
-    val glyph = if (onFrame) 20.dp else size.glyph
+    RaftSizedIconButton(
+        onClick = onClick,
+        tooltip = tooltip,
+        box = if (onFrame) 36.dp else size.box,
+        glyph = if (onFrame) 20.dp else size.glyph,
+        modifier = modifier,
+        variant = variant,
+        enabled = enabled,
+        loading = loading,
+        loadingLabel = loadingLabel,
+        interactionSource = interactionSource,
+        contentDescription = contentDescription,
+        onLongClick = onLongClick,
+        longClickLabel = longClickLabel,
+        icon = icon,
+    )
+}
+
+/**
+ * A [RaftIconButton] of a size its component sets ([box], with a [glyph] icon) rather than a
+ * [RaftIconButtonSize]: the sidebar section control's 28dp (raft-ui: "28px is not a Button
+ * size"). A box under 32dp widens its touch target to 44dp without growing (a tap there
+ * clicks; a long press needs the box); keep the space round it free.
+ */
+@Composable
+internal fun RaftSizedIconButton(
+    onClick: () -> Unit,
+    tooltip: String?,
+    box: Dp,
+    glyph: Dp,
+    modifier: Modifier = Modifier,
+    variant: RaftButtonVariant = RaftButtonVariant.Default,
+    enabled: Boolean = true,
+    loading: Boolean = false,
+    loadingLabel: String = LocalRaftStrings.current.loading,
+    interactionSource: MutableInteractionSource? = null,
+    contentDescription: String? = tooltip,
+    onLongClick: (() -> Unit)? = null,
+    longClickLabel: String? = null,
+    icon: @Composable () -> Unit,
+) {
+    val look = raftButtonLook(variant, enabled, frameless = variant == RaftButtonVariant.Ghost, colors = RaftTheme.colors)
     val description = contentDescription
     val misuse = LocalRaftMisuse.current
     if (description == null) misuse("RaftIconButton needs a name: pass tooltip or contentDescription")
@@ -525,7 +550,7 @@ fun RaftIconButton(
             interactionSource = interactionSource,
             onLongClick = onLongClick,
             onLongClickLabel = longClickLabel,
-            widenTouchTarget = size == RaftIconButtonSize.Sm || size == RaftIconButtonSize.Xs,
+            widenTouchTarget = box < RaftIconButtonSize.Md.box,
         ) {
             Box(Modifier.size(glyph), contentAlignment = Alignment.Center) { icon() }
         }

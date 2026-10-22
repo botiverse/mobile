@@ -348,11 +348,10 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
   `RaftMessageListJumpPillGroup` square their shared corners, but the keyboard focus ring
   keeps the control radius on all four corners (the web's `shadow-focus` follows the
   squared box). Touch never shows it.
-- **Small icon buttons.** raft-ui 0.10.3 renders `icon-xs` / `icon-sm` as `icon-md` (32dp)
-  and its Button doc lists no smaller size. `RaftIconButtonSize.Sm` (28dp, 16dp icon) and
-  `Xs` (24dp, 16dp icon) are the square buttons raft-ui draws inside components
-  (MessageItemToolbarButton `size-7`, MessageAttachmentAction `size-6`), with the Button
-  variants' looks and a 44dp touch target.
+- **Small icon buttons.** raft-ui 0.21 has two icon-button sizes, `icon-md` (32dp) and
+  `icon-lg` (44dp); `icon-xs` / `icon-sm` are old names of `icon-md`, and "28px is not a
+  Button size". `RaftIconButtonSize` is `Md` and `Lg`. The one 28dp button, the sidebar
+  section control, sizes itself (`RaftSizedIconButton`, internal) with a 44dp touch target.
 - **TextLink inside a sentence** is a span of the sentence's text (`appendRaftTextLink`),
   with a click target over its words on each line it takes (one node for focus and
   screen readers, on its first line), and its underline and focus ring drawn under the
