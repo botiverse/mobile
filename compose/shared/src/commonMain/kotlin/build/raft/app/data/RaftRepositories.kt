@@ -365,6 +365,13 @@ interface MemberRepository {
         priority: DataRequestPriority,
         serverId: ServerId
     ): DataResult<MemberSnapshot>
+
+    /**
+     * Members of [serverId] that are already in memory, or empty. Never touches the network and
+     * never starts a load: callers use it for best-effort enrichment on paths that must not wait
+     * for the (potentially very large) server member list, e.g. the forward pickers' empty query.
+     */
+    fun cachedMembers(serverId: ServerId): List<MemberProfile> = emptyList()
     suspend fun getMemberProfile(
         priority: DataRequestPriority,
         memberId: MemberId,

@@ -151,8 +151,10 @@ class ForwardMessageTargetRepositoryTest {
         assertEquals(ForwardMessageTargetKind.RecentDirectMessage, targets.single().kind)
     }
 
+    // The local fallback no longer turns server members into DM candidates (people are found
+    // by the server search); an in-memory roster only enriches existing DM rows.
     @Test
-    fun fallbackSearchAddsHumanAndAgentCandidatesWithoutDuplicatingExistingDms() {
+    fun fallbackUsesPeerProfilesOnlyToEnrichExistingDmsNeverAsCandidates() {
         val targets =
             fallbackForwardMessageTargets(
                 serverId = serverId,
@@ -166,7 +168,7 @@ class ForwardMessageTargetRepositoryTest {
                         )
                     ),
                 channels = emptyList(),
-                members =
+                peerProfiles =
                     listOf(
                         MemberProfile(
                             id = MemberId("user-ada"),
@@ -181,48 +183,16 @@ class ForwardMessageTargetRepositoryTest {
                             displayName = "Build Agent",
                             handle = "build-agent",
                             kind = MemberKind.Agent
-                        ),
-                        MemberProfile(
-                            id = MemberId("system-1"),
-                            displayName = "System",
-                            handle = "system",
-                            kind = MemberKind.System
                         )
-                    ),
+                    ).associateBy { it.id },
                 query = "a",
                 limit = 10
             )
 
-        assertEquals(listOf("dm-ada", "agent-build"), targets.map { it.id })
+        assertEquals(listOf("dm-ada"), targets.map { it.id })
         assertEquals(ForwardMessageTargetKind.RecentDirectMessage, targets[0].kind)
         assertEquals("pixel:user", targets[0].avatarWireValue)
         assertEquals("AD", targets[0].avatarLabel)
-        assertEquals(ForwardMessageTargetKind.AgentDirectMessageCandidate, targets[1].kind)
-        assertEquals(ForwardMessageTargetRequiredAction.CreateDirectMessage, targets[1].requiredAction)
-    }
-
-    @Test
-    fun fallbackSearchMatchesMemberHandleWhenDisplayNameDoesNotMatch() {
-        val targets =
-            fallbackForwardMessageTargets(
-                serverId = serverId,
-                directMessages = emptyList(),
-                channels = emptyList(),
-                members =
-                    listOf(
-                        MemberProfile(
-                            id = MemberId("agent-build"),
-                            displayName = "Build Agent",
-                            handle = "release-bot",
-                            kind = MemberKind.Agent
-                        )
-                    ),
-                query = "release-bot",
-                limit = 10
-            )
-
-        assertEquals(listOf("agent-build"), targets.map { it.id })
-        assertEquals("@release-bot", targets.single().subtitle)
     }
 
     @Test
@@ -633,6 +603,82 @@ class ForwardMessageTargetRepositoryTest {
         assertEquals(4, index.search("", limit = 60).size)
     }
 
+    @Test
+    fun emptyQueryRecentAndDirectoryNeverReadTheMemberList() = runBlocking {
+        val network = RecordingForwardNetworkClient()
+        network.dmBody = cindyDmBody
+        val members = CountingMemberRepository(RealMemberRepository(authStore(), network))
+        val repository = realRepository(network, memberRepository = members)
+        val peer = ServerId("server-peer")
+
+        val recent = assertIs<DataResult.Content<List<ForwardMessageTarget>>>(repository.recentTargets(peer, limit = 10)).data
+        val directory =
+            assertIs<DataResult.Content<ForwardMessageTargetDirectoryPage>>(
+                repository.directoryTargets(peer, sessionId = "picker-empty-query", pageSize = 30)
+            ).data.items
+
+        assertEquals(0, members.getMembersCalls, "empty query must not wait for the server member list")
+        assertEquals(0, network.calls.count { it.path.endsWith("/members") || it.path == "agents" })
+        for (targets in listOf(recent, directory)) {
+            assertEquals(setOf("dm-1", "joint-peer-projection"), targets.map { it.id }.toSet())
+            val dm = targets.single { it.id == "dm-1" }
+            assertEquals(ForwardMessageTargetKind.RecentDirectMessage, dm.kind)
+            assertEquals("Cindy", dm.title)
+            assertEquals("pixel:cindy-dm", dm.avatarWireValue, "DM row falls back to the DM's own peer avatar")
+            assertEquals(MemberId("user-2"), dm.memberId)
+            assertEquals(ChannelId("dm-1"), dm.channelId)
+            assertTrue(dm.canForwardNow)
+        }
+    }
+
+    @Test
+    fun emptyQueryEnrichesDmRowsFromAnAlreadyLoadedRosterWithoutFetching() = runBlocking {
+        val network = RecordingForwardNetworkClient()
+        network.dmBody = cindyDmBody
+        val members =
+            CountingMemberRepository(
+                RealMemberRepository(authStore(), network),
+                cached =
+                    listOf(
+                        MemberProfile(
+                            id = MemberId("user-2"),
+                            displayName = "Cindy",
+                            handle = "cindy",
+                            kind = MemberKind.Human,
+                            avatarUrl = "pixel:cindy-roster",
+                            avatarLabel = "CR"
+                        ),
+                        MemberProfile(
+                            id = MemberId("user-3"),
+                            displayName = "Dora",
+                            handle = "dora",
+                            kind = MemberKind.Human
+                        )
+                    )
+            )
+        val repository = realRepository(network, memberRepository = members)
+        val peer = ServerId("server-peer")
+
+        val recent = assertIs<DataResult.Content<List<ForwardMessageTarget>>>(repository.recentTargets(peer, limit = 10)).data
+        val directory =
+            assertIs<DataResult.Content<ForwardMessageTargetDirectoryPage>>(
+                repository.directoryTargets(peer, sessionId = "picker-cached-roster", pageSize = 30)
+            ).data.items
+
+        assertEquals(0, members.getMembersCalls)
+        assertEquals(0, network.calls.count { it.path.endsWith("/members") || it.path == "agents" })
+        for (targets in listOf(recent, directory)) {
+            // A cached roster refines DM rows but never adds people to the empty-query list.
+            assertEquals(setOf("dm-1", "joint-peer-projection"), targets.map { it.id }.toSet())
+            val dm = targets.single { it.id == "dm-1" }
+            assertEquals("pixel:cindy-roster", dm.avatarWireValue)
+            assertEquals("CR", dm.avatarLabel)
+        }
+    }
+
+    private val cindyDmBody =
+        """[{"id":"dm-1","name":"dm-1","type":"dm","peerType":"user","peerId":"user-2","peerName":"Cindy","peerAvatarUrl":"pixel:cindy-dm"}]"""
+
     private fun canonicalMessageBody(channelId: String, content: String): String =
         """
             {
@@ -649,29 +695,32 @@ class ForwardMessageTargetRepositoryTest {
             }
         """.trimIndent()
 
+    private fun authStore(): InMemoryRaftAuthSessionStore =
+        InMemoryRaftAuthSessionStore(
+            StoredAuthSession(
+                user = StoredAuthUser(id = "user-1", email = "user@example.com"),
+                accessToken = "access",
+                refreshToken = "refresh",
+                selectedServerId = "server-source",
+                servers =
+                    listOf(
+                        StoredAuthServer(id = "server-source", name = "Source"),
+                        StoredAuthServer(id = "server-peer", name = "Peer")
+                    )
+            )
+        )
+
     private fun realRepository(
         network: RecordingForwardNetworkClient,
-        nowMillis: () -> Long = { 0L }
+        nowMillis: () -> Long = { 0L },
+        memberRepository: MemberRepository? = null
     ): RealForwardMessageTargetRepository {
-        val store =
-            InMemoryRaftAuthSessionStore(
-                StoredAuthSession(
-                    user = StoredAuthUser(id = "user-1", email = "user@example.com"),
-                    accessToken = "access",
-                    refreshToken = "refresh",
-                    selectedServerId = "server-source",
-                    servers =
-                        listOf(
-                            StoredAuthServer(id = "server-source", name = "Source"),
-                            StoredAuthServer(id = "server-peer", name = "Peer")
-                        )
-                )
-            )
+        val store = authStore()
         return RealForwardMessageTargetRepository(
             sessionStore = store,
             networkClient = network,
             channelRepository = RealChannelRepository(store, network),
-            memberRepository = RealMemberRepository(store, network),
+            memberRepository = memberRepository ?: RealMemberRepository(store, network),
             nowMillis = nowMillis
         )
     }
@@ -707,6 +756,20 @@ class ForwardMessageTargetRepositoryTest {
         }
 }
 
+private class CountingMemberRepository(
+    private val delegate: MemberRepository,
+    private val cached: List<MemberProfile> = emptyList()
+) : MemberRepository by delegate {
+    var getMembersCalls = 0
+
+    override suspend fun getMembers(priority: DataRequestPriority, serverId: ServerId): DataResult<MemberSnapshot> {
+        getMembersCalls += 1
+        return delegate.getMembers(priority, serverId)
+    }
+
+    override fun cachedMembers(serverId: ServerId): List<MemberProfile> = cached
+}
+
 private data class ForwardNetworkCall(
     val path: String,
     val method: String,
@@ -720,6 +783,7 @@ private class RecordingForwardNetworkClient : RaftNetworkClient {
         """[{"id":"joint-peer-projection","name":"joint-room","type":"joint","joined":true,"jointChannelId":"joint-root","jointRole":"participant","jointPeerServerId":"server-source"}]"""
     var peerChannelsCode: Int = 200
     var membersBody: String = """{"members":[]}"""
+    var dmBody: String = "[]"
     var forwardResponseBody: String =
         """
             {
@@ -757,7 +821,7 @@ private class RecordingForwardNetworkClient : RaftNetworkClient {
                     code = peerChannelsCode,
                     bodyText = peerChannelsBody
                 )
-            path == "channels/dm" -> HomeNetworkResponse(code = 200, bodyText = "[]")
+            path == "channels/dm" -> HomeNetworkResponse(code = 200, bodyText = dmBody)
             path == "servers/${serverIdOverride?.value}/members" ->
                 HomeNetworkResponse(code = 200, bodyText = membersBody)
             path == "agents" -> HomeNetworkResponse(code = 200, bodyText = "[]")
