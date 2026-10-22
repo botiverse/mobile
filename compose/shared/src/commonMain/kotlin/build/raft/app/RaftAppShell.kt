@@ -136,6 +136,8 @@ internal fun RaftAppShellSurface(
     interactionLocked: Boolean = false,
     modalHostState: RaftUnifiedDialogHostState? = null,
     leadingNavigation: (@Composable () -> Unit)? = null,
+    /** D1a: draws the bar's current-server tab (see [RaftBottomTabBar]). */
+    bottomServerTab: (@Composable (Modifier) -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
     val ownedModalHostState = rememberRaftUnifiedDialogHostState()
@@ -214,7 +216,8 @@ internal fun RaftAppShellSurface(
                             items = bottomTabs,
                             onSelect = onBottomTabSelected,
                             modifier = Modifier.fillMaxWidth(),
-                            bottomSafeArea = shellScope.bottomSafeArea
+                            bottomSafeArea = shellScope.bottomSafeArea,
+                            serverTab = bottomServerTab,
                         )
                     }
                 }

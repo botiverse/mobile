@@ -41,8 +41,12 @@ internal val AppShellPhoneBottomTabKeys: List<String> = AppShellPhoneBottomBarKe
  */
 internal const val AppShellSearchTabKey = "search"
 
-/** Child pages pushed from the More (Settings) page; the bottom bar keeps More selected. */
-internal val AppShellMoreChildTabKeys: Set<String> = setOf("members")
+/**
+ * The server's own pages on the phone (raft-design #712, D1a): Members and Settings (the `more`
+ * key) open from the server panel as pushed pages that belong to no tab — Back, no bar. (The
+ * third, Computers, is a page of its own.) The wide rail lists them as rail roots instead.
+ */
+internal val AppShellMoreChildTabKeys: Set<String> = setOf("members", "more")
 
 /** The bottom-bar key that shows as selected for [selectedTab]. */
 internal fun appShellPhoneBottomBarSelectedKey(selectedTab: String): String {
@@ -51,12 +55,31 @@ internal fun appShellPhoneBottomBarSelectedKey(selectedTab: String): String {
 }
 
 /**
- * Where Back goes from [selectedTab] on the phone layout: a page pushed from More returns to
- * More; null means the ordinary shell Back rules apply. The wide rail lists Members as a rail
- * root, so it never pops it to More.
+ * Where Back goes from [selectedTab] on the phone layout: a server page (Members, Settings)
+ * returns to [origin], the page that showed when the server panel opened it; opened any other
+ * way (a deep link) it returns to Home. Null means the ordinary shell Back rules apply. The
+ * wide rail lists them as rail roots, so it never pops them.
  */
-internal fun appShellMoreChildBackTarget(selectedTab: String, navRailActive: Boolean): String? =
-    if (!navRailActive && retainedAppShellSelectedTab(selectedTab) in AppShellMoreChildTabKeys) "more" else null
+internal fun appShellMoreChildBackTarget(selectedTab: String, navRailActive: Boolean, origin: String? = null): String? =
+    if (!navRailActive && retainedAppShellSelectedTab(selectedTab) in AppShellMoreChildTabKeys) {
+        appShellServerPageBackTarget(origin)
+    } else {
+        null
+    }
+
+/** A server page's Back: its origin when that is a tab root of the phone bar, else Home. */
+internal fun appShellServerPageBackTarget(origin: String?): String =
+    origin?.takeIf { it in AppShellPhoneBottomBarKeys && it != AppShellServerTabKey } ?: "home"
+
+/**
+ * The origin to remember when the server panel opens a server page while [selectedTab] shows:
+ * that tab, or — when a server page is already showing (Settings -> panel -> Members) — the
+ * origin it had, so Back still lands where the person started.
+ */
+internal fun appShellServerPageOrigin(selectedTab: String, currentOrigin: String?): String? {
+    val tab = retainedAppShellSelectedTab(selectedTab)
+    return if (tab in AppShellMoreChildTabKeys) currentOrigin else tab
+}
 
 /**
  * Settings has one root per layout (stdrc 2026-10-21): the More tab on the phone bar, the pinned
@@ -174,3 +197,94 @@ internal enum class AppShellSearchHandoffTarget { SearchTab, RailInlineSearch }
 /** The phone bar has the Search tab; the wide rail has its inline Search entry instead. */
 internal fun appShellSearchHandoffTarget(navRailActive: Boolean): AppShellSearchHandoffTarget =
     if (navRailActive) AppShellSearchHandoffTarget.RailInlineSearch else AppShellSearchHandoffTarget.SearchTab
+
+/**
+ * Design D1a (#proj-raft-ui task #152, stdrc + artin; raft-design #712): the phone bar's last
+ * tab is the current server. It keeps the `more` key, but a press or a long press opens the
+ * server panel (服务器面板, a menu) instead of a page: the server list, then the pages that were
+ * on More ([RaftServerMenuEntry]). It holds no page, so it is never selected.
+ */
+internal const val AppShellServerTabKey = "more"
+
+/** The server's pages in the server panel, in order; each opens the page the More row opened. */
+internal enum class RaftServerMenuEntry(val key: String) {
+    Members("members"),
+    Computers(SettingsDestinationComputers),
+    Settings("settings"),
+    ;
+
+    companion object {
+        fun fromKey(key: String): RaftServerMenuEntry? = entries.firstOrNull { it.key == key }
+    }
+}
+
+/**
+ * The More dot moves to the menu row behind it (nav spec §4, D1a): an available app update is
+ * read in Settings > About, so it lights Settings; an unseen offline/outdated computer lights
+ * Computers.
+ */
+internal fun RaftMoreAttention.serverMenuEntry(): RaftServerMenuEntry =
+    when (this) {
+        RaftMoreAttention.AppUpdate -> RaftServerMenuEntry.Settings
+        RaftMoreAttention.Computers -> RaftServerMenuEntry.Computers
+    }
+
+/** What the current-server tab and its menu show. */
+internal data class RaftServerMenuModel(
+    /** Every server, in the switcher's order (the Home switcher's items). */
+    val servers: List<RaftServerSwitcherItem>,
+    /** The server you are in: the tab's avatar and name, the menu's checked row. */
+    val currentServer: RaftServerSwitcherItem,
+    val entries: List<RaftServerMenuEntry> = RaftServerMenuEntry.entries,
+    /** Menu rows that wear the attention pixel. */
+    val attentionEntries: Set<RaftServerMenuEntry> = emptySet(),
+    /** Another server has unread: the avatar's attention light (as on the Home switcher). */
+    val otherServersUnread: Boolean = false,
+)
+
+/**
+ * The menu model from the Home switcher's own data ([sharedHomeSwitcherItems]) and the More
+ * signals ([raftMoreAttention]).
+ */
+internal fun raftServerMenuModel(
+    servers: List<RaftServerSwitcherItem>,
+    currentServerId: String,
+    currentServerName: String,
+    moreAttention: Set<RaftMoreAttention> = emptySet(),
+): RaftServerMenuModel =
+    RaftServerMenuModel(
+        servers = servers,
+        currentServer = homeHeaderServerIdentity(currentServerId, currentServerName, servers),
+        attentionEntries = moreAttention.mapTo(mutableSetOf()) { it.serverMenuEntry() },
+        otherServersUnread = homeServerSwitcherHasOtherUnread(currentServerId, servers),
+    )
+
+/** The unread count a server row shows: the Home switcher's label, or null. */
+internal fun raftServerMenuUnreadLabel(server: RaftServerSwitcherItem): String? =
+    homeServerSwitcherBadgePresentation(server).label
+
+/**
+ * The dot on the server tab's avatar (Kirby / Jasper 10-22, raft-design #712 review): only
+ * "another server has unread", the same as Home's top-bar avatar. What More's dot used to mark
+ * (an app update, a computer needing action) stays on its own panel row
+ * ([RaftServerMenuModel.attentionEntries]) and does not light the avatar. The tab is never
+ * selected, so no selected-tab rule applies. Change the rule here only.
+ */
+internal fun appShellServerTabShowsAttention(model: RaftServerMenuModel): Boolean = model.otherServersUnread
+
+/** A server switch picked in the server menu: the server to select and the tab to stay on. */
+internal data class AppShellServerSwitchPlan(val serverId: String, val tab: String)
+
+/**
+ * Picking [pickedServerId] in the server menu while [selectedTab] shows. Null when it is already
+ * the current server (the menu just closes). D1a: the switch keeps the tab you are on — on
+ * Activity you land on the new server's Activity, not on Home.
+ */
+internal fun appShellServerMenuSwitchPlan(
+    currentServerId: String,
+    pickedServerId: String,
+    selectedTab: String,
+): AppShellServerSwitchPlan? {
+    val target = pickedServerId.trim().takeIf { it.isNotEmpty() && it != currentServerId } ?: return null
+    return AppShellServerSwitchPlan(serverId = target, tab = selectedTab)
+}

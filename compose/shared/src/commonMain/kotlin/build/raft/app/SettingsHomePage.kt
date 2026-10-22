@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.designsystem.components.RaftPickerTriggerButton
+import build.raft.designsystem.components.rememberRaftMobileNavServerPopoverState
 import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.RaftReadOnlyField
@@ -1253,6 +1254,13 @@ internal fun appShellPhoneBottomTabs(
     moreLabel: String,
     activityUnreadCount: Int = 0,
     moreAttention: Set<RaftMoreAttention> = emptySet(),
+    /**
+     * D1a: the last tab is the current server — its name as the label (also what the iOS system
+     * bar shows), the server glyph, never selected, and the avatar dot
+     * ([appShellServerTabShowsAttention]).
+     * Null (no server loaded yet) keeps the plain More tab.
+     */
+    serverTab: RaftServerMenuModel? = null,
 ): List<RaftBottomTabItemPayload> =
     appShellBottomTabs(
         selectedKey = appShellPhoneBottomBarSelectedKey(selectedTab),
@@ -1269,7 +1277,19 @@ internal fun appShellPhoneBottomTabs(
                 else -> key.uppercase()
             }
         }
-    )
+    ).map { item ->
+        if (serverTab == null || item.key != AppShellServerTabKey) {
+            item
+        } else {
+            item.copy(
+                label = serverTab.currentServer.name.ifBlank { moreLabel },
+                iconName = RaftLucideIconName.Server,
+                // It opens the server panel, not a page: never selected (raft-design #712).
+                selected = false,
+                attentionDot = appShellServerTabShowsAttention(serverTab),
+            )
+        }
+    }
 
 /**
  * task #94: builds bottom-tab payloads from the resolved ordered tab keys (legacy or
@@ -2322,6 +2342,13 @@ private fun RaftAppShellReadyContent(
     // The wide rail's server switcher belongs to the rail, not to Home: it opens over whatever
     // page is showing, anchored next to the rail's server avatar.
     var railServerSwitcherOpen by remember { mutableStateOf(false) }
+    // D1a (raft-design #712): the server panel the current-server tab (phone bar) or the rail's
+    // foot entry opens; the page that showed when it opened a server page (Back returns there);
+    // and focus going back to the server tab after such a page closes.
+    val serverMenuState = rememberRaftMobileNavServerPopoverState()
+    var serverPageOrigin by remember { mutableStateOf<String?>(null) }
+    var serverTabFocusPending by remember { mutableStateOf(false) }
+    var serverTabFocusOnPageReturn by remember { mutableStateOf(false) }
     // Server switcher "Invite Human" (web ServerSwitcherMenu): the server whose
     // invite dialog is open, or null.
     var serverSwitcherInviteServerId by remember { mutableStateOf<String?>(null) }
@@ -4347,6 +4374,7 @@ private fun RaftAppShellReadyContent(
     fun selectAppShellTab(nextTab: String, directChildSwitch: Boolean = false) {
         prewarmAdmissionGate.invalidate("tab_select:$nextTab")
         railServerSwitcherOpen = false
+        serverMenuState.dismiss()
         val retainedTab = retainedAppShellSelectedTab(nextTab)
         val nextEpoch = appShellNextChildTabSwitchEpoch(selectedTab, retainedTab, childTabSwitchEpoch)
         val direct = directChildSwitch && retainedTab in slackNavTabKeys
@@ -5298,7 +5326,8 @@ private fun RaftAppShellReadyContent(
             homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
             return true
         }
-        // A page pushed from More (Members, Settings) goes back to More on the phone layout.
+        // A server page (Members, Settings) goes back to the page the server panel opened it
+        // from, or Home after a deep link, on the phone layout; focus returns to the server tab.
         appShellMoreChildBackTarget(
             selectedTab = selectedTab,
             navRailActive =
@@ -5306,9 +5335,11 @@ private fun RaftAppShellReadyContent(
                     desktopModeEnabled = desktopModeOnLargeScreen,
                     paneState = shellScope.adaptivePane
                 ),
+            origin = serverPageOrigin,
         )?.let { target ->
             selectAppShellTab(target, directChildSwitch = true)
             retainedAppShellTabs = retainedAppShellTabs + target
+            serverTabFocusPending = true
             return true
         }
         if (selectedTab != "home") {
@@ -6207,6 +6238,48 @@ private fun RaftAppShellReadyContent(
     val moreAttention = remember(homeState.notifications, computerAttentionSeen) {
         raftMoreAttention(homeState.notifications.map { it.id }, computerAttentionSeen)
     }
+    // D1a: the current-server tab and its menu, from the Home switcher's own items.
+    val serverMenuContent = homeState.content as? SharedHomeContentState.Content
+    val serverMenuModel =
+        serverMenuContent?.let { content ->
+            remember(
+                content.session,
+                content.snapshot.server,
+                homeState.serverUnreadCounts,
+                serverActivityExpectedOwner,
+                homeState.serverActivityUnread,
+                moreAttention,
+            ) {
+                raftServerMenuModel(
+                    servers =
+                        sharedHomeSwitcherItems(
+                            session = content.session,
+                            selectedServer = content.snapshot.server,
+                            serverUnreadCounts = homeState.serverUnreadCounts,
+                            activityExpectedOwner = serverActivityExpectedOwner,
+                            activityProjection = homeState.serverActivityUnread,
+                        ),
+                    currentServerId = content.snapshot.server.id.value,
+                    currentServerName = content.snapshot.server.name,
+                    moreAttention = moreAttention,
+                )
+            }
+        }
+    // The menu belongs to the bar or the rail it rose from: it closes when they go (a pushed page
+    // hides the bar, the window crosses the rail breakpoint).
+    LaunchedEffect(showAppShellBottomTabs, navRailActive) { serverMenuState.dismiss() }
+    // A server page's origin lives only while a server page shows; a deep link to one finds none
+    // and goes back to Home.
+    LaunchedEffect(selectedTab) {
+        if (retainedAppShellSelectedTab(selectedTab) !in AppShellMoreChildTabKeys) serverPageOrigin = null
+    }
+    // Computers is a page of its own: when the shell shows again after it, focus the server tab.
+    LaunchedEffect(pageVisibleTick) {
+        if (serverTabFocusOnPageReturn) {
+            serverTabFocusOnPageReturn = false
+            serverTabFocusPending = true
+        }
+    }
     val appShellBottomTabItems = remember(
         selectedTab,
         homeTabLabel,
@@ -6215,7 +6288,8 @@ private fun RaftAppShellReadyContent(
         searchTabLabel,
         moreTabLabel,
         activityTabUnreadCount,
-        moreAttention
+        moreAttention,
+        serverMenuModel
     ) {
         appShellPhoneBottomTabs(
             selectedTab = selectedTab,
@@ -6225,7 +6299,8 @@ private fun RaftAppShellReadyContent(
             tasksLabel = tasksTabLabel,
             moreLabel = moreTabLabel,
             activityUnreadCount = activityTabUnreadCount,
-            moreAttention = moreAttention
+            moreAttention = moreAttention,
+            serverTab = serverMenuModel
         )
     }
     // The wide rail keeps the web LeftRail entries (Members is a rail root there).
@@ -6571,11 +6646,103 @@ private fun RaftAppShellReadyContent(
                 }
             }
 
+    // D1a: picking a server in the server menu switches like the Home switcher does (session
+    // projection + SelectServer) and keeps the tab you are on.
+    fun switchServerFromServerMenu(serverId: String) {
+        serverMenuState.dismiss()
+        val current = serverMenuModel?.currentServer?.id.orEmpty()
+        val plan = appShellServerMenuSwitchPlan(current, serverId, selectedTab) ?: return
+        val homeServerId = appShellHomeListServerId(renderedServerId = renderedHomeServerId, readyServerId = readyServerId)
+        pendingHomeServerSwitchId = plan.serverId.takeIf { it != homeServerId }
+        observedHomeServerSwitchId = null
+        bridge.performanceMarker(
+            phase = "home_server_switch_select",
+            routeName = "kuikly_home",
+            event = "instant",
+            metadata = mapOf("from" to current, "to" to plan.serverId, "source" to "server_menu", "tab" to plan.tab)
+        )
+        readySession
+            ?.withAppShellSelectedServer(plan.serverId)
+            ?.let { session -> authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(session)) }
+        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
+        homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(plan.serverId)))
+        if (selectedTab != plan.tab) selectAppShellTab(plan.tab, directChildSwitch = true)
+        bridge.log("app_shell_server_menu_switch to=${plan.serverId} tab=${plan.tab}")
+    }
+
+    // D1a: the server panel's pages open the pages the More rows opened, as pushed pages that
+    // belong to no tab; Back returns to the page that showed when the panel opened them.
+    fun openServerMenuEntry(entry: RaftServerMenuEntry) {
+        serverMenuState.dismiss()
+        prewarmAdmissionGate.invalidate("server_menu_open:${entry.key}")
+        bridge.log("app_shell_server_menu_open row=${entry.key} from=$selectedTab")
+        if (!navRailActive) serverPageOrigin = appShellServerPageOrigin(selectedTab, serverPageOrigin)
+        when (entry) {
+            RaftServerMenuEntry.Members -> {
+                RaftProductEvents.navEntrySelected(
+                    destination = RaftNavDestination.Members,
+                    surface = RaftNavSurface.MobileMore,
+                    wasActive = retainedAppShellSelectedTab(selectedTab) == "members",
+                )
+                selectAppShellTab("members", directChildSwitch = true)
+                retainedAppShellTabs = retainedAppShellTabs + "members"
+            }
+            RaftServerMenuEntry.Computers -> {
+                RaftProductEvents.navEntrySelected(
+                    destination = RaftNavDestination.Computers,
+                    surface = RaftNavSurface.MobileMore,
+                    wasActive = false,
+                )
+                if (!navRailActive) serverTabFocusOnPageReturn = true
+                openComputersPage()
+            }
+            RaftServerMenuEntry.Settings -> {
+                // On the phone Settings is the pushed page under the `more` key; the pinned rail
+                // entry when wide.
+                val settingsKey = if (navRailActive) "settings" else AppShellServerTabKey
+                RaftProductEvents.navEntrySelected(
+                    destination = RaftNavDestination.Settings,
+                    surface = RaftNavSurface.MobileMore,
+                    wasActive = retainedAppShellSelectedTab(selectedTab) == settingsKey,
+                )
+                selectAppShellTab(settingsKey, directChildSwitch = true)
+                retainedAppShellTabs = retainedAppShellTabs + settingsKey
+            }
+        }
+    }
+
+    fun onServerMenuPick(pick: RaftServerMenuPick) {
+        when (pick) {
+            is RaftServerMenuPick.Server -> switchServerFromServerMenu(pick.serverId)
+            is RaftServerMenuPick.Page -> openServerMenuEntry(pick.entry)
+        }
+    }
+
     val mainRouteSurface: @Composable () -> Unit = {
         RaftAppShellSurface(
             shellScope = shellScope,
             bottomTabs = appShellBottomTabItems,
+            bottomServerTab =
+                serverMenuModel?.let { model ->
+                    { tabModifier ->
+                        RaftAppServerTab(
+                            model = model,
+                            state = serverMenuState,
+                            onPick = ::onServerMenuPick,
+                            modifier = tabModifier,
+                            requestFocus = serverTabFocusPending,
+                            onFocusRequested = { serverTabFocusPending = false },
+                        )
+                    }
+                },
             onBottomTabSelected = { key ->
+                if (key == AppShellServerTabKey && serverMenuModel != null) {
+                    // The server tab opens the server panel, not a page (also the iOS system bar's tap).
+                    bridge.log("app_shell_server_menu_toggle open=${!serverMenuState.open}")
+                    serverMenuState.toggle()
+                    return@RaftAppShellSurface
+                }
+                serverMenuState.dismiss()
                 RaftProductEvents.navEntrySelected(
                     destination = appShellNavDestination(key),
                     surface = RaftNavSurface.MobileTabBar,
@@ -6703,6 +6870,17 @@ private fun RaftAppShellReadyContent(
                                     }
                                 },
                             bottomItems = railBottomItems,
+                            bottomServerEntry =
+                                serverMenuModel?.let { model ->
+                                    {
+                                        RaftAppServerTab(
+                                            model = model,
+                                            state = serverMenuState,
+                                            onPick = ::onServerMenuPick,
+                                            compact = true,
+                                        )
+                                    }
+                                },
                             onBottomItemSelect = { key ->
                                 railServerSwitcherOpen = false
                                 RaftProductEvents.navEntrySelected(
@@ -6720,6 +6898,38 @@ private fun RaftAppShellReadyContent(
                     null
                 }
         ) {
+                    if (serverMenuState.open && serverMenuModel != null && serverMenuContent != null && (navRailActive || showAppShellBottomTabs)) {
+                        RaftAppServerMenuOverlay(
+                            model = serverMenuModel,
+                            state = serverMenuState,
+                            anchor = if (navRailActive) RaftServerMenuAnchor.RailFoot else RaftServerMenuAnchor.BottomBar,
+                            onPick = ::onServerMenuPick,
+                            prefersChineseCommunity = localePreferenceStore.readLocaleSync() == AppLocale.SimplifiedChinese,
+                            onCreateServerClick = {
+                                pager.openAuthChooseServerPage(
+                                    storeScope = navigationStoreScope,
+                                    documentShell = pager.pageData.params.optBoolean(RAFT_DOCUMENT_SHELL, false)
+                                )
+                            },
+                            onInviteHumanClick =
+                                homeServerSwitcherInviteClick(
+                                    serverMenuContent.snapshot.server,
+                                    { serverId -> serverSwitcherInviteServerId = serverId }
+                                ) { serverMenuState.dismiss() },
+                            topInset = shellScope.topSafeArea,
+                            screenHeight =
+                                shellScope.adaptivePane
+                                    .takeIf { it.heightPx > 0 && it.density > 0f }
+                                    ?.let { (it.heightPx / it.density).dp },
+                            bottomInset =
+                                when {
+                                    navRailActive -> shellScope.bottomSafeArea
+                                    // The iOS system bar floats over the content: clear its band.
+                                    shellScope.bottomTabBarOverlaysContent -> shellScope.bottomTabBarContentInset - RaftAppSpacing.Lg
+                                    else -> 0.dp
+                                },
+                        )
+                    }
                     val railSwitcherContent = homeState.content as? SharedHomeContentState.Content
                     if (navRailActive && railServerSwitcherOpen && railSwitcherContent != null) {
                         RaftFloatingOverlayHost(
@@ -7443,13 +7653,15 @@ private fun RaftAppShellReadyContent(
                             true,
                         )
                     }
-                    // Members is a page pushed from More (the Settings page) on the phone layout: its
-                    // header gets a back button to More. On the wide rail it is a rail root.
+                    // Members and Settings are server pages pushed from the server panel on the phone
+                    // layout (raft-design #712): their header gets a back button to the page the panel
+                    // opened them from (Home after a deep link). On the wide rail they are rail roots.
                     val moreChildBack: (() -> Unit)? =
-                        appShellMoreChildBackTarget(selectedTab, navRailActive)?.let { target ->
+                        appShellMoreChildBackTarget(selectedTab, navRailActive, serverPageOrigin)?.let { target ->
                             {
                                 selectAppShellTab(target, directChildSwitch = true)
                                 retainedAppShellTabs = retainedAppShellTabs + target
+                                serverTabFocusPending = true
                             }
                         }
                     val membersTabContent: @Composable (active: Boolean) -> Unit = { active ->
@@ -7495,9 +7707,10 @@ private fun RaftAppShellReadyContent(
                             }
                         )
                     }
-                    // stdrc 2026-10-21: the More tab's root page IS Settings. On the phone bar it
-                    // opens with Members and Computers as its first group (their rows dot with the
-                    // More tab); the wide rail keeps its Settings page as before.
+                    // raft-design #712: on the phone Settings is a pushed page titled Settings, opened
+                    // from the server panel, with Back (Members and Computers are on the panel now,
+                    // so they no longer lead it); its rows keep their attention dots. The wide rail
+                    // keeps its Settings page as before.
                     val settingsTabContent: @Composable (active: Boolean) -> Unit = {
                         SettingsAppShellHomeContent(
                             moreRoot =
@@ -7505,11 +7718,13 @@ private fun RaftAppShellReadyContent(
                                     null
                                 } else {
                                     SettingsMoreRoot(
-                                        title = moreTabLabel,
+                                        title = settingsTabLabel,
                                         membersTitle = membersTabLabel,
                                         attentionRowKeys = moreAttention.mapTo(mutableSetOf()) { it.settingsRowKey },
+                                        leadsWithMembersAndComputers = false,
                                     )
                                 },
+                            onBack = moreChildBack,
                             session = (authGateState as? SharedAuthGateState.Ready)?.session,
                             bottomContentPadding = appShellBottomContentInset,
                             scrollToTopRequest = tabScrollToTopRequests.more,
@@ -8366,6 +8581,8 @@ internal data class SettingsMoreRoot(
     val title: String,
     val membersTitle: String,
     val attentionRowKeys: Set<String> = emptySet(),
+    /** False since D1a (raft-design #712): Members and Computers are on the server panel. */
+    val leadsWithMembersAndComputers: Boolean = true,
 )
 
 /**
@@ -8379,6 +8596,9 @@ internal fun settingsHomeItemsForMoreRoot(
     membersSubtitle: String = "",
 ): List<SettingsHomePageLinkPayload> {
     if (moreRoot == null) return items
+    if (!moreRoot.leadsWithMembersAndComputers) {
+        return items.map { it.copy(attentionDot = it.key in moreRoot.attentionRowKeys) }
+    }
     val computers = items.firstOrNull { it.key == SettingsDestinationComputers }
     val firstGroup =
         listOfNotNull(
@@ -8402,6 +8622,7 @@ private fun SettingsAppShellHomeContent(
     onSelect: (String) -> Unit,
     moreRoot: SettingsMoreRoot? = null,
     scrollToTopRequest: Int = 0,
+    onBack: (() -> Unit)? = null,
 ) {
     val payload = appShellSettingsHomePayload(session)
     val membersSubtitle = stringResource(MR.strings.more_hub_members_subtitle)
@@ -8413,6 +8634,7 @@ private fun SettingsAppShellHomeContent(
             ),
         bottomContentPadding = bottomContentPadding,
         onHeaderClick = onSettingsHeaderClick,
+        onBack = onBack,
         onSelect = onSelect,
         scrollToTopRequest = scrollToTopRequest,
     )

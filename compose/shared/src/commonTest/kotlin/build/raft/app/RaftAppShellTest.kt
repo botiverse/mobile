@@ -1489,12 +1489,15 @@ class RaftAppShellTest {
     }
 
     @Test
-    fun membersGoesBackToMoreOnlyOnThePhoneLayout() {
-        assertEquals("more", appShellMoreChildBackTarget("members", navRailActive = false))
+    fun serverPagesGoBackOnlyOnThePhoneLayout() {
+        // raft-design #712: Members and Settings (`more`) are pushed server pages; without the
+        // page the server panel opened them from (a deep link) Back goes Home.
+        assertEquals("home", appShellMoreChildBackTarget("members", navRailActive = false))
+        assertEquals("home", appShellMoreChildBackTarget("more", navRailActive = false))
+        assertEquals("tasks", appShellMoreChildBackTarget("more", navRailActive = false, origin = "tasks"))
         // The wide rail lists Members as a root.
         assertNull(appShellMoreChildBackTarget("members", navRailActive = true))
-        // Settings is More's root on the phone, not a page pushed from it.
-        listOf("home", "activity", "tasks", "more", "settings", "unknown").forEach { tab ->
+        listOf("home", "activity", "tasks", "settings", "unknown").forEach { tab ->
             assertNull(appShellMoreChildBackTarget(tab, navRailActive = false), "tab=$tab")
         }
     }
@@ -1506,7 +1509,7 @@ class RaftAppShellTest {
         (AppShellChildPageTabKeys + "unknown").forEach { tab ->
             val barVisible = appShellBottomTabsVisible(tab, selectedHomeDestination = null, navRailActive = false)
             if (!barVisible) {
-                assertEquals("more", appShellMoreChildBackTarget(tab, navRailActive = false), "tab=$tab")
+                assertEquals("home", appShellMoreChildBackTarget(tab, navRailActive = false), "tab=$tab")
             }
         }
         assertFalse(appShellBottomTabsVisible("members", selectedHomeDestination = null, navRailActive = false))
@@ -1740,16 +1743,17 @@ class RaftAppShellTest {
     @Test
     fun appShellBottomTabsShowOnTabRootsAndHideOnInShellPagesWithBack() {
         // Phone bar roots: no Back, bar shows (the home destination of another tab is ignored).
-        for (root in AppShellPhoneBottomTabKeys) {
+        // The server tab (`more`) holds no page: its Settings page is pushed (raft-design #712).
+        for (root in AppShellPhoneBottomTabKeys - AppShellServerTabKey) {
             assertEquals(true, appShellBottomTabsVisible(selectedTab = root, selectedHomeDestination = null), root)
             assertEquals(true, appShellBottomTabsVisible(selectedTab = root, selectedHomeDestination = "activity"), root)
         }
         // Settings resolves to the More root on the phone; DMs is a legacy root.
         assertEquals(true, appShellBottomTabsVisible(selectedTab = "settings", selectedHomeDestination = null))
         assertEquals(true, appShellBottomTabsVisible(selectedTab = "dms", selectedHomeDestination = null))
-        // Members is pushed inside More with Back to More: no bar.
+        // Members and Settings are pushed server pages with Back: no bar.
         for (child in AppShellMoreChildTabKeys) {
-            assertEquals("more", appShellMoreChildBackTarget(child, navRailActive = false), child)
+            assertEquals("home", appShellMoreChildBackTarget(child, navRailActive = false), child)
             assertEquals(false, appShellBottomTabsVisible(selectedTab = child, selectedHomeDestination = null), child)
         }
         // On the wide rail Members is a rail root without Back (the rail, not the bar, navigates).

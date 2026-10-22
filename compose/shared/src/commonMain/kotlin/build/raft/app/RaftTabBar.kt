@@ -44,6 +44,7 @@ import androidx.compose.ui.zIndex
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import build.raft.designsystem.components.RaftUnreadCount
+import build.raft.designsystem.components.RaftMobileNavDefaults
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.ui.draw.clip
@@ -223,7 +224,8 @@ internal fun RaftVerticalTabBar(
 internal fun RaftBottomTabBar(
     items: List<RaftBottomTabItemPayload>,
     onSelect: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    serverTab: (@Composable (Modifier) -> Unit)? = null,
 ) {
     // #192 trace scope extension: bottom tab bar (Home / Tasks / etc.) render.
     // Tab switches are #191 hot path; this marker measures per-tab-item composition.
@@ -246,11 +248,16 @@ internal fun RaftBottomTabBar(
                 .padding(top = RaftAppStroke.Thin + RaftBottomTabBarSpec.TopPadding)
         ) {
             items.forEach { item ->
-                RaftBottomTabItem(
-                    item = item,
-                    onSelect = onSelect,
-                    modifier = Modifier.weight(1f).fillMaxHeight()
-                )
+                if (serverTab != null && item.key == AppShellServerTabKey) {
+                    // D1a: the current-server tab draws itself (avatar, name, long press).
+                    serverTab(Modifier.weight(1f).fillMaxHeight())
+                } else {
+                    RaftBottomTabItem(
+                        item = item,
+                        onSelect = onSelect,
+                        modifier = Modifier.weight(1f).fillMaxHeight()
+                    )
+                }
             }
         }
         Box(
@@ -264,19 +271,23 @@ internal fun RaftBottomTabBar(
     }
 }
 
-/** Geometry of the approved bottom tab bar mockup (/tmp/activity-tab-mockups gen.js `.tabbar`). */
+/**
+ * Geometry of the approved bottom tab bar mockup (/tmp/activity-tab-mockups gen.js `.tabbar`).
+ * The tab geometry is the design system's [RaftMobileNavDefaults], which the current-server tab
+ * ([build.raft.designsystem.components.RaftServerTabButton]) draws with too.
+ */
 internal object RaftBottomTabBarSpec {
-    val BarHeight = 58.dp
-    val TopPadding = 7.dp
-    val PillWidth = 56.dp
-    val PillHeight = 32.dp
-    val PillRadius = 9.dp
-    val PillBorder = 2.dp
-    val IconSize = 23.dp
+    val BarHeight = RaftMobileNavDefaults.BarHeight
+    val TopPadding = RaftMobileNavDefaults.TopPadding
+    val PillWidth = RaftMobileNavDefaults.PillWidth
+    val PillHeight = RaftMobileNavDefaults.PillHeight
+    val PillRadius = RaftMobileNavDefaults.PillRadius
+    val PillBorder = RaftMobileNavDefaults.PillBorder
+    val IconSize = RaftMobileNavDefaults.IconSize
     const val IconStroke = 2f
-    val LabelGap = 4.dp
-    val LabelFontSize = 11.5.sp
-    val LabelLineHeight = 14.sp
+    val LabelGap = RaftMobileNavDefaults.LabelGap
+    val LabelFontSize = RaftMobileNavDefaults.LabelFontSize
+    val LabelLineHeight = RaftMobileNavDefaults.LabelLineHeight
     val LabelWeight = FontWeight.SemiBold
     val SelectedLabelWeight = FontWeight.Bold
     // Count badge, positioned from the pill slot's outer top-left corner.
@@ -290,8 +301,8 @@ internal object RaftBottomTabBarSpec {
     val BadgeFontSize = 11.sp
     // Attention dot, positioned like the count from the pill slot's top-left corner: it sits
     // on the pill's top-right corner (web MobileNav `top-1 right-2`).
-    val DotOffsetX = 44.dp
-    val DotOffsetY = (-2).dp
+    val DotOffsetX = RaftMobileNavDefaults.DotOffsetX
+    val DotOffsetY = RaftMobileNavDefaults.DotOffsetY
 }
 
 /**
@@ -474,7 +485,8 @@ internal fun RaftAppBottomTabBarHost(
     items: List<RaftBottomTabItemPayload>,
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
-    bottomSafeArea: Dp = 0.dp
+    bottomSafeArea: Dp = 0.dp,
+    serverTab: (@Composable (Modifier) -> Unit)? = null,
 ) {
     val hostModifier = modifier.zIndex(RaftAppBottomTabBarHostZIndex)
     val nativeTabBar = raftNativeTabBarBridge()
@@ -500,7 +512,8 @@ internal fun RaftAppBottomTabBarHost(
             onSelect = onSelect,
             modifier = Modifier
                 .fillMaxWidth()
-                .align(Alignment.TopCenter)
+                .align(Alignment.TopCenter),
+            serverTab = serverTab,
         )
     }
 }
@@ -555,6 +568,8 @@ internal fun RaftNavigationRailTabBar(
     headerContent: (@Composable () -> Unit)? = null,
     bottomItems: List<RaftBottomTabItemPayload> = emptyList(),
     onBottomItemSelect: ((String) -> Unit)? = null,
+    /** D1a: the current-server entry, last in the rail's foot; it opens the server menu. */
+    bottomServerEntry: (@Composable () -> Unit)? = null,
     topSafeArea: Dp = 0.dp,
     bottomSafeArea: Dp = 0.dp
 ) {
@@ -610,7 +625,7 @@ internal fun RaftNavigationRailTabBar(
                     RaftNavigationRailTabItem(item = item, onSelect = onSelect)
                 }
             }
-            if (bottomItems.isNotEmpty()) {
+            if (bottomItems.isNotEmpty() || bottomServerEntry != null) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -621,6 +636,7 @@ internal fun RaftNavigationRailTabBar(
                     bottomItems.forEach { item ->
                         RaftNavigationRailTabItem(item = item, onSelect = onBottomItemSelect ?: onSelect)
                     }
+                    bottomServerEntry?.invoke()
                 }
             }
         }
