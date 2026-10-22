@@ -10557,6 +10557,8 @@ private fun MembersAgentRuntimeConfigSection(
         agentProfileEditAuthority?.serverId?.value?.let { createAgentFormStore?.runtimeFormV2Access(it) }
     var runtimeFormV2Declined by remember(member.id.value, editingRuntimeConfig) { mutableStateOf(false) }
     var runtimeFormV2ErrorFields by remember(member.id.value, editingRuntimeConfig) { mutableStateOf(emptySet<String>()) }
+    // The runtime picked in the v2 dialog's Runtime select; the v1 dialog opens with it selected.
+    var runtimeFormV2SwitchRuntime by remember(member.id.value, editingRuntimeConfig) { mutableStateOf<String?>(null) }
 
     LaunchedEffect(canonicalRuntimeId) {
         canonicalRuntimeId?.let { onAgentRuntimeModelsRequest(it, false) }
@@ -10802,6 +10804,8 @@ private fun MembersAgentRuntimeConfigSection(
             access = runtimeFormV2Access,
             agentId = member.id,
             machineId = runtimeFormV2MachineId,
+            runtimeId = canonicalRuntimeConfig.runtime,
+            machineRuntimeIds = agentMachineRuntimes,
             saving = savingRuntimeConfig,
             error = runtimeConfigError,
             errorFieldKeys = runtimeFormV2ErrorFields,
@@ -10813,8 +10817,9 @@ private fun MembersAgentRuntimeConfigSection(
                 }
             },
             onLoadFailed = { runtimeFormV2Declined = true },
-            onChangeRuntime = {
+            onChangeRuntime = { nextRuntime ->
                 runtimeConfigError = null
+                runtimeFormV2SwitchRuntime = nextRuntime
                 runtimeFormV2Declined = true
             },
             onSave = ::saveRuntimeConfigV2
@@ -10822,6 +10827,7 @@ private fun MembersAgentRuntimeConfigSection(
     } else if (editingRuntimeConfig && canonicalRuntimeConfig != null && runtimeStatusResolved) {
         MembersAgentRuntimeConfigDialog(
             initialConfig = canonicalRuntimeConfig,
+            initialRuntime = runtimeFormV2SwitchRuntime,
             memberId = member.id,
             activeAgent = activeAgent,
             machineRuntimeIds = agentMachineRuntimes,
@@ -11469,6 +11475,8 @@ private fun membersMaskedEnvValue(value: String?): String =
 @Composable
 private fun MembersAgentRuntimeConfigDialog(
     initialConfig: RuntimeConfig,
+    /** A runtime other than [initialConfig]'s to open with already selected (picked in the v2 dialog). */
+    initialRuntime: String? = null,
     memberId: MemberId,
     activeAgent: Boolean,
     createAgentFormStore: SharedCreateAgentFormStore?,
@@ -11569,6 +11577,46 @@ private fun MembersAgentRuntimeConfigDialog(
     var saveValidationError by remember(stableInitialConfig) { mutableStateOf<String?>(null) }
     var advancedOpen by remember(stableInitialConfig) {
         mutableStateOf(command.isNotBlank() || envVarEntries.isNotEmpty() || builtInLoadLocalPlugins)
+    }
+    fun applyRuntimeSwitch(switch: MembersRuntimeConfigRuntimeSwitch) {
+        runtime = switch.runtime
+        model = switch.model
+        reasoningEffort = switch.reasoningEffort
+        switch.awaitingServerModelForRuntime?.let { awaitingServerModelForRuntime = it }
+        if (switch.clearCustomModel) {
+            customModelMode = false
+            customModelName = ""
+        }
+        if (switch.resetRuntimeSpecificFields) {
+            providerMode = RUNTIME_PROVIDER_MODE_DEFAULT
+            providerApiUrl = ""
+            providerApiKey = TextFieldValue("")
+            piProviderId = "configured"
+            piProviderApiKey = TextFieldValue("")
+            fastMode = false
+            command = ""
+        }
+    }
+    fun switchRuntime(nextRuntime: String) {
+        applyRuntimeSwitch(
+            membersRuntimeConfigRuntimeSwitch(
+                initialConfig = stableInitialConfig,
+                currentRuntime = runtime,
+                nextRuntime = nextRuntime,
+                currentReasoningEffort = reasoningEffort,
+                nextRuntimeModels = runtimeModelsByRuntime[nextRuntime]?.models.orEmpty()
+            )
+        )
+    }
+    // Opened from the v2 dialog's Runtime select: start on the picked runtime, through the
+    // same reset its own runtime select runs. Once per editing session (the state keys above).
+    remember(stableInitialConfig, initialRuntime) {
+        membersRuntimeConfigInitialRuntimeSwitch(
+            initialConfig = stableInitialConfig,
+            initialRuntime = initialRuntime,
+            nextRuntimeModels = initialRuntime?.let { runtimeModelsByRuntime[it]?.models }.orEmpty()
+        )?.let(::applyRuntimeSwitch)
+        Unit
     }
     val formStoreState = createAgentFormStore?.state?.collectAsState()?.value
     val cleanServerId = currentServerId?.trim().orEmpty()
@@ -11924,29 +11972,7 @@ private fun MembersAgentRuntimeConfigDialog(
                     if (runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
                         BuiltInRuntimeSection(
                             runtime = runtime,
-                            onRuntimeChange = { nextRuntime ->
-                                val nextModel =
-                                    if (nextRuntime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
-                                        stableInitialConfig.toMembersRuntimeModelValue()
-                                    } else {
-                                        ""
-                                    }
-                                val selection =
-                                    createAgentRuntimeModelReasoningSelection(
-                                        runtime = nextRuntime,
-                                        model = nextModel,
-                                        currentReasoningEffort = reasoningEffort,
-                                        runtimeModelsOverride = runtimeModelsByRuntime[nextRuntime]?.models.orEmpty()
-                                    )
-                                runtime = selection.runtime
-                                model = selection.model
-                                reasoningEffort = selection.reasoningEffort
-                                if (nextRuntime != CREATE_AGENT_BUILTIN_RUNTIME_ID) {
-                                    awaitingServerModelForRuntime = true
-                                    customModelMode = false
-                                    customModelName = ""
-                                }
-                            },
+                            onRuntimeChange = ::switchRuntime,
                             machineRuntimeIds = machineRuntimeIds,
                             runtimeAvailabilityError = null,
                             form = builtInForm,
@@ -11995,40 +12021,7 @@ private fun MembersAgentRuntimeConfigDialog(
                     } else AdvancedRuntimeSection(
                         runtime = runtime,
                         existingRuntimeId = stableInitialConfig.runtime,
-                        onRuntimeChange = { nextRuntime ->
-                            val nextModel =
-                                if (nextRuntime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
-                                    stableInitialConfig.toMembersRuntimeModelValue()
-                                } else {
-                                    ""
-                                }
-                            val selection =
-                                createAgentRuntimeModelReasoningSelection(
-                                    runtime = nextRuntime,
-                                    model = nextModel,
-                                    currentReasoningEffort = reasoningEffort,
-                                    runtimeModelsOverride = runtimeModelsByRuntime[nextRuntime]?.models.orEmpty()
-                                )
-                            runtime = selection.runtime
-                            model = selection.model
-                            reasoningEffort = selection.reasoningEffort
-                            if (nextRuntime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
-                                awaitingServerModelForRuntime = false
-                            } else {
-                                // A runtime switch must wait for this machine's canonical model catalog;
-                                // enum/static defaults are not server truth and cannot seed a save.
-                                awaitingServerModelForRuntime = true
-                                customModelMode = false
-                                customModelName = ""
-                            }
-                            providerMode = RUNTIME_PROVIDER_MODE_DEFAULT
-                            providerApiUrl = ""
-                            providerApiKey = TextFieldValue("")
-                            piProviderId = "configured"
-                            piProviderApiKey = TextFieldValue("")
-                            fastMode = false
-                            command = ""
-                        },
+                        onRuntimeChange = ::switchRuntime,
                         model = model,
                         onModelSelectionChange = { selection ->
                             model = selection.model
@@ -12568,6 +12561,77 @@ private fun RuntimeConfig.toMembersRuntimeModelValue(): String =
     when (val modelConfig = model) {
         is RuntimeModelConfig.Preset -> modelConfig.id
         is RuntimeModelConfig.Custom -> modelConfig.name
+}
+
+/**
+ * Draft reset the v1 runtime config editor applies when its runtime select picks [runtime].
+ * [awaitingServerModelForRuntime] null leaves that flag unchanged.
+ */
+internal data class MembersRuntimeConfigRuntimeSwitch(
+    val runtime: String,
+    val model: String,
+    val reasoningEffort: String?,
+    val awaitingServerModelForRuntime: Boolean?,
+    val clearCustomModel: Boolean,
+    val resetRuntimeSpecificFields: Boolean
+)
+
+/**
+ * The v1 editor's runtime-select reset. From Built-in (its BuiltInRuntimeSection) only the
+ * model draft is reset; from any other runtime (AdvancedRuntimeSection) the provider, pi
+ * provider, fast mode and command drafts are cleared too. Leaving for a non-Built-in runtime
+ * waits for that machine's canonical model catalog: enum/static defaults are not server truth
+ * and cannot seed a save.
+ */
+internal fun membersRuntimeConfigRuntimeSwitch(
+    initialConfig: RuntimeConfig,
+    currentRuntime: String,
+    nextRuntime: String,
+    currentReasoningEffort: String?,
+    nextRuntimeModels: List<SharedCreateAgentRuntimeModelOption>
+): MembersRuntimeConfigRuntimeSwitch {
+    val toBuiltIn = nextRuntime == CREATE_AGENT_BUILTIN_RUNTIME_ID
+    val fromBuiltIn = currentRuntime == CREATE_AGENT_BUILTIN_RUNTIME_ID
+    val selection =
+        createAgentRuntimeModelReasoningSelection(
+            runtime = nextRuntime,
+            model = if (toBuiltIn) initialConfig.toMembersRuntimeModelValue() else "",
+            currentReasoningEffort = currentReasoningEffort,
+            runtimeModelsOverride = nextRuntimeModels
+        )
+    return MembersRuntimeConfigRuntimeSwitch(
+        runtime = selection.runtime,
+        model = selection.model,
+        reasoningEffort = selection.reasoningEffort,
+        awaitingServerModelForRuntime =
+            when {
+                !toBuiltIn -> true
+                fromBuiltIn -> null
+                else -> false
+            },
+        clearCustomModel = !toBuiltIn,
+        resetRuntimeSpecificFields = !fromBuiltIn
+    )
+}
+
+/**
+ * The reset the v1 editor starts from when opened with [initialRuntime] (picked in the v2
+ * dialog's Runtime select): the same switch its own select runs from [initialConfig]'s
+ * runtime. Null when there is nothing to switch (no pick, or the agent's own runtime).
+ */
+internal fun membersRuntimeConfigInitialRuntimeSwitch(
+    initialConfig: RuntimeConfig,
+    initialRuntime: String?,
+    nextRuntimeModels: List<SharedCreateAgentRuntimeModelOption>
+): MembersRuntimeConfigRuntimeSwitch? {
+    val next = initialRuntime?.trim()?.takeIf { it.isNotBlank() && it != initialConfig.runtime } ?: return null
+    return membersRuntimeConfigRuntimeSwitch(
+        initialConfig = initialConfig,
+        currentRuntime = initialConfig.runtime,
+        nextRuntime = next,
+        currentReasoningEffort = initialConfig.reasoningEffort,
+        nextRuntimeModels = nextRuntimeModels
+    )
 }
 
 internal fun membersAgentMachineRuntimeIds(

@@ -2344,7 +2344,6 @@
     <string name="runtime_form_v2_option_default">默认</string>
     <string name="runtime_form_v2_use_custom">使用“%1$s”</string>
     <string name="runtime_form_v2_secret_keep_hint">留空则保留当前值。</string>
-    <string name="runtime_form_v2_change_runtime">更换运行时</string>
     <string name="runtime_form_v2_load_failed">运行时表单加载失败（%1$s）。</string>
     <string name="runtime_form_v2_source_refresh_failed">列表刷新失败，仍显示之前的选项。</string>
     <string name="runtime_form_v2_source_status_fallback">已改为显示标准列表。</string>
