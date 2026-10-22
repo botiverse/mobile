@@ -99,6 +99,33 @@ class IntegrationsActionsPushApiTest {
     }
 
     @Test
+    fun actionCardConfirmationVersionTravelsAndReconfirmPostsToItsRoute() = runBlocking {
+        // botiverse/slock shared ExecuteActionRequestBody / MarkActionExecutedRequestBody carry
+        // `expectedConfirmationVersion`; routes/actions.ts POST /:messageId/reconfirm takes no body.
+        val transport = RecordingIntegrationsActionsPushApi()
+        val client = RaftIntegrationsActionsPushApiClient(transport)
+
+        client.executeAction(MessageId("message-1"), buildExecuteActionBody(expectedState = "prepared", expectedConfirmationVersion = 3))
+        client.markActionExecuted(
+            MessageId("message-1"),
+            buildMarkChannelActionExecutedBody(channelId = "c-1", channelName = "launch", expectedConfirmationVersion = 3)
+        )
+        assertEquals(
+            "message-1",
+            assertIs<DataResult.Content<ActionCardResult>>(client.reconfirmAction(MessageId("message-1"))).data.messageId
+        )
+
+        assertEquals(
+            listOf(
+                """POST actions/message-1/execute body={"expectedState":"prepared","expectedConfirmationVersion":3}""",
+                """POST actions/message-1/mark-executed body={"result":{"kind":"channel","id":"c-1","name":"launch","channelId":null,"channelName":null,"addedHumanIds":null,"addedAgentIds":null},"expectedConfirmationVersion":3}""",
+                "POST actions/message-1/reconfirm",
+            ),
+            transport.calls
+        )
+    }
+
+    @Test
     fun typedIntegrationsActionsPushApiRejectsGuessedWrappersAndAliases() = runBlocking {
         val client =
             RaftIntegrationsActionsPushApiClient(
@@ -309,6 +336,11 @@ class IntegrationsActionsPushApiTest {
 
         override suspend fun markActionExecuted(messageId: MessageId, body: String): HomeNetworkResponse {
             calls += "POST actions/${messageId.value}/mark-executed body=$body"
+            return ok(actionBody)
+        }
+
+        override suspend fun reconfirmAction(messageId: MessageId): HomeNetworkResponse {
+            calls += "POST actions/${messageId.value}/reconfirm"
             return ok(actionBody)
         }
 

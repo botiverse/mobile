@@ -8256,6 +8256,38 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun reconfirmCardReconfirmsAndAFrozenCardRunsNothing() = runBlocking {
+        // web ActionCard: a `reconfirm_required` card's button POSTs /actions/:id/reconfirm (no
+        // execute); a `frozen` card's button is disabled. The prepared card carries its version.
+        val actionCardsApi =
+            RecordingActionCardsApi(
+                executeResponse =
+                    HomeNetworkResponse(
+                        code = 200,
+                        bodyText =
+                            """{"messageId":"m-card","confirmationVersion":5,"metadata":{"kind":"action-card","state":"prepared","confirmationVersion":5,"action":{"type":"channel:create","name":"launch"}}}"""
+                    )
+            )
+        val dataSource =
+            testSharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
+                actionCardsApiClient = RaftIntegrationsActionsPushApiClient(actionCardsApi)
+            )
+        val reconfirm = ThreadActionCard(type = "channel:create", name = "launch", state = "reconfirm_required", confirmationVersion = 4)
+
+        val reconfirmed = (dataSource.commitThreadActionCard(basePayload(), "m-card", reconfirm) as DataResult.Content).data
+        assertEquals("prepared", reconfirmed.state)
+        assertEquals(5, reconfirmed.confirmationVersion)
+        assertEquals(listOf("POST actions/m-card/reconfirm"), actionCardsApi.calls)
+
+        val frozen = reconfirm.copy(state = "frozen")
+        assertIs<DataResult.Error>(dataSource.commitThreadActionCard(basePayload(), "m-card", frozen))
+        assertEquals(listOf("POST actions/m-card/reconfirm"), actionCardsApi.calls)
+    }
+
+    @Test
     fun genericRegisterAppActionCardExecutesThroughServerAuthority() = runBlocking {
         val actionCardsApi =
             RecordingActionCardsApi(
@@ -17879,6 +17911,10 @@ class SharedThreadStoreTest {
         override suspend fun markActionExecuted(messageId: MessageId, body: String): HomeNetworkResponse {
             calls += "POST actions/${messageId.value}/mark-executed body=$body"
             return markResponse
+        }
+        override suspend fun reconfirmAction(messageId: MessageId): HomeNetworkResponse {
+            calls += "POST actions/${messageId.value}/reconfirm"
+            return executeResponse
         }
 
         override suspend fun pushVapidKey(): HomeNetworkResponse = error("unused")

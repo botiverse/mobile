@@ -7455,6 +7455,7 @@ private fun SharedThreadRouteContentContent(
         )
     val genericActionCardSuccessLabel = stringResource(MR.strings.thread_action_card_success_action)
     val genericActionCardFailureLabel = stringResource(MR.strings.thread_action_card_failure_action)
+    val actionCardReconfirmFailedLabel = stringResource(MR.strings.thread_action_card_reconfirm_failed)
     val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
     // Effective "Collapse long messages": this conversation's device-local override ?: the global switch.
     val longMessageCollapseConversationSetting =
@@ -11217,6 +11218,7 @@ private fun SharedThreadRouteContentContent(
                     RaftMarkdownRenderConfig(singleParagraphLightPath = singleParagraphLightPathEnabled),
                 LocalThreadReverseLayout provides threadReverseLayoutEnabled,
                 LocalThreadFeedbackCardEntryEnabled provides feedbackCardEntryEnabled,
+                LocalThreadViewerServerId provides currentServerId,
                 LocalThreadMessagePointerSessionKey provides threadPointerSessionKey,
                 LocalThreadMessageLongPressGestureOwnerStore provides
                     threadMessageLongPressGestureOwnerStore,
@@ -11811,6 +11813,29 @@ private fun SharedThreadRouteContentContent(
                         renderedTimelineSlice.threadActionMessage(itemId, linkedTasksProjection)?.threadActionCard()
                     if (actionCard == null) {
                         bridge.toast(actionUnavailableLabel)
+                        return@ThreadPageContent
+                    }
+                    // web ActionCard: a frozen card's button is disabled; nothing runs.
+                    if (actionCard.isFrozen) return@ThreadPageContent
+                    // A reconfirm card's button reconfirms it (back to prepared), whatever its type.
+                    if (actionCard.needsReconfirmation) {
+                        pendingActionCardIds = pendingActionCardIds + itemId
+                        coroutineScope.launch {
+                            try {
+                                when (val result = dataSource.commitThreadActionCard(renderedThread, itemId, actionCard)) {
+                                    is DataResult.Content ->
+                                        threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(itemId, result.data))
+                                    is DataResult.Empty,
+                                    is DataResult.Error -> bridge.toast(actionCardReconfirmFailedLabel)
+                                    is DataResult.NoPermission -> {
+                                        if (routeAuthRequired(result)) return@launch
+                                        bridge.toast(actionCardReconfirmFailedLabel)
+                                    }
+                                }
+                            } finally {
+                                pendingActionCardIds = pendingActionCardIds - itemId
+                            }
+                        }
                         return@ThreadPageContent
                     }
                     if (actionCard.isFeedbackSubmitAction()) {
@@ -26086,8 +26111,10 @@ private fun ThreadMessageSendingIndicator(modifier: Modifier = Modifier) {
  * An agent's action card in a message: the design system's [RaftMessageActionCard] (raft-ui
  * MessageActionCard), laid out as web ActionCard does. The header carries the action's icon
  * and title; a done card says Done with a success pixel, folds to its header and keeps who did
- * it, when, and what came of it under the title; a card this person can't run says View only.
- * The content lists the values to check (web useActionCardDetail), the agent's reason as a
+ * it, when, and what came of it under the title. A frozen card says Frozen and its button is
+ * disabled; a card to confirm again says so with the pink pixel and its button reconfirms it. A
+ * card this person can't run says View only: one prepared on another server folds and says why
+ * under its title. The content lists the values to check (web useActionCardDetail), the agent's reason as a
  * quote, an app login's permissions, and the confirm button: the default ink-outline button
  * with the action's verb, never pink (the composer's send is the screen's one pink button).
  */
@@ -26105,9 +26132,21 @@ internal fun ThreadActionCardView(
     val pendingLabel = card.localizedActionCardPendingLabel()
     val properties = card.localizedActionCardProperties()
     val doneLine = if (card.isExecuted) card.localizedActionCardDoneLine(executedTimeLabel).takeIf { it.isNotBlank() } else null
-    val viewOnly = !card.isExecuted && !commitEnabled
-    // Web: a done card folds by default; the fold then belongs to the reader.
-    var expanded by remember(card.isExecuted) { mutableStateOf(!card.isExecuted) }
+    // web `isActionCardReadOnlyInServer`: a card prepared on another server runs only there.
+    val viewerServerId = LocalThreadViewerServerId.current
+    val blockedReason =
+        when {
+            card.isExecuted -> null
+            card.sourceServerId != null && viewerServerId != null && card.sourceServerId != viewerServerId ->
+                card.targetServerName?.let { stringResource(MR.strings.thread_action_card_blocked_target_server, it) }
+                    ?: stringResource(MR.strings.thread_action_card_blocked_source_workspace)
+            else -> null
+        }
+    val viewOnly = !card.isExecuted && (!commitEnabled || blockedReason != null)
+    // Web: a done card, and a view-only one that says why, fold by default; a frozen or
+    // reconfirm card stays open (it waits on the reader). The fold then belongs to the reader.
+    val foldsByDefault = card.isExecuted || (blockedReason != null && !card.isFrozen && !card.needsReconfirmation)
+    var expanded by remember(foldsByDefault) { mutableStateOf(!foldsByDefault) }
     val feedbackEntryEnabled = LocalThreadFeedbackCardEntryEnabled.current
     RaftDesignSystemTheme {
         RaftMessageActionCard(
@@ -26122,17 +26161,27 @@ internal fun ThreadActionCardView(
                     )
                 }
             },
-            description = doneLine?.let { line -> { RaftMessageActionCardHeaderDescription(line, check = true) } },
+            description =
+                doneLine?.let { line -> { RaftMessageActionCardHeaderDescription(line, check = true) } }
+                    ?: blockedReason?.takeIf { foldsByDefault }?.let { reason -> { RaftMessageActionCardHeaderDescription(reason) } },
             status =
                 when {
                     card.isExecuted -> stringResource(MR.strings.common_done)
+                    card.isFrozen -> stringResource(MR.strings.thread_action_card_frozen)
+                    card.needsReconfirmation -> stringResource(MR.strings.thread_action_card_status_reconfirm)
                     viewOnly -> stringResource(MR.strings.thread_action_card_view_only)
                     else -> null
                 },
             statusTone =
-                if (card.isExecuted) RaftMessageActionCardStatusTone.Success else RaftMessageActionCardStatusTone.Neutral,
+                when {
+                    card.isExecuted -> RaftMessageActionCardStatusTone.Success
+                    // The card waits on the reader: the pink attention pixel.
+                    card.needsReconfirmation -> RaftMessageActionCardStatusTone.Accent
+                    else -> RaftMessageActionCardStatusTone.Neutral
+                },
             expanded = expanded,
-            onExpandedChange = if (card.isExecuted || viewOnly) ({ expanded = it }) else null,
+            onExpandedChange =
+                if (card.isExecuted || card.isFrozen || card.needsReconfirmation || viewOnly) ({ expanded = it }) else null,
             toggleLabel = stringResource(MR.strings.thread_action_card_toggle_details),
         ) {
             card.actionCardNotice()?.let { notice -> RaftMessageActionCardNotice(notice) }
@@ -26162,14 +26211,26 @@ internal fun ThreadActionCardView(
                     }
                 }
             }
+            // Web shows the button disabled beside the reason; with no reason to give (the
+            // thread is read-only here) the card shows no button.
             if (!card.isExecuted && commitEnabled) {
-                RaftMessageActionCardActions {
+                RaftMessageActionCardActions(note = blockedReason?.takeUnless { foldsByDefault }) {
                     RaftButton(
-                        text = if (pending) pendingLabel else verb,
+                        text =
+                            when {
+                                card.isFrozen -> stringResource(MR.strings.thread_action_card_frozen)
+                                card.needsReconfirmation -> stringResource(MR.strings.thread_action_card_reconfirm)
+                                pending -> pendingLabel
+                                else -> verb
+                            },
                         onClick = onCommit,
                         enabled =
-                            !pending &&
-                                (card.isSupportedCommitAction() || card.opensFeedbackCardEntry(feedbackEntryEnabled)),
+                            !pending && !card.isFrozen && blockedReason == null &&
+                                (
+                                    card.needsReconfirmation ||
+                                        card.isSupportedCommitAction() ||
+                                        card.opensFeedbackCardEntry(feedbackEntryEnabled)
+                                    ),
                     )
                 }
             }
@@ -29417,6 +29478,12 @@ internal val LocalThreadReactionAtlasImage = compositionLocalOf<ImageBitmap?> { 
 
 /** Whether the viewing server lets `feedback:submit` cards open the Feedback WebView. */
 internal val LocalThreadFeedbackCardEntryEnabled = compositionLocalOf { false }
+
+/**
+ * The server the thread is viewed in: an action card prepared on another server (a joint
+ * channel's peer) is read-only here (web `isActionCardReadOnlyInServer`). Null when unknown.
+ */
+internal val LocalThreadViewerServerId = compositionLocalOf<String?> { null }
 
 @Composable
 internal fun ThreadReactionAtlasProvider(content: @Composable () -> Unit) {

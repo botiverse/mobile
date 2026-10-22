@@ -2,6 +2,8 @@ package build.raft.app.data
 
 import build.raft.app.model.MemberId
 import build.raft.app.model.MessageId
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -39,6 +41,7 @@ internal interface RaftIntegrationsActionsPushApi {
     suspend fun executeAction(messageId: MessageId, body: String): HomeNetworkResponse
     suspend fun emitActionEvent(messageId: MessageId, body: String): HomeNetworkResponse
     suspend fun markActionExecuted(messageId: MessageId, body: String): HomeNetworkResponse
+    suspend fun reconfirmAction(messageId: MessageId): HomeNetworkResponse
     suspend fun pushVapidKey(): HomeNetworkResponse
     suspend fun recordPushPromptEvent(body: String): HomeNetworkResponse
     suspend fun subscribePush(body: String): HomeNetworkResponse
@@ -78,6 +81,9 @@ internal class RaftIntegrationsActionsPushNetworkApi(
 
     override suspend fun markActionExecuted(messageId: MessageId, body: String): HomeNetworkResponse =
         networkClient.request(DataRequestPriority.Foreground, "actions/${messageId.value}/mark-executed", method = "POST", bodyText = body)
+
+    override suspend fun reconfirmAction(messageId: MessageId): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Foreground, "actions/${messageId.value}/reconfirm", method = "POST", bodyText = "{}")
 
     override suspend fun pushVapidKey(): HomeNetworkResponse =
         networkClient.request(DataRequestPriority.Visible, "push/vapid-key")
@@ -165,6 +171,14 @@ internal class RaftIntegrationsActionsPushApiClient(
 
     suspend fun markActionExecuted(messageId: MessageId, body: String): DataResult<ActionCardResult> =
         transport.markActionExecuted(messageId, body).mapActionCard("action_mark_executed_contract_mismatch")
+
+    /**
+     * POST /api/actions/:messageId/reconfirm (botiverse/slock routes/actions.ts): a
+     * `reconfirm_required` card back to `prepared` under a new confirmation version. The
+     * response is `{ messageId, metadata, confirmationVersion }`.
+     */
+    suspend fun reconfirmAction(messageId: MessageId): DataResult<ActionCardResult> =
+        transport.reconfirmAction(messageId).mapActionCard("action_reconfirm_contract_mismatch")
 
     suspend fun pushVapidKey(): DataResult<PushVapidKey> =
         transport.pushVapidKey().mapApiBody(
@@ -474,11 +488,24 @@ internal data class CreateIntegrationClientBody(
 @Serializable
 internal data class ApproveIntegrationRequestBody(val remember: Boolean)
 
+/**
+ * Body of POST /api/actions/:messageId/execute (botiverse/slock shared `ExecuteActionRequestBody`).
+ * [expectedConfirmationVersion] is the card's `confirmationVersion`; left out when unknown.
+ */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
-internal data class ExecuteActionBody(val expectedState: String? = null)
+internal data class ExecuteActionBody(
+    val expectedState: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val expectedConfirmationVersion: Int? = null,
+)
 
+/** Body of POST /api/actions/:messageId/mark-executed (shared `MarkActionExecutedRequestBody`). */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
-internal data class MarkActionExecutedBody(val result: ActionCardResultBody)
+internal data class MarkActionExecutedBody(
+    val result: ActionCardResultBody,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val expectedConfirmationVersion: Int? = null,
+)
 
 @Serializable
 internal data class ActionCardResultBody(
@@ -529,20 +556,24 @@ internal fun buildCreateIntegrationClientBody(
 internal fun buildApproveIntegrationRequestBody(remember: Boolean): String =
     integrationsActionsPushJson.encodeToString(ApproveIntegrationRequestBody(remember = remember))
 
-internal fun buildExecuteActionBody(expectedState: String? = null): String =
-    integrationsActionsPushJson.encodeToString(ExecuteActionBody(expectedState = expectedState))
+internal fun buildExecuteActionBody(expectedState: String? = null, expectedConfirmationVersion: Int? = null): String =
+    integrationsActionsPushJson.encodeToString(
+        ExecuteActionBody(expectedState = expectedState, expectedConfirmationVersion = expectedConfirmationVersion)
+    )
 
-internal fun buildMarkAgentActionExecutedBody(agentId: String, agentName: String): String =
+internal fun buildMarkAgentActionExecutedBody(agentId: String, agentName: String, expectedConfirmationVersion: Int? = null): String =
     integrationsActionsPushJson.encodeToString(
         MarkActionExecutedBody(
-            result = ActionCardResultBody(kind = "agent", id = agentId, name = agentName)
+            result = ActionCardResultBody(kind = "agent", id = agentId, name = agentName),
+            expectedConfirmationVersion = expectedConfirmationVersion,
         )
     )
 
-internal fun buildMarkChannelActionExecutedBody(channelId: String, channelName: String): String =
+internal fun buildMarkChannelActionExecutedBody(channelId: String, channelName: String, expectedConfirmationVersion: Int? = null): String =
     integrationsActionsPushJson.encodeToString(
         MarkActionExecutedBody(
-            result = ActionCardResultBody(kind = "channel", id = channelId, name = channelName)
+            result = ActionCardResultBody(kind = "channel", id = channelId, name = channelName),
+            expectedConfirmationVersion = expectedConfirmationVersion,
         )
     )
 
@@ -550,7 +581,8 @@ internal fun buildMarkChannelMembersActionExecutedBody(
     channelId: String,
     channelName: String,
     addedHumanIds: List<String>,
-    addedAgentIds: List<String>
+    addedAgentIds: List<String>,
+    expectedConfirmationVersion: Int? = null,
 ): String =
     integrationsActionsPushJson.encodeToString(
         MarkActionExecutedBody(
@@ -561,7 +593,8 @@ internal fun buildMarkChannelMembersActionExecutedBody(
                     channelName = channelName,
                     addedHumanIds = addedHumanIds,
                     addedAgentIds = addedAgentIds
-                )
+                ),
+            expectedConfirmationVersion = expectedConfirmationVersion,
         )
     )
 

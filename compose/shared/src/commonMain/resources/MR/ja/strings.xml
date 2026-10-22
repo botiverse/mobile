@@ -661,6 +661,12 @@
     <string name="thread_action_card_label_agent">エージェント</string>
     <string name="thread_action_card_label_scopes">スコープ:</string>
     <string name="thread_action_card_label_type">種類</string>
+    <string name="thread_action_card_frozen">凍結済み</string>
+    <string name="thread_action_card_status_reconfirm">再確認が必要</string>
+    <string name="thread_action_card_reconfirm">再確認</string>
+    <string name="thread_action_card_reconfirm_failed">再確認に失敗しました</string>
+    <string name="thread_action_card_blocked_target_server">この操作は %1$s で実行されます。実行するには %1$s に切り替えてください。</string>
+    <string name="thread_action_card_blocked_source_workspace">これは履歴として残されたコピーです。この操作は元のワークスペースでのみ実行できます。</string>
     <string name="thread_action_card_field_description">説明</string>
     <string name="thread_action_card_field_humans">人間</string>
     <string name="thread_action_card_field_agents">エージェント</string>
