@@ -11,6 +11,7 @@ import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.gesture.raftBackSwipePagingDrag
 import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.base.Utils
+import build.raft.app.base.raftAttachmentHostDownloadId
 import build.raft.app.base.reduceAttachmentDownloadProgress
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalIconButton
@@ -2016,10 +2017,11 @@ private fun RaftFilePreviewStandalonePageContent() {
                 )
             }
             downloadProgress =
-                reduceAttachmentDownloadProgress(
+                raftFilePreviewReducePageProgress(
                     current = downloadProgress,
                     incoming = progress,
-                    expectedDownloadId = expectedDownloadId
+                    owner = operation.owner,
+                    activeDownloadId = expectedDownloadId
                 )
             attachmentCacheAttemptToken = progress.attemptToken.takeIf(String::isNotBlank)
         }
@@ -2963,7 +2965,8 @@ private fun RaftFilePreviewStandalonePageContent() {
         }
         coroutineScope.launch {
             bridge.attachmentDownloadControl(
-                downloadId = downloadId,
+                // The host runs the download under its principal-scoped id.
+                downloadId = raftAttachmentHostDownloadId(operation.owner, downloadId),
                 owner = operation.owner,
                 expectedAttemptToken = downloadProgress?.attemptToken,
                 expectedRecordVersion = downloadProgress?.recordVersion,
@@ -3711,13 +3714,19 @@ private fun RaftFilePreviewStandalonePageContent() {
             RaftDownloadStatus.Downloading -> "downloading"
             else -> downloadStatus
         }
-    val downloadView =
+    val liveDownloadView =
         centerActiveEntry?.toFilePreviewDownloadView()
             ?: raftFilePreviewDownloadView(
                 status = downloadStatus,
                 progress = downloadProgress,
                 errorMessage = downloadMessage.ifBlank { null }
             )
+    // A fast download keeps its panel up for a moment instead of flashing; a stop clears it at once.
+    val downloadView =
+        rememberRaftHeldDownloadView(
+            view = liveDownloadView,
+            hold = downloadMessage != downloadStopped && centerEntry?.status != RaftDownloadStatus.Cancelled
+        )
     val downloadUiState = raftFilePreviewDownloadUiState(visiblePublicDownloadState, shownDownloadStatus)
     val downloadActive = downloadUiState == RaftFilePreviewDownloadUiState.Downloading
     RaftFilePreviewPageScaffold(
@@ -9448,6 +9457,23 @@ internal fun raftFilePreviewLocalizedActiveDownloadStatusLabel(
                 paused = stringResource(MR.strings.file_preview_download_paused),
                 saving = stringResource(MR.strings.file_preview_download_saving)
             )
+    )
+
+/**
+ * Folds one host sample into the page's own download progress. The host names the download by
+ * its principal-scoped id ([raftAttachmentHostDownloadId]); fencing on the page's own unscoped
+ * [activeDownloadId] dropped every sample, so the page never left its first, empty state.
+ */
+internal fun raftFilePreviewReducePageProgress(
+    current: BridgeAttachmentDownloadProgress?,
+    incoming: BridgeAttachmentDownloadProgress,
+    owner: AttachmentOwnerLease,
+    activeDownloadId: String
+): BridgeAttachmentDownloadProgress? =
+    reduceAttachmentDownloadProgress(
+        current = current,
+        incoming = incoming,
+        expectedDownloadId = raftAttachmentHostDownloadId(owner, activeDownloadId)
     )
 
 internal val RaftFilePreviewInitialDownloadProgress =
