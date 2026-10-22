@@ -2145,6 +2145,12 @@ class SharedServerMembersStore internal constructor(
         val serverKey = serverId.value.normalizedServerMembersId() ?: return
         val requested = transport.normalizedOrNull() ?: return
         synchronized(peerRefreshLock) {
+            // Connect handlers run concurrently, so triggers can arrive out of order. Only a
+            // trigger for the CURRENT transport may start or become pending: a late stale one
+            // must not overwrite a newer pending trigger (its follow-up would stop at the stale
+            // check and the newest transport would never be repaired). Checked under the lock so
+            // the check and the pending write are one decision.
+            if (currentPresenceTransport(ServerId(serverKey)) != requested) return
             if (serverKey in peerRefreshActive) {
                 peerRefreshPending[serverKey] = requested
                 return
@@ -2164,6 +2170,8 @@ class SharedServerMembersStore internal constructor(
                     }
             }
         } finally {
+            // Only reached with a target on cancellation / failure (store or scope teardown):
+            // a pending trigger is dropped with the run, not handed on.
             if (target != null) {
                 synchronized(peerRefreshLock) {
                     peerRefreshActive -= serverKey

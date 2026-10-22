@@ -427,6 +427,31 @@ class SharedServerMembersJointPeerAgentPresenceTest {
     }
 
     @Test
+    fun staleTriggerArrivingAfterNewerOneCannotDisplaceTheNewestRepair() = runBlocking {
+        val (registry, repo, store) = twoPeerSlices()
+        val transport3 = ProcessPresenceTransportEpoch("family-1", 3L)
+        val release = CompletableDeferred<Unit>()
+        repo.holdFirst = release
+        val first = async { store.refreshPeerAgentChannelPresence(serverId, transport1, reason = "run-1") }
+        repo.firstStarted.await()
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport2)
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport3)
+        // Connect handlers are concurrent: T3's trigger lands first, T2's after it.
+        val later =
+            listOf(transport3, transport2).map { transport ->
+                async { store.refreshPeerAgentChannelPresence(serverId, transport, reason = "out-of-order") }
+            }
+        release.complete(Unit)
+        first.await()
+        later.forEach { it.await() }
+
+        // joint-a: the held T1 fetch + exactly one T3 repair; joint-b: exactly one T3 repair.
+        assertEquals(2, repo.channelFetches("joint-a"), repo.log.toString())
+        assertEquals(1, repo.channelFetches("joint-b"), repo.log.toString())
+        assertEquals(AgentStatus.Working, registry.factFor(owner, "peer-agent")?.agentStatus)
+    }
+
+    @Test
     fun duplicateTriggersWhileARunIsInFlightAreDropped() = runBlocking {
         val (registry, repo, store) = twoPeerSlices()
         val release = CompletableDeferred<Unit>()
