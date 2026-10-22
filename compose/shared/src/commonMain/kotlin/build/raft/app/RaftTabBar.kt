@@ -11,7 +11,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,7 +35,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,14 +43,11 @@ import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.components.RaftMobileNavDefaults
+import build.raft.designsystem.components.RaftMobileNavItem
+import build.raft.app.components.RaftDesignSystemTheme
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import build.raft.designsystem.components.raftUnreadCountDescription
 import build.raft.designsystem.components.raftUnreadCountText
@@ -273,8 +268,9 @@ internal fun RaftBottomTabBar(
 
 /**
  * Geometry of the approved bottom tab bar mockup (/tmp/activity-tab-mockups gen.js `.tabbar`).
- * The tab geometry is the design system's [RaftMobileNavDefaults], which the current-server tab
- * ([build.raft.designsystem.components.RaftServerTabButton]) draws with too.
+ * The tab geometry is the design system's [RaftMobileNavDefaults]: every phone tab is drawn by
+ * [build.raft.designsystem.components.RaftMobileNavItem], the current-server tab by
+ * [build.raft.designsystem.components.RaftMobileNavServerPopoverItem].
  */
 internal object RaftBottomTabBarSpec {
     val BarHeight = RaftMobileNavDefaults.BarHeight
@@ -337,112 +333,38 @@ private fun RaftBottomTabItem(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val selected = item.selected
-    // raft-ui MobileNav press: the overlay sits on the pill (12% ink on the active
-    // brand sticker, fill-pressed at rest), never a wash over the whole cell. A bare
-    // clickable here fell back to CMP's default indication: a dark gray rectangle.
-    val pressSource = remember { MutableInteractionSource() }
-    val pressed = pressSource.collectIsPressedAsState().value
-    val pillShape = RoundedCornerShape(RaftBottomTabBarSpec.PillRadius)
-    val inkColor = when {
-        !item.enabled -> RaftColor.ForegroundDisabled
-        selected -> RaftColor.StickerInk
-        else -> RaftColor.ForegroundHint
-    }
-    Column(
-        modifier = modifier
-            .clickable(
-                interactionSource = pressSource,
-                indication = null,
-                enabled = item.enabled
-            ) { onSelect(item.key) },
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // The slot holds the pill and, as a sibling drawn after it, the badge,
-        // so the pill border can never paint over the count.
-        Box(
-            modifier = Modifier.size(RaftBottomTabBarSpec.PillWidth, RaftBottomTabBarSpec.PillHeight)
-        ) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .then(
-                        if (selected) {
-                            val edge = RaftColor.StickerEdge
-                            Modifier
-                                .drawBehind {
-                                    // Die-cut ring outside the pill: transparent in light, a paper ring in dark.
-                                    if (edge.alpha > 0f) {
-                                        val w = RaftAppStroke.Control.toPx()
-                                        drawRoundRect(
-                                            color = edge,
-                                            topLeft = Offset(-w / 2f, -w / 2f),
-                                            size = Size(size.width + w, size.height + w),
-                                            cornerRadius = CornerRadius(RaftBottomTabBarSpec.PillRadius.toPx() + w / 2f),
-                                            style = Stroke(w)
-                                        )
-                                    }
-                                }
-                                .background(RaftColor.Brand, pillShape)
-                                .border(RaftBottomTabBarSpec.PillBorder, RaftColor.StickerInk, pillShape)
-                        } else {
-                            Modifier
-                        }
-                    )
-                    .then(
-                        if (pressed && item.enabled) {
-                            Modifier.background(raftBottomTabPressOverlay(selected), pillShape)
-                        } else {
-                            Modifier
-                        }
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
+    // The design system's raft-ui MobileNavItem, as the server tab next to it: the 56x32 pill
+    // slot (brand sticker when selected, the press wash on the pill, never over the whole
+    // cell), the label 4dp under it, the attention pixel on the slot's top-right corner. The
+    // app adds its glyph (the Activity one optically scaled) and its unread count.
+    val attentionDescription =
+        if (item.key == "more") stringResource(MR.strings.tab_more_attention_dot) else stringResource(MR.strings.tab_activity_unread_dot)
+    RaftDesignSystemTheme {
+        RaftMobileNavItem(
+            label = item.label,
+            selected = item.selected,
+            onClick = { onSelect(item.key) },
+            icon = { ink ->
                 RaftLucideIcon(
                     name = item.iconName,
-                    color = raftArgbHex(inkColor),
+                    color = raftArgbHex(ink),
                     strokeWidth = RaftBottomTabBarSpec.IconStroke,
                     modifier = Modifier.size(RaftBottomTabBarSpec.IconSize * raftBottomTabIconScale(item.iconName))
                 )
-            }
-            RaftBottomTabCountBadge(
-                count = item.badgeCount,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .offset(x = RaftBottomTabBarSpec.BadgeOffsetX, y = RaftBottomTabBarSpec.BadgeOffsetY)
-                    .wrapContentSize(align = Alignment.TopStart, unbounded = true)
-            )
-            if (item.attentionDot) {
-                RaftTabAttentionDot(
-                    key = item.key,
+            },
+            modifier = modifier,
+            attention = item.attentionDot,
+            attentionDescription = attentionDescription,
+            enabled = item.enabled,
+            badge = {
+                RaftBottomTabCountBadge(
+                    count = item.badgeCount,
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .offset(x = RaftBottomTabBarSpec.DotOffsetX, y = RaftBottomTabBarSpec.DotOffsetY)
+                        .offset(x = RaftBottomTabBarSpec.BadgeOffsetX, y = RaftBottomTabBarSpec.BadgeOffsetY)
+                        .wrapContentSize(align = Alignment.TopStart, unbounded = true)
                 )
-            }
-        }
-        Spacer(Modifier.height(RaftBottomTabBarSpec.LabelGap))
-        val labelColor = when {
-            !item.enabled -> RaftColor.ForegroundDisabled
-            selected -> RaftColor.TextBlack
-            else -> RaftColor.ForegroundHint
-        }
-        // The label is sized to the bar's fixed 58dp geometry and, like a native tab bar,
-        // does not scale with the system font size (it would run out of the bar).
-        val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
-        Text(
-            text = item.label,
-            style =
-                RaftType.TabLabel
-                    .copy(
-                        fontSize = RaftBottomTabBarSpec.LabelFontSize / fontScale,
-                        lineHeight = RaftBottomTabBarSpec.LabelLineHeight / fontScale
-                    )
-                    .withRaftFontWeight(raftBottomTabLabelWeight(selected))
-                    .copy(color = labelColor),
-            color = labelColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            },
         )
     }
 }
@@ -815,10 +737,6 @@ private fun RaftVerticalTabItem(
         }
     }
 }
-
-/** Press overlay of a bottom tab's sticker (raft-ui Color > Pressed overlays). */
-internal fun raftBottomTabPressOverlay(selected: Boolean): Color =
-    if (selected) RaftColor.StickerPressed else RaftColor.FillPressed
 
 /**
  * Swallows touches that would otherwise fall through the tab bar to the page under it, without
