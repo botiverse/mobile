@@ -35,6 +35,8 @@ object RealtimeSocketEvents {
     const val ThreadUpdated = GeneratedRealtimeContract.SocketEvent.ThreadUpdated
     const val ChannelUpdated = GeneratedRealtimeContract.SocketEvent.ChannelUpdated
     const val ChannelMembersUpdated = GeneratedRealtimeContract.SocketEvent.ChannelMembersUpdated
+    /** read_receipts_v0: an agent peer's read watermark advanced, or a large scope's summary changed. */
+    const val ScopeReadUpdated = GeneratedRealtimeContract.SocketEvent.ScopeReadUpdated
     const val TaskCreated = GeneratedRealtimeContract.SocketEvent.TaskCreated
     const val TaskUpdated = GeneratedRealtimeContract.SocketEvent.TaskUpdated
     const val TaskDeleted = GeneratedRealtimeContract.SocketEvent.TaskDeleted

@@ -25,6 +25,7 @@ import build.raft.app.model.PerReceiverPinnedChanged
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.ThreadFollowersUpdated
+import build.raft.app.model.ScopeReadUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskUpdated
@@ -767,6 +768,7 @@ private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is MessageUpdated -> "message_updated"
     is DirectMessageCreated -> "direct_message_created"
     is ThreadFollowersUpdated -> "thread_followers_updated"
+    is ScopeReadUpdated -> "scope_read_updated"
         is ThreadUpdated -> "thread_updated"
     is TaskCreated -> "task_created"
     is TaskUpdated -> "task_updated"

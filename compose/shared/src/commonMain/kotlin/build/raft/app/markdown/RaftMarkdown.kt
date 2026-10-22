@@ -766,10 +766,11 @@ internal fun raftMarkdownAnnotator(
     onDiagnostics: ((Int, Int, Long) -> Unit)? = null,
     capabilities: RaftRichTextCapabilities = RaftMarkdownRendererRichTextCapabilities,
     softLineBreaksAsNewLines: Boolean = true,
-    taskStatuses: () -> Map<Int, TaskStatus>? = { null }
+    taskStatuses: () -> Map<Int, TaskStatus>? = { null },
+    mentionReadStates: () -> RaftMarkdownMentionReadStates? = { null }
 ): MarkdownAnnotator {
     val diagnosticsStartedAt = onDiagnostics?.let { TimeSource.Monotonic.markNow() }
-    val rendererInput = RaftRichTextRendererInput(document, capabilities, taskStatuses)
+    val rendererInput = RaftRichTextRendererInput(document, capabilities, taskStatuses, mentionReadStates)
     if (diagnosticsStartedAt != null) {
         onDiagnostics.invoke(
             rendererInput.raftRefTokenCount,
@@ -809,7 +810,9 @@ internal fun raftMarkdownAnnotator(
             )
         },
         inlineContent = {
-            rendererInput.activeActionSpinnerInlineContent() + rendererInput.taskChipInlineContent()
+            rendererInput.activeActionSpinnerInlineContent() +
+                rendererInput.taskChipInlineContent() +
+                rendererInput.mentionReadInlineContent()
         },
         config = markdownAnnotatorConfig(eolAsNewLine = softLineBreaksAsNewLines)
     )
@@ -818,7 +821,8 @@ internal fun raftMarkdownAnnotator(
 private data class RaftRichTextRendererInput(
     val document: RaftRichTextDocument,
     val capabilities: RaftRichTextCapabilities,
-    val taskStatuses: () -> Map<Int, TaskStatus>? = { null }
+    val taskStatuses: () -> Map<Int, TaskStatus>? = { null },
+    val mentionReadStates: () -> RaftMarkdownMentionReadStates? = { null }
 ) {
     val raftRefTokens: List<RaftRichTextInlineToken> =
         document.inlineTokens
@@ -854,6 +858,16 @@ private data class RaftRichTextRendererInput(
         if (taskStatusesOrNull() == null) return emptyMap()
         return raftMarkdownTaskChipInlineContent(dark = RaftAppThemeState.isDark)
     }
+
+    private val hasMentionRefs: Boolean =
+        document.actions.any { action -> action.refKind == RaftRichTextRefKind.UserMention }
+
+    /** read_receipts_v0: the @mentioned agent's read badge, when the message row provides states. */
+    fun mentionReadStateFor(action: RaftRichTextAction): Boolean? =
+        if (action.refKind == RaftRichTextRefKind.UserMention) mentionReadStates()?.readStateFor(action.label) else null
+
+    fun mentionReadInlineContent(): Map<String, InlineTextContent> =
+        if (hasMentionRefs && mentionReadStates() != null) RaftMarkdownMentionReadInlineContent else emptyMap()
 
     fun raftRefTokensStartingInRange(start: Int, endExclusive: Int): List<RaftRichTextInlineToken> =
         raftRefTokens.filter { token ->
@@ -1117,6 +1131,7 @@ private fun AnnotatedString.Builder.appendRaftRichTextToken(
         }
         pop()
     }
+    rendererInput.mentionReadStateFor(action)?.let { read -> appendRaftMarkdownMentionReadBadge(read) }
 }
 
 /**
@@ -2213,6 +2228,8 @@ fun RaftMarkdownBody(
     val currentResolveTagLabel by rememberUpdatedState(resolveTagLabel)
     val taskStatuses = LocalRaftMarkdownTaskStatuses.current
     val currentTaskStatuses by rememberUpdatedState(taskStatuses)
+    val mentionReadStates = LocalRaftMarkdownMentionReadStates.current
+    val currentMentionReadStates by rememberUpdatedState(mentionReadStates)
     val colors = RaftMarkdownColorsDefault
     // The typography carries theme colours (h6, quotes); the theme is part of its key.
     val markdownDark = RaftAppThemeState.isDark
@@ -2324,7 +2341,8 @@ fun RaftMarkdownBody(
                     }
                 },
             softLineBreaksAsNewLines = softLineBreaksAsNewLines,
-            taskStatuses = { currentTaskStatuses }
+            taskStatuses = { currentTaskStatuses },
+            mentionReadStates = { currentMentionReadStates }
         )
     }
     if (DEBUG_RAFT_MARKDOWN_PERF_LOG && performanceKey != null) {
@@ -2360,6 +2378,10 @@ fun RaftMarkdownBody(
             // Task chips read the status map and the theme at annotation time.
             if (taskStatuses != null) {
                 addAll(raftMarkdownTaskChipRevision(richTextDocument.actions, taskStatuses, markdownDark))
+            }
+            // read_receipts_v0 mention badges read the provided states at annotation time.
+            if (mentionReadStates != null) {
+                addAll(raftMarkdownMentionReadRevision(richTextDocument.actions, mentionReadStates))
             }
         }
     val padding = remember {

@@ -54,6 +54,7 @@ enum GeneratedRealtimeContract {
         static let threadUpdated = "thread:updated"
         static let channelUpdated = "channel:updated"
         static let channelMembersUpdated = "channel:members-updated"
+        static let scopeReadUpdated = "scope_read:updated"
         static let taskCreated = "task:created"
         static let taskUpdated = "task:updated"
         static let taskDeleted = "task:deleted"

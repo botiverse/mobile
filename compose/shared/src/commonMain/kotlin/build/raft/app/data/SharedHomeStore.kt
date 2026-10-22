@@ -5332,6 +5332,7 @@ private fun RealtimeEvent.homeRealtimeDirtyReason(): String =
         is PerReceiverNotificationPrefsChanged -> "notification_prefs_updated"
         is PerReceiverPinnedChanged -> "pinned_updated"
         is build.raft.app.model.ComputerRestartDone -> "computer_restart_done"
+        is build.raft.app.model.ScopeReadUpdated -> "scope_read_updated"
         else -> "realtime"
     }
 

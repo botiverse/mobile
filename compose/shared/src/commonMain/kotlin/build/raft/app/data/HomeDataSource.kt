@@ -267,6 +267,8 @@ internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         is PerReceiverNotificationPrefsChanged,
         is PerReceiverPinnedChanged -> true
         is MemberPresenceUpdated -> false
+        // read_receipts_v0: other participants' read positions only decorate the open message list.
+        is build.raft.app.model.ScopeReadUpdated -> false
         // A web restart's result only concerns the open computer detail page (settings store).
         is build.raft.app.model.ComputerRestartDone -> false
         is RealtimeRefreshRequired ->

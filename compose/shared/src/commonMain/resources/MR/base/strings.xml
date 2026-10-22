@@ -2415,6 +2415,9 @@
     <string name="thread_followers_restore_failed">Could not restore this agent. The list has been refreshed.</string>
     <string name="thread_followers_empty">No agents are watching this thread.</string>
     <string name="thread_followers_peer_server">Peer server</string>
+    <string name="thread_message_read_status">Read</string>
+    <string name="thread_mention_agent_read">Read</string>
+    <string name="thread_mention_agent_unread">Not read yet</string>
     <string name="thread_followers_removed">Removed %1$s from this thread’s followers.</string>
     <string name="thread_followers_restored">Restored %1$s as a follower.</string>
     <string name="thread_followers_peer_remove_unavailable">Switch to %1$s to remove this follower.</string>

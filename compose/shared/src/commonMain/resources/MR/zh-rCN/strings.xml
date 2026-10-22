@@ -2415,6 +2415,9 @@
     <string name="thread_followers_restore_failed">无法恢复该 Agent，名单已刷新。</string>
     <string name="thread_followers_empty">暂无 Agent 关注此消息列。</string>
     <string name="thread_followers_peer_server">另一个 Server</string>
+    <string name="thread_message_read_status">已读</string>
+    <string name="thread_mention_agent_read">已读</string>
+    <string name="thread_mention_agent_unread">未读</string>
     <string name="thread_followers_removed">已将 %1$s 移出此消息列的关注者。</string>
     <string name="thread_followers_restored">已恢复 %1$s 的关注。</string>
     <string name="thread_followers_peer_remove_unavailable">请切换到 %1$s 移除此关注者。</string>

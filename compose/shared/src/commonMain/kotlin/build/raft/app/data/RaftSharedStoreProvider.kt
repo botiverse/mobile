@@ -510,6 +510,8 @@ internal class RaftSharedStoreProvider private constructor(
         RaftShellScopedStoreCache<SharedAdaptiveWorkspaceStore>()
     private val shellAdaptiveScrollAnchorStores =
         RaftShellScopedStoreCache<SharedAdaptiveScrollAnchorStore>()
+    private val shellPeerReadReceiptStores =
+        RaftShellScopedStoreCache<SharedPeerReadReceiptStore>()
     private val processReadReceiptLock = SynchronizedObject()
     private var processReadReceiptCoordinator: ReadReceiptCoordinator? = null
     private val processReadReceiptRepositories = mutableMapOf<ReadReceiptOwner, RealReadReceiptRepository>()
@@ -1448,6 +1450,18 @@ internal class RaftSharedStoreProvider private constructor(
 
     fun adaptiveScrollAnchorStore(scope: RaftShellStoreScope): SharedAdaptiveScrollAnchorStore =
         shellAdaptiveScrollAnchorStores.getOrPut(scope) { SharedAdaptiveScrollAnchorStore() }
+
+    /** read_receipts_v0: other participants' read positions per scope, cached for this shell's owner. */
+    fun peerReadReceiptStore(scope: RaftShellStoreScope): SharedPeerReadReceiptStore =
+        shellPeerReadReceiptStores.getOrPut(scope) {
+            SharedPeerReadReceiptStore(
+                scope = threadSendScope,
+                fetchHydrate = { owner, scopeId ->
+                    fetchPeerReadReceiptHydrate(networkClient(scope), ServerId(owner.serverId), scopeId)
+                },
+                logger = sharedInfoLogger("SlockPeerReadReceipts", "peer_read_receipts"),
+            )
+        }
 
     fun createAuthDataSourceForCurrentEnvironment(
         avatarCacheNativeCache: RaftAvatarNativeCache = UnsupportedRaftAvatarNativeCache

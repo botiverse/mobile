@@ -223,6 +223,7 @@ import build.raft.app.model.preferredAvatarWireValue
 import build.raft.app.model.providerLabel
 import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
 import build.raft.app.markdown.RaftMarkdownOwnTaskStatusScope
+import build.raft.app.markdown.RaftMarkdownMentionReadStateScope
 import build.raft.app.markdown.LocalRaftMessagePermalinkLabelResolver
 import build.raft.app.markdown.RaftDirectMessagePeerKindSeparator
 import build.raft.app.markdown.formatRaftDirectMessagePeerRef
@@ -11151,9 +11152,20 @@ private fun SharedThreadRouteContentContent(
                     }
                 )
             }
+        // read_receipts_v0: other participants' read positions for this page's scope (null = no hydrate).
+        val peerReadReceipts =
+            rememberThreadPeerReadReceipts(
+                payload = renderedThread,
+                sharedStores = sharedStores,
+                storeScope = storeScope,
+                serverId = currentServerId,
+                accountId = currentSession?.user?.id,
+                active = active,
+            )
         val threadProvidedValues = raftMarkdownProvidedValuesWith(
             arrayOf(
                 LocalThreadInPlaceTextSelectionHost provides inPlaceTextSelectionHost,
+                LocalThreadPeerReadReceipts provides peerReadReceipts,
                 LocalThreadInlineVideoPreviewHost provides
                     ThreadInlineVideoPreviewHost(
                         states = inlineVideoPreviewStates,
@@ -18401,6 +18413,8 @@ private fun ThreadMessagesListContent(
             timelineSlice.focusedMessageTargetSignature()
         }
     val renderPayload = timelineSlice
+    val peerReadReceipts = LocalThreadPeerReadReceipts.current
+    val dmReadStatusMessageId = renderPayload.dmReadStatusMessageId(peerReadReceipts)
     // Task #1125: offline stand-in chrome (top inset + tip overlay), see threadOfflineLastKnownChrome.
     val offlineLastKnownChrome =
         threadOfflineLastKnownChrome(
@@ -21617,6 +21631,13 @@ private fun ThreadMessagesListContent(
                             )
                         }
                     }
+                    // read_receipts_v0 (web option C): a DM's "Read" line under its last message.
+                    if (message.id == dmReadStatusMessageId && peerReadReceipts?.showsDmReadStatus(displayMessage) == true) {
+                        // The card already ends in its 8dp bottom padding, which stands in for web `mt-1`.
+                        ThreadDmReadStatusRow(
+                            Modifier.padding(start = RaftAppSpacing.Sm, end = RaftAppSpacing.Sm, bottom = RaftAppSpacing.Xs)
+                        )
+                    }
                 }
             }
             }
@@ -24721,6 +24742,12 @@ private fun ThreadMessageCardContent(
     val longPressGestureInstanceKey = data.longPressGestureInstanceKey
     val quotedPermalinkLoader = callbacks.quotedPermalinkLoader
     val outerPadding = data.outerPadding
+    // read_receipts_v0: @mentioned agents' read badges on the viewer's own message (web MentionLink).
+    val peerReadReceipts = LocalThreadPeerReadReceipts.current
+    val mentionReadStates =
+        remember(peerReadReceipts, message.id, message.seq, message.isOwn, message.authorKind) {
+            peerReadReceipts?.mentionReadStates(message)
+        }
     val localizedAuthorName =
         if (message.isOwn && message.authorName == "You") {
             stringResource(MR.strings.thread_author_you)
@@ -25273,6 +25300,7 @@ private fun ThreadMessageCardContent(
                                                             taskNumber = message.taskNumber,
                                                             taskStatus = message.taskStatus,
                                                         ) {
+                                                          RaftMarkdownMentionReadStateScope(mentionReadStates) {
                                                             RaftMarkdownBody(
                                                                 body = bodyForRender,
                                                                 fillWidth = !alignOwnMessageRight,
@@ -25293,6 +25321,7 @@ private fun ThreadMessageCardContent(
                                                                 performanceKey = messagePerformanceKey,
                                                                 performanceLogger = diagnosticsLogger
                                                             )
+                                                          }
                                                         }
                                                     }
                                                 } else {
@@ -29673,58 +29702,61 @@ private fun ThreadOriginCard(
                             timestampValue = origin.timestampLabel
                         )
                     } else {
-                        ThreadMessageCard(
-                            message = displayOrigin,
-                            messageBodyTextStyle = messageBodyTextStyle,
-                            hasReplyDraft = false,
-                            actionCard = originActionCard,
-                            highlightedMentions = highlightedMentions,
-                            agentStatusResolver = agentStatusResolver,
-                            memberAvatarResolver = memberAvatarResolver,
-                            memberModelLabelResolver = memberModelLabelResolver,
-                            shareSelectionActive = shareSelectionActive,
-                            selectedForShare = origin.id in selectedShareMessageIds,
-                            onToggleShareSelection = { onToggleShareSelection(origin.id) },
-                            showReplyAction = false,
-                            resolvedTaskAssigneeName =
-                                linkedTaskAssigneeName
-                                    ?: renderConfig.resolveTaskAssigneeDisplayName(
-                                        value = displayOrigin.taskAssigneeName,
-                                        id = displayOrigin.taskAssigneeId
-                                    ),
-                            resolveMarkdownTagLabel = resolveMarkdownTagLabel,
-                            markdownTagContextSignature = markdownTagContextSignature,
-                            activeMarkdownTagKey = activeMarkdownTagKey,
-                            taskOpenEnabled = timelineSlice.showTaskOpenActions && contentExtrasVisible,
-                            taskStatusActionsEnabled = timelineSlice.showTaskStatusActions && contentExtrasVisible,
-                            showSaveAction = timelineSlice.showMessageSaveAction,
-                            isMarkdownTagValid = isMarkdownTagValid,
-                            onShowActions = { anchor -> onShowActions(origin, anchor) },
-                            onOpenMember = onOpenMember,
-                            onExternalAuthor = onExternalAuthor,
-                            onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
-                            onOpenTask = { onThreadEvent("openTask", it, null, null) },
-                            onOpenTaskStatusMenu = { anchor -> onOpenTaskStatusMenu(origin, anchor) },
-                            onToggleReaction = { emoji -> onThreadEvent("toggleReaction", origin.id, null, emoji) },
-                            onShowReactionDetails = onShowReactionDetails,
-                            onShowAuthorDescription = onShowAuthorDescription,
-                            showReactionAddAction = timelineSlice.showReactionActions && contentExtrasVisible,
-                            onOpenCommentHost = { onThreadEvent("openCommentHost", origin.id, null, null) },
-                            timestampLabel = origin.timestampLabel,
-                            onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
-                            onDownloadAttachment = { onThreadEvent("downloadAttachment", null, it, null) },
-                            attachmentOpenStates = if (contentExtrasVisible) attachmentOpenStates else emptyMap(),
-                            pendingActionCardIds = if (contentExtrasVisible) pendingActionCardIds else emptySet(),
-                            onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
-                            currentServerSlug = currentServerSlug,
-                            onOpenMarkdownTag = onOpenMarkdownTag,
-                            onOpenMarkdownUrl = onOpenMarkdownUrl,
-                            onMentionAuthor = onMentionAuthor,
-                            richContentEnabled = contentExtrasVisible,
-                            focused = focusedMessageId == origin.id,
-                            longMessageCollapse = longMessageCollapse,
-                            onToggleLongMessage = { onToggleLongMessage(origin.id) }
-                        )
+                        // The root message belongs to the parent scope, not this thread's read receipts.
+                        CompositionLocalProvider(LocalThreadPeerReadReceipts provides null) {
+                            ThreadMessageCard(
+                                message = displayOrigin,
+                                messageBodyTextStyle = messageBodyTextStyle,
+                                hasReplyDraft = false,
+                                actionCard = originActionCard,
+                                highlightedMentions = highlightedMentions,
+                                agentStatusResolver = agentStatusResolver,
+                                memberAvatarResolver = memberAvatarResolver,
+                                memberModelLabelResolver = memberModelLabelResolver,
+                                shareSelectionActive = shareSelectionActive,
+                                selectedForShare = origin.id in selectedShareMessageIds,
+                                onToggleShareSelection = { onToggleShareSelection(origin.id) },
+                                showReplyAction = false,
+                                resolvedTaskAssigneeName =
+                                    linkedTaskAssigneeName
+                                        ?: renderConfig.resolveTaskAssigneeDisplayName(
+                                            value = displayOrigin.taskAssigneeName,
+                                            id = displayOrigin.taskAssigneeId
+                                        ),
+                                resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                                markdownTagContextSignature = markdownTagContextSignature,
+                                activeMarkdownTagKey = activeMarkdownTagKey,
+                                taskOpenEnabled = timelineSlice.showTaskOpenActions && contentExtrasVisible,
+                                taskStatusActionsEnabled = timelineSlice.showTaskStatusActions && contentExtrasVisible,
+                                showSaveAction = timelineSlice.showMessageSaveAction,
+                                isMarkdownTagValid = isMarkdownTagValid,
+                                onShowActions = { anchor -> onShowActions(origin, anchor) },
+                                onOpenMember = onOpenMember,
+                                onExternalAuthor = onExternalAuthor,
+                                onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
+                                onOpenTask = { onThreadEvent("openTask", it, null, null) },
+                                onOpenTaskStatusMenu = { anchor -> onOpenTaskStatusMenu(origin, anchor) },
+                                onToggleReaction = { emoji -> onThreadEvent("toggleReaction", origin.id, null, emoji) },
+                                onShowReactionDetails = onShowReactionDetails,
+                                onShowAuthorDescription = onShowAuthorDescription,
+                                showReactionAddAction = timelineSlice.showReactionActions && contentExtrasVisible,
+                                onOpenCommentHost = { onThreadEvent("openCommentHost", origin.id, null, null) },
+                                timestampLabel = origin.timestampLabel,
+                                onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
+                                onDownloadAttachment = { onThreadEvent("downloadAttachment", null, it, null) },
+                                attachmentOpenStates = if (contentExtrasVisible) attachmentOpenStates else emptyMap(),
+                                pendingActionCardIds = if (contentExtrasVisible) pendingActionCardIds else emptySet(),
+                                onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
+                                currentServerSlug = currentServerSlug,
+                                onOpenMarkdownTag = onOpenMarkdownTag,
+                                onOpenMarkdownUrl = onOpenMarkdownUrl,
+                                onMentionAuthor = onMentionAuthor,
+                                richContentEnabled = contentExtrasVisible,
+                                focused = focusedMessageId == origin.id,
+                                longMessageCollapse = longMessageCollapse,
+                                onToggleLongMessage = { onToggleLongMessage(origin.id) }
+                            )
+                        }
                     }
                 } ?: renderConfig.originPreview?.takeIf { it.isNotBlank() }?.let {
                     Text(
