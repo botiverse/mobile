@@ -133,6 +133,25 @@ class RaftInteractiveSemanticsTest {
             assertEquals(352f, row, 1f, "trigger 360dp less the 4dp padding each side (raft-ui 0.20)")
         }
 
+    /** A short prefix leaves the input the rest of the field, not half of it (#3453 held half for the prefix). */
+    @Test
+    fun aShortPrefixLeavesTheInputTheRestOfTheField() =
+        runComposeUiTest {
+            val placeholder = "partner-workspace-for-the-launch-week-review"
+            setContent(
+                themed {
+                    Box(Modifier.width(360.dp)) {
+                        RaftTextField("", {}, prefix = "/", placeholder = placeholder)
+                    }
+                },
+            )
+            val input = onNodeWithText(placeholder, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val start = input.left / density.density
+            val end = input.right / density.density
+            assertTrue(start < 40f, "the input starts right after the short prefix, at ${start}dp")
+            assertEquals(360f - 12f - 1.5f, end, 1f, "the input runs to the field's 12dp end padding inside the border")
+        }
+
     @Test
     fun aFieldNamesItsControlAndCarriesItsError() =
         runComposeUiTest {
