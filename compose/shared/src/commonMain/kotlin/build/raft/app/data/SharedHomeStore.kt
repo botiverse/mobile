@@ -20,6 +20,7 @@ import build.raft.app.network.sync.ReadStateV1ProductionOwner
 import build.raft.app.network.sync.reduceReadStateSyncState
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
 import build.raft.app.model.PerReceiverPinnedChanged
@@ -27,6 +28,7 @@ import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.PerReceiverReadStateScope
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.Message
+import build.raft.app.model.MessageType
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
@@ -744,6 +746,8 @@ internal class SharedHomeStore(
                 markConversationReadAll(intent.conversationId)
             is SharedHomeIntent.CloseDirectMessage ->
                 closeDirectMessage(intent.conversationId)
+            is SharedHomeIntent.OwnMessagesSent ->
+                unhideDirectMessagesWithOwnReply(ServerId(intent.serverId), intent.channelIds)
             is SharedHomeIntent.ArchiveChannel ->
                 archiveConversationChannel(intent.conversationId)
             is SharedHomeIntent.SetChannelActivityMuted ->
@@ -886,6 +890,13 @@ internal class SharedHomeStore(
         val visibleServerId = currentContent?.snapshot?.server?.id
         if (visibleServerId != null && visibleServerId != serverId) {
             return
+        }
+        // Task #59: the user's own message (from this or another device) unhides its DM even
+        // while Home is hidden, so the row is there when the user comes back to Home.
+        currentContent?.let { content ->
+            val ownRepliedDmIds =
+                event.homeRealtimeMessages().ownRepliedConversationIds(MemberId(content.session.user.id))
+            if (ownRepliedDmIds.isNotEmpty()) unhideDirectMessagesWithOwnReply(serverId, ownRepliedDmIds)
         }
         if (!homeSurfaceVisible) {
             applyRealtimeEventWhileHomeHidden(serverId, event)
@@ -3558,6 +3569,24 @@ internal class SharedHomeStore(
         }
     }
 
+    /**
+     * Task #59: drop DMs the current user just replied in from the local `hiddenDmIds`. Local
+     * only, no PATCH: the server removes them from the sender's hidden list itself on send, so
+     * the next sidebar-order load agrees with this patch.
+     */
+    private fun unhideDirectMessagesWithOwnReply(serverId: ServerId, channelIds: Set<String>): Boolean {
+        val content = _state.value.content as? SharedHomeContentState.Content ?: return false
+        if (content.snapshot.server.id != serverId) return false
+        val previous = content.snapshot.sidebarOrder ?: sidebarOrderByServer[serverId] ?: return false
+        val next = previous.withDirectMessagesUnhidden(channelIds)
+        if (next === previous) return false
+        diagnosticsLogger(
+            "home_dm_unhide_own_reply serverId=${serverId.value} " +
+                "unhidden=${previous.hiddenDmIds.size - next.hiddenDmIds.size}"
+        )
+        return applySidebarOrderLocally(serverId = serverId, next = next)
+    }
+
     private suspend fun archiveConversationChannel(conversationId: String) {
         val current = _state.value.content as? SharedHomeContentState.Content
         val target = current?.snapshot?.findHomeConversation(conversationId)
@@ -4282,6 +4311,7 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.MarkUnread -> "${SharedHomeChannelFoldEvent.Patch.wireName}:unread:$conversationId"
         is SharedHomeIntent.MarkConversationReadAll -> "${SharedHomeChannelFoldEvent.Patch.wireName}:read-all:$conversationId"
         is SharedHomeIntent.CloseDirectMessage -> "${SharedHomeChannelFoldEvent.Remove.wireName}:dm:$conversationId"
+        is SharedHomeIntent.OwnMessagesSent -> "${SharedHomeChannelFoldEvent.Patch.wireName}:own-sent:$serverId:${channelIds.size}"
         is SharedHomeIntent.ArchiveChannel -> "${SharedHomeChannelFoldEvent.Remove.wireName}:archive:$conversationId"
         is SharedHomeIntent.SetChannelActivityMuted -> "${SharedHomeChannelFoldEvent.Mute.wireName}:$conversationId:$muted"
         is SharedHomeIntent.ApplyPerReceiverReadState -> "read_state:${update.serverId.value}:${update.channelId.value}:${update.version}"
@@ -4292,6 +4322,42 @@ private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
         is SharedHomeIntent.ApplyReadReceiptFailure -> "read_failure:${request.channelId.value}:${request.revision}"
         is SharedHomeIntent.HydrateDirectMessagePreview -> "hydrate_dm_preview:${channelId.value}"
     }
+
+private fun RealtimeEvent.homeRealtimeMessages(): List<Message> =
+    when (this) {
+        is MessageNew -> listOf(message)
+        is SyncResumeResponse -> messages
+        else -> emptyList()
+    }
+
+/**
+ * Task #59, the rule of botiverse/slock #10809: a chat message the signed-in human sent
+ * themself (not a system line, not one their assistant sent for them) reopens the DM it is in,
+ * or the DM whose thread it is in. Returns the conversation and, for a thread reply, its parent;
+ * only DM ids are ever in `hiddenDmIds`, so a non-DM candidate matches nothing.
+ */
+internal fun List<Message>.ownRepliedConversationIds(currentMemberId: MemberId): Set<String> =
+    asSequence()
+        .filter { message ->
+            message.author.id == currentMemberId &&
+                message.author.kind == MemberKind.Human &&
+                message.messageType != MessageType.System &&
+                message.delegatedBy == null
+        }
+        .flatMap { message ->
+            sequenceOf(message.channelId?.value, message.conversationContext?.parentChannelId?.value)
+        }
+        .filterNotNull()
+        .filter { it.isNotBlank() }
+        .toSet()
+
+/** Task #59: the same order without [channelIds] in `hiddenDmIds`; returns `this` when nothing changes. */
+internal fun SettingsServerSidebarOrderSnapshot.withDirectMessagesUnhidden(
+    channelIds: Set<String>
+): SettingsServerSidebarOrderSnapshot {
+    if (channelIds.isEmpty() || hiddenDmIds.none { it in channelIds }) return this
+    return copy(hiddenDmIds = hiddenDmIds.filterNot { it in channelIds })
+}
 
 private fun RealtimeEvent.toSharedHomeChannelFoldEvent(): SharedHomeChannelFoldEvent =
     when (this) {
@@ -5085,6 +5151,12 @@ sealed interface SharedHomeIntent {
      */
     data class MarkConversationReadAll(val conversationId: String) : SharedHomeIntent
     data class CloseDirectMessage(val conversationId: String) : SharedHomeIntent
+    /**
+     * Task #59: the current user sent a message successfully in these conversations (the DM, or
+     * for a thread reply also its parent). A hidden DM among them leaves the local `hiddenDmIds`,
+     * matching the server (botiverse/slock #10809), which drops it from the sender's hidden list.
+     */
+    data class OwnMessagesSent(val serverId: String, val channelIds: Set<String>) : SharedHomeIntent
     data class ArchiveChannel(val conversationId: String) : SharedHomeIntent
     data class SetChannelActivityMuted(val conversationId: String, val muted: Boolean) : SharedHomeIntent
     data class ApplyPerReceiverReadState(val update: PerReceiverReadStateUpdate) : SharedHomeIntent
@@ -5141,6 +5213,7 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.MarkConversationReadAll,
             is SharedHomeIntent.CloseDirectMessage,
+            is SharedHomeIntent.OwnMessagesSent,
             is SharedHomeIntent.ArchiveChannel,
             is SharedHomeIntent.SetChannelActivityMuted,
             is SharedHomeIntent.ApplyPerReceiverReadState,
@@ -5189,6 +5262,7 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.MarkConversationReadAll,
             is SharedHomeIntent.CloseDirectMessage,
+            is SharedHomeIntent.OwnMessagesSent,
             is SharedHomeIntent.ArchiveChannel,
             is SharedHomeIntent.SetChannelActivityMuted,
             is SharedHomeIntent.ApplyPerReceiverReadState,
@@ -5237,6 +5311,7 @@ private val SharedHomeIntent.debouncesInFlightHomeLoad: Boolean
             is SharedHomeIntent.MarkUnread,
             is SharedHomeIntent.MarkConversationReadAll,
             is SharedHomeIntent.CloseDirectMessage,
+            is SharedHomeIntent.OwnMessagesSent,
             is SharedHomeIntent.ArchiveChannel,
             is SharedHomeIntent.SetChannelActivityMuted,
             is SharedHomeIntent.ApplyPerReceiverReadState,
