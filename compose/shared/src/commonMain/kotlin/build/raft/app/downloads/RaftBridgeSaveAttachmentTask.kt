@@ -3,6 +3,7 @@ package build.raft.app.downloads
 import build.raft.app.AttachmentOwnerLease
 import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.base.BridgeModule
+import build.raft.app.base.raftAttachmentHostDownloadId
 
 /**
  * Download-centre task that saves one attachment through the host's `saveAttachment` (Android:
@@ -30,7 +31,7 @@ internal class RaftBridgeSaveAttachmentTask(
     override suspend fun run(attempt: Int, onProgress: (RaftDownloadProgressUpdate) -> Unit): RaftDownloadOutcome {
         val requestedDownloadId = downloadIdForAttempt(attempt)
         // BridgeModule scopes the id to the principal before the host sees it; control uses that.
-        hostDownloadId = "${owner.principalKey.value}:$requestedDownloadId"
+        hostDownloadId = raftAttachmentHostDownloadId(owner, requestedDownloadId)
         attemptToken = null
         recordVersion = null
         val url = if (attempt <= 1) initialUrl else resolveUrl() ?: initialUrl

@@ -54,6 +54,14 @@ internal fun nextBridgeAttachmentExportOperationId(owner: AttachmentOwnerLease):
     "${owner.principalKey.value}:${owner.scopeId}:${owner.generation}:" +
         bridgeAttachmentExportOperationSequence.incrementAndGet()
 
+/**
+ * The download id the host sees, and so the id every progress sample carries: the bridge scopes
+ * the caller's [downloadId] to the attachment principal. A caller that fences samples by id must
+ * compare against this, not against the id it passed in.
+ */
+internal fun raftAttachmentHostDownloadId(owner: AttachmentOwnerLease, downloadId: String): String =
+    "${owner.principalKey.value}:$downloadId"
+
 internal class BridgeModule : Module() {
     private val nextAttachmentDownloadId = atomic(0L)
 
@@ -745,7 +753,7 @@ internal class BridgeModule : Module() {
         val base = explicit?.trim()?.takeIf { it.isNotBlank() }
             ?: "bridge:${attachmentId.encodeToByteArray().toHexToken()}:" +
                 "${fileName.encodeToByteArray().toHexToken()}:${nextAttachmentDownloadId.incrementAndGet()}"
-        return "${owner.principalKey.value}:$base"
+        return raftAttachmentHostDownloadId(owner, base)
     }
 
     suspend fun attachmentCacheStatus(

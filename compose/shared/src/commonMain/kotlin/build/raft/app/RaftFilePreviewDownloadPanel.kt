@@ -12,6 +12,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.isSpecified
@@ -39,6 +43,13 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
 import com.tencent.tmm.kmmresource.compose.stringResource
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /** What the download part of the file page shows. */
 internal enum class RaftFilePreviewDownloadPhase { Idle, Active, Paused, Saving, Failed }
@@ -97,6 +108,69 @@ internal fun RaftDownloadEntry.toFilePreviewDownloadView(): RaftFilePreviewDownl
         bytesPerSecond = bytesPerSecond,
         errorMessage = errorMessage
     )
+
+/** Shortest time the downloading panel stays up, so a fast download does not just flash. */
+internal const val RaftFilePreviewDownloadMinVisibleMillis = 600L
+
+/** One frame of the file page's download part: [hold] is false when the user stopped it. */
+internal data class RaftFilePreviewDownloadHoldInput(
+    val view: RaftFilePreviewDownloadView,
+    val hold: Boolean = true
+)
+
+/**
+ * Keeps the downloading panel up for at least [minVisibleMillis] after it first showed. When the
+ * download finishes sooner (the view turns Idle), the last running view stays, filled to 100% when
+ * its total was known, until the time is up; then the finished view follows. A failure, a user
+ * stop ([RaftFilePreviewDownloadHoldInput.hold] = false) or a new download is shown at once.
+ */
+internal fun Flow<RaftFilePreviewDownloadHoldInput>.raftHoldingDownloadPanel(
+    minVisibleMillis: Long = RaftFilePreviewDownloadMinVisibleMillis,
+    timeSource: TimeSource = TimeSource.Monotonic
+): Flow<RaftFilePreviewDownloadView> =
+    channelFlow {
+        var shownSince: TimeMark? = null
+        var lastRunning: RaftFilePreviewDownloadView? = null
+        collectLatest { input ->
+            val view = input.view
+            if (view.inProgress) {
+                if (shownSince == null) shownSince = timeSource.markNow()
+                lastRunning = view
+                send(view)
+                return@collectLatest
+            }
+            val since = shownSince
+            val running = lastRunning
+            if (since != null && running != null && input.hold && view.phase == RaftFilePreviewDownloadPhase.Idle) {
+                val remaining = minVisibleMillis - since.elapsedNow().inWholeMilliseconds
+                if (remaining > 0L) {
+                    send(running.finishing())
+                    // A newer frame cancels this wait and is judged against the same start.
+                    delay(remaining)
+                }
+            }
+            shownSince = null
+            lastRunning = null
+            send(view)
+        }
+    }
+
+private fun RaftFilePreviewDownloadView.finishing(): RaftFilePreviewDownloadView =
+    if (totalBytes != null && totalBytes > 0L && phase == RaftFilePreviewDownloadPhase.Active) {
+        copy(percent = 100, downloadedBytes = totalBytes, bytesPerSecond = null)
+    } else {
+        this
+    }
+
+/** [view] as the page shows it: [raftHoldingDownloadPanel] over the page's frames. */
+@Composable
+internal fun rememberRaftHeldDownloadView(view: RaftFilePreviewDownloadView, hold: Boolean): RaftFilePreviewDownloadView {
+    val frames = remember { MutableStateFlow(RaftFilePreviewDownloadHoldInput(view, hold)) }
+    SideEffect { frames.value = RaftFilePreviewDownloadHoldInput(view, hold) }
+    val held by remember(frames) { frames.raftHoldingDownloadPanel() }.collectAsState(initial = view)
+    // A new download shows at once, without waiting a frame for the flow.
+    return if (view.inProgress && !held.inProgress) view else held
+}
 
 /** `1.2 MB of 3.4 MB`, `1.2 MB` (unknown total), or null before the first byte. */
 @Composable

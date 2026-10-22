@@ -530,6 +530,7 @@ private class AttachmentDownloadAttempt(
     private var previousSampleAtMillis: Long? = null
     private var previousSampleBytes = 0L
     private var lastEmittedAtMillis: Long? = null
+    private var lastEmittedPercent: Int? = null
     private val observerEventQueue = mutableListOf<() -> Unit>()
     private var observerQueueDraining = false
     private var terminalObserverQueued = false
@@ -702,8 +703,12 @@ private class AttachmentDownloadAttempt(
                     val now = nowMillis()
                     val percent = attachmentDownloadPercent(downloadedBytes, totalBytes)
                     val lastAt = lastEmittedAtMillis
+                    val lastPercent = lastEmittedPercent
+                    // A sample at least every 100 ms or every whole percent, whichever comes first.
                     val shouldEmit =
-                        lastAt == null || downloadedBytes == bytes.size.toLong() || now - lastAt >= 250L ||
+                        lastAt == null || downloadedBytes == bytes.size.toLong() ||
+                            now - lastAt >= AttachmentDownloadProgressIntervalMillis ||
+                            (percent != null && (lastPercent == null || percent > lastPercent)) ||
                             (percent != null && percent >= 99)
                     if (shouldEmit) {
                         val previousAt = previousSampleAtMillis
@@ -718,6 +723,7 @@ private class AttachmentDownloadAttempt(
                         previousSampleAtMillis = now
                         previousSampleBytes = downloadedBytes
                         lastEmittedAtMillis = now
+                        lastEmittedPercent = percent
                         progressLocked("receiving", percent, bytesPerSecond)
                     } else {
                         null
@@ -977,6 +983,9 @@ private fun Map<String, List<String>>.contentTypeHeader(): String? =
         ?.substringBefore(';')
         ?.trim()
         ?.takeIf { it.isNotBlank() }
+
+/** Longest gap between two `receiving` samples of a running transfer. */
+internal const val AttachmentDownloadProgressIntervalMillis = 100L
 
 internal fun attachmentDownloadPercent(downloadedBytes: Long, totalBytes: Long?): Int? {
     val total = totalBytes?.takeIf { it > 0L } ?: return null

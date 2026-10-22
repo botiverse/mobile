@@ -59,6 +59,37 @@ class AttachmentDownloadCoordinatorTest {
     }
 
     @Test
+    fun receivingSamplesComeEveryWholePercentOrEveryHundredMillis() {
+        data class Case(val contentLength: Long?, val chunkMillis: Long, val expectedPercents: List<Int?>)
+        // 20 chunks of 5 bytes: 0.5% each of a known 1000-byte body, 10 ms apart, so each whole
+        // percent is a sample; with no length, 30 ms apart, so the 100 ms floor is the cadence.
+        val cases =
+            listOf(
+                // 5 bytes rounds up to 1%; then 20, 30, ... 100 bytes are 2% .. 10%.
+                Case(1_000L, 10L, (1..10).toList()),
+                // Samples at 30, 150, 270, 390 and 510 ms.
+                Case(null, 30L, List(5) { null })
+            )
+        for (case in cases) {
+            val transport = FakeTransport()
+            val observer = RecordingObserver()
+            var now = 1_000L
+            val engine = AttachmentDownloadCoordinatorEngine(transport, FakeSinkFactory(), nowMillis = { now })
+            engine.start(request(), observer)
+            val call = transport.calls.single()
+            call.start(statusCode = 200, contentLength = case.contentLength)
+            repeat(20) {
+                now += case.chunkMillis
+                call.chunk(ByteArray(5))
+            }
+            val receiving = observer.progress.filter { it.phase == "receiving" }
+            assertEquals(case.expectedPercents, receiving.map { it.percent }, "case=$case")
+            val gaps = receiving.zipWithNext { a, b -> b.downloadedBytes - a.downloadedBytes }
+            assertTrue(gaps.all { it > 0L }, "samples must advance, case=$case gaps=$gaps")
+        }
+    }
+
+    @Test
     fun sameIdReplacementAbortsOldAttemptAndRejectsAllLateCallbacks() {
         val transport = FakeTransport()
         val sinks = FakeSinkFactory()
