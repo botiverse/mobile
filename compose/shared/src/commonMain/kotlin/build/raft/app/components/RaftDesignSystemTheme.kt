@@ -101,6 +101,7 @@ internal fun raftAppDesignSystemStrings(): RaftStrings =
         clear = stringResource(MR.strings.common_clear),
         loading = stringResource(MR.strings.common_loading),
         cancel = stringResource(MR.strings.common_cancel),
+        dismiss = stringResource(MR.strings.common_dismiss),
     )
 
 /** Provides [raftAppDesignSystemStrings] as [LocalRaftStrings] to [content]. */
