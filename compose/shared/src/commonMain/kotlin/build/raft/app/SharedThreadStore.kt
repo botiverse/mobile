@@ -6898,6 +6898,10 @@ internal class SharedThreadStore(
     private val initialAccessStateMutex = Mutex()
     private val realtimeGapRecoveryMutex = Mutex()
     private var realtimeGapRecoveryState: RealtimeGapRecoveryState? = null
+    // The catch-up launched off the realtime authority lock ([launchRealtimeGapRecovery]); cancelled by [clear].
+    private var realtimeGapRecoveryJob: Job? = null
+    /** Test injection point: sees every catch-up job [launchRealtimeGapRecovery] starts, in launch order. */
+    internal var onRealtimeGapRecoveryLaunchedForTest: ((Job) -> Unit)? = null
     private var loadNewerState: LoadNewerState? = null
     private var nextRealtimeGapRecoveryId: Long = 0L
     // Feedback 4409cbc5: a resume catch-up that fails was never asked again, so the thread kept showing its
@@ -7118,6 +7122,8 @@ internal class SharedThreadStore(
     fun clear() {
         loadJob?.cancel()
         loadJob = null
+        realtimeGapRecoveryJob?.cancel()
+        realtimeGapRecoveryJob = null
         deferredReadJob?.cancel()
         deferredReadJob = null
         threadJoinCatchUpJob?.cancel()
@@ -9423,11 +9429,15 @@ internal class SharedThreadStore(
                 "thread_realtime_gap_detected threadId=${recoveryInitial.sourceThreadId.orEmpty()} " +
                     "visibleMaxSeq=${recoveryRequest.sinceSeq} serverSeq=${recoveryRequest.serverSeq}"
             )
-            runRealtimeGapRecovery(
+            // The realtime sink calls this under the process-wide realtime authority lock: the gap is
+            // registered above (so later live events join it through `in_flight_gap`), and the catch-up
+            // fetch runs on the store scope (Hands bc6e392e: an inline fetch held the lock ~6 s).
+            launchRealtimeGapRecovery(
                 initial = recoveryInitial,
                 initialRequest = recoveryRequest,
                 staleToken = eventStaleToken,
                 recoveryId = recoveryId,
+                requestSnapshot = recoveryInitial,
             )
             return
         }
@@ -10044,7 +10054,8 @@ internal class SharedThreadStore(
                 serverSeq = serverSeq,
                 loading = false,
             ) ?: return
-        recoverRealtimeGap(initial, nextRequest, staleToken)
+        // Heartbeats arrive through the realtime sink, under the realtime authority lock.
+        recoverRealtimeGap(initial, nextRequest, staleToken, launchCatchUp = true)
     }
 
     private suspend fun recoverRealtimeGapFromVisibleTail(replyCountGap: ReplyCountRealtimeGap) {
@@ -10069,6 +10080,8 @@ internal class SharedThreadStore(
                     serverSeq = sinceSeq + replyCountGap.replyCount.toLong().coerceAtLeast(1L)
             ),
             staleToken = staleToken,
+            // Reached from [applyRealtimeEvent], under the realtime authority lock.
+            launchCatchUp = true,
         )
     }
 
@@ -10119,8 +10132,15 @@ internal class SharedThreadStore(
         initialRequest: RealtimeVisibleStreamGapRequest,
         staleToken: MviStaleToken,
         backfillAfterRecovery: Boolean = false,
+        /**
+         * `true` when called under the realtime authority lock (the realtime sink): the recovery is
+         * registered here and its catch-up fetch runs on the store scope, so the lock is not held for the
+         * network round trip. `false` (resume) awaits the catch-up, which the retry accounting needs.
+         */
+        launchCatchUp: Boolean = false,
     ) {
         val routeIdentity = initial.realtimeGapRouteIdentity()
+        var requestSnapshot: RaftThreadScreenPayload? = null
         val recoveryId =
             realtimeGapRecoveryMutex.withLock {
                 val currentPayload = _state.value.payload
@@ -10169,13 +10189,53 @@ internal class SharedThreadStore(
                             targetVersion = 1L,
                             backfillAfterRecovery = backfillAfterRecovery,
                         )
+                    requestSnapshot = currentPayload
                     reducePayloadPatch(cachePayload = true) { currentPayload ->
                         currentPayload.copy(newerMessagesStatus = "loading", errorCode = null)
                     }
                     id
                 }
             } ?: return
-        runRealtimeGapRecovery(initial, initialRequest, staleToken, recoveryId)
+        val snapshot = requestSnapshot ?: return
+        if (launchCatchUp) {
+            launchRealtimeGapRecovery(initial, initialRequest, staleToken, recoveryId, snapshot)
+        } else {
+            runRealtimeGapRecovery(initial, initialRequest, staleToken, recoveryId, snapshot)
+        }
+    }
+
+    /**
+     * Runs [runRealtimeGapRecovery] on the store scope instead of the caller. Used where the caller holds
+     * the process-wide realtime authority lock (Hands bc6e392e): the recovery is already registered in
+     * [realtimeGapRecoveryState], so live events applied while the fetch is in flight join it through the
+     * `in_flight_gap` branch of [applyRealtimeEvent], and the result merges under the same recovery
+     * mutex and stale-token / route fences as before.
+     */
+    private fun launchRealtimeGapRecovery(
+        initial: RaftThreadScreenPayload,
+        initialRequest: RealtimeVisibleStreamGapRequest,
+        staleToken: MviStaleToken,
+        recoveryId: Long,
+        requestSnapshot: RaftThreadScreenPayload,
+    ) {
+        val job =
+            scope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    runRealtimeGapRecovery(initial, initialRequest, staleToken, recoveryId, requestSnapshot)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (throwable: Throwable) {
+                    // Inline, this propagated into the realtime sink; on the store scope it would reach the
+                    // uncaught handler. The recovery's finally has already released its state.
+                    diagnosticsLogger?.invoke(
+                        "thread_realtime_gap_recovery_failed threadId=${initial.sourceThreadId.orEmpty()} " +
+                            "reason=${throwable::class.simpleName ?: "unknown"}"
+                    )
+                }
+            }
+        realtimeGapRecoveryJob = job
+        onRealtimeGapRecoveryLaunchedForTest?.invoke(job)
+        job.start()
     }
 
     /**
@@ -10203,6 +10263,13 @@ internal class SharedThreadStore(
         @Suppress("UNUSED_PARAMETER") initialRequest: RealtimeVisibleStreamGapRequest,
         staleToken: MviStaleToken,
         recoveryId: Long,
+        /**
+         * The timeline as it was when this recovery was registered. The request (anchor, known ids) is
+         * built from it rather than from the payload at fetch start: once the fetch runs off the realtime
+         * lock, live events may land in between through `in_flight_gap`, and a newer live message must
+         * not become the anchor (it would hide the hole below it) nor count as "known before the fetch".
+         */
+        requestSnapshot: RaftThreadScreenPayload,
     ) {
         // Set when the response merged (or replaced in) messages the timeline did not have. Resume
         // arrivals land here, but nothing else re-triggers the secondary (thread summary / followed)
@@ -10235,7 +10302,7 @@ internal class SharedThreadStore(
                         realtimeGapRecoveryState = null
                         return@withLock null
                     }
-                    currentPayload
+                    requestSnapshot
                 } ?: return
             val anchorMessageId = requestPayload.gapCatchUpAnchorMessageId()
             val requestMessageIds = requestPayload.messages.mapTo(mutableSetOf()) { it.id }
@@ -10425,19 +10492,23 @@ internal class SharedThreadStore(
         } finally {
             // A failure or cancellation never reaches the durable write below.
             if (!recoveryCompleted) durableBaseline?.let { dataSource.abandonDurableLatestPageBaseline(it) }
-            realtimeGapRecoveryMutex.withLock {
-                val active = realtimeGapRecoveryState?.takeIf { state -> state.id == recoveryId }
-                if (active?.backfillAfterRecovery == true) backfillRequested = true
-                if (active != null) {
-                    realtimeGapRecoveryState = null
-                    val currentPayload = _state.value.payload
-                    if (
-                        active.staleToken == routeStaleToken &&
-                        active.routeIdentity == currentPayload.realtimeGapRouteIdentity() &&
-                        currentPayload.newerMessagesStatus == "loading"
-                    ) {
-                        reducePayloadPatch(cachePayload = true) { latestPayload ->
-                            latestPayload.copy(newerMessagesStatus = "idle")
+            // NonCancellable: a cancelled launched recovery ([clear]) must still release its state, or a
+            // leaked owner would park later gaps and the join catch-up (`catch_up_in_flight`).
+            withContext(NonCancellable) {
+                realtimeGapRecoveryMutex.withLock {
+                    val active = realtimeGapRecoveryState?.takeIf { state -> state.id == recoveryId }
+                    if (active?.backfillAfterRecovery == true) backfillRequested = true
+                    if (active != null) {
+                        realtimeGapRecoveryState = null
+                        val currentPayload = _state.value.payload
+                        if (
+                            active.staleToken == routeStaleToken &&
+                            active.routeIdentity == currentPayload.realtimeGapRouteIdentity() &&
+                            currentPayload.newerMessagesStatus == "loading"
+                        ) {
+                            reducePayloadPatch(cachePayload = true) { latestPayload ->
+                                latestPayload.copy(newerMessagesStatus = "idle")
+                            }
                         }
                     }
                 }
