@@ -12588,6 +12588,7 @@ class SharedThreadStoreTest {
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val gapCatchUps = store.recordGapRecoveryJobs()
         store.accept(SharedThreadIntent.Start(basePayload()))
         store.accept(SharedThreadIntent.SetPagingAvailability(canLoadMoreBefore = true, canLoadMoreAfter = true))
 
@@ -12598,6 +12599,7 @@ class SharedThreadStoreTest {
                 )
             )
         )
+        gapCatchUps.joinAll()
 
         val payload = store.state.value.payload
         assertEquals(listOf("m10", "m11"), payload.messages.map { it.id })
@@ -16171,9 +16173,11 @@ class SharedThreadStoreTest {
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val gapCatchUps = store.recordGapRecoveryJobs()
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
 
         store.accept(SharedThreadIntent.RecoverRealtimeGap(serverSeq = 90))
+        gapCatchUps.joinAll()
 
         val payload = store.state.value.payload
         assertEquals(listOf("current body", "gap body"), payload.messages.map { it.body })
@@ -16226,6 +16230,7 @@ class SharedThreadStoreTest {
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val gapCatchUps = store.recordGapRecoveryJobs()
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
 
         store.accept(
@@ -16233,6 +16238,7 @@ class SharedThreadStoreTest {
                 MessageNew(message(id = "m12", seq = 12, body = "latest across gap"))
             )
         )
+        gapCatchUps.joinAll()
 
         val payload = store.state.value.payload
         assertEquals(listOf("current body", "gap body"), payload.messages.map { it.body })
@@ -16259,6 +16265,7 @@ class SharedThreadStoreTest {
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val gapCatchUps = store.recordGapRecoveryJobs()
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
 
         val first = launch {
@@ -16289,6 +16296,7 @@ class SharedThreadStoreTest {
 
         api.releaseCatchUp?.complete(Unit)
         first.join()
+        gapCatchUps.joinAll()
 
         assertEquals(
             1,
@@ -16326,6 +16334,7 @@ class SharedThreadStoreTest {
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val gapCatchUps = store.recordGapRecoveryJobs()
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
 
         store.accept(
@@ -16333,6 +16342,7 @@ class SharedThreadStoreTest {
                 MessageNew(message(id = "m12", seq = 12, body = "first gap")),
             ),
         )
+        gapCatchUps.joinAll()
         assertEquals("idle", store.state.value.payload.newerMessagesStatus)
 
         store.accept(
@@ -16340,6 +16350,7 @@ class SharedThreadStoreTest {
                 MessageNew(message(id = "m14", seq = 14, body = "terminal-first successor")),
             ),
         )
+        gapCatchUps.joinAll()
 
         assertEquals(
             2,
@@ -16370,6 +16381,7 @@ class SharedThreadStoreTest {
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val gapCatchUps = store.recordGapRecoveryJobs()
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
 
         val recovery = launch {
@@ -16399,6 +16411,7 @@ class SharedThreadStoreTest {
 
         api.releaseCatchUp?.complete(Unit)
         recovery.join()
+        gapCatchUps.joinAll()
 
         assertEquals(
             1,
@@ -16429,6 +16442,7 @@ class SharedThreadStoreTest {
         api.releaseCatchUp = CompletableDeferred()
         val dataSource = testSharedThreadDataSource(networkApi = api, sessionStore = sessionStore, cacheEnvironmentIdProvider = { TestThreadEnvironmentId })
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val gapCatchUps = store.recordGapRecoveryJobs()
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
 
         val recovery = launch {
@@ -16452,6 +16466,7 @@ class SharedThreadStoreTest {
 
         api.releaseCatchUp?.complete(Unit)
         recovery.join()
+        gapCatchUps.joinAll()
         assertEquals(listOf(10L, 12L), store.state.value.payload.messages.mapNotNull { it.seq })
 
         sessionStore.releaseNextRead.complete(Unit)
@@ -16494,6 +16509,7 @@ class SharedThreadStoreTest {
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val gapCatchUps = store.recordGapRecoveryJobs()
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
 
         val recovery = launch {
@@ -16517,6 +16533,7 @@ class SharedThreadStoreTest {
 
         api.releaseCatchUp?.complete(Unit)
         recovery.join()
+        gapCatchUps.joinAll()
 
         assertEquals(1, api.catchUpCalls, "a target that advances mid-flight must not loop the catch-up")
         assertEquals(0, api.messageSyncCalls)
@@ -16555,6 +16572,7 @@ class SharedThreadStoreTest {
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val gapCatchUps = store.recordGapRecoveryJobs()
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
 
         val oldRecovery = launch {
@@ -16586,11 +16604,13 @@ class SharedThreadStoreTest {
 
         releaseNew.complete(Unit)
         newRecovery.join()
+        gapCatchUps.join(1)
         assertEquals(listOf(20L, 21L, 22L), store.state.value.payload.messages.mapNotNull { it.seq })
         assertEquals("idle", store.state.value.payload.newerMessagesStatus)
 
         releaseOld.complete(Unit)
         oldRecovery.join()
+        gapCatchUps.joinAll()
         assertEquals(
             listOf(20L, 21L, 22L),
             store.state.value.payload.messages.mapNotNull { it.seq },
@@ -16637,6 +16657,7 @@ class SharedThreadStoreTest {
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val gapCatchUps = store.recordGapRecoveryJobs()
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
 
         val oldRecovery = launch {
@@ -16678,11 +16699,13 @@ class SharedThreadStoreTest {
 
         releaseNew.complete(Unit)
         newRecovery.join()
+        gapCatchUps.join(1)
         assertEquals(listOf(20L, 21L, 22L), store.state.value.payload.messages.mapNotNull { it.seq })
         assertEquals("idle", store.state.value.payload.newerMessagesStatus)
 
         releaseOld.complete(Unit)
         oldRecovery.join()
+        gapCatchUps.joinAll()
         assertEquals(listOf(20L, 21L, 22L), store.state.value.payload.messages.mapNotNull { it.seq })
         assertEquals(
             listOf(20L, 21L, 22L),
@@ -16712,9 +16735,12 @@ class SharedThreadStoreTest {
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val gapCatchUps = store.recordGapRecoveryJobs()
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
 
-        val cancelled = launch {
+        // The realtime sink only registers the gap; the catch-up runs on the store scope, so cancelling
+        // that job (store teardown) is what cancels the recovery.
+        val trigger = launch {
             store.accept(
                 SharedThreadIntent.ApplyRealtimeEvent(
                     MessageNew(message(id = "m12", seq = 12, body = "cancelled gap")),
@@ -16722,8 +16748,9 @@ class SharedThreadStoreTest {
             )
         }
         oldStarted.await()
-        cancelled.cancel()
-        cancelled.join()
+        trigger.join()
+        gapCatchUps[0].cancel()
+        gapCatchUps.join(0)
 
         assertEquals("idle", store.state.value.payload.newerMessagesStatus)
         assertEquals("idle", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
@@ -16733,6 +16760,7 @@ class SharedThreadStoreTest {
                 MessageNew(message(id = "m13", seq = 13, body = "successor gap")),
             ),
         )
+        gapCatchUps.joinAll()
         assertEquals(2, api.catchUpCalls)
         assertEquals(listOf(10L, 11L, 12L, 13L), store.state.value.payload.messages.mapNotNull { it.seq })
         assertEquals("idle", store.state.value.payload.newerMessagesStatus)
@@ -16806,6 +16834,7 @@ class SharedThreadStoreTest {
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val gapCatchUps = store.recordGapRecoveryJobs()
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
 
         store.accept(
@@ -16813,6 +16842,7 @@ class SharedThreadStoreTest {
                 MessageNew(message(id = "m12", seq = 12, body = "empty recovery")),
             ),
         )
+        gapCatchUps.joinAll()
 
         assertEquals(1, api.catchUpCalls)
         assertEquals("idle", store.state.value.payload.newerMessagesStatus)
@@ -16837,6 +16867,7 @@ class SharedThreadStoreTest {
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val gapCatchUps = store.recordGapRecoveryJobs()
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
 
         store.accept(
@@ -16844,6 +16875,7 @@ class SharedThreadStoreTest {
                 MessageNew(message(id = "m12", seq = 12, body = "failing recovery")),
             ),
         )
+        gapCatchUps.joinAll()
         assertEquals("error", store.state.value.payload.newerMessagesStatus)
         assertEquals("error", dataSource.cachedPayload("channel-1")?.newerMessagesStatus)
 
@@ -16852,6 +16884,7 @@ class SharedThreadStoreTest {
                 MessageNew(message(id = "m13", seq = 13, body = "retry recovery")),
             ),
         )
+        gapCatchUps.joinAll()
         assertEquals(2, api.catchUpCalls)
         assertEquals(listOf(10L, 11L, 12L, 13L), store.state.value.payload.messages.mapNotNull { it.seq })
         assertEquals("idle", store.state.value.payload.newerMessagesStatus)
@@ -16914,6 +16947,7 @@ class SharedThreadStoreTest {
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val gapCatchUps = store.recordGapRecoveryJobs()
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
 
         store.accept(
@@ -16921,6 +16955,7 @@ class SharedThreadStoreTest {
                 MessageNew(message(id = "m12", seq = 12, body = "no progress recovery")),
             ),
         )
+        gapCatchUps.joinAll()
 
         assertEquals(1, api.catchUpCalls)
         assertEquals("idle", store.state.value.payload.newerMessagesStatus)
@@ -16991,6 +17026,7 @@ class SharedThreadStoreTest {
             )
         val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1").copy(canLoadMoreAfter = false)
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val gapCatchUps = store.recordGapRecoveryJobs()
         store.accept(SharedThreadIntent.Start(route))
 
         store.accept(
@@ -17005,6 +17041,7 @@ class SharedThreadStoreTest {
                 activeReplyParentMessageId = MessageId("m1")
             )
         )
+        gapCatchUps.joinAll()
 
         val payload = store.state.value.payload
         assertEquals(listOf("current body", "recovered body"), payload.messages.map { it.body })
@@ -17061,6 +17098,7 @@ class SharedThreadStoreTest {
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId }
             )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        val gapCatchUps = store.recordGapRecoveryJobs()
         store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
 
         val gapJob = launch {
@@ -17071,6 +17109,7 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Refresh)
         api.releaseCatchUp?.complete(Unit)
         gapJob.join()
+        gapCatchUps.joinAll()
 
         val payload = store.state.value.payload
         assertEquals(listOf("foreground body"), payload.messages.map { it.body })
@@ -18406,15 +18445,6 @@ class SharedThreadStoreTest {
         )
     }
 
-    private fun basePayload(): RaftThreadScreenPayload =
-        RaftThreadScreenPayload(
-            instanceId = "shared-shell-thread-channel-1",
-            title = "general",
-            sourceThreadId = "channel-1",
-            status = "loading",
-            canSend = true
-        )
-
     private fun focusedReplyRoute(): RaftThreadScreenPayload =
         basePayload().copy(
             surfaceKind = RaftThreadSurfaceKind.ReplyThread,
@@ -18940,14 +18970,6 @@ class SharedThreadStoreTest {
     private suspend fun SharedThreadDataSource.threadPayloadOwnerScopeIdForTest(): String =
         requireNotNull(captureReplyCacheProducerContext()?.provenance?.threadPayloadOwnerScopeId)
 
-    private fun sampleSession(): StoredAuthSession =
-        StoredAuthSession(
-            user = StoredAuthUser(id = "u1", email = "artin@slock.ai", displayName = "Artin"),
-            accessToken = "access",
-            refreshToken = "refresh",
-            selectedServerId = "server-1"
-        )
-
     private fun replyResolutionSession(userId: String): StoredAuthSession =
         StoredAuthSession(
             user = StoredAuthUser(id = userId, email = "$userId@example.test", displayName = userId),
@@ -18993,6 +19015,24 @@ class SharedThreadStoreTest {
         )
 
     companion object {
+        // Shared with the split `SharedThreadStore<Facet>Test` files.
+        internal fun basePayload(): RaftThreadScreenPayload =
+            RaftThreadScreenPayload(
+                instanceId = "shared-shell-thread-channel-1",
+                title = "general",
+                sourceThreadId = "channel-1",
+                status = "loading",
+                canSend = true
+            )
+
+        internal fun sampleSession(): StoredAuthSession =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "u1", email = "artin@slock.ai", displayName = "Artin"),
+                accessToken = "access",
+                refreshToken = "refresh",
+                selectedServerId = "server-1"
+            )
+
         private fun focusedReplySnapshot(
             threadId: String,
             parentChannelId: String,
@@ -19087,7 +19127,7 @@ class SharedThreadStoreTest {
                     )
             )
 
-        private fun message(
+        internal fun message(
             threadId: String = "channel-1",
             channelId: String = threadId,
             id: String,
@@ -19122,7 +19162,7 @@ class SharedThreadStoreTest {
                 forwardBundle = forwardBundle
             )
 
-        private fun messagesResponse(
+        internal fun messagesResponse(
             body: String,
             id: String = "m1",
             seq: Long = 10,
@@ -19203,7 +19243,7 @@ class SharedThreadStoreTest {
             """.trimIndent()
 
         /** A `messages/channel` page object of `m<seq>` / `body-<seq>` messages (task #168 step 1). */
-        private fun pageRangeResponse(
+        internal fun pageRangeResponse(
             seqs: Iterable<Long>,
             channelId: String = "channel-1",
             historyLimited: Boolean = false,
@@ -19211,7 +19251,7 @@ class SharedThreadStoreTest {
             """{"historyLimited": $historyLimited, "messages": ${syncRangeResponse(seqs, channelId)}}"""
 
         /** A `messages/channel` page object of explicit (id, seq, body) messages (task #168 step 1). */
-        private fun pageResponse(
+        internal fun pageResponse(
             vararg messages: Triple<String, Long, String>,
             channelId: String = "channel-1",
             historyLimited: Boolean = false,
