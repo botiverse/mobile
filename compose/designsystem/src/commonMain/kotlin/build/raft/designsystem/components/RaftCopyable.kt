@@ -3,7 +3,9 @@ package build.raft.designsystem.components
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -18,7 +20,6 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.debugInspectorInfo
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import build.raft.designsystem.theme.LocalRaftStrings
@@ -103,15 +104,22 @@ fun Modifier.raftCopyable(
                     onClick = onClick,
                 )
             } else {
-                Modifier
-                    .pointerInput(Unit) { detectTapGestures(onLongPress = { currentLongPress() }) }
-                    .semantics {
-                        onLongClick(label = copyLabel) {
-                            copy(currentText)
-                            true
-                        }
+                // Consumes nothing until the press turns long, so a tap still reaches a clickable
+                // parent (a whole tappable row). Screen readers get the Copy custom action below.
+                Modifier.pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val longPress = awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
+                        longPress.consume()
+                        currentLongPress()
+                        do {
+                            val event = awaitPointerEvent()
+                            event.changes.forEach { it.consume() }
+                        } while (event.changes.any { it.pressed })
                     }
+                }
             }
+        // Screen readers get "Copy" as a custom action (a long press isn't obvious under TalkBack).
         gestures.semantics {
             customActions = listOf(CustomAccessibilityAction(copyLabel) {
                 copy(currentText)

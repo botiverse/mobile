@@ -1,5 +1,7 @@
 package build.raft.designsystem
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -9,6 +11,7 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -91,6 +94,31 @@ class RaftCopyableTest {
                     node.copyActions().any { it.label == "Copy" }
                 },
             )
+        }
+
+    @Test
+    fun aTapOnAPlainValueReachesItsTappableRow() =
+        runComposeUiTest {
+            val copied = mutableListOf<String>()
+            var rowTaps = 0
+            setContent {
+                RaftTheme {
+                    CompositionLocalProvider(LocalRaftCopyHandler provides RaftCopyHandler { copied += it }) {
+                        Box(Modifier.clickable { rowTaps += 1 }) {
+                            RaftText("mac-studio-2", modifier = Modifier.testTag("value").raftCopyable("mac-studio-2"))
+                        }
+                    }
+                }
+            }
+            val value = onNodeWithTag("value", useUnmergedTree = true)
+            value.performTouchInput { click() }
+            waitForIdle()
+            assertEquals(1, rowTaps, "a short tap is not consumed by the copy gesture")
+            assertEquals(emptyList(), copied)
+            value.performTouchInput { longClick() }
+            waitForIdle()
+            assertEquals(listOf("mac-studio-2"), copied)
+            assertEquals(1, rowTaps, "a long press copies and does not tap the row")
         }
 
     @Test
