@@ -21,7 +21,6 @@ import build.raft.app.data.runtimeform.v2.runtimeFormV2ValuesAfterSourceReload
 import build.raft.app.data.runtimeform.v2.validateRuntimeFormV2
 import build.raft.app.model.MemberId
 import build.raft.app.resources.MR
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,21 +40,25 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 /**
  * Edit an agent's runtime settings through runtime form v2: the same form create
  * uses, prefilled by the server (`GET /agents/:id/runtime-form`). writeOnly fields
- * start blank, and blank means "keep the stored value". Changing the runtime
- * itself stays in the v1 editor ([onChangeRuntime]); any load failure hands back
- * to v1 through [onLoadFailed].
+ * start blank, and blank means "keep the stored value". As on web, a Runtime
+ * select sits at the top (options from this agent's computer, [machineRuntimeIds]);
+ * picking a different runtime hands that runtime to the v1 editor through
+ * [onChangeRuntime], which opens with it already selected. Any load failure hands
+ * back to v1 through [onLoadFailed].
  */
 @Composable
 internal fun MembersAgentRuntimeFormV2Dialog(
     access: RuntimeFormV2Access,
     agentId: MemberId,
     machineId: String,
+    runtimeId: String,
+    machineRuntimeIds: List<String>,
     saving: Boolean,
     error: String?,
     errorFieldKeys: Set<String>,
     onDismiss: () -> Unit,
     onLoadFailed: () -> Unit,
-    onChangeRuntime: () -> Unit,
+    onChangeRuntime: (nextRuntime: String) -> Unit,
     onSave: (RuntimeFormV2SubmitBody) -> Unit
 ) {
     // A form that went stale mid-session (`form_revision_stale`) is reloaded whole, once; then back to v1.
@@ -96,39 +99,42 @@ internal fun MembersAgentRuntimeFormV2Dialog(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
                 item(key = "runtime-form-v2") {
-                    if (form == null) {
-                        Text(
-                            text = stringResource(MR.strings.agent_create_state_computers_loading),
-                            style = RaftType.Caption,
-                            color = RaftColor.TextMutedGray
-                        )
-                    } else {
-                        val shown = current ?: form
-                        RuntimeFormV2Fields(
-                            loaded = shown,
-                            values = values,
-                            onChange = { key, value ->
-                                values = applyRuntimeFormV2Change(shown.form, shown.sources, values, key, value)
-                                touched = touched + key
-                            },
-                            errors = runtimeFormV2ShownErrors(errors, touched + errorFieldKeys),
-                            serverErrorKeys = errorFieldKeys,
-                            serverMessage = null,
-                            editing = true,
-                            advancedOpen = advancedOpen,
-                            onAdvancedOpenChange = { advancedOpen = it },
-                            enabled = !saving,
-                            sourceRefresh = sourceRefresh
-                        )
+                    val shownRuntimeId = (current ?: form)?.form?.runtimeId ?: runtimeId
+                    RuntimeFormV2RuntimeSection(
+                        runtime = shownRuntimeId,
+                        onRuntimeChange = { picked ->
+                            membersRuntimeFormV2EditRuntimeSwitch(shownRuntimeId, picked)?.let(onChangeRuntime)
+                        },
+                        machineRuntimeIds = machineRuntimeIds,
+                        runtimeAvailabilityError = null,
+                        enabled = !saving
+                    ) {
+                        if (form == null) {
+                            Text(
+                                text = stringResource(MR.strings.agent_create_state_computers_loading),
+                                style = RaftType.Caption,
+                                color = RaftColor.TextMutedGray
+                            )
+                        } else {
+                            val shown = current ?: form
+                            RuntimeFormV2Fields(
+                                loaded = shown,
+                                values = values,
+                                onChange = { key, value ->
+                                    values = applyRuntimeFormV2Change(shown.form, shown.sources, values, key, value)
+                                    touched = touched + key
+                                },
+                                errors = runtimeFormV2ShownErrors(errors, touched + errorFieldKeys),
+                                serverErrorKeys = errorFieldKeys,
+                                serverMessage = null,
+                                editing = true,
+                                advancedOpen = advancedOpen,
+                                onAdvancedOpenChange = { advancedOpen = it },
+                                enabled = !saving,
+                                sourceRefresh = sourceRefresh
+                            )
+                        }
                     }
-                }
-                item(key = "change-runtime") {
-                    Text(
-                        text = stringResource(MR.strings.runtime_form_v2_change_runtime),
-                        style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
-                        color = if (saving) RaftColor.TextMutedGray else RaftColor.TextBlack,
-                        modifier = Modifier.clickable(enabled = !saving) { onChangeRuntime() }.padding(vertical = 4.dp)
-                    )
                 }
                 item(key = "restart-hint") {
                     Text(
@@ -175,3 +181,10 @@ internal fun MembersAgentRuntimeFormV2Dialog(
             }
         }
     }
+
+/**
+ * The runtime the v2 edit dialog hands to the v1 editor when the user picks [picked]
+ * in its Runtime select, or null when [picked] is the runtime being edited (stay in v2).
+ */
+internal fun membersRuntimeFormV2EditRuntimeSwitch(currentRuntimeId: String, picked: String): String? =
+    picked.trim().takeIf { it.isNotBlank() && it != currentRuntimeId.trim() }
