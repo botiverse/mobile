@@ -226,6 +226,8 @@ internal class FakeConversationRepository : ConversationRepository {
         DataResult.Content(ThreadActionResult(ChannelId("thread-channel"), changed = true))
     var unfollowResult: DataResult<ThreadActionResult> =
         DataResult.Content(ThreadActionResult(ChannelId("thread-channel"), changed = true))
+    /** When set, `unfollowThread` waits for it: an Unfollow still on the network. */
+    var unfollowGate: CompletableDeferred<Unit>? = null
 
     override suspend fun getThread(threadId: ThreadId, includeFollowedSummaries: Boolean, limit: Int): DataResult<ThreadSnapshot> =
         error("unused")
@@ -261,6 +263,7 @@ internal class FakeConversationRepository : ConversationRepository {
 
     override suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> {
         unfollowedThreadChannelIds += threadChannelId
+        unfollowGate?.await()
         return unfollowResult
     }
 

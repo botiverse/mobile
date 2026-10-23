@@ -144,6 +144,11 @@ class SharedActivityStore internal constructor(
      * prevents two taps from dispatching the same mutation concurrently.
      */
     private var pendingThreadFollowMutations: Set<String> = emptySet()
+    /**
+     * A Follow asked for while that row's Unfollow is still in flight (a swipe's Undo tapped right
+     * away): run once the Unfollow settles, instead of being dropped by the fence.
+     */
+    private var deferredThreadFollows: Map<String, InboxItem> = emptyMap()
     private var readPredictionRevisions: Map<ChannelId, Long> = emptyMap()
     private var readPredictionItemKeys: Map<ChannelId, Set<String>> = emptyMap()
     /** Channel -> (registering prediction revision, pending read-overlay generations). */
@@ -353,6 +358,7 @@ class SharedActivityStore internal constructor(
             realtimeBackgroundReconcileDirty = false
             realtimeHighWater.clear()
             pendingThreadFollowMutations = emptySet()
+            deferredThreadFollows = emptyMap()
             owner
         }
         ownerServerId?.let(replyThreadFreshnessLedger::invalidateServer)
@@ -371,6 +377,7 @@ class SharedActivityStore internal constructor(
             readPredictionHolds = emptyMap()
             resolvedMentionActionKeys = emptyMap()
             pendingThreadFollowMutations = emptySet()
+            deferredThreadFollows = emptyMap()
             // task #399 review: parked ids and the fetch flag belong to the
             // old owner/server; a stale park would suppress hydration for the
             // next session's DM rows.
@@ -2158,18 +2165,32 @@ class SharedActivityStore internal constructor(
             } else {
                 refreshAfterFailure(previous, result.failureCodeOr("activity_unfollow_failed"))
             }
+            takeDeferredThreadFollow(item.key)?.let(::followThread)
         }
     }
 
+    /**
+     * Follow an unfollowed thread row again (the menu's Follow, or Undo of a swiped Unfollow).
+     *
+     * A row this filter still lists is followed in place. A row the filter dropped when it was
+     * unfollowed (Unread, Mentions) is followed from [item] and the list reloads in the background,
+     * so the row comes back from the server rather than from a guessed position. A Follow that
+     * arrives while the row's Unfollow is in flight runs once that settles.
+     */
     private fun followThread(item: InboxItem) {
         if (!item.isThreadActivityItem() || !item.isUnfollowedActivityThread) return
-        val currentItem = _state.value.items.firstOrNull { it.key == item.key } ?: return
-        if (!currentItem.isUnfollowedActivityThread) return
-        if (!beginThreadFollowMutation(item.key)) return
+        val currentItem = _state.value.items.firstOrNull { it.key == item.key }
+        if (currentItem != null && !currentItem.isUnfollowedActivityThread) return
+        if (!beginThreadFollowMutation(item.key)) {
+            // Not deferred: the mutation in flight settled in between, so follow now.
+            if (!deferThreadFollow(item)) followThread(item)
+            return
+        }
         val previous = _state.value
-        updateThreadFollowProjection(item.key, following = true)
+        if (currentItem != null) updateThreadFollowProjection(item.key, following = true)
+        val target = currentItem ?: item
         scope.launch {
-            val parentMessageId = currentItem.parentMessageId
+            val parentMessageId = target.parentMessageId
             val result = try {
                 if (parentMessageId == null) {
                     DataResult.Error(ScreenError("activity_parent_message_missing"))
@@ -2184,11 +2205,28 @@ class SharedActivityStore internal constructor(
             }
             if (result.isAcceptedThreadFollowMutation()) {
                 onUnreadCountsChanged()
+                if (currentItem == null) {
+                    load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh)
+                }
             } else {
                 refreshAfterFailure(previous, result.failureCodeOr("activity_follow_failed"))
             }
+            takeDeferredThreadFollow(item.key)?.let(::followThread)
         }
     }
+
+    /** Parks [item]'s Follow behind the row's mutation in flight; false when none is in flight any more. */
+    private fun deferThreadFollow(item: InboxItem): Boolean =
+        synchronized(realtimeOwnerLock) {
+            if (item.key !in pendingThreadFollowMutations) return@synchronized false
+            deferredThreadFollows = deferredThreadFollows + (item.key to item)
+            true
+        }
+
+    private fun takeDeferredThreadFollow(key: String): InboxItem? =
+        synchronized(realtimeOwnerLock) {
+            deferredThreadFollows[key]?.also { deferredThreadFollows = deferredThreadFollows - key }
+        }
 
     private fun DataResult<ThreadActionResult>.failureCodeOr(fallback: String): String =
         when (this) {

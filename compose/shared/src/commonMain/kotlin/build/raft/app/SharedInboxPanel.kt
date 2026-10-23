@@ -1731,6 +1731,7 @@ private fun SharedActivityList(
     // Rule L swipe-to-Done: the swiped row is hidden while its undo toast is up; the Done itself is
     // committed when the window ends (ActivityConversationSwipe.kt).
     var swipeDoneUndo by remember { mutableStateOf(ActivitySwipeDoneUndoState()) }
+    var swipeEndUndo by remember { mutableStateOf(ActivitySwipeEndUndoState()) }
     val swipeDoneHiddenKey = swipeDoneUndo.hiddenKey
     val conversationListEntries =
         remember(renderedItems, swipeDoneHiddenKey) {
@@ -1897,7 +1898,30 @@ private fun SharedActivityList(
     }
     fun swipeRowDone(renderedItemKey: String) {
         val currentItem = committedRowItem(renderedItemKey) ?: return
+        // One toast at a time: an end swipe's toast gives way (its action stands).
+        swipeEndUndo = swipeEndUndo.dismiss()
         applySwipeDone(swipeDoneUndo.swipe(currentItem))
+    }
+    fun runSwipeEndCommand(command: ActivitySwipeEndCommand) {
+        when (command) {
+            is ActivitySwipeEndCommand.Activity -> latestOnIntent(command.intent)
+            is ActivitySwipeEndCommand.ChannelMute -> channelMute?.onToggle?.invoke(command.channelId, command.muted)
+        }
+    }
+    // Rule L swipe toward the end: Unfollow / Mute Activity, written on release like the menu item; the
+    // toast's Undo writes the reverse (ActivityConversationSwipe.kt).
+    fun swipeRowEnd(renderedItemKey: String) {
+        val currentItem = committedRowItem(renderedItemKey) ?: return
+        val action = currentItem.activitySwipeEndAction(channelMute?.mutedByChannelId.orEmpty()) ?: return
+        // One toast at a time: a waiting Done is committed now rather than lost.
+        applySwipeDone(swipeDoneUndo.flush())
+        runSwipeEndCommand(activitySwipeEndApplyCommand(currentItem, action))
+        swipeEndUndo = swipeEndUndo.swipe(currentItem, action)
+    }
+    fun undoSwipeEnd(token: Long) {
+        val transition = swipeEndUndo.undo(token)
+        swipeEndUndo = transition.state
+        transition.reverse?.let { swiped -> runSwipeEndCommand(activitySwipeEndUndoCommand(swiped.item, swiped.action)) }
     }
     val swipeDonePendingToken = swipeDoneUndo.pending?.token
     LaunchedEffect(swipeDonePendingToken) {
@@ -1905,9 +1929,19 @@ private fun SharedActivityList(
         delay(ActivitySwipeDoneUndoWindowMillis)
         applySwipeDone(swipeDoneUndo.expire(token))
     }
-    // A new account, server or filter (or leaving Activity) commits a waiting Done instead of losing it.
+    val swipeEndPendingToken = swipeEndUndo.pending?.token
+    LaunchedEffect(swipeEndPendingToken) {
+        val token = swipeEndPendingToken ?: return@LaunchedEffect
+        delay(ActivitySwipeDoneUndoWindowMillis)
+        swipeEndUndo = swipeEndUndo.expire(token)
+    }
+    // A new account, server or filter (or leaving Activity) commits a waiting Done instead of losing it,
+    // and drops an end swipe's toast (its write already stands).
     DisposableEffect(presentationOwnerIdentity) {
-        onDispose { applySwipeDone(swipeDoneUndo.flush()) }
+        onDispose {
+            applySwipeDone(swipeDoneUndo.flush())
+            swipeEndUndo = swipeEndUndo.dismiss()
+        }
     }
     // The pointerInput coroutine deliberately keeps the callback from its DOWN generation. Read
     // the backing MutableState objects at commit time so the old callback sees an order change
@@ -1972,6 +2006,8 @@ private fun SharedActivityList(
                                 onDone = { markRowDone(item.key) },
                                 onOpenMenu = { anchor -> openRowMenu(item.key, anchor) },
                                 onSwipeDone = { swipeRowDone(item.key) },
+                                swipeEndAction = item.activitySwipeEndAction(channelMute?.mutedByChannelId.orEmpty()),
+                                onSwipeEnd = { swipeRowEnd(item.key) },
                             )
                         }
                     }
@@ -2055,6 +2091,23 @@ private fun SharedActivityList(
                 title = stringResource(MR.strings.activity_list_marked_done),
                 actionLabel = stringResource(MR.strings.common_undo),
                 onAction = { swipeDoneUndo = swipeDoneUndo.undo(pending.token) },
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(start = 16.dp, end = 16.dp, bottom = bottomContentPadding + 8.dp),
+            )
+        }
+        swipeEndUndo.pending?.let { pending ->
+            // raft-design touch.md#swipe: the toast says what the swipe did, naming the conversation.
+            val conversation = pending.item.activitySwipeConversationLabel()
+            RaftToast(
+                title =
+                    when (pending.action) {
+                        ActivitySwipeEndAction.UnfollowThread -> stringResource(MR.strings.activity_swipe_unfollowed_thread, conversation)
+                        ActivitySwipeEndAction.MuteActivity -> stringResource(MR.strings.activity_swipe_muted_activity, conversation)
+                    },
+                actionLabel = stringResource(MR.strings.common_undo),
+                onAction = { undoSwipeEnd(pending.token) },
                 modifier =
                     Modifier
                         .align(Alignment.BottomCenter)
@@ -2204,10 +2257,17 @@ internal data class ActivityChannelMuteControl(
     val onToggle: (channelId: String, muted: Boolean) -> Unit,
 )
 
+/**
+ * Web `canToggleActivityMute`: only joined channels whose type has a user-reachable Activity mute
+ * (`activityMuteSupported`; DMs are not channels here) are listed, so the menu's Mute / Unmute
+ * Activity and the end swipe never offer a write the Home store would refuse.
+ */
 internal fun SharedHomeContentState?.activityMuteByChannelId(activityServerId: String): Map<String, Boolean> {
     val content = this as? SharedHomeContentState.Content ?: return emptyMap()
     if (activityServerId.isBlank() || content.snapshot.server.id.value != activityServerId) return emptyMap()
-    return content.snapshot.channels.associate { channel -> channel.channelId.value to channel.activityMuted }
+    return content.snapshot.channels
+        .filter { channel -> channel.joined && channel.activityMuteSupported }
+        .associate { channel -> channel.channelId.value to channel.activityMuted }
 }
 
 internal fun activityContextMenuActionIds(item: InboxItem, mutedByChannelId: Map<String, Boolean> = emptyMap()): List<String> =
