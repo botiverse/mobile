@@ -396,5 +396,66 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
         XCTAssertNil(bar.controller.presentedViewController)
         XCTAssertEqual(platters(in: tabBar, to: bar.window), before)
     }
+
+    // MARK: - Probe: what shrinks the system tab titles?
+
+    func testProbeTabTitleLayoutVariants() throws {
+        guard #available(iOS 26.0, *) else { throw XCTSkip("iOS 26 only") }
+        let names = [("home", "house", "Home"), ("activity", "waveform.path.ecg", "Activity"), ("tasks", "checkmark.square", "Tasks"), ("search", "magnifyingglass", "Search")]
+        func pages() -> [UITab] {
+            names.map { key, symbol, title in
+                UITab(title: title, image: UIImage(systemName: symbol), identifier: key) { _ in UIViewController() }
+            }
+        }
+        func server() -> UISearchTab {
+            let tab = UISearchTab { _ in UIViewController() }
+            tab.title = "Botiverse"
+            tab.image = RaftIosServerAvatarImage.circle(nil, fallbackLabel: "B", diameter: RaftIosServerAvatarImage.diameter)
+            return tab
+        }
+        func measure(_ name: String, _ configure: (UITabBarController) -> Void) {
+            let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+            let window = scene.map { UIWindow(windowScene: $0) } ?? UIWindow(frame: UIScreen.main.bounds)
+            window.frame = scene?.screen.bounds ?? UIScreen.main.bounds
+            let controller = UITabBarController()
+            controller.traitOverrides.horizontalSizeClass = .compact
+            configure(controller)
+            window.rootViewController = controller
+            window.isHidden = false
+            controller.view.layoutIfNeeded()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+            func labels(_ view: UIView) -> [UILabel] {
+                view.subviews.flatMap { sub -> [UILabel] in ((sub as? UILabel).map { [$0] } ?? []) + labels(sub) }
+            }
+            let found = labels(controller.tabBar).filter { $0.text == "Home" || $0.text == "Activity" }
+            let text = found.map { label -> String in
+                let f = label.convert(label.bounds, to: window)
+                return "\(label.text ?? "") y=\(f.minY) h=\(f.height) w=\(f.width)/\(label.intrinsicContentSize.width) font=\(label.font.pointSize) t=\(label.transform.a)"
+            }.joined(separator: " ; ")
+            print("RAFT_TITLE_PROBE \(name): \(text)")
+            window.isHidden = true
+        }
+        measure("A tabs=") { $0.tabs = pages() + [server()] }
+        measure("B badge") { c in let p = pages(); p[1].badgeValue = "76"; c.tabs = p + [server()] }
+        measure("C a11y") { c in let p = pages(); p.forEach { $0.accessibilityLabel = $0.title }; c.tabs = p + [server()] }
+        measure("D setTabs") { $0.setTabs(pages() + [server()], animated: false) }
+        measure("E selected") { c in let p = pages(); c.tabs = p + [server()]; c.selectedTab = p[0] }
+        measure("F production") { c in
+            let tabs = RaftIosSystemTabs()
+            let specs = names.map { key, symbol, title in
+                RaftIosTabBarItemSpec(key: key, title: title, systemImageName: symbol, selectedSystemImageName: symbol,
+                                      badgeValue: key == "activity" ? "76" : nil, enabled: true)
+            } + [serverSpec()]
+            tabs.apply(specs, panelImage: nil, to: c)
+            tabs.select("home", in: c)
+            objc_setAssociatedObject(c, "probeTabs", tabs, .OBJC_ASSOCIATION_RETAIN)
+        }
+        measure("G no search tab") { $0.tabs = pages() }
+        measure("H dark+magenta") { c in
+            c.overrideUserInterfaceStyle = .dark
+            c.view.backgroundColor = UIColor(red: 1, green: 0, blue: 1, alpha: 1)
+            c.tabs = pages() + [server()]
+        }
+    }
 }
 
