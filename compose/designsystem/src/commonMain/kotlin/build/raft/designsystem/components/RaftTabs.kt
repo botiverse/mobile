@@ -40,6 +40,10 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
@@ -353,6 +357,7 @@ internal fun RaftStickerItem(
     modifier: Modifier,
     icon: (@Composable () -> Unit)? = null,
     count: String? = null,
+    iconsOnly: Boolean = false,
 ) {
     val colors = RaftTheme.colors
     val look = raftStickerItemLook(active, enabled, colors)
@@ -361,6 +366,21 @@ internal fun RaftStickerItem(
     val isFocused = raftIsFocused(source)
     val focused = enabled && isFocused
     val typography = RaftTheme.typography
+    if (iconsOnly && icon != null) {
+        // raft-ui `data-icons-only`: a 32dp square with only its icon; the label (and count)
+        // stays the accessible name, given by the caller's semantics.
+        Box(
+            modifier
+                .size(32.dp)
+                .raftSticker(look, RaftRadius.Control, pressed = pressed, focused = focused, colors = colors),
+            contentAlignment = Alignment.Center,
+        ) {
+            CompositionLocalProvider(LocalRaftContentColor provides look.ink) {
+                Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) { icon() }
+            }
+        }
+        return
+    }
     Row(
         modifier
             // A minimum: a large font scale grows the item instead of clipping its label.
@@ -428,7 +448,55 @@ private fun RaftTrack(modifier: Modifier, content: @Composable RowScope.() -> Un
  * segments don't fit scrolls the same way rather than squeezing them.
  */
 @Composable
-fun RaftSegmentedControl(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
+fun RaftSegmentedControl(
+    modifier: Modifier = Modifier,
+    /**
+     * raft-ui `iconsOnlyBelow="auto"`: whenever the labelled segments don't fit the width the
+     * control is given, every segment shows only its icon (a 32dp square), its label staying
+     * its accessible name and showing in a tooltip; the labels come back once they fit. It is
+     * always measured against the labelled layout, so it never flickers at the boundary. In a
+     * row, leave the control free to shrink (`Modifier.weight(1f, fill = false)`). Set it only
+     * when every [RaftSegment] has an `icon` or `iconsOnlyIcon`: one without keeps its label.
+     */
+    iconsOnlyWhenLabelsDontFit: Boolean = false,
+    content: @Composable RowScope.() -> Unit,
+) {
+    if (!iconsOnlyWhenLabelsDontFit) {
+        RaftSegmentedTrack(modifier, iconsOnly = false, content)
+        return
+    }
+    SubcomposeLayout(modifier) { constraints ->
+        // The labelled track, composed only to measure its width: never placed, and with no
+        // semantics, so nothing reads or finds it twice.
+        val labelledWidth =
+            subcompose(RaftSegmentedSlot.Labelled) {
+                RaftSegmentedTrack(Modifier.clearAndSetSemantics {}, iconsOnly = false, content)
+            }.maxOfOrNull { it.maxIntrinsicWidth(constraints.maxHeight) } ?: 0
+        val iconsOnly = raftSegmentIconsOnly(labelledWidth = labelledWidth, availableWidth = constraints.maxWidth, bounded = constraints.hasBoundedWidth)
+        val placeables =
+            subcompose(if (iconsOnly) RaftSegmentedSlot.IconsOnly else RaftSegmentedSlot.Shown) {
+                RaftSegmentedTrack(Modifier, iconsOnly = iconsOnly, content)
+            }.map { it.measure(constraints) }
+        val width = placeables.maxOfOrNull { it.width } ?: constraints.minWidth
+        val height = placeables.maxOfOrNull { it.height } ?: constraints.minHeight
+        layout(width, height) { placeables.forEach { it.placeRelative(0, 0) } }
+    }
+}
+
+private enum class RaftSegmentedSlot { Labelled, Shown, IconsOnly }
+
+/**
+ * raft-ui `labelsFit`: the segments show only their icons when the labelled track needs more
+ * than the width it is given (half a pixel of rounding aside). Never with an unbounded width.
+ */
+internal fun raftSegmentIconsOnly(labelledWidth: Int, availableWidth: Int, bounded: Boolean): Boolean =
+    bounded && labelledWidth > availableWidth
+
+/** Whether the [RaftSegment]s of this track show only their icons. */
+private val LocalRaftSegmentIconsOnly = staticCompositionLocalOf { false }
+
+@Composable
+private fun RaftSegmentedTrack(modifier: Modifier, iconsOnly: Boolean, content: @Composable RowScope.() -> Unit) {
     val scroll = rememberScrollState()
     val track = remember(scroll) { RaftTabStripScroll(scroll) }
     SideEffect { track.composed = true }
@@ -454,7 +522,10 @@ fun RaftSegmentedControl(modifier: Modifier = Modifier, content: @Composable Row
         horizontalArrangement = Arrangement.spacedBy(3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CompositionLocalProvider(LocalRaftSegmentTrackScroll provides track) { content() }
+        CompositionLocalProvider(
+            LocalRaftSegmentTrackScroll provides track,
+            LocalRaftSegmentIconsOnly provides iconsOnly,
+        ) { content() }
     }
 }
 
@@ -492,6 +563,12 @@ private fun Modifier.raftWeightsKeepTheirWidth(): Modifier =
 /**
  * One option of a [RaftSegmentedControl]: the sticker item (see [RaftTab]) with an
  * optional [count] in Space Mono after the Title Case label. A radio for accessibility.
+ *
+ * [iconsOnlyIcon] is the icon the segment shows alone when its control shows icons only
+ * (`iconsOnlyWhenLabelsDontFit`), for a segment whose labelled form has no icon (raft-ui
+ * `hidden in-data-icons-only:block`); without it, [icon] shows alone. Shown alone, the
+ * segment is a 32dp square whose label (and count) stay its accessible name, and the label
+ * shows in a tooltip.
  */
 @Composable
 fun RaftSegment(
@@ -502,6 +579,7 @@ fun RaftSegment(
     count: String? = null,
     enabled: Boolean = true,
     icon: (@Composable () -> Unit)? = null,
+    iconsOnlyIcon: (@Composable () -> Unit)? = null,
     interactionSource: MutableInteractionSource? = null,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
@@ -509,12 +587,33 @@ fun RaftSegment(
     // Kept in view with the track's 3dp inset round it, as at rest; again once the track
     // starts to scroll (`[overflowing, value]`).
     val reveal = if (track != null) Modifier.raftRevealInStripWhen(selected, track, room = 3.dp, key = track.scroll.maxValue > 0) else Modifier
+    val aloneIcon = iconsOnlyIcon ?: icon
+    // Read unconditionally: a composable read inside `&&` gets no group of its own (#3356).
+    val trackIconsOnly = LocalRaftSegmentIconsOnly.current
+    val select = Modifier.selectable(selected, source, indication = null, enabled = enabled, role = Role.RadioButton, onClick = onClick)
+    if (aloneIcon != null && trackIconsOnly) {
+        val name = if (count != null) "$text $count" else text
+        // The caller's modifier goes on the tooltip's outer box, where parent data (`weight`) holds.
+        RaftTooltip(text, modifier) {
+            RaftStickerItem(
+                text,
+                selected,
+                enabled,
+                source,
+                reveal.then(select).semantics { contentDescription = name },
+                icon = aloneIcon,
+                count = count,
+                iconsOnly = true,
+            )
+        }
+        return
+    }
     RaftStickerItem(
         text,
         selected,
         enabled,
         source,
-        modifier.then(reveal).selectable(selected, source, indication = null, enabled = enabled, role = Role.RadioButton, onClick = onClick),
+        modifier.then(reveal).then(select),
         icon = icon,
         count = count,
     )

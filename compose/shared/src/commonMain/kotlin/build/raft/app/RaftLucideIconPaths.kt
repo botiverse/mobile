@@ -317,6 +317,14 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("m9 11 3 3L22 4"),
                     ),
                 )
+            RaftLucideIconName.CircleDot ->
+                RaftLucideIconSpec(
+                    "circle-dot",
+                    listOf(
+                        RaftLucidePathSpec("M 2.0 12.0 A 10.0 10.0 0 1 0 22.0 12.0 A 10.0 10.0 0 1 0 2.0 12.0 Z"),
+                        RaftLucidePathSpec("M 11.0 12.0 A 1.0 1.0 0 1 0 13.0 12.0 A 1.0 1.0 0 1 0 11.0 12.0 Z"),
+                    ),
+                )
             RaftLucideIconName.CircleDashed ->
                 RaftLucideIconSpec(
                     "circle-dashed",

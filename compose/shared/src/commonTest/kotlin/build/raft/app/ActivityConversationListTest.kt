@@ -32,8 +32,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Activity conversation list: list mapping and pinned ordering, mirroring the web ThreadsInbox
- * `layout="list"` branch and `isSidebarPinnedInboxItem` (slock packages/web/src/components/thread).
+ * Activity conversation list: list mapping, mirroring the web ThreadsInbox `layout="list"` branch
+ * (slock packages/web/src/components/thread).
  */
 class ActivityConversationListTest {
 
@@ -116,7 +116,9 @@ class ActivityConversationListTest {
         )
 
     @Test
-    fun pinnedConversationsFloatFirstInLoadedOrderWithSectionLabels() {
+    fun rowsKeepTheServerOrderWithNoPinnedOrAllConversationsSections() {
+        // slock #10785: Pinned is a filter (scope=pinned), so pinned conversations no longer float
+        // first under a "Pinned" label; the list is the server's order, whatever the pins are.
         val items =
             listOf(
                 thread,
@@ -124,57 +126,15 @@ class ActivityConversationListTest {
                 dm("dm:fable", "dm-fable", senderId = "agent-fable"),
                 channel("channel:android", "android"),
             )
-        val entries = activityConversationListEntries(items, context)
+        val entries = activityConversationListEntries(items)
+        assertEquals(listOf("thread:t1", "channel:random", "dm:fable", "channel:android"), entries.map { it.key })
+        assertTrue(entries.all { it is ActivityConversationListEntry.Row })
+        // The hairline sits only between two adjacent rows.
         assertEquals(
-            listOf(
-                "activity-list-section:Pinned",
-                "dm:fable",
-                "channel:android",
-                "activity-list-section:AllConversations",
-                "thread:t1",
-                "channel:random",
-            ),
-            entries.map { it.key },
+            listOf(false, true, true, true),
+            entries.filterIsInstance<ActivityConversationListEntry.Row>().map { it.divider },
         )
-        val rows = entries.filterIsInstance<ActivityConversationListEntry.Row>()
-        // The hairline sits only between two adjacent rows, never under a section label.
-        assertEquals(listOf(false, true, false, true), rows.map { it.divider })
-        assertEquals(listOf(true, true, false, false), rows.map { it.pinned })
-        assertTrue((entries.first() as ActivityConversationListEntry.Section).first)
-        assertFalse((entries[3] as ActivityConversationListEntry.Section).first)
-    }
-
-    @Test
-    fun withoutPinsTheLoadedOrderIsKeptAndNoSectionRenders() {
-        for (pins in listOf(emptyList(), listOf(SettingsServerSidebarPinnedItem(kind = "channel", id = "elsewhere")))) {
-            val items = listOf(channel("channel:a", "a"), thread, channel("channel:b", "b"))
-            val entries = activityConversationListEntries(items, context.copy(pinnedRefs = pins))
-            assertEquals(listOf("channel:a", "thread:t1", "channel:b"), entries.map { it.key }, "pins=$pins")
-            assertEquals(
-                listOf(false, true, true),
-                entries.filterIsInstance<ActivityConversationListEntry.Row>().map { it.divider },
-            )
-        }
-    }
-
-    @Test
-    fun onlyPinnedRowsStartWithThePinnedSectionAndNoAllSection() {
-        val entries = activityConversationListEntries(listOf(channel("channel:android", "android")), context)
-        assertEquals(listOf("activity-list-section:Pinned", "channel:android"), entries.map { it.key })
-    }
-
-    @Test
-    fun directMessagesPinByPeerKindAndIdNotChannelId() {
-        val item = dm("dm:fable", "dm-fable", senderId = "agent-fable")
-        assertTrue(item.isSidebarPinnedActivityConversation(context))
-        // A human pin with the agent's id is a different ref.
-        val humanPinned = context.copy(pinnedRefs = listOf(SettingsServerSidebarPinnedItem(kind = "human", id = "agent-fable")))
-        assertFalse(item.isSidebarPinnedActivityConversation(humanPinned))
-        // The DM channel id itself is never a pin ref.
-        val channelIdPinned = context.copy(pinnedRefs = listOf(SettingsServerSidebarPinnedItem(kind = "channel", id = "dm-fable")))
-        assertFalse(item.isSidebarPinnedActivityConversation(channelIdPinned))
-        // An unresolved DM peer is not pinned.
-        assertFalse(dm("dm:x", "dm-unknown", senderId = "x").isSidebarPinnedActivityConversation(context))
+        assertEquals(items, activityRowsInDisplayOrder(entries))
     }
 
     @Test
@@ -633,7 +593,7 @@ class ActivityConversationListTest {
     }
 
     @Test
-    fun pinsAndSectionsWaitForHomeContentOfThisServer() {
+    fun homeFactsWaitForHomeContentOfThisServer() {
         val ready = homeSnapshot().toActivityConversationListContext("server-1")
         val content = SharedHomeContentState.Content(snapshot = homeSnapshot(), session = session())
         val otherServer = SharedHomeContentState.Content(snapshot = homeSnapshot("server-2"), session = session())
@@ -645,37 +605,27 @@ class ActivityConversationListTest {
         )
         val cases =
             listOf(
-                // Pending (null): the panel keeps its loading state instead of painting unpinned rows.
+                // Pending (null): the panel keeps its loading state instead of painting rows without Home facts.
                 Case("home loading", previous = null, home = SharedHomeContentState.Loading(), expected = null),
                 Case("another server's home", previous = null, home = otherServer, expected = null),
                 Case("home content", previous = null, home = content, expected = ready),
                 // Once painted, a Home reload or failure never moves the rows again.
                 Case("reload after content", previous = ready, home = SharedHomeContentState.Loading(), expected = ready),
                 Case("error after content", previous = ready, home = SharedHomeContentState.Error("boom"), expected = ready),
-                // No Home facts will come: the unpinned list, no section labels.
+                // No Home facts will come: the list without them.
                 Case("home error", previous = null, home = SharedHomeContentState.Error("boom"), expected = ActivityConversationListContext.Empty),
                 Case("home empty", previous = null, home = SharedHomeContentState.Empty(session()), expected = ActivityConversationListContext.Empty),
                 Case("no home store", previous = null, home = null, expected = ActivityConversationListContext.Empty),
                 Case("content after error", previous = ActivityConversationListContext.Empty, home = content, expected = ready),
             )
-        val items = listOf(channel("channel:random", "random"), dm("dm:fable", "dm-fable", senderId = "agent-fable"))
         for (case in cases) {
             val next = nextActivityConversationListContext(case.previous, case.home, "server-1")
             assertEquals(case.expected, next, case.name)
-            if (next == ActivityConversationListContext.Empty) {
-                // Error / no Home: loaded order, no "Pinned" / "All conversations" labels.
-                assertEquals(listOf("channel:random", "dm:fable"), activityConversationListEntries(items, next).map { it.key }, case.name)
-            }
         }
-        // With Home content the pinned DM peer floats under "Pinned".
-        assertEquals(
-            listOf("activity-list-section:Pinned", "dm:fable", "activity-list-section:AllConversations", "channel:random"),
-            activityConversationListEntries(items, ready).map { it.key },
-        )
     }
 
     @Test
-    fun prewarmAfterClickFollowsTheDisplayedOrderWithPins() {
+    fun prewarmAfterClickFollowsTheDisplayedOrder() {
         fun replyThread(key: String) =
             thread.copy(
                 key = "thread:$key",
@@ -684,17 +634,17 @@ class ActivityConversationListTest {
                 parentChannelId = ChannelId("parent-$key"),
                 parentMessageId = MessageId("message-$key"),
             )
-        // Loaded order: a, #android (pinned), b. Displayed: #android under "Pinned", then a, b.
+        // Loaded order a, #android (pinned), b is the displayed order: pins no longer float first.
         val loaded = listOf(replyThread("a"), channel("channel:android", "android"), replyThread("b"))
-        val entries = activityConversationListEntries(loaded, context)
-        assertEquals(listOf("channel:android", "thread:a", "thread:b"), activityRowsInDisplayOrder(entries).map { it.key })
+        val entries = activityConversationListEntries(loaded)
+        assertEquals(listOf("thread:a", "channel:android", "thread:b"), activityRowsInDisplayOrder(entries).map { it.key })
 
         data class Case(val clickedKey: String, val prewarmed: List<String>)
         val cases =
             listOf(
-                // The pinned row is shown first: the next row the person sees is a, not b.
-                Case(clickedKey = "channel:android", prewarmed = listOf("reply-a")),
+                // The next reply thread the person sees after the clicked row.
                 Case(clickedKey = "thread:a", prewarmed = listOf("reply-b")),
+                Case(clickedKey = "channel:android", prewarmed = listOf("reply-b")),
                 Case(clickedKey = "thread:b", prewarmed = emptyList()),
             )
         for (case in cases) {

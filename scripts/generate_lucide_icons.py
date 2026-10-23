@@ -89,6 +89,7 @@ LUCIDE_ICONS = [
     "circle-arrow-up",
     "circle-check",
     "circle-check-big",
+    "circle-dot",
     "circle-dashed",
     "circle-user",
     "clipboard",

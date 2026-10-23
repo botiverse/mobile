@@ -193,6 +193,56 @@ class InboxSavedSearchRepositoryDataSourceTest {
     }
 
     @Test
+    fun pinnedFilterAsksForTheAllFilterScopedToPinnedOnEveryPage() = runBlocking {
+        // slock #10785 (routes/channels.ts parseInboxScopeParam): Pinned is a scope over All,
+        // `filter=all&scope=pinned`, on the first page and on every page after it.
+        val network =
+            FakeInboxNetworkClient(
+                inboxJson =
+                    """
+                    {
+                      "items": [
+                        {
+                          "kind": "thread",
+                          "threadChannelId": "thread-unfollowed",
+                          "parentMessageId": "parent-1",
+                          "parentChannelId": "channel-pinned",
+                          "parentChannelName": "pinned",
+                          "parentChannelType": "channel",
+                          "replyCount": 1,
+                          "unreadCount": 0,
+                          "isFollowing": false
+                        }
+                      ],
+                      "hasMore": true,
+                      "totalCount": 3,
+                      "totalUnreadCount": 0
+                    }
+                    """.trimIndent()
+            )
+        val repository = RealInboxRepository(sampleStore(), network)
+
+        val first = repository.loadInitial(ServerId("server-1"), InboxFilter.Pinned)
+        repository.loadMore(ServerId("server-1"), InboxFilter.Pinned, offset = 30)
+        repository.loadInitial(ServerId("server-1"), InboxFilter.All)
+        repository.loadInitial(ServerId("server-1"), InboxFilter.Unread)
+
+        assertEquals(
+            listOf(
+                InboxCall(filter = "all", limit = 30, offset = 0, scope = "pinned"),
+                InboxCall(filter = "all", limit = 30, offset = 30, scope = "pinned"),
+                InboxCall(filter = "all", limit = 30, offset = 0),
+                InboxCall(filter = "unread", limit = 30, offset = 0),
+            ),
+            network.inboxCalls
+        )
+        // Like All, Pinned keeps an unfollowed, not-Done thread under a pinned conversation.
+        assertTrue(first is DataResult.Content)
+        assertEquals("thread-unfollowed", first.data.items.single().threadChannelId?.value)
+        assertEquals(3, first.data.totalCount)
+    }
+
+    @Test
     fun attentionFiltersNeverExposeAnUnfollowedThreadRow() = runBlocking {
         val repository =
             RealInboxRepository(
@@ -886,7 +936,8 @@ class InboxSavedSearchRepositoryDataSourceTest {
                             limit = query.firstValue("limit")?.toIntOrNull() ?: 30,
                             offset = query.firstValue("offset")?.toIntOrNull() ?: 0,
                             priority = priority,
-                            serverId = serverIdOverride?.value
+                            serverId = serverIdOverride?.value,
+                            scope = query.firstValue("scope")
                         )
                     ok(inboxJson)
                 }
@@ -937,7 +988,8 @@ class InboxSavedSearchRepositoryDataSourceTest {
         val limit: Int,
         val offset: Int,
         val priority: DataRequestPriority = DataRequestPriority.Visible,
-        val serverId: String? = "server-1"
+        val serverId: String? = "server-1",
+        val scope: String? = null
     )
 
     private data class SearchCall(

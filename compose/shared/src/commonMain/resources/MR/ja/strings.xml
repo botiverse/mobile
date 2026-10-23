@@ -893,6 +893,8 @@
     <string name="inbox_empty_all_detail">チャンネル、DM、フォロー中のスレッドは、完了するまでここに表示されます。</string>
     <string name="inbox_empty_unread_detail">チャンネル、DM、フォロー中のスレッドは、完了するまでここに表示されます。</string>
     <string name="inbox_empty_mentions_detail">チャンネル、DM、スレッドで誰かに @メンションされると、ここに表示されます。</string>
+    <string name="inbox_state_no_pinned">ピン留めした会話はありません</string>
+    <string name="inbox_empty_pinned_detail">サイドバーでピン留めしたチャンネルと DM が、そのスレッドと一緒にここに表示されます。</string>
     <string name="inbox_error_load_more">これ以上読み込めませんでした。</string>
     <string name="inbox_state_loading_more">さらに読み込み中…</string>
     <string name="inbox_error_conversation_not_ready">会話の準備がまだできていません。もう一度お試しください。</string>
@@ -902,10 +904,9 @@
     <string name="activity_filter_all">すべて</string>
     <string name="activity_filter_unread">未読</string>
     <string name="activity_filter_mentions">メンション</string>
+    <string name="activity_filter_pinned">ピン留め</string>
     <string name="activity_updates_one">↑ 新着 %1$d 件</string>
     <string name="activity_updates_many">↑ 新着 %1$d 件</string>
-    <string name="activity_list_pinned">ピン留め</string>
-    <string name="activity_list_all_conversations">すべての会話</string>
     <string name="activity_list_system_sender">システム</string>
     <string name="activity_list_self_sender">あなた</string>
     <string name="activity_list_thread_channel">%1$s ·</string>

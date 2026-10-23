@@ -889,6 +889,8 @@
     <string name="inbox_empty_all_detail">Channels, DMs, and followed threads stay here until they are done.</string>
     <string name="inbox_empty_unread_detail">Channels, DMs, and followed threads stay here until they are done.</string>
     <string name="inbox_empty_mentions_detail">Channels, DMs, and threads where someone @mentions you will appear here.</string>
+    <string name="inbox_state_no_pinned">No pinned conversations</string>
+    <string name="inbox_empty_pinned_detail">Channels and DMs you pin in the sidebar show up here, with their threads.</string>
     <string name="inbox_error_load_more">Could not load more.</string>
     <string name="inbox_state_loading_more">Loading more…</string>
     <string name="inbox_error_conversation_not_ready">Conversation isn\'t ready yet. Try again.</string>
@@ -898,10 +900,9 @@
     <string name="activity_filter_all">All</string>
     <string name="activity_filter_unread">Unread</string>
     <string name="activity_filter_mentions">Mentions</string>
+    <string name="activity_filter_pinned">Pinned</string>
     <string name="activity_updates_one">↑ %1$d new update</string>
     <string name="activity_updates_many">↑ %1$d new updates</string>
-    <string name="activity_list_pinned">Pinned</string>
-    <string name="activity_list_all_conversations">All conversations</string>
     <string name="activity_list_system_sender">System</string>
     <string name="activity_list_self_sender">You</string>
     <string name="activity_list_thread_channel">%1$s ·</string>

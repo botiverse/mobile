@@ -27274,9 +27274,9 @@ internal fun HomeActivityVisualContent() {
 }
 
 /**
- * Activity as the second app-shell bottom tab (artin 2026-10-20): the main-tab head, the three
- * segments (全部 · 未读 · 提及) and the 5-tab bar with the Activity badge. pageData
- * `segment` picks all / unread / mentions.
+ * Activity as the second app-shell bottom tab (artin 2026-10-20): the main-tab head, the four
+ * segments (全部 · 未读 · 提及 · 已置顶) and the 5-tab bar with the Activity badge. pageData
+ * `segment` picks all / unread / mentions / pinned.
  */
 @Composable
 internal fun RaftActivityTabVisualContent() {
@@ -27286,7 +27286,7 @@ internal fun RaftActivityTabVisualContent() {
             pager.pageData.params.optString("segment").ifBlank { "all" }
         }
     val filter =
-        build.raft.app.data.InboxFilter.entries.firstOrNull { it.wireValue == segment }
+        build.raft.app.data.InboxFilter.entries.firstOrNull { (it.scopeWireValue ?: it.wireValue) == segment }
             ?: build.raft.app.data.InboxFilter.All
     Column(modifier = Modifier.width(390.dp).height(844.dp).background(RaftColor.SurfaceWhite)) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
