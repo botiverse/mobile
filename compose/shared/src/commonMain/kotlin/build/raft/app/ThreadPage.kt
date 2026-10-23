@@ -4,6 +4,8 @@ import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.components.RaftMessageListJumpSide
 import build.raft.designsystem.components.RaftLocatedMillis
+import build.raft.designsystem.components.RaftSpinner
+import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.components.raftLocatedStrength
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftMessageListJumpPillGroup
@@ -4461,7 +4463,12 @@ private fun ThreadPageScreen(
                     sharedStores.serverFeatureFlags.snapshotFor(serverId).mobileThreadPageSize()
                 },
                 createAgentCoordinator = createAgentCoordinator,
-                diagnosticsLogger = { message -> bridge.log("thread_api $message") }
+                diagnosticsLogger = { message -> bridge.log("thread_api $message") },
+                // artin 10-23: the first frame may stand in with what Activity already shows for this
+                // conversation; the store matches it to the route identity (no content in the route).
+                activityOpenSeedSource = {
+                    sharedStores.homeActivityStoreOrNull(storeScope)?.state?.value?.toThreadActivityOpenSeedSource()
+                },
             )
         }
     val tasksDataSource =
@@ -14313,7 +14320,7 @@ private fun ThreadDeferredLoadingRouteContent(
                             .fillMaxWidth()
                             .background(RaftColor.SurfaceWhite)
                 ) {
-                    ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
+                    ThreadLoadingState()
                 }
             }
         )
@@ -15457,7 +15464,7 @@ private fun ThreadPageContentContent(
                     }
                 )
             } else if (renderEarlyLoadingShell) {
-                ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
+                ThreadLoadingState()
             } else when (tab) {
                 RaftThreadTab.Chat ->
                     ThreadChatTab(
@@ -17691,12 +17698,8 @@ private fun ThreadChatTabContent(
                     adaptiveEventBus = adaptiveEventBus,
                     adaptiveReadyPosted = adaptiveReadyPosted,
                 )
-            } else if (LocalThreadReverseLayout.current) {
-                // A bottom-up list has nothing to position, so there is no layout to hide: a brief
-                // wait for the first payload shows the bare page, not a loading placeholder.
-                ThreadDeferredLoadingMessage(threadInstanceKey)
             } else {
-                ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
+                ThreadLoadingState()
             }
         "error" ->
             ThreadStateActionMessage(
@@ -17786,6 +17789,14 @@ private fun ThreadChatTabContent(
                     adaptiveEventBus = adaptiveEventBus,
                     adaptiveReadyPosted = adaptiveReadyPosted,
                 )
+            } else if (
+                threadEmptyStandInAwaitsFirstLoad(
+                    status = timelineSlice.status,
+                    durableLastKnown = timelineSlice.durableLastKnown,
+                    mainLoadFailed = timelineSlice.mainLoadFailed
+                )
+            ) {
+                ThreadLoadingState()
             } else {
                 LaunchedEffect(threadInstanceKey, timelineSlice.status) {
                     onThreadContentReady()
@@ -18477,8 +18488,15 @@ private fun ThreadMessagesListContent(
         LaunchedEffect(threadInstanceKey, timelineSlice.status) {
             onThreadContentReady()
         }
-        if (timelineSlice.status == "loading") {
-            ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
+        if (
+            timelineSlice.status == "loading" ||
+            threadEmptyStandInAwaitsFirstLoad(
+                status = timelineSlice.status,
+                durableLastKnown = timelineSlice.durableLastKnown,
+                mainLoadFailed = timelineSlice.mainLoadFailed
+            )
+        ) {
+            ThreadLoadingState()
         } else {
             ThreadStateMessage(
                 localizedThreadStateTitle(timelineSlice.emptyTitle),
@@ -18538,7 +18556,16 @@ private fun ThreadMessagesListContent(
             backgroundRefreshing = renderConfig.backgroundRefreshing,
             mainLoadFailed = renderPayload.mainLoadFailed
         )
-    val showReplyLoadingSkeleton = renderPayload.status == "loading" && renderPayload.messages.isEmpty()
+    val showReplyLoadingSkeleton =
+        renderPayload.messages.isEmpty() &&
+            (
+                renderPayload.status == "loading" ||
+                    threadEmptyStandInAwaitsFirstLoad(
+                        status = renderPayload.status,
+                        durableLastKnown = renderPayload.durableLastKnown,
+                        mainLoadFailed = renderPayload.mainLoadFailed
+                    )
+            )
     val showReplyEmptyState =
         renderPayload.messages.isEmpty() && renderPayload.originStatus != "none" && !showReplyLoadingSkeleton
     val lazyItemCount =
@@ -21446,7 +21473,7 @@ private fun ThreadMessagesListContent(
             threadListSegments += {
             if (showReplyLoadingSkeleton) {
                 item(key = ThreadReplyLoadingListItemKey) {
-                    ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
+                    ThreadLoadingState()
                 }
             }
             }
@@ -31273,7 +31300,7 @@ private fun ThreadFilesTab(
     onOpenFileSource: (RaftThreadFileItem) -> Unit
 ) {
     if (filesViewModel == null) {
-        ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
+        ThreadLoadingState()
         return
     }
     val vm = filesViewModel
@@ -34128,22 +34155,43 @@ private fun localizedThreadJoinLabel(value: String): String =
         value
     }
 
-/** The loading placeholder, shown only once a load has taken longer than [ThreadLoadingRevealDelayMs]. */
+/**
+ * The thread page while its first load is in flight and nothing is known to stand in (artin 10-23):
+ * raft-ui's spinner over a muted "Loading…", shown at once. Never a bare page, and never the empty
+ * state, which only a finished load may claim.
+ */
 @Composable
-private fun ThreadDeferredLoadingMessage(threadInstanceKey: String) {
-    var revealed by remember(threadInstanceKey) { mutableStateOf(false) }
-    LaunchedEffect(threadInstanceKey) {
-        delay(ThreadLoadingRevealDelayMs)
-        revealed = true
-    }
-    if (revealed) {
-        ThreadStateMessage(stringResource(MR.strings.thread_state_loading), null)
-    } else {
-        Box(modifier = Modifier.fillMaxSize())
+internal fun ThreadLoadingState(spinnerStillStep: Int? = null) {
+    val label = stringResource(MR.strings.thread_state_loading)
+    Box(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 32.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            RaftSpinner(size = RaftSpinnerSize.Md, contentDescription = label, stillStep = spinnerStillStep)
+            Text(
+                text = label,
+                style = RaftType.Caption,
+                color = RaftColor.TextMutedGray
+            )
+        }
     }
 }
 
-internal const val ThreadLoadingRevealDelayMs = 600L
+/**
+ * Task #1137 keeps a channel that was empty when last seen as a durable empty stand-in. Until the
+ * first load answers it is only a guess (Activity may already list new messages there), so the page
+ * shows the loading state instead of "No messages yet"; after a failed load it shows the stand-in
+ * with the offline tip as before, and a canonical empty answer clears the stand-in flag.
+ */
+internal fun threadEmptyStandInAwaitsFirstLoad(
+    status: String,
+    durableLastKnown: Boolean,
+    mainLoadFailed: Boolean,
+): Boolean = status == "empty" && durableLastKnown && !mainLoadFailed
 
 @Composable
 private fun ThreadStateMessage(title: String, detail: String?) {
