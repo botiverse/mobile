@@ -308,7 +308,11 @@ private fun Modifier.raftCenterOnLine(line: Dp): Modifier =
         layout(placeable.width, placeable.height) { placeable.place(0, (line.roundToPx() - placeable.height) / 2) }
     }
 
-/** Machine-written facts in Space Mono 12 tabular, ink-3: the time, a gray count. */
+/**
+ * Machine-written facts in Space Mono 12 tabular, ink-3: the time, a gray count. Kept whole
+ * beside the title, which gives way first; with no room left (an email in a narrow row) it
+ * truncates with an ellipsis instead of clipping (raft-ui 0.23 `min-w-0 truncate`, #721).
+ */
 @Composable
 fun RaftListRowMeta(text: String, modifier: Modifier = Modifier) {
     RaftText(
@@ -317,6 +321,7 @@ fun RaftListRowMeta(text: String, modifier: Modifier = Modifier) {
         style = RaftTheme.typography.monoMeta.copy(fontFeatureSettings = "tnum"),
         color = LocalRaftListRowInks.current?.ink3 ?: RaftTheme.colors.foregroundHint,
         maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
     )
 }
 

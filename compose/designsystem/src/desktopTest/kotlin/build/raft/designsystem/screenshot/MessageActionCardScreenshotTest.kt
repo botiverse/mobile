@@ -31,8 +31,9 @@ import kotlin.test.Test
  * card in every state (waiting open with its buttons; paused and confirm-again open with the
  * note beside disabled or re-labelled buttons; done, declined and view-only folded to the
  * header with the line under the title), an agent card done and opened again, and an app
- * login card with its notice, reason and scrolling permission list; a phone's single column
- * (360dp) and the two-column properties of a wide window.
+ * login card with its notice, reason and scrolling permission list. The properties switch on
+ * the card's own content width: one column in a phone's 360dp card (336dp of content), two
+ * columns in a card at its 440dp cap.
  */
 class MessageActionCardScreenshotTest {
     private val appearances = listOf(RaftAppearance.Light, RaftAppearance.Dark)
@@ -71,56 +72,58 @@ class MessageActionCardScreenshotTest {
     @Test
     fun messageActionCardContent() =
         capture("message_action_card_content") {
-            Column(Modifier.width(360.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Caption("Done, opened again; a long title wraps")
-                RaftMessageActionCard(
-                    title = "Create agent @Folio for the documentation and its publishing pipeline",
-                    icon = { AppIconImage(AppIcon.Bot, RaftMessageActionCardDefaults.HeaderGlyphSize) },
-                    description = { RaftMessageActionCardHeaderDescription("Submitted by RC · 10/20 23:09 → @Folio", check = true) },
-                    status = "Done",
-                    statusTone = RaftMessageActionCardStatusTone.Success,
-                    expanded = true,
-                    onExpandedChange = {},
-                    toggleLabel = "Show or hide details",
-                ) {
-                    RaftMessageActionCardProperties(twoColumns = false) {
-                        RaftMessageActionCardProperty(
-                            "Description",
-                            "Documentation DRI — owns how Raft's written docs are shaped and kept current.",
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.width(360.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Caption("Done, opened again; a long title wraps")
+                    RaftMessageActionCard(
+                        title = "Create agent @Folio for the documentation and its publishing pipeline",
+                        icon = { AppIconImage(AppIcon.Bot, RaftMessageActionCardDefaults.HeaderGlyphSize) },
+                        description = { RaftMessageActionCardHeaderDescription("Submitted by RC · 10/20 23:09 → @Folio", check = true) },
+                        status = "Done",
+                        statusTone = RaftMessageActionCardStatusTone.Success,
+                        expanded = true,
+                        onExpandedChange = {},
+                        toggleLabel = "Show or hide details",
+                    ) {
+                        RaftMessageActionCardProperties {
+                            RaftMessageActionCardProperty(
+                                "Description",
+                                "Documentation DRI — owns how Raft's written docs are shaped and kept current.",
+                            )
+                            RaftMessageActionCardProperty("Suggested computer", "build-mac-01", mono = true)
+                        }
+                        RaftMessageActionCardHint("For stdrc — a dedicated agent for writing docs.", label = "Reason")
+                    }
+                    Caption("App login: notice, reason, permissions (default icon)")
+                    RaftMessageActionCard(title = "Approve Linear for @lumen") {
+                        RaftMessageActionCardNotice(
+                            "@lumen acts as you in Linear with these permissions.",
+                            icon = { RaftGlyphIcon(RaftGlyph.Info, size = 14.dp) },
                         )
-                        RaftMessageActionCardProperty("Suggested computer", "build-mac-01", mono = true)
-                    }
-                    RaftMessageActionCardHint("For stdrc — a dedicated agent for writing docs.", label = "Reason")
-                }
-                Caption("App login: notice, reason, permissions (default icon)")
-                RaftMessageActionCard(title = "Approve Linear for @lumen") {
-                    RaftMessageActionCardNotice(
-                        "@lumen acts as you in Linear with these permissions.",
-                        icon = { RaftGlyphIcon(RaftGlyph.Info, size = 14.dp) },
-                    )
-                    RaftMessageActionCardProperties(twoColumns = false) {
-                        RaftMessageActionCardProperty("App", "Linear")
-                        RaftMessageActionCardProperty("Agent", "@lumen")
-                    }
-                    RaftMessageActionCardHint("I need to file the issues you listed in this morning's triage.", label = "Reason")
-                    RaftMessageActionCardScopeList("Permissions (4)", viewportDescription = "Permissions") {
-                        Scope("openid", "Signs you in with Raft and issues a stable identity token. Authentication only.")
-                        Scope("profile", "Reads your basic profile fields. No access to messages, files, or agents.")
-                        Scope("agent:read", "Reads the IDs, handles, names and avatars of agents in the Server you authorize.")
-                        Scope("agent:event:write", "Sends structured event messages to the one agent you authorize.")
-                    }
-                    RaftMessageActionCardActions {
-                        RaftButton("Decline", onClick = {}, variant = RaftButtonVariant.Ghost)
-                        RaftButton("Approve", onClick = {})
+                        RaftMessageActionCardProperties {
+                            RaftMessageActionCardProperty("App", "Linear")
+                            RaftMessageActionCardProperty("Agent", "@lumen")
+                        }
+                        RaftMessageActionCardHint("I need to file the issues you listed in this morning's triage.", label = "Reason")
+                        RaftMessageActionCardScopeList("Permissions (4)", viewportDescription = "Permissions") {
+                            Scope("openid", "Signs you in with Raft and issues a stable identity token. Authentication only.")
+                            Scope("profile", "Reads your basic profile fields. No access to messages, files, or agents.")
+                            Scope("agent:read", "Reads the IDs, handles, names and avatars of agents in the Server you authorize.")
+                            Scope("agent:event:write", "Sends structured event messages to the one agent you authorize.")
+                        }
+                        RaftMessageActionCardActions {
+                            RaftButton("Decline", onClick = {}, variant = RaftButtonVariant.Ghost)
+                            RaftButton("Approve", onClick = {})
+                        }
                     }
                 }
-                Caption("Wide window: properties in two columns")
+                Caption("A card at its 440dp cap (416dp of content): properties in two columns")
                 Column(Modifier.width(440.dp)) {
                     RaftMessageActionCard(
                         title = "Add 3 members to #general",
                         icon = { RaftGlyphIcon(RaftGlyph.Plus, size = RaftMessageActionCardDefaults.HeaderGlyphSize) },
                     ) {
-                        RaftMessageActionCardProperties(twoColumns = true) {
+                        RaftMessageActionCardProperties {
                             RaftMessageActionCardProperty("People", "Ada, Will")
                             RaftMessageActionCardProperty("Agents", "Lumen")
                             RaftMessageActionCardProperty("Hidden value", "••••", valueColor = RaftTheme.colors.foregroundHint)
@@ -175,7 +178,7 @@ class MessageActionCardScreenshotTest {
 
     @Composable
     private fun ChannelProperties() {
-        RaftMessageActionCardProperties(twoColumns = false) {
+        RaftMessageActionCardProperties {
             RaftMessageActionCardProperty("Description", "Coordinate the final release review.")
             RaftMessageActionCardProperty("People", "Ada, Will")
             RaftMessageActionCardProperty("Agents", "Atlas")

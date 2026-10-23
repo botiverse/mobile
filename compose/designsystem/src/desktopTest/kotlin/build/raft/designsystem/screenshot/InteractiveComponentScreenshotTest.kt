@@ -493,7 +493,8 @@ class InteractiveComponentScreenshotTest {
 
     @Test
     fun segmentedControl() =
-        capture("segmented_control") {
+        // Frames for the overflowing track to scroll its selected segment into view.
+        capture("segmented_control", settleFrames = 3) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Caption("Segments with counts")
                 RaftSegmentedControl {
@@ -514,12 +515,12 @@ class InteractiveComponentScreenshotTest {
                     RaftSegment("Dark", selected = false, onClick = {}, modifier = Modifier.weight(1f))
                     RaftSegment("System", selected = false, onClick = {}, modifier = Modifier.weight(1f))
                 }
-                Caption("In a 200dp row: the segments keep their width and run past it (shrink-0)")
+                Caption("In a 200dp row: the track shrinks to it, the segments scroll, Unread in view")
                 Column(Modifier.width(200.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     RaftSegmentedControl {
                         RaftSegment("All", selected = false, onClick = {}, count = "24")
-                        RaftSegment("Mentions", selected = true, onClick = {}, count = "3")
-                        RaftSegment("Unread", selected = false, onClick = {}, count = "9")
+                        RaftSegment("Mentions", selected = false, onClick = {}, count = "3")
+                        RaftSegment("Unread", selected = true, onClick = {}, count = "9")
                     }
                     // The row's 200dp.
                     Box(Modifier.fillMaxWidth().height(2.dp).background(RaftTheme.colors.foregroundHint))

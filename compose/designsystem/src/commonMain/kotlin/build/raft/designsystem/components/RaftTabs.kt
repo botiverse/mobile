@@ -31,6 +31,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -44,7 +45,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.constrainWidth
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
@@ -233,25 +234,26 @@ fun RaftTab(
 }
 
 /**
- * Scrolls [strip] so the element shows, with 8dp round it for a focus ring or die-cut
- * edge, when [active] turns true: at once for the tab selected when the strip is first
+ * Scrolls [strip] so the element shows, with [room] round it for a focus ring or die-cut
+ * edge, when [active] turns true (or [key] changes while it is): at once for the tab selected when the strip is first
  * composed, animated for every other reveal ([RaftTabStripScroll.composed]).
  * It moves the strip's own [ScrollState] and nothing else (a bring-into-view request
  * would also scroll every scrolling parent, so the page would jump), and only when the
  * selection changes, not when the tab's size does.
  */
 @Composable
-private fun Modifier.raftRevealInStripWhen(active: Boolean, strip: RaftTabStripScroll): Modifier {
+private fun Modifier.raftRevealInStripWhen(active: Boolean, strip: RaftTabStripScroll, room: Dp = 8.dp, key: Any? = null): Modifier {
     val tab = remember { mutableStateOf<LayoutCoordinates?>(null) }
     val initial = remember { RaftInitialReveal(pending = active && !strip.composed) }
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
-    LaunchedEffect(active) {
+    LaunchedEffect(active, key) {
         if (!active) return@LaunchedEffect
-        // Consumed by the first activation, whether or not it scrolls.
+        val coordinates = snapshotFlow { tab.value }.filterNotNull().first()
+        // Consumed by the first activation that gets placed, whether or not it scrolls (a
+        // run cancelled before that, by a [key] that changes on the first layout, keeps it).
         val jump = initial.pending
         initial.pending = false
-        val coordinates = snapshotFlow { tab.value }.filterNotNull().first()
         val content = strip.content ?: return@LaunchedEffect
         if (!coordinates.isAttached || !content.isAttached) return@LaunchedEffect
         val left = content.localPositionOf(coordinates, Offset.Zero).x.toInt()
@@ -263,7 +265,7 @@ private fun Modifier.raftRevealInStripWhen(active: Boolean, strip: RaftTabStripS
             raftRevealScrollTarget(
                 start = fromStart,
                 end = fromStart + coordinates.size.width,
-                room = with(density) { 8.dp.roundToPx() },
+                room = with(density) { room.roundToPx() },
                 viewport = scroll.viewportSize,
                 current = scroll.value,
                 max = scroll.maxValue,
@@ -394,8 +396,9 @@ internal fun raftStickerItemLook(active: Boolean, enabled: Boolean, colors: Raft
     }
 
 /**
- * The grey track of [RaftSegmentedControl] and [RaftToggleGroup]: `fill-muted`, radius
- * 11, 3dp padding (room for a sticker's die-cut edge), items 3dp apart, hugging them.
+ * The grey track of [RaftToggleGroup]: `fill-muted`, radius 11, 3dp padding (room for a
+ * sticker's die-cut edge), items 3dp apart, hugging them. [RaftSegmentedControl] draws the
+ * same track around a scroll.
  */
 @Composable
 private fun RaftTrack(modifier: Modifier, content: @Composable RowScope.() -> Unit) {
@@ -417,36 +420,73 @@ private fun RaftTrack(modifier: Modifier, content: @Composable RowScope.() -> Un
  * `Modifier.fillMaxWidth()` and give each segment `Modifier.weight(1f)`, on its own line
  * (not in a row beside other controls).
  *
- * It never shrinks below its segments (raft-ui 0.8.0 `shrink-0`): in a row too narrow for
- * it, it keeps its width and runs past the end, as on the web, rather than squeezing or
- * clipping a segment. Give it the room, or let the row give way first (Responsive layout:
- * neighbours drop to icons, then the segments show only their icons).
+ * The segments never shrink, but the track may shrink to its row (raft-ui 0.23
+ * `min-w-0 max-w-full`, #721): in a row too narrow for it, after its neighbours have given
+ * way, the segments scroll sideways inside the track, with no scrollbar, and the selected
+ * one scrolls itself into view, instead of running past the row's end. That is the last
+ * resort, not the layout: give it the room first. A full-width control whose weighted
+ * segments don't fit scrolls the same way rather than squeezing them.
  */
 @Composable
 fun RaftSegmentedControl(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
-    RaftTrack(modifier.raftNoShrink().selectableGroup(), content)
+    val scroll = rememberScrollState()
+    val track = remember(scroll) { RaftTabStripScroll(scroll) }
+    SideEffect { track.composed = true }
+    val trackShape = RoundedCornerShape(11.dp)
+    Row(
+        modifier
+            .raftBoundedTrack()
+            .selectableGroup()
+            .background(RaftTheme.colors.fillMuted, trackShape)
+            // `data-overflowing:overflow-x-auto`: only a track that scrolls clips its
+            // segments to its rounded corners (read in the layer, so no recomposition).
+            // The scroll itself always clips sideways, which takes the outer 1dp of a
+            // focus ring on the first or last segment.
+            .graphicsLayer {
+                shape = trackShape
+                clip = scroll.maxValue > 0
+            }
+            .horizontalScroll(scroll)
+            .raftWeightsKeepTheirWidth()
+            .onPlaced { track.content = it }
+            .padding(3.dp),
+        // raft-ui 0.20: segments 3dp apart, the same as the track's inset.
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CompositionLocalProvider(LocalRaftSegmentTrackScroll provides track) { content() }
+    }
 }
 
+/** Set by [RaftSegmentedControl]: its selected segment scrolls itself into view. */
+private val LocalRaftSegmentTrackScroll = staticCompositionLocalOf<RaftTabStripScroll?> { null }
+
 /**
- * CSS `shrink-0` on a track that hugs its items: measured at least as wide as its
- * max-intrinsic width (each item at its own width), even when the parent offers less.
- * It reports the parent's width and runs past the end; a full-width track that does fit
- * keeps the parent's width.
+ * A scrolling track needs a bounded width: with none (in a horizontal scroll, or a row
+ * measuring at its content width) the track is as wide as its segments and doesn't scroll.
  */
-internal fun Modifier.raftNoShrink(): Modifier =
+private fun Modifier.raftBoundedTrack(): Modifier =
     layout { measurable, constraints ->
-        if (!constraints.hasBoundedWidth) {
-            val placeable = measurable.measure(constraints)
-            return@layout layout(placeable.width, placeable.height) { placeable.placeRelative(0, 0) }
-        }
-        val natural = measurable.maxIntrinsicWidth(constraints.maxHeight)
-        val placeable =
-            if (natural <= constraints.maxWidth) {
-                measurable.measure(constraints)
+        val bounded =
+            if (constraints.hasBoundedWidth) {
+                constraints
             } else {
-                measurable.measure(constraints.copy(minWidth = natural, maxWidth = natural))
+                constraints.copy(maxWidth = measurable.maxIntrinsicWidth(constraints.maxHeight).coerceAtLeast(constraints.minWidth))
             }
-        layout(constraints.constrainWidth(placeable.width), placeable.height) { placeable.placeRelative(0, 0) }
+        val placeable = measurable.measure(bounded)
+        layout(placeable.width, placeable.height) { placeable.placeRelative(0, 0) }
+    }
+
+/**
+ * Inside the scroll, a track given a width (`fillMaxWidth`) is at least as wide as its
+ * segments at their own widths (a weighted row's max-intrinsic width gives each weighted
+ * segment its own width), so weights share the room that's left and never squeeze one.
+ */
+private fun Modifier.raftWeightsKeepTheirWidth(): Modifier =
+    layout { measurable, constraints ->
+        val min = if (constraints.minWidth > 0) maxOf(constraints.minWidth, measurable.maxIntrinsicWidth(constraints.maxHeight)) else 0
+        val placeable = measurable.measure(constraints.copy(minWidth = min))
+        layout(placeable.width, placeable.height) { placeable.placeRelative(0, 0) }
     }
 
 /**
@@ -465,12 +505,16 @@ fun RaftSegment(
     interactionSource: MutableInteractionSource? = null,
 ) {
     val source = interactionSource ?: remember { MutableInteractionSource() }
+    val track = LocalRaftSegmentTrackScroll.current
+    // Kept in view with the track's 3dp inset round it, as at rest; again once the track
+    // starts to scroll (`[overflowing, value]`).
+    val reveal = if (track != null) Modifier.raftRevealInStripWhen(selected, track, room = 3.dp, key = track.scroll.maxValue > 0) else Modifier
     RaftStickerItem(
         text,
         selected,
         enabled,
         source,
-        modifier.selectable(selected, source, indication = null, enabled = enabled, role = Role.RadioButton, onClick = onClick),
+        modifier.then(reveal).selectable(selected, source, indication = null, enabled = enabled, role = Role.RadioButton, onClick = onClick),
         icon = icon,
         count = count,
     )

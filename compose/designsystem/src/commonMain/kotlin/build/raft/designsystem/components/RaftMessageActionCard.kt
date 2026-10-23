@@ -39,7 +39,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.collapse
@@ -87,8 +86,13 @@ object RaftMessageActionCardDefaults {
     /** A long permission list scrolls past this height; the cap cuts through the third row. */
     val ScopeListMaxHeight: Dp = 164.dp
 
-    /** The width from which properties sit in two columns (raft-ui `sm`, 640px viewport). */
-    val TwoColumnMinWindowWidth: Dp = 640.dp
+    /**
+     * The properties' own width from which they sit in two columns: 24rem of the card's
+     * content (raft-ui 0.23 `@container/action-card`, raft-design #721), not the window's.
+     * A card at its 440dp cap has 416dp of content, so it keeps two columns; a phone card
+     * stacks.
+     */
+    val TwoColumnMinWidth: Dp = 384.dp
 
     /** The fold's height animation (`duration-200`). */
     internal const val FoldMillis = 200
@@ -326,9 +330,12 @@ fun RaftMessageActionCardNotice(
 
 /**
  * raft-ui `MessageActionCardProperties`: the values the reader checks, a description list of
- * [RaftMessageActionCardProperty] rows. On a phone (a window under 640dp, raft-ui `max-sm`)
- * each label sits over its value; wider, the labels form a column (at least 88dp, at most
- * 160dp) 16dp before the values. [twoColumns] overrides the window rule.
+ * [RaftMessageActionCardProperty] rows. It switches on its own width (the card's content),
+ * not the window's: below [RaftMessageActionCardDefaults.TwoColumnMinWidth] each value sits
+ * 2dp under its label, with no minimum height or padding of its own, and 10dp above the next
+ * label; from it the labels form a column (at least 88dp, at most 160dp) 16dp before the
+ * values, each value at least 32dp tall with 6dp above and below. [twoColumns] overrides the
+ * width rule.
  */
 @Composable
 fun RaftMessageActionCardProperties(
@@ -336,24 +343,73 @@ fun RaftMessageActionCardProperties(
     twoColumns: Boolean? = null,
     content: @Composable () -> Unit,
 ) {
-    val density = LocalDensity.current
-    val windowWidth = with(density) { LocalWindowInfo.current.containerSize.width.toDp() }
-    val wide = twoColumns ?: (windowWidth >= RaftMessageActionCardDefaults.TwoColumnMinWindowWidth)
-    CompositionLocalProvider(LocalRaftMessageActionCardTwoColumns provides wide) {
+    val typography = RaftTheme.typography
+    // Wide, the label sits on the value's first baseline: the value's 6dp top padding plus
+    // half the difference of the two line heights.
+    val labelTop = 6.dp + (lineHeightOf(typography.callout) - lineHeightOf(typography.footnote)) / 2
+    Layout(content, modifier.fillMaxWidth()) { measurables, constraints ->
+        val wide = twoColumns ?: (!constraints.hasBoundedWidth || constraints.maxWidth >= RaftMessageActionCardDefaults.TwoColumnMinWidth.roundToPx())
+        val labels = measurables.filterIndexed { index, _ -> index % 2 == 0 }
+        val values = measurables.filterIndexed { index, _ -> index % 2 == 1 }
+        val labelCap = 160.dp.roundToPx()
+        val rowGap = 2.dp.roundToPx()
         if (!wide) {
-            Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) { content() }
-        } else {
-            RaftMessageActionCardPropertyGrid(modifier, content)
+            // `@max-sm/action-card`: one column; the 2dp row gap plus `mt-2` on each following label.
+            val pairGap = rowGap + 8.dp.roundToPx()
+            val loose = constraints.copy(minWidth = 0, minHeight = 0)
+            val rows =
+                labels.indices.map { index ->
+                    labels[index].measure(loose.copy(maxWidth = minOf(labelCap, constraints.maxWidth))) to values.getOrNull(index)?.measure(loose)
+                }
+            val height = rows.sumOf { (label, value) -> label.height + (value?.let { rowGap + it.height } ?: 0) } + pairGap * (rows.size - 1).coerceAtLeast(0)
+            return@Layout layout(constraints.maxWidth, height.coerceIn(constraints.minHeight, constraints.maxHeight)) {
+                var y = 0
+                rows.forEach { (label, value) ->
+                    label.placeRelative(0, y)
+                    y += label.height
+                    if (value != null) {
+                        value.placeRelative(0, y + rowGap)
+                        y += rowGap + value.height
+                    }
+                    y += pairGap
+                }
+            }
+        }
+        // Two columns: label column = the widest label, clamped to 88..160dp, then 16dp, then
+        // the values (`min-h-8 py-1.5`).
+        val gap = 16.dp.roundToPx()
+        val valuePad = 6.dp.roundToPx()
+        val valueMin = 32.dp.roundToPx()
+        val top = labelTop.roundToPx()
+        val labelWidth =
+            labels.maxOfOrNull { it.maxIntrinsicWidth(constraints.maxHeight) }
+                ?.coerceIn(88.dp.roundToPx(), labelCap)
+                ?: 88.dp.roundToPx()
+        val valueWidth = (constraints.maxWidth - labelWidth - gap).coerceAtLeast(0)
+        val rows =
+            labels.indices.map { index ->
+                val label = labels[index].measure(constraints.copy(minWidth = 0, maxWidth = labelWidth, minHeight = 0))
+                val value = values.getOrNull(index)?.measure(constraints.copy(minWidth = 0, maxWidth = valueWidth, minHeight = 0))
+                label to value
+            }
+        val rowHeights = rows.map { (label, value) -> maxOf(top + label.height, value?.let { maxOf(valueMin, it.height + valuePad * 2) } ?: 0) }
+        val height = rowHeights.sum() + rowGap * (rows.size - 1).coerceAtLeast(0)
+        layout(constraints.maxWidth, height.coerceIn(constraints.minHeight, constraints.maxHeight)) {
+            var y = 0
+            rows.forEachIndexed { index, (label, value) ->
+                label.placeRelative(0, y + top)
+                value?.placeRelative(labelWidth + gap, y + valuePad)
+                y += rowHeights[index] + rowGap
+            }
         }
     }
 }
 
-private val LocalRaftMessageActionCardTwoColumns = androidx.compose.runtime.staticCompositionLocalOf { false }
-
 /**
  * One row of [RaftMessageActionCardProperties]: the [label] (`text-footnote` medium
- * `foreground-hint`) and its [value] (`text-callout` `foreground`, at least 32dp tall). [mono]
- * sets the value in the mono face (an id, a path); [valueColor] greys a hidden value.
+ * `foreground-hint`, at most 160dp) and its [value] (`text-callout` `foreground`; the list
+ * sets its height and padding). [mono] sets the value in the mono face (an id, a path);
+ * [valueColor] greys a hidden value.
  */
 @Composable
 fun RaftMessageActionCardProperty(
@@ -366,53 +422,12 @@ fun RaftMessageActionCardProperty(
     val typography = RaftTheme.typography
     val labelStyle = typography.footnote.copy(fontWeight = FontWeight.Medium)
     val valueStyle = if (mono) typography.callout.copy(fontFamily = typography.monoMeta.fontFamily ?: FontFamily.Monospace) else typography.callout
-    val twoColumns = LocalRaftMessageActionCardTwoColumns.current
-    // Wide, the label sits on the value's first baseline: the value's 6dp top padding plus
-    // half the difference of the two line heights.
-    val labelTop = if (twoColumns) 6.dp + (lineHeightOf(valueStyle) - lineHeightOf(labelStyle)) / 2 else 0.dp
-    RaftText(
-        label,
-        Modifier.widthIn(max = 160.dp).padding(top = labelTop),
-        style = labelStyle,
-        color = colors.foregroundHint,
-    )
+    RaftText(label, style = labelStyle, color = colors.foregroundHint)
     RaftText(
         value,
-        Modifier.heightIn(min = 32.dp).padding(vertical = 6.dp),
         style = valueStyle,
         color = if (valueColor == Color.Unspecified) colors.foreground else valueColor,
     )
-}
-
-/** The wide layout: label column = the widest label, clamped to 88..160dp, then 16dp, then the values. */
-@Composable
-private fun RaftMessageActionCardPropertyGrid(modifier: Modifier, content: @Composable () -> Unit) {
-    Layout(content, modifier.fillMaxWidth()) { measurables, constraints ->
-        val gap = 16.dp.roundToPx()
-        val rowGap = 2.dp.roundToPx()
-        val labels = measurables.filterIndexed { index, _ -> index % 2 == 0 }
-        val values = measurables.filterIndexed { index, _ -> index % 2 == 1 }
-        val labelWidth =
-            labels.maxOfOrNull { it.maxIntrinsicWidth(constraints.maxHeight) }
-                ?.coerceIn(88.dp.roundToPx(), 160.dp.roundToPx())
-                ?: 88.dp.roundToPx()
-        val valueWidth = (constraints.maxWidth - labelWidth - gap).coerceAtLeast(0)
-        val rows =
-            labels.indices.map { index ->
-                val label = labels[index].measure(constraints.copy(minWidth = 0, maxWidth = labelWidth))
-                val value = values.getOrNull(index)?.measure(constraints.copy(minWidth = 0, maxWidth = valueWidth))
-                label to value
-            }
-        val height = rows.sumOf { (label, value) -> maxOf(label.height, value?.height ?: 0) } + rowGap * (rows.size - 1).coerceAtLeast(0)
-        layout(constraints.maxWidth, height) {
-            var y = 0
-            rows.forEach { (label, value) ->
-                label.placeRelative(0, y)
-                value?.placeRelative(labelWidth + gap, y)
-                y += maxOf(label.height, value?.height ?: 0) + rowGap
-            }
-        }
-    }
 }
 
 /**

@@ -826,6 +826,11 @@ class DisplayComponentScreenshotTest {
                         RaftListRow("Search", variant = RaftListRowVariant.Entry, onClick = {}, leading = { Glyph(RaftGlyph.Info, 20.dp) })
                         RaftListRow("Activity", variant = RaftListRowVariant.Entry, onClick = {}, leading = { Glyph(RaftGlyph.AtSign, 20.dp) }, trailing = { RaftUnreadCount(3) })
                     }
+                    Caption("Narrow, 240dp: the title gives way, then a long meta truncates")
+                    RaftListRowGroup(Modifier.width(240.dp)) {
+                        ChannelRow("release-announcements", RaftRowTone.Default, "Wug: Release notes are drafted.")
+                        ChannelRow("invites", RaftRowTone.Default, "Sent to", meta = "ada.lovelace@analytical-engine.example", divider = true)
+                    }
                 }
             }
         }
@@ -998,14 +1003,14 @@ class DisplayComponentScreenshotTest {
                             RaftText("Ada Lovelace of the Analytical Engine Society")
                         }
                     }
-                    Caption("Horizontal on a phone: one column")
+                    Caption("Horizontal under 384dp (a phone): one column, 10dp between facts")
                     RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
                         Item("Runtime") { RaftBadge("Claude Code", appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Information) }
                         Item("Agent ID", "agt_7f3k29xq", mono = true)
                         Item("Joined", "Oct 12, 2026")
                     }
                 }
-                Column(Modifier.width(660.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.width(400.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Caption("Horizontal with no width limit (in a horizontal scroll)")
                     Box(Modifier.horizontalScroll(rememberScrollState())) {
                         RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
@@ -1013,7 +1018,7 @@ class DisplayComponentScreenshotTest {
                             Item("Workspace path", "/home/wug/work/raft-mobile", mono = true)
                         }
                     }
-                    Caption("Horizontal at 640dp and wider")
+                    Caption("Horizontal at 384dp of its own width and wider: two columns")
                     RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
                         Item("Runtime") { RaftBadge("Claude Code", appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Information) }
                         Item("Agent ID", "agt_7f3k29xq", mono = true)
@@ -1081,9 +1086,17 @@ class DisplayComponentScreenshotTest {
                     RaftMessageImageGallery(listOf(RaftMessageImageDimensions(300, 1000)), Modifier.width(80.dp)) { FakeImage(9f / 16f, it.fit) }
                 }
                 RaftMessageImageGallery(listOf(RaftMessageImageDimensions())) { FakeImage(9f / 19f, it.fit) }
-                Caption("Two, then three (phone grid wraps the third)")
+                Caption("At its full 360dp: two (144dp rows), then three (128dp; the third wraps)")
                 RaftMessageImageGallery(List(2) { RaftMessageImageDimensions(800, 600) }) { FakeImage(4f / 3f, it.fit) }
                 RaftMessageImageGallery(listOf(RaftMessageImageDimensions(800, 600), RaftMessageImageDimensions(300, 1000), RaftMessageImageDimensions(800, 600))) {
+                    FakeImage(if (it.index == 1) 0.3f else 4f / 3f, it.fit)
+                }
+                Caption("Narrower, 300dp: two (128dp rows), then three (112dp)")
+                RaftMessageImageGallery(List(2) { RaftMessageImageDimensions(800, 600) }, Modifier.width(300.dp)) { FakeImage(4f / 3f, it.fit) }
+                RaftMessageImageGallery(
+                    listOf(RaftMessageImageDimensions(800, 600), RaftMessageImageDimensions(300, 1000), RaftMessageImageDimensions(800, 600)),
+                    Modifier.width(300.dp),
+                ) {
                     FakeImage(if (it.index == 1) 0.3f else 4f / 3f, it.fit)
                 }
                 Caption("Frame: rest, pressed, focused, pending")
