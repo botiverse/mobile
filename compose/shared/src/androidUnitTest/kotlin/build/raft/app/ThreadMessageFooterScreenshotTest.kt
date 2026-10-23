@@ -8,16 +8,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import build.raft.app.base.BridgeModule
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.IModuleCreator
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
+import build.raft.app.compat.pager.PagerManager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.network.sync.initialThreadRepliesReadModel
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -38,13 +43,25 @@ class ThreadMessageFooterScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
 
+    // The reaction glyphs log through the live page's bridge: give them one.
+    private val livePager =
+        object : Pager() {}.apply {
+            pagerId = "thread-message-footer-screenshot"
+            pageData = PageData(JSONObject())
+            registerModule(BridgeModule.MODULE_NAME, IModuleCreator { BridgeModule() })
+        }
+
+    @BeforeTest fun registerPager() = PagerManager.register(livePager)
+
+    @AfterTest fun unregisterPager() = PagerManager.unregister(livePager)
+
     @Test fun footerLight() = capture("thread.message-footer", RaftAppAppearance.Light)
 
     @Test fun footerDark() = capture("thread.message-footer.dark", RaftAppAppearance.Dark)
 
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
-            val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
+            val pager = livePager
             val clock =
                 remember {
                     RaftTimeContextProvider(
