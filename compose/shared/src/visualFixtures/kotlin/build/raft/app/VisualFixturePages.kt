@@ -1281,9 +1281,11 @@ internal class ComposeThreadInlineAudioControlsVisualPage : BasePager() {
                 verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)
             ) {
                 // Paused at the start, playing mid-way, and finished.
-                ThreadInlineAudioControls(false, true, 0, 135_000, {}, {})
-                ThreadInlineAudioControls(true, true, 42_000, 135_000, {}, {})
-                ThreadInlineAudioControls(false, true, 135_000, 135_000, {}, {})
+                build.raft.app.components.RaftDesignSystemTheme {
+                    ThreadInlineAudioControls(false, true, 0, 135_000, {}, {})
+                    ThreadInlineAudioControls(true, true, 42_000, 135_000, {}, {})
+                    ThreadInlineAudioControls(false, true, 135_000, 135_000, {}, {})
+                }
             }
         }
     }

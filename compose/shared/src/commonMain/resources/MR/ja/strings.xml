@@ -742,6 +742,7 @@
     <string name="thread_audio_playback_failed">音声の再生に失敗しました</string>
     <string name="thread_audio_attachment_fallback_name">音声添付ファイル</string>
     <string name="thread_audio_file_label">音声ファイル</string>
+    <string name="thread_audio_download_to_view">ダウンロードして表示</string>
     <string name="thread_action_back_to_bottom">最下部に戻る</string>
     <string name="thread_agent_typing_one">{first} が入力中…</string>
     <string name="thread_agent_typing_two">{first} と {second} が入力中…</string>

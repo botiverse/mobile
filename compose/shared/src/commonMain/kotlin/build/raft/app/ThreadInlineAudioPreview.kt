@@ -1,22 +1,9 @@
 package build.raft.app
 
-import build.raft.designsystem.components.RaftButton
-import build.raft.app.components.RaftSlotIcon
-import build.raft.designsystem.gesture.raftKeepsBackSwipe
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.key
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalIconButton
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.compose.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,32 +11,55 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material3.Text
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.setProgress
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.sp
-import kotlin.math.roundToInt
+import androidx.compose.ui.unit.dp
 import build.raft.app.compat.ui.PlayState
+import build.raft.app.compat.ui.VideoPlayControl
+import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.components.RaftSlotIcon
+import build.raft.app.resources.MR
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftSpinner
+import build.raft.designsystem.components.RaftSpinnerSize
+import build.raft.designsystem.gesture.raftKeepsBackSwipe
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftRadius
+import build.raft.designsystem.tokens.RaftSpacing
+import build.raft.designsystem.tokens.RaftStroke
+import build.raft.designsystem.tokens.RaftUiPalette
+import com.tencent.tmm.kmmresource.compose.stringResource
+import kotlin.math.roundToInt
 
 internal enum class ThreadInlineAudioPreviewStatus {
     Loading,
@@ -98,6 +108,32 @@ internal data class ThreadInlineAudioPreviewHost(
 internal val LocalThreadInlineAudioPreviewHost =
     compositionLocalOf<ThreadInlineAudioPreviewHost?> { null }
 
+/** Plays the inline audio off screen: the platform player, or a scripted one in screenshot fixtures. */
+internal typealias ThreadInlineAudioPlayer =
+    @Composable (
+        source: String,
+        playControl: VideoPlayControl,
+        seekRequest: RaftFilePreviewVideoSeekRequest?,
+        onPlayStateChanged: (PlayState) -> Unit,
+        onPlayTimeChanged: (currentMs: Int, totalMs: Int) -> Unit,
+        modifier: Modifier
+    ) -> Unit
+
+internal val LocalThreadInlineAudioPlayer =
+    staticCompositionLocalOf<ThreadInlineAudioPlayer> {
+        { source, playControl, seekRequest, onPlayStateChanged, onPlayTimeChanged, modifier ->
+            RaftFilePreviewKuiklyVideo(
+                source = source,
+                playControl = playControl,
+                seekRequest = seekRequest,
+                onPlayStateChanged = onPlayStateChanged,
+                onPlayTimeChanged = onPlayTimeChanged,
+                onFirstFrame = {},
+                modifier = modifier
+            )
+        }
+    }
+
 internal fun formatAudioDuration(ms: Int): String {
     val totalSeconds = (ms.coerceAtLeast(0) / 1000)
     val minutes = totalSeconds / 60
@@ -114,6 +150,12 @@ internal fun formatAudioTimeLabel(currentTimeMs: Int, totalTimeMs: Int): String 
     }
 }
 
+
+/**
+ * The inline audio of a message (web `InlineAudioAttachmentCard`): a card (`rounded-container`,
+ * `line-hairline`, `layer-card`, `p-2.5`) with a header (a muted icon tile, the name in callout
+ * semibold over a mono-meta hint line, a ghost download button) above the player well.
+ */
 @Composable
 internal fun ThreadInlineAudioAttachmentCard(
     attachment: RaftThreadAttachmentItem,
@@ -128,141 +170,93 @@ internal fun ThreadInlineAudioAttachmentCard(
         }
     }
 
-    Column(
-        modifier = Modifier.fillMaxWidth().widthIn(max = 360.dp),
-        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
-    ) {
+    RaftDesignSystemTheme {
+        val colors = RaftTheme.colors
+        val shape = RoundedCornerShape(RaftRadius.Container)
+        // The surface reports a failed preview or playback so the header drops its download
+        // button, as the web's does: the well's "Download to View" takes its place.
+        var failed by remember(attachment.id) { mutableStateOf(false) }
         Column(
             modifier =
                 Modifier
+                    .widthIn(max = ThreadInlineAudioMaxWidth)
                     .fillMaxWidth()
-                    .background(RaftColor.SurfaceWhite)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                    .padding(RaftAppSpacing.Sm),
-            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
+                    .clip(shape)
+                    .background(colors.layerCard)
+                    .border(RaftStroke.Hairline, colors.lineHairline, shape)
+                    .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(RaftSpacing.Sm)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+                horizontalArrangement = Arrangement.spacedBy(RaftSpacing.Sm),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Web: a 36dp `rounded-chip` tile on `fill-muted` with Music 18 in
+                // `foreground-muted` (not raft-ui IconTile, which is 35dp with the sticker radius).
                 Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .background(RaftColor.SurfaceCream)
-                        .border(RaftAppStroke.Default, RaftColor.BorderBlack),
+                    modifier =
+                        Modifier
+                            .size(ThreadInlineAudioIconTile)
+                            .background(colors.fillMuted, RoundedCornerShape(RaftRadius.Chip)),
                     contentAlignment = Alignment.Center
-                ) {
-                    RaftLucideIcon(
-                        name = RaftLucideIconName.FileMusic,
-                        modifier = Modifier.size(20.dp),
-                        color = if (RaftAppThemeState.isDark) RaftColor.TextBlackArgb else "#000000"
-                    )
-                }
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    Text(
+                ) { RaftSlotIcon(RaftLucideIconName.Music, size = 18.dp, color = colors.foregroundMuted) }
+                Column(modifier = Modifier.weight(1f)) {
+                    RaftText(
                         text = attachment.name.ifBlank { stringResource(MR.strings.thread_audio_attachment_fallback_name) },
-                        style = RaftType.Body.withRaftFontWeight(FontWeight.Bold),
-                        color = RaftColor.TextBlack,
+                        style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.foreground,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    val sizeLabel = attachment.displaySizeLabel()
-                    val subtitle = if (sizeLabel.isNotBlank()) {
-                        "${stringResource(MR.strings.thread_audio_file_label)} · $sizeLabel"
-                    } else {
-                        stringResource(MR.strings.thread_audio_file_label)
-                    }
-                    Text(
-                        text = subtitle,
-                        style = RaftType.Caption,
-                        color = RaftColor.TextMutedGray,
+                    // Web: "Audio file" alone, without the size.
+                    RaftText(
+                        text = stringResource(MR.strings.thread_audio_file_label),
+                        style = RaftTheme.typography.monoMeta,
+                        color = colors.foregroundHint,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                RaftBrutalIconButton(
-                    iconName = RaftLucideIconName.Download,
-                    onClick = onDownload,
-                    contentDescription = stringResource(MR.strings.file_preview_action_download),
-                    backgroundColor = RaftColor.SurfaceWhite,
-                    size = 32.dp
-                )
+                if (!failed) {
+                    RaftIconButton(
+                        onClick = onDownload,
+                        tooltip = stringResource(MR.strings.file_preview_action_download),
+                        variant = RaftButtonVariant.Ghost
+                    ) { RaftSlotIcon(RaftLucideIconName.Download, size = 18.dp) }
+                }
             }
 
             ThreadInlineAudioSurface(
                 previewState = previewState,
                 previewEnabled = host != null,
                 onRetry = { host?.requestPreview?.invoke(attachment.id, true) },
-                onDownload = onDownload
+                onDownload = onDownload,
+                onFailedChange = { failed = it }
             )
         }
-
     }
 }
+
+/** Web `max-w-[min(28rem, …)]`; the message column is narrower on a phone. */
+private val ThreadInlineAudioMaxWidth = 448.dp
+
+private val ThreadInlineAudioIconTile = 36.dp
 
 @Composable
 private fun ThreadInlineAudioSurface(
     previewState: ThreadInlineAudioPreviewUiState?,
     previewEnabled: Boolean,
     onRetry: () -> Unit,
-    onDownload: () -> Unit
+    onDownload: () -> Unit,
+    onFailedChange: (Boolean) -> Unit
 ) {
     val renderMode = previewState.audioRenderMode()
+    val previewFailed = !previewEnabled || renderMode == ThreadInlineAudioRenderMode.Error
 
     when {
-        !previewEnabled || renderMode == ThreadInlineAudioRenderMode.Error -> {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(RaftColor.SurfaceCream)
-                    .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
-                    .padding(RaftAppSpacing.Xs),
-                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RaftButton(
-                    text = stringResource(MR.strings.common_retry),
-                    onClick = onRetry,
-                    modifier = Modifier.weight(1f),
-                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
-                )
-                RaftButton(
-                    text = stringResource(MR.strings.file_preview_action_download),
-                    onClick = onDownload,
-                    modifier = Modifier.weight(1f),
-                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.Download) }
-                )
-            }
-        }
-        renderMode == ThreadInlineAudioRenderMode.Loading -> {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(36.dp)
-                    .background(RaftColor.SurfaceCream)
-                    .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
-                    .padding(horizontal = RaftAppSpacing.Sm),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                RaftLucideIcon(
-                    name = RaftLucideIconName.LoaderCircle,
-                    modifier = Modifier.size(16.dp),
-                    color = if (RaftAppThemeState.isDark) RaftColor.TextBlackArgb else "#000000",
-                    spinning = true
-                )
-                Text(
-                    text = stringResource(MR.strings.thread_audio_preview_loading),
-                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
-                    color = RaftColor.TextMutedGray,
-                    modifier = Modifier.padding(start = RaftAppSpacing.Xs)
-                )
-            }
-        }
+        previewFailed -> ThreadInlineAudioFailedWell(onRetry = onRetry.takeIf { previewEnabled }, onDownload = onDownload)
+        renderMode == ThreadInlineAudioRenderMode.Loading -> ThreadInlineAudioLoadingWell()
         renderMode == ThreadInlineAudioRenderMode.Ready -> {
             val source = previewState?.url.orEmpty()
             var playback by remember(source) { mutableStateOf(ThreadInlineAudioPlayback()) }
@@ -276,45 +270,19 @@ private fun ThreadInlineAudioSurface(
 
             key(source, playerGeneration) {
                 Box(modifier = Modifier.size(1.dp).alpha(0f)) {
-                    RaftFilePreviewKuiklyVideo(
-                        source = source,
-                        playControl = playback.control,
-                        seekRequest = playback.seekRequest,
-                        onPlayStateChanged = {
-                            playback = playback.withState(playerGeneration, it)
-                        },
-                        onPlayTimeChanged = { current, total ->
-                            playback = playback.withTime(playerGeneration, current, total)
-                        },
-                        onFirstFrame = {},
-                        modifier = Modifier.fillMaxSize()
+                    LocalThreadInlineAudioPlayer.current(
+                        source,
+                        playback.control,
+                        playback.seekRequest,
+                        { playback = playback.withState(playerGeneration, it) },
+                        { current, total -> playback = playback.withTime(playerGeneration, current, total) },
+                        Modifier.fillMaxSize()
                     )
                 }
             }
 
             if (playState == PlayState.ERROR) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(RaftColor.SurfaceCream)
-                        .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
-                        .padding(RaftAppSpacing.Xs),
-                    horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RaftButton(
-                        text = stringResource(MR.strings.common_retry),
-                        onClick = onRetry,
-                        modifier = Modifier.weight(1f),
-                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
-                    )
-                    RaftButton(
-                        text = stringResource(MR.strings.file_preview_action_download),
-                        onClick = onDownload,
-                        modifier = Modifier.weight(1f),
-                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.Download) }
-                    )
-                }
+                ThreadInlineAudioFailedWell(onRetry = onRetry, onDownload = onDownload)
             } else {
                 val positionLabel = stringResource(MR.strings.thread_audio_playback_position)
                 ThreadInlineAudioControls(
@@ -332,13 +300,83 @@ private fun ThreadInlineAudioSurface(
                     }
                 )
             }
+            LaunchedEffect(playState == PlayState.ERROR) { onFailedChange(playState == PlayState.ERROR) }
+        }
+    }
+    LaunchedEffect(previewFailed) { if (renderMode != ThreadInlineAudioRenderMode.Ready) onFailedChange(previewFailed) }
+}
+
+/** The player well: `fill-muted`, `rounded-control`, no edge. */
+@Composable
+private fun ThreadInlineAudioWell(
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .heightIn(min = 32.dp)
+                .background(RaftTheme.colors.fillMuted, RoundedCornerShape(RaftRadius.Control)),
+        contentAlignment = Alignment.Center
+    ) { content() }
+}
+
+/** Web: the well as a 32dp ghost button holding a spinner and the loading line. */
+@Composable
+private fun ThreadInlineAudioLoadingWell() {
+    ThreadInlineAudioWell {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(RaftSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RaftSpinner(size = RaftSpinnerSize.Xs, color = RaftTheme.colors.foregroundMuted)
+            RaftText(
+                text = stringResource(MR.strings.thread_audio_preview_loading),
+                style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Bold),
+                color = RaftTheme.colors.foregroundMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
 
 /**
- * Web InlineAudioPlayer row: play button, seekable rail with a square thumb, and a
- * fixed-width "current / total" mono label.
+ * Web: a failed preview turns the well into a ghost "Download to View" button. Mobile keeps
+ * a Retry beside it ([onRetry], when the preview can be fetched again).
+ */
+@Composable
+private fun ThreadInlineAudioFailedWell(
+    onRetry: (() -> Unit)?,
+    onDownload: () -> Unit
+) {
+    ThreadInlineAudioWell {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            if (onRetry != null) {
+                RaftButton(
+                    text = stringResource(MR.strings.common_retry),
+                    onClick = onRetry,
+                    variant = RaftButtonVariant.Ghost,
+                    modifier = Modifier.weight(1f),
+                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.RotateCcw) }
+                )
+            }
+            RaftButton(
+                text = stringResource(MR.strings.thread_audio_download_to_view),
+                onClick = onDownload,
+                variant = RaftButtonVariant.Ghost,
+                modifier = Modifier.weight(1f),
+                leadingIcon = { RaftSlotIcon(RaftLucideIconName.Download) }
+            )
+        }
+    }
+}
+
+/**
+ * Web `InlineAudioPlayer`, in the muted well (`p-2`, gap 8): a 32dp outline play button, the
+ * seek rail, and a "current / total" (at least 4.75rem) in mono-meta hint.
  */
 @Composable
 internal fun ThreadInlineAudioControls(
@@ -352,67 +390,62 @@ internal fun ThreadInlineAudioControls(
     seekContentDescription: String? = null,
     onScrub: (Int?) -> Unit = {}
 ) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(RaftColor.SurfaceCream)
-            .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
-            .padding(RaftAppSpacing.Sm),
-        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RaftBrutalIconButton(
-            iconName = if (isPlaying) RaftLucideIconName.Pause else RaftLucideIconName.Play,
-            onClick = onTogglePlay,
-            contentDescription = stringResource(if (isPlaying) MR.strings.common_pause else MR.strings.common_play),
-            enabled = canPlay,
-            size = 28.dp,
-            iconSize = 14.dp,
-            backgroundColor = RaftColor.SurfaceWhite
-        )
-        ThreadInlineAudioSeekBar(
-            currentTimeMs = currentTimeMs,
-            totalTimeMs = totalTimeMs,
-            seekEnabled = canPlay && totalTimeMs > 0,
-            onScrub = onScrub,
-            onSeek = onSeek,
-            modifier = Modifier
-                .weight(1f)
-                .semantics {
-                    seekContentDescription?.let { contentDescription = it }
-                    // Same accessibility seek action the Material Slider exposed; like the
-                    // Slider's valueRange, the target is in milliseconds (0..totalTimeMs).
-                    setProgress { target ->
-                        if (canPlay && totalTimeMs > 0) {
-                            onSeek(target.roundToInt().coerceIn(0, totalTimeMs))
-                            true
-                        } else {
-                            false
+    ThreadInlineAudioWell(modifier) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(RaftSpacing.Sm),
+            horizontalArrangement = Arrangement.spacedBy(RaftSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RaftIconButton(
+                onClick = onTogglePlay,
+                tooltip = stringResource(if (isPlaying) MR.strings.common_pause else MR.strings.common_play),
+                enabled = canPlay
+            ) { RaftSlotIcon(if (isPlaying) RaftLucideIconName.Pause else RaftLucideIconName.Play, size = 16.dp) }
+            ThreadInlineAudioSeekBar(
+                currentTimeMs = currentTimeMs,
+                totalTimeMs = totalTimeMs,
+                seekEnabled = canPlay && totalTimeMs > 0,
+                onScrub = onScrub,
+                onSeek = onSeek,
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics {
+                        seekContentDescription?.let { contentDescription = it }
+                        // Same accessibility seek action the Material Slider exposed; like the
+                        // Slider's valueRange, the target is in milliseconds (0..totalTimeMs).
+                        setProgress { target ->
+                            if (canPlay && totalTimeMs > 0) {
+                                onSeek(target.roundToInt().coerceIn(0, totalTimeMs))
+                                true
+                            } else {
+                                false
+                            }
                         }
                     }
-                }
-        )
-        Text(
-            text = formatAudioTimeLabel(currentTimeMs, totalTimeMs),
-            style = RaftType.Caption.copy(
-                fontFamily = FontFamily.Monospace,
-                fontSize = 11.sp,
-                lineHeight = 14.sp
-            ).withRaftFontWeight(FontWeight.Bold),
-            color = RaftColor.TextMutedGray,
-            textAlign = TextAlign.End,
-            maxLines = 1,
-            modifier = Modifier.width(76.dp)
-        )
+            )
+            RaftText(
+                text = formatAudioTimeLabel(currentTimeMs, totalTimeMs),
+                style = RaftTheme.typography.monoMeta,
+                color = RaftTheme.colors.foregroundHint,
+                textAlign = TextAlign.End,
+                maxLines = 1,
+                softWrap = false,
+                // At least the web's 4.75rem, and wide enough for "12:34 / 56:07" in mono.
+                modifier = Modifier.widthIn(min = 76.dp)
+            )
+        }
     }
 }
 
+/** The thumb: 14dp, radius 2, a 1.5dp `line-strong` edge on `layer-card`. */
+private val ThreadInlineAudioThumb = 14.dp
+
 /**
- * Seekable progress rail matching web's audio-seek-rail: an 8dp bordered white
- * rail with a cyan fill and a 12dp square thumb, inside a 28dp touch target. The
- * rail is inset by half the thumb so the thumb never leaves the seek area. Tap
- * seeks; a horizontal drag follows the finger (onScrub) and seeks on release.
- * Pointer modifiers are always attached and gated by seekEnabled.
+ * Web `audio-seek-rail`: an 8dp `layer-card` rail (radius 4, hairline edge) with an `info`
+ * fill and the square thumb, inside a 32dp touch target. The rail is inset by half the thumb
+ * so the thumb never leaves the seek area. Tap seeks; a horizontal drag follows the finger
+ * (onScrub) and seeks on release. Pointer modifiers are always attached and gated by
+ * seekEnabled.
  */
 @Composable
 private fun ThreadInlineAudioSeekBar(
@@ -423,9 +456,10 @@ private fun ThreadInlineAudioSeekBar(
     onSeek: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val colors = RaftTheme.colors
     var widthPx by remember { mutableStateOf(0f) }
     var dragX by remember { mutableStateOf<Float?>(null) }
-    val thumbHalfPx = with(LocalDensity.current) { 6.dp.toPx() }
+    val thumbHalfPx = with(LocalDensity.current) { (ThreadInlineAudioThumb / 2).toPx() }
     val trackPx = (widthPx - 2 * thumbHalfPx).coerceAtLeast(0f)
     fun timeAt(x: Float): Int =
         (threadInlineAudioSeekFraction(x, widthPx, thumbHalfPx) * totalTimeMs).roundToInt().coerceIn(0, totalTimeMs.coerceAtLeast(0))
@@ -434,7 +468,7 @@ private fun ThreadInlineAudioSeekBar(
     val fraction = dragX?.let { threadInlineAudioSeekFraction(it, widthPx, thumbHalfPx) } ?: playedFraction
     Box(
         modifier = modifier
-            .height(28.dp)
+            .height(32.dp)
             .onGloballyPositioned { coordinates -> widthPx = coordinates.size.width.toFloat() }
             .pointerInput(seekEnabled, totalTimeMs) {
                 detectTapGestures(onTap = { offset -> if (seekEnabled) onSeek(timeAt(offset.x)) })
@@ -470,27 +504,30 @@ private fun ThreadInlineAudioSeekBar(
             },
         contentAlignment = Alignment.CenterStart
     ) {
+        val railShape = RoundedCornerShape(4.dp)
         Box(
             modifier = Modifier
-                .padding(horizontal = 6.dp)
+                .padding(horizontal = ThreadInlineAudioThumb / 2)
                 .fillMaxWidth()
                 .height(8.dp)
-                .background(RaftColor.SurfaceWhite)
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                .clip(railShape)
+                .background(colors.layerCard)
+                .border(RaftStroke.Hairline, colors.lineHairline, railShape)
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth(fraction)
                     .height(8.dp)
-                    .background(RaftColor.AccentCyan)
+                    .background(RaftUiPalette.info)
             )
         }
+        val thumbShape = RoundedCornerShape(RaftRadius.Xs)
         Box(
             modifier = Modifier
                 .offset { IntOffset((fraction * trackPx).roundToInt(), 0) }
-                .size(12.dp)
-                .background(RaftColor.SurfaceWhite)
-                .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
+                .size(ThreadInlineAudioThumb)
+                .background(colors.layerCard, thumbShape)
+                .border(RaftStroke.Control, colors.lineStrong, thumbShape)
         )
     }
 }
