@@ -149,7 +149,7 @@ class RaftCopyableTest {
         }
 
     @Test
-    fun readOnlyFieldsCopyTheirValueTheRawValueOrNothing() =
+    fun readOnlyFieldsCopyTheirShownValueOrNothing() =
         runComposeUiTest {
             val copied = mutableListOf<String>()
             setContent {
@@ -158,8 +158,8 @@ class RaftCopyableTest {
                         Column {
                             // A client ID: the shown value.
                             RaftReadOnlyField("rft_9c2b9a8f")
-                            // A handle shown bare copies with its "@".
-                            RaftReadOnlyField("alice", copyText = "@alice")
+                            // A handle shown bare copies bare: what is shown is what is copied.
+                            RaftReadOnlyField("alice")
                             // A placeholder copies nothing.
                             RaftReadOnlyField("Not provided", copyText = null)
                         }
@@ -170,7 +170,7 @@ class RaftCopyableTest {
                 onNodeWithText(shown, useUnmergedTree = true).performTouchInput { longClick() }
                 waitForIdle()
             }
-            assertEquals(listOf("rft_9c2b9a8f", "@alice"), copied)
+            assertEquals(listOf("rft_9c2b9a8f", "alice"), copied)
         }
 
     @Test

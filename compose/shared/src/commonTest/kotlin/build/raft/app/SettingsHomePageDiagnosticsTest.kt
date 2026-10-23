@@ -909,10 +909,14 @@ class SettingsHomePageDiagnosticsTest {
 
         val aboutRows = aboutPayload.sections.first { it.title == "Application" }.rows.associateBy { it.key }
         assertEquals("Raft", aboutRows.getValue("appName").copyValue)
-        assertEquals("1.0.1 1000100", aboutRows.getValue("version").copyValue)
+        // A long press copies the value as shown (the build stays its own status label).
+        assertEquals("1.0.1", aboutRows.getValue("version").copyValue)
         assertEquals("2026-07-03T19:03:28Z", aboutRows.getValue("buildTime").copyValue)
         assertEquals("15fb7be3", aboutRows.getValue("gitCommit").copyValue)
         assertEquals("build.raft.app", aboutRows.getValue("package").copyValue)
+        listOf("appName", "version", "buildTime", "gitCommit", "package").forEach { key ->
+            assertEquals(aboutRows.getValue(key).detail, aboutRows.getValue(key).copyValue, "row=$key")
+        }
 
         val diagnosticsPayload =
             emptyList<build.raft.app.data.SharedSettingsDiagnosticsEntry>().toDiagnosticsPayload(
@@ -931,7 +935,7 @@ class SettingsHomePageDiagnosticsTest {
                 actionState = null,
             )
         val environmentRows = diagnosticsPayload.sections.first { it.title == "Environment" }.rows.associateBy { it.key }
-        assertEquals("Raft 1.0.1", environmentRows.getValue("diagnosticsApp").copyValue)
+        assertEquals("Raft", environmentRows.getValue("diagnosticsApp").copyValue)
         assertEquals("build.raft.app", environmentRows.getValue("diagnosticsPackage").copyValue)
     }
 

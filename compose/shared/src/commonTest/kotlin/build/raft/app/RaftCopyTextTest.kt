@@ -6,17 +6,17 @@ import kotlin.test.assertNull
 
 /**
  * What a long press ([build.raft.designsystem.components.raftCopyable]) copies on the pages the
- * copy audit covered: the raw value, a handle with its "@", never a label, status or stand-in.
+ * copy audit covered: exactly the text shown (artin: 看到啥就复制成啥), never a status or stand-in.
  */
 class RaftCopyTextTest {
     @Test
-    fun channelSettingsNameCopiesWithoutTheHash() {
-        assertEquals("general", channelSettingsCopyName("general"))
-        assertEquals("general", channelSettingsCopyName("#general"))
+    fun channelSettingsNameCopiesWithItsHashAsShown() {
+        assertEquals("#general", channelSettingsHeaderName("general"))
+        assertEquals("#general", channelSettingsHeaderName("#general"))
     }
 
     @Test
-    fun accountHandleCopiesWithItsAt() {
+    fun accountHeaderHandleIsShownAndCopiedWithItsAt() {
         assertEquals("@alice", settingsAccountHeaderHandleLabel("alice"))
         assertEquals("@alice", settingsAccountHeaderHandleLabel(" @alice "))
         // Blank: nothing to copy (the field shows the placeholder).
@@ -39,26 +39,6 @@ class RaftCopyTextTest {
         cases.forEach { (title, kind, expected) ->
             assertEquals(expected, threadHeaderCopyText(title, kind), "title=$title kind=$kind")
         }
-    }
-
-    @Test
-    fun taskDetailTitleCopiesTheTaskReference() {
-        assertEquals("#42", threadTaskDetailTitleCopyText(42, "general"))
-        assertEquals("general", threadTaskDetailTitleCopyText(null, "general"))
-        assertNull(threadTaskDetailTitleCopyText(null, " "))
-        assertNull(threadTaskDetailTitleCopyText(null, null))
-    }
-
-    @Test
-    fun joinLinkCopiesAnAbsoluteUrlAgainstTheActiveEnvironment() {
-        val staging = "https://staging.raft.build"
-        assertEquals("https://app.raft.build/join/abc", settingsServerJoinLinkCopyUrl("https://app.raft.build/join/abc", staging))
-        assertEquals("https://staging.raft.build/join/abc", settingsServerJoinLinkCopyUrl("/join/abc", staging))
-        assertEquals("https://staging.raft.build/join/abc", settingsServerJoinLinkCopyUrl("join/abc", "$staging/"))
-        // No environment URL: a relative link isn't copied against a hardcoded host.
-        assertNull(settingsServerJoinLinkCopyUrl("/join/abc", ""))
-        assertNull(settingsServerJoinLinkCopyUrl(null, staging))
-        assertNull(settingsServerJoinLinkCopyUrl(" ", staging))
     }
 
     @Test

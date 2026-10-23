@@ -8966,7 +8966,6 @@ private fun SettingsNativeDetailPageContent(
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
                     publicAccess = publicAccess,
-                    webBaseUrl = webBaseUrl,
                 ) { action, itemId ->
                     when (action) {
                         SERVER_ACTION_PROFILE_SAVE ->
@@ -9271,8 +9270,6 @@ private fun SharedSettingsServerContent(
     onCreateJoinLink: (SettingsServerJoinLinkCreateRequest) -> Unit = {},
     /** Owner "Public access" section; null on surfaces that do not host it (Administration, fixtures). */
     publicAccess: SettingsServerPublicAccessBinding? = null,
-    /** The active Developer environment web URL; a relative join link copies against it. */
-    webBaseUrl: String = "",
     onAction: (String, String?) -> Unit
 ) {
     val visualFullHeight = settingsVisualFullHeightEnabled()
@@ -9340,7 +9337,6 @@ private fun SharedSettingsServerContent(
                             onMaxUsesChange = onJoinLinkMaxUsesChange,
                             onExpiresAtChange = onJoinLinkExpiresAtChange,
                             onCreate = onCreateJoinLink,
-                            webBaseUrl = webBaseUrl,
                             onAction = onAction
                         )
                     }
@@ -13556,21 +13552,6 @@ private fun SettingsServerInvitesCard(
     }
 }
 
-/**
- * What a long press on a join link copies: an absolute link as it is; a relative one against
- * the active Developer environment [webBaseUrl] (the invite dialog's normaliser). Null with no
- * environment URL to resolve it, so a relative link never copies against a hardcoded host.
- */
-internal fun settingsServerJoinLinkCopyUrl(rawUrl: String?, webBaseUrl: String): String? {
-    val trimmed = rawUrl?.trim().orEmpty()
-    return when {
-        trimmed.isBlank() -> null
-        trimmed.startsWith("http://") || trimmed.startsWith("https://") -> trimmed
-        webBaseUrl.isBlank() -> null
-        else -> normalizeInviteHumanJoinUrl(trimmed, webBaseUrl)
-    }
-}
-
 @Composable
 private fun SettingsServerJoinLinksCard(
     links: List<SettingsServerJoinLinkSnapshot>,
@@ -13582,7 +13563,6 @@ private fun SettingsServerJoinLinksCard(
     onMaxUsesChange: (String) -> Unit,
     onExpiresAtChange: (String) -> Unit,
     onCreate: (SettingsServerJoinLinkCreateRequest) -> Unit,
-    webBaseUrl: String = "",
     onAction: (String, String?) -> Unit
 ) {
     val trimmedMaxUses = maxUses.trim()
@@ -13633,9 +13613,10 @@ private fun SettingsServerJoinLinksCard(
             SettingsFormEmptyText(stringResource(MR.strings.settings_admin_no_join_links))
         } else {
             links.forEach { link ->
+                // A long press copies the link as shown ("/join/<token>"); a bare label doesn't.
                 SettingsServerActionRow(
                     title = link.url ?: link.label,
-                    copyText = settingsServerJoinLinkCopyUrl(link.url, webBaseUrl),
+                    copyText = link.url,
                     detail =
                         listOfNotNull(
                             link.maxUsesLabel,
@@ -17989,7 +17970,7 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                     rows =
                         listOf(
                             RaftSharedSettingsRow("appName", RaftLucideIconName.Sparkles, copy.application, appName.ifBlank { raftLabel }, copyValue = appName.ifBlank { raftLabel }),
-                            RaftSharedSettingsRow("version", RaftLucideIconName.BadgeInfo, copy.version, versionLabel.ifBlank { copy.unknown }, status = buildLabel.ifBlank { copy.buildUnknown }, copyValue = listOf(versionLabel, buildLabel).filter { it.isNotBlank() }.joinToString(" ")),
+                            RaftSharedSettingsRow("version", RaftLucideIconName.BadgeInfo, copy.version, versionLabel.ifBlank { copy.unknown }, status = buildLabel.ifBlank { copy.buildUnknown }, copyValue = versionLabel),
                             RaftSharedSettingsRow("buildTime", RaftLucideIconName.Clock, copy.buildTime, buildTime.ifBlank { copy.unknown }, copyValue = buildTime),
                             RaftSharedSettingsRow("gitCommit", RaftLucideIconName.GitBranch, copy.gitCommit, gitCommit.ifBlank { copy.unknown }, copyValue = gitCommit),
                             RaftSharedSettingsRow("package", RaftLucideIconName.Package, copy.packageLabel, packageName.ifBlank { copy.unknown }, copyValue = packageName)
@@ -18572,7 +18553,7 @@ private fun Boolean?.localFeatureOverrideBooleanStatus(): String =
 
 private fun SharedSettingsAboutSnapshot.toDiagnosticsEnvironmentRows(copy: SettingsDiagnosticsPayloadCopy): List<RaftSharedSettingsRow> =
     listOf(
-        RaftSharedSettingsRow("diagnosticsApp", RaftLucideIconName.Info, copy.app, appName.ifBlank { "Raft" }, status = versionLabel.ifBlank { copy.version }, copyValue = listOf(appName, versionLabel).filter { it.isNotBlank() }.joinToString(" ")),
+        RaftSharedSettingsRow("diagnosticsApp", RaftLucideIconName.Info, copy.app, appName.ifBlank { "Raft" }, status = versionLabel.ifBlank { copy.version }, copyValue = appName.ifBlank { "Raft" }),
         RaftSharedSettingsRow("diagnosticsBuild", RaftLucideIconName.GitBranch, copy.build, buildLabel.ifBlank { copy.unknown }, status = sourceLabel.ifBlank { copy.source }, copyValue = buildLabel),
         RaftSharedSettingsRow("diagnosticsVersionCode", RaftLucideIconName.BadgeInfo, copy.versionCode, versionCodeLabel.ifBlank { buildLabel.ifBlank { copy.unknown } }, status = sdkLabel.ifBlank { copy.sdk }, copyValue = versionCodeLabel.ifBlank { buildLabel }),
         RaftSharedSettingsRow("diagnosticsPackage", RaftLucideIconName.Package, copy.packageLabel, packageName.ifBlank { copy.unknown }, status = copy.host, copyValue = packageName),
