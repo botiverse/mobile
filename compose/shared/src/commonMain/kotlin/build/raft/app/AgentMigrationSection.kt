@@ -827,7 +827,7 @@ private fun AgentMigrationHostedReviewCard(
             RaftButton(
                 text = stringResource(MR.strings.agent_migration_hosted_confirm),
                 onClick = { inputs.onIntent(AgentMigrationIntent.ConfirmHosted) },
-                variant = RaftButtonVariant.Primary,
+                variant = RaftButtonVariant.Warning,
                 size = RaftButtonSize.Md,
                 loading = state.confirming,
                 loadingLabel = stringResource(MR.strings.agent_migration_hosted_confirming)
@@ -972,7 +972,9 @@ private fun AgentMigrationStartDialog(
             onStart(if (target == HOSTED_TARGET_CHOICE) AgentMigrationTarget.Cloud else AgentMigrationTarget.Computer(target))
         },
         commitEnabled = !state.starting && selected != null,
-        commitVariant = RaftButtonVariant.Primary,
+        // Migrating pauses the agent but can be undone (migrate back): raft-ui button.md
+        // "Which color" puts interrupting, reversible actions on warning (orange).
+        commitVariant = RaftButtonVariant.Warning,
         closeLabel = stringResource(MR.strings.common_close),
         cancelLabel = stringResource(MR.strings.agent_migration_detail_cancel)
     ) {
