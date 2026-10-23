@@ -20,6 +20,7 @@ import build.raft.app.data.DEFAULT_DESKTOP_MODE_ON_LARGE_SCREEN
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.RaftChatLayoutPreferenceEvents
 import build.raft.app.data.RaftRealtimeEvents
+import build.raft.app.data.SharedActivityIntent
 import build.raft.app.data.MyMessageAlignmentPreference
 import build.raft.app.data.NetworkRaftAnnouncementsRemindersApi
 import build.raft.app.data.NetworkRaftHomeApi
@@ -518,6 +519,15 @@ private fun HomeActivityRouterContent(
                 }
             }
         onDispose { subscription.close() }
+    }
+    // Leaving the Activity route releases the retained read row (Unread keeps the row the user read
+    // only until they move on). The route, not the list pane: compact DetailOnly unmounts the list
+    // while a conversation is open, and returning to the list must still show the row.
+    DisposableEffect(sharedStores, environment.storeScope) {
+        onDispose {
+            sharedStores.homeActivityStoreOrNull(environment.storeScope)
+                ?.dispatch(SharedActivityIntent.SurfaceHidden)
+        }
     }
     // Explicit teardown: remember state being dropped is not a resource release — the
     // lease (a shared-registry room subscription) must be returned here so a covered Home

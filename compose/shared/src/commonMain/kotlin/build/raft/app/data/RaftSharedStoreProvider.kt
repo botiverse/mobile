@@ -1637,6 +1637,9 @@ internal class RaftSharedStoreProvider private constructor(
         }
     }
 
+    /** The Activity store already created for [scope], or null; never creates one. */
+    fun homeActivityStoreOrNull(scope: RaftShellStoreScope): SharedActivityStore? = homeActivityStores.get(scope)
+
     fun getOrCreateHomeActivityStore(
         scope: RaftShellStoreScope = RaftShellStoreScope.Legacy,
         inboxRepository: InboxRepository,

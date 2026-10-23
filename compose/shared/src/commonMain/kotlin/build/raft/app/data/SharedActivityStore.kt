@@ -247,7 +247,11 @@ class SharedActivityStore internal constructor(
             SharedActivityIntent.ClearSummary -> clearSummary()
             SharedActivityIntent.LoadInitial -> load(refresh = true, intent = intent)
             SharedActivityIntent.Refresh -> load(refresh = true, pullRefresh = false, intent = intent)
-            SharedActivityIntent.PullRefresh -> load(refresh = true, pullRefresh = true, intent = intent)
+            SharedActivityIntent.PullRefresh -> {
+                // Pull-to-refresh is the user moving on: the retained read row leaves with it.
+                releaseRetainedReadRow(intent)
+                load(refresh = true, pullRefresh = true, intent = intent)
+            }
             SharedActivityIntent.LoadMore -> load(refresh = false, intent = intent)
             SharedActivityIntent.MarkAllRead -> markAllRead()
             is SharedActivityIntent.SetFilter -> setFilter(intent.filter)
@@ -264,6 +268,7 @@ class SharedActivityStore internal constructor(
             is SharedActivityIntent.PrewarmActivityTail -> prewarmActivityTail(intent.orderedMarkers)
             SharedActivityIntent.DetachPrewarmViewport -> prewarmVisibleReplyThreads(emptySet())
             SharedActivityIntent.SurfaceHidden -> onSurfaceHidden()
+            is SharedActivityIntent.RowOpened -> onRowOpened(intent)
             is SharedActivityIntent.ApplyRealtimeEvent -> {
                 if (intent.event is PerReceiverReadStateChanged) {
                     scope.launch { applyPerReceiverReadStateChanged(intent.event) }
@@ -304,6 +309,36 @@ class SharedActivityStore internal constructor(
         synchronized(realtimeOwnerLock) {
             foregroundResetLoadStartedAtMillis = null
         }
+        // Leaving the Activity tab or route releases the retained read row.
+        releaseRetainedReadRow(SharedActivityIntent.SurfaceHidden)
+    }
+
+    private fun onRowOpened(intent: SharedActivityIntent.RowOpened) {
+        synchronized(realtimeOwnerLock) {
+            retainReadRowLocked(intent, intent.item)
+        }
+    }
+
+    private fun releaseRetainedReadRow(intent: SharedActivityIntent) {
+        synchronized(realtimeOwnerLock) {
+            val current = _state.value
+            if (current.retainedReadRowKey == null) return@synchronized
+            reduceState(intent, current.withRetainedReadRowReleased())
+        }
+    }
+
+    /**
+     * [item] becomes the retained row when this filter drops read rows and [item] is still unread
+     * (it is about to be read). Any other retained row is released first. Opening a row that is
+     * already read retains nothing new: only the previous retained row leaves.
+     */
+    private fun retainReadRowLocked(intent: SharedActivityIntent, item: InboxItem) {
+        val current = _state.value
+        if (current.retainedReadRowKey == item.key) return
+        val retainsNew = !current.selectedFilter.keepsReadActivityRows() && item.unreadCount > 0
+        if (current.retainedReadRowKey == null && !retainsNew) return
+        val released = current.withRetainedReadRowReleased()
+        reduceState(intent, if (retainsNew) released.copy(retainedReadRowKey = item.key) else released)
     }
 
     fun clear() {
@@ -754,9 +789,16 @@ class SharedActivityStore internal constructor(
             synchronized(realtimeOwnerLock) {
                 if (_state.value.selectedFilter == filter) return@synchronized false
                 realtimeHighWater.clear()
-                val cachedSnapshot = _state.value.filterSnapshots[filter]
+                // Switching filter releases the retained read row: it leaves the filter it was
+                // read in, and that filter's cached page too.
+                val released = _state.value.withRetainedReadRowReleased()
+                val leftFilterCache =
+                    released.snapshot?.let { left -> released.filterSnapshots + (released.selectedFilter to left) }
+                        ?: released.filterSnapshots
+                val cachedSnapshot = leftFilterCache[filter]
                 _state.value =
-                    _state.value.copy(
+                    released.copy(
+                        filterSnapshots = leftFilterCache,
                         selectedFilter = filter,
                         snapshot = cachedSnapshot,
                         loaded = cachedSnapshot != null,
@@ -1153,16 +1195,13 @@ class SharedActivityStore internal constructor(
             val coveredKeys = covered.mapTo(mutableSetOf(), InboxItem::key)
             val keepsRows = current.selectedFilter.keepsReadActivityRows()
             val items =
-                if (keepsRows) {
-                    snapshot.items.map { item ->
-                        if (item.key in coveredKeys) {
+                snapshot.items.mapNotNull { item ->
+                    when {
+                        item.key !in coveredKeys -> item
+                        current.keepsReadRow(item.key) ->
                             item.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)
-                        } else {
-                            item
-                        }
+                        else -> null
                     }
-                } else {
-                    snapshot.items.filterNot { item -> item.key in coveredKeys }
                 }
             reduceState(
                 intent,
@@ -1709,7 +1748,7 @@ class SharedActivityStore internal constructor(
                         if (append) {
                             (current.items + realtimeReconcile.items).dedupeActivityItems()
                         } else {
-                            realtimeReconcile.items.dedupeActivityItems()
+                            realtimeReconcile.items.withRetainedReadRow(current).dedupeActivityItems()
                         }
                             // RFC 077: a re-fetched row of the same latest message without
                             // `latestDelegatedBy` keeps the known label.
@@ -1775,7 +1814,7 @@ class SharedActivityStore internal constructor(
                         } else {
                             InboxSnapshot(
                                 server = server,
-                                items = realtimeReconcile.items,
+                                items = realtimeReconcile.items.withRetainedReadRow(current),
                                 totalCount =
                                     if (realtimeReconcile.preserveTotalUnreadFloor) {
                                         maxOf(current.totalCount, realtimeReconcile.items.size)
@@ -1966,12 +2005,12 @@ class SharedActivityStore internal constructor(
         if (snapshot.totalUnreadCount <= 0) return
         val updatedSnapshot =
             snapshot.copy(
+                // Unread empties at once except the retained row: the one being looked at stays,
+                // read, like any other read (web, Remy).
                 items =
-                    if (previous.selectedFilter.keepsReadActivityRows()) {
-                        snapshot.items.map { it.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false) }
-                    } else {
-                        emptyList()
-                    },
+                    snapshot.items
+                        .filter { item -> previous.keepsReadRow(item.key) }
+                        .map { it.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false) },
                 totalCount = if (previous.selectedFilter.keepsReadActivityRows()) snapshot.totalCount else 0,
                 totalUnreadCount = 0
             )
@@ -2216,7 +2255,7 @@ class SharedActivityStore internal constructor(
     private fun markRead(item: InboxItem) {
         if (item.isUnfollowedActivityThread || item.unreadCount <= 0) return
         val previous = _state.value
-        val snapshot = previous.snapshot ?: return
+        if (previous.snapshot == null) return
         val targetChannelId = item.readReceiptChannelId()
         if (targetChannelId == null) {
             refreshAfterFailure(previous, "activity_thread_channel_missing")
@@ -2228,17 +2267,23 @@ class SharedActivityStore internal constructor(
                     readReceiptOwnerFactory?.invoke(serverId, userId)
                 }
             }
+        // Reading a row (opened or marked read) in Unread keeps it listed, read, until the user
+        // moves on; the row retained before it leaves now.
+        synchronized(realtimeOwnerLock) { retainReadRowLocked(SharedActivityIntent.MarkRead(item), item) }
         val coordinator = readReceiptCoordinator
         if (owner != null && coordinator != null) {
             applyReadReceiptPrediction(coordinator.markReadAll(owner, targetChannelId))
             return
         }
         val key = item.key
-        val overlayOwner = overlayOwner(previous)
+        val retainedState = _state.value
+        val retainedSnapshot = retainedState.snapshot ?: return
+        val overlayOwner = overlayOwner(retainedState)
         val readGenerations = rememberUnreadCleared(overlayOwner, listOf(item))
+        val keepsRow = retainedState.keepsReadRow(key)
         val updatedItems =
-            if (previous.selectedFilter.keepsReadActivityRows()) {
-                snapshot.items.map { existing ->
+            if (keepsRow) {
+                retainedSnapshot.items.map { existing ->
                     if (existing.key == key) {
                         existing.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)
                     } else {
@@ -2246,16 +2291,22 @@ class SharedActivityStore internal constructor(
                     }
                 }
             } else {
-                snapshot.items.filterNot { it.key == key }
+                retainedSnapshot.items.filterNot { it.key == key }
             }
         reduceState(
             SharedActivityIntent.MarkRead(item),
-            previous.copy(
+            retainedState.copy(
                 snapshot =
-                    snapshot.copy(
+                    retainedSnapshot.copy(
                         items = updatedItems,
-                        totalCount = if (previous.selectedFilter.keepsReadActivityRows()) snapshot.totalCount else maxOf(0, snapshot.totalCount - 1),
-                        totalUnreadCount = maxOf(0, snapshot.totalUnreadCount - item.unreadCount)
+                        // The filter's count drops at once even while the read row stays listed.
+                        totalCount =
+                            if (retainedState.selectedFilter.keepsReadActivityRows()) {
+                                retainedSnapshot.totalCount
+                            } else {
+                                maxOf(0, retainedSnapshot.totalCount - 1)
+                            },
+                        totalUnreadCount = maxOf(0, retainedSnapshot.totalUnreadCount - item.unreadCount)
                     ),
                 errorCode = null
             )
@@ -2300,16 +2351,13 @@ class SharedActivityStore internal constructor(
             readPredictionItemKeys = readPredictionItemKeys + (prediction.channelId to matchingKeys)
             val removedUnreadCount = matchingUnread.sumOf(InboxItem::unreadCount)
             val updatedItems =
-                if (current.selectedFilter.keepsReadActivityRows()) {
-                    snapshot.items.map { item ->
-                        if (item.key in matchingKeys) {
+                snapshot.items.mapNotNull { item ->
+                    when {
+                        item.key !in matchingKeys -> item
+                        current.keepsReadRow(item.key) ->
                             item.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)
-                        } else {
-                            item
-                        }
+                        else -> null
                     }
-                } else {
-                    snapshot.items.filterNot { item -> item.key in matchingKeys }
                 }
             reduceState(
                 SharedActivityIntent.ApplyReadReceiptPrediction(prediction),
@@ -2456,7 +2504,8 @@ class SharedActivityStore internal constructor(
                         totalCount = maxOf(0, snapshot.totalCount - 1),
                         totalUnreadCount = maxOf(0, snapshot.totalUnreadCount - item.unreadCount)
                     ),
-                errorCode = null
+                errorCode = null,
+                retainedReadRowKey = current.retainedReadRowKey.takeUnless { it == item.key }
             )
         )
     }
@@ -2881,7 +2930,13 @@ data class SharedActivityState(
     val pullRefreshing: Boolean = false,
     val loadingMore: Boolean = false,
     val errorCode: String? = null,
-    val loadMoreErrorCode: String? = null
+    val loadMoreErrorCode: String? = null,
+    /**
+     * The row the user read while viewing a filter that drops read rows (Unread): it stays listed,
+     * shown read, until the user moves on (opens another row, switches filter, leaves Activity,
+     * refreshes). Background loads, reconciles and realtime keep it. Tenny's Gmail-style rule.
+     */
+    val retainedReadRowKey: String? = null
 ) {
     val items: List<InboxItem>
         get() = snapshot?.items.orEmpty()
@@ -2903,6 +2958,42 @@ data class SharedActivityState(
  */
 private fun InboxFilter.keepsReadActivityRows(): Boolean =
     this != InboxFilter.Unread
+
+/** A read row stays listed (shown read) when the filter keeps read rows or it is the retained row. */
+private fun SharedActivityState.keepsReadRow(key: String): Boolean =
+    selectedFilter.keepsReadActivityRows() || key == retainedReadRowKey
+
+/**
+ * Forgets the retained row; it leaves the list when it no longer matches the filter (it was read in
+ * a filter that drops read rows). The counts already left it when it was read, so they stay.
+ */
+internal fun SharedActivityState.withRetainedReadRowReleased(): SharedActivityState {
+    val key = retainedReadRowKey ?: return this
+    val current = snapshot
+    val leaves =
+        !selectedFilter.keepsReadActivityRows() &&
+            current?.items?.any { item -> item.key == key && item.unreadCount <= 0 } == true
+    return copy(
+        retainedReadRowKey = null,
+        snapshot = if (leaves && current != null) current.copy(items = current.items.filterNot { it.key == key }) else current
+    )
+}
+
+/**
+ * A canonical page in a filter that drops read rows no longer lists the retained row once it is
+ * read; it is put back, read, where it stood (before the first row that followed it and is still
+ * listed). Background loads and reconciles never drop the row the user is looking at.
+ */
+private fun List<InboxItem>.withRetainedReadRow(current: SharedActivityState): List<InboxItem> {
+    val key = current.retainedReadRowKey ?: return this
+    if (any { item -> item.key == key }) return this
+    val index = current.items.indexOfFirst { item -> item.key == key }
+    if (index < 0) return this
+    val retained = current.items[index].copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)
+    val followingKeys = current.items.subList(index + 1, current.items.size).mapTo(mutableSetOf(), InboxItem::key)
+    val insertAt = indexOfFirst { item -> item.key in followingKeys }.takeIf { it >= 0 } ?: size
+    return toMutableList().apply { add(insertAt, retained) }
+}
 
 sealed interface SharedActivityIntent {
     data object ClearSummary : SharedActivityIntent
@@ -2935,6 +3026,13 @@ sealed interface SharedActivityIntent {
      * device sleeps, so its age alone cannot tell.
      */
     data object SurfaceHidden : SharedActivityIntent
+
+    /**
+     * The user opened [item] (a row pick, or the wide layout reopening it beside the list). In a
+     * filter that drops read rows, the previously retained row leaves the list and an unread
+     * [item] becomes the retained row, so reading it keeps it in place.
+     */
+    data class RowOpened(val item: InboxItem) : SharedActivityIntent
     data class ApplyRealtimeEvent(
         val event: RealtimeEvent,
         val allowLocalPatch: Boolean = true
@@ -2966,6 +3064,7 @@ private fun SharedActivityIntent.activitySummarySource(): String =
         is SharedActivityIntent.PrewarmActivityTail -> "prewarm_tail"
         SharedActivityIntent.DetachPrewarmViewport -> "prewarm_detach"
         SharedActivityIntent.SurfaceHidden -> "surface_hidden"
+        is SharedActivityIntent.RowOpened -> "row_opened"
         is SharedActivityIntent.ApplyRealtimeEvent -> "realtime"
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> "realtime_summary"
     }
@@ -2992,7 +3091,8 @@ private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
         is SharedActivityIntent.PrewarmVisibleReplyThreads,
         is SharedActivityIntent.PrewarmActivityTail,
         SharedActivityIntent.DetachPrewarmViewport,
-        SharedActivityIntent.SurfaceHidden -> false
+        SharedActivityIntent.SurfaceHidden,
+        is SharedActivityIntent.RowOpened -> false
     }
 
 private fun RealtimeEvent.refreshesActivity(): Boolean = affectsActivityContent()
