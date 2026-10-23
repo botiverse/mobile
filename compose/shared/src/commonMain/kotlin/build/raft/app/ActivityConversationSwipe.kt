@@ -65,8 +65,9 @@ import kotlinx.coroutines.launch
  *   a direct mention), unknown or unjoined channels, an unfollowed thread and an already muted channel
  *   don't move to the end: a swipe never reveals an action that does nothing.
  *
- * The swipes are never the only way: the row's Done button and the press-and-hold menu (Done, Unfollow,
- * Mute Activity) stay, so screen readers and anyone who can't swipe reach the same actions.
+ * The row has no Done button (artin 2026-10-23): Done is reached by the swipe above and the press-and-hold
+ * menu entry. The swipes are never the only way: the menu (Done, Unfollow, Mute Activity) stays, so screen
+ * readers and anyone who can't swipe reach the same actions.
  *
  * Gesture conflicts. The end direction is also the back direction, so the row arbitrates it explicitly:
  *
@@ -81,8 +82,12 @@ import kotlinx.coroutines.launch
  *   [RaftBackSwipeEdgeWidth] strip (`raftBackSwipeRegion(edgeWidth)`, the gesture arbiter the pager and
  *   image gallery use), so the host's pop starts from the leading edge and the row body keeps the drag.
  *   A row with no end action registers nothing and a drag toward the end is released, as before.
- * - Inside the row, the row claims a drag only once it is past the touch slop and horizontal-dominant,
- *   in a direction that has an action. Vertical drags stay with the list.
+ * - Inside the row, the row claims a drag only on clear horizontal intent ([activitySwipeDragDecision]):
+ *   past [activitySwipeClaimThresholdPx] (twice the touch slop, 16-24dp) AND |dx| > [ActivitySwipeDominanceRatio]
+ *   (2) x |dy|, in a direction that has an action, as with iOS table swipe actions. Any movement past the
+ *   touch slop that is not on track for that (vertical-dominant or diagonal) hands the gesture to the list
+ *   and locks the swipe out for the rest of that pointer stream ([ActivitySwipeDragPolicy]): a later
+ *   horizontal wobble in the same stroke never claims. Once claimed, the drag stays horizontal.
  *
  * No Back handler is registered (AGENTS.md Kuikly Back Handling Rule): an open row is not a cancelable
  * transient state. Every release either applies the action (and the row snaps back) or springs closed.
@@ -111,6 +116,20 @@ internal const val ActivitySwipeDoneUndoWindowMillis = 5_000L
 
 /** The least edge zone at either side of a row where no drag is claimed (see the header). */
 internal val ActivitySwipeMinEdgeInset = 24.dp
+
+/** A claim needs |dx| greater than this many times |dy|; with less, the drag is vertical-leaning and scrolls. */
+internal const val ActivitySwipeDominanceRatio = 2f
+
+/** Bounds of the claim distance: twice the touch slop, kept between these (Android 8dp slop -> 16dp). */
+internal val ActivitySwipeMinClaimDistance = 16.dp
+internal val ActivitySwipeMaxClaimDistance = 24.dp
+
+/**
+ * How far a drag must go horizontally before the row may claim it: [2 x the
+ * platform touch slop, clamped to [minPx]..[maxPx] so a large slop (iOS) does not make the swipe stiff.
+ */
+internal fun activitySwipeClaimThresholdPx(touchSlopPx: Float, minPx: Float, maxPx: Float): Float =
+    (touchSlopPx * 2f).coerceIn(minPx, maxPx)
 
 /** Which side of the row a claimed drag reveals. */
 internal enum class ActivitySwipeSide {
@@ -235,6 +254,16 @@ internal enum class ActivitySwipeDragDecision {
     Release,
 }
 
+/**
+ * The decision for a pointer stream that has moved ([dxPx], [dyPx]) since it went down:
+ *
+ * - Past the touch slop vertically while [dxPx] is not more than [ActivitySwipeDominanceRatio] x [dyPx]
+ *   (vertical-dominant or diagonal), or past the slop at all from an edge zone: [ActivitySwipeDragDecision.Release].
+ * - Horizontal past [claimThresholdPx] with |dx| > ratio x |dy|: claim, if that direction has an action.
+ * - Otherwise [ActivitySwipeDragDecision.Undecided].
+ *
+ * Stateless; [ActivitySwipeDragPolicy] adds the lock for the rest of the stream.
+ */
 internal fun activitySwipeDragDecision(
     dxPx: Float,
     dyPx: Float,
@@ -243,16 +272,47 @@ internal fun activitySwipeDragDecision(
     doneEnabled: Boolean = true,
     endEnabled: Boolean = false,
     startsInEdgeZone: Boolean = false,
+    claimThresholdPx: Float = touchSlopPx * 2f,
 ): ActivitySwipeDragDecision {
     val adx = abs(dxPx)
     val ady = abs(dyPx)
-    if (adx < touchSlopPx && ady < touchSlopPx) return ActivitySwipeDragDecision.Undecided
-    if (ady >= adx || startsInEdgeZone) return ActivitySwipeDragDecision.Release
+    if (startsInEdgeZone) {
+        return if (adx >= touchSlopPx || ady >= touchSlopPx) ActivitySwipeDragDecision.Release else ActivitySwipeDragDecision.Undecided
+    }
+    if (ady >= touchSlopPx && adx <= ActivitySwipeDominanceRatio * ady) return ActivitySwipeDragDecision.Release
+    if (adx < claimThresholdPx || adx <= ActivitySwipeDominanceRatio * ady) return ActivitySwipeDragDecision.Undecided
     val towardStart = if (isLtr) dxPx < 0f else dxPx > 0f
     return when {
         towardStart && doneEnabled -> ActivitySwipeDragDecision.ClaimDone
         !towardStart && endEnabled -> ActivitySwipeDragDecision.ClaimEnd
         else -> ActivitySwipeDragDecision.Release
+    }
+}
+
+/**
+ * One pointer stream's arbitration before a claim. The first [ActivitySwipeDragDecision.Release] locks the
+ * stream out: the list keeps the gesture and later horizontal movement never claims. (A claim is final too;
+ * the row then only moves horizontally.)
+ */
+internal class ActivitySwipeDragPolicy(
+    private val touchSlopPx: Float,
+    private val claimThresholdPx: Float,
+    private val isLtr: Boolean,
+    private val doneEnabled: Boolean,
+    private val endEnabled: Boolean,
+    private val startsInEdgeZone: Boolean,
+) {
+    var decision: ActivitySwipeDragDecision = ActivitySwipeDragDecision.Undecided
+        private set
+
+    /** The decision after the pointer moved to a total offset of ([dxPx], [dyPx]) from where it went down. */
+    fun onMove(dxPx: Float, dyPx: Float): ActivitySwipeDragDecision {
+        if (decision != ActivitySwipeDragDecision.Undecided) return decision
+        decision =
+            activitySwipeDragDecision(
+                dxPx, dyPx, touchSlopPx, isLtr, doneEnabled, endEnabled, startsInEdgeZone, claimThresholdPx,
+            )
+        return decision
     }
 }
 
@@ -454,6 +514,20 @@ internal fun ActivitySwipeActionsBox(
                     val slop = viewConfiguration.touchSlop
                     val startsInEdgeZone =
                         activitySwipeStartsInEdgeZone(down.position.x, size.width.toFloat(), startEdgePx, endEdgePx, isLtr)
+                    val policy =
+                        ActivitySwipeDragPolicy(
+                            touchSlopPx = slop,
+                            claimThresholdPx =
+                                activitySwipeClaimThresholdPx(
+                                    slop,
+                                    ActivitySwipeMinClaimDistance.toPx(),
+                                    ActivitySwipeMaxClaimDistance.toPx(),
+                                ),
+                            isLtr = isLtr,
+                            doneEnabled = doneEnabled,
+                            endEnabled = endEnabled,
+                            startsInEdgeZone = startsInEdgeZone,
+                        )
                     val tracker = VelocityTracker()
                     tracker.addPointerInputChange(down)
                     var side: ActivitySwipeSide? = null
@@ -464,7 +538,7 @@ internal fun ActivitySwipeActionsBox(
                         if (!change.pressed || change.isConsumed) return@awaitEachGesture
                         tracker.addPointerInputChange(change)
                         val total = change.position - down.position
-                        when (activitySwipeDragDecision(total.x, total.y, slop, isLtr, doneEnabled, endEnabled, startsInEdgeZone)) {
+                        when (policy.onMove(total.x, total.y)) {
                             ActivitySwipeDragDecision.Undecided -> Unit
                             ActivitySwipeDragDecision.Release -> return@awaitEachGesture
                             ActivitySwipeDragDecision.ClaimDone -> side = ActivitySwipeSide.Done

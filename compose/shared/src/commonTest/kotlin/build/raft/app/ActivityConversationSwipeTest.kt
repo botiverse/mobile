@@ -40,14 +40,14 @@ class ActivityConversationSwipeTest {
         )
 
     @Test
-    fun theRowsPersistentDoneIsAlsoInTheLongPressMenuForEveryRow() {
-        // Rule L: the swipe is never the only way; Done is on the row and in the menu for every kind.
+    fun doneIsAvailableBySwipeAndInTheLongPressMenuForEveryRow() {
+        // Rule L: the row has no Done button; the swipe is never the only way, so Done is in the menu too.
         val rows =
             InboxItemKind.entries.flatMap { kind ->
                 listOf(null, true, false).map { following -> row("k-$kind-$following").copy(kind = kind, isFollowing = following) }
             }
         rows.forEach { item ->
-            assertTrue(item.activityShowsDoneAction(), "row Done for ${item.key}")
+            assertTrue(item.activityShowsDoneAction(), "swipe Done for ${item.key}")
             assertTrue("done" in activityContextMenuActionIds(item), "menu Done for ${item.key}")
         }
     }
@@ -59,6 +59,9 @@ class ActivityConversationSwipeTest {
         val cases =
             listOf(
                 Case(-4f, 3f, true, end = true, ActivitySwipeDragDecision.Undecided),
+                // Under the claim distance (2 x slop = 20): still undecided, horizontal or not.
+                Case(-18f, 9f, true, end = true, ActivitySwipeDragDecision.Undecided),
+                Case(-19f, 0f, true, end = true, ActivitySwipeDragDecision.Undecided),
                 Case(-30f, 5f, true, end = false, ActivitySwipeDragDecision.ClaimDone),
                 // Toward the end: the row's end action when it has one, else left to the host's back swipe.
                 Case(30f, 5f, true, end = true, ActivitySwipeDragDecision.ClaimEnd),
@@ -66,6 +69,14 @@ class ActivityConversationSwipeTest {
                 // Vertical-dominant (and a tie) belongs to the list.
                 Case(-12f, 40f, true, end = true, ActivitySwipeDragDecision.Release),
                 Case(20f, 20f, true, end = true, ActivitySwipeDragDecision.Release),
+                // Diagonal and mostly vertical: past the slop vertically without 2x horizontal dominance.
+                Case(-40f, 25f, true, end = true, ActivitySwipeDragDecision.Release),
+                Case(-22f, 12f, true, end = true, ActivitySwipeDragDecision.Release),
+                Case(-14f, 10f, true, end = true, ActivitySwipeDragDecision.Release),
+                Case(-24f, 12f, true, end = true, ActivitySwipeDragDecision.Release), // exactly 2x is not more than 2x
+                // Clear horizontal intent claims, even with a little vertical drift.
+                Case(-30f, 14f, true, end = true, ActivitySwipeDragDecision.ClaimDone),
+                Case(-21f, 0f, true, end = true, ActivitySwipeDragDecision.ClaimDone),
                 // RTL mirrors: the row's start is on the right, the end (and back) is leftward.
                 Case(30f, 5f, false, end = true, ActivitySwipeDragDecision.ClaimDone),
                 Case(-30f, 5f, false, end = true, ActivitySwipeDragDecision.ClaimEnd),
@@ -80,6 +91,64 @@ class ActivityConversationSwipeTest {
         }
         // A row without Done (none today) would leave the start direction alone too.
         assertEquals(ActivitySwipeDragDecision.Release, activitySwipeDragDecision(-30f, 5f, slop, true, doneEnabled = false, endEnabled = true))
+    }
+
+    @Test
+    fun claimDistanceIsTwiceTheTouchSlopWithinSixteenToTwentyFourDp() {
+        // Android: 8dp slop -> 16dp; iOS-sized slop (18dp) is capped at 24dp; a tiny slop keeps the 16dp floor.
+        assertEquals(16f, activitySwipeClaimThresholdPx(8f, 16f, 24f))
+        assertEquals(24f, activitySwipeClaimThresholdPx(18f, 16f, 24f))
+        assertEquals(16f, activitySwipeClaimThresholdPx(4f, 16f, 24f))
+        assertEquals(2f, ActivitySwipeDominanceRatio)
+    }
+
+    private fun policy(isLtr: Boolean = true, edge: Boolean = false, end: Boolean = true) =
+        ActivitySwipeDragPolicy(
+            touchSlopPx = 10f,
+            claimThresholdPx = 20f,
+            isLtr = isLtr,
+            doneEnabled = true,
+            endEnabled = end,
+            startsInEdgeZone = edge,
+        )
+
+    @Test
+    fun aStreamThatTurnedVerticalIsLockedOutEvenIfItLaterGoesHorizontal() {
+        val p = policy()
+        assertEquals(ActivitySwipeDragDecision.Undecided, p.onMove(-2f, 6f))
+        // Scrolling: vertical-dominant past the slop hands the gesture to the list...
+        assertEquals(ActivitySwipeDragDecision.Release, p.onMove(-4f, 14f))
+        // ...and the rest of the stream stays with it, however horizontal the finger gets afterwards.
+        assertEquals(ActivitySwipeDragDecision.Release, p.onMove(-80f, 14f))
+        assertEquals(ActivitySwipeDragDecision.Release, p.onMove(-200f, 14f))
+    }
+
+    @Test
+    fun aClearHorizontalStreamClaimsAndStaysClaimedWhenItDriftsVertically() {
+        val p = policy()
+        assertEquals(ActivitySwipeDragDecision.Undecided, p.onMove(-12f, 1f))
+        assertEquals(ActivitySwipeDragDecision.ClaimDone, p.onMove(-24f, 3f))
+        // Once claimed, it is horizontal for good: no later release.
+        assertEquals(ActivitySwipeDragDecision.ClaimDone, p.onMove(-30f, 60f))
+    }
+
+    @Test
+    fun aDiagonalStreamIsReleasedAndNeverClaimedLater() {
+        val p = policy()
+        assertEquals(ActivitySwipeDragDecision.Release, p.onMove(-18f, 12f))
+        assertEquals(ActivitySwipeDragDecision.Release, p.onMove(-60f, 12f))
+    }
+
+    @Test
+    fun edgeZoneStreamsAreNeverClaimedAndMirrorInRtl() {
+        listOf(30f, -30f).forEach { dx ->
+            val p = policy(edge = true)
+            assertEquals(ActivitySwipeDragDecision.Release, p.onMove(dx, 0f))
+            assertEquals(ActivitySwipeDragDecision.Release, p.onMove(dx * 3, 0f))
+        }
+        val rtl = policy(isLtr = false)
+        assertEquals(ActivitySwipeDragDecision.ClaimDone, rtl.onMove(30f, 2f))
+        assertEquals(ActivitySwipeDragDecision.ClaimEnd, policy(isLtr = false).onMove(-30f, 2f))
     }
 
     @Test
