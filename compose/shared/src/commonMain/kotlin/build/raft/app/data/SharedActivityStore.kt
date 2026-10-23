@@ -260,7 +260,8 @@ class SharedActivityStore internal constructor(
 
     fun dispatch(intent: SharedActivityIntent) {
         when (intent) {
-            SharedActivityIntent.ClearSummary -> clearSummary()
+            // On the store scope: the shell dispatches from its UI thread, and the switch writes state.
+            is SharedActivityIntent.ServerSelected -> scope.launch { selectServer(intent) }
             SharedActivityIntent.LoadInitial -> load(refresh = true, intent = intent)
             SharedActivityIntent.Refresh -> load(refresh = true, pullRefresh = false, intent = intent)
             SharedActivityIntent.PullRefresh -> {
@@ -927,16 +928,46 @@ class SharedActivityStore internal constructor(
         load(refresh = true, intent = SharedActivityIntent.SetFilter(filter))
     }
 
-    private fun clearSummary() {
-        synchronized(realtimeOwnerLock) {
-            realtimeHighWater.clear()
-            _state.value =
-                SharedActivityState(
-                    selectedFilter = _state.value.selectedFilter,
-                    ownerServerId = _state.value.ownerServerId,
-                    ownerUserId = _state.value.ownerUserId
+    /**
+     * The shell switched to [SharedActivityIntent.ServerSelected.serverId] (Hands 20db9f61).
+     *
+     * One store serves the shell across server switches and the panel's mount-time LoadInitial
+     * does not run again, so the switch owns the feed: the rows cached for that server (persist
+     * key = user + server + filter) show at once, or the loading state when there are none, and a
+     * load always revalidates them.
+     *
+     * Repeated intents for the server the store already owns are no-ops; the load started here
+     * is the single flight for the switch and a later Refresh joins it.
+     */
+    private fun selectServer(intent: SharedActivityIntent.ServerSelected) {
+        val serverId = intent.serverId.trim().takeIf { it.isNotBlank() } ?: return
+        val switched =
+            synchronized(realtimeOwnerLock) {
+                val current = _state.value
+                if (current.ownerServerId == serverId) return@synchronized false
+                // Never bound to a server and nothing loading: the first LoadInitial binds the store.
+                if (current.ownerServerId == null && loadJob?.isActive != true) return@synchronized false
+                current.ownerServerId?.let(replyThreadFreshnessLedger::invalidateServer)
+                realtimeHighWater.clear()
+                presentationStore.clear()
+                // Web registerServerReset (slock 1bb70cbeb, inboxStore.ts:1854-1898) starts the
+                // new server on All; the persist slice hydrates that server's cached All rows.
+                reduceState(
+                    intent,
+                    SharedActivityState(
+                        ownerServerId = serverId,
+                        ownerUserId = current.ownerUserId,
+                        loading = true
+                    )
                 )
-        }
+                true
+            }
+        if (!switched) return
+        diagnosticsLogger(
+            "store_load domain=activity phase=server_selected serverId=$serverId " +
+                "cached=${_state.value.snapshot != null}"
+        )
+        load(refresh = true, intent = SharedActivityIntent.LoadInitial)
     }
 
     private suspend fun applyRealtimeEvent(intent: SharedActivityIntent.ApplyRealtimeEvent) {
@@ -3207,7 +3238,8 @@ private fun List<InboxItem>.withRetainedReadRows(current: SharedActivityState): 
 }
 
 sealed interface SharedActivityIntent {
-    data object ClearSummary : SharedActivityIntent
+    /** The shell switched server: show [serverId]'s cached feed and revalidate it. */
+    data class ServerSelected(val serverId: String) : SharedActivityIntent
     data object LoadInitial : SharedActivityIntent
     data object Refresh : SharedActivityIntent
     data object PullRefresh : SharedActivityIntent
@@ -3261,7 +3293,7 @@ sealed interface SharedActivityIntent {
 
 private fun SharedActivityIntent.activitySummarySource(): String =
     when (this) {
-        SharedActivityIntent.ClearSummary -> "clear_summary"
+        is SharedActivityIntent.ServerSelected -> "server_selected"
         SharedActivityIntent.LoadInitial -> "load_initial"
         SharedActivityIntent.Refresh -> "refresh"
         SharedActivityIntent.PullRefresh -> "pull_refresh"
@@ -3298,7 +3330,7 @@ private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
         is SharedActivityIntent.ApplyReadReceiptFailure,
         is SharedActivityIntent.ApplyRealtimeEvent,
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> true
-        SharedActivityIntent.ClearSummary,
+        is SharedActivityIntent.ServerSelected,
         SharedActivityIntent.LoadInitial,
         SharedActivityIntent.Refresh,
         SharedActivityIntent.PullRefresh,

@@ -42,7 +42,8 @@ private object SharedActivityPersistSpec :
     ): Boolean =
         reduced.snapshot == null &&
             (
-                intent is SharedActivityIntent.LoadInitial ||
+                intent is SharedActivityIntent.ServerSelected ||
+                    intent is SharedActivityIntent.LoadInitial ||
                     intent is SharedActivityIntent.Refresh ||
                     intent is SharedActivityIntent.PullRefresh ||
                     intent is SharedActivityIntent.SetFilter
@@ -57,6 +58,8 @@ private object SharedActivityPersistSpec :
     ): SharedActivityState {
         if (reduced.snapshot != null) return reduced
         if (snapshot.selectedFilterName != reduced.selectedFilter.name) return reduced
+        // Only rows of the server the state now belongs to; the key already names it.
+        if (reduced.ownerServerId != null && snapshot.snapshot.server.id.value != reduced.ownerServerId) return reduced
         val persistedFilter =
             InboxFilter.entries.firstOrNull { it.name == snapshot.selectedFilterName }
                 ?: InboxFilter.All

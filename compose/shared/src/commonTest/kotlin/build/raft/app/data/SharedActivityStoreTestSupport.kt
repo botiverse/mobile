@@ -420,3 +420,17 @@ internal fun sampleSession(
         selectedServerId = serverId,
         servers = listOf(StoredAuthServer(id = serverId, name = "Slock"))
     )
+
+internal class InMemoryPersistStorage : MviPersistStorage {
+    private val values = mutableMapOf<String, String>()
+
+    override fun read(key: String): String? = values[key]
+
+    override fun write(key: String, value: String) {
+        values[key] = value
+    }
+
+    override fun remove(key: String) {
+        values.remove(key)
+    }
+}
