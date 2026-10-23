@@ -357,11 +357,28 @@ class KeyValueChatLayoutPreferenceStore(
         store.putBoolean(KEY_DESKTOP_MODE_ON_LARGE_SCREEN, enabled)
     }
 
-    /** task #37: the saved list column width (dp), read through [raftListPanePreferredWidthDp]. */
-    fun readAdaptiveListPaneWidthSync(): String? = store.getString(KEY_ADAPTIVE_LIST_PANE_WIDTH_DP)
+    /**
+     * task #37 / artin task #20: the saved width (dp) of one list column kind, read through
+     * [raftListPanePreferredWidthDp]. The first read moves the pre-#20 single width into every
+     * kind's own key (clamped to that kind's range) and then drops the old key, so a width someone
+     * already dragged carries over.
+     */
+    fun readAdaptiveListPaneWidthSync(kind: RaftListPaneKind): String? {
+        migrateAdaptiveListPaneWidths()
+        return store.getString(kind.storageKey)
+    }
 
-    fun saveAdaptiveListPaneWidth(widthDp: String) {
-        store.putString(KEY_ADAPTIVE_LIST_PANE_WIDTH_DP, widthDp)
+    fun saveAdaptiveListPaneWidth(kind: RaftListPaneKind, widthDp: String) {
+        store.putString(kind.storageKey, widthDp)
+    }
+
+    private fun migrateAdaptiveListPaneWidths() {
+        val legacy = store.getString(KEY_ADAPTIVE_LIST_PANE_WIDTH_DP) ?: return
+        RaftListPaneKind.entries.forEach { kind ->
+            raftListPaneMigratedWidth(kind, store.getString(kind.storageKey), legacy)
+                ?.let { store.putString(kind.storageKey, it) }
+        }
+        store.putString(KEY_ADAPTIVE_LIST_PANE_WIDTH_DP, null)
     }
 
     override fun readCompactConsecutiveMessagesSync(): Boolean =
@@ -528,7 +545,7 @@ class KeyValueChatLayoutPreferenceStore(
     private companion object {
         const val KEY_MY_MESSAGE_ALIGNMENT = "chatLayout:my_message_alignment"
         const val KEY_DESKTOP_MODE_ON_LARGE_SCREEN = "mobile:desktop_mode_on_large_screen"
-        const val KEY_ADAPTIVE_LIST_PANE_WIDTH_DP = "mobile:adaptive_list_pane_width_dp"
+        const val KEY_ADAPTIVE_LIST_PANE_WIDTH_DP = RAFT_LIST_PANE_LEGACY_STORAGE_KEY
         const val KEY_COMPACT_CONSECUTIVE_MESSAGES = "chatLayout:compact_consecutive_messages"
         const val KEY_LONG_MESSAGE_COLLAPSE_ENABLED = "chatLayout:long_message_collapse_enabled"
         const val KEY_SINGLE_TAP_OPENS_THREAD_ENABLED = "chatLayout:single_tap_opens_thread_enabled"

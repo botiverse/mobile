@@ -41,11 +41,7 @@ import build.raft.app.data.sideThreadColumnAvailable
 import build.raft.app.data.visibleSideThread
 import build.raft.app.data.AdaptiveSideThread
 import build.raft.app.data.RAFT_SIDE_THREAD_COLUMN_DP
-import build.raft.app.data.RAFT_LIST_PANE_DIVIDER_DP
-import build.raft.app.data.raftListPaneDraggedWidthDp
-import build.raft.app.data.raftListPanePreferredWidthDp
-import build.raft.app.data.raftListPaneStoredWidth
-import build.raft.app.data.raftListPaneWidthDp
+import build.raft.app.data.RaftListPaneKind
 import build.raft.app.data.RAFT_SIDE_THREAD_DIVIDER_DP
 import build.raft.app.data.closeDetailCompletely
 import build.raft.app.data.withOpenedDetail
@@ -3640,9 +3636,7 @@ private fun RaftAppShellReadyContent(
     // dragged. A drag that squeezes the detail below the column threshold folds the side thread
     // only when the finger lifts, so dragging across the threshold and back loses nothing.
     val listPanePreferenceStore = remember { KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore()) }
-    var adaptiveListPanePreferredDp by remember {
-        mutableStateOf(raftListPanePreferredWidthDp(listPanePreferenceStore.readAdaptiveListPaneWidthSync()))
-    }
+    val adaptiveListPaneWidths = rememberRaftListPaneWidths(listPanePreferenceStore)
     var adaptiveListPaneResizing by remember { mutableStateOf(false) }
     // A drag only defers the fold while it can still be in progress: desktop mode on, dual pane.
     // (The handle also reports the end when it goes inactive or leaves composition.)
@@ -7244,88 +7238,30 @@ private fun RaftAppShellReadyContent(
                             active: Boolean,
                             listPane: @Composable (Boolean) -> Unit,
                             detailAccepted: Boolean,
-                        ) -> Unit = { enabled, active, listPane, detailAccepted ->
+                            listKind: RaftListPaneKind,
+                            fillListWhenNothingPicked: Boolean,
+                        ) -> Unit = { enabled, active, listPane, detailAccepted, listKind, fillListWhenNothingPicked ->
                         val workspace = adaptiveWorkspaceState
                         val selection = workspace?.selection?.takeIf { detailAccepted }
                         val detailPane: @Composable (Modifier) -> Unit = { modifier ->
                             adaptiveDetailPane(modifier, active, detailAccepted, true)
                         }
                         if (enabled) {
-                            val dualPane = workspace?.pane?.layout == RaftAdaptivePaneLayout.DualPane
-                            // task #37: the list width is the user's, clamped to this row so the
-                            // detail keeps its minimum; the divider has a wider drag handle on top.
-                            val density = LocalDensity.current
-                            var rowWidthDp by remember { mutableStateOf<Float?>(null) }
-                            val listWidthDp = raftListPaneWidthDp(adaptiveListPanePreferredDp, rowWidthDp)
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .fillMaxSize()
-                                        .onSizeChanged { size ->
-                                            val widthDp = with(density) { size.width.toDp().value }
-                                            if (rowWidthDp != widthDp) rowWidthDp = widthDp
-                                        }
-                            ) {
-                            Row(modifier = Modifier.fillMaxSize()) {
-                                Box(
-                                    modifier =
-                                        Modifier
-                                            .width(if (dualPane) listWidthDp.dp else 0.dp)
-                                            .fillMaxHeight(),
-                                ) {
-                                    if (dualPane) listPane(active)
-                                }
-                                Spacer(
-                                    modifier =
-                                        Modifier
-                                            .width(if (dualPane) RAFT_LIST_PANE_DIVIDER_DP.dp else 0.dp)
-                                            .fillMaxHeight()
-                                            .background(RaftColor.BorderSeam), // raft-ui: one line-seam between regions, as the rail's
-                                )
-                                Box(
-                                    modifier =
-                                        Modifier
-                                            .weight(1f)
-                                            .fillMaxHeight()
-                                ) {
-                                    if (selection != null || dualPane) {
-                                        detailPane(
-                                            Modifier
-                                                .fillMaxSize()
-                                                .padding(
-                                                    bottom =
-                                                        shellScope.embeddedChildBottomInset(
-                                                            showAppShellBottomTabs
-                                                        )
-                                                )
-                                        )
-                                    } else {
-                                        listPane(active)
-                                    }
-                                }
-                            }
-                            if (dualPane) {
-                                RaftListPaneResizeHandle(
-                                    active = active,
-                                    listWidthDp = listWidthDp,
-                                    onDragStart = {
-                                        adaptiveListPaneResizing = true
-                                        bridge.log("adaptive_list_pane_resize start width=$listWidthDp row=$rowWidthDp")
-                                    },
-                                    onDrag = { startWidthDp, deltaDp ->
-                                        adaptiveListPanePreferredDp =
-                                            raftListPaneDraggedWidthDp(startWidthDp, deltaDp, rowWidthDp)
-                                    },
-                                    onDragEnd = { reason ->
-                                        adaptiveListPaneResizing = false
-                                        listPanePreferenceStore.saveAdaptiveListPaneWidth(
-                                            raftListPaneStoredWidth(adaptiveListPanePreferredDp)
-                                        )
-                                        bridge.log("adaptive_list_pane_resize end=$reason width=$adaptiveListPanePreferredDp row=$rowWidthDp")
-                                    },
-                                )
-                            }
-                            }
+                            // task #37 / artin task #20: per-kind list width and the split live in
+                            // RaftAdaptiveListDetailSplit.kt.
+                            RaftAdaptiveListDetailSplit(
+                                kind = listKind,
+                                widths = adaptiveListPaneWidths,
+                                dualPane = workspace?.pane?.layout == RaftAdaptivePaneLayout.DualPane,
+                                active = active,
+                                hasSelection = selection != null,
+                                detailBottomInset = shellScope.embeddedChildBottomInset(showAppShellBottomTabs),
+                                listPane = listPane,
+                                detailPane = detailPane,
+                                fillListWhenNothingPicked = fillListWhenNothingPicked,
+                                onResizingChange = { adaptiveListPaneResizing = it },
+                                log = { bridge.log(it) },
+                            )
                         } else {
                             listPane(active)
                         }
@@ -7536,6 +7472,8 @@ private fun RaftAppShellReadyContent(
                             active,
                             homeListPane,
                             true,
+                            RaftListPaneKind.Sidebar,
+                            false,
                         )
                     }
                     val homeTabContent: @Composable (active: Boolean) -> Unit = { active ->
@@ -7590,6 +7528,9 @@ private fun RaftAppShellReadyContent(
                             active,
                             activityListPane,
                             true,
+                            // Web Activity is two columns at every desktop width (slock #10842).
+                            RaftListPaneKind.List,
+                            false,
                         )
                     }
                     // Members and Settings are server pages pushed from the server panel on the phone
@@ -7905,6 +7846,9 @@ private fun RaftAppShellReadyContent(
                             desktopModeOnLargeScreen,
                             pageVisible,
                             searchListPane,
+                            true,
+                            // Web Search fills the width until a result is picked (searchMasterDetail).
+                            RaftListPaneKind.List,
                             true,
                         )
                     } else {
