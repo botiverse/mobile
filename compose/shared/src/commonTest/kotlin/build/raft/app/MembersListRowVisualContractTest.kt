@@ -1,36 +1,24 @@
 package build.raft.app
 
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class MembersListRowVisualContractTest {
     @Test
-    fun membersListRowMatchesReactMobileMasterDensityAndTypography() {
-        // Web pads the scroll container (`px-2`) AND each row/section (`px-2`): 16px total edge
-        // inset. Both halves are asserted so neither level can silently drop again (task #140).
+    fun membersListMetricsMatchTheWebMembersPage() {
+        // Web pads the scroll container (`px-2`); the rows and headers are RaftSidebarItem /
+        // RaftSidebarSectionHeader, which carry the row/section `px-2` (task #140).
         assertEquals(8.dp, MembersListContainerInset)
-        assertEquals(8.dp, MembersListHorizontalInset)
-        assertEquals(18.dp, MembersListAvatarSize)
-        assertEquals(34.dp, MembersListRowMinHeight)
-        assertEquals(4.dp, MembersListRowSpacing)
-        assertEquals(6.dp, MembersListContentGap)
-        assertEquals(0.7f, MembersListNameMaxWidthFraction)
-        assertEquals(RaftType.Button.fontFamily, MembersListNameTextStyle.fontFamily)
-        assertEquals(RaftType.Button.fontWeight, MembersListNameTextStyle.fontWeight)
-        assertEquals(14.sp, MembersListNameTextStyle.fontSize)
-        assertEquals(20.sp, MembersListNameTextStyle.lineHeight)
-        assertEquals(12.sp, MembersListDescriptionTextStyle.fontSize)
-        assertEquals(16.sp, MembersListDescriptionTextStyle.lineHeight)
-        assertEquals(24.dp, MembersListSectionHeaderMinHeight)
-        assertEquals(24.dp, MembersListSectionAddActionSize)
-        assertEquals(14.dp, MembersListSectionAddActionIconSize)
-        assertEquals(12.dp, MembersListMachineLabelInset)
-        assertEquals(9.dp, MembersListMachineLabelIconSize)
-        assertEquals(10.sp, MembersListMachineLabelTextStyle.fontSize)
-        assertEquals(14.sp, MembersListMachineLabelTextStyle.lineHeight)
-        assertEquals("jiachens-macbook-pro.local", membersListMachineLabel("Jiachens-MacBook-Pro.local"))
+        // raft-ui Avatar `2xs` in the row's 19dp leading slot.
+        assertEquals(19.dp, MembersListAvatarSize)
+        // Machine group toggle: `mt-1.5 mb-0.5 px-2 gap-1.5`, 12px icons.
+        assertEquals(8.dp, MembersListMachineLabelInset)
+        assertEquals(6.dp, MembersListMachineLabelTop)
+        assertEquals(2.dp, MembersListMachineLabelBottom)
+        assertEquals(6.dp, MembersListMachineLabelGap)
+        assertEquals(12.dp, MembersListMachineLabelIconSize)
+        assertEquals(190.dp, MembersCreateAgentMenuMinWidth)
     }
 
     @Test

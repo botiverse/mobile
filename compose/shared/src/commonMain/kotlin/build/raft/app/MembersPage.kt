@@ -19,7 +19,6 @@ import build.raft.designsystem.components.RaftTabStrip
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.app.base.Utils
 import build.raft.app.base.BridgeModule
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalTextField
 import build.raft.app.components.RaftAnchorPlacement
 import build.raft.app.components.RaftBrutalInputField
@@ -32,6 +31,8 @@ import build.raft.app.components.RaftCheckMarkerTone
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.RaftAppSectionEyebrow
+import build.raft.app.components.RaftBrutalActionButton
+import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.components.RaftUiSelectionPopover
@@ -205,6 +206,8 @@ import androidx.compose.ui.zIndex
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.collapse
+import androidx.compose.ui.semantics.expand
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.onSizeChanged
@@ -213,6 +216,11 @@ import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftAvatarType
 import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftDropdownMenu
+import build.raft.designsystem.components.RaftMenuItem
+import build.raft.designsystem.components.RaftSidebarItem
+import build.raft.designsystem.components.RaftSidebarSectionAction
+import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.designsystem.components.RaftPanelNotice
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -371,32 +379,20 @@ internal fun membersListContentMaxWidth(
     val cap = slotWidth - MembersListContentMinSideMargin * 2
     return if (cap < MembersListContentMaxWidth) cap else MembersListContentMaxWidth
 }
-internal val MembersListHorizontalInset = 8.dp
-internal val MembersListAvatarSize = 18.dp
-internal val MembersListRowMinHeight = 34.dp
-internal val MembersListRowSpacing = 4.dp
-internal val MembersListContentGap = 6.dp
-internal const val MembersListNameMaxWidthFraction = 0.7f
-internal val MembersListNameTextStyle: TextStyle
-    // Getter: the UI-text locale and rendering defaults can change at runtime.
-    get() =
-        RaftType.Body.withRaftFontWeight(FontWeight.Medium).copy(fontSize = 14.sp, lineHeight = 20.sp)
-internal val MembersListDescriptionTextStyle: TextStyle
-    // Getter: the UI-text locale and rendering defaults can change at runtime.
-    get() =
-        RaftType.Body.withRaftFontWeight(FontWeight.Normal).copy(fontSize = 12.sp, lineHeight = 16.sp)
-internal val MembersListSectionHeaderMinHeight = 24.dp
-// React Sidebar's Agents/Humans section `+` is a compact 24px root-list action.
-// This is intentionally separate from the 28dp member-detail message/menu actions below.
-internal val MembersListSectionAddActionSize = 24.dp
-internal val MembersListSectionAddActionIconSize = 14.dp
-internal val MembersListMachineLabelInset = 12.dp
-internal val MembersListMachineLabelIconSize = 9.dp
-internal val MembersListMachineLabelTextStyle: TextStyle
-    // Getter: the UI-text locale and rendering defaults can change at runtime.
-    get() =
-        RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 10.sp, lineHeight = 14.sp)
-private val MemberStatusDotSize = 10.dp
+// The rows and section headers are the design system's RaftSidebarItem /
+// RaftSidebarSectionHeader (raft-ui SidebarItem at its phone size: 44dp, `text-body` 16/24
+// at 600), as the web members page draws them; they carry the row/section `px-2` themselves.
+/** The avatar in a row's leading slot: raft-ui Avatar `2xs` (19dp, `AvatarSlot` `sidebar-list`). */
+internal val MembersListAvatarSize = 19.dp
+// Web members machine-group toggle (Sidebar.tsx): `mt-1.5 mb-0.5 px-2`, `gap-1.5`, 12px
+// ChevronRight and Monitor, `font-mono text-mono-meta` (12/16) in `foreground-hint`.
+internal val MembersListMachineLabelInset = 8.dp
+internal val MembersListMachineLabelTop = 6.dp
+internal val MembersListMachineLabelBottom = 2.dp
+internal val MembersListMachineLabelGap = 6.dp
+internal val MembersListMachineLabelIconSize = 12.dp
+/** Web create-agent menu `min-w-[190px]`. */
+internal val MembersCreateAgentMenuMinWidth = 190.dp
 private val MembersActionSize = 28.dp
 // Web AgentActivityLog row: `gap-2` (8) + StatusDot sm (`size-2` = 8) + `gap-2` (8).
 
@@ -5469,7 +5465,6 @@ internal fun MembersListContent(
         resolveAgentGroupCollapsed(groupKey, agentGroupCollapseOverrides, membersCurrentUserId, agentGroupCollapseStore)
     var activeCreateAgentMode by remember(payload.instanceId) { mutableStateOf<MembersCreateAgentMode?>(null) }
     var createAgentMenuOpen by remember(payload.instanceId) { mutableStateOf(false) }
-    var createAgentMenuAnchor by remember(payload.instanceId) { mutableStateOf<RaftPopoverAnchor?>(null) }
     var createAgentSubmitting by remember { mutableStateOf(false) }
     var createAgentError by remember { mutableStateOf<String?>(null) }
     // Runtime form v2: fields a rejected create pointed at (`/formValues/<field>`).
@@ -5553,43 +5548,42 @@ internal fun MembersListContent(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.TopCenter,
         ) {
+            // Inside the refresh layer: the design-system theme for the sidebar rows and headers.
+            RaftDesignSystemTheme {
             LazyColumn(
                 state = listState,
                 // React parity: the web members view pads the scroll container itself (Sidebar
-                // sidebarScrollClassName `px-2`) on top of the per-row/section `px-2`, totalling 16px.
-                // Rows/headers here carry MembersListHorizontalInset (8dp), so the container level was
-                // the missing half — without it the list sits 8dp from the screen edge (task #140).
+                // sidebarScrollClassName `px-2 pt-1`); the rows and headers (RaftSidebarItem /
+                // RaftSidebarSectionHeader) carry their own `px-2`, 16dp in all (task #140).
                 modifier = Modifier
                     .widthIn(max = membersListContentMaxWidth(lazyMaxWidth, paneLayout))
                     .fillMaxSize()
                     .padding(horizontal = MembersListContainerInset),
-                verticalArrangement = Arrangement.spacedBy(MembersListRowSpacing),
             ) {
-                item { Spacer(Modifier.height(RaftAppSpacing.Md)) }
+                item { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
                 item {
-                    RaftCollapsibleSectionHeader(
-                        label = displayAgentsLabel,
+                    RaftSidebarSectionHeader(
+                        title = displayAgentsLabel,
                         count = agents.size,
                         expanded = agentsExpanded,
                         onExpandedChange = { agentsExpanded = it },
-                        modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
-                        minHeight = MembersListSectionHeaderMinHeight,
-                        trailingContent = {
+                        actions =
                             if (canCreateAgents) {
-                                RaftSectionHeaderIconAction(
-                                    icon = RaftLucideIconName.Plus,
-                                    contentDescription = stringResource(MR.strings.agent_create_action_create),
-                                    size = MembersListSectionAddActionSize,
-                                    iconSize = MembersListSectionAddActionIconSize,
-                                    onClick2 = { anchor ->
-                                        if (createAgentSubmit != null) {
-                                            createAgentMenuAnchor = anchor
-                                            createAgentMenuOpen = true
+                                {
+                                    MembersCreateAgentAction(
+                                        menuOpen = createAgentMenuOpen && createAgentSubmit != null,
+                                        onOpenMenu = { if (createAgentSubmit != null) createAgentMenuOpen = true },
+                                        onDismissMenu = { createAgentMenuOpen = false },
+                                        onSelect = { mode ->
+                                            createAgentMenuOpen = false
+                                            activeCreateAgentMode = mode
+                                            if (mode.requiresComputerSelection()) createAgentLoadMachines()
                                         }
-                                    }
-                                )
+                                    )
+                                }
+                            } else {
+                                null
                             }
-                        }
                     )
                 }
                 if (agentsExpanded) {
@@ -5597,68 +5591,34 @@ internal fun MembersListContent(
                         createAgentMachines.firstOrNull { it.id == machineId }?.name
                     }.forEach { group ->
                         item("group_${group.key}") {
-                            val groupExpanded = !isAgentGroupCollapsed(group.key)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = MembersListMachineLabelInset)
-                                    .padding(top = RaftAppSpacing.Xs)
-                                    .clickable {
-                                        // Slot stores *collapsed*; toggling writes !collapsed
-                                        // (writing !groupExpanded stored the old value and made the
-                                        // row a no-op — task #409 regression).
-                                        val collapseNow =
-                                            resolveAgentGroupCollapseToggle(
-                                                isAgentGroupCollapsed(group.key)
-                                            )
-                                        agentGroupCollapseOverrides =
-                                            agentGroupCollapseOverrides + (group.key to collapseNow)
-                                        agentGroupCollapseStore?.setCollapsed(
-                                            membersCurrentUserId,
-                                            group.key,
-                                            collapseNow
-                                        )
-                                    },
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
-                            ) {
-                                RaftLucideIcon(
-                                    RaftLucideIconName.ChevronRight,
-                                    modifier = Modifier.size(MembersListMachineLabelIconSize),
-                                    color = RaftColor.TextMutedGrayArgb,
-                                    rotationDegrees = if (groupExpanded) 90f else 0f,
-                                    rotationAnimationDurationSeconds =
-                                        RaftCollapsibleSectionTokens.AnimationDurationSeconds
-                                )
-                                RaftLucideIcon(
-                                    RaftLucideIconName.Monitor,
-                                    modifier = Modifier.size(MembersListMachineLabelIconSize),
-                                    color = RaftColor.TextMutedGrayArgb
-                                )
-                                Text(
-                                    text = membersListMachineLabel(group.label),
-                                    style = MembersListMachineLabelTextStyle,
-                                    color = RaftColor.TextMutedGray,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f, fill = false)
-                                )
-                                Text(
-                                    text = group.members.size.toString(),
-                                    style = MembersListMachineLabelTextStyle,
-                                    color = RaftColor.TextMutedGray
-                                )
-                            }
+                            MembersListMachineGroupLabel(
+                                label = group.label,
+                                count = group.members.size,
+                                expanded = !isAgentGroupCollapsed(group.key),
+                                onToggle = {
+                                    // Slot stores *collapsed*; toggling writes !collapsed
+                                    // (writing !groupExpanded stored the old value and made the
+                                    // row a no-op — task #409 regression).
+                                    val collapseNow =
+                                        resolveAgentGroupCollapseToggle(isAgentGroupCollapsed(group.key))
+                                    agentGroupCollapseOverrides =
+                                        agentGroupCollapseOverrides + (group.key to collapseNow)
+                                    agentGroupCollapseStore?.setCollapsed(
+                                        membersCurrentUserId,
+                                        group.key,
+                                        collapseNow
+                                    )
+                                }
+                            )
                         }
                         if (!isAgentGroupCollapsed(group.key)) {
                             items(group.members.size, key = { "agent_${group.members[it].id.value}" }) { index ->
                                 val member = group.members[index]
                                 MembersListRow(
                                     member = member,
-                                selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
+                                    selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
                                     agentStatusResolver = agentStatusResolver,
                                     memberAvatarResolver = memberAvatarResolver,
-                                    modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
                                     onClick = { onOpenMember(member) }
                                 )
                             }
@@ -5667,25 +5627,23 @@ internal fun MembersListContent(
                 }
                 if (payload.showHumanDirectory) {
                     item {
-                        Spacer(Modifier.height(RaftAppSpacing.Sm))
-                        RaftCollapsibleSectionHeader(
-                            label = displayHumansLabel,
+                        RaftSidebarSectionHeader(
+                            title = displayHumansLabel,
                             count = humans.size,
                             expanded = humansExpanded,
                             onExpandedChange = { humansExpanded = it },
-                            modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
-                            minHeight = MembersListSectionHeaderMinHeight,
-                            trailingContent = {
+                            actions =
                                 if (canInviteHumans) {
-                                    RaftSectionHeaderIconAction(
-                                        icon = RaftLucideIconName.Plus,
-                                        contentDescription = stringResource(MR.strings.member_action_invite_human),
-                                        size = MembersListSectionAddActionSize,
-                                        iconSize = MembersListSectionAddActionIconSize,
-                                        onClick = { activeInviteHuman = true }
-                                    )
+                                    {
+                                        RaftSidebarSectionAction(
+                                            glyph = RaftGlyph.Plus,
+                                            tooltip = stringResource(MR.strings.member_action_invite_human),
+                                            onClick = { activeInviteHuman = true }
+                                        )
+                                    }
+                                } else {
+                                    null
                                 }
-                            }
                         )
                     }
                     if (humansExpanded) {
@@ -5694,9 +5652,9 @@ internal fun MembersListContent(
                             MembersListRow(
                                 member = member,
                                 selected = member.matchesMemberSelection(selectedIdentity, selectedLocalServerId),
+                                isSelf = membersHumanIsSelf(member, membersCurrentUserId),
                                 agentStatusResolver = agentStatusResolver,
                                 memberAvatarResolver = memberAvatarResolver,
-                                modifier = Modifier.padding(horizontal = MembersListHorizontalInset),
                                 onClick = { onOpenMember(member) }
                             )
                         }
@@ -5704,39 +5662,9 @@ internal fun MembersListContent(
                 }
                 item { Spacer(Modifier.height(bottomContentPadding)) }
             }
-        }
-        }
-    }
-    if (createAgentMenuOpen && createAgentMenuAnchor != null && createAgentSubmit != null) {
-        RaftUiControlledMenu(
-            expanded = true,
-            anchor = createAgentMenuAnchor!!,
-            width = 220.dp,
-            items = listOf(
-                RaftUiMenuItem(
-                    id = MembersCreateAgentMode.Managed.name,
-                    label = stringResource(MR.strings.agent_create_action_create),
-                    icon = RaftLucideIconName.Bot
-                ),
-                RaftUiMenuItem(
-                    id = MembersCreateAgentMode.External.name,
-                    label = stringResource(MR.strings.agent_create_action_create_external),
-                    icon = RaftLucideIconName.Link2
-                )
-            ),
-            onSelect = { id ->
-                createAgentMenuOpen = false
-                createAgentMenuAnchor = null
-                MembersCreateAgentMode.entries.firstOrNull { it.name == id }?.let { mode ->
-                    activeCreateAgentMode = mode
-                    if (mode.requiresComputerSelection()) createAgentLoadMachines()
-                }
-            },
-            onDismiss = {
-                createAgentMenuOpen = false
-                createAgentMenuAnchor = null
             }
-        )
+        }
+        }
     }
     val submit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = createAgentSubmit
     val activeCreateAgent = activeCreateAgentMode != null
@@ -7383,36 +7311,6 @@ private fun MembersRaftAvatar(
         }
     )
 }
-
-@Composable
-private fun MembersDetailActions(
-    member: MemberProfile,
-    deleted: Boolean,
-    onOpenDirectMessage: () -> Unit,
-    onCopyMemberId: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
-    ) {
-        MembersDetailActionButton(
-            label = stringResource(MR.strings.member_label_message),
-            iconName = RaftLucideIconName.MessageSquare,
-            enabled = member.kind != MemberKind.System && !deleted,
-            onClick = onOpenDirectMessage,
-            modifier = Modifier.weight(1f)
-        )
-        MembersDetailActionButton(
-            label = stringResource(MR.strings.member_action_copy_id),
-            iconName = RaftLucideIconName.Copy,
-            enabled = true,
-            onClick = onCopyMemberId,
-            modifier = Modifier.weight(1f)
-        )
-    }
-}
-
 
 /**
  * task #515 — web `AgentArchiveDialog` gate `hasComputerWorkspace`
@@ -14376,26 +14274,14 @@ private fun PermissionsGroupBox(
 
 @Composable
 private fun MemberKindBadge(kind: MemberKind) {
-    // raft-ui Badge appearance="outline": the `Agent` / `Human` tag beside the name (web agent page hero).
-    RaftBadge(text = kind.name, appearance = RaftBadgeAppearance.Outline)
-}
-
-@Composable
-private fun MembersDetailActionButton(
-    label: String,
-    iconName: RaftLucideIconName,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    RaftBrutalActionButton(
-        label = label,
-        leadingIcon = iconName,
-        onClick = onClick,
-        modifier = modifier,
-        enabled = enabled,
-        backgroundColor = RaftColor.AccentPink
-    )
+    // raft-ui Badge appearance="outline": the `Agent` / `Human` tag beside the name (web agent page
+    // hero, `sidebar.findConversationAgentTag`), in the UI language rather than the enum name.
+    val label =
+        when (kind) {
+            MemberKind.Human -> stringResource(MR.strings.composer_mention_actor_human)
+            MemberKind.Agent, MemberKind.System, MemberKind.External -> stringResource(MR.strings.member_label_agent)
+        }
+    RaftBadge(text = label, appearance = RaftBadgeAppearance.Outline)
 }
 
 @Composable
@@ -14532,76 +14418,178 @@ internal fun MembersPageHeader(
     )
 }
 
-internal fun membersListMachineLabel(label: String): String = label.lowercase()
+/**
+ * The agents section's "+" (web `renderAgentActionMenu`): a [RaftSidebarSectionAction] that
+ * opens raft-ui's DropdownMenu under it (`min-w-[190px]`) with Create Agent and Create
+ * External Agent.
+ */
+@Composable
+private fun MembersCreateAgentAction(
+    menuOpen: Boolean,
+    onOpenMenu: () -> Unit,
+    onDismissMenu: () -> Unit,
+    onSelect: (MembersCreateAgentMode) -> Unit
+) {
+    Box {
+        RaftSidebarSectionAction(
+            glyph = RaftGlyph.Plus,
+            tooltip = stringResource(MR.strings.agent_create_action_create),
+            onClick = onOpenMenu
+        )
+        RaftDropdownMenu(
+            expanded = menuOpen,
+            onDismissRequest = onDismissMenu,
+            minWidth = MembersCreateAgentMenuMinWidth
+        ) {
+            RaftMenuItem(
+                text = stringResource(MR.strings.agent_create_action_create),
+                leadingIcon = { MembersMenuIcon(RaftLucideIconName.Bot) },
+                onClick = { onSelect(MembersCreateAgentMode.Managed) }
+            )
+            RaftMenuItem(
+                text = stringResource(MR.strings.agent_create_action_create_external),
+                leadingIcon = { MembersMenuIcon(RaftLucideIconName.Link2) },
+                onClick = { onSelect(MembersCreateAgentMode.External) }
+            )
+        }
+    }
+}
 
+/** A menu row's 16dp icon in the row's icon ink. */
+@Composable
+private fun MembersMenuIcon(name: RaftLucideIconName) {
+    RaftLucideIcon(name, Modifier.size(16.dp), color = raftArgbHex(LocalRaftContentColor.current))
+}
+
+/**
+ * A computer's group of agents (web members machine-group toggle): the 12dp chevron and
+ * monitor, the computer's name as it was typed and the count, in Space Mono 12/16
+ * `foreground-hint`, 6dp apart; `mt-1.5 mb-0.5 px-2`. The whole line toggles the group.
+ */
+@Composable
+private fun MembersListMachineGroupLabel(
+    label: String,
+    count: Int,
+    expanded: Boolean,
+    onToggle: () -> Unit
+) {
+    val colors = RaftTheme.colors
+    val hint = raftArgbHex(colors.foregroundHint)
+    val style = RaftTheme.typography.monoMeta.copy(fontWeight = FontWeight.Normal)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = MembersListMachineLabelTop, bottom = MembersListMachineLabelBottom)
+            .clickable(role = Role.Button, onClick = onToggle)
+            .semantics { if (expanded) collapse { onToggle(); true } else expand { onToggle(); true } }
+            .padding(horizontal = MembersListMachineLabelInset),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(MembersListMachineLabelGap)
+    ) {
+        RaftLucideIcon(
+            RaftLucideIconName.ChevronRight,
+            modifier = Modifier.size(MembersListMachineLabelIconSize),
+            color = hint,
+            rotationDegrees = if (expanded) 90f else 0f,
+            rotationAnimationDurationSeconds = RaftCollapsibleSectionTokens.AnimationDurationSeconds
+        )
+        RaftLucideIcon(
+            RaftLucideIconName.Monitor,
+            modifier = Modifier.size(MembersListMachineLabelIconSize),
+            color = hint
+        )
+        RaftText(
+            text = label,
+            style = style,
+            color = colors.foregroundHint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false)
+        )
+        RaftText(text = count.toString(), style = style, color = colors.foregroundHint, maxLines = 1)
+    }
+}
+
+/**
+ * A member in the list (web `MemberAgentRow` / `MemberHumanRow`): raft-ui SidebarItem at its
+ * phone size ([RaftSidebarItem]), led by the 19dp avatar. An agent's status is the light on
+ * the avatar's corner (web `AvatarSlot badge={<SidebarAgentActivityBadge/>}`); an app-managed
+ * bot has none. The name is followed by "(you)" on the viewer's own row and the outline Guest
+ * badge for a guest; the description, when there is one, is the subtitle.
+ */
 @Composable
 private fun MembersListRow(
     member: MemberProfile,
     selected: Boolean = false,
+    isSelf: Boolean = false,
     modifier: Modifier = Modifier,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     onClick: () -> Unit = {}
 ) {
-    val agentStatusDisplayState =
-        if (member.kind == MemberKind.Agent) {
-            rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value)
-        } else {
-            null
-        }
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = MembersListRowMinHeight)
-            .background(if (selected) LocalRaftTheme.current.surfaceMuted else Color.Transparent)
-            .clickable(onClick = onClick)
-            .padding(vertical = RaftAppSpacing.Sm),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(MembersListContentGap)
-    ) {
-        MembersAvatar(
-            member = member,
-            showStatusOverlay = false,
-            statusIndicatorState = agentStatusDisplayState,
-            memberAvatarResolver = memberAvatarResolver
-        )
-        BoxWithConstraints(modifier = Modifier.weight(1f)) {
-            val maxNameWidth = maxWidth * MembersListNameMaxWidthFraction
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
-            ) {
-                Text(
-                    text = member.displayName,
-                    style = MembersListNameTextStyle,
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.widthIn(max = maxNameWidth)
-                )
-                Text(
-                    text = member.description ?: member.handle,
-                    style = MembersListDescriptionTextStyle,
-                    color = RaftColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
+    val isGuest =
+        member.kind == MemberKind.Human &&
+            membersHumanRoleBadge(member.serverRole, member.roleDescription) == MembersHumanRoleBadge.Guest
+    val youSuffix = stringResource(MR.strings.member_label_you_suffix)
+    val guestLabel = stringResource(MR.strings.channel_member_role_guest)
+    RaftSidebarItem(
+        title = member.displayName,
+        modifier = modifier,
+        onClick = onClick,
+        selected = selected,
+        subtitle = member.description?.takeIf { it.isNotBlank() },
+        leading = {
+            MembersListRowAvatar(
+                member = member,
+                agentStatusResolver = agentStatusResolver,
+                memberAvatarResolver = memberAvatarResolver
+            )
+        },
+        titleTrailing =
+            if (isSelf || isGuest) {
+                {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (isSelf) {
+                            // `ml-1 font-normal text-foreground-hint` (sticker ink when selected).
+                            RaftText(
+                                text = youSuffix,
+                                style = RaftTheme.typography.body.copy(fontWeight = FontWeight.Normal),
+                                color = LocalRaftContentColor.current,
+                                maxLines = 1
+                            )
+                        }
+                        if (isGuest) RaftBadge(text = guestLabel, appearance = RaftBadgeAppearance.Outline)
+                    }
+                }
+            } else {
+                null
             }
-        }
-        if (member.kind == MemberKind.Agent) {
-            // Same contract as the detail header: null is Unknown, not Offline, so the row
-            // shows no dot rather than a grey one until a resolution exists (task #253/#256).
-            agentStatusDisplayState?.let { state ->
-                RaftStatusIndicator(
-                    color = state.color,
-                    size = MemberStatusDotSize,
-                    pulsing = state.pulsing
-                )
-            }
-        }
-    }
+    )
+}
+
+/**
+ * The row's avatar. An agent's status light reads only here, so an agent:activity push
+ * recomposes the avatar, not the row. Same contract as the detail header: an unresolved
+ * status is Unknown, not Offline, so there is no light rather than a grey one (task #253/#256).
+ */
+@Composable
+private fun MembersListRowAvatar(
+    member: MemberProfile,
+    agentStatusResolver: RaftAgentStatusResolver,
+    memberAvatarResolver: RaftMemberAvatarResolver
+) {
+    val showsStatus = member.kind == MemberKind.Agent && member.managedByAppInstallId.isNullOrBlank()
+    val status =
+        rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value.takeIf { showsStatus })
+    MembersAvatar(
+        member = member,
+        showStatusOverlay = showsStatus && status != null,
+        statusIndicatorState = status,
+        memberAvatarResolver = memberAvatarResolver
+    )
 }
 
 @Composable
@@ -14628,7 +14616,8 @@ private fun MembersAvatar(
                 null
             },
         avatarSize = avatarSize,
-        statusPulsing = statusIndicatorState?.pulsing ?: statusDisplayState.pulsing
+        // Web `SidebarAgentActivityBadge` (as Home's DM rows): an ambient state never loops.
+        statusPulsing = false
     ) {
         RaftAppAvatar(
             avatarWireValue = avatarWireValue,
