@@ -24,10 +24,14 @@ import os, re, sys
 root, allowed = sys.argv[1], os.path.normpath(sys.argv[2])
 # A window-opening composable from Compose UI or Material, by import (named or wildcard)
 # or by a fully qualified call.
+# An import may carry an alias, a semicolon and a trailing comment.
+import_tail = r"(\s+as\s+\w+)?\s*;?\s*(//.*|/\*.*)?$"
+window_names = r"(Dialog|DialogWindow|\*)"
+material_names = r"(ModalBottomSheet|ModalBottomSheetLayout|AlertDialog|BasicAlertDialog|DatePickerDialog|TimePickerDialog|\*)"
 patterns = [
-    re.compile(r"^\s*import\s+androidx\.compose\.ui\.window\.(Dialog|\*)\s*(as\s+\w+\s*)?$"),
-    re.compile(r"^\s*import\s+androidx\.compose\.material3?\.(ModalBottomSheet|ModalBottomSheetLayout|AlertDialog|BasicAlertDialog|DatePickerDialog|TimePickerDialog|\*)\s*(as\s+\w+\s*)?$"),
-    re.compile(r"\bandroidx\.compose\.ui\.window\.Dialog\s*\("),
+    re.compile(r"^\s*import\s+androidx\.compose\.ui\.window\." + window_names + import_tail),
+    re.compile(r"^\s*import\s+androidx\.compose\.material3?\." + material_names + import_tail),
+    re.compile(r"\bandroidx\.compose\.ui\.window\.(Dialog|DialogWindow)\s*\("),
     re.compile(r"\bandroidx\.compose\.material3?\.(ModalBottomSheet|ModalBottomSheetLayout|AlertDialog|BasicAlertDialog)\s*\("),
 ]
 skip_dirs = {"build", ".gradle", ".git", "node_modules"}
@@ -63,7 +67,7 @@ self_test() {
   local app="$tmp/compose/shared/src/commonMain/kotlin/build/raft/app"
   mkdir -p "$ds" "$app" "$tmp/compose/shared/build/generated"
   printf 'import androidx.compose.ui.window.Dialog\nimport androidx.compose.ui.window.DialogProperties\n' > "$ds/RaftWindowDialog.kt"
-  printf 'import androidx.compose.ui.window.DialogProperties\nimport androidx.compose.ui.window.DialogWindowProvider\nimport android.app.AlertDialog\n' > "$app/Ok.kt"
+  printf 'import androidx.compose.ui.window.DialogProperties\nimport androidx.compose.ui.window.DialogWindowProvider\nimport androidx.compose.ui.window.DialogProperties // comment\nimport android.app.AlertDialog\n' > "$app/Ok.kt"
   printf 'import androidx.compose.ui.window.Dialog\n' > "$tmp/compose/shared/build/generated/Ignored.kt"
   scan "$tmp" "$allowed_file" 2>/dev/null || { echo "self-test: clean tree reported a violation" >&2; return 1; }
 
@@ -72,6 +76,11 @@ self_test() {
     'import androidx.compose.ui.window.Dialog' \
     'import androidx.compose.ui.window.Dialog as PlatformDialog' \
     'import androidx.compose.ui.window.*' \
+    'import androidx.compose.ui.window.Dialog;' \
+    'import androidx.compose.ui.window.Dialog // the platform window' \
+    'import androidx.compose.ui.window.DialogWindow' \
+    'import androidx.compose.material3.ModalBottomSheet; // sheet' \
+    '    androidx.compose.ui.window.DialogWindow(onCloseRequest = {}) {}' \
     'import androidx.compose.material3.ModalBottomSheet' \
     'import androidx.compose.material3.AlertDialog' \
     'import androidx.compose.material3.*' \
