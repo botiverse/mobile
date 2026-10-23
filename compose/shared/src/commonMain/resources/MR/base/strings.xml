@@ -2912,8 +2912,9 @@
     <string name="agent_migration_target_search">Search computers</string>
     <string name="agent_migration_target_clear_search">Clear search</string>
     <string name="agent_migration_target_no_matches">No matches</string>
-    <string name="agent_migration_target_memory_free">%1$s memory free</string>
+    <string name="agent_migration_target_memory_free">%1$s RAM free</string>
     <string name="agent_migration_target_disk_free">%1$s disk free</string>
+    <string name="agent_migration_target_agents_title">Agents</string>
     <string name="agent_migration_target_agents_none">No agents</string>
     <string name="agent_migration_target_agents_one">%1$s agent</string>
     <string name="agent_migration_target_agents_other">%1$s agents</string>

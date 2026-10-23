@@ -80,17 +80,18 @@ internal class AgentMigrationTargetInfoCopy(
 )
 
 /**
- * Web `targetComputerInfoLine`: "Offline" first for an offline computer, then its free memory
- * (older Computers report none: left out), its free disk and its agents, joined by " · "
- * ("12.0 GB memory free · 120.0 GB disk free · 3 agents"). Memory and disk only while online.
+ * Web `targetComputerInfoLine` (botiverse/slock #11086): "Offline" first for an offline
+ * computer, then its agents (what people compare by, so never the part a narrow row cuts off),
+ * its free memory (older Computers report none: left out) and its free disk, joined by " · "
+ * ("3 agents · 12.0 GB RAM free · 120.0 GB disk free"). Memory and disk only while online.
  * Knowing nothing, there is no line.
  */
 internal fun agentMigrationTargetInfoLine(computer: AgentMigrationComputer, copy: AgentMigrationTargetInfoCopy): String? {
     val parts = mutableListOf<String>()
     if (computer.offline) parts += copy.offline
+    computer.agentCount?.let { parts += copy.agents(it) }
     computer.liveMemoryStatus()?.let { parts += copy.memoryFree(formatComputerSizeBytes(it.availableBytes)) }
     computer.liveDiskStatus()?.let { parts += copy.diskFree(formatComputerSizeBytes(it.availableBytes)) }
-    computer.agentCount?.let { parts += copy.agents(it) }
     return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
 }
 
@@ -255,7 +256,7 @@ internal fun AgentMigrationTargetDetailsSurface(
 
 /**
  * Web TargetComputerDetails: the computer page's usage card for the agent's runtime (when the
- * viewer may read it), then Memory and Disk, each "free of total", "Not reported yet", or for
+ * viewer may read it), then Agents (left out while the count is unknown), Memory and Disk, each "free of total", "Not reported yet", or for
  * an offline computer how long it has been offline. An offline computer's usage says when it
  * last reported.
  */
@@ -299,7 +300,10 @@ private fun AgentMigrationTargetDetailsContent(
             } else {
                 null
             }
-        // Memory first, as on the row: it decides whether another agent fits.
+        // In the row's order: agents, memory, disk (web #11086). Opened for one row, nothing is cut off.
+        val infoCopy = rememberAgentMigrationTargetInfoCopy()
+        val agentsTitle = stringResource(MR.strings.agent_migration_target_agents_title)
+        computer.agentCount?.let { count -> AgentMigrationSizeSection(title = agentsTitle, text = infoCopy.agents(count)) }
         AgentMigrationSizeSection(
             title = stringResource(MR.strings.agent_migration_target_memory),
             text =

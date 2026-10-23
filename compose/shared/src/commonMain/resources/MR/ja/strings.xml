@@ -2914,6 +2914,7 @@
     <string name="agent_migration_target_no_matches">一致する項目がありません</string>
     <string name="agent_migration_target_memory_free">メモリ空き %1$s</string>
     <string name="agent_migration_target_disk_free">ディスク空き %1$s</string>
+    <string name="agent_migration_target_agents_title">エージェント</string>
     <string name="agent_migration_target_agents_none">エージェントなし</string>
     <string name="agent_migration_target_agents_one">エージェント %1$s 件</string>
     <string name="agent_migration_target_agents_other">エージェント %1$s 件</string>

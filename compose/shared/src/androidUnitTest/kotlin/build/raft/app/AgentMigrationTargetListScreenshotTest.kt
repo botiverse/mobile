@@ -38,8 +38,8 @@ import org.robolectric.annotation.GraphicsMode
  * - twelve computers: the search field above the list, which scrolls inside its frame; and the
  *   same with "tyz" typed, the chosen computer staying first above the matches;
  * - a Computer older than the memory report: no memory part on its line;
- * - the details sheet of an online computer (its usage card, memory and disk) and of an
- *   offline one (how long it has been offline, no memory or disk data).
+ * - the details sheet of an online computer (its usage card, agents, memory and disk) and of an
+ *   offline one (how long it has been offline, 2 agents, no memory or disk data).
  * Quota lines come through the real usage store from a fake transport ([PickerUsageApi]).
  */
 @RunWith(RobolectricTestRunner::class)
@@ -108,7 +108,7 @@ class AgentMigrationTargetListScreenshotTest {
                         agentRuntime = "claude",
                         usage = ComputerRuntimeUsageSheetState(studioUsage, loading = false, ComputerRuntimeUsageRefreshStatus.Idle, 0L),
                         timeContext = pickerTimeContext,
-                        modifier = Modifier.padding(top = 120.dp)
+                        modifier = Modifier.padding(top = 24.dp)
                     )
                     AgentMigrationTargetDetailsSurface(
                         computer = threeComputers[3],

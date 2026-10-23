@@ -2914,6 +2914,7 @@
     <string name="agent_migration_target_no_matches">没有匹配项</string>
     <string name="agent_migration_target_memory_free">内存剩 %1$s</string>
     <string name="agent_migration_target_disk_free">磁盘剩 %1$s</string>
+    <string name="agent_migration_target_agents_title">Agent</string>
     <string name="agent_migration_target_agents_none">没有 Agent</string>
     <string name="agent_migration_target_agents_one">%1$s 个 Agent</string>
     <string name="agent_migration_target_agents_other">%1$s 个 Agent</string>
