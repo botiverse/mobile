@@ -2281,10 +2281,10 @@
     <string name="settings_server_action_save_profile">プロフィールを保存</string>
     <string name="settings_server_state_read_only">読み取り専用</string>
     <string name="settings_server_action_leave">サーバーから退出</string>
-    <string name="settings_server_leave_detail">%1$s とそのすべてのチャンネルへのアクセスを失います。後で再招待を受けることは可能です。</string>
+    <string name="settings_server_leave_detail">このサーバーのチャンネルと DM にアクセスできなくなります。再度招待されれば、もう一度参加できます。</string>
     <string name="settings_server_leave_confirm">確認のため、もう一度「サーバーから退出」をタップしてください。</string>
     <string name="settings_server_action_delete">サーバーを削除</string>
-    <string name="settings_server_delete_detail">%1$s とそのすべてのデータを完全に削除します。元に戻すことはできません。</string>
+    <string name="settings_server_delete_detail">このサーバーとそのすべてのデータを完全に削除します。この操作は元に戻せません。</string>
     <string name="settings_server_this_server">このサーバー</string>
     <string name="settings_server_delete_type_prefix">確認のため</string>
     <string name="settings_server_delete_confirm_suffix">&#160;と入力してください:</string>

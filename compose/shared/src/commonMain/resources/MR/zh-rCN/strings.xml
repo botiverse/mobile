@@ -2281,10 +2281,10 @@
     <string name="settings_server_action_save_profile">保存资料</string>
     <string name="settings_server_state_read_only">只读</string>
     <string name="settings_server_action_leave">离开服务器</string>
-    <string name="settings_server_leave_detail">你将失去对 %1$s 及其所有频道的访问权限，之后仍可再次受邀加入。</string>
+    <string name="settings_server_leave_detail">你将失去对此服务器频道和私信的访问权限。若再次被邀请，可以重新加入。</string>
     <string name="settings_server_leave_confirm">再次点击“离开服务器”以确认。</string>
     <string name="settings_server_action_delete">删除服务器</string>
-    <string name="settings_server_delete_detail">永久删除 %1$s 及其全部数据。此操作无法撤销。</string>
+    <string name="settings_server_delete_detail">永久删除此服务器及其所有数据。此操作无法撤销。</string>
     <string name="settings_server_this_server">此服务器</string>
     <string name="settings_server_delete_type_prefix">输入</string>
     <string name="settings_server_delete_confirm_suffix">&#160;以确认：</string>
