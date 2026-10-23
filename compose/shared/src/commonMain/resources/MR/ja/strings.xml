@@ -41,6 +41,8 @@
     <string name="server_tab_a11y_label">現在のサーバー：%1$s</string>
     <string name="server_tab_switch_action">サーバーを切り替え</string>
     <string name="server_panel_title">サーバーパネル</string>
+    <string name="server_panel_move_up">上へ移動</string>
+    <string name="server_panel_move_down">下へ移動</string>
     <string name="more_hub_tasks_subtitle">タスクを追跡・フォロー</string>
     <string name="more_hub_members_subtitle">メンバーとエージェント</string>
     <string name="more_hub_settings_subtitle">設定とアカウント</string>
@@ -1723,6 +1725,7 @@
     <string name="home_server_switcher_join_community">コミュニティサーバーに参加</string>
     <string name="home_server_switcher_switch_or_create">サーバーを切り替えまたは作成</string>
     <string name="home_server_switcher_invite_human">人間を招待</string>
+    <string name="home_server_switch_failed">サーバーを切り替えられませんでした。もう一度お試しください。</string>
     <string name="home_error_open_direct_message">ダイレクトメッセージを開けませんでした</string>
     <string name="home_error_open_direct_message_failed">ダイレクトメッセージを開けませんでした</string>
     <string name="home_error_open_direct_message_permission">このダイレクトメッセージを開く権限がありません。</string>
