@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.markdown.markdownToPreviewText
+import build.raft.app.markdown.RaftMarkdownPreviewNotificationLength
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.Message
@@ -204,7 +206,7 @@ fun buildSystemUnreadNotificationRequest(
         return null
     }
     val sender = message.author.displayName.ifBlank { message.author.handle.ifBlank { "Someone" } }
-    val preview = message.body.toNotificationPreview().ifBlank { "Sent a new message." }
+    val preview = markdownToPreviewText(message.body, RaftMarkdownPreviewNotificationLength).ifBlank { "Sent a new message." }
     val mentioned =
         currentMemberHandle
             ?.trim()
@@ -269,17 +271,6 @@ fun buildSystemUnreadNotificationRequest(
         notificationKey = "unread:message:$messageId"
     )
 }
-
-private fun String.toNotificationPreview(maxLength: Int = 140): String =
-    trim()
-        .replace(Regex("\\s+"), " ")
-        .let { value ->
-            if (value.length <= maxLength) {
-                value
-            } else {
-                value.take(maxLength - 1).trimEnd() + "…"
-            }
-        }
 
 /**
  * task #459: tray request from the server-qualified notification stream

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.components.RaftMessageListJumpSide
 import build.raft.designsystem.components.raftCopyable
@@ -24497,8 +24498,7 @@ private fun ThreadQuotedPermalinkCard(
                         )
                     }
                     Text(
-                        text = state.item.body.takeIf { it.isNotBlank() }?.lineSequence()
-                            ?.firstOrNull { it.isNotBlank() }
+                        text = markdownToPreviewText(state.item.body).takeIf { it.isNotBlank() }
                             ?: stringResource(MR.strings.thread_quoted_permalink_no_content),
                         style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                         maxLines = 2,
@@ -28246,12 +28246,7 @@ private fun ThreadInlineReplyRow(
     }
 }
 
-internal fun threadInlineReplyPreviewText(content: String): String =
-    content
-        .lineSequence()
-        .map { line -> line.trim() }
-        .filter(String::isNotBlank)
-        .joinToString(" ")
+internal fun threadInlineReplyPreviewText(content: String): String = markdownToPreviewText(content)
 
 /**
  * Keeps the original 20dp row at the default scale while preserving its 4dp breathing room when
@@ -29675,9 +29670,9 @@ private fun ThreadOriginCard(
                     verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
                 ) {
                     Text(
-                        text = renderConfig.originPreview?.ifBlank {
-                            stringResource(MR.strings.thread_state_original_unavailable)
-                        } ?: stringResource(MR.strings.thread_state_original_unavailable),
+                        // The launch fallback preview is the root message's Markdown.
+                        text = renderConfig.originPreview?.let(::markdownToPreviewText)?.takeIf { it.isNotBlank() }
+                            ?: stringResource(MR.strings.thread_state_original_unavailable),
                         style = messageBodyTextStyle,
                         color = RaftColor.TextBlack
                     )

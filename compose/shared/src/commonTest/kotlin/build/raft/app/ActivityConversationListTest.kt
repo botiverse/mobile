@@ -1,5 +1,7 @@
 package build.raft.app
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeDirectMessageRow
 import build.raft.app.data.HomeSnapshot
@@ -179,9 +181,9 @@ class ActivityConversationListTest {
     fun threadRowTitlesTheRootAndPrefixesThePreviewWithItsChannel() {
         val model = thread.activityConversationRowModel(context.copy(mutedChannelIds = emptySet()), InboxFilter.All)
         assertEquals(ActivityConversationLeadingKind.Thread, model.leadingKind)
-        assertEquals("Root message", model.title)
+        assertEquals("Root message", model.title?.text)
         assertEquals("#design", model.threadChannelLabel)
-        assertEquals("Latest reply", model.preview)
+        assertEquals("Latest reply", model.preview?.text)
         val sender = assertIs<ActivityConversationSender.Named>(model.sender)
         assertEquals("Mahua", sender.name)
         assertEquals(MemberKind.Agent, sender.avatar?.senderKind)
@@ -190,6 +192,18 @@ class ActivityConversationListTest {
         assertEquals("2", model.unreadCountLabel())
         assertEquals(5, model.taskNumber)
         assertEquals(TaskStatus.InProgress, model.taskStatus)
+    }
+
+    /** xxchan task #67: the root and the latest message read without their Markdown syntax. */
+    @Test
+    fun threadRowReadsTitleAndPreviewWithoutMarkdownSyntax() {
+        val model =
+            thread.copy(parentMessagePreview = "**`#wg-rust-rewrite` 开场**", latestActivityPreview = "> see _this_")
+                .activityConversationRowModel(context, InboxFilter.All)
+        assertEquals("#wg-rust-rewrite 开场", model.title?.text)
+        assertEquals("see this", model.preview?.text)
+        // Markdown with no text left falls back like an empty preview.
+        assertNull(thread.copy(parentMessagePreview = "<br>").activityConversationRowModel(context, InboxFilter.All).title)
     }
 
     @Test
@@ -293,7 +307,7 @@ class ActivityConversationListTest {
             .activityConversationRowModel(context, InboxFilter.All)
         assertEquals(ActivityConversationLeadingKind.DirectMessage, fromPeer.leadingKind)
         assertEquals(fablePeer, fromPeer.dmPeer)
-        assertEquals("Fable", fromPeer.title) // `@`/`#` prefix stripped like the web title.
+        assertEquals("Fable", fromPeer.title?.text) // `@`/`#` prefix stripped like the web title.
         assertNull(fromPeer.sender)
 
         val fromOther = dm("dm:fable", "dm-fable", senderId = "user-other").activityConversationRowModel(context, InboxFilter.All)
@@ -348,7 +362,7 @@ class ActivityConversationListTest {
             // Both carry the thread badge in the corner, and a thread row never shows a presence light.
             assertTrue(model.leadingThreadBadge, case.name)
             assertFalse(model.leadingPresence, case.name)
-            assertEquals("Root message", model.title, case.name)
+            assertEquals("Root message", model.title?.text, case.name)
         }
     }
 
@@ -387,11 +401,11 @@ class ActivityConversationListTest {
             "Fable: Latest reply",
             activityConversationBodyText(
                 sender = "Fable",
-                preview = model.preview.orEmpty(),
+                preview = model.preview?.toAnnotatedString(linkColor = Color.Unspecified) ?: AnnotatedString(""),
                 channelLabel = label.takeIf { model.threadChannelLabelVisible },
             ).text,
         )
-        assertEquals("@Fable · Fable: Latest reply", activityConversationAccessibilityBody(label, "Fable", model.preview.orEmpty()))
+        assertEquals("@Fable · Fable: Latest reply", activityConversationAccessibilityBody(label, "Fable", model.preview?.text.orEmpty()))
     }
 
     @Test
@@ -399,7 +413,7 @@ class ActivityConversationListTest {
         val model = dm("dm:x", "dm-unknown", senderId = "x").activityConversationRowModel(context, InboxFilter.All)
         assertEquals(ActivityConversationLeadingKind.DirectMessage, model.leadingKind)
         assertNull(model.dmPeer)
-        assertEquals("dm-unknown", model.title)
+        assertEquals("dm-unknown", model.title?.text)
     }
 
     @Test
@@ -449,7 +463,7 @@ class ActivityConversationListTest {
             val body =
                 activityConversationBodyText(
                     sender = case.sender,
-                    preview = "hi",
+                    preview = AnnotatedString("hi"),
                     channelLabel = case.channelLabel,
                     senderAvatar = case.avatar,
                 )

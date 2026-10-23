@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.markdown.RaftMarkdownPreviewMaxSourceLength
 import build.raft.app.model.ChannelId
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
@@ -13,17 +14,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
-private val whitespaceRegex = Regex("\\s+")
-
-internal fun normalizeMessagePreview(body: String): String? {
-    val collapsed = body.replace(whitespaceRegex, " ").trim()
-    if (collapsed.isBlank()) return null
-    return if (collapsed.length > 140) {
-        collapsed.take(140) + "…"
-    } else {
-        collapsed
-    }
-}
+/**
+ * The DM row's `lastMessagePreview`, kept as Markdown like the server's: rows read it through
+ * [markdownToPreviewText], which flattens first and truncates after, so a cut never lands in syntax.
+ */
+internal fun normalizeMessagePreview(body: String): String? =
+    body.trim().takeIf { it.isNotEmpty() }?.take(RaftMarkdownPreviewMaxSourceLength)
 
 private data class PrefetchScope(val serverId: String, val accountId: String)
 

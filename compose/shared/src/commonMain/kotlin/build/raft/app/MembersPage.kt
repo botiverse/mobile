@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.components.raftSoftWash
@@ -13056,7 +13057,7 @@ private fun MembersAgentDmRow(
         title = row.peerName,
         divider = divider,
         subtitle = "${stringResource(MR.strings.member_label_agent_dm)} · @${row.peerName}",
-        description = row.lastMessagePreview?.takeIf { it.isNotBlank() },
+        description = row.lastMessagePreview?.let(::markdownToPreviewText)?.takeIf { it.isNotBlank() },
         wrapDescription = true,
         descriptionMaxLines = 3,
         alignTop = true,

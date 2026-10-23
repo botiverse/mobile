@@ -1,5 +1,6 @@
 package build.raft.app.widget
 
+import build.raft.app.markdown.markdownToPreviewText
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.MainActivity
 import build.raft.app.R
@@ -365,9 +366,10 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
         private suspend fun ConversationSummary.toWidgetRow(context: Context, member: MemberProfile?): RaftWidgetHomeRow {
             val title = name.ifBlank { "Conversation" }
             val detail =
-                lastMessagePreview?.takeIf { it.isNotBlank() }
+                lastMessagePreview?.let(::markdownToPreviewText)?.takeIf { it.isNotBlank() }
                     ?: lastMessageSenderName?.takeIf { it.isNotBlank() }?.let { "Latest from $it" }
-                    ?: subtitle?.takeIf { it.isNotBlank() }
+                    // A thread's subtitle is its root message's Markdown.
+                    ?: subtitle?.let { if (kind == ConversationKind.Thread) markdownToPreviewText(it) else it }?.takeIf { it.isNotBlank() }
                     ?: when (kind) {
                         ConversationKind.DirectMessage -> "Direct message"
                         ConversationKind.Thread -> "Thread"
