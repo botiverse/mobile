@@ -91,6 +91,6 @@ class ThreadMessageTranslationScreenshotTest {
 private fun TranslatedRow(body: String, indicator: ThreadMessageTranslationIndicatorUi) {
     Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
         Text(text = body, style = raftMessageBodyTextStyle("md"), color = RaftColor.TextBlack)
-        ThreadMessageTranslationIndicator(indicator = indicator, onToggleOriginal = {}, onRetry = {})
+        ThreadMessageTranslationIndicator(indicator = indicator, onToggleOriginal = {}, onRetry = {}, stillPulse = true)
     }
 }

@@ -185,13 +185,15 @@ private fun SharedMessageTranslationEntry.toTranslationIndicatorUi(
  * Space Mono meta in `foreground-hint` (`warning-strong` when it failed) with a 12dp icon 6dp
  * before the words, a "·" between the words and the action, and the action
  * (`MessageItemTranslationAction` / `RetryAction`) in caption 12/16 semibold `foreground`.
- * While translating, the icon pulses as the web's `animate-pulse`.
+ * While translating, the icon pulses as the web's `animate-pulse`; [stillPulse] holds it at
+ * rest (screenshots, where an endless animation never lets the clock idle).
  */
 @Composable
 internal fun ThreadMessageTranslationIndicator(
     indicator: ThreadMessageTranslationIndicatorUi,
     onToggleOriginal: () -> Unit,
     onRetry: () -> Unit,
+    stillPulse: Boolean = false,
 ) {
     val localizedMessage =
         when {
@@ -215,7 +217,7 @@ internal fun ThreadMessageTranslationIndicator(
         val typography = RaftTheme.typography
         val tint = if (indicator.failed) colors.warningStrong else colors.foregroundHint
         val iconAlpha =
-            if (indicator.pending) {
+            if (indicator.pending && !stillPulse) {
                 rememberInfiniteTransition(label = "translation-pulse").animateFloat(
                     initialValue = 1f,
                     targetValue = 0.5f,
