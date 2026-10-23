@@ -733,6 +733,8 @@
     <string name="thread_video_preview_processing">视频处理中…</string>
     <string name="thread_video_playback_failed">视频播放失败</string>
     <string name="thread_video_attachment_fallback_name">视频附件</string>
+    <string name="thread_video_download_to_view">下载后查看</string>
+    <string name="thread_video_open_in_preview">在预览中打开 %1$s</string>
     <string name="thread_audio_preview_unavailable">音频预览不可用</string>
     <string name="thread_audio_preview_loading">正在加载音频预览</string>
     <string name="thread_audio_playback_failed">音频播放失败</string>
