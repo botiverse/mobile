@@ -180,6 +180,45 @@ class ComputersApiTest {
     }
 
     @Test
+    fun diskAndMemoryStatusMapFromTheMachineReadModel() = runPortableCoroutineTest {
+        // Wire shape per botiverse/slock 424c5203: services/machineReadModel.ts sends
+        // `diskStatus: status === "online" ? diskStatus : null` and the same for `memoryStatus`,
+        // each a MachineDiskStatus / MachineMemoryStatus `{availableBytes, totalBytes}`
+        // (packages/shared/src/index.ts). Computers older than the memory report (#11032) send
+        // `memoryStatus: null`; an older server leaves both out.
+        val body =
+            """
+            {"machines":[
+              {"id":"c-1","name":"Studio Mac","status":"online","isComputer":true,"agentCount":3,
+               "diskStatus":{"availableBytes":128849018880,"totalBytes":536870912000},
+               "memoryStatus":{"availableBytes":12884901888,"totalBytes":34359738368}},
+              {"id":"c-2","name":"Lab Box","status":"online","isComputer":true,"agentCount":1,
+               "diskStatus":{"availableBytes":64424509440,"totalBytes":256060514304},"memoryStatus":null},
+              {"id":"c-3","name":"Build Box","status":"offline","isComputer":true,"agentCount":0,"diskStatus":null,"memoryStatus":null},
+              {"id":"c-4","name":"Old Server Row","status":"online","isComputer":true},
+              {"id":"c-5","name":"Bad Report","status":"online","isComputer":true,
+               "diskStatus":{"availableBytes":-1,"totalBytes":0},"memoryStatus":{"availableBytes":1}}
+            ],"latestDaemonVersion":null,"latestComputerVersion":"1.0.53"}
+            """.trimIndent()
+        val machines =
+            assertIs<DataResult.Content<ComputerListSummary>>(
+                RaftComputersApiClient(RecordingComputersApi(machinesBody = body)).machines(ServerId("server-1"), DataRequestPriority.Visible)
+            ).data.machines.associateBy { it.id }
+
+        assertEquals(ComputerSizeStatus(availableBytes = 128849018880.0, totalBytes = 536870912000.0), machines.getValue("c-1").diskStatus)
+        assertEquals(ComputerSizeStatus(availableBytes = 12884901888.0, totalBytes = 34359738368.0), machines.getValue("c-1").memoryStatus)
+        assertEquals(3, machines.getValue("c-1").agentCount)
+        assertEquals(64424509440.0, machines.getValue("c-2").diskStatus?.availableBytes)
+        assertEquals(null, machines.getValue("c-2").memoryStatus)
+        assertEquals(null, machines.getValue("c-3").diskStatus)
+        assertEquals(null, machines.getValue("c-4").diskStatus)
+        assertEquals(null, machines.getValue("c-4").memoryStatus)
+        // Web readableDiskStatus: no positive total or a negative free size is not shown.
+        assertEquals(null, machines.getValue("c-5").diskStatus)
+        assertEquals(null, machines.getValue("c-5").memoryStatus)
+    }
+
+    @Test
     fun typedComputersApiAcceptsRawRowShapeForRename() = runPortableCoroutineTest {
         // Server returns the raw machines DB row for PATCH (no status / statusVersion
         // enrichment). The typed API must accept this shape, NOT flag it as contract

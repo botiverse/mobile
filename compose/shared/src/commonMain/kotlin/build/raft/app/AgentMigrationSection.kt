@@ -44,6 +44,7 @@ import build.raft.app.data.AgentMigrationIntent
 import build.raft.app.data.AgentMigrationNotice
 import build.raft.app.data.AgentMigrationState
 import build.raft.app.data.AgentMigrationTarget
+import build.raft.app.data.ComputerSizeStatus
 import build.raft.app.data.HOSTED_ARRIVAL_ATTENTION_REASONS
 import build.raft.app.data.RaftProGateDecision
 import build.raft.app.data.canCancel
@@ -74,8 +75,6 @@ import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftIconButton
-import build.raft.designsystem.components.RaftRadioGroup
-import build.raft.designsystem.components.RaftRadioRow
 import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftSpinner
@@ -88,11 +87,25 @@ import build.raft.designsystem.theme.RaftTheme
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.delay
 
-/** A computer the migration can name or target (from the server's machine list). */
+/**
+ * A computer the migration can name or target (from the server's machine list), with what the
+ * target list says about it (web AgentMigrationDialog `TargetComputerList`): its free memory and
+ * disk (reported only while online), how many agents it has, and the facts deciding whether the
+ * viewer may read its runtime usage.
+ */
 internal data class AgentMigrationComputer(
     val id: String,
     val name: String,
-    val isComputer: Boolean
+    val isComputer: Boolean,
+    val online: Boolean = false,
+    val offline: Boolean = false,
+    val lastHeartbeat: String? = null,
+    /** Server `agentCount`: active agents on it; null when not known. */
+    val agentCount: Int? = null,
+    val diskStatus: ComputerSizeStatus? = null,
+    val memoryStatus: ComputerSizeStatus? = null,
+    val attachedByCurrentUser: Boolean = false,
+    val creatorUserId: String? = null
 )
 
 /** Everything the section needs besides the store state; built by the detail page. */
@@ -109,7 +122,9 @@ internal class AgentMigrationSectionInputs(
     val onCopy: (String) -> Unit,
     val formatTimestamp: (String) -> String?,
     /** A watched move ended with the agent elsewhere: reload the agent (web re-reads agents). */
-    val onAgentPlacementChanged: () -> Unit
+    val onAgentPlacementChanged: () -> Unit,
+    /** The agent's runtime: each target's quota line reads that runtime's account there. */
+    val agentRuntime: String? = null
 )
 
 /** The target option for the cloud; never a machine id (web `HOSTED_TARGET_CHOICE`). */
@@ -963,6 +978,8 @@ private fun AgentMigrationStartDialog(
         mutableStateOf(targets.firstOrNull { it.id == initialTarget }?.id ?: targets.firstOrNull()?.id)
     }
     val selected = agentMigrationResolvedTarget(choice, targets, inputs.hostedAvailable)
+    // Read here: the sheet's content is hosted outside the page, where the local does not reach.
+    val usage = LocalMembersRuntimeAccountUsageAccess.current
     RaftDialogSheet(
         onDismissRequest = { if (!state.starting) onDismiss() },
         title = agentMigrationStartDialogTitle(inputs),
@@ -978,7 +995,7 @@ private fun AgentMigrationStartDialog(
         closeLabel = stringResource(MR.strings.common_close),
         cancelLabel = stringResource(MR.strings.agent_migration_detail_cancel)
     ) {
-        AgentMigrationStartForm(state, inputs, targets, selected, onSelect = { choice = it })
+        AgentMigrationStartForm(state, inputs, targets, selected, onSelect = { choice = it }, usage = usage)
     }
 }
 
@@ -1002,7 +1019,8 @@ internal fun agentMigrationStartCommitLabel(state: AgentMigrationState, inputs: 
     )
 
 /**
- * The dialog's body: the target picked from a radio list, then what happens next.
+ * The dialog's body: the target picked from an always-open list ([AgentMigrationTargetList]),
+ * then what happens next. [initialQuery] is for fixtures.
  */
 @Composable
 internal fun ColumnScope.AgentMigrationStartForm(
@@ -1010,7 +1028,9 @@ internal fun ColumnScope.AgentMigrationStartForm(
     inputs: AgentMigrationSectionInputs,
     targets: List<AgentMigrationComputer>,
     selected: String?,
-    onSelect: (String) -> Unit
+    onSelect: (String) -> Unit,
+    usage: MembersRuntimeAccountUsageAccess? = null,
+    initialQuery: String = ""
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -1034,33 +1054,17 @@ internal fun ColumnScope.AgentMigrationStartForm(
             style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
             color = colors.foreground
         )
-        // The target stays a radio list (Jasper's picker rule, #triage:5ecc9db0).
-        if (targets.isEmpty() && !inputs.hostedAvailable) {
-            RaftText(
-                text = stringResource(MR.strings.agent_migration_detail_no_other_attached_computer),
-                style = typography.callout,
-                color = colors.foregroundHint
-            )
-        } else {
-            RaftRadioGroup {
-                targets.forEach { computer ->
-                    RaftRadioRow(
-                        label = computer.name,
-                        selected = selected == computer.id,
-                        enabled = !state.starting,
-                        onClick = { onSelect(computer.id) }
-                    )
-                }
-                if (inputs.hostedAvailable) {
-                    RaftRadioRow(
-                        label = stringResource(MR.strings.agent_migration_hosted_option),
-                        selected = hostedSelected,
-                        enabled = !state.starting,
-                        onClick = { onSelect(HOSTED_TARGET_CHOICE) }
-                    )
-                }
-            }
-        }
+        // Choosing is the dialog's job: an always-open list at any count (raft-design #767).
+        AgentMigrationTargetList(
+            targets = targets,
+            hostedOption = if (inputs.hostedAvailable) stringResource(MR.strings.agent_migration_hosted_option) else null,
+            selected = selected,
+            enabled = !state.starting,
+            agentRuntime = inputs.agentRuntime,
+            usage = usage,
+            onSelect = onSelect,
+            initialQuery = initialQuery
+        )
         // The one choice first; what happens next follows as the dialog's body text.
         if (hostedSelected) {
             // Said before starting: the move to the cloud is final once confirmed.

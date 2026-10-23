@@ -184,7 +184,19 @@ class SharedComputersStore internal constructor(
         state
             .map { state ->
                 state.selectComputerServerSlice(serverId).machines.map {
-                    build.raft.app.AgentMigrationComputer(id = it.id, name = it.name, isComputer = it.isComputer)
+                    build.raft.app.AgentMigrationComputer(
+                        id = it.id,
+                        name = it.name,
+                        isComputer = it.isComputer,
+                        online = it.status == ComputerStatus.Online,
+                        offline = it.status == ComputerStatus.Offline,
+                        lastHeartbeat = it.lastHeartbeat,
+                        agentCount = it.agentCount,
+                        diskStatus = it.diskStatus,
+                        memoryStatus = it.memoryStatus,
+                        attachedByCurrentUser = it.attachedByCurrentUser,
+                        creatorUserId = it.creatorUserId
+                    )
                 }
             }
             .distinctUntilChanged()

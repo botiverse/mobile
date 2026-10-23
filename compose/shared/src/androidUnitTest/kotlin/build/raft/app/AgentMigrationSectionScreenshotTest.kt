@@ -20,8 +20,6 @@ import build.raft.app.data.AgentMigrationNotice
 import build.raft.app.data.AgentMigrationState
 import build.raft.app.data.RaftProGateDecision
 import build.raft.app.model.MemberId
-import build.raft.designsystem.components.RaftButtonVariant
-import build.raft.designsystem.components.RaftDialogSheetSurface
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
@@ -64,47 +62,6 @@ class AgentMigrationSectionScreenshotTest {
                     }
                     MigrationCase("Failed") {
                         AgentMigrationSection(AgentMigrationState(agentId = agent, loaded = true, notice = failed), migrationInputs())
-                    }
-                }
-            }
-        }
-}
-
-/**
- * The start dialog's body on the phone sheet (web AgentMigrationDialog `narrow="sheet"`): × and
- * the commit in the head, the target computer as a radio list (Jasper's picker rule,
- * #triage:5ecc9db0) and the notes, light and dark. The sheet window itself is the design system's (`RaftDialogSheet`).
- */
-@RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w390dp-h760dp-xxhdpi")
-class AgentMigrationDialogScreenshotTest {
-    @get:org.junit.Rule
-    val activities = RobolectricComposeActivityRule()
-
-    @Test
-    fun dialogLight() = capture("agent.migration.dialog", RaftAppAppearance.Light)
-
-    @Test
-    fun dialogDark() = capture("agent.migration.dialog.dark", RaftAppAppearance.Dark)
-
-    private fun capture(name: String, appearance: RaftAppAppearance) =
-        RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
-            MigrationFixtureHost {
-                val inputs = migrationInputs()
-                val state = AgentMigrationState(agentId = agent, loaded = true)
-                val targets = agentMigrationTargets(inputs)
-                val selected = agentMigrationResolvedTarget(null, targets, inputs.hostedAvailable)
-                Column(Modifier.fillMaxSize().background(RaftTheme.colors.foreground.copy(alpha = 0.6f)).padding(top = 76.dp)) {
-                    RaftDialogSheetSurface(
-                        title = agentMigrationStartDialogTitle(inputs),
-                        commitLabel = agentMigrationStartCommitLabel(state, inputs, selected),
-                        onCommit = {},
-                        onClose = {},
-                        modifier = Modifier.fillMaxSize(),
-                        commitVariant = RaftButtonVariant.Primary
-                    ) {
-                        AgentMigrationStartForm(state, inputs, targets, selected, onSelect = {})
                     }
                 }
             }
@@ -185,7 +142,7 @@ private val failed =
     )
 
 @Composable
-private fun MigrationFixtureHost(content: @Composable () -> Unit) {
+internal fun MigrationFixtureHost(content: @Composable () -> Unit) {
     val pager =
         remember {
             object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }

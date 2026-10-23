@@ -478,7 +478,7 @@ private fun ColumnScope.ComputerRuntimeUsageActions(
 }
 
 @Composable
-private fun ComputerRuntimeUsageContents(state: ComputerRuntimeUsageSheetState, timeContext: RaftTimeContext?) {
+internal fun ComputerRuntimeUsageContents(state: ComputerRuntimeUsageSheetState, timeContext: RaftTimeContext?) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {

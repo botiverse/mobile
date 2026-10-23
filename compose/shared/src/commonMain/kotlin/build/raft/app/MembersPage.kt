@@ -6800,7 +6800,8 @@ private fun MembersDetailContent(
                                                 formatTimestamp = { value ->
                                                     build.raft.app.model.formatRaftTimestampLabel(value, timeContext).takeIf { it.isNotBlank() }
                                                 },
-                                                onAgentPlacementChanged = migrationBinding.onAgentPlacementChanged
+                                                onAgentPlacementChanged = migrationBinding.onAgentPlacementChanged,
+                                                agentRuntime = detail?.summary?.runtime
                                             )
                                     )
                                 }
