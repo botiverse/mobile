@@ -4,6 +4,7 @@ area: activity
 platforms:
   - android
   - ios
+pull_request: 3610
 rollout: full
 ---
 
