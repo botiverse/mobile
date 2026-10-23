@@ -519,8 +519,8 @@ internal fun SharedHomeActivityScreen(
     val lastOpenedStore = remember { ActivityLastOpenedStore(raftSharedPreferenceStore()) }
     // Every open (a picked row, or the reopen on arrival below) is the one to reopen next time.
     val openActivityItem: (InboxItem) -> Unit = { item ->
-        // The opened row (also the one the wide layout shows beside the list) is the retained one:
-        // read in Unread, it stays listed until the user moves on.
+        // Every opened row (also the one the wide layout shows beside the list) joins the rows
+        // retained for this visit: read in Unread, it stays listed until the user moves on.
         activityStore.dispatch(SharedActivityIntent.RowOpened(item))
         lastOpenedStore.write(activitySummaryServerId.value, item.key)
         state.snapshot?.let { snapshot ->

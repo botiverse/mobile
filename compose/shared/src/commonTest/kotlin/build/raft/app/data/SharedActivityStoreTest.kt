@@ -1781,60 +1781,37 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun markAllReadRemovesRowsInUnreadFilter() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val pendingReadAll = CompletableDeferred<DataResult<ReadReceiptResult>>()
-        val inbox =
-            FakeInboxRepository(
-                initialSnapshots =
-                    listOf(
-                        snapshot(listOf(activityItem("channel-1", unreadCount = 3)), totalCount = 1, totalUnreadCount = 3)
-                    )
-            )
-        val store =
-            activityStore(
-                scope,
-                inbox,
-                readReceiptRepository = FakeReadReceiptRepository(pendingInboxReadAllResult = pendingReadAll)
-            )
+    fun markAllReadKeepsReadRowsInUnreadAndMentionsFilters() = runBlocking {
+        // Unread keeps every listed row, shown read, until the user moves on (stdrc 10-23,
+        // SharedActivityStoreRetainedReadRowTest); its count drops at once. Mentions keeps read rows
+        // (slock channelService.ts:13136-13168).
+        listOf(InboxFilter.Unread to 0, InboxFilter.Mentions to 1).forEach { (filter, expectedTotalCount) ->
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+            val pendingReadAll = CompletableDeferred<DataResult<ReadReceiptResult>>()
+            val row = activityItem("channel-1", unreadCount = 2).copy(hasMention = true)
+            val inbox =
+                FakeInboxRepository(
+                    initialSnapshots =
+                        listOf(
+                            snapshot(listOf(row), totalCount = 1, totalUnreadCount = 2)
+                        )
+                )
+            val store =
+                activityStore(
+                    scope,
+                    inbox,
+                    readReceiptRepository = FakeReadReceiptRepository(pendingInboxReadAllResult = pendingReadAll)
+                )
 
-        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Unread))
-        store.dispatch(SharedActivityIntent.MarkAllRead)
+            store.dispatch(SharedActivityIntent.SetFilter(filter))
+            store.dispatch(SharedActivityIntent.MarkAllRead)
 
-        assertEquals(emptyList(), store.state.value.items)
-        assertEquals(0, store.state.value.totalCount)
-        assertEquals(0, store.state.value.totalUnreadCount)
-        pendingReadAll.complete(DataResult.Content(ReadReceiptResult()))
-        scope.cancel()
-    }
-
-    @Test
-    fun markAllReadKeepsReadRowsInMentionsFilter() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val pendingReadAll = CompletableDeferred<DataResult<ReadReceiptResult>>()
-        val row = activityItem("channel-1", unreadCount = 2).copy(hasMention = true)
-        val inbox =
-            FakeInboxRepository(
-                initialSnapshots =
-                    listOf(
-                        snapshot(listOf(row), totalCount = 1, totalUnreadCount = 2)
-                    )
-            )
-        val store =
-            activityStore(
-                scope,
-                inbox,
-                readReceiptRepository = FakeReadReceiptRepository(pendingInboxReadAllResult = pendingReadAll)
-            )
-
-        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Mentions))
-        store.dispatch(SharedActivityIntent.MarkAllRead)
-
-        assertEquals(listOf(row.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)), store.state.value.items, "slock channelService.ts:13136-13168")
-        assertEquals(1, store.state.value.totalCount)
-        assertEquals(0, store.state.value.totalUnreadCount)
-        pendingReadAll.complete(DataResult.Content(ReadReceiptResult()))
-        scope.cancel()
+            assertEquals(listOf(row.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false)), store.state.value.items, "$filter")
+            assertEquals(expectedTotalCount, store.state.value.totalCount, "$filter")
+            assertEquals(0, store.state.value.totalUnreadCount, "$filter")
+            pendingReadAll.complete(DataResult.Content(ReadReceiptResult()))
+            scope.cancel()
+        }
     }
 
     @Test
