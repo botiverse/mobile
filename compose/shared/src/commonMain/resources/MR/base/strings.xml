@@ -736,6 +736,7 @@
     <string name="thread_audio_playback_failed">Audio playback failed</string>
     <string name="thread_audio_attachment_fallback_name">Audio attachment</string>
     <string name="thread_audio_file_label">Audio file</string>
+    <string name="thread_audio_download_to_view">Download to View</string>
     <string name="thread_action_back_to_bottom">Back to Bottom</string>
     <string name="thread_agent_typing_one">{first} is typing…</string>
     <string name="thread_agent_typing_two">{first} and {second} are typing…</string>
