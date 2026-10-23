@@ -4,6 +4,7 @@ area: messages
 platforms:
   - android
   - ios
+pull_request: 3605
 rollout: full
 ---
 
