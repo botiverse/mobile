@@ -1348,6 +1348,7 @@
     <string name="file_preview_no_preview">このファイル形式のプレビューは利用できません。</string>
     <string name="file_preview_download_to_open">このファイルをダウンロードするか、「アプリで開く」を使って別のアプリで表示してください。</string>
     <string name="file_preview_error_image_unavailable">画像プレビューを利用できません。</string>
+    <string name="file_preview_image_full_load_failed">元の画像を読み込めませんでした</string>
     <string name="file_preview_error_load_generic">このファイルのプレビューを読み込めませんでした。</string>
     <string name="file_preview_error_load_text">テキストプレビューを読み込めませんでした。</string>
     <string name="file_preview_error_load_markdown">Markdown プレビューを読み込めませんでした。</string>

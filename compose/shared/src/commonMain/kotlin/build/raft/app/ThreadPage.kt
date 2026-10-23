@@ -7004,6 +7004,9 @@ private fun SharedThreadRouteContentContent(
     val threadVisibleResumeGate = remember(threadInstanceKey, storeScope.shellInstanceId) {
         ThreadVisibleResumeGate()
     }
+    val threadPreviewOverlayLifecycleFilter = remember(threadInstanceKey, storeScope.shellInstanceId) {
+        ThreadPreviewOverlayLifecycleFilter()
+    }
     var threadHostForeground by remember(threadInstanceKey, storeScope.shellInstanceId) {
         mutableStateOf(isRaftHostVisible(storeScope.shellInstanceId))
     }
@@ -7096,21 +7099,38 @@ private fun SharedThreadRouteContentContent(
                         "thread_lifecycle_received event=$event page=$pageName " +
                             "routeActive=$latestRouteActive shell=${storeScope.shellInstanceId}"
                     )
+                    val shellTargeted =
+                        appLifecycleEventTargetsShell(
+                            eventShellInstanceId = lifecycleData.optString(RaftRealtimeNotifyContract.KeyShellInstanceId),
+                            routeShellInstanceId = storeScope.shellInstanceId
+                        )
+                    // The file preview is its own page: opening and closing it pauses and resumes the
+                    // thread host. Track that before the page filter so the return is not a resume.
+                    val previewOverlayVerdict =
+                        if (shellTargeted) {
+                            threadPreviewOverlayLifecycleFilter.observe(
+                                event = event,
+                                pageName = pageName,
+                                foregroundEpoch = lifecycleData.optLong(RaftRealtimeNotifyContract.KeyForegroundEpoch, 0L)
+                            )
+                        } else {
+                            ThreadLifecycleVisibilityVerdict.Counts
+                        }
                     if (!threadLifecycleEventTargetsThread(pageName)) {
                         bridge.log("thread_lifecycle_drop reason=page_target")
                         return@launch
                     }
-                    if (!appLifecycleEventTargetsShell(
-                            eventShellInstanceId = lifecycleData.optString(RaftRealtimeNotifyContract.KeyShellInstanceId),
-                            routeShellInstanceId = storeScope.shellInstanceId
-                    )
-                    ) {
+                    if (!shellTargeted) {
                         bridge.log("thread_lifecycle_drop reason=shell_target")
                         return@launch
                     }
                     threadHostForeground = isRaftHostVisible(storeScope.shellInstanceId)
                     bridge.log("thread_lifecycle_visibility hostForeground=$threadHostForeground routeActive=$latestRouteActive")
                     if (
+                        previewOverlayVerdict == ThreadLifecycleVisibilityVerdict.CoveredByPreview
+                    ) {
+                        bridge.log("thread_lifecycle_resume_skipped reason=preview_overlay event=$event")
+                    } else if (
                         event == RaftRealtimeNotifyContract.LifecycleVisibleResume ||
                         event == RaftRealtimeNotifyContract.LifecycleVisibleShow
                     ) {

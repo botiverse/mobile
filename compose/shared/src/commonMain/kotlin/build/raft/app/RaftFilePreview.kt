@@ -1349,7 +1349,8 @@ internal data class RaftFilePreviewAttachmentUrlCacheKey(
 )
 
 internal class RaftFilePreviewAttachmentUrlCache(
-    private val maxEntries: Int = 64
+    private val maxEntries: Int = 64,
+    private val timeSource: TimeSource = TimeSource.Monotonic
 ) {
     private val lock = SynchronizedObject()
     private val entries = LinkedHashMap<RaftFilePreviewAttachmentUrlCacheKey, Pair<String, TimeMark>>()
@@ -1382,7 +1383,7 @@ internal class RaftFilePreviewAttachmentUrlCache(
         val lifetimeMillis = serverExpiry - currentEpochMillis() - expirySafetyMarginMillis
         if (lifetimeMillis <= 0) return
         synchronized(lock) {
-            entries[key] = trimmed to TimeSource.Monotonic.markNow().plus(lifetimeMillis.milliseconds)
+            entries[key] = trimmed to timeSource.markNow().plus(lifetimeMillis.milliseconds)
             while (entries.size > maxEntries) {
                 val oldest = entries.keys.firstOrNull() ?: break
                 entries.remove(oldest)
@@ -1500,12 +1501,14 @@ private suspend fun RaftFilePreviewRemoteOperationScope.loadPreview(
                         networkClient = networkClient,
                         priority = priority,
                         truncatedPreviewHint = truncatedPreviewHint,
-                        expiresAtSink = { resolvedExpiresAt = it }
+                        expiresAtSink = { resolvedExpiresAt = it },
+                        diagnosticsLogger = diagnosticsLogger
                     )
                 )
             }
         val resolved = (result as? DataResult.Content)?.data
-        if (cacheKey != null && resolved?.kind == "image" && !resolved.imageUrl.isNullOrBlank()) {
+        // A failed load keeps the thumbnail as imageUrl: never cache that as the signed URL.
+        if (cacheKey != null && resolved?.kind == "image" && !resolved.imageFullLoadFailed && !resolved.imageUrl.isNullOrBlank()) {
             raftFilePreviewAttachmentUrlCache().put(
                 key = cacheKey,
                 url = resolved.imageUrl.orEmpty(),
@@ -1526,7 +1529,8 @@ private suspend fun RaftFilePreviewRemoteOperationScope.loadPreview(
                         threadApi = filePreviewThreadApi(networkClient, diagnosticsLogger),
                         networkClient = networkClient,
                         priority = priority,
-                        truncatedPreviewHint = truncatedPreviewHint
+                        truncatedPreviewHint = truncatedPreviewHint,
+                        diagnosticsLogger = diagnosticsLogger
                     )
                 RaftFilePreviewSourceAgentWorkspace ->
                     payload.loadAgentWorkspacePreview(
@@ -1565,6 +1569,8 @@ internal data class RaftFilePreviewPayload(
     val content: String = "",
     val markdown: Boolean = false,
     val imageUrl: String? = null,
+    /** True when the full-size URL could not be loaded and [imageUrl] is only the thumbnail on screen. */
+    val imageFullLoadFailed: Boolean = false,
     /** task #351: serialized [RaftFilePreviewXlsxCarrier] payload for the xlsx preview panel. */
     val xlsxSheetsJson: String = "",
     /** Serialized [RaftFilePreviewCsvCarrier] for the CSV table panel. */
@@ -2867,6 +2873,11 @@ private fun RaftFilePreviewStandalonePageContent() {
         bridge.log("file_preview_pdf phase=render_error attachment=${payload.attachmentId.take(8)} error=$error")
         pdfState = pdfState.onPdfRenderError(error)
     }
+    fun retryFullImage() {
+        if (!payload.imageFullLoadFailed) return
+        payload = payload.withImageFullLoadRetry()
+    }
+
     fun retryPdf() {
         if (!pdfState.canRetry) return
         pdfState = RaftFilePreviewPdfState.Idle
@@ -4110,6 +4121,7 @@ private fun RaftFilePreviewStandalonePageContent() {
                     pdfState = pdfState,
                     onPdfRenderError = ::onPdfRenderError,
                     onPdfRetry = ::retryPdf,
+                    onImageRetry = ::retryFullImage,
                     onPdfOpenInOtherApp = if (canOpenWith) ({ requestExternalOpen() }) else null,
                     onShare =
                         if (raftFilePreviewShowsShareAction(canOpenWith, downloadUiState)) {
@@ -6993,7 +7005,8 @@ internal suspend fun RaftFilePreviewPayload.loadThreadAttachmentPreview(
     networkClient: RaftNetworkClient,
     priority: DataRequestPriority,
     truncatedPreviewHint: String,
-    expiresAtSink: ((String?) -> Unit)? = null
+    expiresAtSink: ((String?) -> Unit)? = null,
+    diagnosticsLogger: (String) -> Unit = {}
 ): RaftFilePreviewPayload? {
     if (source != RaftFilePreviewSourceThreadAttachment || attachmentId.isBlank() || kind != "loading") return null
     val wantsMarkdown =
@@ -7056,7 +7069,7 @@ internal suspend fun RaftFilePreviewPayload.loadThreadAttachmentPreview(
             )
         wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkClient, priority, truncatedPreviewHint)
         wantsXlsx -> loadThreadXlsxAttachmentPreview(networkClient)
-        wantsImage -> loadThreadImageAttachmentPreview(threadApi, priority, expiresAtSink)
+        wantsImage -> loadThreadImageAttachmentPreview(threadApi, priority, expiresAtSink, diagnosticsLogger)
         wantsVideo -> loadThreadVideoAttachmentPreview(threadApi, priority)
         wantsAudio ->
             loadThreadVideoAttachmentPreview(threadApi, priority, title = MR.strings.file_preview_audio.desc(), audioOnly = true)
@@ -7084,32 +7097,22 @@ internal suspend fun RaftFilePreviewPayload.loadThreadAttachmentPreview(
 private suspend fun RaftFilePreviewPayload.loadThreadImageAttachmentPreview(
     threadApi: RaftThreadApiClient,
     priority: DataRequestPriority,
-    expiresAtSink: ((String?) -> Unit)? = null
+    expiresAtSink: ((String?) -> Unit)? = null,
+    diagnosticsLogger: (String) -> Unit = {}
 ): RaftFilePreviewPayload {
-    val remoteImageUrl =
-        when (val response = threadApi.attachmentUrl(priority, attachmentId, disposition = "inline")) {
-            is ThreadApiResult.Success -> {
-                expiresAtSink?.invoke(response.data.expiresAt)
-                response.data.url.takeIf { it.isNotBlank() }
-            }
-            is ThreadApiResult.Failure -> null
-        }
     // Kuikly Compose image rendering already caches by source URL through
     // KuiklyImageCacheManager -> MemoryCacheModule and the native image adapter.
-    val resolvedImageUrl = remoteImageUrl ?: imageUrl
-    return copy(
-        kind = "image",
-        titleDesc = MR.strings.file_preview_image.desc(),
-        imageUrl = resolvedImageUrl,
-        message = "",
-        messageDesc =
-            if (resolvedImageUrl == null) {
-                MR.strings.file_preview_error_image_unavailable.desc()
-            } else {
-                null
-            },
-        error = if (resolvedImageUrl == null) "image_preview_unavailable" else null
-    )
+    val result =
+        fetchAttachmentUrlWithRetry(
+            onRetry = { attempt, failure ->
+                diagnosticsLogger(
+                    "attachment_url retry=$attempt attachment=${attachmentId.take(8)} code=${failure.code}"
+                )
+            }
+        ) {
+            threadApi.attachmentUrl(priority, attachmentId, disposition = "inline")
+        }
+    return withImageUrlResult(result, expiresAtSink)
 }
 
 private suspend fun RaftFilePreviewPayload.loadThreadHtmlAttachmentPreview(
@@ -7966,6 +7969,8 @@ internal fun RaftFilePreviewPayloadContent(
     pdfState: RaftFilePreviewPdfState = RaftFilePreviewPdfState.Idle,
     onPdfRenderError: (RaftPdfDocumentError) -> Unit = {},
     onPdfRetry: (() -> Unit)? = null,
+    /** The full image failed to load and the thumbnail is shown: the banner's Retry. */
+    onImageRetry: (() -> Unit)? = null,
     /** PDF failure fallback: hand the file to another app (the Open with action). */
     onPdfOpenInOtherApp: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -7996,19 +8001,27 @@ internal fun RaftFilePreviewPayloadContent(
                         onStopDownload = onStopDownload,
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        RaftFilePreviewImagePanel(
-                            source = pagePayload.imageUrl,
-                            fallbackSource = pagePayload.currentImageThumbnailUrl(),
-                            contentDescription = pagePayload.name.ifBlank { pagePayload.path },
-                            modifier = Modifier.fillMaxSize(),
-                            backgroundColor = RaftColor.SurfaceWhite,
-                            borderWidth = 0.dp,
-                            zoomable = true,
-                            zoomState = zoomState,
-                            animated = pagePayload.raftFilePreviewImageMayAnimate(),
-                            // Only the page on screen plays; its neighbours hold their frame.
-                            animationActive = selected
-                        )
+                        Box(Modifier.fillMaxSize()) {
+                            RaftFilePreviewImagePanel(
+                                source = pagePayload.imageUrl,
+                                fallbackSource = pagePayload.currentImageThumbnailUrl(),
+                                contentDescription = pagePayload.name.ifBlank { pagePayload.path },
+                                modifier = Modifier.fillMaxSize(),
+                                backgroundColor = RaftColor.SurfaceWhite,
+                                borderWidth = 0.dp,
+                                zoomable = true,
+                                zoomState = zoomState,
+                                animated = pagePayload.raftFilePreviewImageMayAnimate(),
+                                // Only the page on screen plays; its neighbours hold their frame.
+                                animationActive = selected
+                            )
+                            if (selected && pagePayload.imageFullLoadFailed && onImageRetry != null) {
+                                RaftFilePreviewImageLoadFailedBanner(
+                                    onRetry = onImageRetry,
+                                    modifier = Modifier.align(Alignment.BottomCenter)
+                                )
+                            }
+                        }
                     }
                 pagePayload.kind == "image" ->
                     RaftFilePreviewGenericCard(
@@ -10377,6 +10390,28 @@ private fun RaftFilePreviewDownloadStatusBar(
     }
 }
 
+/** The thumbnail stays on screen; this says the full image did not load and offers Retry. */
+@Composable
+internal fun RaftFilePreviewImageLoadFailedBanner(
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    RaftDesignSystemTheme {
+        RaftBanner(
+            description = stringResource(MR.strings.file_preview_image_full_load_failed),
+            status = RaftBannerStatus.Warning,
+            size = RaftBannerSize.Sm,
+            modifier = modifier.fillMaxWidth().padding(12.dp),
+            action = {
+                RaftButton(
+                    text = stringResource(MR.strings.common_retry),
+                    onClick = onRetry
+                )
+            }
+        )
+    }
+}
+
 @Composable
 internal fun RaftFilePreviewMarkdownPanel(
     name: String,
@@ -10663,6 +10698,7 @@ internal fun RaftFilePreviewImagePanel(
  */
 internal fun RaftFilePreviewPayload.raftFilePreviewImageMayAnimate(): Boolean =
     kind == "image" &&
+        !imageFullLoadFailed &&
         !imageUrl.isNullOrBlank() &&
         build.raft.app.image.raftImageMayBeAnimated(
             externalMimeType.ifBlank { composerImageMimeType },
