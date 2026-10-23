@@ -281,7 +281,7 @@ private fun ThreadInlineAudioSurface(
                     name = RaftLucideIconName.LoaderCircle,
                     modifier = Modifier.size(16.dp),
                     color = if (RaftAppThemeState.isDark) RaftColor.TextBlackArgb else "#000000",
-                    spinning = true
+                    spinning = false // TEMP: still frame for the before screenshot
                 )
                 Text(
                     text = stringResource(MR.strings.thread_audio_preview_loading),
