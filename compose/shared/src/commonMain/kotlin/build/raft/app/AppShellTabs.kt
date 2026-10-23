@@ -180,8 +180,9 @@ internal fun <T> List<T>.orderedLikePhoneBar(key: (T) -> String): List<T> =
     }
 
 /**
- * Search and Activity are already on the shell's own navigation: the phone bar's tabs, or the
- * wide rail's entries (nav spec 2026-10-21 §5). The Home list then drops its Search and Activity
+ * Search and Activity are already on the shell's own navigation: the phone bar's tabs, or on a
+ * wide screen the top bar's search field and the rail's Activity (nav spec 2026-10-21 §5,
+ * artin task #8). The Home list then drops its Search and Activity
  * rows so the two-pane layout does not list them twice; Saved is on neither and keeps its row.
  */
 internal fun appShellNavCarriesSearchAndActivity(navRailActive: Boolean): Boolean =
@@ -258,6 +259,26 @@ internal fun raftServerMenuModel(
         attentionEntries = moreAttention.mapTo(mutableSetOf()) { it.serverMenuEntry() },
         otherServersUnread = homeServerSwitcherHasOtherUnread(currentServerId, servers),
     )
+
+/**
+ * The server's pages in the popover's bottom row (raft-design #741, navigation.md "The server
+ * in the apps' desktop mode"). On a wide screen the rail already has Settings at its foot, so
+ * the row leaves it out; a guest has neither Members nor Computers, so a guest's row on a wide
+ * screen is empty and the popover draws no row at all. The phone keeps every page.
+ */
+internal fun raftServerMenuEntriesFor(
+    entries: List<RaftServerMenuEntry>,
+    wide: Boolean,
+    guest: Boolean,
+): List<RaftServerMenuEntry> =
+    if (!wide) {
+        entries
+    } else {
+        entries.filter { entry ->
+            entry != RaftServerMenuEntry.Settings &&
+                !(guest && (entry == RaftServerMenuEntry.Members || entry == RaftServerMenuEntry.Computers))
+        }
+    }
 
 /** The unread count a server row shows: the Home switcher's label, or null. */
 internal fun raftServerMenuUnreadLabel(server: RaftServerSwitcherItem): String? =

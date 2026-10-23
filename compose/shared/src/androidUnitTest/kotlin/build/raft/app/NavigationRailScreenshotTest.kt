@@ -1,6 +1,12 @@
 package build.raft.app
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -17,9 +23,12 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * The wide layout's navigation rail ([RaftNavigationRailTabBar]), light and dark: the server
- * tile in the header, Home selected, Activity with unread, Tasks, Search, Members, then Settings
- * in the footer. Fixed fixture data; verify / record as [RaftRobolectricScreenshot].
+ * The wide layout's chrome, light and dark (artin task #8, the web desktop): the top bar
+ * ([RaftAppShellTopBar]) across the window, with the current server's workspace button, the
+ * workspace strip of five servers (Botiverse current, Acme Labs with unread) and the search field
+ * centred; under it the navigation rail ([RaftNavigationRailTabBar]) with no header and no Search:
+ * Home selected, Activity with unread, Tasks, Members, then Settings in the footer. Fixed fixture
+ * data; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -34,6 +43,15 @@ class NavigationRailScreenshotTest {
     @Test
     fun navigationRailDark() = capture("shell.navigation-rail.dark", RaftAppAppearance.Dark)
 
+    private val servers =
+        listOf(
+            RaftServerSwitcherItem(id = "s1", name = "Botiverse", slug = "botiverse", activityUnreadCount = 0L),
+            RaftServerSwitcherItem(id = "s2", name = "Acme Labs", slug = "acme", activityUnreadCount = 3L),
+            RaftServerSwitcherItem(id = "s3", name = "Quiet", slug = "quiet", activityUnreadCount = 0L),
+            RaftServerSwitcherItem(id = "s4", name = "Raft Design", slug = "raft-design", activityUnreadCount = 0L),
+            RaftServerSwitcherItem(id = "s5", name = "Stamp", slug = "stamp", activityUnreadCount = 0L),
+        )
+
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =
@@ -41,21 +59,34 @@ class NavigationRailScreenshotTest {
                     object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
                 }
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
-                RaftNavigationRailTabBar(
-                    items =
-                        listOf(
-                            RaftBottomTabItemPayload(key = "home", label = "Home", iconName = RaftLucideIconName.House, selected = true),
-                            RaftBottomTabItemPayload(key = "activity", label = "Activity", iconName = RaftLucideIconName.Activity, badgeCount = 3),
-                            RaftBottomTabItemPayload(key = "tasks", label = "Tasks", iconName = RaftLucideIconName.SquareCheckBig),
-                            RaftBottomTabItemPayload(key = "search", label = "Search", iconName = RaftLucideIconName.Search),
-                            RaftBottomTabItemPayload(key = "members", label = "Members", iconName = RaftLucideIconName.Users),
-                        ),
-                    onSelect = {},
-                    modifier = Modifier.height(600.dp),
-                    header = RaftNavigationRailHeader(key = "server:1", label = "Botiverse", unread = true),
-                    bottomItems =
-                        listOf(RaftBottomTabItemPayload(key = "settings", label = "Settings", iconName = RaftLucideIconName.Settings)),
-                )
+                Column(Modifier.width(1280.dp).height(600.dp).background(RaftColor.SurfaceWhite)) {
+                    RaftAppShellTopBar(
+                        currentServer = servers.first(),
+                        servers = servers,
+                        serverMenuOpen = false,
+                        onWorkspaceClick = {},
+                        onServerPick = {},
+                        searchLabel = "Search",
+                        onSearchClick = {},
+                        windowWidth = 1280.dp,
+                    )
+                    Row(Modifier.weight(1f)) {
+                        RaftNavigationRailTabBar(
+                            items =
+                                listOf(
+                                    RaftBottomTabItemPayload(key = "home", label = "Home", iconName = RaftLucideIconName.House, selected = true),
+                                    RaftBottomTabItemPayload(key = "activity", label = "Activity", iconName = RaftLucideIconName.Activity, badgeCount = 3),
+                                    RaftBottomTabItemPayload(key = "tasks", label = "Tasks", iconName = RaftLucideIconName.SquareCheckBig),
+                                    RaftBottomTabItemPayload(key = "members", label = "Members", iconName = RaftLucideIconName.Users),
+                                ),
+                            onSelect = {},
+                            modifier = Modifier.fillMaxHeight(),
+                            bottomItems =
+                                listOf(RaftBottomTabItemPayload(key = "settings", label = "Settings", iconName = RaftLucideIconName.Settings)),
+                        )
+                        Box(Modifier.weight(1f).fillMaxHeight())
+                    }
+                }
             }
         }
 }

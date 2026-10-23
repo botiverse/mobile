@@ -2347,9 +2347,6 @@ private fun RaftAppShellReadyContent(
     var adaptiveDefaultLandingServerId by remember { mutableStateOf<String?>(null) }
     var tabScrollToTopRequests by remember { mutableStateOf(AppShellTabScrollToTopRequests()) }
     val tasksSurfaceActive = selectedTab == "tasks"
-    // The wide rail's server switcher belongs to the rail, not to Home: it opens over whatever
-    // page is showing, anchored next to the rail's server avatar.
-    var railServerSwitcherOpen by remember { mutableStateOf(false) }
     // D1a (raft-design #712): the server panel the current-server tab (phone bar) or the rail's
     // foot entry opens; the page that showed when it opened a server page (Back returns there);
     // and focus going back to the server tab after such a page closes.
@@ -3467,7 +3464,6 @@ private fun RaftAppShellReadyContent(
             if (railInlineSecondaryDestination != null) {
                 railInlineSecondaryDestination = null
             }
-            railServerSwitcherOpen = false
         }
     }
     val homePreviewServerId =
@@ -4380,7 +4376,6 @@ private fun RaftAppShellReadyContent(
         }
     fun selectAppShellTab(nextTab: String, directChildSwitch: Boolean = false) {
         prewarmAdmissionGate.invalidate("tab_select:$nextTab")
-        railServerSwitcherOpen = false
         serverMenuState.dismiss()
         val retainedTab = retainedAppShellSelectedTab(nextTab)
         val nextEpoch = appShellNextChildTabSwitchEpoch(selectedTab, retainedTab, childTabSwitchEpoch)
@@ -6724,6 +6719,49 @@ private fun RaftAppShellReadyContent(
         }
     }
 
+    // The server panel: over the content on the phone (above its bar), over the whole shell under
+    // the wide top bar's workspace button ([topBar]).
+    val serverMenuOverlay: @Composable (topBar: Boolean) -> Unit = { topBar ->
+        if (serverMenuState.open && serverMenuModel != null && serverMenuContent != null) {
+            RaftAppServerMenuOverlay(
+                model = serverMenuModel,
+                state = serverMenuState,
+                anchor = if (topBar) RaftServerMenuAnchor.TopBar else RaftServerMenuAnchor.BottomBar,
+                entries =
+                    raftServerMenuEntriesFor(
+                        serverMenuModel.entries,
+                        wide = navRailActive,
+                        guest = serverMenuContent.snapshot.server.role.equals("guest", ignoreCase = true),
+                    ),
+                onPick = ::onServerMenuPick,
+                prefersChineseCommunity = localePreferenceStore.readLocaleSync() == AppLocale.SimplifiedChinese,
+                onCreateServerClick = {
+                    pager.openAuthChooseServerPage(
+                        storeScope = navigationStoreScope,
+                        documentShell = pager.pageData.params.optBoolean(RAFT_DOCUMENT_SHELL, false)
+                    )
+                },
+                onInviteHumanClick =
+                    homeServerSwitcherInviteClick(
+                        serverMenuContent.snapshot.server,
+                        { serverId -> serverSwitcherInviteServerId = serverId }
+                    ) { serverMenuState.dismiss() },
+                topInset = if (topBar) raftAppShellTopBarMenuTopInset(shellScope.topSafeArea) else shellScope.topSafeArea,
+                screenHeight =
+                    shellScope.adaptivePane
+                        .takeIf { it.heightPx > 0 && it.density > 0f }
+                        ?.let { (it.heightPx / it.density).dp },
+                bottomInset =
+                    when {
+                        navRailActive -> shellScope.bottomSafeArea
+                        // The iOS system bar floats over the content: clear its band.
+                        shellScope.bottomTabBarOverlaysContent -> shellScope.bottomTabBarContentInset - RaftAppSpacing.Lg
+                        else -> 0.dp
+                    },
+            )
+        }
+    }
+
     val mainRouteSurface: @Composable () -> Unit = {
         RaftAppShellSurface(
             shellScope = shellScope,
@@ -6765,130 +6803,42 @@ private fun RaftAppShellReadyContent(
             modalHostState = appShellModalHostState,
             leadingNavigation =
                 if (navRailActive) {
-                    // task #31: Web LeftRail parity — yellow 64dp column, server header wired to
-                    // the real switcher, icon-only tabs, settings pinned to the bottom.
-                    val railBottomItems =
-                        remember(settingsTabLabel, selectedTab) {
-                            listOf(
-                                RaftBottomTabItemPayload(
-                                    key = "settings",
-                                    label = settingsTabLabel,
-                                    iconName = RaftLucideIconName.Settings,
-                                    selected = retainedAppShellSelectedTab(selectedTab) == "settings",
-                                )
-                            )
-                        }
-                    val railServers =
-                        (homeState.content as? SharedHomeContentState.Content)?.let { content ->
-                            val servers =
-                                sharedHomeSwitcherItems(
-                                    session = content.session,
-                                    selectedServer = content.snapshot.server,
-                                    serverUnreadCounts = homeState.serverUnreadCounts,
-                                    activityExpectedOwner = serverActivityExpectedOwner,
-                                    activityProjection = homeState.serverActivityUnread,
-                                )
-                            servers to
-                                homeHeaderServerIdentity(
-                                    currentServerId = content.snapshot.server.id.value,
-                                    currentServerName = content.snapshot.server.name,
-                                    servers = servers
-                                )
-                        }
-                    val railServerItem = railServers?.second
-                    val railServerUnread =
-                        railServers?.let { (servers, current) ->
-                            homeServerSwitcherHasOtherUnread(
-                                currentServerId = current.id,
-                                servers = servers
-                            )
-                        } ?: false
+                    // task #31: Web LeftRail parity — icon-only tabs, settings pinned to the bottom.
+                    // artin task #8: the top bar holds the server and Search, so the rail has
+                    // neither (web LeftRail with the top bar).
                     {
-                        // task #13 (three-pane): the Search rail entry is an inline middle-pane
-                        // destination (no page push), so it lives outside the tab keys and
-                        // never participates in retained-tab state.
-                        val railSearchItem =
-                            remember(searchTabLabel, railInlineSecondaryDestination) {
-                                RaftBottomTabItemPayload(
-                                    key = AppShellRailSearchKey,
-                                    label = searchTabLabel,
-                                    iconName = RaftLucideIconName.Search,
-                                    selected = railInlineSecondaryDestination == AppShellRailSearchKey,
+                        val railBottomItems =
+                            remember(settingsTabLabel, selectedTab) {
+                                listOf(
+                                    RaftBottomTabItemPayload(
+                                        key = "settings",
+                                        label = settingsTabLabel,
+                                        iconName = RaftLucideIconName.Settings,
+                                        selected = retainedAppShellSelectedTab(selectedTab) == "settings",
+                                    )
                                 )
                             }
-                        val railItems =
-                            (appShellRailTabItems + railSearchItem)
-                                // Nav spec §5: the phone bar's order (Search after Tasks).
-                                .orderedLikePhoneBar { it.key }
+                        val railItems = appShellRailTabItems.orderedLikePhoneBar { it.key }
                         RaftNavigationRailTabBar(
                             items = railItems,
                             onSelect = { key ->
-                                // Any rail tap closes the rail switcher, including Search (an
-                                // inline destination that never goes through selectAppShellTab)
-                                // and a tap on the tab that is already selected.
-                                railServerSwitcherOpen = false
                                 RaftProductEvents.navEntrySelected(
                                     destination = appShellNavDestination(key),
                                     surface = RaftNavSurface.Rail,
                                     wasActive =
-                                        if (key == AppShellRailSearchKey) {
-                                            railInlineSecondaryDestination == AppShellRailSearchKey
-                                        } else {
-                                            railInlineSecondaryDestination == null &&
-                                                retainedAppShellSelectedTab(selectedTab) == key
-                                        },
+                                        railInlineSecondaryDestination == null &&
+                                            retainedAppShellSelectedTab(selectedTab) == key,
                                 )
-                                if (key == AppShellRailSearchKey) {
-                                    railInlineSecondaryDestination = AppShellRailSearchKey
-                                    bridge.log("app_shell_rail_secondary_open destination=search")
-                                } else {
-                                    // Tapping a real rail item dismisses the inline
-                                    // secondary destination even when the underlying
-                                    // tab is already selected (Activity -> Search ->
-                                    // Activity must land back on Activity).
-                                    railInlineSecondaryDestination = null
-                                    onAppShellTabSelected(key)
-                                }
+                                // Tapping a real rail item dismisses the inline secondary destination
+                                // even when the underlying tab is already selected (Activity -> Search
+                                // -> Activity must land back on Activity).
+                                railInlineSecondaryDestination = null
+                                onAppShellTabSelected(key)
                             },
                             modifier = Modifier.fillMaxHeight(),
-                            header =
-                                railServerItem?.let { server ->
-                                    RaftNavigationRailHeader(
-                                        key = "server:${server.id}",
-                                        label = server.name,
-                                        unread = railServerUnread
-                                    )
-                                },
-                            headerContent =
-                                railServerItem?.let { server ->
-                                    {
-                                        Box(
-                                            modifier =
-                                                Modifier
-                                                    .size(40.dp)
-                                                    // Opens the rail's own switcher in place; it no
-                                                    // longer jumps to Home to borrow Home's popover.
-                                                    .clickable { railServerSwitcherOpen = !railServerSwitcherOpen },
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            ServerSwitcherAvatarTile(server)
-                                        }
-                                    }
-                                },
+                            // The server tab at the foot is the phone's; the top bar holds the server.
                             bottomItems = railBottomItems,
-                            bottomServerEntry =
-                                serverMenuModel?.let { model ->
-                                    {
-                                        RaftAppServerTab(
-                                            model = model,
-                                            state = serverMenuState,
-                                            onPick = ::onServerMenuPick,
-                                            compact = true,
-                                        )
-                                    }
-                                },
                             onBottomItemSelect = { key ->
-                                railServerSwitcherOpen = false
                                 RaftProductEvents.navEntrySelected(
                                     destination = appShellNavDestination(key),
                                     surface = RaftNavSurface.Rail,
@@ -6896,98 +6846,58 @@ private fun RaftAppShellReadyContent(
                                 )
                                 onAppShellTabSelected(key)
                             },
-                            topSafeArea = shellScope.topSafeArea,
+                            // The top bar above the rail clears the status bar.
+                            topSafeArea = 0.dp,
                             bottomSafeArea = shellScope.bottomSafeArea
                         )
                     }
                 } else {
                     null
-                }
-        ) {
-                    if (serverMenuState.open && serverMenuModel != null && serverMenuContent != null && (navRailActive || showAppShellBottomTabs)) {
-                        RaftAppServerMenuOverlay(
-                            model = serverMenuModel,
-                            state = serverMenuState,
-                            anchor = if (navRailActive) RaftServerMenuAnchor.RailFoot else RaftServerMenuAnchor.BottomBar,
-                            onPick = ::onServerMenuPick,
-                            prefersChineseCommunity = localePreferenceStore.readLocaleSync() == AppLocale.SimplifiedChinese,
-                            onCreateServerClick = {
-                                pager.openAuthChooseServerPage(
-                                    storeScope = navigationStoreScope,
-                                    documentShell = pager.pageData.params.optBoolean(RAFT_DOCUMENT_SHELL, false)
-                                )
+                },
+            topNavigation =
+                if (navRailActive) {
+                    {
+                        RaftAppShellTopBar(
+                            currentServer = serverMenuModel?.currentServer,
+                            servers = serverMenuModel?.servers.orEmpty(),
+                            serverMenuOpen = serverMenuState.open,
+                            onWorkspaceClick = {
+                                bridge.log("app_shell_server_menu_toggle open=${!serverMenuState.open} from=top_bar")
+                                serverMenuState.toggle()
                             },
-                            onInviteHumanClick =
-                                homeServerSwitcherInviteClick(
-                                    serverMenuContent.snapshot.server,
-                                    { serverId -> serverSwitcherInviteServerId = serverId }
-                                ) { serverMenuState.dismiss() },
-                            topInset = shellScope.topSafeArea,
-                            screenHeight =
+                            onServerPick = { serverId ->
+                                bridge.log("app_shell_top_bar_server_pick to=$serverId")
+                                switchServerFromServerMenu(serverId)
+                            },
+                            searchLabel = searchTabLabel,
+                            onSearchClick = {
+                                // The rail's old Search entry: the inline Search over the current tab.
+                                serverMenuState.dismiss()
+                                RaftProductEvents.navEntrySelected(
+                                    destination = appShellNavDestination(AppShellRailSearchKey),
+                                    surface = RaftNavSurface.TopBar,
+                                    wasActive = railInlineSecondaryDestination == AppShellRailSearchKey,
+                                )
+                                railInlineSecondaryDestination = AppShellRailSearchKey
+                                bridge.log("app_shell_rail_secondary_open destination=search from=top_bar")
+                            },
+                            windowWidth =
                                 shellScope.adaptivePane
-                                    .takeIf { it.heightPx > 0 && it.density > 0f }
-                                    ?.let { (it.heightPx / it.density).dp },
-                            bottomInset =
-                                when {
-                                    navRailActive -> shellScope.bottomSafeArea
-                                    // The iOS system bar floats over the content: clear its band.
-                                    shellScope.bottomTabBarOverlaysContent -> shellScope.bottomTabBarContentInset - RaftAppSpacing.Lg
-                                    else -> 0.dp
-                                },
+                                    .takeIf { it.widthPx > 0 && it.density > 0f }
+                                    ?.let { (it.widthPx / it.density).dp } ?: 0.dp,
+                            topSafeArea = shellScope.topSafeArea,
                         )
                     }
-                    val railSwitcherContent = homeState.content as? SharedHomeContentState.Content
-                    if (navRailActive && railServerSwitcherOpen && railSwitcherContent != null) {
-                        RaftFloatingOverlayHost(
-                            onDismiss = { railServerSwitcherOpen = false },
-                            dismissActivationDelayMillis = RaftFloatingOverlayClickTriggeredDismissDelayMillis
-                        ) { _ ->
-                            ServerSwitcherPanel(
-                                servers =
-                                    sharedHomeSwitcherItems(
-                                        session = railSwitcherContent.session,
-                                        selectedServer = railSwitcherContent.snapshot.server,
-                                        serverUnreadCounts = homeState.serverUnreadCounts,
-                                        activityExpectedOwner = serverActivityExpectedOwner,
-                                        activityProjection = homeState.serverActivityUnread,
-                                    ),
-                                currentServerId = railSwitcherContent.snapshot.server.id.value,
-                                pendingServerId = homeState.serverSwitchState.pendingServerId,
-                                prefersChineseCommunity =
-                                    localePreferenceStore.readLocaleSync() == AppLocale.SimplifiedChinese,
-                                labels = RaftHomeShellLabels.localized(),
-                                onServerSelected = { serverId ->
-                                    railServerSwitcherOpen = false
-                                    homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
-                                    homeShellStore.dispatch(
-                                        SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(serverId))
-                                    )
-                                },
-                                onServerOrderChange = { order ->
-                                    homeShellStore.dispatch(
-                                        SharedHomeShellIntent.Home(SharedHomeIntent.ReorderServers(order))
-                                    )
-                                },
-                                onCreateServerClick = {
-                                    railServerSwitcherOpen = false
-                                    pager.openAuthChooseServerPage(
-                                        storeScope = navigationStoreScope,
-                                        documentShell =
-                                            pager.pageData.params.optBoolean(RAFT_DOCUMENT_SHELL, false)
-                                    )
-                                },
-                                onInviteHumanClick =
-                                    homeServerSwitcherInviteClick(
-                                        railSwitcherContent.snapshot.server,
-                                        { serverId -> serverSwitcherInviteServerId = serverId }
-                                    ) { railServerSwitcherOpen = false },
-                                modifier =
-                                    Modifier
-                                        .padding(top = shellScope.topSafeArea + RaftAppSpacing.Sm, start = RaftAppSpacing.Sm)
-                                        .clickable(onClick = {})
-                            )
-                        }
-                    }
+                } else {
+                    null
+                },
+            // The top bar's server panel opens under its workspace button, over the rail.
+            shellOverlay = if (navRailActive) { { serverMenuOverlay(true) } } else null,
+        ) {
+                    // The wide top bar clears the status bar: the pages under it start at its seam.
+                    @Suppress("NAME_SHADOWING")
+                    val shellScope = if (navRailActive) shellScope.copy(topSafeArea = 0.dp) else shellScope
+                    if (!navRailActive && showAppShellBottomTabs) serverMenuOverlay(false)
                     serverSwitcherInviteServerId?.let { inviteServerId ->
                         val inviteMembersDataSource =
                             remember(memberRepository, settingsRepository, appShellServerMembersStore) {

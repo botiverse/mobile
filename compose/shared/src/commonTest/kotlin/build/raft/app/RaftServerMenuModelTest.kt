@@ -11,6 +11,20 @@ import kotlin.test.assertTrue
 
 /** Design D1a: the current-server tab, its menu, the switch that keeps the tab, the dot mapping. */
 class RaftServerMenuModelTest {
+    @Test
+    fun wideScreenRowLeavesSettingsToTheRailAndAGuestGetsNoRow() {
+        // raft-design #741 (navigation.md, "The server in the apps' desktop mode").
+        val all = RaftServerMenuEntry.entries
+        assertEquals(all, raftServerMenuEntriesFor(all, wide = false, guest = false), "the phone keeps every page")
+        assertEquals(all, raftServerMenuEntriesFor(all, wide = false, guest = true), "the phone's row is unchanged")
+        assertEquals(
+            listOf(RaftServerMenuEntry.Members, RaftServerMenuEntry.Computers),
+            raftServerMenuEntriesFor(all, wide = true, guest = false),
+            "Settings sits at the rail's foot",
+        )
+        assertEquals(emptyList(), raftServerMenuEntriesFor(all, wide = true, guest = true), "a guest's wide popover has no row")
+    }
+
     private val botiverse = RaftServerSwitcherItem(id = "s1", name = "Botiverse", slug = "botiverse", activityUnreadCount = 0L)
     private val acme = RaftServerSwitcherItem(id = "s2", name = "Acme Labs", slug = "acme", activityUnreadCount = 3L)
     private val quiet = RaftServerSwitcherItem(id = "s3", name = "Quiet", slug = "quiet", activityUnreadCount = 0L)

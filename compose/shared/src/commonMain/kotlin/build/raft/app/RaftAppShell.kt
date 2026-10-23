@@ -136,6 +136,10 @@ internal fun RaftAppShellSurface(
     interactionLocked: Boolean = false,
     modalHostState: RaftUnifiedDialogHostState? = null,
     leadingNavigation: (@Composable () -> Unit)? = null,
+    /** The wide layout's top bar, above [leadingNavigation] and the content (web AppTopBar). */
+    topNavigation: (@Composable () -> Unit)? = null,
+    /** Drawn over the whole shell, top bar and rail included (the top bar's server panel). */
+    shellOverlay: (@Composable () -> Unit)? = null,
     /** D1a: draws the bar's current-server tab (see [RaftBottomTabBar]). */
     bottomServerTab: (@Composable (Modifier) -> Unit)? = null,
     content: @Composable () -> Unit
@@ -186,6 +190,7 @@ internal fun RaftAppShellSurface(
                                 }
                             )
                 ) {
+                    topNavigation?.invoke()
                     Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                         Row(modifier = Modifier.fillMaxSize()) {
                             leadingNavigation?.invoke()
@@ -198,6 +203,9 @@ internal fun RaftAppShellSurface(
                             }
                         }
                     }
+                }
+                if (shellOverlay != null) {
+                    Box(modifier = Modifier.fillMaxSize().zIndex(RaftAppContentHostZIndex)) { shellOverlay() }
                 }
                 if (showBottomTabs) {
                     // raft-design #620: gone at once when the keyboard opens, back with a short

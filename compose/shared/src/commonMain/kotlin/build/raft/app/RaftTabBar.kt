@@ -460,60 +460,33 @@ internal fun resolveRaftAppTabBarRenderer(
 }
 
 /**
- * task #31: Web-aligned left navigation rail (LeftRail.tsx contract, task #30 diff list).
- * Full-height brand-yellow column: 64dp wide with a right black separator; a 62dp server
- * header on top (40dp avatar tile or first-letter fallback, bottom divider aligned with the
- * channel list header rule); icon-only 40dp visual buttons with 18dp icons at 6dp rhythm and
- * 8dp top/bottom breathing room; selection is a white 2dp-bordered tile with the classic 2dp
- * hard shadow — never a yellow cell or capsule. Main tabs occupy the top group; utility
- * entries pin to the bottom through a flexible spacer so the settings cluster never gets
- * pushed off by short heights. All entries map to real destinations — no filler buttons.
+ * The wide layout's navigation rail (web LeftRail with the top bar): the destinations at the top,
+ * the tools (Settings) pinned to the bottom. The server and Search live in the top bar above it
+ * ([RaftAppShellTopBar], artin task #8), so the rail has no header.
  */
-internal data class RaftNavigationRailHeader(
-    val key: String,
-    val label: String,
-    val unread: Boolean = false,
-    val enabled: Boolean = true
-)
-
 @Composable
 internal fun RaftNavigationRailTabBar(
     items: List<RaftBottomTabItemPayload>,
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
-    header: RaftNavigationRailHeader? = null,
-    headerContent: (@Composable () -> Unit)? = null,
     bottomItems: List<RaftBottomTabItemPayload> = emptyList(),
     onBottomItemSelect: ((String) -> Unit)? = null,
-    /** D1a: the current-server entry, last in the rail's foot; it opens the server menu. */
-    bottomServerEntry: (@Composable () -> Unit)? = null,
     topSafeArea: Dp = 0.dp,
     bottomSafeArea: Dp = 0.dp
 ) {
-    // The design system's raft-ui AppRail: 56dp plus the seam, the 56dp header square, 40dp
-    // items 6dp apart and 8dp from both ends, the selected sticker on the frame.
+    // The design system's raft-ui AppRail: 56dp plus the seam, 40dp items 6dp apart and 8dp from
+    // both ends, the selected sticker on the frame.
     RaftDesignSystemTheme {
         RaftAppRail(
             modifier = modifier,
             topInset = topSafeArea,
             bottomInset = bottomSafeArea,
-            header =
-                header?.let { railHeader ->
-                    {
-                        if (headerContent != null) {
-                            headerContent()
-                        } else {
-                            RaftNavigationRailServerTile(header = railHeader, onSelect = onSelect)
-                        }
-                    }
-                },
             footer =
-                if (bottomItems.isNotEmpty() || bottomServerEntry != null) {
+                if (bottomItems.isNotEmpty()) {
                     {
                         bottomItems.forEach { item ->
                             RaftNavigationRailTabItem(item = item, onSelect = onBottomItemSelect ?: onSelect)
                         }
-                        bottomServerEntry?.invoke()
                     }
                 } else {
                     null
@@ -551,51 +524,6 @@ private fun RaftNavigationRailTabItem(
         attentionDescription = attentionDescription,
     )
 }
-
-@Composable
-private fun RaftNavigationRailServerTile(
-    header: RaftNavigationRailHeader,
-    onSelect: (String) -> Unit
-) {
-    val tileSize = 40.dp
-    Box(modifier = Modifier.size(tileSize + RaftAppStroke.Default * 2)) {
-        Box(
-            modifier = Modifier
-                .size(tileSize)
-                .align(Alignment.Center)
-                .clip(RoundedCornerShape(RaftAppRadius.Control))
-                .background(RaftColor.SurfaceWhite)
-                .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Control))
-                .clickable(enabled = header.enabled) { onSelect(header.key) },
-            contentAlignment = Alignment.Center
-        ) {
-            // Default tile shows the server's first letter; the real avatar surface is supplied
-            // through headerContent (it needs the mounted avatar cache in the shell context).
-            Text(
-                text = header.label.take(1).uppercase(),
-                style =
-                    RaftType.Button.copy(
-                        fontFamily = raftMonoFamilyForWeight(FontWeight.Bold),
-                        fontSize = 17.sp,
-                        lineHeight = 20.sp,
-                        fontWeight = FontWeight.Normal
-                    ),
-                color = RaftColor.TextBlack,
-                maxLines = 1
-            )
-        }
-        if (header.unread) {
-            Box(
-                modifier = Modifier
-                    .size(10.dp)
-                    .align(Alignment.TopEnd)
-                    .background(RaftColor.AccentPink)
-                    .border(RaftAppStroke.Default, RaftColor.StickerInk)
-            )
-        }
-    }
-}
-
 
 @Composable
 private fun RaftVerticalTabItem(
