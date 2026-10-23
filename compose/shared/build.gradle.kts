@@ -390,6 +390,14 @@ tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinNativeLink::class.java).c
     }
 }
 
+// test.yml's iOS job passes the simulator it picked (UDID) so :shared:iosSimulatorArm64Test does
+// not depend on the plugin's default device name existing on the hosted runner image.
+providers.gradleProperty("raft.iosSimulatorTestDevice").orNull?.takeIf { it.isNotBlank() }?.let { simulator ->
+    tasks.withType(org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest::class.java).configureEach {
+        device.set(simulator)
+    }
+}
+
 gradle.taskGraph.whenReady {
     tasks.matching { it.name.startsWith("compileKotlinIos") }.configureEach {
         // The bundled TMM resource plugin attaches PackResourcesToKLibAction after task

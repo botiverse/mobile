@@ -55,6 +55,9 @@ DECLARED_TEST_IDS=(
   "durable-partition-migration"
   "thread-newer-auto-pagination"
   "local-image-sampled-decode"
+  "adaptive-pane-host"
+  "qa-session-bootstrap-inbox"
+  "composed-character-boundary"
 )
 
 # Test metadata maps
@@ -184,6 +187,25 @@ init_test_metadata() {
   TEST_RETRIES["thread-newer-auto-pagination"]=1
   TEST_OUTPUT["thread-newer-auto-pagination"]="thread-newer-auto-pagination-instrumentation.txt"
   TEST_CONDITION["thread-newer-auto-pagination"]="thread_newer_pagination_gate"
+
+  # Promoted from "compiled, never run" (task #18): deterministic, no pixel probes or injected input.
+  TEST_CLASS["adaptive-pane-host"]="build.raft.app.shared.AndroidAdaptivePaneHostConnectedTest"
+  TEST_RUNNER["adaptive-pane-host"]="$RUNNER_CONNECTED"
+  TEST_RETRIES["adaptive-pane-host"]=1
+  TEST_OUTPUT["adaptive-pane-host"]="adaptive-pane-host-instrumentation.txt"
+  TEST_CONDITION["adaptive-pane-host"]="always"
+
+  TEST_CLASS["qa-session-bootstrap-inbox"]="build.raft.app.core.data.auth.QaSessionBootstrapInboxConnectedTest"
+  TEST_RUNNER["qa-session-bootstrap-inbox"]="$RUNNER_CONNECTED"
+  TEST_RETRIES["qa-session-bootstrap-inbox"]=7
+  TEST_OUTPUT["qa-session-bootstrap-inbox"]="qa-session-bootstrap-inbox-instrumentation.txt"
+  TEST_CONDITION["qa-session-bootstrap-inbox"]="always"
+
+  TEST_CLASS["composed-character-boundary"]="build.raft.app.RaftComposedCharacterBoundaryRuntimeTest"
+  TEST_RUNNER["composed-character-boundary"]="$RUNNER_SHARED"
+  TEST_RETRIES["composed-character-boundary"]=1
+  TEST_OUTPUT["composed-character-boundary"]="composed-character-boundary-instrumentation.txt"
+  TEST_CONDITION["composed-character-boundary"]="always"
 
   for id in "${DECLARED_TEST_IDS[@]}"; do
     TEST_STATUS["$id"]="not_run"
