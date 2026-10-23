@@ -16,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -39,7 +40,8 @@ import build.raft.designsystem.theme.RaftTheme
  *   and indicator; the list does not move, the indicator slides down from the top edge). Only the
  *   indicator colours come from the design system.
  * - iOS: UIRefreshControl feel driven by [RaftPullToRefreshController]: the list follows the finger
- *   with UIScrollView's rubber band and the design system's spin loader sits in the gap.
+ *   with UIScrollView's rubber band and the design system's spin loader sits in the gap
+ *   ([RaftCupertinoRefreshIndicator]; metrics on [RaftCupertinoTrigger] / [RaftCupertinoHold]).
  *
  * [isRefreshing] is the caller's store signal; [enabled] gates the gesture and the indicator. Both
  * gestures listen to user-input nested scroll only, so programmatic scrolls and flings pass untouched.
@@ -198,33 +200,67 @@ internal fun raftPullToRefreshGeometry(style: RaftPullToRefreshStyle, density: D
 /**
  * The iOS pull indicator is the design system's spin loader ([RaftSpinner], raft-ui Spinner),
  * centred in the revealed gap (up to the hold band). While pulling, its four pixels light up
- * clockwise with the pull; once refreshing it runs its own step animation.
+ * clockwise with the pull. It spins from the moment the pull commits at the threshold (with
+ * UIRefreshControl's commit haptic) through the refresh, and keeps spinning while the gap springs
+ * closed after it, as UIRefreshControl's spinner does after `endRefreshing()`.
  */
 @Composable
 private fun RaftCupertinoRefreshIndicator(controller: RaftPullToRefreshController, modifier: Modifier) {
     val color = RaftTheme.colors.foregroundMuted
+    val haptic = rememberRaftCupertinoRefreshHaptic()
+    val committed by remember(controller) {
+        derivedStateOf { controller.armed || controller.showsRefreshing }
+    }
+    var spinning by remember(controller) { mutableStateOf(false) }
+    val phase = controller.phase
+    LaunchedEffect(committed, phase) {
+        when {
+            committed -> spinning = true
+            // Released short of the threshold or back at rest: the light follows the pull again.
+            phase == RaftPullToRefreshPhase.Idle || phase == RaftPullToRefreshPhase.Pulling -> spinning = false
+        }
+    }
+    LaunchedEffect(controller) {
+        snapshotFlow { controller.phase == RaftPullToRefreshPhase.Pulling }.collect { if (it) haptic.prepare() }
+    }
+    LaunchedEffect(controller) {
+        snapshotFlow { controller.armed }.collect { if (it) haptic.trigger() }
+    }
     val layer =
         modifier.graphicsLayer {
             val band = controller.contentOffset.coerceAtMost(controller.geometry.indicatorHoldPx)
             translationY = (band - size.height) / 2f
-            alpha = (controller.contentOffset / controller.geometry.triggerPx).coerceIn(0f, 1f)
+            alpha = if (spinning) 1f else controller.pullProgress
         }
-    if (controller.showsRefreshing) {
+    if (spinning) {
         RaftSpinner(modifier = layer, size = RaftCupertinoSpinnerSize, color = color)
     } else {
         // Before the threshold the light walks with the pull: step n lights the n-th pixel.
         val step by remember(controller) {
-            derivedStateOf {
-                val progress = (controller.contentOffset / controller.geometry.triggerPx).coerceIn(0f, 1f)
-                (progress * 3.999f).toInt()
-            }
+            derivedStateOf { (controller.pullProgress * 3.999f).toInt() }
         }
         RaftSpinner(modifier = layer, size = RaftCupertinoSpinnerSize, color = color, stillStep = step)
     }
 }
 
 private const val RaftMaterialRubberBandCoefficient = 0.5f
+
+/** UIScrollView's rubber-band constant (`c = 0.55`, the widely reproduced UIKit value). */
 private const val RaftCupertinoRubberBandCoefficient = 0.55f
-private val RaftCupertinoTrigger = 72.dp
-private val RaftCupertinoHold = 56.dp
+
+/**
+ * Content offset at which an iOS pull commits. Apple does not document UIRefreshControl's
+ * threshold; Flutter's iOS-fidelity port (`CupertinoSliverRefreshControl`,
+ * `_defaultRefreshTriggerPullDistance = 100.0`) commits at 100pt of visible overscroll, and so
+ * does this (the content offset, after the rubber band). It exceeds [RaftCupertinoHold], so the
+ * indicator finishes filling in after the gap passes its resting height, as on the system control.
+ */
+private val RaftCupertinoTrigger = 100.dp
+
+/**
+ * Gap held open while refreshing: UIRefreshControl's own height, 60pt (observed default frame
+ * height; the scroll view's top inset grows by it while refreshing, Apple does not document it).
+ * Flutter's iOS port uses the same (`_defaultRefreshIndicatorExtent = 60.0`).
+ */
+private val RaftCupertinoHold = 60.dp
 private val RaftCupertinoSpinnerSize = RaftSpinnerSize.Md

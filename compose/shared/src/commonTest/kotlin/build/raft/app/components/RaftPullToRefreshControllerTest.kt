@@ -1,8 +1,10 @@
 package build.raft.app.components
 
 import androidx.compose.runtime.MonotonicFrameClock
+import androidx.compose.ui.unit.Density
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -248,6 +250,76 @@ class RaftPullToRefreshControllerTest {
         settleAnimations()
         assertEquals(0f, c.contentOffset)
         assertEquals(RaftPullToRefreshPhase.Idle, c.phase)
+        assertEquals(0, refreshes)
+    }
+
+    @Test
+    fun pullProgressMapsTheContentOffsetOntoTheThreshold() {
+        assertEquals(0f, raftPullProgress(0f, 100f))
+        assertEquals(0.5f, raftPullProgress(50f, 100f))
+        assertEquals(1f, raftPullProgress(140f, 100f))
+        assertEquals(0f, raftPullProgress(-5f, 100f))
+        assertEquals(0f, raftPullProgress(50f, 0f))
+    }
+
+    @Test
+    fun cupertinoGeometryMatchesUiRefreshControlMetrics() {
+        val g = raftPullToRefreshGeometry(RaftPullToRefreshStyle.Cupertino, Density(3f))
+        assertEquals(300f, g.triggerPx)
+        assertEquals(180f, g.indicatorHoldPx)
+        assertEquals(0.55f, g.coefficient)
+        assertTrue(g.triggerPx > g.indicatorHoldPx, "the indicator fills in after the gap passes its rest height")
+    }
+
+    @Test
+    fun cupertinoPullArmsAtTheThresholdAndStaysArmedWhenEasedBack() = runTest {
+        var refreshes = 0
+        val c = controller(RaftPullToRefreshStyle.Cupertino) { refreshes++ }
+        c.onPullDown(pullFor(60f))
+        assertFalse(c.armed)
+        assertEquals(0.75f, c.pullProgress, 0.01f)
+
+        c.onPullDown(pullFor(81f) - pullFor(60f))
+        assertTrue(c.armed, "crossing the threshold commits while the finger is down")
+        assertEquals(1f, c.pullProgress)
+        assertEquals(0, refreshes)
+
+        // Easing back below the threshold, even to rest, keeps the commit.
+        c.onPullUp(-pullFor(81f) + pullFor(30f))
+        assertTrue(c.armed)
+        c.onPullUp(-1_000f)
+        assertEquals(0f, c.contentOffset)
+        assertEquals(RaftPullToRefreshPhase.Pulling, c.phase)
+        assertTrue(c.armed)
+
+        c.onRelease(0f)
+        assertEquals(1, refreshes)
+        assertFalse(c.armed)
+        assertEquals(RaftPullToRefreshPhase.AwaitingRefresh, c.phase)
+        c.onStoreRefreshingChanged(true)
+        advanceTimeBy(5_000)
+        assertEquals(60f, c.contentOffset, 0.5f)
+    }
+
+    @Test
+    fun aShortCupertinoPullNeverArms() = runTest {
+        val c = controller(RaftPullToRefreshStyle.Cupertino)
+        c.onPullDown(pullFor(79f))
+        assertFalse(c.armed)
+        c.onRelease(0f)
+        assertFalse(c.armed)
+        settleAnimations()
+        assertEquals(RaftPullToRefreshPhase.Idle, c.phase)
+    }
+
+    @Test
+    fun materialKeepsReleaseTimeThresholdWithoutArming() = runTest {
+        var refreshes = 0
+        val c = controller(RaftPullToRefreshStyle.Material) { refreshes++ }
+        c.onPullDown(pullFor(100f))
+        assertFalse(c.armed)
+        c.onPullUp(-pullFor(100f) + pullFor(40f))
+        c.onRelease(0f)
         assertEquals(0, refreshes)
     }
 }
