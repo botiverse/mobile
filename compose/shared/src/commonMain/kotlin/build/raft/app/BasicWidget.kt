@@ -39,6 +39,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -81,7 +82,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -118,8 +119,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
 import androidx.compose.ui.unit.sp
@@ -129,11 +130,11 @@ import build.raft.app.compat.ui.BorderStyle
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.ui.KeyboardParams
 import build.raft.app.compat.ui.TextInputState
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
-import kotlin.math.roundToInt
 
 fun Modifier.backgroundColor(color: Color): Modifier {
     return this.background(color)
@@ -293,6 +294,8 @@ internal fun RaftAspectFitImagePreviewSurface(
     borderWidth: Dp = RaftAppStroke.Default,
     contentScale: ContentScale = ContentScale.Fit,
     zoomable: Boolean = false,
+    /** Zoom state hoisted by the page and keyed by image identity; null keeps it per source. */
+    zoomState: RaftZoomableImageState? = null,
     showLoadingIndicator: Boolean = false,
     onImageStateChange: ((AsyncImagePainter.State) -> Unit)? = null
 ) {
@@ -378,11 +381,17 @@ internal fun RaftAspectFitImagePreviewSurface(
                     previousPresentableSource = lastPresentableSource
                 )
             loadingPresentation.fallbackUnderlaySource?.let { underlaySource ->
+                // While the full-size image loads over a zoomed thumbnail, the thumbnail underlay
+                // keeps the same zoom so the view does not jump to 1x and back.
+                val underlayZoom = zoomState?.takeIf { zoomable }
                 RaftCachedImage(
                     source = underlaySource,
                     contentDescription = contentDescription,
                     contentScale = contentScale,
-                    modifier = Modifier.fillMaxSize()
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .then(if (underlayZoom != null) Modifier.raftZoomableImageLayer(underlayZoom) else Modifier)
                 )
             }
             RaftImagePreviewRenderSlot(renderIdentity) {
@@ -391,6 +400,7 @@ internal fun RaftAspectFitImagePreviewSurface(
                         source = activeSource.orEmpty(),
                         contentDescription = contentDescription,
                         modifier = Modifier.fillMaxSize(),
+                        zoomState = zoomState,
                         onImageStateChange = { state ->
                             imageState = state
                             onImageStateChange?.invoke(state)
@@ -475,65 +485,24 @@ private fun RaftZoomableCachedImage(
     source: String,
     contentDescription: String?,
     modifier: Modifier = Modifier,
+    zoomState: RaftZoomableImageState? = null,
     onImageStateChange: ((AsyncImagePainter.State) -> Unit)? = null
 ) {
-    var scale by remember(source) { mutableStateOf(1f) }
-    var pan by remember(source) { mutableStateOf(Offset.Zero) }
-    var viewportSize by remember(source) { mutableStateOf(IntSize.Zero) }
-
-    fun clampedPan(candidate: Offset, currentScale: Float): Offset {
-        if (currentScale <= 1f || viewportSize.width == 0 || viewportSize.height == 0) {
-            return Offset.Zero
-        }
-        val maxX = viewportSize.width * (currentScale - 1f) / 2f
-        val maxY = viewportSize.height * (currentScale - 1f) / 2f
-        return Offset(
-            x = candidate.x.coerceIn(-maxX, maxX),
-            y = candidate.y.coerceIn(-maxY, maxY)
-        )
+    // Hoisted state survives the render slot re-keying on a source swap (thumbnail -> full size).
+    val state = zoomState ?: remember(source) { RaftZoomableImageState() }
+    val animationScope = rememberCoroutineScope()
+    DisposableEffect(state) {
+        onDispose { state.finishAnimation() }
     }
 
     Box(
         modifier = modifier
             .clipToBounds()
-            .onSizeChanged { viewportSize = it }
+            .onSizeChanged { state.viewport = it.toSize() }
             // Zoomed in, a horizontal drag pans the image: it must not start the host's back swipe
             // (iOS full-page pop) or page a surrounding gallery. At 1x the drag is left alone.
-            .raftBackSwipeRegion { raftZoomedImageKeepsBackSwipe(scale) }
-            .pointerInput(source) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
-                    val touchSlopTracker = ZoomPanTouchSlopTracker(viewConfiguration.touchSlop)
-                    do {
-                        val event = awaitPointerEvent()
-                        if (event.changes.any { it.isConsumed }) {
-                            break
-                        }
-                        val zoomChange = event.calculateZoom()
-                        val panChange = event.calculatePan()
-                        val shouldHandle =
-                            zoomChange != 1f ||
-                                scale > 1f
-                        val pastTouchSlop =
-                            shouldHandle &&
-                                touchSlopTracker.accept(
-                                    zoomChange = zoomChange,
-                                    panChange = panChange,
-                                    viewportExtent = max(viewportSize.width, viewportSize.height).toFloat(),
-                                )
-                        if (pastTouchSlop) {
-                            val nextScale = (scale * zoomChange).coerceIn(1f, 4f)
-                            scale = nextScale
-                            pan = clampedPan(pan + panChange, nextScale)
-                            event.changes.forEach {
-                                if (it.positionChanged()) {
-                                    it.consume()
-                                }
-                            }
-                        }
-                    } while (event.changes.any { it.pressed })
-                }
-            },
+            .raftBackSwipeRegion { raftZoomedImageKeepsBackSwipe(state.transform.scale) }
+            .raftZoomableImageGestures(state, animationScope),
         contentAlignment = Alignment.Center
     ) {
         RaftCachedImage(
@@ -543,11 +512,101 @@ private fun RaftZoomableCachedImage(
             onImageStateChange = onImageStateChange,
             modifier = Modifier
                 .fillMaxSize()
-                .offset { IntOffset(pan.x.roundToInt(), pan.y.roundToInt()) }
-                .scale(scale)
+                .raftZoomableImageLayer(state)
         )
     }
 }
+
+/** Draws the image at [state]'s zoom, clipped to its own bounds. */
+private fun Modifier.raftZoomableImageLayer(state: RaftZoomableImageState): Modifier =
+    clipToBounds()
+        .graphicsLayer {
+            // Read while drawing: a zoom or pan frame redraws without recomposing.
+            val transform = state.transform
+            scaleX = transform.scale
+            scaleY = transform.scale
+            translationX = transform.pan.x
+            translationY = transform.pan.y
+        }
+
+/**
+ * Pinch to zoom (around the fingers' centroid), drag to pan while zoomed, and double tap.
+ *
+ * At 1x a one-finger drag is never consumed, so the gallery swipe and the iOS back swipe keep it;
+ * movement is consumed only once a pinch or a zoomed pan passes the touch slop. Down events are never
+ * consumed. A double tap zooms to [RaftZoomableImageDoubleTapScale] around the tap, or back to 1x.
+ */
+private fun Modifier.raftZoomableImageGestures(
+    state: RaftZoomableImageState,
+    animationScope: CoroutineScope
+): Modifier =
+    pointerInput(state) {
+        var lastTapUpMillis = 0L
+        var lastTapPosition: Offset? = null
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            state.stopAnimation()
+            val previousTap = lastTapPosition
+            lastTapPosition = null
+            val secondTap =
+                previousTap != null &&
+                    down.uptimeMillis - lastTapUpMillis <= viewConfiguration.doubleTapTimeoutMillis &&
+                    (down.position - previousTap).getDistance() <= viewConfiguration.touchSlop * 4f
+            val touchSlopTracker = ZoomPanTouchSlopTracker(viewConfiguration.touchSlop)
+            var isTap = true
+            // Another handler (gallery paging, back swipe) consumed the gesture: leave the rest of it alone.
+            var released = false
+            var travelled = Offset.Zero
+            while (true) {
+                val event = awaitPointerEvent()
+                val pressed = event.changes.count { it.pressed }
+                if (pressed == 0) {
+                    val up = event.changes.firstOrNull()
+                    if (isTap && !released && up != null && !up.isConsumed) {
+                        if (secondTap) {
+                            state.doubleTap(up.position, animationScope)
+                            up.consume()
+                        } else {
+                            lastTapPosition = up.position
+                            lastTapUpMillis = up.uptimeMillis
+                        }
+                    }
+                    break
+                }
+                if (pressed > 1) isTap = false
+                if (released) continue
+                if (event.changes.any { it.isConsumed }) {
+                    released = true
+                    isTap = false
+                    continue
+                }
+                val zoomChange = event.calculateZoom()
+                val panChange = event.calculatePan()
+                travelled += panChange
+                if (travelled.getDistance() > viewConfiguration.touchSlop) isTap = false
+                val shouldHandle = zoomChange != 1f || state.transform.scale > 1f
+                val pastTouchSlop =
+                    shouldHandle &&
+                        touchSlopTracker.accept(
+                            zoomChange = zoomChange,
+                            panChange = panChange,
+                            viewportExtent = max(state.viewport.width, state.viewport.height),
+                        )
+                if (pastTouchSlop) {
+                    state.transformBy(
+                        focus = event.calculateCentroid(useCurrent = true),
+                        zoomChange = zoomChange,
+                        panChange = panChange
+                    )
+                    event.changes.forEach {
+                        if (it.positionChanged()) {
+                            it.consume()
+                        }
+                    }
+                }
+            }
+        }
+    }
 
 @Composable
 private fun RaftImagePreviewLoadingOverlay(

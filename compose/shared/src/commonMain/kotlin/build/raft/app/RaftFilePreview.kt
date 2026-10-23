@@ -1837,6 +1837,8 @@ private fun RaftFilePreviewStandalonePageContent() {
             RaftComposerImageEditorState()
         }
     var composerImageEditSaving by remember(payload.composerImageActionId) { mutableStateOf(false) }
+    // Keyed by image identity, not URL: the full-size image replacing the thumbnail keeps the zoom.
+    val imageZoomState = remember(payload.raftFilePreviewImageZoomIdentity()) { RaftZoomableImageState() }
     var composerImageFinalizing by remember(payload.composerImageActionId) { mutableStateOf(false) }
     val composerImageOperationGate =
         remember(launchPayloadTrace.sessionId, payload.composerImageActionId) {
@@ -2172,6 +2174,121 @@ private fun RaftFilePreviewStandalonePageContent() {
             }
         }
     }
+    /**
+     * Resolves [target]'s full-size URL under the gallery's in-flight bound. [preload] marks a
+     * neighbour fetched ahead of a swipe: it yields its slot to the shown image and, on failure,
+     * leaves the shown payload alone.
+     */
+    fun startImageGalleryResolution(target: RaftFilePreviewPayload, preload: Boolean) {
+        // Checked before claiming a slot, so a missing scope cannot leave a request "in flight" forever.
+        val resolutionOperationScope = remoteOperationScope ?: return
+        val start = imageGalleryResolutionState.beginResolution(target, preload)
+        imageGalleryResolutionState = start.state
+        val requestPayload = start.requestPayload ?: return
+        start.cancelAttachmentId?.let { attachmentId ->
+            imageGalleryResolutionJobs.remove(attachmentId)?.cancel()
+            bridge.log(
+                "file_preview_image_resolve status=cancelled attachment=${attachmentId.take(8)} reason=concurrency_limit"
+            )
+        }
+        bridge.log(
+            "file_preview_image_resolve status=start attachment=${requestPayload.attachmentId.take(8)} preload=$preload " +
+                "kind=${requestPayload.kind} thumbnail=${requestPayload.currentImageThumbnailUrl()?.let(::binaryDownloadUrlDiagnostics) ?: "none"}"
+        )
+        val resolutionJob = coroutineScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                val loadResult =
+                    resolutionOperationScope.loadPreview(
+                        payload = requestPayload,
+                        authStore = authStore,
+                        truncatedPreviewHint = truncatedPreviewHint,
+                        errorStrings = errorStrings,
+                        diagnosticsLogger = { message -> bridge.log("file_preview_thread_api $message") },
+                        memberWarningLogger = { message -> bridge.log("file_preview_member_warning $message") },
+                        memberLogger = { message -> bridge.log("file_preview_member $message") }
+                    )
+                val nextPayload =
+                    (loadResult as? DataResult.Content)?.data
+                        ?: run {
+                            // A neighbour preload never replaces the shown payload.
+                            if (!preload) {
+                                payload = requestPayload.withFilePreviewAuthorityRejected()
+                            }
+                            return@launch
+                        }
+                if (
+                    !imageGalleryResolutionJobs.ownsImageGalleryResolution(
+                        requestPayload.attachmentId,
+                        currentCoroutineContext()[Job]
+                    )
+                ) {
+                    return@launch
+                }
+                imageGalleryResolutionState =
+                    imageGalleryResolutionState.completeResolution(
+                        requestPayload = requestPayload,
+                        resolvedPayload = nextPayload
+                    )
+                val visiblePayload = payload.withResolvedImageGalleryPayload(nextPayload)
+                if (visiblePayload != null) {
+                    payload = visiblePayload
+                }
+                bridge.log(
+                    "file_preview_image_resolve status=committed attachment=${nextPayload.attachmentId.take(8)} " +
+                        "visible=${visiblePayload != null} cached=${nextPayload.hasResolvedRemoteImageComparedTo(requestPayload)} " +
+                        "kind=${nextPayload.kind} error=${nextPayload.error ?: "none"} " +
+                        "primary=${nextPayload.imageUrl?.let(::binaryDownloadUrlDiagnostics) ?: "none"} " +
+                        "fallback=${nextPayload.currentImageThumbnailUrl()?.let(::binaryDownloadUrlDiagnostics) ?: "none"}"
+                )
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                if (
+                    !imageGalleryResolutionJobs.ownsImageGalleryResolution(
+                        requestPayload.attachmentId,
+                        currentCoroutineContext()[Job]
+                    )
+                ) {
+                    return@launch
+                }
+                val failedPayload = requestPayload.imageGalleryResolutionFailurePayload()
+                payload.withResolvedImageGalleryPayload(failedPayload)?.let { visiblePayload ->
+                    payload = visiblePayload
+                }
+                bridge.log(
+                    "file_preview_image_resolve status=failed attachment=${requestPayload.attachmentId.take(8)} " +
+                        "type=${throwable::class.simpleName ?: "unknown"}"
+                )
+            } finally {
+                val currentJob = currentCoroutineContext()[Job]
+                if (imageGalleryResolutionJobs.ownsImageGalleryResolution(requestPayload.attachmentId, currentJob)) {
+                    imageGalleryResolutionJobs.remove(requestPayload.attachmentId)
+                    imageGalleryResolutionState =
+                        imageGalleryResolutionState.finishResolution(requestPayload.attachmentId)
+                }
+            }
+        }
+        imageGalleryResolutionJobs[requestPayload.attachmentId] = resolutionJob
+        resolutionJob.start()
+    }
+    // Neighbour preload: resolve the previous and next images' full-size URLs once the shown image
+    // has its own request (or is resolved), so a swipe lands on the full image; the keep-alive
+    // painters below then fetch those URLs. Re-run as slots free up, since a preload only takes a
+    // free slot and never cancels the shown image's request.
+    LaunchedEffect(
+        payload.attachmentId,
+        payload.imageGalleryIndex,
+        payload.kind,
+        imageGalleryResolutionState.inFlightAttachmentIds,
+        imageGalleryResolutionState.resolvedPayloadByAttachmentId.keys,
+        remoteAuthorityCurrent,
+        remoteOperationScope
+    ) {
+        if (!remoteAuthorityCurrent || remoteOperationScope == null) return@LaunchedEffect
+        payload.imageGalleryPreloadPayloads(imageGalleryResolutionState).forEach { neighbour ->
+            startImageGalleryResolution(neighbour, preload = true)
+        }
+    }
     LaunchedEffect(
         payload.source,
         payload.attachmentId,
@@ -2201,92 +2318,7 @@ private fun RaftFilePreviewStandalonePageContent() {
                     payload = cachedPayload
                     return@LaunchedEffect
                 }
-            val start = imageGalleryResolutionState.beginResolution(payload)
-            imageGalleryResolutionState = start.state
-            val requestPayload = start.requestPayload ?: return@LaunchedEffect
-            start.cancelAttachmentId?.let { attachmentId ->
-                imageGalleryResolutionJobs.remove(attachmentId)?.cancel()
-                bridge.log(
-                    "file_preview_image_resolve status=cancelled attachment=${attachmentId.take(8)} reason=concurrency_limit"
-                )
-            }
-            bridge.log(
-                "file_preview_image_resolve status=start attachment=${requestPayload.attachmentId.take(8)} " +
-                    "kind=${requestPayload.kind} thumbnail=${requestPayload.currentImageThumbnailUrl()?.let(::binaryDownloadUrlDiagnostics) ?: "none"}"
-            )
-            val resolutionOperationScope = remoteOperationScope ?: return@LaunchedEffect
-            val resolutionJob = coroutineScope.launch(start = CoroutineStart.LAZY) {
-                try {
-                    val loadResult =
-                        resolutionOperationScope.loadPreview(
-                            payload = requestPayload,
-                            authStore = authStore,
-                            truncatedPreviewHint = truncatedPreviewHint,
-                            errorStrings = errorStrings,
-                            diagnosticsLogger = { message -> bridge.log("file_preview_thread_api $message") },
-                            memberWarningLogger = { message -> bridge.log("file_preview_member_warning $message") },
-                            memberLogger = { message -> bridge.log("file_preview_member $message") }
-                        )
-                    val nextPayload =
-                        (loadResult as? DataResult.Content)?.data
-                            ?: run {
-                                payload = requestPayload.withFilePreviewAuthorityRejected()
-                                return@launch
-                            }
-                    if (
-                        !imageGalleryResolutionJobs.ownsImageGalleryResolution(
-                            requestPayload.attachmentId,
-                            currentCoroutineContext()[Job]
-                        )
-                    ) {
-                        return@launch
-                    }
-                    imageGalleryResolutionState =
-                        imageGalleryResolutionState.completeResolution(
-                            requestPayload = requestPayload,
-                            resolvedPayload = nextPayload
-                        )
-                    val visiblePayload = payload.withResolvedImageGalleryPayload(nextPayload)
-                    if (visiblePayload != null) {
-                        payload = visiblePayload
-                    }
-                    bridge.log(
-                        "file_preview_image_resolve status=committed attachment=${nextPayload.attachmentId.take(8)} " +
-                            "visible=${visiblePayload != null} cached=${nextPayload.hasResolvedRemoteImageComparedTo(requestPayload)} " +
-                            "kind=${nextPayload.kind} error=${nextPayload.error ?: "none"} " +
-                            "primary=${nextPayload.imageUrl?.let(::binaryDownloadUrlDiagnostics) ?: "none"} " +
-                            "fallback=${nextPayload.currentImageThumbnailUrl()?.let(::binaryDownloadUrlDiagnostics) ?: "none"}"
-                    )
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (throwable: Throwable) {
-                    if (
-                        !imageGalleryResolutionJobs.ownsImageGalleryResolution(
-                            requestPayload.attachmentId,
-                            currentCoroutineContext()[Job]
-                        )
-                    ) {
-                        return@launch
-                    }
-                    val failedPayload = requestPayload.imageGalleryResolutionFailurePayload()
-                    payload.withResolvedImageGalleryPayload(failedPayload)?.let { visiblePayload ->
-                        payload = visiblePayload
-                    }
-                    bridge.log(
-                        "file_preview_image_resolve status=failed attachment=${requestPayload.attachmentId.take(8)} " +
-                            "type=${throwable::class.simpleName ?: "unknown"}"
-                    )
-                } finally {
-                    val currentJob = currentCoroutineContext()[Job]
-                    if (imageGalleryResolutionJobs.ownsImageGalleryResolution(requestPayload.attachmentId, currentJob)) {
-                        imageGalleryResolutionJobs.remove(requestPayload.attachmentId)
-                        imageGalleryResolutionState =
-                            imageGalleryResolutionState.finishResolution(requestPayload.attachmentId)
-                    }
-                }
-            }
-            imageGalleryResolutionJobs[requestPayload.attachmentId] = resolutionJob
-            resolutionJob.start()
+            startImageGalleryResolution(payload, preload = false)
             return@LaunchedEffect
         }
         if (
@@ -3952,6 +3984,7 @@ private fun RaftFilePreviewStandalonePageContent() {
                     onResumeDownload = { requestDownloadControl("resume") },
                     onStopDownload = { requestDownloadControl("stop") },
                     onImageGalleryIndexChange = ::selectImageGalleryIndex,
+                    imageZoomState = imageZoomState,
                     onShare =
                         if (raftFilePreviewShowsShareAction(canOpenWith, downloadUiState)) {
                             { requestExternalOpen(share = true) }
@@ -7727,6 +7760,12 @@ internal fun RaftFilePreviewPayloadContent(
     onExternalBrowserOpen: (() -> Unit)? = null,
     /** Share the downloaded file (system share sheet); offered on the file page once downloaded. */
     onShare: (() -> Unit)? = null,
+    /**
+     * Image zoom, keyed by the page on [raftFilePreviewImageZoomIdentity]: the loading (thumbnail) and
+     * resolved (full-size) payloads of one image render from different branches here, so the state
+     * must live above this composable to survive the swap.
+     */
+    imageZoomState: RaftZoomableImageState? = null,
     modifier: Modifier = Modifier
 ) {
     val onToggleDownload = if (downloadPaused) onResumeDownload else onPauseDownload
@@ -7745,7 +7784,8 @@ internal fun RaftFilePreviewPayloadContent(
                 modifier = Modifier.fillMaxSize(),
                 backgroundColor = RaftColor.SurfaceWhite,
                 borderWidth = 0.dp,
-                zoomable = true
+                zoomable = true,
+                zoomState = imageZoomState
             )
         }
         return
@@ -7855,7 +7895,8 @@ internal fun RaftFilePreviewPayloadContent(
                             modifier = Modifier.fillMaxSize(),
                             backgroundColor = RaftColor.SurfaceWhite,
                             borderWidth = 0.dp,
-                            zoomable = true
+                            zoomable = true,
+                            zoomState = imageZoomState
                         )
                     }
                 } else {
@@ -8866,35 +8907,72 @@ private fun String.toJpegFileName(): String {
 
 internal data class RaftFilePreviewImageGalleryResolutionState(
     val resolvedPayloadByAttachmentId: Map<String, RaftFilePreviewPayload> = emptyMap(),
-    val inFlightAttachmentIds: List<String> = emptyList()
+    val inFlightAttachmentIds: List<String> = emptyList(),
+    /** In-flight neighbour preloads (a subset of [inFlightAttachmentIds]); the shown image outranks them. */
+    val preloadAttachmentIds: Set<String> = emptySet(),
+    /**
+     * Neighbours already preloaded once on this page. A failed or thumbnail-only preload is not
+     * retried in the background (the image still resolves when shown); a preload cancelled for
+     * the shown image is dropped from here so it can run again.
+     */
+    val preloadAttemptedAttachmentIds: Set<String> = emptySet()
 ) {
-    internal fun beginResolution(payload: RaftFilePreviewPayload): RaftFilePreviewImageGalleryResolutionStart {
+    /**
+     * Starts resolving [payload]'s full-size URL, at most [RaftFilePreviewImageGalleryMaxInFlightRequests]
+     * at a time. The shown image ([preload] false) takes a slot from the oldest preload first, then
+     * from the oldest earlier image. A [preload] only takes a free slot: it never cancels anything
+     * and waits (no request) while the slots are busy.
+     */
+    internal fun beginResolution(
+        payload: RaftFilePreviewPayload,
+        preload: Boolean = false
+    ): RaftFilePreviewImageGalleryResolutionStart {
         val attachmentId = payload.attachmentId
-        if (
-            !payload.isPendingThreadImageGalleryResolution() ||
-            attachmentId in resolvedPayloadByAttachmentId
-        ) {
-            return RaftFilePreviewImageGalleryResolutionStart(
+        val unchanged =
+            RaftFilePreviewImageGalleryResolutionStart(
                 state = this,
                 requestPayload = null,
                 cancelAttachmentId = null
             )
+        if (
+            !payload.isPendingThreadImageGalleryResolution() ||
+            attachmentId in resolvedPayloadByAttachmentId
+        ) {
+            return unchanged
         }
         if (attachmentId in inFlightAttachmentIds) {
+            if (preload) return unchanged
+            // Shown now: an in-flight preload of it is promoted (kept, not restarted).
             return RaftFilePreviewImageGalleryResolutionStart(
-                state = copy(inFlightAttachmentIds = (inFlightAttachmentIds - attachmentId) + attachmentId),
+                state =
+                    copy(
+                        inFlightAttachmentIds = (inFlightAttachmentIds - attachmentId) + attachmentId,
+                        preloadAttachmentIds = preloadAttachmentIds - attachmentId
+                    ),
                 requestPayload = null,
                 cancelAttachmentId = null
             )
         }
+        val full = inFlightAttachmentIds.size >= RaftFilePreviewImageGalleryMaxInFlightRequests
+        if (full && preload) return unchanged
         val cancelAttachmentId =
-            inFlightAttachmentIds
-                .takeIf { it.size >= RaftFilePreviewImageGalleryMaxInFlightRequests }
-                ?.firstOrNull()
+            if (full) {
+                inFlightAttachmentIds.firstOrNull { it in preloadAttachmentIds } ?: inFlightAttachmentIds.firstOrNull()
+            } else {
+                null
+            }
         val nextInFlightAttachmentIds =
             (cancelAttachmentId?.let(inFlightAttachmentIds::minus) ?: inFlightAttachmentIds) + attachmentId
+        val cancelledPreload = cancelAttachmentId?.takeIf { it in preloadAttachmentIds }
+        val remainingPreloads = cancelledPreload?.let(preloadAttachmentIds::minus) ?: preloadAttachmentIds
+        val attempted = cancelledPreload?.let(preloadAttemptedAttachmentIds::minus) ?: preloadAttemptedAttachmentIds
         return RaftFilePreviewImageGalleryResolutionStart(
-            state = copy(inFlightAttachmentIds = nextInFlightAttachmentIds),
+            state =
+                copy(
+                    inFlightAttachmentIds = nextInFlightAttachmentIds,
+                    preloadAttachmentIds = if (preload) remainingPreloads + attachmentId else remainingPreloads,
+                    preloadAttemptedAttachmentIds = if (preload) attempted + attachmentId else attempted
+                ),
             requestPayload = payload,
             cancelAttachmentId = cancelAttachmentId
         )
@@ -8917,12 +8995,37 @@ internal data class RaftFilePreviewImageGalleryResolutionState(
             }
         return copy(
             resolvedPayloadByAttachmentId = nextResolvedPayloads,
-            inFlightAttachmentIds = inFlightAttachmentIds - attachmentId
+            inFlightAttachmentIds = inFlightAttachmentIds - attachmentId,
+            preloadAttachmentIds = preloadAttachmentIds - attachmentId
         )
     }
 
     internal fun finishResolution(attachmentId: String): RaftFilePreviewImageGalleryResolutionState =
-        copy(inFlightAttachmentIds = inFlightAttachmentIds - attachmentId)
+        copy(
+            inFlightAttachmentIds = inFlightAttachmentIds - attachmentId,
+            preloadAttachmentIds = preloadAttachmentIds - attachmentId
+        )
+}
+
+/**
+ * Neighbour payloads whose full-size URL to resolve ahead of a swipe: next, then previous. Empty
+ * until the shown image is resolved or its own request is in flight, so preloads never go first.
+ */
+internal fun RaftFilePreviewPayload.imageGalleryPreloadPayloads(
+    state: RaftFilePreviewImageGalleryResolutionState
+): List<RaftFilePreviewPayload> {
+    if (imageGallery.size <= 1) return emptyList()
+    if (isPendingThreadImageGalleryResolution() && attachmentId !in state.inFlightAttachmentIds) return emptyList()
+    val currentIndex = imageGalleryIndex.coerceIn(0, imageGallery.lastIndex)
+    return listOf(currentIndex + 1, currentIndex - 1)
+        .filter(imageGallery.indices::contains)
+        .mapNotNull { index -> withImageGalleryIndex(index, state.resolvedPayloadByAttachmentId) }
+        .filter { neighbour ->
+            neighbour.isPendingThreadImageGalleryResolution() &&
+                neighbour.attachmentId != attachmentId &&
+                neighbour.attachmentId !in state.inFlightAttachmentIds &&
+                neighbour.attachmentId !in state.preloadAttemptedAttachmentIds
+        }
 }
 
 internal data class RaftFilePreviewImageGalleryResolutionStart(
@@ -10242,7 +10345,8 @@ internal fun RaftFilePreviewImagePanel(
     placeholderLabel: String? = null,
     backgroundColor: androidx.compose.ui.graphics.Color = RaftColor.SurfaceWhite,
     borderWidth: androidx.compose.ui.unit.Dp = RaftAppStroke.Default,
-    zoomable: Boolean = true
+    zoomable: Boolean = true,
+    zoomState: RaftZoomableImageState? = null
 ) {
     RaftAspectFitImagePreviewSurface(
         source = source,
@@ -10253,12 +10357,35 @@ internal fun RaftFilePreviewImagePanel(
         backgroundColor = backgroundColor,
         borderWidth = borderWidth,
         zoomable = zoomable,
+        zoomState = zoomState,
         showLoadingIndicator = true
     )
 }
 
 internal fun RaftFilePreviewPayload.shouldRenderImagePreview(): Boolean =
     kind == "image" || (kind == "loading" && requestedKind == "image" && !imageUrl.isNullOrBlank())
+
+/**
+ * Which image the viewer shows, independent of the URL it is drawn from: the thumbnail and the
+ * full-size image of one attachment share it, so the zoom survives that swap; another gallery
+ * image, attachment or (composer) file gets a new one, so the zoom resets.
+ */
+internal data class RaftFilePreviewImageZoomIdentity(
+    val source: String,
+    val attachmentId: String,
+    val galleryIndex: Int,
+    val path: String,
+    val composerImageFileRef: String
+)
+
+internal fun RaftFilePreviewPayload.raftFilePreviewImageZoomIdentity(): RaftFilePreviewImageZoomIdentity =
+    RaftFilePreviewImageZoomIdentity(
+        source = source,
+        attachmentId = attachmentId,
+        galleryIndex = if (imageGallery.isEmpty()) 0 else imageGalleryIndex,
+        path = path,
+        composerImageFileRef = composerImageFileRef
+    )
 
 internal fun RaftFilePreviewPayload.currentImageThumbnailUrl(): String? =
     imageGallery
