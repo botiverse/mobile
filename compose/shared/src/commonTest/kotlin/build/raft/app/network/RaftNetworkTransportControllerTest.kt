@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 
 class RaftNetworkTransportControllerTest {
     @Test
-    fun unresolvedRemotePolicyDefaultsToCurlHttp2() {
+    fun newRequestsDefaultToCurlHttp2() {
         val controller = readyController(curlRequired = false)
 
         val request = NetworkRequest(url = "https://example.test/default")
@@ -31,88 +31,36 @@ class RaftNetworkTransportControllerTest {
         assertEquals(false, request.curlHttp3EnabledOverride)
     }
 
-    @Test
-    fun presignedUploadHttp1OnlyAlsoOverridesExplicitCurlH3RemoteVariant() {
-        val controller = readyController(curlRequired = false)
-        controller.updateRemoteEnvironment("production")
-        controller.updateRemoteActiveSelection("shell-a", "server-a")
-        controller.applyRemoteEvaluation("production", 1L, "server-a", true, "curl_h3")
-
-        val request = NetworkRequest(url = "https://example.test/presigned").apply { flagHttp1Only {} }
-
-        assertEquals(NetworkTransportEngine.CURL, controller.selectionFor(request).requestedEngine)
-        assertEquals(false, request.curlHttp3EnabledOverride)
-    }
-
-    @Test
-    fun androidRemoteVariantsMapToExactEngineAndHttp3Policy() {
-        val controller = readyController(curlRequired = false)
-        controller.updateRemoteEnvironment("production")
-        controller.updateRemoteActiveSelection("shell-a", "server-a")
-
-        controller.applyRemoteEvaluation("production", 1L, "server-a", true, "curl_h2")
-        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
-
-        controller.applyRemoteEvaluation("production", 2L, "server-a", true, "ktor")
-        assertSelection(controller, NetworkTransportEngine.KTOR, http3 = false)
-
-        controller.applyRemoteEvaluation("production", 3L, "server-a", true, "curl_h3")
-        assertSelection(controller, NetworkTransportEngine.CURL, http3 = true)
-    }
-
     @AfterTest
     fun resetHttp3Policy() {
         RaftHttp3Policy.resetForTest()
     }
 
-    // Task #3: the Settings switch overrides the server-sent default in both directions, and an
-    // unset switch keeps following whatever the server sends.
+    // Task #3: the Settings switch turns HTTP/3 on and off; an unset switch means HTTP/3 off.
     @Test
-    fun http3UserChoiceOverridesTheServerVariant() {
+    fun http3UserChoiceDecidesHttp3AndCurlStaysTheEngine() {
         val controller = readyController(curlRequired = false)
-        controller.updateRemoteEnvironment("production")
-        controller.updateRemoteActiveSelection("shell-a", "server-a")
 
         var choice: Boolean? = null
         RaftHttp3Policy.bindUserChoice { choice }
 
-        // Server says curl_h2; the user turns HTTP/3 on.
-        controller.applyRemoteEvaluation("production", 1L, "server-a", true, "curl_h2")
         choice = true
         controller.onHttp3UserChoiceChanged()
         assertSelection(controller, NetworkTransportEngine.CURL, http3 = true)
 
-        // Server says curl_h3; the user turns HTTP/3 off, and curl stays the engine.
-        controller.applyRemoteEvaluation("production", 2L, "server-a", true, "curl_h3")
         choice = false
         controller.onHttp3UserChoiceChanged()
         assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
 
-        // Switch back to unset: follows the server again (still curl_h3).
         choice = null
         controller.onHttp3UserChoiceChanged()
-        assertSelection(controller, NetworkTransportEngine.CURL, http3 = true)
-    }
-
-    @Test
-    fun http3UserChoiceOnKtorVariantRequestsCurlBecauseHttp3ImpliesCurl() {
-        val controller = readyController(curlRequired = false)
-        controller.updateRemoteEnvironment("production")
-        controller.updateRemoteActiveSelection("shell-a", "server-a")
-        RaftHttp3Policy.bindUserChoice { true }
-
-        controller.applyRemoteEvaluation("production", 1L, "server-a", true, "ktor")
-        controller.onHttp3UserChoiceChanged()
-        assertSelection(controller, NetworkTransportEngine.CURL, http3 = true)
+        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
     }
 
     @Test
     fun http3UserChoiceStillYieldsToHttp1OnlyRequests() {
         val controller = readyController(curlRequired = false)
-        controller.updateRemoteEnvironment("production")
-        controller.updateRemoteActiveSelection("shell-a", "server-a")
         RaftHttp3Policy.bindUserChoice { true }
-        controller.applyRemoteEvaluation("production", 1L, "server-a", true, "curl_h2")
         controller.onHttp3UserChoiceChanged()
 
         val request = NetworkRequest(url = "https://example.test/presigned").apply { flagHttp1Only {} }
@@ -121,80 +69,15 @@ class RaftNetworkTransportControllerTest {
     }
 
     @Test
-    fun ohosKtorVariantSafelyMapsToCurlH2() {
+    fun ohosRequiresCurlHttp2() {
         val controller = readyController(curlRequired = true)
-        controller.updateRemoteEnvironment("production")
-        controller.updateRemoteActiveSelection("shell-a", "server-a")
-        controller.applyRemoteEvaluation("production", 1L, "server-a", true, "ktor")
 
         assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
         assertTrue(controller.getPreferenceSync().curlRequestedForNewCalls)
     }
 
     @Test
-    fun staleEvaluationCannotOverwriteNewerVariant() {
-        val controller = readyController(curlRequired = false)
-        controller.updateRemoteEnvironment("production")
-        controller.updateRemoteActiveSelection("shell-a", "server-a")
-        controller.applyRemoteEvaluation("production", 20L, "server-a", true, "curl_h2")
-        controller.applyRemoteEvaluation("production", 19L, "server-a", true, "ktor")
-
-        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
-    }
-
-    @Test
-    fun conflictingActiveServerVariantsFailSafeWithoutOscillation() {
-        val controller = readyController(curlRequired = false)
-        controller.updateRemoteEnvironment("production")
-        controller.updateRemoteActiveSelection("shell-a", "server-a")
-        controller.updateRemoteActiveSelection("shell-b", "server-b")
-        controller.applyRemoteEvaluation("production", 1L, "server-a", true, "curl_h3")
-        controller.applyRemoteEvaluation("production", 2L, "server-b", true, "curl_h2")
-
-        assertSelection(controller, NetworkTransportEngine.KTOR, http3 = false)
-
-        controller.updateRemoteActiveSelection("shell-b", null)
-        assertSelection(controller, NetworkTransportEngine.CURL, http3 = true)
-    }
-
-    @Test
-    fun blankShellScopeSelectionIsIgnoredInsteadOfSharingOneLegacySlot() {
-        val controller = readyController(curlRequired = false)
-        controller.updateRemoteEnvironment("production")
-
-        // Positive control: a named scope makes server-a the active server, so its variant applies.
-        controller.updateRemoteActiveSelection("shell-a", "server-a")
-        controller.applyRemoteEvaluation("production", 1L, "server-a", true, "curl_h2")
-        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
-
-        // A blank scope is not a caller identity: it cannot register server-b as active
-        // (which would fail-safe the conflict to KTOR) and cannot clear shell-a's selection.
-        assertEquals(null, controller.updateRemoteActiveSelection("  ", "server-b"))
-        controller.applyRemoteEvaluation("production", 2L, "server-b", true, "ktor")
-        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
-        assertEquals(null, controller.updateRemoteActiveSelection("", null))
-        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
-
-        // The same operations under a real scope do mutate state, proving the assertions above bite.
-        controller.updateRemoteActiveSelection("shell-b", "server-b")
-        assertSelection(controller, NetworkTransportEngine.KTOR, http3 = false)
-    }
-
-    @Test
-    fun disabledOrInvalidEvaluationKeepsDefaultCurlH2() {
-        val controller = readyController(curlRequired = false)
-        controller.updateRemoteEnvironment("production")
-        controller.updateRemoteActiveSelection("shell-a", "server-a")
-
-        controller.applyRemoteEvaluation("production", 1L, "server-a", false, "ktor")
-        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
-
-        controller.applyRemoteEvaluation("production", 2L, "server-a", true, "not-a-transport")
-        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
-    }
-
-    @Test
-    fun failedPlatformPublicationDoesNotCommitRemoteGeneration() {
+    fun failedPlatformPublicationDoesNotCommitGeneration() {
         var calls = 0
         val controller =
             RaftNetworkTransportController(
@@ -206,12 +89,14 @@ class RaftNetworkTransportControllerTest {
                 curlConfigurationFailureProvider = { NetworkCurlConfigurationFailureReason.NONE to null },
                 platformPreferencePublisher = { _, _ -> ++calls != 2 }
             )
+        assertEquals(0L, controller.getPreferenceSync().generation)
+        RaftHttp3Policy.bindUserChoice { true }
 
-        val diagnostics = controller.updateRemoteEnvironment("production")
+        val diagnostics = controller.onHttp3UserChoiceChanged()
 
         assertTrue(diagnostics.orEmpty().contains("applied=false"))
+        assertEquals(2, calls)
         assertEquals(0L, controller.getPreferenceSync().generation)
-        assertSelection(controller, NetworkTransportEngine.CURL, http3 = false)
     }
 
     @Test

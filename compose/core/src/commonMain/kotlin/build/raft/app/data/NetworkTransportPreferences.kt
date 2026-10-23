@@ -10,8 +10,8 @@ enum class NetworkTransportPreferenceAvailability {
 }
 
 /**
- * Separates the remotely requested policy from the effective request policy. A curl_h3 variant never
- * proves that an individual request negotiated HTTP/3.
+ * Separates the requested policy from the effective request policy. Requesting HTTP/3 never proves
+ * that an individual request negotiated HTTP/3.
  */
 data class NetworkTransportPreferenceSnapshot(
     val requestedHttp3Enabled: Boolean,

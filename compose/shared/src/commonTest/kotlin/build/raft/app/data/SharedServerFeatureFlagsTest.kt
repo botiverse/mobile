@@ -163,6 +163,8 @@ class SharedServerFeatureFlagsTest {
     fun ordinaryRegisteredFlagsRequireExplicitResolvedEnablement() = runTest {
         // activity_conversation_list_v0 is no longer read: the conversation list is the only Activity.
         assertFalse("activity_conversation_list_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        // mobile_curl_transport_v1 is no longer read: new requests always use curl over HTTP/2.
+        assertFalse("mobile_curl_transport_v1" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         assertEquals("activity_overview_web_v0", ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY)
         // slock serverFeatureFlags.ts THREAD_UNREAD_BADGE_FLAG_KEY (staging 259f9fe0), default off.
         assertEquals("thread_unread_badge_v0", THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY)
@@ -404,24 +406,24 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
-    fun transportVariantIsForwardedToProcessObserver() = runBlocking {
+    fun evaluationVariantIsForwardedToProcessObserver() = runBlocking {
         var observedVariant: String? = null
         val flags =
             SharedServerFeatureFlags(
                 api =
                     FakeApi(
                         ok(
-                            """{"evaluations":[{"key":"$MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY","enabled":true,"variant":"curl_h2"}]}"""
+                            """{"evaluations":[{"key":"$MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY","enabled":true,"variant":"20"}]}"""
                         )
                     ),
                 onEvaluation = { _, key, _, _, variant, _, _ ->
-                    if (key == MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY) observedVariant = variant
+                    if (key == MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY) observedVariant = variant
                 }
             )
 
         flags.prefetch(server, evaluationContext = "production-env")
 
-        assertEquals("curl_h2", observedVariant)
+        assertEquals("20", observedVariant)
     }
 
     @Test
