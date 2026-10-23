@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.components.RaftMessageListJumpSide
+import build.raft.designsystem.components.RaftLocatedMillis
+import build.raft.designsystem.components.raftLocatedStrength
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftMessageListJumpPillGroup
 import build.raft.designsystem.components.RaftMessageListJumpPillDismiss
@@ -467,8 +469,8 @@ private const val ThreadMessagesMinBeyondBoundsItemCount = 4
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 8
 private const val ThreadMessagesRepresentativeRowStepDp = 64f
 private const val ThreadPerformanceSlowThresholdMs = 4L
-private const val ThreadFocusedMessageHighlightDurationMs = 2_000L
-private const val ThreadFocusedMessageHighlightFadeMs = 180
+// raft-ui located highlight (0.22.1 #719): the jumped-to row is located for LOCATED_MS.
+private const val ThreadFocusedMessageHighlightDurationMs = RaftLocatedMillis.toLong()
 private const val ThreadFocusedMessageCenterAttempts = 6
 
 /** Unread-thread jump (task #73): the least space kept below the parent's replies summary block. */
@@ -21310,7 +21312,8 @@ private fun ThreadMessagesListContent(
                         renderConfig = renderConfig,
                         messageBodyTextStyle = messageBodyTextStyle,
                         timelineSlice = renderPayload,
-                        focusedMessageId = activeFocusedMessageId ?: activeInlineSearchMessageId,
+                        focusedMessageId = activeFocusedMessageId,
+                        searchMatchMessageId = activeInlineSearchMessageId,
                         linkedTasksProjection = linkedTasksProjection,
                         highlightedMentions = highlightedMentions,
                         pendingActionCardIds = pendingActionCardIds,
@@ -21601,7 +21604,8 @@ private fun ThreadMessagesListContent(
                                 memberAvatarResolver = memberAvatarResolver,
                                 memberModelLabelResolver = memberModelLabelResolver,
                                 inlineReplyParticipantsById = inlineReplyParticipantsById,
-                                focused = activeFocusedMessageId == message.id || activeInlineSearchMessageId == message.id,
+                                focused = activeFocusedMessageId == message.id,
+                                searchMatch = activeInlineSearchMessageId == message.id,
                                 popupOpen = actionMessageId == message.id,
                                 shareSelectionActive = shareSelectionActive,
                                 selectedForShare = message.id in selectedShareMessageIds,
@@ -24546,7 +24550,10 @@ private data class ThreadMessageCardData(
     val writeActionsEnabled: Boolean,
     val currentServerSlug: String?,
     val richContentEnabled: Boolean,
+    /** The row a jump took someone to: raft-ui's located highlight. */
     val focused: Boolean,
+    /** The current match of the thread's inline search: `info-soft`, held while it is current. */
+    val searchMatch: Boolean = false,
     /** web MessageItem `data-popup-open`: this row's context menu is open. */
     val popupOpen: Boolean = false,
     val inlineReplyParticipantsById: Map<String, RaftThreadMemberItem>,
@@ -24646,6 +24653,7 @@ fun ThreadMessageCard(
     onMentionAuthor: (RaftThreadMessageItem) -> Unit = {},
     richContentEnabled: Boolean = true,
     focused: Boolean = false,
+    searchMatch: Boolean = false,
     popupOpen: Boolean = false,
     isMessageListScrolling: () -> Boolean = { false },
     memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
@@ -24700,6 +24708,7 @@ fun ThreadMessageCard(
                 currentServerSlug = currentServerSlug,
                 richContentEnabled = richContentEnabled,
                 focused = focused,
+                searchMatch = searchMatch,
                 popupOpen = popupOpen,
                 inlineReplyParticipantsById = inlineReplyParticipantsById,
                 shareSelectionActive = shareSelectionActive,
@@ -24802,6 +24811,7 @@ private fun ThreadMessageCardContent(
     val onMentionAuthor = callbacks.onMentionAuthor
     val richContentEnabled = data.richContentEnabled
     val focused = data.focused
+    val searchMatch = data.searchMatch
     val popupOpen = data.popupOpen
     val isMessageListScrolling = callbacks.isMessageListScrolling
     val memberAvatarResolver = callbacks.memberAvatarResolver
@@ -24935,11 +24945,8 @@ private fun ThreadMessageCardContent(
         authorProfileIdentity?.let(onOpenMember)
     }
     val authorBadgeLabel = message.threadAuthorBadgeLabel()
-    val focusAlpha by animateFloatAsState(
-        targetValue = if (focused) 1f else 0f,
-        animationSpec = tween(durationMillis = ThreadFocusedMessageHighlightFadeMs),
-        label = "thread-message-focus-highlight"
-    )
+    // raft-ui located (0.22.1 #719): info-soft at once, held 1.2s, faded out by 2s.
+    val locatedStrength = raftLocatedStrength(active = focused)
     val pressed = longPressGestureOwner.pressed
     val pressRippleOrigin = longPressGestureOwner.pressRippleOrigin
     LaunchedEffect(longPressGestureOwner, pressed, pressRippleOrigin) {
@@ -25097,8 +25104,12 @@ private fun ThreadMessageCardContent(
                 // raft-ui 0.13 MessageItem `data-popup-open:bg-fill-row-open`: the row
                 // under an open context menu keeps one step past the hover.
                 RaftTheme.colors.fillRowOpen
+            } else if (searchMatch) {
+                // raft-ui: the current match of a search inside a page is a selection; it
+                // stays info-soft while it is current, and doesn't fade.
+                RaftColor.InfoSoft
             } else {
-                threadMessageFocusHighlightColor(focusAlpha)
+                threadMessageLocatedFill(locatedStrength)
             }
         val rowSurface = rowFill.compositeOver(RaftColor.Canvas)
         Column(
@@ -25909,14 +25920,15 @@ private val ThreadLegacyBlackIconArgb: String
 private val ThreadLegacyChevronIconArgb: String
     get() = if (RaftAppThemeState.isDark) RaftColor.TextBlackArgb else "#FF111111"
 
-internal fun threadMessageFocusHighlightColor(focusAlpha: Float): Color {
-    val normalizedAlpha = focusAlpha.coerceIn(0f, 1f)
-    return if (normalizedAlpha > 0f) {
-        // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
-        RaftColor.AccentCyan.copy(alpha = 0.12f * normalizedAlpha)
-    } else {
-        RaftColor.Canvas
-    }
+/**
+ * raft-ui MessageItem `located`: the row fill is `info-soft` at [locatedStrength] (0..1, from
+ * `raftLocatedStrength`), the canvas once it is gone.
+ */
+internal fun threadMessageLocatedFill(locatedStrength: Float): Color {
+    val strength = locatedStrength.coerceIn(0f, 1f)
+    if (strength <= 0f) return RaftColor.Canvas
+    val infoSoft = RaftColor.InfoSoft
+    return infoSoft.copy(alpha = infoSoft.alpha * strength)
 }
 
 internal fun shouldShowThreadMessageSavedBadge(
@@ -29619,6 +29631,7 @@ private fun ThreadOriginCard(
     messageBodyTextStyle: TextStyle,
     timelineSlice: ThreadTimelineSlice,
     focusedMessageId: String? = null,
+    searchMatchMessageId: String? = null,
     linkedTasksProjection: ThreadLinkedTasksProjection = emptyThreadLinkedTasksProjection(),
     highlightedMentions: Set<String>,
     pendingActionCardIds: Set<String> = emptySet(),
@@ -29750,6 +29763,7 @@ private fun ThreadOriginCard(
                                 onMentionAuthor = onMentionAuthor,
                                 richContentEnabled = contentExtrasVisible,
                                 focused = focusedMessageId == origin.id,
+                                searchMatch = searchMatchMessageId == origin.id,
                                 longMessageCollapse = longMessageCollapse,
                                 onToggleLongMessage = { onToggleLongMessage(origin.id) }
                             )

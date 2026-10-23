@@ -1,14 +1,19 @@
 package build.raft.designsystem.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -23,6 +28,7 @@ import build.raft.designsystem.tokens.RaftRadius
 import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** raft-ui Skeleton `variant`. */
@@ -57,7 +63,7 @@ fun raftSkeletonAlphaAt(elapsedMillis: Long): Float {
 }
 
 /** CSS `cubic-bezier(x1, y1, x2, y2)` at progress [t], solved for x by bisection. */
-private fun cubicBezierEase(t: Float, x1: Float, y1: Float, x2: Float, y2: Float): Float {
+internal fun cubicBezierEase(t: Float, x1: Float, y1: Float, x2: Float, y2: Float): Float {
     fun bezier(s: Float, p1: Float, p2: Float): Float {
         val u = 1f - s
         return 3f * u * u * s * p1 + 3f * u * s * s * p2 + s * s * s
@@ -156,4 +162,59 @@ fun RaftSkeleton(
             .graphicsLayer { this.alpha = if (animated) raftSkeletonAlphaAt(clock.frameMillis) else 1f }
             .background(RaftTheme.colors.fillMuted, RoundedCornerShape(if (line) RaftRadius.Chip else RaftRadius.Sticker)),
     )
+}
+
+/**
+ * raft-ui 0.22.1 `InboxItemSkeletonList` `delay` (#720): a list skeleton waits 1 second
+ * before it shows, so a load that finishes sooner goes straight from nothing to the content
+ * with no skeleton flashing in between (design/patterns/feedback.md, "Empty, loading and
+ * failed").
+ */
+const val RaftListSkeletonDelayMillis = 1000L
+
+/**
+ * The delay [RaftSkeletonList] and [rememberRaftSkeletonDelayPassed] wait by default.
+ * Screenshot fixtures provide `0L` so the skeleton renders in the first frame.
+ */
+val LocalRaftListSkeletonDelayMillis = staticCompositionLocalOf { RaftListSkeletonDelayMillis }
+
+/**
+ * Whether [delayMillis] has passed since this entered the composition (or since [loading]
+ * last turned true); at once for `0`, never while [loading] is false. For a list skeleton
+ * whose rows are lazy items, which [RaftSkeletonList] can't wrap: emit them only while this
+ * is true. raft-ui `useDelayPassed`.
+ */
+@Composable
+fun rememberRaftSkeletonDelayPassed(
+    loading: Boolean = true,
+    delayMillis: Long = LocalRaftListSkeletonDelayMillis.current,
+): Boolean {
+    // Keyed, so a new load starts from "not passed" in the same frame, not one frame later.
+    var passed by remember(loading, delayMillis) { mutableStateOf(false) }
+    LaunchedEffect(loading, delayMillis) {
+        if (!loading || delayMillis <= 0) return@LaunchedEffect
+        delay(delayMillis)
+        passed = true
+    }
+    return loading && (passed || delayMillis <= 0)
+}
+
+/**
+ * raft-ui 0.22.1 `InboxItemSkeletonList` (#720): the skeleton rows that stand in for a list
+ * while it loads, shown only once [delayMillis] ([RaftListSkeletonDelayMillis] by default)
+ * has passed; empty, and no height, until then. Pass `0L` to show them at once. Give the rows
+ * nothing the loaded list doesn't have (no gap, border or card; the row's own padding,
+ * dividers and line heights). Not busy itself: it goes away when the content arrives, so
+ * mark the region that stays busy while it loads.
+ */
+@Composable
+fun RaftSkeletonList(
+    modifier: Modifier = Modifier,
+    delayMillis: Long = LocalRaftListSkeletonDelayMillis.current,
+    verticalArrangement: Arrangement.Vertical = Arrangement.Top,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    if (rememberRaftSkeletonDelayPassed(delayMillis = delayMillis)) {
+        Column(modifier, verticalArrangement = verticalArrangement, content = content)
+    }
 }

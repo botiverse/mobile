@@ -1904,7 +1904,13 @@ private fun SharedActivityList(
                             ActivityConversationListRow(
                                 item = item,
                                 model = model,
-                                contentModifier = Modifier.homeSearchReturnHighlight(unreadJumpHighlight, item.key),
+                                // raft-ui located: a stronger mark (selected, menu open) wins.
+                                contentModifier =
+                                    if (selectedItemKey == item.key || activeMenuItem?.key == item.key) {
+                                        Modifier
+                                    } else {
+                                        Modifier.homeSearchReturnHighlight(unreadJumpHighlight, item.key)
+                                    },
                                 divider = entry.divider,
                                 selected = selectedItemKey == item.key,
                                 menuOpen = activeMenuItem?.key == item.key,
