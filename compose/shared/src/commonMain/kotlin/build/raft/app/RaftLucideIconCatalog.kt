@@ -43,6 +43,7 @@ enum class RaftLucideIconName(val wireName: String) {
     CircleArrowUp("circle-arrow-up"),
     CircleCheck("circle-check"),
     CircleCheckBig("circle-check-big"),
+    CircleDot("circle-dot"),
     CircleDashed("circle-dashed"),
     CircleUser("circle-user"),
     Clipboard("clipboard"),

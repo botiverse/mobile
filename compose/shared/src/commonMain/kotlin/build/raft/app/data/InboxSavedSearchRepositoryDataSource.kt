@@ -35,12 +35,20 @@ private suspend fun RaftNetworkClient.inbox(
     request(
         priority,
         "channels/inbox",
-        query = listOf(
-            "filter" to filter.wireValue,
-            "limit" to limit.toString(),
-            "offset" to offset.toString()
-        ),
+        query = inboxRequestQuery(filter, limit, offset),
         serverIdOverride = serverId
+    )
+
+/**
+ * `GET /channels/inbox` query (botiverse/slock routes/channels.ts `channelRouter.get("/inbox")`):
+ * `filter`, `limit`, `offset`, and `scope` for a scoped filter (Pinned: `scope=pinned`).
+ */
+internal fun inboxRequestQuery(filter: InboxFilter, limit: Int, offset: Int): List<Pair<String, String>> =
+    listOfNotNull(
+        "filter" to filter.wireValue,
+        "limit" to limit.toString(),
+        "offset" to offset.toString(),
+        filter.scopeWireValue?.let { "scope" to it },
     )
 
 /**

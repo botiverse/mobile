@@ -163,7 +163,7 @@ internal fun InboxSnapshot.projectActivityFilter(filter: InboxFilter): InboxSnap
     // only row membership/attention is guarded here.
     val normalizedItems = items.map { item -> item.withActivityFollowStateProjection() }
     val visibleItems =
-        if (filter == InboxFilter.All) {
+        if (filter.listsUnfollowedActivityThreads) {
             normalizedItems
         } else {
             normalizedItems.filterNot { item -> item.isUnfollowedActivityThread }
@@ -206,7 +206,7 @@ internal fun InboxSnapshot.projectActivityFollowMutation(
             totalUnreadCount =
                 (totalUnreadCount - (previousItem?.unreadCount ?: 0)).coerceAtLeast(0)
         ).projectActivityFilter(filter)
-    if (filter == InboxFilter.All) return projected
+    if (filter.listsUnfollowedActivityThreads) return projected
     val targetPresent = projected.items.any { it.key == itemKey }
     if (!targetPresent) return projected
     return projected.copy(

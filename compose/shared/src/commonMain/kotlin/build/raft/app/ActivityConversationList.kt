@@ -90,7 +90,7 @@ import com.tencent.tmm.kmmresource.compose.stringResource
  * Activity conversation list, the only Activity layout: the KMP port of the web
  * `ThreadsInbox` `layout="list"` branch (slock packages/web/src/components/thread/ThreadsInbox.tsx,
  * raft-ui InboxItem density="compact"). One row per conversation: a leading avatar or channel tile, the
- * name, a one-line preview, the time and the unread count, sidebar-pinned conversations first.
+ * name, a one-line preview, the time and the unread count, in the order the server lists them.
  *
  * This file is presentation only. Opening, Done, read/unread and the press-and-hold menu stay the
  * Activity list's own intents (SharedActivityList); this layout never changes how Done is applied. The
@@ -113,6 +113,7 @@ internal data class ActivityConversationDmPeer(
  */
 @Immutable
 internal data class ActivityConversationListContext(
+    /** The sidebar pins; the Pinned filter reloads when they change (the server resolves them). */
     val pinnedRefs: List<SettingsServerSidebarPinnedItem> = emptyList(),
     /** Channel ids (not DMs) whose activity the person muted; web `channels.find(...).activityMuted`. */
     val mutedChannelIds: Set<String> = emptySet(),
@@ -179,15 +180,15 @@ internal fun HomeSnapshot.activityChannelSymbolsByChannelId(): Map<String, Strin
 
 /**
  * The list context the layout may paint with, from the Home content of the shell, or null while it is
- * still pending (the Activity panel keeps its loading state rather than painting unpinned rows and then
- * jumping them into "Pinned" a moment later):
+ * still pending (the Activity panel keeps its loading state rather than painting rows without their DM
+ * faces and mutes and filling them in a moment later):
  *
  * - Home Content for [activityServerId]: its pins, mutes and DM peers.
  * - Home Loading, or Content of another server (a server switch in flight): pending, unless a context was
  *   already resolved ([previous]), which stays — rows never fall back to a spinner once painted.
  * - Home Error / Empty, or no Home store at all ([homeContent] null): no Home facts will come. A context
- *   already resolved stays; otherwise the unpinned list without section labels, which a later Home
- *   Content may still enrich.
+ *   already resolved stays; otherwise the list without Home facts, which a later Home Content may still
+ *   enrich.
  */
 internal fun nextActivityConversationListContext(
     previous: ActivityConversationListContext?,
@@ -212,72 +213,27 @@ internal fun InboxItem.isActivityDirectMessageConversation(): Boolean =
     kind == InboxItemKind.DirectMessage ||
         (kind == InboxItemKind.MentionAction && channelKind == ConversationKind.DirectMessage)
 
-/**
- * web `isSidebarPinnedInboxItem`: channels pin by channel id, DMs by their peer (agent or human), threads
- * are never pinned on their own.
- */
-internal fun InboxItem.isSidebarPinnedActivityConversation(context: ActivityConversationListContext): Boolean {
-    if (kind == InboxItemKind.Thread || context.pinnedRefs.isEmpty()) return false
-    if (!isActivityDirectMessageConversation()) {
-        return context.pinnedRefs.any { it.kind == "channel" && it.id == channelId.value }
-    }
-    val peer = context.dmPeersByChannelId[channelId.value] ?: return false
-    val peerId = peer.peerId ?: return false
-    val pinKind = if (peer.peerIsAgent) "agent" else "human"
-    return context.pinnedRefs.any { it.kind == pinKind && it.id == peerId }
-}
-
-internal enum class ActivityConversationListSection { Pinned, AllConversations }
-
 /** One LazyColumn slot of the list layout. */
 internal sealed interface ActivityConversationListEntry {
     val key: String
 
-    data class Section(val section: ActivityConversationListSection, val first: Boolean) : ActivityConversationListEntry {
-        override val key: String = "activity-list-section:${section.name}"
-    }
-
     /** [divider]: the hairline above the row (raft-ui draws it only between two adjacent items). */
-    data class Row(val item: InboxItem, val pinned: Boolean, val divider: Boolean) : ActivityConversationListEntry {
+    data class Row(val item: InboxItem, val divider: Boolean) : ActivityConversationListEntry {
         override val key: String = item.key
     }
 }
 
 /**
- * web `pinnedItemKeys` / `visibleItems` / section labels: pinned conversations float to the top in their
- * loaded order under "Pinned", the rest follow under "All conversations". With nothing pinned there are
- * no section labels at all.
+ * web `visibleItems` (slock #10785): one row per item in the order the server lists them, a hairline
+ * between two rows. There are no Pinned / All conversations sections: Pinned is a filter of its own
+ * (`InboxFilter.Pinned`, `scope=pinned`).
  */
-internal fun activityConversationListEntries(
-    items: List<InboxItem>,
-    context: ActivityConversationListContext,
-): List<ActivityConversationListEntry> {
-    val pinnedKeys = items.filter { it.isSidebarPinnedActivityConversation(context) }.mapTo(mutableSetOf()) { it.key }
-    val ordered =
-        if (pinnedKeys.isEmpty()) {
-            items
-        } else {
-            items.filter { it.key in pinnedKeys } + items.filterNot { it.key in pinnedKeys }
-        }
-    val entries = ArrayList<ActivityConversationListEntry>(ordered.size + 2)
-    ordered.forEachIndexed { index, item ->
-        val pinned = item.key in pinnedKeys
-        val section =
-            when {
-                pinnedKeys.isEmpty() -> null
-                index == 0 -> if (pinned) ActivityConversationListSection.Pinned else ActivityConversationListSection.AllConversations
-                !pinned && ordered[index - 1].key in pinnedKeys -> ActivityConversationListSection.AllConversations
-                else -> null
-            }
-        if (section != null) entries += ActivityConversationListEntry.Section(section, first = index == 0)
-        entries += ActivityConversationListEntry.Row(item, pinned = pinned, divider = index > 0 && section == null)
-    }
-    return entries
-}
+internal fun activityConversationListEntries(items: List<InboxItem>): List<ActivityConversationListEntry> =
+    items.mapIndexed { index, item -> ActivityConversationListEntry.Row(item, divider = index > 0) }
 
 /**
- * The rows in the order the person sees them: the conversation-list rows, pinned first. "Prewarm the next
- * thread after the clicked one" follows this order.
+ * The rows in the order the person sees them. "Prewarm the next thread after the clicked one" follows
+ * this order.
  */
 internal fun activityRowsInDisplayOrder(conversationListEntries: List<ActivityConversationListEntry>): List<InboxItem> =
     conversationListEntries.mapNotNull { entry -> (entry as? ActivityConversationListEntry.Row)?.item }
@@ -591,39 +547,6 @@ private val ConversationTileGlyph = 18.dp
 /** `before:left-16`: the hairline starts where the text column starts. */
 private val ConversationDividerStart = 64.dp
 private val ConversationSenderAvatar = 19.dp
-
-@Composable
-internal fun ActivityConversationListSectionLabel(
-    section: ActivityConversationListSection,
-    first: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    val colors = RaftTheme.colors
-    Row(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = if (first) 8.dp else 16.dp, bottom = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (section == ActivityConversationListSection.Pinned) {
-            RaftLucideIcon(RaftLucideIconName.Pin, Modifier.size(12.dp), color = raftArgbHex(colors.foregroundHint))
-        }
-        RaftText(
-            text =
-                stringResource(
-                    when (section) {
-                        ActivityConversationListSection.Pinned -> MR.strings.activity_list_pinned
-                        ActivityConversationListSection.AllConversations -> MR.strings.activity_list_all_conversations
-                    }
-                ).uppercase(),
-            style = RaftTheme.typography.label,
-            color = colors.foregroundHint,
-            maxLines = 1,
-        )
-    }
-}
 
 @Composable
 internal fun ActivityConversationListRow(

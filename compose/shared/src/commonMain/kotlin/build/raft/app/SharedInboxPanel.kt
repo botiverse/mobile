@@ -5,6 +5,7 @@ import build.raft.app.components.RaftBrutalBadge
 import build.raft.app.components.RaftBrutalTone
 import build.raft.app.components.TabPager
 import build.raft.app.components.TabPagerGesturePolicy
+import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED
 import build.raft.app.data.ActivityReplyThreadPrewarmKey
 import build.raft.app.data.ActivityReplyThreadPrewarmMarker
@@ -356,8 +357,8 @@ internal fun SharedHomeActivityScreen(
         sharedStores.sharedHomeStore(storeScope)
     }
     // Selector over the Home content: only the pins, mutes and DM peers of this server reach the list.
-    // Null while Home has not produced them yet (see nextActivityConversationListContext): pins and
-    // section labels never apply after the rows have painted.
+    // Null while Home has not produced them yet (see nextActivityConversationListContext): Home facts
+    // never apply after the rows have painted.
     val conversationListContextSource =
         remember(sharedHomeStore, activitySummaryServerId) {
             val serverId = activitySummaryServerId.value
@@ -515,33 +516,66 @@ internal fun SharedHomeActivityScreen(
             ActivityTabActiveEdge.None -> Unit
         }
     }
+    val lastOpenedStore = remember { ActivityLastOpenedStore(raftSharedPreferenceStore()) }
+    // Every open (a picked row, or the reopen on arrival below) is the one to reopen next time.
+    val openActivityItem: (InboxItem) -> Unit = { item ->
+        lastOpenedStore.write(activitySummaryServerId.value, item.key)
+        state.snapshot?.let { snapshot ->
+            sharedHomeStore?.supplementConversationIdentity(snapshot, dmPeerNames = state.dmPeerNames)
+        }
+        when (
+            val resolution =
+                item.toHomeMessageOpenRequest(
+                    serverId = state.snapshot?.server?.id?.value.orEmpty(),
+                    conversationDirectory = openConversationDirectory,
+                    diagnosticsLogger = bridge::log
+                )
+        ) {
+            is ConversationOpenResolution.Resolved -> onOpenMessage(resolution.request)
+            is ConversationOpenResolution.Pending -> {
+                bridge.logWarn(
+                    "activity_open_request_pending reason=${resolution.reason} " +
+                        "itemKey=${item.key} kind=${item.kind.name}"
+                )
+                bridge.toast(conversationNotReadyMessage)
+            }
+        }
+    }
+    // Wide layout (the list-detail host owns the selection): once per visit, after the list loads,
+    // reopen the conversation opened last time on this server when it is still listed and nothing
+    // is open beside the list (ActivityArrivalReopen.kt). Not a pick: no MarkRead, no prewarm.
+    val arrivalVisit = remember(activitySummaryServerId) { ActivityArrivalVisit() }
+    val latestOpenActivityItem by rememberUpdatedState(openActivityItem)
+    val arrivalItems = safeOpenProjectedState.snapshot?.items
+    val arrivalLoaded = state.loaded && arrivalItems != null && !conversationListPending
+    LaunchedEffect(arrivalVisit, active, arrivalLoaded) {
+        if (!arrivalVisit.claim(active = active, loaded = arrivalLoaded)) return@LaunchedEffect
+        val item =
+            activityArrivalReopenTarget(
+                wide = externalSelectionOwned,
+                somethingOpen = externalSelectedThreadId != null,
+                items = arrivalItems.orEmpty(),
+                lastOpenedKey = lastOpenedStore.read(activitySummaryServerId.value),
+            ) ?: return@LaunchedEffect
+        bridge.log("shared_activity_arrival_reopen kind=${item.kind.name} unread=${item.unreadCount}")
+        latestOpenActivityItem(item)
+    }
+    // web: pinning or unpinning while Pinned is shown reloads it (the server resolves the pins).
+    val pinnedScopeReloadEdge = remember(activitySummaryServerId) { ActivityPinnedScopeReloadEdge() }
+    val latestSelectedFilter by rememberUpdatedState(state.selectedFilter)
+    val sidebarPins = conversationListContext?.pinnedRefs
+    LaunchedEffect(pinnedScopeReloadEdge, sidebarPins) {
+        if (pinnedScopeReloadEdge.onPins(sidebarPins, latestSelectedFilter)) {
+            bridge.log("shared_activity_pinned_scope_reload reason=pins_changed")
+            activityStore.dispatch(SharedActivityIntent.Refresh)
+        }
+    }
     CompositionLocalProvider(
         LocalActivityAvatarSource provides activityAvatarSource,
     ) {
     SharedActivityPanelContent(
         state = safeOpenProjectedState,
-        onOpenItem = { item ->
-            state.snapshot?.let { snapshot ->
-                sharedHomeStore?.supplementConversationIdentity(snapshot, dmPeerNames = state.dmPeerNames)
-            }
-            when (
-                val resolution =
-                    item.toHomeMessageOpenRequest(
-                        serverId = state.snapshot?.server?.id?.value.orEmpty(),
-                        conversationDirectory = openConversationDirectory,
-                        diagnosticsLogger = bridge::log
-                    )
-            ) {
-                is ConversationOpenResolution.Resolved -> onOpenMessage(resolution.request)
-                is ConversationOpenResolution.Pending -> {
-                    bridge.logWarn(
-                        "activity_open_request_pending reason=${resolution.reason} " +
-                            "itemKey=${item.key} kind=${item.kind.name}"
-                    )
-                    bridge.toast(conversationNotReadyMessage)
-                }
-            }
-        },
+        onOpenItem = openActivityItem,
         onClose = onClose,
         onIntent = activityStore::dispatch,
         bottomContentPadding = bottomContentPadding,
@@ -914,9 +948,10 @@ private fun SharedActivityPanelContent(
     val filters = InboxFilter.entries
     // One retained scroll state per filter page. Explicit calls (not a
     // loop over the experimental LazyListState constructor): the filter
-    // set is a closed enum of three, and this list is index-aligned with
-    // `filters` (All/Unread/Mentions entry order).
+    // set is a closed enum of four, and this list is index-aligned with
+    // `filters` (All/Unread/Mentions/Pinned entry order).
     val pageListStates = listOf(
+        rememberLazyListState(),
         rememberLazyListState(),
         rememberLazyListState(),
         rememberLazyListState(),
@@ -1116,6 +1151,7 @@ private fun SharedActivityBodyContent(
                             InboxFilter.Mentions -> stringResource(MR.strings.inbox_state_no_mentions)
                             InboxFilter.Unread -> stringResource(MR.strings.inbox_state_no_unread_chats)
                             InboxFilter.All -> stringResource(MR.strings.inbox_state_activity_empty)
+                            InboxFilter.Pinned -> stringResource(MR.strings.inbox_state_no_pinned)
                         },
                     detail = state.selectedFilter.localizedEmptyCopy(),
                     refreshing = state.refreshing,
@@ -1196,8 +1232,8 @@ private fun SharedActivityHeader(
 }
 
 /**
- * web Mark all read: a ghost `sm` button; when the toolbar is narrower than 22rem (352dp) it
- * keeps only its CheckCheck icon (`@max-[22rem]:size-8`), so the filters keep their width.
+ * web Mark all read: a ghost button; when the toolbar is narrower than 30rem (480dp) it keeps
+ * only its CheckCheck icon (`@max-[30rem]:size-8`), so the four filters keep their room.
  */
 @Composable
 private fun SharedActivityMarkAllReadButton(iconOnly: Boolean, onClick: () -> Unit) {
@@ -1219,6 +1255,9 @@ private fun SharedActivityMarkAllReadButton(iconOnly: Boolean, onClick: () -> Un
     }
 }
 
+/** web `@max-[30rem]` on the toolbar's content box: the 54dp row less its 16dp edges. */
+internal fun activityMarkAllReadIconOnly(toolbarWidth: Dp): Boolean = toolbarWidth - 32.dp < 480.dp
+
 @Composable
 private fun activityHeaderSubtitle(totalCount: Int, totalUnreadCount: Int): String =
     // Web `thread.header.subtitle`: both counts, always.
@@ -1233,7 +1272,7 @@ private fun SharedActivityFilterBar(
 ) {
     // web inbox toolbar: 54dp with a 1dp seam inside it, 16dp edges, the 38dp tray 8dp down.
     BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(54.dp).background(RaftColor.SurfaceWhite)) {
-        val markAllReadIconOnly = maxWidth < 352.dp
+        val markAllReadIconOnly = activityMarkAllReadIconOnly(maxWidth)
         Row(
             modifier =
                 Modifier
@@ -1245,16 +1284,20 @@ private fun SharedActivityFilterBar(
             // row's end (xxchan: the tray must not stretch into an empty grey band).
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Design-system RaftSegmentedControl: the picked filter is the yellow sticker.
+            // Design-system RaftSegmentedControl: the picked filter is the yellow sticker. Like
+            // web `iconsOnlyBelow="auto"`, whenever the four labels don't fit the room left beside
+            // Mark all read, every filter shows only its icon; its label stays the accessible name.
             RaftSegmentedControl(
                 // Wrap content, but never push Mark all read off the row; 12dp keeps the gap.
-                modifier = Modifier.weight(1f, fill = false).padding(end = 12.dp)
+                modifier = Modifier.weight(1f, fill = false).padding(end = 12.dp),
+                iconsOnlyWhenLabelsDontFit = true,
             ) {
                 InboxFilter.entries.forEach { filter ->
                     RaftSegment(
                         text = filter.localizedLabel(),
                         selected = filter == selectedFilter,
                         onClick = { onFilterSelected(filter) },
+                        iconsOnlyIcon = { RaftContentLucideIcon(filter.iconName(), size = 16.dp) },
                     )
                 }
             }
@@ -1687,11 +1730,11 @@ private fun SharedActivityList(
     var swipeDoneUndo by remember { mutableStateOf(ActivitySwipeDoneUndoState()) }
     val swipeDoneHiddenKey = swipeDoneUndo.hiddenKey
     val conversationListEntries =
-        remember(renderedItems, conversationList.context, swipeDoneHiddenKey) {
+        remember(renderedItems, swipeDoneHiddenKey) {
             val listed = if (swipeDoneHiddenKey == null) renderedItems else renderedItems.filterNot { item -> item.key == swipeDoneHiddenKey }
-            activityConversationListEntries(listed, conversationList.context)
+            activityConversationListEntries(listed)
         }
-    // LazyColumn key order as laid out (section labels and pinned rows first), for the pill.
+    // LazyColumn key order as laid out, for the pill.
     val lazyItemKeys =
         remember(conversationListEntries) {
             conversationListEntries.map(ActivityConversationListEntry::key)
@@ -1725,7 +1768,6 @@ private fun SharedActivityList(
         val listContext = unreadJumpListContext
         return unreadJumpRows.map { entry ->
             when (entry) {
-                is ActivityConversationListEntry.Section -> ActivityUnreadJumpEntry(entry.key, unread = false)
                 is ActivityConversationListEntry.Row ->
                     ActivityUnreadJumpEntry(entry.key, unread = entry.item.activityRowDisplaysUnread(listContext))
             }
@@ -1823,7 +1865,7 @@ private fun SharedActivityList(
         onIntent(
             SharedActivityIntent.PrewarmActivityTail(
                 activityReplyThreadPrewarmNextAfterClick(
-                    // The next row the person sees: pins float first in the list layout.
+                    // The next row the person sees.
                     items = activityRowsInDisplayOrder(conversationListEntries),
                     clickedKey = currentItem.key,
                     serverId = snapshot.server.id.value
@@ -1881,14 +1923,12 @@ private fun SharedActivityList(
                         // web inbox scroller `py-1`; rows sit edge to edge, split by their own hairline.
                         .padding(top = 4.dp)
             ) {
-                // One compact row per conversation, pinned first (web ThreadsInbox `layout="list"`).
+                // One compact row per conversation (web ThreadsInbox `layout="list"`).
                 // TODO(dark-mode): these rows paint with RaftTheme.colors (foreground, lineHairline, infoSoft)
                 // over the panel's fixed RaftColor.SurfaceWhite background; migrate the panel surface to a
                 // theme token with the rest of Activity's dark-mode pass.
                 items(items = conversationListEntries, key = { entry -> entry.key }) { entry ->
                     when (entry) {
-                        is ActivityConversationListEntry.Section ->
-                            ActivityConversationListSectionLabel(section = entry.section, first = entry.first)
                         is ActivityConversationListEntry.Row -> {
                             val item = entry.item
                             val model =
@@ -2481,14 +2521,25 @@ private fun InboxFilter.localizedLabel(): String =
             InboxFilter.All -> MR.strings.activity_filter_all
             InboxFilter.Unread -> MR.strings.activity_filter_unread
             InboxFilter.Mentions -> MR.strings.activity_filter_mentions
+            InboxFilter.Pinned -> MR.strings.activity_filter_pinned
         }
     )
+
+/** web inbox filters' icons, shown alone when the four labels don't fit (`in-data-icons-only:block`). */
+internal fun InboxFilter.iconName(): RaftLucideIconName =
+    when (this) {
+        InboxFilter.All -> RaftLucideIconName.Inbox
+        InboxFilter.Unread -> RaftLucideIconName.CircleDot
+        InboxFilter.Mentions -> RaftLucideIconName.AtSign
+        InboxFilter.Pinned -> RaftLucideIconName.Pin
+    }
 
 private fun InboxFilter.emptyCopy(): String =
     when (this) {
         InboxFilter.All -> "No unread conversations or mentions yet."
         InboxFilter.Unread -> "No unread conversations."
         InboxFilter.Mentions -> "No mentions yet."
+        InboxFilter.Pinned -> "No pinned conversations."
     }
 
 @Composable
@@ -2498,6 +2549,7 @@ private fun InboxFilter.localizedEmptyCopy(): String =
             InboxFilter.All -> MR.strings.inbox_empty_all_detail
             InboxFilter.Unread -> MR.strings.inbox_empty_unread_detail
             InboxFilter.Mentions -> MR.strings.inbox_empty_mentions_detail
+            InboxFilter.Pinned -> MR.strings.inbox_empty_pinned_detail
         }
     )
 

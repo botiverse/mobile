@@ -687,11 +687,26 @@ data class TaskFilter(
     val assignedToMeOnly: Boolean = false
 )
 
-enum class InboxFilter(val wireValue: String) {
+/**
+ * The Activity filters, in the order the segmented control shows them. [wireValue] is the
+ * `GET /channels/inbox` `filter`; [scopeWireValue] its `scope`, when the filter is a scope.
+ */
+enum class InboxFilter(val wireValue: String, val scopeWireValue: String? = null) {
     All("all"),
     Unread("unread"),
-    Mentions("mentions")
+    Mentions("mentions"),
+
+    /**
+     * web Pinned (slock #10785): a scope over All, not a read filter. The server resolves the
+     * sidebar pins: pinned channels and DMs with their threads and tasks, unfollowed threads
+     * included as in All (`filter=all&scope=pinned`, routes/channels.ts `parseInboxScopeParam`).
+     */
+    Pinned("all", scopeWireValue = "pinned"),
 }
+
+/** All and Pinned (a scope over All) list unfollowed, not-Done threads too; the read filters don't. */
+internal val InboxFilter.listsUnfollowedActivityThreads: Boolean
+    get() = this == InboxFilter.All || this == InboxFilter.Pinned
 
 const val DEFAULT_PAGE_LIMIT = 30
 

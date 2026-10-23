@@ -16,8 +16,8 @@ import kotlin.test.assertSame
 class ActivityScrollToTopTargetTest {
     @Test
     fun `title tap targets the exact state object of the selected filters page`() {
-        // Stand-ins for the three page LazyListStates; identity is the assertion.
-        val pageStates = listOf(Any(), Any(), Any())
+        // Stand-ins for the four page LazyListStates (All, Unread, Mentions, Pinned); identity is the assertion.
+        val pageStates = listOf(Any(), Any(), Any(), Any())
         for (filter in InboxFilter.entries) {
             val pageIndexThePagerRenders = InboxFilter.entries.indexOf(filter)
             assertSame(
