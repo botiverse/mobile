@@ -264,8 +264,11 @@ fun BoxScope.RaftComposerAttachmentRemove(
 ) {
     val colors = RaftTheme.colors
     val source = interactionSource ?: remember { MutableInteractionSource() }
-    val pressed = enabled && (raftIsPressed(source) || raftIsHovered(source))
-    val focused = enabled && raftIsFocused(source)
+    val isPressed = raftIsPressed(source)
+    val isHovered = raftIsHovered(source)
+    val isFocused = raftIsFocused(source)
+    val pressed = enabled && (isPressed || isHovered)
+    val focused = enabled && isFocused
     val shape = RoundedCornerShape(RaftRadius.Sticker)
     Box(
         modifier =
