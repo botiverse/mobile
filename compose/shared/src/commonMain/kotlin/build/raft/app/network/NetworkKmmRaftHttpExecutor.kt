@@ -102,7 +102,10 @@ private const val RAFT_REQUEST_TIMEOUT_MILLIS = 30_000L
  * ONE app-side source, is logged as `configConnectTimeoutMillis`, and a
  * library bump can no longer move it unnoticed.
  */
-internal const val RAFT_CONNECT_TIMEOUT_MILLIS = 10_000L
+// artin 2026-10-23 (Ktor switch): aligned with the Ktor transport's 5 s connect
+// ([RAFT_KTOR_CONNECT_TIMEOUT_MILLIS]) so binary downloads and the curl override fail a dead route as
+// fast as API calls. Presigned uploads keep their own 10 s budget.
+internal const val RAFT_CONNECT_TIMEOUT_MILLIS = RAFT_KTOR_CONNECT_TIMEOUT_MILLIS
 
 /**
  * The single constructor for every [NetworkRequestPolicy] the app hands to

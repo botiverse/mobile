@@ -195,6 +195,116 @@ class RaftOkHttpTransportTest {
         assertTrue("reusedConnection=true connectionAttempts=0" in second.transportDiagnostics.orEmpty(), second.transportDiagnostics)
     }
 
+    /**
+     * Hands ae47bba1: streamed upload bodies went through ktor-io's blocking adapter and died with
+     * NoSuchMethodError on coroutines 1.11. These run the real Android path end to end.
+     */
+    @Test
+    fun presignedFilePutSendsExactlyTheSignedHeadersAndAFixedLength() = runBlocking {
+        val executor = uploadExecutor()
+        val fileBytes = ByteArray(200 * 1024) { (it % 253).toByte() }
+        server.enqueue(MockResponse.Builder().code(200).body("<etag/>").build())
+        val progress = mutableListOf<RaftTransferProgress>()
+
+        val response =
+            executor.executeFile(
+                priority = RaftRequestPriority.Foreground,
+                url = server.url("/bucket/obj%2Fkey.jpg?X-Amz-Signature=ab%2Bcd&X-Amz-Expires=600").toString(),
+                method = "PUT",
+                headers = mapOf("Content-Type" to "image/jpeg"),
+                body =
+                    RaftHttpFileBody(
+                        path = "content://photo",
+                        contentType = "image/jpeg",
+                        contentLength = fileBytes.size.toLong(),
+                        openStream = {
+                            build.raft.app.data.boundedPlatformFileNetworkStream(fileBytes.size.toLong(), ArrayChunkSource(fileBytes))
+                        }
+                    ),
+                onUploadProgress = { progress += it },
+            )
+
+        assertEquals(200, response.code, response.transportDiagnostics)
+        val recorded = server.takeRequest()
+        assertEquals("PUT", recorded.method)
+        assertEquals("/bucket/obj%2Fkey.jpg?X-Amz-Signature=ab%2Bcd&X-Amz-Expires=600", recorded.path)
+        assertEquals(fileBytes.size.toString(), recorded.headers["Content-Length"])
+        assertEquals(null, recorded.headers["Transfer-Encoding"])
+        assertEquals("image/jpeg", recorded.headers["Content-Type"])
+        assertEquals(null, recorded.headers["Authorization"])
+        assertEquals(
+            setOf("content-length", "content-type", "host", "connection", "accept-encoding", "user-agent", "x-request-id", "traceparent"),
+            recorded.headers.names().map { it.lowercase() }.toSet()
+        )
+        assertTrue(recorded.body.readByteArray().contentEquals(fileBytes))
+        assertEquals(RaftTransferProgress(fileBytes.size.toLong(), fileBytes.size.toLong()), progress.last())
+    }
+
+    @Test
+    fun streamedMultipartUploadSendsAFixedLengthFormBody() = runBlocking {
+        val executor = uploadExecutor()
+        val fileBytes = ByteArray(150 * 1024) { 9 }
+        server.enqueue(MockResponse.Builder().code(200).body("""{"attachments":[{"id":"a1"}]}""").build())
+
+        val response =
+            executor.executeMultipart(
+                priority = RaftRequestPriority.Foreground,
+                url = server.url("/api/attachments/upload").toString(),
+                fields = mapOf("channelId" to "c1"),
+                files =
+                    listOf(
+                        MultipartFile(
+                            name = "files",
+                            fileName = "85734.jpg",
+                            mimeType = "image/jpeg",
+                            fileRef = "content://photo",
+                            sizeBytes = fileBytes.size.toLong(),
+                            streamOpener = {
+                                build.raft.app.data.boundedPlatformFileNetworkStream(fileBytes.size.toLong(), ArrayChunkSource(fileBytes))
+                            }
+                        )
+                    ),
+                headers = mapOf("Authorization" to "Bearer access-1", HEADER_SERVER_ID to "server-1"),
+            )
+
+        assertEquals(200, response.code, response.transportDiagnostics)
+        assertEquals("""{"attachments":[{"id":"a1"}]}""", response.bodyText)
+        val recorded = server.takeRequest()
+        val body = recorded.body.readByteArray()
+        assertEquals(body.size.toString(), recorded.headers["Content-Length"])
+        assertEquals(null, recorded.headers["Transfer-Encoding"])
+        assertEquals("Bearer access-1", recorded.headers["Authorization"])
+        assertEquals("server-1", recorded.headers[HEADER_SERVER_ID])
+        val contentType = recorded.headers["Content-Type"].orEmpty()
+        assertTrue(contentType.startsWith("multipart/form-data; boundary="), contentType)
+        val text = body.decodeToString()
+        assertTrue("name=\"channelId\"\r\n\r\nc1\r\n" in text)
+        assertTrue("name=\"files\"; filename=\"85734.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n" in text)
+        assertTrue(text.endsWith("--\r\n"))
+    }
+
+    private fun uploadExecutor(): KtorRaftHttpExecutor {
+        val lanes = RaftOkHttpLanes(buildRaftBaseOkHttpClient(eventListenerFactory = null))
+        return KtorRaftHttpExecutor(
+            clients = lanes.ktorProvider(),
+            requestLifetimeCoordinator = RaftNetworkRequestLifetimeCoordinator(),
+            transportFacts = { null },
+            engineLabel = "ktor_okhttp",
+            streamingUploader = lanes.streamingUploader(),
+        )
+    }
+
+    private class ArrayChunkSource(private val bytes: ByteArray) : build.raft.app.data.RaftPlatformFileChunkSource {
+        private var offset = 0
+
+        override suspend fun read(maxBytes: Int): ByteArray {
+            val end = minOf(bytes.size, offset + maxBytes)
+            return bytes.copyOfRange(offset, end).also { offset = end }
+        }
+
+        override fun close() = Unit
+    }
+
     private suspend fun KtorRaftHttpExecutor.get(path: String) =
         execute(RaftRequestPriority.Visible, server.url(path).toString(), "GET", emptyMap(), null, false)
 

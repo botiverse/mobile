@@ -187,31 +187,75 @@ private class RaftNetworkImageFetcher(
 internal fun raftImageNowEpochMillis(): Long = Clock.System.now().toEpochMilliseconds()
 
 /** Single flight per content key for network bytes (the Kuikly adapter's `networkByteFlights`). */
-private object RaftImageByteFlights {
+private val RaftImageByteFlights =
+    RaftImageByteFlightCache(fetcher = SharedBinaryDownloader::fetchBytes, logger = { raftLogWarn(LOG_TAG, it) })
+
+/**
+ * One network fetch per image key, shared by every waiter. Hands 50a29f61: a list row that leaves the
+ * composition cancels its load (Compose's ForgottenCoroutineScopeException) while the shared fetch
+ * carries on to 200; the bytes used to be dropped and the remounted row fetched them again. A
+ * completed fetch is now kept for [reuseWindowMillis] so the next waiter reuses it, and a waiter's
+ * cancellation is logged as `status=cancelled`, not as a failure.
+ */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+internal class RaftImageByteFlightCache(
+    private val fetcher: suspend (url: String) -> SharedDownloadedBytes,
+    private val logger: (String) -> Unit,
+    private val nowMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    private val reuseWindowMillis: Long = 30_000L,
+    private val maxRetainedEntries: Int = 16,
+    private val maxRetainedBytes: Int = 2 * 1024 * 1024,
+) {
+    private class Flight(val deferred: Deferred<SharedDownloadedBytes>, var completedAtMillis: Long? = null)
+
     private val lock = SynchronizedObject()
-    private val inFlight = mutableMapOf<String, Deferred<SharedDownloadedBytes>>()
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val flights = LinkedHashMap<String, Flight>()
 
     suspend fun fetch(key: String, url: String): SharedDownloadedBytes {
-        val deferred =
+        val flight =
             synchronized(lock) {
-                inFlight[key] ?: scope.async { SharedBinaryDownloader.fetchBytes(url) }.also { started ->
-                    inFlight[key] = started
-                    started.invokeOnCompletion {
+                pruneLocked()
+                flights[key] ?: Flight(scope.async { fetcher(url) }).also { started ->
+                    flights[key] = started
+                    started.deferred.invokeOnCompletion { failure ->
                         synchronized(lock) {
-                            if (inFlight[key] === started) inFlight.remove(key)
+                            if (flights[key] !== started) return@synchronized
+                            val bytes = if (failure == null) started.deferred.getCompleted() else null
+                            if (bytes == null || bytes.bytes.size > maxRetainedBytes) {
+                                flights.remove(key)
+                            } else {
+                                started.completedAtMillis = nowMillis()
+                            }
                         }
                     }
                 }
             }
         return try {
-            deferred.await()
+            flight.deferred.await()
+        } catch (cancelled: CancellationException) {
+            logger("source=network status=cancelled type=${cancelled::class.simpleName} ${binaryDownloadUrlDiagnostics(url)}")
+            throw cancelled
         } catch (failure: Throwable) {
-            raftLogWarn(
-                LOG_TAG,
-                "source=network status=failed type=${failure::class.simpleName} ${binaryDownloadUrlDiagnostics(url)}"
-            )
+            logger("source=network status=failed type=${failure::class.simpleName} ${binaryDownloadUrlDiagnostics(url)}")
             throw failure
+        }
+    }
+
+    private fun pruneLocked() {
+        val now = nowMillis()
+        flights.entries.removeAll { (_, flight) ->
+            val completedAt = flight.completedAtMillis
+            if (completedAt == null) {
+                // A flight that finished before it was registered never got its completion stamp.
+                flight.deferred.isCompleted && flight.deferred.getCompletionExceptionOrNull() != null
+            } else {
+                now - completedAt > reuseWindowMillis
+            }
+        }
+        while (flights.count { it.value.completedAtMillis != null } > maxRetainedEntries) {
+            val oldest = flights.entries.firstOrNull { it.value.completedAtMillis != null } ?: break
+            flights.remove(oldest.key)
         }
     }
 }

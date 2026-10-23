@@ -296,6 +296,11 @@ class KtorRaftHttpExecutorTest {
 
         assertFailsWith<CancellationException> { call.await() }
         withTimeout(10_000) { engineCancelled.await() }
+        // Hands 50a29f61: a cancelled call must still log a finish line, never look like a hang.
+        assertTrue(
+            harness.logs.any { it.startsWith("slock_http_execute_finish") && "kind=CANCELLED" in it && "detail=caller_cancelled" in it },
+            harness.logs.joinToString("\n")
+        )
     }
 
     private class Harness(
@@ -322,6 +327,8 @@ class KtorRaftHttpExecutorTest {
                 requestLifetimeCoordinator = coordinator,
                 transportFacts = { null },
                 engineLabel = "ktor_test",
+                // Streamed bodies go through MockEngine here; the Android OkHttp path has its own tests.
+                streamingUploader = null,
             )
     }
 

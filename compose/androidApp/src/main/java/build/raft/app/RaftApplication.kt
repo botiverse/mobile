@@ -5,9 +5,7 @@ import android.content.Context
 import build.raft.app.cmp.RaftCmpRouter
 import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
-import build.raft.app.core.data.auth.androidMMKVApiEnvironmentKeyValueStore
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
-import build.raft.app.core.data.auth.androidMMKVNetworkRecoveryKeyValueStore
 import build.raft.app.core.data.auth.installAndroidAppScopeSharedKeyValueStores
 import build.raft.app.core.data.diagnostics.RaftAndroidLocalDiagnostics
 import build.raft.app.data.raftClearLegacyFontPreference
@@ -21,10 +19,9 @@ import build.raft.app.shared.RaftAndroidWebViewWarmup
 import build.raft.app.shared.installAndroidThreadComposerTemporaryFileRetirement
 import build.raft.app.shared.isAndroidSystemDark
 import build.raft.app.data.KeyValueAuthSessionStore
-import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.RaftAppAppearanceRuntime
 import build.raft.app.data.installAndroidAppScopeEventBus
-import build.raft.app.network.installAndroidNetworkKmmReusedHttp2RecoveryAtStartup
+import build.raft.app.network.installAndroidNetworkKmmDownloadEnginePolicyAtStartup
 import build.raft.app.network.installAndroidNetworkKmmAppIdentity
 import build.raft.app.network.installAndroidRaftUserAgentDevice
 import build.raft.app.network.installAndroidRaftNetworkTransportAtStartup
@@ -78,32 +75,13 @@ class RaftApplication : Application() {
                     "errorType=${error::class.simpleName ?: "unknown"}"
             )
         }
-        runCatching {
-            installAndroidNetworkKmmReusedHttp2RecoveryAtStartup(
-                store = androidMMKVNetworkRecoveryKeyValueStore(this),
-                currentEnvironment = {
-                    SharedApiEnvironmentStore(
-                        androidMMKVApiEnvironmentKeyValueStore(this)
-                    ).current()
-                }
-            )
-        }.onSuccess { diagnostics ->
-            if (
-                diagnostics.contains("remoteKillLatchRead=failed") ||
-                diagnostics.contains("apiEnvironmentRead=failed")
-            ) {
-                RaftAndroidLocalDiagnostics.recordCriticalLog("error", "SlockNetworkKmm", diagnostics)
-            } else {
-                RaftAndroidLocalDiagnostics.recordLog("info", "SlockNetworkKmm", diagnostics)
-            }
-        }.onFailure { error ->
-            RaftAndroidLocalDiagnostics.recordCriticalLog(
-                "error",
-                "SlockNetworkKmm",
-                "networkkmm_reused_h2_recovery startup_failed=true recoveryEnabled=unknown " +
-                    "errorType=${error::class.simpleName ?: "unknown"}"
-            )
-        }
+        // Ktor switch: NetworkKMM's Ktor engine only carries downloads now; its 7 s stale-connection
+        // watchdog is off (OkHttp ping + pool health checks instead).
+        RaftAndroidLocalDiagnostics.recordLog(
+            "info",
+            "SlockNetworkKmm",
+            installAndroidNetworkKmmDownloadEnginePolicyAtStartup()
+        )
         installRaftPlatformLogRecordSink { record ->
             when (record.hint) {
                 RaftPlatformLogHint.AuthCritical ->
