@@ -26,6 +26,7 @@ import build.raft.app.data.SettingsServerSectionSnapshot
 import build.raft.app.data.SettingsServerSnapshot
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.resources.MR
+import com.tencent.tmm.kmmresource.resource.desc.Resource
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import kotlin.test.Test
 import org.junit.runner.RunWith
