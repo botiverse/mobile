@@ -41,7 +41,10 @@ import kotlinx.coroutines.launch
  * process.
  *
  * Notifications need POST_NOTIFICATIONS (Android 13+); without it nothing is posted, and the
- * foreground service still runs (Android allows it, the notification is just not shown).
+ * foreground service still runs (Android allows it, the notification is just not shown). The
+ * channel is created regardless of that permission: `startForeground` rejects a notification on a
+ * channel that does not exist (CannotPostForegroundServiceNotificationException, a crash), and
+ * creating a channel needs no permission.
  */
 internal object RaftDownloadNotifications {
     private const val LOG_TAG = "RaftDownloadNotifications"
@@ -79,14 +82,16 @@ internal object RaftDownloadNotifications {
     }
 
     /** The progress notification the service promotes with (built before it is started). */
-    internal fun currentProgressNotification(context: Context): Notification =
-        latestProgress ?: progressBuilder(context, emptyList()).build()
+    internal fun currentProgressNotification(context: Context): Notification {
+        ensureChannel(context)
+        return latestProgress ?: progressBuilder(context, emptyList()).build()
+    }
 
     private fun render(context: Context, entries: List<RaftDownloadEntry>, previous: Map<String, RaftDownloadStatus>) {
         val active = entries.filter { it.status.isActive }
         val manager = NotificationManagerCompat.from(context)
         val canPost = AndroidUnreadNotificationPoster.hasNotificationPermission(context)
-        if (canPost) ensureChannel(context)
+        ensureChannel(context)
         hasActiveDownloads = active.isNotEmpty()
         if (active.isNotEmpty()) {
             val notification = progressBuilder(context, active).build()
@@ -194,7 +199,7 @@ internal object RaftDownloadNotifications {
 
     private fun finishedId(entry: RaftDownloadEntry): Int = FINISHED_NOTIFICATION_BASE xor (entry.id.hashCode() and 0x7FFFFF00)
 
-    private fun ensureChannel(context: Context) {
+    internal fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (manager.getNotificationChannel(CHANNEL_ID) != null) return
