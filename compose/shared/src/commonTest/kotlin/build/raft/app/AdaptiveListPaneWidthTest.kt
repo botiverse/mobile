@@ -3,59 +3,126 @@ package build.raft.app
 import build.raft.app.data.*
 import kotlin.test.*
 
-/** task #37: user-resizable list column of the wide list + detail split. */
+/** task #37 / artin task #20: user-resizable, per-kind list column of the wide list + detail split. */
 class AdaptiveListPaneWidthTest {
-    @Test fun savedWidthIsUsedOnlyWhenValid() {
-        assertEquals(RAFT_LIST_PANE_DEFAULT_DP, raftListPanePreferredWidthDp(null))
-        assertEquals(RAFT_LIST_PANE_DEFAULT_DP, raftListPanePreferredWidthDp("wide"))
-        assertEquals(RAFT_LIST_PANE_DEFAULT_DP, raftListPanePreferredWidthDp("NaN"))
-        assertEquals(RAFT_LIST_PANE_DEFAULT_DP, raftListPanePreferredWidthDp("100"))
-        assertEquals(RAFT_LIST_PANE_DEFAULT_DP, raftListPanePreferredWidthDp("9000"))
-        assertEquals(420f, raftListPanePreferredWidthDp("420"))
+    private val sidebar = RaftListPaneKind.Sidebar
+    private val list = RaftListPaneKind.List
+
+    @Test fun eachKindHasTheWebDefaultAndRange() {
+        // web lib/panelBounds.ts COLUMN_BOUNDS sidebar / list, MAIN_COLUMN_MIN_WIDTH.
+        assertEquals(Triple(240f, 200f, 400f), Triple(sidebar.defaultDp, sidebar.minDp, sidebar.maxDp))
+        assertEquals(Triple(380f, 240f, 640f), Triple(list.defaultDp, list.minDp, list.maxDp))
+        assertEquals(360f, RAFT_LIST_PANE_MAIN_MIN_DP)
+        assertNotEquals(sidebar.storageKey, list.storageKey)
+        assertFalse(RaftListPaneKind.entries.any { it.storageKey == RAFT_LIST_PANE_LEGACY_STORAGE_KEY })
+    }
+
+    @Test fun nothingSavedOrNothingValidStartsAtTheKindDefault() {
+        for (kind in RaftListPaneKind.entries) {
+            assertEquals(kind.defaultDp, raftListPanePreferredWidthDp(kind, null))
+            assertEquals(kind.defaultDp, raftListPanePreferredWidthDp(kind, "wide"))
+            assertEquals(kind.defaultDp, raftListPanePreferredWidthDp(kind, "NaN"))
+            assertEquals(kind.defaultDp, raftListPanePreferredWidthDp(kind, "Infinity"))
+            assertEquals(kind.defaultDp, raftListPanePreferredWidthDp(kind, " "))
+        }
+    }
+
+    @Test fun aSavedWidthIsClampedIntoTheKindRangeNotReset() {
+        assertEquals(300f, raftListPanePreferredWidthDp(sidebar, "300"))
+        assertEquals(200f, raftListPanePreferredWidthDp(sidebar, "100"))
+        assertEquals(400f, raftListPanePreferredWidthDp(sidebar, "9000"))
+        assertEquals(420f, raftListPanePreferredWidthDp(list, "420"))
+        assertEquals(240f, raftListPanePreferredWidthDp(list, "100"))
+        assertEquals(640f, raftListPanePreferredWidthDp(list, "9000"))
         // Round trip through what a finished drag saves.
-        assertEquals(433f, raftListPanePreferredWidthDp(raftListPaneStoredWidth(433.7f)))
+        assertEquals(433f, raftListPanePreferredWidthDp(list, raftListPaneStoredWidth(list, 433.7f)))
+        assertEquals("400", raftListPaneStoredWidth(sidebar, 433.7f))
     }
 
-    @Test fun defaultKeepsTodaysListWidthOnEveryDualPaneWindow() {
-        // Narrowest dual-pane row (840dp window minus the rail) still fits the default 360dp list.
-        assertEquals(360f, raftListPaneWidthDp(RAFT_LIST_PANE_DEFAULT_DP, 768f))
-        assertEquals(360f, raftListPaneWidthDp(RAFT_LIST_PANE_DEFAULT_DP, 1600f))
-        assertEquals(360f, raftListPaneWidthDp(RAFT_LIST_PANE_DEFAULT_DP, null))
+    @Test fun theOldSingleWidthCarriesIntoEveryKindClamped() {
+        // Pre-#20 range was 280..520: a dragged 300 stays 300 in both kinds, 520 is 400 / 520.
+        assertEquals(300f, raftListPanePreferredWidthDp(sidebar, null, "300"))
+        assertEquals(300f, raftListPanePreferredWidthDp(list, null, "300"))
+        assertEquals(400f, raftListPanePreferredWidthDp(sidebar, null, "520"))
+        assertEquals(520f, raftListPanePreferredWidthDp(list, null, "520"))
+        // A kind's own value wins over the old one; an invalid own value falls back to it.
+        assertEquals(250f, raftListPanePreferredWidthDp(sidebar, "250", "300"))
+        assertEquals(300f, raftListPanePreferredWidthDp(sidebar, "junk", "300"))
+        assertEquals(sidebar.defaultDp, raftListPanePreferredWidthDp(sidebar, null, "junk"))
+        // What the store writes under each kind's key when moving the old value over.
+        assertEquals("400", raftListPaneMigratedWidth(sidebar, null, "520"))
+        assertEquals("520", raftListPaneMigratedWidth(list, null, "520"))
+        assertEquals("200", raftListPaneMigratedWidth(sidebar, null, "150"))
+        assertNull(raftListPaneMigratedWidth(sidebar, "250", "300"))
+        assertNull(raftListPaneMigratedWidth(list, null, null))
+        assertNull(raftListPaneMigratedWidth(list, null, "NaN"))
     }
 
-    @Test fun renderedWidthStaysWithinLimitsAndLeavesTheDetailItsMinimum() {
-        assertEquals(RAFT_LIST_PANE_MAX_DP, raftListPaneWidthDp(900f, 2000f))
-        assertEquals(RAFT_LIST_PANE_MIN_DP, raftListPaneWidthDp(10f, 2000f))
-        // A 500dp preference in a 800dp row: detail keeps 400dp, list gets 399dp.
-        val clamped = raftListPaneWidthDp(500f, 800f)
-        assertEquals(800f - RAFT_LIST_PANE_DIVIDER_DP - RAFT_LIST_PANE_DETAIL_MIN_DP, clamped)
-        assertTrue(800f - RAFT_LIST_PANE_DIVIDER_DP - clamped >= RAFT_LIST_PANE_DETAIL_MIN_DP)
+    @Test fun theStoreMovesTheOldWidthOnceAndDropsTheOldKey() {
+        val values = mutableMapOf(RAFT_LIST_PANE_LEGACY_STORAGE_KEY to "300")
+        val store =
+            KeyValueChatLayoutPreferenceStore(
+                object : SharedPreferenceStore {
+                    override fun getString(key: String): String? = values[key]
+                    override fun putString(key: String, value: String?) {
+                        if (value == null) values.remove(key) else values[key] = value
+                    }
+                }
+            )
+        assertEquals("300", store.readAdaptiveListPaneWidthSync(list))
+        assertEquals("300", store.readAdaptiveListPaneWidthSync(sidebar))
+        assertNull(values[RAFT_LIST_PANE_LEGACY_STORAGE_KEY])
+        // Later drags are per kind and are not overwritten by a stale old value.
+        store.saveAdaptiveListPaneWidth(sidebar, "220")
+        assertEquals("220", store.readAdaptiveListPaneWidthSync(sidebar))
+        assertEquals("300", store.readAdaptiveListPaneWidthSync(list))
+    }
+
+    @Test fun defaultsFitTheNarrowestDualPaneWindow() {
+        // Narrowest dual-pane row: the 840dp window minus the 64dp rail.
+        assertEquals(240f, raftListPaneWidthDp(sidebar, sidebar.defaultDp, 776f))
+        assertEquals(380f, raftListPaneWidthDp(list, list.defaultDp, 776f))
+        assertTrue(776f - RAFT_LIST_PANE_DIVIDER_DP - 380f >= RAFT_LIST_PANE_MAIN_MIN_DP)
+        assertEquals(380f, raftListPaneWidthDp(list, list.defaultDp, null))
+    }
+
+    @Test fun renderedWidthStaysWithinTheKindAndLeavesTheMainItsMinimum() {
+        assertEquals(400f, raftListPaneWidthDp(sidebar, 900f, 2000f))
+        assertEquals(200f, raftListPaneWidthDp(sidebar, 10f, 2000f))
+        assertEquals(640f, raftListPaneWidthDp(list, 900f, 2000f))
+        assertEquals(240f, raftListPaneWidthDp(list, 10f, 2000f))
+        // A 600dp list in an 800dp row: the main keeps 360dp, the list gets 439dp.
+        val clamped = raftListPaneWidthDp(list, 600f, 800f)
+        assertEquals(800f - RAFT_LIST_PANE_DIVIDER_DP - RAFT_LIST_PANE_MAIN_MIN_DP, clamped)
         // A row too small for both minimums keeps the list minimum rather than collapsing it.
-        assertEquals(RAFT_LIST_PANE_MIN_DP, raftListPaneWidthDp(360f, 500f))
+        assertEquals(240f, raftListPaneWidthDp(list, 380f, 500f))
+        assertEquals(200f, raftListPaneWidthDp(sidebar, 240f, 500f))
     }
 
     @Test fun windowClampDoesNotChangeThePreference() {
-        val preferred = 500f
+        val preferred = 600f
         // Shrunk window, then grown back: the user's width returns.
-        assertTrue(raftListPaneWidthDp(preferred, 800f) < preferred)
-        assertEquals(preferred, raftListPaneWidthDp(preferred, 1400f))
+        assertTrue(raftListPaneWidthDp(list, preferred, 800f) < preferred)
+        assertEquals(preferred, raftListPaneWidthDp(list, preferred, 1400f))
     }
 
     @Test fun dragStartsFromTheRenderedWidthAndIsClamped() {
-        assertEquals(400f, raftListPaneDraggedWidthDp(360f, 40f, 1400f))
-        assertEquals(RAFT_LIST_PANE_MIN_DP, raftListPaneDraggedWidthDp(360f, -500f, 1400f))
-        assertEquals(RAFT_LIST_PANE_MAX_DP, raftListPaneDraggedWidthDp(360f, 500f, 1400f))
-        // In a clamped window, a drag from the rendered 399dp cannot push the detail under 400dp.
-        assertEquals(399f, raftListPaneDraggedWidthDp(399f, 50f, 800f))
+        assertEquals(420f, raftListPaneDraggedWidthDp(list, 380f, 40f, 1400f))
+        assertEquals(240f, raftListPaneDraggedWidthDp(list, 380f, -500f, 1400f))
+        assertEquals(640f, raftListPaneDraggedWidthDp(list, 380f, 500f, 1400f))
+        assertEquals(400f, raftListPaneDraggedWidthDp(sidebar, 240f, 500f, 1400f))
+        // In a clamped window, a drag from the rendered 439dp cannot push the main under 360dp.
+        assertEquals(439f, raftListPaneDraggedWidthDp(list, 439f, 50f, 800f))
     }
 
     @Test fun wideningTheListCanTakeTheRoomTheSideColumnNeeds() {
-        // F4 needs 841dp of detail; a 1440dp row with a 520dp list leaves 919dp, a row of 1300dp
-        // leaves 779dp, so the side thread folds once the drag ends (SettingsHomePage).
+        // F4 needs 841dp of detail. A 1440dp row with the widest sidebar leaves 1039dp; the widest
+        // Activity list leaves 799dp, so the side thread folds once that drag ends (SettingsHomePage).
         val needed = RAFT_SIDE_THREAD_MAIN_MIN_DP + RAFT_SIDE_THREAD_DIVIDER_DP + RAFT_SIDE_THREAD_COLUMN_DP
-        fun detail(row: Float) = row - RAFT_LIST_PANE_DIVIDER_DP - raftListPaneWidthDp(RAFT_LIST_PANE_MAX_DP, row)
-        assertTrue(detail(1440f) >= needed)
-        assertTrue(detail(1300f) < needed)
+        fun detail(kind: RaftListPaneKind, row: Float) =
+            row - RAFT_LIST_PANE_DIVIDER_DP - raftListPaneWidthDp(kind, kind.maxDp, row)
+        assertTrue(detail(sidebar, 1440f) >= needed)
+        assertTrue(detail(list, 1440f) < needed)
     }
 
     @Test fun aDragEndsExactlyOnceWhicheverEndArrivesFirst() {
