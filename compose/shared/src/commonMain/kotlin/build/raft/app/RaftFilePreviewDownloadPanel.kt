@@ -29,6 +29,7 @@ import build.raft.app.downloads.RaftDownloadEntry
 import build.raft.app.downloads.RaftDownloadStatus
 import build.raft.app.downloads.raftDownloadSizeLabel
 import build.raft.app.downloads.raftDownloadSpeedLabel
+import build.raft.app.downloads.rememberThrottledSpeed
 import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.raftCopyable
@@ -220,7 +221,8 @@ internal fun RaftFilePreviewDownloadProgressBlock(
             animated = animated && view.phase != RaftFilePreviewDownloadPhase.Paused
         )
         val bytes = raftDownloadBytesLabel(view.downloadedBytes, view.totalBytes)
-        val speed = raftDownloadSpeedLabel(view.bytesPerSecond).takeIf { view.phase == RaftFilePreviewDownloadPhase.Active }
+        val shownSpeed = rememberThrottledSpeed(view.bytesPerSecond)
+        val speed = raftDownloadSpeedLabel(shownSpeed).takeIf { view.phase == RaftFilePreviewDownloadPhase.Active }
         if (bytes != null || speed != null) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 RaftText(bytes.orEmpty(), style = typography.monoMeta, color = colors.foregroundMuted, maxLines = 1)
