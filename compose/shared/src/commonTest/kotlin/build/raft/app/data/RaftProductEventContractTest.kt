@@ -1,6 +1,8 @@
 package build.raft.app.data
 
 import build.raft.app.model.ServerId
+import build.raft.app.network.RaftUserAgentDevice
+import build.raft.app.network.raftAndroidUserAgentDevice
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -42,11 +44,16 @@ class RaftProductEventContractTest {
 
         /** `PRODUCT_EVENT_SOURCES` minus `server` / `web` / `desktop` (not native clients). */
         val NativeSources = listOf("android", "ios", "harmonyos")
+
+        /** `clientEventBatchSchema.device_class` at botiverse/slock #10790 @ [PinnedDeviceClassSlockSha]. */
+        const val PinnedDeviceClassSlockSha = "9a30dba7deb45b2f7d3154a8a57ace55fb45b35c"
+        val DeviceClasses = listOf("phone", "tablet")
     }
 
     @Test
     fun pinnedShaMatchesProductionConstant() {
         assertEquals(PinnedSlockSha, RAFT_PRODUCT_EVENTS_SLOCK_SHA)
+        assertEquals(PinnedDeviceClassSlockSha, RAFT_PRODUCT_EVENTS_DEVICE_CLASS_SLOCK_SHA)
     }
 
     @Test
@@ -60,6 +67,7 @@ class RaftProductEventContractTest {
                 "app_opened.start" to (AppOpenedStart to RaftAppOpenStart.entries.map { it.wire }),
                 "app_opened.via" to (AppOpenedVia to RaftAppOpenVia.entries.map { it.wire }),
                 "native sources" to (NativeSources to RaftProductEventSource.entries.map { it.wire }),
+                "device_class" to (DeviceClasses to RaftProductEventDeviceClass.entries.map { it.wire }),
             )
         cases.forEach { (name, lists) ->
             assertEquals(lists.first.toSet(), lists.second.toSet(), "$name drifted from slock@$PinnedSlockSha")
@@ -84,6 +92,9 @@ class RaftProductEventContractTest {
         }
         RaftAppOpenVia.entries.forEach {
             assertEquals(it.wire, json.encodeToJsonElement(RaftAppOpenVia.serializer(), it).jsonPrimitive.content)
+        }
+        RaftProductEventDeviceClass.entries.forEach {
+            assertEquals(it.wire, json.encodeToJsonElement(RaftProductEventDeviceClass.serializer(), it).jsonPrimitive.content)
         }
     }
 
@@ -136,6 +147,41 @@ class RaftProductEventContractTest {
             assertTrue(UuidPattern.matches(event.getValue("client_session_id").jsonPrimitive.content))
             assertEquals("home", (event.getValue("properties") as JsonObject).getValue("route").jsonPrimitive.content)
         }
+
+    @Test
+    fun batchCarriesTheAppsDeviceClassAndNeverPlatform() =
+        runTest {
+            for (deviceClass in listOf(RaftProductEventDeviceClass.Phone, RaftProductEventDeviceClass.Tablet, null)) {
+                val transport = RecordingProductEventsTransport()
+                val client =
+                    productEventsClient(transport, clientInfo = TestProductEventsClientInfo.copy(deviceClass = deviceClass))
+                client.setSignedIn(ServerId("srv-1"))
+                client.track(pageViewed(RaftPageRoute.Home))
+                client.flushNow()
+                settleProductEvents()
+
+                val sent = transport.batches.single().second
+                assertEquals(deviceClass, sent.deviceClass, "client info reaches the batch ($deviceClass)")
+                val body = Json.parseToJsonElement(encodeRaftProductEventBatch(sent)).jsonObject
+                assertEquals(deviceClass?.wire, body["device_class"]?.jsonPrimitive?.content, "device_class ($deviceClass)")
+                assertFalse("platform" in body, "the server derives platform from source")
+            }
+        }
+
+    @Test
+    fun deviceClassFollowsThePlatformPhoneTabletLine() {
+        val cases =
+            listOf(
+                RaftUserAgentDevice.AndroidPhone to RaftProductEventDeviceClass.Phone,
+                RaftUserAgentDevice.AndroidTablet to RaftProductEventDeviceClass.Tablet,
+                RaftUserAgentDevice.IPhone to RaftProductEventDeviceClass.Phone,
+                RaftUserAgentDevice.IPad to RaftProductEventDeviceClass.Tablet,
+                null to null,
+            )
+        cases.forEach { (device, expected) -> assertEquals(expected, raftProductEventDeviceClass(device), "$device") }
+        assertEquals(RaftProductEventDeviceClass.Phone, raftProductEventDeviceClass(raftAndroidUserAgentDevice(599)))
+        assertEquals(RaftProductEventDeviceClass.Tablet, raftProductEventDeviceClass(raftAndroidUserAgentDevice(600)))
+    }
 
     @Test
     fun appVersionThatIngestWouldRejectIsLeftOut() {

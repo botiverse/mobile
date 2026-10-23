@@ -36,13 +36,14 @@ internal val TestProductEventsClientInfo =
 internal fun TestScope.productEventsClient(
     transport: RecordingProductEventsTransport? = RecordingProductEventsTransport(),
     config: RaftProductEventsClientConfig = RaftProductEventsClientConfig(),
+    clientInfo: RaftProductEventsClientInfo = TestProductEventsClientInfo,
 ): RaftProductEventsClient {
     var uuid = 0
     return RaftProductEventsClient(
         scope = backgroundScope,
         nowEpochMillis = { testScheduler.currentTime },
         newUuid = { "00000000-0000-4000-8000-${(uuid++).toString().padStart(12, '0')}" },
-        clientInfo = { TestProductEventsClientInfo },
+        clientInfo = { clientInfo },
         config = config,
     ).also { client -> transport?.let(client::bindTransport) }
 }
