@@ -199,10 +199,56 @@ class RaftMarkdownDialectTest {
 
     @Test
     fun preservesEscapingAndWordBoundaryContract() {
+        // Web `createRaftBareTaskRefRegex`: `(^|[^\w/])#N\b` with ASCII `\w`,
+        // so a Han character before `#5` is a boundary and `word#2` is not.
         assertEquals(
-            listOf("#3", "#channel"),
+            listOf("#3", "#5", "#channel"),
             "\\#1 word#2 #3 snake_#4 汉字#5；#channel".raftRefs(),
         )
+    }
+
+    @Test
+    fun channelRefsHaveNoLeftBoundaryLikeWeb() {
+        // Web `createRaftChannelRefRegex` is a bare `#([\p{L}\p{N}_-]+)`: the
+        // character before `#` never matters, only whether the channel exists.
+        assertEquals(listOf("#proj-raft-ui"), "你可以写完之后去#proj-raft-ui 写一下".raftRefs())
+        // Han is a name character on the web too: glued text after the name is
+        // part of the candidate, which then fails the known-channel check.
+        assertEquals(listOf("#proj-raft-ui写一下"), "去#proj-raft-ui写一下".raftRefs())
+        assertEquals(listOf("#proj-raft-ui"), "写到 #proj-raft-ui，然后".raftRefs())
+        assertEquals(listOf("#proj-raft-ui"), "#proj-raft-ui，然后".raftRefs())
+        assertEquals(listOf("#proj-raft-ui"), "看#proj-raft-ui。".raftRefs())
+        assertEquals(listOf("#general"), "（#general）".raftRefs())
+        assertEquals(listOf("#b"), "a#b".raftRefs())
+        assertEquals(listOf("#对话流专修", "#android-artifacts"), "go to#对话流专修 and_#android-artifacts".raftRefs())
+        assertEquals(listOf("#markdown专修:7933cf78"), "看看#markdown专修:7933cf78".raftRefs())
+    }
+
+    @Test
+    fun bareTaskRefsUseTheWebAsciiWordBoundaries() {
+        // Web: "see task #42 and (#7) but not path/#9" -> #42, #7.
+        assertEquals(listOf("#42", "#7"), "see task #42 and (#7) but not path/#9".raftRefs())
+        assertEquals(listOf("#12", "#13"), "去#12看看 #13，".raftRefs())
+        assertEquals(emptyList<String>(), "word#2 snake_#4 #12a #12_".raftRefs())
+    }
+
+    @Test
+    fun mentionsKeepTheWebFreeTextLeftBoundary() {
+        // Web `createRaftUserRefRegex`: `(^|[^\p{L}\p{N}_-])@name`.
+        assertEquals(listOf("@Alice"), "skip -@bob and _@bob, but notify - @Alice".raftRefs())
+        assertEquals(listOf("@Alice"), "contact alice@example.com, then notify @Alice".raftRefs())
+        assertEquals(emptyList<String>(), "ship foo@1.2.3 and node@22 today".raftRefs())
+        assertEquals(emptyList<String>(), "草案@Mona".raftRefs())
+        assertEquals(listOf("@Mona"), "草案，@Mona".raftRefs())
+        assertEquals(listOf("@Mona"), "（@Mona）".raftRefs())
+    }
+
+    @Test
+    fun dmRefsHaveNoLeftBoundaryLikeWeb() {
+        // Web `createRaftDmRefRegex` is a bare `dm:@peer`; it must win over the
+        // `@peer` mention inside it.
+        assertEquals(listOf("dm:@artin"), "发给dm:@artin".raftRefs())
+        assertEquals(listOf("dm:@artin:1c50c30a"), "xdm:@artin:1c50c30a".raftRefs())
     }
 
     private fun String.raftRefs(): List<String> =

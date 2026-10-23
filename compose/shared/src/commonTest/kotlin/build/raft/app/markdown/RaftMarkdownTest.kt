@@ -1647,6 +1647,27 @@ class RaftMarkdownTest {
     }
 
     @Test
+    fun channelRefGluedToCjkTextIsAChipOnlyForAKnownChannel() {
+        // artin's message: no space between `去` and `#`. Web renders the chip.
+        val body = "这个组件样式很怪啊，你可以写完之后去#proj-raft-ui 写一下，或者a#nope"
+        val annotated =
+            buildRaftMarkdownParagraphAnnotatedString(
+                content = body,
+                annotator =
+                    raftMarkdownAnnotator(
+                        content = body,
+                        isTagValid = validThreadMarkdownTags(knownChannels = setOf("proj-raft-ui"))
+                    )
+            )
+        val matches = body.threadInlineTagMatches()
+
+        assertEquals(listOf("#proj-raft-ui", "#nope"), matches.map { it.tag.label })
+        assertEquals(ThreadMarkdownTagKind.Channel, matches[0].tag.kind)
+        assertEquals("proj-raft-ui", matches[0].tag.channelName)
+        assertEquals(setOf("slock:${body.indexOf('#')}"), annotated.raftMarkdownClickableTags())
+    }
+
+    @Test
     fun fullMarkdownRendererKeepsChannelThreadClickableTags() {
         val body = "Final #markdown专修:9579b48a @artin #markdown专修 #37."
         val isTagValid =
