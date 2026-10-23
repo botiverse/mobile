@@ -1,5 +1,8 @@
 package build.raft.app
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.graphics.Color
 import android.os.Build
 import android.view.WindowManager
@@ -34,12 +37,23 @@ internal actual fun RaftModalDialogWindowEffect() {
                 window.isStatusBarContrastEnforced = false
                 window.isNavigationBarContrastEnforced = false
             }
-            // Same light bar appearance as the host activity (RaftCmpActivity.applyLightSystemBarsAppearance).
+            // Same bar icon appearance as the host activity (RaftCmpActivity.applySystemBarAppearance):
+            // dark icons in the light theme, light icons in the dark theme. A fixed `true` turned the
+            // status bar icons black over the dark theme whenever a menu or sheet opened.
+            val host = view.context.findActivity()?.window
+            val hostBars = host?.let { WindowCompat.getInsetsController(it, it.decorView) }
             WindowCompat.getInsetsController(window, window.decorView).apply {
-                isAppearanceLightStatusBars = true
-                isAppearanceLightNavigationBars = true
+                isAppearanceLightStatusBars = hostBars?.isAppearanceLightStatusBars ?: true
+                isAppearanceLightNavigationBars = hostBars?.isAppearanceLightNavigationBars ?: true
             }
         }
         onDispose {}
     }
 }
+
+private tailrec fun Context.findActivity(): Activity? =
+    when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
