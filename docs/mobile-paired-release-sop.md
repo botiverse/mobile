@@ -136,6 +136,15 @@ must remain separate for the exact being reviewed.
     everything since the last external release, not just the current one.
     Community announcements cover only what is actually public on each
     platform.
+9c. **One Android APK per Hands channel** (Lagoon, 2026-10-23). The APK bakes
+    its update channel at build time (`BuildConfig.HANDS_CHANNEL` from
+    `SLOCK_HANDS_CHANNEL`, the workflow's `hands_channel` input), and the
+    installed app checks for updates on that channel. Build the `preview`
+    carrier with `hands_channel=preview` and the `main` carrier with
+    `hands_channel=main`, each with its own versionCode; never publish one APK
+    to both. Before publishing, confirm the run log shows the matching
+    `SLOCK_HANDS_CHANNEL`. (1.15.3 shipped a preview-built APK on `main`, so its
+    users polled `preview` and received the 1.15.4 preview build.)
 10. Starting a release train requires a Raft **interval reminder**. As soon as
     the first platform draft is dispatched, the operator schedules a recurring
     10-minute reminder on the release thread. Each firing must fresh-read every
