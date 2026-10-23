@@ -17,8 +17,9 @@ import kotlin.test.assertNull
  * "Being read" and "staying in the list" are separate (Tenny, via stdrc; Gmail's unread view): in
  * Unread, the row the user opens is read at once (counts drop) but stays listed, shown read, until
  * the user moves on: opens another row, switches filter, leaves Activity, pulls to refresh, or
- * switches server. Returning from the conversation, foreground catch-up, realtime and background
- * reconciles keep it.
+ * switches server. Returning from the conversation (phone Back, closing the wide detail pane: no
+ * store intent but the return refresh), foreground catch-up, realtime, background reconciles and
+ * mark all read keep it (web, Remy).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SharedActivityStoreRetainedReadRowTest {
@@ -73,7 +74,6 @@ class SharedActivityStoreRetainedReadRowTest {
             }, bAndC),
             Triple("pull to refresh", { store -> store.dispatch(SharedActivityIntent.PullRefresh) }, bAndC),
             Triple("leave the Activity tab or route", { store -> store.dispatch(SharedActivityIntent.SurfaceHidden) }, bAndC),
-            Triple("mark all read", { store -> store.dispatch(SharedActivityIntent.MarkAllRead) }, emptyList()),
         ).forEach { (name, moveOn, expected) ->
             val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(rowA, rowB, rowC)), snapshot(listOf(rowB, rowC))))
             val store = unreadStore(inbox)
@@ -90,6 +90,31 @@ class SharedActivityStoreRetainedReadRowTest {
             runCurrent()
             assertEquals(false, store.state.value.items.any { it.key == rowA.key }, "after reload, $name")
         }
+    }
+
+    @Test
+    fun markAllReadDropsEveryOtherRowButKeepsTheRetainedOne() = runTest {
+        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(rowA, rowB, rowC)), snapshot(listOf(rowB, rowC))))
+        val read = FakeReadReceiptRepository()
+        val store =
+            activityStore(backgroundScope, inbox, readReceiptRepository = read, nowMillis = { testScheduler.currentTime })
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Unread))
+        runCurrent()
+        store.open(rowA, ReadPath.OpenMarksRead, revision = 1L)
+        runCurrent()
+
+        store.dispatch(SharedActivityIntent.MarkAllRead)
+        runCurrent()
+
+        assertEquals(1, read.inboxReadAllServerIds.size)
+        assertEquals(2, inbox.initialLoadCount, "the confirmed read-all refreshes in the background, like web")
+        assertUnreadList(store, listOf(rowA.key to 0), "the row being looked at stays, read")
+        assertEquals(0 to 0, store.state.value.totalUnreadCount to store.state.value.totalCount)
+        assertEquals(rowA.key, store.state.value.retainedReadRowKey)
+
+        store.dispatch(SharedActivityIntent.PullRefresh)
+        runCurrent()
+        assertUnreadList(store, emptyList(), "moving on drops it")
     }
 
     @Test

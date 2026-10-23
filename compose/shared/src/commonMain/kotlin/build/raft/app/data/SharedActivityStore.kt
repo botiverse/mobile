@@ -2005,22 +2005,18 @@ class SharedActivityStore internal constructor(
         if (snapshot.totalUnreadCount <= 0) return
         val updatedSnapshot =
             snapshot.copy(
+                // Unread empties at once except the retained row: the one being looked at stays,
+                // read, like any other read (web, Remy).
                 items =
-                    if (previous.selectedFilter.keepsReadActivityRows()) {
-                        snapshot.items.map { it.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false) }
-                    } else {
-                        emptyList()
-                    },
+                    snapshot.items
+                        .filter { item -> previous.keepsReadRow(item.key) }
+                        .map { it.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false) },
                 totalCount = if (previous.selectedFilter.keepsReadActivityRows()) snapshot.totalCount else 0,
                 totalUnreadCount = 0
             )
         val overlayOwner = overlayOwner(previous)
         val readGenerations = rememberUnreadCleared(overlayOwner, snapshot.items)
-        // Mark all read empties Unread at once, the retained row included (web drops every row too).
-        reduceState(
-            SharedActivityIntent.MarkAllRead,
-            previous.copy(snapshot = updatedSnapshot, errorCode = null, retainedReadRowKey = null)
-        )
+        reduceState(SharedActivityIntent.MarkAllRead, previous.copy(snapshot = updatedSnapshot, errorCode = null))
         scope.launch {
             withOverlaySettlement(readOverlay, overlayOwner, readGenerations) {
                 val serverId = currentServerId()
