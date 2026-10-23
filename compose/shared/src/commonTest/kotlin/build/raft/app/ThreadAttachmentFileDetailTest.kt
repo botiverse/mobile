@@ -34,7 +34,12 @@ class ThreadAttachmentFileDetailTest {
                     "sheet.xlsx",
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     RaftThreadAttachmentOpenRoute.Preview(RaftThreadAttachmentFileDetailKind)
-                )
+                ),
+                // A .csv is text-like (its page asks the server and draws the CSV table); a CSV
+                // export labelled only with the Excel MIME opens the page that tries the table.
+                Triple("metrics.csv", "text/csv", RaftThreadAttachmentOpenRoute.Preview("text")),
+                Triple("export", "application/vnd.ms-excel", RaftThreadAttachmentOpenRoute.Preview(RaftThreadAttachmentFileDetailKind)),
+                Triple("legacy.xls", "application/vnd.ms-excel", RaftThreadAttachmentOpenRoute.FileDetail)
             )
         cases.forEach { (name, mimeType, expected) ->
             val route = RaftThreadAttachmentItem(id = "att-1", name = name, mimeType = mimeType).threadAttachmentOpenRoute()

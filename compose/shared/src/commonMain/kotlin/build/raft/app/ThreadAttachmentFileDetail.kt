@@ -26,7 +26,8 @@ internal fun RaftThreadAttachmentItem.threadAttachmentOpenRoute(): RaftThreadAtt
         isPreviewableVideoAttachment() -> RaftThreadAttachmentOpenRoute.Preview("video")
         isPreviewableAudioAttachment() -> RaftThreadAttachmentOpenRoute.Preview("audio")
         // The page recognises a spreadsheet by its name and renders the sheet table.
-        raftFilePreviewIsXlsxAttachment(fileName = name, mimeType = mimeType) ->
+        raftFilePreviewIsXlsxAttachment(fileName = name, mimeType = mimeType) ||
+            raftFilePreviewIsCsvAttachment(fileName = name, mimeType = mimeType) ->
             RaftThreadAttachmentOpenRoute.Preview(RaftThreadAttachmentFileDetailKind)
         else -> RaftThreadAttachmentOpenRoute.FileDetail
     }

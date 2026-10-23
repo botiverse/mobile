@@ -7,6 +7,7 @@ import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftCard
+import build.raft.designsystem.components.RaftCardVariant
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.gesture.raftBackSwipePaging
@@ -1564,6 +1565,8 @@ internal data class RaftFilePreviewPayload(
     val imageUrl: String? = null,
     /** task #351: serialized [RaftFilePreviewXlsxCarrier] payload for the xlsx preview panel. */
     val xlsxSheetsJson: String = "",
+    /** Serialized [RaftFilePreviewCsvCarrier] for the CSV table panel. */
+    val csvTableJson: String = "",
     val message: String = "",
     val messageDesc: StringDesc? = MR.strings.file_preview_no_preview.desc(),
     val error: String? = null,
@@ -6876,7 +6879,7 @@ internal fun agentWorkspaceLazyPreviewPayload(agentId: String, path: String): Ra
         agentId = agentId
     )
 
-private suspend fun RaftFilePreviewPayload.loadThreadAttachmentPreview(
+internal suspend fun RaftFilePreviewPayload.loadThreadAttachmentPreview(
     threadApi: RaftThreadApiClient,
     networkClient: RaftNetworkClient,
     priority: DataRequestPriority,
@@ -6918,6 +6921,8 @@ private suspend fun RaftFilePreviewPayload.loadThreadAttachmentPreview(
                 fileName = previewFileName,
                 mimeType = externalMimeType
             )
+    val wantsCsv =
+        !wantsXlsx && raftFilePreviewIsCsvAttachment(fileName = previewFileName, mimeType = externalMimeType)
     val wantsText =
         requestedKind == "text" ||
             (!wantsMarkdown &&
@@ -6935,7 +6940,16 @@ private suspend fun RaftFilePreviewPayload.loadThreadAttachmentPreview(
         wantsAudio ->
             loadThreadVideoAttachmentPreview(threadApi, priority, title = MR.strings.file_preview_audio.desc(), audioOnly = true)
         wantsHtml -> loadThreadHtmlAttachmentPreview(threadApi)
-        wantsText -> loadThreadTextAttachmentPreview(threadApi, networkClient, priority, truncatedPreviewHint)
+        // The text path draws a server CSV payload as the table too; a CSV-labelled file that
+        // is not text-like (an Excel-MIME export) has no raw-text fallback.
+        wantsText || wantsCsv ->
+            loadThreadTextAttachmentPreview(
+                threadApi,
+                networkClient,
+                priority,
+                truncatedPreviewHint,
+                rawTextFallback = wantsText
+            )
         else ->
             copy(
                 kind = "unsupported",
@@ -7062,13 +7076,45 @@ private suspend fun fetchServerAttachmentPreview(
     return preview.takeIf { it.isOk }
 }
 
+/**
+ * Text-like attachments. A `kind: "csv"` server preview becomes the CSV table (web
+ * `CsvPreviewPane`), whatever kind the caller asked for: a restored route knows only "text".
+ * Without a server text/CSV preview the raw body is fetched as plain text, unless
+ * [rawTextFallback] is false (then the file shows the no-preview card, as on the web).
+ */
 private suspend fun RaftFilePreviewPayload.loadThreadTextAttachmentPreview(
     threadApi: RaftThreadApiClient,
     networkClient: RaftNetworkClient,
     priority: DataRequestPriority,
-    truncatedPreviewHint: String
+    truncatedPreviewHint: String,
+    rawTextFallback: Boolean = true
 ): RaftFilePreviewPayload {
     val serverPreview = fetchServerAttachmentPreview(networkClient, attachmentId)
+    val csvCarrier =
+        (serverPreview?.content as? AttachmentPreviewContent.Csv)?.let { csv ->
+            raftFilePreviewCsvCarrier(csv, responseTruncated = serverPreview.truncated)
+        }
+    if (csvCarrier != null) {
+        return copy(
+            kind = "csv",
+            titleDesc = MR.strings.file_preview_csv.desc(),
+            content = "",
+            markdown = false,
+            message = "",
+            messageDesc = null,
+            error = null,
+            csvTableJson = encodeRaftFilePreviewCsv(csvCarrier),
+        )
+    }
+    if (!rawTextFallback) {
+        return copy(
+            kind = "unsupported",
+            titleDesc = MR.strings.file_preview_title.desc(),
+            message = "",
+            messageDesc = MR.strings.file_preview_no_preview.desc(),
+            error = null,
+        )
+    }
     val serverText = (serverPreview?.content as? AttachmentPreviewContent.Text)?.text
     if (serverPreview != null && serverText != null) {
         val previewBody =
@@ -7924,6 +7970,36 @@ internal fun RaftFilePreviewPayloadContent(
                     showChrome = false
                 )
             }
+        "csv" -> {
+            val csvCarrier = remember(payload.csvTableJson) { parseRaftFilePreviewCsv(payload.csvTableJson) }
+            RaftFilePreviewDownloadStatusOverlay(
+                statusLabel = downloadStatusLabel,
+                showProgress = downloadInProgress,
+                progressPercent = downloadProgressPercent,
+                downloadView = downloadView,
+                downloadPaused = downloadPaused,
+                onToggleDownload = onToggleDownload,
+                onStopDownload = onStopDownload,
+                modifier = modifier.fillMaxSize()
+            ) {
+                if (csvCarrier != null) {
+                    RaftFilePreviewCsvPanel(csv = csvCarrier, modifier = Modifier.fillMaxSize())
+                } else {
+                    RaftFilePreviewGenericCard(
+                        iconName = RaftLucideIconName.FileSpreadsheet,
+                        name = payload.name.ifBlank { payload.path },
+                        meta = payload.meta,
+                        message = payload.localizedMessage().ifBlank { stringResource(MR.strings.file_preview_no_preview) },
+                        secondaryActionLabel =
+                            onExternalBrowserOpen?.let { stringResource(MR.strings.file_preview_action_open_in_browser) },
+                        secondaryActionIcon = RaftLucideIconName.ExternalLink,
+                        secondaryActionEnabled = !downloadInProgress,
+                        onSecondaryAction = onExternalBrowserOpen,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+        }
         "xlsx" -> {
             val xlsxCarrier = remember(payload.xlsxSheetsJson) { parseRaftFilePreviewXlsx(payload.xlsxSheetsJson) }
             RaftFilePreviewDownloadStatusOverlay(
@@ -10368,69 +10444,32 @@ internal fun RaftFilePreviewXlsxPanel(
                 )
             }
         } else {
-            val columnCount = selectedSheet.columnCount.coerceIn(1, 20)
-            LazyColumn(
+            Column(
                 modifier =
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = 280.dp, max = 560.dp)
-                        .background(RaftColor.SurfaceCream),
-                contentPadding = PaddingValues(RaftAppSpacing.Sm)
+                        .background(RaftColor.SurfaceCream)
+                        .padding(RaftAppSpacing.Sm)
             ) {
-                item(key = "xlsx-header") {
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        repeat(columnCount) { column ->
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .weight(1f)
-                                        .background(RaftColor.SurfaceWhite)
-                                        .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
-                                        .padding(horizontal = RaftAppSpacing.Xs, vertical = RaftAppSpacing.Sm)
-                            ) {
-                                Text(
-                                    text = selectedSheet.headers.getOrNull(column).orEmpty(),
-                                    style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp).withRaftFontWeight(FontWeight.Bold),
-                                    color = RaftColor.TextBlack,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-                }
-                items(selectedSheet.rows.size, key = { index -> "xlsx-row-$index" }) { rowIndex ->
-                    val row = selectedSheet.rows.getOrNull(rowIndex).orEmpty()
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        repeat(columnCount) { column ->
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .weight(1f)
-                                        .background(RaftColor.SurfaceWhite)
-                                        .border(RaftAppStroke.Thin, RaftColor.BorderBlack)
-                                        .padding(horizontal = RaftAppSpacing.Xs, vertical = RaftAppSpacing.Sm)
-                            ) {
-                                Text(
-                                    text = row.getOrNull(column).orEmpty(),
-                                    style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                                    color = RaftColor.TextBlack,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
+                RaftCard(
+                    modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+                    variant = RaftCardVariant.Inset
+                ) {
+                    RaftFilePreviewDataTable(
+                        headers = selectedSheet.headers,
+                        rows = selectedSheet.rows,
+                        columnCount = selectedSheet.columnCount.coerceIn(1, 20),
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
                 if (truncated || selectedSheet.truncated) {
-                    item(key = "xlsx-truncated-hint") {
-                        Text(
-                            text = stringResource(MR.strings.file_preview_truncated_open_with_hint),
-                            style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                            color = RaftColor.TextMutedGray,
-                            modifier = Modifier.padding(top = RaftAppSpacing.Sm)
-                        )
-                    }
+                    Text(
+                        text = stringResource(MR.strings.file_preview_truncated_open_with_hint),
+                        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                        color = RaftColor.TextMutedGray,
+                        modifier = Modifier.padding(top = RaftAppSpacing.Sm)
+                    )
                 }
             }
         }
