@@ -8966,6 +8966,7 @@ private fun SettingsNativeDetailPageContent(
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
                     publicAccess = publicAccess,
+                    webBaseUrl = webBaseUrl,
                 ) { action, itemId ->
                     when (action) {
                         SERVER_ACTION_PROFILE_SAVE ->
@@ -9270,6 +9271,8 @@ private fun SharedSettingsServerContent(
     onCreateJoinLink: (SettingsServerJoinLinkCreateRequest) -> Unit = {},
     /** Owner "Public access" section; null on surfaces that do not host it (Administration, fixtures). */
     publicAccess: SettingsServerPublicAccessBinding? = null,
+    /** The active Developer environment web URL; a relative join link is shown and copied against it. */
+    webBaseUrl: String = "",
     onAction: (String, String?) -> Unit
 ) {
     val visualFullHeight = settingsVisualFullHeightEnabled()
@@ -9337,6 +9340,7 @@ private fun SharedSettingsServerContent(
                             onMaxUsesChange = onJoinLinkMaxUsesChange,
                             onExpiresAtChange = onJoinLinkExpiresAtChange,
                             onCreate = onCreateJoinLink,
+                            webBaseUrl = webBaseUrl,
                             onAction = onAction
                         )
                     }
@@ -13552,6 +13556,21 @@ private fun SettingsServerInvitesCard(
     }
 }
 
+/**
+ * The join link as shown (and copied): an absolute link as it is; a relative one resolved
+ * against the active Developer environment [webBaseUrl] (the invite dialog's normaliser).
+ * With no environment URL the relative path stays as it is, never resolved against a
+ * hardcoded host. Null for a blank link.
+ */
+internal fun settingsServerJoinLinkDisplayUrl(rawUrl: String?, webBaseUrl: String): String? {
+    val trimmed = rawUrl?.trim().orEmpty()
+    return when {
+        trimmed.isBlank() -> null
+        webBaseUrl.isBlank() -> trimmed
+        else -> normalizeInviteHumanJoinUrl(trimmed, webBaseUrl)
+    }
+}
+
 @Composable
 private fun SettingsServerJoinLinksCard(
     links: List<SettingsServerJoinLinkSnapshot>,
@@ -13563,6 +13582,7 @@ private fun SettingsServerJoinLinksCard(
     onMaxUsesChange: (String) -> Unit,
     onExpiresAtChange: (String) -> Unit,
     onCreate: (SettingsServerJoinLinkCreateRequest) -> Unit,
+    webBaseUrl: String = "",
     onAction: (String, String?) -> Unit
 ) {
     val trimmedMaxUses = maxUses.trim()
@@ -13613,10 +13633,12 @@ private fun SettingsServerJoinLinksCard(
             SettingsFormEmptyText(stringResource(MR.strings.settings_admin_no_join_links))
         } else {
             links.forEach { link ->
-                // A long press copies the link as shown ("/join/<token>"); a bare label doesn't.
+                // The full link against the active environment; a long press copies it as shown.
+                // A bare label (no link) doesn't copy.
+                val shownUrl = settingsServerJoinLinkDisplayUrl(link.url, webBaseUrl)
                 SettingsServerActionRow(
-                    title = link.url ?: link.label,
-                    copyText = link.url,
+                    title = shownUrl ?: link.label,
+                    copyText = shownUrl,
                     detail =
                         listOfNotNull(
                             link.maxUsesLabel,
