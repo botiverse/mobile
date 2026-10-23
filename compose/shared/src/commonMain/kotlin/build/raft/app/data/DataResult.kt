@@ -53,7 +53,12 @@ data class ScreenError(
      * Runtime form v2: the fields a 4xx response's issues point at (`/formValues/<field>`),
      * so the form can mark them. Empty for every other error.
      */
-    val formFieldKeys: List<String> = emptyList()
+    val formFieldKeys: List<String> = emptyList(),
+    /**
+     * A 429's wait in seconds: the body's own field where the route sends one, else the
+     * `Retry-After` header (delta-seconds). Null when the response named no wait.
+     */
+    val retryAfterSeconds: Long? = null,
 )
 
 data class PermissionBlocker(

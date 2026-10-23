@@ -2711,6 +2711,9 @@
     <string name="joint_connections_people_required">至少需要邀请一位成员</string>
     <string name="joint_limit_free_servers">这个联合频道已满 2 个免费服务器。把任一方升级到 Pro，或有免费服务器退出后，可以继续加入（总服务器上限 30 个）</string>
     <string name="joint_limit_servers">联合频道最多 %1$d 个服务器。如需提高上限，请在设置里提交反馈。</string>
+    <string name="joint_invite_rate_limited_one">短时间内邀请太多了，请 1 分钟后再试。</string>
+    <string name="joint_invite_rate_limited_other">短时间内邀请太多了，请 %1$d 分钟后再试。</string>
+    <string name="joint_invite_rate_limited_later">短时间内邀请太多了，请稍后再试。</string>
     <string name="joint_limit_host_free">发起这个联合频道的服务器已达到联合频道数量上限。请联系对方管理员处理后，再重新接受邀请。</string>
     <string name="joint_disconnect_channel">断开频道</string>
     <string name="joint_disconnect_title">断开联合频道</string>

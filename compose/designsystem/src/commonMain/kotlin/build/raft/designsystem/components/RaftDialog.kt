@@ -74,7 +74,11 @@ enum class RaftDialogSize(internal val maxWidth: Dp) {
  *   button that opened it, Title Case: "Create Channel"), and, with [onClose], the ghost
  *   × icon button named [closeLabel] at its end. 20dp padding, no bottom padding.
  * - Body: [description] (`text-subhead` `foreground-muted`) then [content], 20dp at the
- *   sides and bottom, 6dp under the header. It scrolls when the dialog reaches the window.
+ *   sides and bottom, 6dp under the header, 16dp between its children. It scrolls when the
+ *   dialog reaches the window, so [content] goes in as it is: no `Modifier.weight` and no
+ *   `verticalScroll` or lazy list of its own. Inside the scroll the body's height is
+ *   unbounded, and a weighted child gets none of it: it is measured 0dp tall and the body
+ *   shows empty (Create Joint Channel, Android 1.15.3).
  * - [footer]: at most two buttons at the end, 8dp apart: a ghost Cancel that says what
  *   stays, then the confirm button (`Lg`). They stay in one row at every width and stack
  *   full width, the confirm on top, only when they don't fit (raft-ui 0.22 #673); stacked, a
@@ -242,7 +246,8 @@ fun RaftDialog(
  *
  * - Header: [title] (`text-headline` bold) and [description] (`text-callout`
  *   `foreground-muted`, one or two sentences), 16dp padding, 4dp apart.
- * - [content] under it, 16dp at the sides.
+ * - [content] under it, 16dp at the sides. It scrolls in the sheet: no `Modifier.weight` and
+ *   no `verticalScroll` of its own (a weighted child of the scroll is measured 0dp tall).
  * - [actions]: stacked full width 8dp apart at the bottom (pass the buttons
  *   `Modifier.fillMaxWidth()`, size `Lg`), one action in Title Case ("Got It").
  */
