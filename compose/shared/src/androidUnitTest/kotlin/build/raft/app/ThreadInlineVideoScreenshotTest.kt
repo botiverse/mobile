@@ -90,6 +90,7 @@ private fun InlineVideoStates() {
             ThreadInlineVideoAttachmentCard(
                 attachment = RaftThreadAttachmentItem(id = id, name = "85711.mp4", mimeType = "video/mp4", sizeLabel = "2.1 MB", sizeBytes = 2_200_000),
                 onDownload = {},
+                onOpenPreview = {},
             )
         }
     }

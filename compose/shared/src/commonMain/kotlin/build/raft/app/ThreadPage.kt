@@ -30841,7 +30841,8 @@ private fun ThreadAttachmentChip(
     if (attachment.isPreviewableVideoAttachment()) {
         ThreadInlineVideoAttachmentCard(
             attachment = attachment,
-            onDownload = onDownload
+            onDownload = onDownload,
+            onOpenPreview = onOpen
         )
         return
     }
