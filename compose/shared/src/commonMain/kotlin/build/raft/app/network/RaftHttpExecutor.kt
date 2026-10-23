@@ -1,7 +1,5 @@
 package build.raft.app.network
 
-import com.tencent.kmm.network.export.NetworkByteStream
-
 /**
  * Transport-neutral response for the bottom HTTP layer. Maps 1:1 onto
  * HomeNetworkResponse / AuthNetworkResponse in the data layer.
@@ -26,7 +24,7 @@ internal data class RaftHttpFileBody(
     val path: String,
     val contentType: String,
     val contentLength: Long,
-    val openStream: suspend () -> NetworkByteStream,
+    val openStream: suspend () -> RaftByteStream,
 )
 
 /**

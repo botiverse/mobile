@@ -5,8 +5,8 @@ import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.compat.json.JSONObject
-import com.tencent.kmm.network.export.NetworkAppIdentity
-import com.tencent.kmm.network.export.NetworkUserAgent
+import build.raft.app.network.RaftAppIdentity
+import build.raft.app.network.RaftAppIdentityRegistry
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -17,15 +17,15 @@ import kotlin.test.assertTrue
 class SettingsStandaloneWebViewHostTest {
     @Test
     fun feedbackBootstrapUsesInstalledIdentityAndInstallsDiagnosticsBridgeIdempotently() {
-        val previous = NetworkUserAgent.appIdentity
         try {
-            NetworkUserAgent.appIdentity =
-                NetworkAppIdentity(
+            RaftAppIdentityRegistry.install(
+                RaftAppIdentity(
                     name = "Raft",
                     version = " 1.0.11-alpha+abc123 ",
                     buildNumber = "10011019",
                     buildType = "debug",
                 )
+            )
 
             val script = feedbackWebViewBootstrapJavaScript(null, null, "https://api.example.test")
 
@@ -35,7 +35,7 @@ class SettingsStandaloneWebViewHostTest {
             assertContains(script, "diagnostics:start")
             assertContains(script, "if (!feedback || feedback.version !== 'raft-feedback-v1')")
         } finally {
-            NetworkUserAgent.appIdentity = previous
+            RaftAppIdentityRegistry.resetForTest()
         }
     }
 

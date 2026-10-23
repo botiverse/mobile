@@ -1895,14 +1895,6 @@ data class SettingsMobileSnapshot(
             statusLabel = if (DEFAULT_HOME_SERVER_AVATAR_ENABLED) "Enabled" else "Off",
             detail = "Show the current workspace avatar in the Home header. When off, keep the existing compact title badge."
         ),
-    /** Task #154: effective value (user choice, else the current server's flag); see RaftCurlSocketIoPolicy. */
-    val realtimeCurlSocketIo: SettingsMobileToggleSnapshot =
-        SettingsMobileToggleSnapshot(
-            enabled = false,
-            available = false,
-            statusLabel = "Unsupported",
-            detail = "Realtime over the new network stack (curl) is not available on this platform."
-        ),
     /** Bottom-up thread list: effective value (user choice, else the flag default); see ThreadReverseLayoutPreferenceStore. */
     val threadReverseLayout: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(

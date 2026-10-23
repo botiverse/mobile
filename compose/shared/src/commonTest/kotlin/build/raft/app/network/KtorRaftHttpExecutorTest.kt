@@ -327,8 +327,6 @@ class KtorRaftHttpExecutorTest {
                 requestLifetimeCoordinator = coordinator,
                 transportFacts = { null },
                 engineLabel = "ktor_test",
-                // Streamed bodies go through MockEngine here; the Android OkHttp path has its own tests.
-                streamingUploader = null,
             )
     }
 

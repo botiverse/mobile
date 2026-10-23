@@ -2,7 +2,7 @@
 
 package build.raft.app.data
 
-import com.tencent.kmm.network.export.NetworkByteStreamSink
+import build.raft.app.network.RaftByteStreamSink
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.convert
 import kotlinx.cinterop.usePinned
@@ -33,7 +33,7 @@ class PlatformFileResolverIosTest {
                 source = resolver.openFileStream(path, stat.sizeBytes ?: error("Missing size"))
             )
                 .readChunks(
-                    object : NetworkByteStreamSink {
+                    object : RaftByteStreamSink {
                         override suspend fun write(bytes: ByteArray) {
                             chunkSizes += bytes.size
                         }

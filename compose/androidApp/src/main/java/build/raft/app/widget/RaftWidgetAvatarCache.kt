@@ -15,8 +15,8 @@ import java.security.MessageDigest
 import kotlin.math.roundToInt
 
 /**
- * Task #155: remote avatars download through NetworkKMM (SharedBinaryDownloader, the app's image
- * path), so widgets get the same curl TLS trust and DNS-over-HTTPS fallback as the rest of the app.
+ * Task #155: remote avatars download through SharedBinaryDownloader (the app's image path, on the
+ * Ktor/OkHttp client), so widgets get the same transport as the rest of the app.
  */
 internal suspend fun Context.cacheRaftWidgetAvatarPath(wireValue: String): String? {
     val normalized = wireValue.trim().takeIf { it.isNotBlank() } ?: return null

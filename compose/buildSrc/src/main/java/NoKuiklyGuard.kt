@@ -25,7 +25,7 @@ val kmpAndroidIosConfigurations: List<String> =
  * Registers [taskName], which fails when this module's `src` tree or the resolved dependency graph
  * of [checkedConfigurations] references Tencent Kuikly (`com.tencent.kuikly.*` sources,
  * `com.tencent.kuikly-open*` modules). KuiklyBase libraries that do not depend on the Kuikly UI
- * runtime (NetworkKMM, datetime, resource-core) are allowed.
+ * runtime (datetime, resource-core) are allowed.
  *
  * The task runs before every compilation of the module and from `check`. Resolved module
  * coordinates (not artifacts) are the dependency input: a version bump or a new transitive module

@@ -1862,8 +1862,6 @@
     <string name="settings_mobile_conversation_forward_gesture_accessibility">Beta. Controls the conversation forward gesture. After returning to Home, swipe left from the right edge to reopen the most recent channel or direct message.</string>
     <string name="settings_mobile_home_server_avatar">Workspace avatar in Home header</string>
     <string name="settings_mobile_home_server_avatar_detail">Show the current workspace avatar beside its name in the Home header. Turn this off to keep the existing compact title badge.</string>
-    <string name="settings_mobile_realtime_curl_socketio">Realtime over new network stack (curl)</string>
-    <string name="settings_mobile_realtime_curl_socketio_detail">Takes effect on the next connection or reconnect. Until you change it, this follows the server default.</string>
     <string name="settings_mobile_thread_reverse_layout">Open chats at the newest message</string>
     <string name="settings_mobile_thread_reverse_layout_detail">Chats open at the newest message, laid out from the bottom, without scrolling down first. Applies the next time you open a chat. Until you change it, this follows the server default.</string>
     <string name="settings_badge_beta">Beta</string>
@@ -2397,8 +2395,6 @@
     <string name="settings_developer_route_launcher_detail">Open Kuikly route launcher and icon compare.</string>
     <string name="settings_developer_text_input_trace">Text input trace</string>
     <string name="settings_developer_text_input_trace_detail">Log every keyboard edit and text sync in text fields to the app logs (lengths only, never the text), for IME bug reports.</string>
-    <string name="settings_developer_http_transport">HTTP transport</string>
-    <string name="settings_developer_http_transport_detail">Shows the network stack app requests use. Turn on to send new requests through the old curl stack instead, to compare. Diagnostic only.</string>
     <string name="settings_developer_presets">Presets</string>
     <string name="settings_developer_presets_detail">Choose a preset to fill the environment form, then save to apply it.</string>
     <string name="settings_developer_presets_empty">No presets are available from this host.</string>

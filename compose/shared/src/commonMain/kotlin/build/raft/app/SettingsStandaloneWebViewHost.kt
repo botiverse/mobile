@@ -46,7 +46,7 @@ import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
-import com.tencent.kmm.network.export.NetworkUserAgent
+import build.raft.app.network.RaftAppIdentityRegistry
 
 const val SETTINGS_WEB_VIEW_PAGE = "compose_settings_webview"
 internal const val SETTINGS_WEB_VIEW_SURFACE = "settingsWebViewSurface"
@@ -1012,7 +1012,7 @@ internal fun feedbackWebViewBootstrapJavaScript(
 
 /** The host's installed app identity is the source of truth for Web feedback metadata. */
 private fun feedbackWebViewClientVersion(): String =
-    NetworkUserAgent.appIdentity?.version?.trim().orEmpty()
+    RaftAppIdentityRegistry.current()?.version?.trim().orEmpty()
 
 internal fun feedbackWebViewRuntimeSessionJavaScript(
     accessToken: String,

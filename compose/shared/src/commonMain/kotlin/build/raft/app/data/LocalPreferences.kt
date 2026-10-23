@@ -1,7 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.network.REALTIME_CURL_SOCKETIO_PREFERENCE_KEY
-import build.raft.app.network.RaftCurlSocketIoPolicy
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
@@ -861,28 +859,6 @@ class KeyValueRouterPreferenceRepository(
 
     private companion object {
         const val KEY_LAST_ROUTE_INPUT = "router:last_input"
-    }
-}
-
-/**
- * Task #154: the Settings switch "realtime over the new network stack (curl)". Three states under
- * [REALTIME_CURL_SOCKETIO_PREFERENCE_KEY]: absent = follow the server flag, "true" / "false" = the
- * user's explicit choice (written with [putBoolean], so Android can read the raw MMKV string).
- */
-interface RealtimeTransportPreferenceStore {
-    /** The user's explicit choice, or null while the switch follows the server flag. */
-    fun readCurlSocketIoUserChoiceSync(): Boolean?
-    suspend fun saveCurlSocketIoUserChoice(enabled: Boolean)
-}
-
-class KeyValueRealtimeTransportPreferenceStore(
-    private val store: SharedPreferenceStore
-) : RealtimeTransportPreferenceStore {
-    override fun readCurlSocketIoUserChoiceSync(): Boolean? =
-        RaftCurlSocketIoPolicy.parseUserChoice(store.getString(REALTIME_CURL_SOCKETIO_PREFERENCE_KEY))
-
-    override suspend fun saveCurlSocketIoUserChoice(enabled: Boolean) {
-        store.putBoolean(REALTIME_CURL_SOCKETIO_PREFERENCE_KEY, enabled)
     }
 }
 

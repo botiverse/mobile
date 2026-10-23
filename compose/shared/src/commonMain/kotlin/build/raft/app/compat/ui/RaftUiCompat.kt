@@ -198,7 +198,7 @@ fun Modifier.setProp(key: String, value: Any): Modifier = this
 /**
  * Kuikly `rememberAsyncImageBitmap`: the decoded bitmap for [model] (URL, `assets://` path,
  * managed avatar model, inline SVG, local path), or null while loading / on failure. Loaded
- * through the Raft singleton Coil loader (`raftBuildImageLoader`: NetworkKMM fetcher, bundled
+ * through the Raft singleton Coil loader (`raftBuildImageLoader`: Ktor fetcher, bundled
  * assets, SVG).
  *
  * Decoded with its longer edge bounded by the window's long edge (aspect ratio kept), like the

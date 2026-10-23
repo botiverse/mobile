@@ -1,8 +1,8 @@
 package build.raft.app.data
 
 import build.raft.app.model.ServerId
-import com.tencent.kmm.network.export.NetworkAppIdentity
-import com.tencent.kmm.network.export.NetworkUserAgent
+import build.raft.app.network.RaftAppIdentity
+import build.raft.app.network.RaftAppIdentityRegistry
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonObject
@@ -49,7 +49,7 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun defaultOnKeyReadsOnWithoutAnExplicitServerDecision() = runBlocking {
-        for (doh in listOf(MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY, RUNTIME_FORM_V2_FEATURE_FLAG_KEY)) {
+        for (doh in listOf(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY, RUNTIME_FORM_V2_FEATURE_FLAG_KEY)) {
         // Unresolved (no evaluation yet, no stored value) and no server at all: ON.
         val idle = SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[]}""")))
         assertTrue(idle.isEnabled(server, doh))
@@ -79,7 +79,7 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun defaultOnKeyFollowsAnExplicitServerDecision() = runBlocking {
-        for (doh in listOf(MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY, RUNTIME_FORM_V2_FEATURE_FLAG_KEY)) {
+        for (doh in listOf(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY, RUNTIME_FORM_V2_FEATURE_FLAG_KEY)) {
         for (reason in listOf("kill_switch", "flag_disabled", "default", "platform_rule")) {
             val flags =
                 SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[{"key":"$doh","enabled":false,"reason":"$reason"}]}""")))
@@ -468,13 +468,13 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
-    fun recoveryFlagForwardsAuthoritativeReasonToPlatformBridge() = runBlocking {
+    fun evaluationObserverReceivesTheAuthoritativeReason() = runBlocking {
         val evaluations = mutableListOf<String>()
         var observedGeneration = 0L
         val api =
             FakeApi(
                 ok(
-                    """{"evaluations":[{"key":"$ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
+                    """{"evaluations":[{"key":"$READ_RECEIPTS_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
                 )
             )
         val flags =
@@ -487,7 +487,7 @@ class SharedServerFeatureFlagsTest {
 
         assertEquals(
             listOf(
-                "s1|$ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY|false|kill_switch|production-env"
+                "s1|$READ_RECEIPTS_FEATURE_FLAG_KEY|false|kill_switch|production-env"
             ),
             evaluations
         )
@@ -502,7 +502,7 @@ class SharedServerFeatureFlagsTest {
                 api =
                     FakeApi(
                         ok(
-                            """{"evaluations":[{"key":"$ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY","enabled":true,"reason":"default"}]}"""
+                            """{"evaluations":[{"key":"$READ_RECEIPTS_FEATURE_FLAG_KEY","enabled":true,"reason":"default"}]}"""
                         )
                     ),
                 diagnosticsLogger = diagnostics::add,
@@ -512,7 +512,7 @@ class SharedServerFeatureFlagsTest {
         val snapshot = flags.prefetch(server)
 
         assertTrue(snapshot.resolved)
-        assertTrue(flags.isEnabled(server, ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY))
+        assertTrue(flags.isEnabled(server, READ_RECEIPTS_FEATURE_FLAG_KEY))
         assertTrue(diagnostics.any { it.contains("evaluation_observer_failed") })
     }
 
@@ -532,12 +532,12 @@ class SharedServerFeatureFlagsTest {
                             firstStarted.complete(Unit)
                             releaseFirst.await()
                             ok(
-                                """{"evaluations":[{"key":"$ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
+                                """{"evaluations":[{"key":"$READ_RECEIPTS_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
                             )
                         }
                         else ->
                             ok(
-                                """{"evaluations":[{"key":"$ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY","enabled":true,"reason":"default"}]}"""
+                                """{"evaluations":[{"key":"$READ_RECEIPTS_FEATURE_FLAG_KEY","enabled":true,"reason":"default"}]}"""
                             )
                     }
             }
@@ -559,7 +559,7 @@ class SharedServerFeatureFlagsTest {
         releaseFirst.complete(Unit)
         first.await()
 
-        assertTrue(flags.isEnabled(server, ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY))
+        assertTrue(flags.isEnabled(server, READ_RECEIPTS_FEATURE_FLAG_KEY))
         assertEquals(listOf(true to "default", false to "kill_switch"), evaluations.map { it.first to it.second })
         assertTrue(evaluations[0].third > evaluations[1].third)
         assertTrue(diagnostics.any { it.contains("stale_ignored") })
@@ -581,7 +581,7 @@ class SharedServerFeatureFlagsTest {
                             firstStarted.complete(Unit)
                             releaseFirst.await()
                             ok(
-                                """{"evaluations":[{"key":"$ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
+                                """{"evaluations":[{"key":"$READ_RECEIPTS_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
                             )
                         }
                         else -> HomeNetworkResponse(code = 500, bodyText = null)
@@ -600,7 +600,7 @@ class SharedServerFeatureFlagsTest {
         releaseFirst.complete(Unit)
         first.await()
 
-        assertFalse(flags.isEnabled(server, ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY))
+        assertFalse(flags.isEnabled(server, READ_RECEIPTS_FEATURE_FLAG_KEY))
         assertEquals(listOf(false to "kill_switch"), evaluations.map { it.first to it.second })
         assertTrue(evaluations.single().third > 0L)
     }
@@ -618,7 +618,7 @@ class SharedServerFeatureFlagsTest {
                     started.complete(Unit)
                     withContext(NonCancellable) { release.await() }
                     return ok(
-                        """{"evaluations":[{"key":"$ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
+                        """{"evaluations":[{"key":"$READ_RECEIPTS_FEATURE_FLAG_KEY","enabled":false,"reason":"kill_switch"}]}"""
                     )
                 }
             }
@@ -720,20 +720,23 @@ class SharedServerFeatureFlagsTest {
 
     @Test
     fun productionClientContextReadsTheUserAgentIdentity() {
-        val previous = NetworkUserAgent.appIdentity
         try {
-            NetworkUserAgent.appIdentity =
-                NetworkAppIdentity(name = "Raft", version = " 1.12.0 ", buildNumber = "1120131", buildType = "")
+            RaftAppIdentityRegistry.install(
+                RaftAppIdentity(name = "Raft", version = " 1.12.0 ", buildNumber = "1120131", buildType = "")
+            )
             val context = currentFeatureFlagClientContext()
             assertTrue(context.os in setOf("android", "ios", "ohos"), context.os)
             assertEquals("1.12.0", context.appVersion)
             assertEquals("1120131", context.buildNumber)
             assertEquals(null, context.buildType) // blank is unknown, not ""
 
-            NetworkUserAgent.appIdentity = null
-            assertEquals(null, currentFeatureFlagClientContext().buildNumber)
+            RaftAppIdentityRegistry.install(null)
+            // Android installs no platform fallback, so the identity stays unknown; iOS reads its bundle.
+            if (currentFeatureFlagClientContext().os == "android") {
+                assertEquals(null, currentFeatureFlagClientContext().buildNumber)
+            }
         } finally {
-            NetworkUserAgent.appIdentity = previous
+            RaftAppIdentityRegistry.resetForTest()
         }
     }
 }

@@ -44,10 +44,6 @@ val generateRaftDatetimeBuildConfig by tasks.registering {
         }
     }
 }
-val pinnedNetworkCurlCaBundle =
-    layout.projectDirectory.file("src/commonMain/assets/network/cacert-2026-05-14.pem")
-val pinnedNetworkCurlCaSha256 =
-    "86a1f3366afac7c6f8ae9f3c779ac221129328c43f0ab2b8817eb2f362a5025c"
 val raftVisualFixturesEnabled =
     providers.gradleProperty("slockVisualFixtures")
         .orElse(providers.environmentVariable("SLOCK_VISUAL_FIXTURES"))
@@ -169,10 +165,9 @@ kotlin {
                 implementation("build.raft.kuiklybase:datetime:0.1.0-raft.0")
                 // Unified network infra (task #12): all platforms' HTTP goes
                 // through NetworkKMM behind the RaftHttpExecutor seam.
-                implementation("com.tencent.kuiklybase:network:0.1.0-raft.47")
                 // App HTTP transport (artin 2026-10-23): Ktor client behind the RaftHttpExecutor seam,
-                // OkHttp engine on Android and Darwin (NSURLSession) on iOS. NetworkKMM stays for
-                // downloads and the Developer curl override.
+                // OkHttp engine on Android and Darwin (NSURLSession) on iOS. API calls, uploads and
+                // downloads all use it; NetworkKMM / curl are gone.
                 implementation(libs.ktor.client.core)
                 // Mermaid parse + layout (Kotlin Multiplatform, android + ios). The scene is drawn
                 // by the library's Compose Multiplatform renderer (mermaid-compose, built against
@@ -497,50 +492,6 @@ val verifyNoProductionVisualPages by tasks.registering {
 
 tasks.named("check").configure {
     dependsOn(verifyNoProductionVisualPages)
-}
-
-val verifyNetworkCurlCaBundle by tasks.registering {
-    inputs.file(pinnedNetworkCurlCaBundle)
-    doLast {
-        val file = pinnedNetworkCurlCaBundle.asFile
-        check(file.isFile) { "Missing pinned NetworkKMM CA bundle: ${file.path}" }
-        val digest = MessageDigest.getInstance("SHA-256")
-        val actual = digest.digest(file.readBytes()).joinToString("") { byte: Byte ->
-            (byte.toInt() and 0xff).toString(16).padStart(2, '0')
-        }
-        check(actual == pinnedNetworkCurlCaSha256) {
-            "Pinned NetworkKMM CA bundle hash mismatch: expected=$pinnedNetworkCurlCaSha256 actual=$actual"
-        }
-    }
-}
-
-val verifyNetworkTransportClientWiring by tasks.registering {
-    val clientSources =
-        listOf(
-            layout.projectDirectory.file("src/commonMain/kotlin/build/raft/app/network/NetworkKmmRaftHttpExecutor.kt"),
-            layout.projectDirectory.file("src/commonMain/kotlin/build/raft/app/network/SharedBinaryDownloader.kt"),
-            layout.projectDirectory.file("src/commonMain/kotlin/build/raft/app/network/AttachmentDownloadCoordinator.kt")
-        )
-    inputs.files(clientSources)
-    doLast {
-        clientSources.forEach { source ->
-            val text = source.asFile.readText()
-            check("raftNetworkClientConfig(" in text) {
-                "${source.asFile.name} must use the app-global NetworkKMM selector/diagnostics helper"
-            }
-        }
-    }
-}
-
-tasks.named("check").configure {
-    dependsOn(verifyNetworkCurlCaBundle, verifyNetworkTransportClientWiring)
-}
-
-tasks.matching { task ->
-    task.name == "preBuild" ||
-        task.name.startsWith("compileKotlinIos")
-}.configureEach {
-    dependsOn(verifyNetworkCurlCaBundle)
 }
 
 fun getCommonCompilerArgs(): List<String> {

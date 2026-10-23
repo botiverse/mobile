@@ -7,7 +7,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
  * the store dispatcher. It must never depend on Tencent Kuikly (`com.tencent.kuikly.*` /
  * `com.tencent.kuikly-open`); verifyCoreHasNoKuikly enforces that on every build.
  *
- * KuiklyBase libraries that do not depend on the Kuikly UI runtime (NetworkKMM, datetime,
+ * KuiklyBase libraries that do not depend on the Kuikly UI runtime (datetime,
  * resource-core) are allowed.
  */
 plugins {
@@ -46,7 +46,6 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.atomicfu)
                 implementation("build.raft.kuiklybase:datetime:0.1.0-raft.0")
-                implementation("com.tencent.kuiklybase:network:0.1.0-raft.47")
             }
         }
         val commonTest by getting {

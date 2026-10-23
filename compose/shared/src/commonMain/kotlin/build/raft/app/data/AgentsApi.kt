@@ -757,7 +757,7 @@ private fun <T> HomeNetworkResponse.toAgentsDataError(): DataResult<T> {
 
 private fun HomeNetworkResponse.runtimeFormIssueCodeOrNull(): String? {
     if (code != 409) return null
-    // task #186: the production transport (NetworkKmmRaftHttpExecutor) delivers
+    // task #186: the production transport (KtorRaftHttpExecutor) delivers
     // every non-2xx body in errorBodyText and leaves bodyText null, so the 409
     // issues envelope must be read from both fields or the runtime-form
     // recovery never triggers on device.

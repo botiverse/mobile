@@ -26,12 +26,12 @@ fragment = "1.8.9"
 composeBom = "2026.09.00"
 recyclerview = "1.3.2"
 okhttp = "4.12.0"
-# The OkHttp the app actually ships: NetworkKMM 0.1.0-raft.47 requires it, so it already wins resolution
-# over 4.12.0 at runtime. The Ktor HTTP transport compiles against it (fastFallback is 5.x API).
-okhttpTransport = "5.0.0-alpha.14"
-# Ktor client for app HTTP (OkHttp on Android, Darwin on iOS). Pinned to NetworkKMM's Ktor so both share one
-# binary-compatible copy; a 3.x bump must move NetworkKMM with it.
-ktor = "2.3.7"
+# OkHttp under the Ktor HTTP transport (ktor-client-okhttp 3.6.0 is built against 5.5.0); it also wins
+# resolution over 4.12.0 for socket.io-client and the Hands preupload.
+okhttpTransport = "5.5.0"
+# Ktor client for app HTTP (OkHttp on Android, Darwin on iOS). 3.6.0 is built against kotlinx-coroutines
+# 1.11.0, the app's version: Ktor 2.3.7 called coroutines internals 1.11 removed (Hands ae47bba1).
+ktor = "3.6.0"
 gson = "2.11.0"
 socketIoClient = "2.1.2"
 sqldelight = "2.1.0"

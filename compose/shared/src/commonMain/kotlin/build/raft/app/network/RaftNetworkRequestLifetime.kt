@@ -56,19 +56,12 @@ internal fun interface RaftNetworkRequestCancelHandle {
     fun cancel()
 }
 
-internal fun interface RaftNetworkRequestStarter {
-    fun start(
-        request: com.tencent.kmm.network.export.NetworkRequest,
-        onComplete: (com.tencent.kmm.network.export.NetworkResponse) -> Unit
-    ): RaftNetworkRequestCancelHandle
-}
-
 internal data class RaftNetworkRequestLifetimeDescriptor(
     val internalRequestId: Long,
     val generation: Long,
     val methodClass: RaftNetworkMethodClass,
     val startedAtMillis: Long,
-    /** Observational copy of the existing NetworkKMM/request-scheduler timeout policy. */
+    /** Observational copy of the transport / request-scheduler timeout policy. */
     val configuredDeadlineAtMillis: Long
 )
 
@@ -97,7 +90,7 @@ internal data class RaftNetworkLifecycleTransition(
 /**
  * Process-global owner of ordinary API request lifetime.
  *
- * NetworkKMM still owns transport execution and its physical pools. This owner retains only the
+ * The Ktor transport owns execution and its physical pools. This owner retains only the
  * callback API's cancel handle plus an exactly-once terminal fence. A real process visibility
  * transition retires the previous generation's visibility-scoped work, completes those waiters
  * without depending on a frozen transport callback, and suppresses their late callbacks.

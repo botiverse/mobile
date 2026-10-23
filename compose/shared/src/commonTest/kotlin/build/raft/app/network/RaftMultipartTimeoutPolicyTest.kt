@@ -1,6 +1,6 @@
 package build.raft.app.network
 
-import com.tencent.kmm.network.export.NetworkByteStream
+import build.raft.app.network.RaftByteStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -22,7 +22,7 @@ class RaftMultipartTimeoutPolicyTest {
             sizeBytes = 199_229_440L,
             streamOpener =
                 MultipartFileStreamOpener {
-                    NetworkByteStream(
+                    RaftByteStream(
                         contentLength = 199_229_440L,
                         readAllBlock = { error("whole-file read forbidden") },
                         readChunksBlock = { }
@@ -58,7 +58,7 @@ class RaftMultipartTimeoutPolicyTest {
     @Test
     fun openerWithoutFileRefStaysOnBytesPath() {
         val opener = MultipartFileStreamOpener {
-            NetworkByteStream(
+            RaftByteStream(
                 contentLength = 0L,
                 readAllBlock = { ByteArray(0) },
                 readChunksBlock = { }

@@ -1,7 +1,6 @@
 package build.raft.app.network
 
 import build.raft.app.RaftCoreInternalApi
-import com.tencent.kmm.network.export.NetworkUserAgent
 
 /**
  * The device class the User-Agent advertises. The server derives the product-event
@@ -27,7 +26,7 @@ fun raftAndroidUserAgentDevice(smallestScreenWidthDp: Int): RaftUserAgentDevice 
 
 const val RAFT_ANDROID_TABLET_SMALLEST_WIDTH_DP: Int = 600
 
-/** [base] (NetworkKMM's `Raft/<version>+<build> (<os>; <buildType>) NetworkKMM/<lib>`) plus the device token. */
+/** [base] (`Raft/<version>+<build> (<os>; <buildType>)`, see [raftBaseUserAgent]) plus the device token. */
 fun raftNetworkUserAgent(base: String, device: RaftUserAgentDevice?): String {
     val token = device?.token ?: return base
     val tokens = base.split(' ', '(', ')', ';').map(String::trim)
@@ -37,7 +36,21 @@ fun raftNetworkUserAgent(base: String, device: RaftUserAgentDevice?): String {
 /** The User-Agent Raft API requests send. */
 @RaftCoreInternalApi
 fun currentRaftNetworkUserAgent(): String =
-    raftNetworkUserAgent(NetworkUserAgent.headerValue(), platformRaftUserAgentDevice())
+    raftNetworkUserAgent(raftBaseUserAgent(RaftAppIdentityRegistry.current(), platformRaftUserAgentPlatformName()), platformRaftUserAgentDevice())
+
+/**
+ * `<name>/<version>+<build> (<platform>; <buildType>)`, the format NetworkKMM sent minus its
+ * `NetworkKMM/<lib>` suffix; `unknown/unknown (<platform>)` before the identity is installed.
+ */
+fun raftBaseUserAgent(identity: RaftAppIdentity?, platformName: String): String {
+    if (identity == null) return "unknown/unknown ($platformName)"
+    val version =
+        listOf(identity.version.trim(), identity.buildNumber.trim()).filter { it.isNotEmpty() }.joinToString("+")
+            .ifEmpty { "unknown" }
+    val buildType = identity.buildType.trim()
+    val details = if (buildType.isEmpty()) platformName else "$platformName; $buildType"
+    return "${identity.name.trim().ifEmpty { "Raft" }}/$version ($details)"
+}
 
 @RaftCoreInternalApi
 expect fun platformRaftUserAgentDevice(): RaftUserAgentDevice?

@@ -4,11 +4,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-class NetworkKmmTraceHeadersTest {
+class RaftTraceHeadersTest {
     @Test
     fun generatesJoinableRequestIdAndTraceparent() {
         var seed = 0
-        val headers = networkKmmTraceHeaders(emptyMap()) { size ->
+        val headers = raftTraceHeaders(emptyMap()) { size ->
             ByteArray(size) { (seed++).toByte() }
         }
 
@@ -23,7 +23,7 @@ class NetworkKmmTraceHeadersTest {
     fun preservesCallerProvidedCorrelationHeadersCaseInsensitively() {
         val original = mapOf("X-Request-Id" to "caller-id", "TraceParent" to "caller-trace")
 
-        val headers = networkKmmTraceHeaders(original) { error("random bytes must not be requested") }
+        val headers = raftTraceHeaders(original) { error("random bytes must not be requested") }
 
         assertTrue(headers === original)
         assertEquals("caller-id", headers["X-Request-Id"])
@@ -32,7 +32,7 @@ class NetworkKmmTraceHeadersTest {
 
     @Test
     fun generatedTraceparentNeverUsesForbiddenAllZeroIds() {
-        val headers = networkKmmTraceHeaders(emptyMap()) { size -> ByteArray(size) }
+        val headers = raftTraceHeaders(emptyMap()) { size -> ByteArray(size) }
 
         assertEquals(
             "00-00000000000000000000000000000001-0000000000000001-01",

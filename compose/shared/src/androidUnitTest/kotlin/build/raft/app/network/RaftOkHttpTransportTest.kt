@@ -1,5 +1,3 @@
-@file:OptIn(okhttp3.ExperimentalOkHttpApi::class)
-
 package build.raft.app.network
 
 import io.ktor.client.HttpClient
@@ -14,7 +12,7 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.runBlocking
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
-import mockwebserver3.SocketPolicy
+import mockwebserver3.SocketEffect
 import okhttp3.Dispatcher
 import okhttp3.Dns
 import okhttp3.OkHttpClient
@@ -40,7 +38,7 @@ class RaftOkHttpTransportTest {
 
     @AfterTest
     fun stopServer() {
-        runCatching { server.shutdown() }
+        runCatching { server.close() }
     }
 
     @Test
@@ -123,7 +121,7 @@ class RaftOkHttpTransportTest {
     fun staleConnectionIsRetriedForGetButNeverForPost() = runBlocking {
         val executor = executorAgainst(twoRoutes = true)
         server.enqueue(MockResponse.Builder().body("seed connection pool").build())
-        server.enqueue(MockResponse.Builder().socketPolicy(SocketPolicy.DisconnectAfterRequest).build())
+        server.enqueue(MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build())
         server.enqueue(MockResponse.Builder().body("retry success").build())
 
         assertEquals("seed connection pool", executor.get("/seed").bodyText)
@@ -132,7 +130,7 @@ class RaftOkHttpTransportTest {
         assertEquals("retry success", get.bodyText)
         assertEquals(3, server.requestCount)
 
-        server.enqueue(MockResponse.Builder().socketPolicy(SocketPolicy.DisconnectAfterRequest).build())
+        server.enqueue(MockResponse.Builder().onResponseStart(SocketEffect.CloseSocket()).build())
         server.enqueue(MockResponse.Builder().body("must not be reached").build())
         val post =
             executor.execute(RaftRequestPriority.Foreground, server.url("/write").toString(), "POST", emptyMap(), "{}", true)
@@ -159,7 +157,7 @@ class RaftOkHttpTransportTest {
         assertTrue("kind=DNS " in dns.transportDiagnostics.orEmpty(), dns.transportDiagnostics)
 
         val refusedUrl = server.url("/refused").toString()
-        server.shutdown()
+        server.close()
         val refused = executor.execute(RaftRequestPriority.Visible, refusedUrl, "GET", emptyMap(), null, false)
         assertTrue("kind=CONNECT " in refused.transportDiagnostics.orEmpty(), refused.transportDiagnostics)
     }
@@ -168,7 +166,7 @@ class RaftOkHttpTransportTest {
     fun readTimeoutFromTheEngineClassifiesAsTimeout() = runBlocking {
         // The property under test is the exception chain Ktor + OkHttp produce for a stalled response,
         // not a duration: the server never answers and the socket timeout ends the call.
-        server.enqueue(MockResponse.Builder().socketPolicy(SocketPolicy.NoResponse).build())
+        server.enqueue(MockResponse.Builder().onResponseStart(SocketEffect.Stall).build())
         val client = raftKtorClientFor(buildRaftBaseOkHttpClient(eventListenerFactory = null))
 
         val failure = runCatching { client.get(server.url("/stall").toString()) { timeout { socketTimeoutMillis = 200 } } }
@@ -196,8 +194,8 @@ class RaftOkHttpTransportTest {
     }
 
     /**
-     * Hands ae47bba1: streamed upload bodies went through ktor-io's blocking adapter and died with
-     * NoSuchMethodError on coroutines 1.11. These run the real Android path end to end.
+     * Hands ae47bba1: on Ktor 2.3.7 streamed upload bodies went through ktor-io's blocking adapter and
+     * died with NoSuchMethodError on coroutines 1.11. These run the real Ktor 3 OkHttp engine end to end.
      */
     @Test
     fun presignedFilePutSendsExactlyTheSignedHeadersAndAFixedLength() = runBlocking {
@@ -227,16 +225,21 @@ class RaftOkHttpTransportTest {
         assertEquals(200, response.code, response.transportDiagnostics)
         val recorded = server.takeRequest()
         assertEquals("PUT", recorded.method)
-        assertEquals("/bucket/obj%2Fkey.jpg?X-Amz-Signature=ab%2Bcd&X-Amz-Expires=600", recorded.path)
+        assertEquals("/bucket/obj%2Fkey.jpg?X-Amz-Signature=ab%2Bcd&X-Amz-Expires=600", recorded.target)
         assertEquals(fileBytes.size.toString(), recorded.headers["Content-Length"])
         assertEquals(null, recorded.headers["Transfer-Encoding"])
         assertEquals("image/jpeg", recorded.headers["Content-Type"])
         assertEquals(null, recorded.headers["Authorization"])
+        // Nothing beyond what OkHttp / Ktor always send (Accept */*, Accept-Encoding, User-Agent, Connection)
+        // and the trace ids: no Authorization or other header that would break a SigV4 signature.
         assertEquals(
-            setOf("content-length", "content-type", "host", "connection", "accept-encoding", "user-agent", "x-request-id", "traceparent"),
+            setOf(
+                "content-length", "content-type", "host", "connection", "accept", "accept-encoding", "user-agent",
+                "x-request-id", "traceparent",
+            ),
             recorded.headers.names().map { it.lowercase() }.toSet()
         )
-        assertTrue(recorded.body.readByteArray().contentEquals(fileBytes))
+        assertTrue(recorded.body!!.toByteArray().contentEquals(fileBytes))
         assertEquals(RaftTransferProgress(fileBytes.size.toLong(), fileBytes.size.toLong()), progress.last())
     }
 
@@ -270,7 +273,7 @@ class RaftOkHttpTransportTest {
         assertEquals(200, response.code, response.transportDiagnostics)
         assertEquals("""{"attachments":[{"id":"a1"}]}""", response.bodyText)
         val recorded = server.takeRequest()
-        val body = recorded.body.readByteArray()
+        val body = recorded.body!!.toByteArray()
         assertEquals(body.size.toString(), recorded.headers["Content-Length"])
         assertEquals(null, recorded.headers["Transfer-Encoding"])
         assertEquals("Bearer access-1", recorded.headers["Authorization"])
@@ -290,7 +293,6 @@ class RaftOkHttpTransportTest {
             requestLifetimeCoordinator = RaftNetworkRequestLifetimeCoordinator(),
             transportFacts = { null },
             engineLabel = "ktor_okhttp",
-            streamingUploader = lanes.streamingUploader(),
         )
     }
 

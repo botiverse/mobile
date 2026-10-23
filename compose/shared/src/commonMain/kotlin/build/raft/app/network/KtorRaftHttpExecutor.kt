@@ -12,9 +12,8 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.content.OutgoingContent
 import io.ktor.http.content.TextContent
-import com.tencent.kmm.network.export.NetworkByteStream
-import com.tencent.kmm.network.export.NetworkByteStreamSink
 import io.ktor.utils.io.ByteWriteChannel
+import io.ktor.utils.io.writeFully
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,7 +26,7 @@ import kotlin.time.TimeSource
  * artin 2026-10-23 ("直接换ktor吧"): the default app HTTP transport. Ktor's OkHttp engine on Android
  * and Darwin (NSURLSession) engine on iOS, configured in [createPlatformRaftKtorClientProvider].
  *
- * Same contract as [NetworkKmmRaftHttpExecutor] (see [RaftHttpExecutor]): transport failures map to
+ * The [RaftHttpExecutor] contract (the one the removed NetworkKMM executor had): transport failures map to
  * code 0 with an errorBodyText and a `kind=` diagnostics token, HTTP errors never throw, cancellation
  * is rethrown, and every attempt runs under [RaftNetworkRequestLifetimeCoordinator] so a process
  * visibility edge retires reads exactly as before. The executor itself never retries; the engine
@@ -42,8 +41,6 @@ internal class KtorRaftHttpExecutor(
     private val callScope: CoroutineScope = RaftKtorCallScope,
     private val transportFacts: (requestId: String) -> String? = ::takeRaftKtorTransportFacts,
     private val engineLabel: String = raftKtorEngineLabel(),
-    /** Platform path for streamed upload bodies; null sends them through Ktor (iOS, MockEngine tests). */
-    private val streamingUploader: RaftStreamingUploader? = RaftKtorProcessClients.streamingUploader,
 ) : RaftHttpExecutor {
 
     override suspend fun execute(
@@ -55,7 +52,7 @@ internal class KtorRaftHttpExecutor(
         jsonBody: Boolean
     ): RaftHttpExecutorResponse {
         val normalizedMethod = method.trim().uppercase()
-        val traceHeaders = networkKmmTraceHeaders(headers)
+        val traceHeaders = raftTraceHeaders(headers)
         val (requestHeaders, contentTypeOverride) = withRaftApiClientHeaders(traceHeaders).splitContentHeaders()
         val content =
             bodyText?.let { text ->
@@ -100,7 +97,7 @@ internal class KtorRaftHttpExecutor(
         headers: Map<String, String>,
         onUploadProgress: ((RaftTransferProgress) -> Unit)?
     ): RaftHttpExecutorResponse {
-        val traceHeaders = networkKmmTraceHeaders(headers)
+        val traceHeaders = raftTraceHeaders(headers)
         val (requestHeaders, _) = withRaftApiClientHeaders(traceHeaders).splitContentHeaders()
         val streaming = files.hasStreamingFileRefParts()
         val boundary = "RaftBoundary" + Random.nextBytes(12).joinToString("") { byte ->
@@ -142,7 +139,7 @@ internal class KtorRaftHttpExecutor(
         bodyBytes: ByteArray,
         onUploadProgress: ((RaftTransferProgress) -> Unit)?,
     ): RaftHttpExecutorResponse {
-        val traceHeaders = networkKmmTraceHeaders(headers)
+        val traceHeaders = raftTraceHeaders(headers)
         val (requestHeaders, contentType) = traceHeaders.splitContentHeaders()
         return perform(
             presignedSpec(
@@ -173,7 +170,7 @@ internal class KtorRaftHttpExecutor(
         body: RaftHttpFileBody,
         onUploadProgress: ((RaftTransferProgress) -> Unit)?,
     ): RaftHttpExecutorResponse {
-        val traceHeaders = networkKmmTraceHeaders(headers)
+        val traceHeaders = raftTraceHeaders(headers)
         val (requestHeaders, contentType) = traceHeaders.splitContentHeaders()
         return perform(
             presignedSpec(
@@ -302,42 +299,26 @@ internal class KtorRaftHttpExecutor(
     ): RaftHttpExecutorResponse =
         try {
             val content = spec.content()
-            val uploader = streamingUploader
-            val outcome =
-                if (content is RaftChunkedBody && uploader != null) {
-                    uploader.upload(
-                        RaftStreamingUploadRequest(
-                            priority = spec.priority,
-                            kind = spec.kind,
-                            method = spec.method,
-                            url = spec.url,
-                            headers = spec.headers.mapValues { (_, value) -> value.toSafeHeaderValue() },
-                            body = content,
-                            connectTimeoutMillis = spec.connectTimeoutMillis,
-                            socketTimeoutMillis = spec.socketTimeoutMillis,
-                            totalTimeoutMillis = spec.totalTimeoutMillis,
-                            readBody = !spec.redactSensitive,
-                        )
-                    )
-                } else {
-                    val response: HttpResponse =
-                        clients.client(spec.priority, spec.kind).request(spec.url) {
-                            method = HttpMethod.parse(spec.method)
-                            headers { spec.headers.forEach { (name, value) -> append(name, value.toSafeHeaderValue()) } }
-                            if (content != null) setBody(content)
-                            timeout {
-                                requestTimeoutMillis = spec.totalTimeoutMillis
-                                connectTimeoutMillis = spec.connectTimeoutMillis
-                                spec.socketTimeoutMillis?.let { socketTimeoutMillis = it }
-                            }
-                        }
-                    RaftStreamingUploadResponse(
-                        status = response.status.value,
-                        headers = response.headers.entries().associate { (name, values) -> name to values },
-                        bodyText = if (spec.redactSensitive) null else response.bodyAsText(),
-                        protocol = response.version.toString(),
-                    )
+            // Ktor 3 reads the whole body inside request(), so the response is consumed within this
+            // call's scope (no channel outlives it).
+            val response: HttpResponse =
+                clients.client(spec.priority, spec.kind).request(spec.url) {
+                    method = HttpMethod.parse(spec.method)
+                    headers { spec.headers.forEach { (name, value) -> append(name, value.toSafeHeaderValue()) } }
+                    if (content != null) setBody(content)
+                    timeout {
+                        requestTimeoutMillis = spec.totalTimeoutMillis
+                        connectTimeoutMillis = spec.connectTimeoutMillis
+                        spec.socketTimeoutMillis?.let { socketTimeoutMillis = it }
+                    }
                 }
+            val outcome =
+                RaftHttpOutcome(
+                    status = response.status.value,
+                    headers = response.headers.entries().associate { (name, values) -> name to values },
+                    bodyText = if (spec.redactSensitive) null else response.bodyAsText(),
+                    protocol = response.version.toString(),
+                )
             val status = outcome.status
             val text = if (spec.redactSensitive) null else outcome.bodyText
             val responseHeaders = if (spec.redactSensitive) emptyMap() else outcome.headers
@@ -461,44 +442,14 @@ internal fun interface RaftKtorClientProvider {
 
 internal object RaftKtorProcessClients {
     val provider: RaftKtorClientProvider by lazy { createPlatformRaftKtorClientProvider() }
-    val streamingUploader: RaftStreamingUploader? by lazy { createPlatformRaftStreamingUploader() }
 }
 
-/**
- * Sends a streamed upload body (multipart with fileRef parts, presigned PUTs) outside Ktor's engine.
- * Ktor 2.3.7's OkHttp engine pipes streamed bodies through ktor-io's blocking InputStream adapter,
- * which calls a kotlinx-coroutines internal (EventLoopKt.processNextEventInCurrentThread) that the
- * app's coroutines 1.11 no longer has: every upload failed with NoSuchMethodError (alpha 26b25aa62,
- * Hands ae47bba1). Android therefore writes these bodies straight into the lane's OkHttpClient.
- */
-internal fun interface RaftStreamingUploader {
-    suspend fun upload(request: RaftStreamingUploadRequest): RaftStreamingUploadResponse
-}
-
-internal class RaftStreamingUploadRequest(
-    val priority: RaftRequestPriority,
-    val kind: RaftKtorCallKind,
-    val method: String,
-    val url: String,
-    /** Caller headers without Content-Type / Content-Length; those come from [body]. */
-    val headers: Map<String, String>,
-    val body: RaftChunkedBody,
-    val connectTimeoutMillis: Long,
-    val socketTimeoutMillis: Long?,
-    val totalTimeoutMillis: Long,
-    /** False for presigned PUTs: their response body is never read or logged. */
-    val readBody: Boolean,
-)
-
-internal class RaftStreamingUploadResponse(
+internal class RaftHttpOutcome(
     val status: Int,
     val headers: Map<String, List<String>>,
     val bodyText: String?,
     val protocol: String,
 )
-
-/** Android: OkHttp-direct uploader; iOS: null (Darwin streams through NSInputStream). */
-internal expect fun createPlatformRaftStreamingUploader(): RaftStreamingUploader?
 
 /** Calls outlive their caller's frame only until the lifetime coordinator cancels them. */
 private val RaftKtorCallScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -618,11 +569,11 @@ private fun RaftNetworkRequestLifetimeOutcome.Retired.toKtorExecutorResponse(eng
 
 private const val RAFT_KTOR_BODY_CHUNK_BYTES = 64 * 1024
 
-/** Streams a NetworkKMM file stream into [sink]; the stream is cancelled if writing fails. */
-private suspend fun NetworkByteStream.pipeChunksTo(sink: suspend (ByteArray) -> Unit) {
+/** Streams a platform file stream into [sink]; the stream is cancelled if writing fails. */
+private suspend fun RaftByteStream.pipeChunksTo(sink: suspend (ByteArray) -> Unit) {
     try {
         readChunks(
-            object : NetworkByteStreamSink {
+            object : RaftByteStreamSink {
                 override suspend fun write(bytes: ByteArray) {
                     sink(bytes)
                 }
@@ -673,8 +624,7 @@ internal class RaftStreamingBodyContent(
 }
 
 /**
- * A streamed request body as plain chunks, so a platform can send it without ktor-io's blocking
- * channel adapters (see [RaftStreamingUploader]). Progress is reported by the body itself.
+ * A streamed request body as plain chunks. Progress is reported by the body itself.
  */
 internal interface RaftChunkedBody {
     val contentType: ContentType?

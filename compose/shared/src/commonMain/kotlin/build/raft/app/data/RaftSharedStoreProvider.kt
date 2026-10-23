@@ -49,13 +49,6 @@ import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.RaftRequestScheduler
 import build.raft.app.network.createPlatformRaftHttpExecutor
-import build.raft.app.network.RaftCurlSocketIoPolicy
-import build.raft.app.network.HTTP_TRANSPORT_OVERRIDE_PREFERENCE_KEY
-import build.raft.app.network.RaftHttpTransportPolicy
-import build.raft.app.network.RaftDohFallbackPolicy
-import build.raft.app.network.RaftNetworkTransportController
-import build.raft.app.network.installRaftNetworkTransportController
-import build.raft.app.network.RaftNetworkKmmRecoveryRemoteFlagBridge
 import build.raft.app.network.raftNetworkKmmRecoveryEnvironmentId
 import build.raft.app.network.sync.AttachmentCommentsReadCacheV2
 import build.raft.app.network.sync.RaftThreadReplyWindowCache
@@ -91,7 +84,6 @@ import build.raft.app.network.sync.SyncCoreMessageShadowFoldLane
 import build.raft.app.network.sync.SyncCoreMessageShadowObserver
 import build.raft.app.network.sync.SyncCoreReactionShadowLane
 import build.raft.app.network.sync.PartitionDenialReason
-import com.tencent.kmm.network.export.VBTransportCurl
 import kotlin.random.Random
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
@@ -156,14 +148,6 @@ private fun sharedErrorLogger(tag: String, prefix: String = ""): (String) -> Uni
     { message ->
         raftLogError(tag, if (prefix.isBlank()) message else "$prefix $message")
     }
-
-private fun logNetworkKmmRemoteConfig(message: String) {
-    if (message.contains("persisted=false")) {
-        sharedErrorLogger("SlockNetworkKmm", "networkkmm_remote_config")(message)
-    } else {
-        sharedInfoLogger("SlockNetworkKmm", "networkkmm_remote_config")(message)
-    }
-}
 
 internal const val ServerFeatureFlagRefreshIntervalMillis = 60_000L
 
@@ -379,9 +363,7 @@ internal class RaftSharedStoreProvider private constructor(
     val authLossFunnel: SharedAuthLossFunnel,
     val authRuntimeCapabilityStore: SharedAuthRuntimeCapabilityStore,
     val networkClient: RaftNetworkClient,
-    val networkTransportController: RaftNetworkTransportController,
     private val networkReachabilityGates: RaftHostReachabilityGates,
-    private val dohFallbackPolicy: RaftDohFallbackPolicy,
     private val scopedNetworkClientFactory: (RaftAuthSessionStore) -> RaftNetworkClient,
     private val ownerScopedNetworkClientFactory: (RaftAuthSessionStore, String) -> RaftNetworkClient,
     val serverFeatureFlags: SharedServerFeatureFlags,
@@ -729,23 +711,13 @@ internal class RaftSharedStoreProvider private constructor(
     private val processRealtimeAuthorityFlow =
         realtimeAuthorityProvider.authorityFlow(ProcessRealtimeAuthorityScopeKey)
 
+    /** The current API environment's id: the feature-flag evaluation context. */
     private fun updateNetworkKmmRecoveryEnvironment(): String {
         val environment = apiEnvironmentStore.current()
-        val environmentId =
-            raftNetworkKmmRecoveryEnvironmentId(
-                environmentKey = environment.key,
-                apiBaseUrl = environment.apiBaseUrl
-            )
-        runCatching {
-            RaftNetworkKmmRecoveryRemoteFlagBridge.updateCurrentEnvironment(environmentId)
-        }.onSuccess { diagnostics ->
-            diagnostics?.let(::logNetworkKmmRemoteConfig)
-        }.onFailure { error ->
-            sharedWarnLogger("SlockNetworkKmm", "networkkmm_remote_config")(
-                "environment_update_failed reason=${error::class.simpleName ?: "unknown"}"
-            )
-        }
-        return environmentId
+        return raftNetworkKmmRecoveryEnvironmentId(
+            environmentKey = environment.key,
+            apiBaseUrl = environment.apiBaseUrl
+        )
     }
 
     /**
@@ -890,21 +862,10 @@ internal class RaftSharedStoreProvider private constructor(
                 }
             },
         ).start()
-        threadSendScope.launch {
-            // Task #153: a Local Feature Overrides change re-reads the DoH flag at once.
-            ProcessDiagnosticFeatureFlagOverrides.registry
-                .revisionFor(MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY)
-                .collect {
-                    dohFallbackPolicy.reevaluate("override")
-                        ?.let { sharedInfoLogger("SlockNetworkTransport", "doh_fallback")(it) }
-                }
-        }
         RaftHostNetworkEvents(eventBus).addAuthoritativeOnlineListener {
             // Task #150: a new default network (e.g. a VPN switched on/off) may resolve the host
             // again; stop short-circuiting requests at once instead of waiting for the next probe.
             networkReachabilityGates.onNetworkAvailable()
-            // Task #153: a new network resolves through the system first again, not via the DoH window.
-            runCatching { VBTransportCurl.onNetworkChanged() }
             threadSendScope.launch {
                 avatarCacheRuntime.recoverCurrentOwnerAfterNetworkAvailable()
             }
@@ -1066,22 +1027,6 @@ internal class RaftSharedStoreProvider private constructor(
                     apiEnvironmentStore.current().apiBaseUrl.trim().trimEnd('/')
                 },
                 onSelectionChanged = { serverId ->
-                    runCatching {
-                        RaftNetworkKmmRecoveryRemoteFlagBridge.updateActiveSelection(
-                            scopeId = scope.shellInstanceId,
-                            serverId = serverId
-                        )
-                    }.onSuccess { diagnostics ->
-                        diagnostics?.let(::logNetworkKmmRemoteConfig)
-                    }.onFailure { error ->
-                        sharedWarnLogger("SlockNetworkKmm", "networkkmm_remote_config")(
-                            "active_selection_failed reason=${error::class.simpleName ?: "unknown"}"
-                        )
-                    }
-                    dohFallbackPolicy.updateActiveSelection(
-                        scopeId = scope.shellInstanceId,
-                        serverId = serverId
-                    )?.let { sharedInfoLogger("SlockNetworkTransport", "doh_fallback")(it) }
                 }
             ).also { selectionStore ->
                 // Prefetch registered server feature flags whenever this shell selects a server, then
@@ -2048,36 +1993,12 @@ internal class RaftSharedStoreProvider private constructor(
                     storageName = "shared preference"
                 )
             val sharedPreferenceStore = sharedPreferenceStoreBinding.store
-            // Task #154: the Settings switch's explicit choice (absent = follow the server flag). Read live at
-            // each connect/reconnect, so a toggle applies from the next connection.
-            val realtimeTransportPreferenceStore = KeyValueRealtimeTransportPreferenceStore(sharedPreferenceStore)
-            RaftCurlSocketIoPolicy.bindUserChoice {
-                realtimeTransportPreferenceStore.readCurlSocketIoUserChoiceSync()
-            }
-            // artin 2026-10-23: Ktor carries app HTTP; the Developer curl override (absent = Ktor) is
-            // bound before the transport controller exists so its first snapshot honours it.
-            RaftHttpTransportPolicy.bindOverride(
-                read = { sharedPreferenceStore.getString(HTTP_TRANSPORT_OVERRIDE_PREFERENCE_KEY) },
-                write = { value -> sharedPreferenceStore.putString(HTTP_TRANSPORT_OVERRIDE_PREFERENCE_KEY, value) }
-            )
             logSharedAuthDiagnostic(
                 "shared_key_value",
                 "storage_scope name=sharedPreference " +
                     "namespace=${RaftLocalPreferenceStore.KuiklyNamespace} " +
                     "scope=${sharedPreferenceStoreBinding.scope}"
             )
-            val networkTransportController =
-                RaftNetworkTransportController()
-            installRaftNetworkTransportController(networkTransportController)
-            networkTransportController.getPreferenceSync().let { snapshot ->
-                logSharedAuthDiagnostic(
-                    "shared_network_transport",
-                    "requested=${snapshot.requestedTransport.diagnosticsValue} " +
-                        "active=${snapshot.activeTransport.diagnosticsValue} " +
-                        "label=${networkTransportController.activeTransportLabel(snapshot).replace(' ', '_')} " +
-                        "curlAvailability=${snapshot.curlAvailability} generation=${snapshot.generation}"
-                )
-            }
             val apiEnvironmentKeyValueStoreBinding =
                 RaftSharedKeyValueStoreProvider.create(
                     namespace = SharedApiEnvironmentStore.Namespace,
@@ -2205,7 +2126,6 @@ internal class RaftSharedStoreProvider private constructor(
             val networkRequestScheduler = RaftRequestScheduler()
             val networkExecutor = createPlatformRaftHttpExecutor(networkWarningLogger)
             val networkReachabilityGates = RaftHostReachabilityGates()
-            val dohFallbackPolicy = RaftDohFallbackPolicy()
             val terminalAuthLossReporter: suspend (StoredAuthSession, String) -> Unit = { session, caller ->
                 authLossFunnel.report(
                     AuthLossSignal(
@@ -2391,9 +2311,7 @@ internal class RaftSharedStoreProvider private constructor(
                     // (release, or the page never opened) => the registry returns the server value unchanged.
                     diagnosticOverride = { serverId, key, serverEffective ->
                         if (
-                            key != SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY &&
-                                key != MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY &&
-                                key != MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY
+                            key != SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY
                         ) {
                             serverEffective
                         } else {
@@ -2413,33 +2331,7 @@ internal class RaftSharedStoreProvider private constructor(
                         }
                     },
                     lastKnown = serverFeatureFlagLastKnown,
-                    onEvaluation = { serverId, key, enabled, reason, _, environmentId, evaluationGeneration ->
-                        if (key == ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY && environmentId != null) {
-                            RaftNetworkKmmRecoveryRemoteFlagBridge
-                                .apply(
-                                    environmentId = environmentId,
-                                    evaluationGeneration = evaluationGeneration,
-                                    serverId = serverId.value,
-                                    enabled = enabled,
-                                    reason = reason,
-                                )
-                                ?.let(::logNetworkKmmRemoteConfig)
-                        }
-                        if (key == MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY) {
-                            dohFallbackPolicy.reevaluate("evaluation")
-                                ?.let { sharedInfoLogger("SlockNetworkTransport", "doh_fallback")(it) }
-                        }
-                    },
                 )
-            // Task #153: the flag store's read covers online values, the last-known value (cold start
-            // during a DNS outage) and internal-build Local Feature Overrides.
-            dohFallbackPolicy.bind { serverId ->
-                serverFeatureFlags.isEnabled(ServerId(serverId), MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY)
-            }?.let { sharedInfoLogger("SlockNetworkTransport", "doh_fallback")(it) }
-            // Task #154: the platform realtime transport reads this at each connect and reconnect.
-            RaftCurlSocketIoPolicy.bindServerFlag { serverId ->
-                serverFeatureFlags.isEnabled(ServerId(serverId), MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY)
-            }
             val currentGrantMessageShadowCommitLane =
                 CurrentGrantMessageShadowCommitLane(
                     strictReader = SqlDelightStrictMessageScopeSnapshotReader(database),
@@ -2756,9 +2648,7 @@ internal class RaftSharedStoreProvider private constructor(
                 authLossFunnel = authLossFunnel,
                 authRuntimeCapabilityStore = SharedAuthRuntimeCapabilityStore(),
                 networkClient = networkClient,
-                networkTransportController = networkTransportController,
                 networkReachabilityGates = networkReachabilityGates,
-                dohFallbackPolicy = dohFallbackPolicy,
                 scopedNetworkClientFactory = scopedNetworkClientFactory,
                 ownerScopedNetworkClientFactory = ownerScopedNetworkClientFactory,
                 serverFeatureFlags = serverFeatureFlags,

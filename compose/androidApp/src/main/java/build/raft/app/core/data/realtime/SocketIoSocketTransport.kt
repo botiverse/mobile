@@ -17,7 +17,6 @@ import org.json.JSONObject
 
 class SocketIoSocketTransport internal constructor(
     private val socketUrl: String,
-    // Task #154: shared with CurlSocketIoSocketTransport under SelectableRealtimeSocketTransport.
     private val generationFence: RealtimeSocketGenerationFence,
 ) : RealtimeSocketTransport {
     constructor(

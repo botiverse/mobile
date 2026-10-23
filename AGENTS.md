@@ -610,7 +610,7 @@ or helper scripts as a workaround for branch protection.
   The immutable release closure, manifest gate and artifact fetcher were
   removed; `scripts/ci/test_kuikly_raft_consumer_contract.py` now fails if a
   Gradle build file or workflow consumes Kuikly UI again. KuiklyBase libraries that are not Kuikly UI
-  (NetworkKMM `com.tencent.kuiklybase:network`, `resource-core`) stay.
+  (`resource-core`) stay. NetworkKMM was removed with the Ktor 3 switch (2026-10-23).
 
 ## HarmonyOS
 

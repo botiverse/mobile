@@ -1,8 +1,5 @@
 package build.raft.app.network
 
-import com.tencent.kmm.network.export.NetworkRequest
-import com.tencent.kmm.network.export.NetworkResponse
-import com.tencent.kmm.network.export.NetworkResponseBody
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
@@ -304,12 +301,7 @@ class AttachmentDownloadCoordinatorRaceTest {
         )
 
     private fun successResponse() =
-        NetworkResponse(
-            request = NetworkRequest(url = "https://example.test/file.bin"),
-            statusCode = 200,
-            headers = emptyMap(),
-            body = NetworkResponseBody()
-        )
+        AttachmentDownloadCompletion(statusCode = 200, headers = emptyMap())
 }
 
 private class RaceTransport : AttachmentDownloadTransport {
@@ -331,7 +323,7 @@ private class RaceCall(private val callbacks: AttachmentDownloadTransportCallbac
     override fun cancel() { cancelled = true }
     fun start(code: Int?, length: Long?) = callbacks.onResponseStart(code, length, emptyMap())
     fun chunk(bytes: ByteArray) = callbacks.onChunk(bytes)
-    fun complete(response: NetworkResponse) = callbacks.onComplete(response)
+    fun complete(response: AttachmentDownloadCompletion) = callbacks.onComplete(response)
 }
 
 private class RaceSink(

@@ -7,9 +7,8 @@ local Ktor fork (#2098) from coming back:
 
 - io.ktor may appear only in compose/gradle/libs.versions.toml, and only as
   `group = "io.ktor"` library entries whose version is `version.ref = "ktor"`.
-- The `ktor` version is a plain published release (e.g. 2.3.7): no -SNAPSHOT,
-  no local/fork suffix. It must equal NetworkKMM's Ktor so both share one
-  binary-compatible copy.
+- The `ktor` version is a plain published release (e.g. 3.6.0): no -SNAPSHOT,
+  no local/fork suffix. (NetworkKMM, which pinned Ktor 2.3.7, is gone.)
 - No other checked-in Gradle/lock/metadata file under compose/ references
   io.ktor (no inline coordinates, no includeBuild / substitution of a fork).
 """

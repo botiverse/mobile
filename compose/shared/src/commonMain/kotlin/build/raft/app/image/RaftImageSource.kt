@@ -24,7 +24,7 @@ internal sealed interface RaftImageSource {
     /** Memory/disk cache identity (task #403: content fingerprint; Coil appends render params). */
     val cacheKey: String
 
-    /** http(s) image loaded through NetworkKMM ([build.raft.app.network.SharedBinaryDownloader]). */
+    /** http(s) image loaded through the app Ktor client ([build.raft.app.network.SharedBinaryDownloader]). */
     class Network(val url: String) : RaftImageSource {
         override val cacheKey: String by lazy { raftNetworkImageCacheKey(url) }
     }

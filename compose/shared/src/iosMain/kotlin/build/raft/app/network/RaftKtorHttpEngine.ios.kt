@@ -78,5 +78,3 @@ internal actual fun classifyPlatformTransportFailure(error: Throwable): RaftTran
 }
 
 internal actual fun takeRaftKtorTransportFacts(requestId: String): String? = null
-
-internal actual fun createPlatformRaftStreamingUploader(): RaftStreamingUploader? = null
