@@ -375,6 +375,16 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
             "button=\(button.frame) treeCapsule=\(String(describing: tree?.0)) " +
             "pixelCapsule=\(String(describing: capsuleSpan)) pixelButton=\(String(describing: buttonSpan))"
         print("RAFT_TABBAR_GEOM \(geometry)")
+        print(
+            "RAFT_TABBAR_PUBLIC sizeThatFitsZero=\(tabBar.sizeThatFits(.zero)) " +
+                "sizeThatFitsBounds=\(tabBar.sizeThatFits(bounds.size)) intrinsic=\(tabBar.intrinsicContentSize) " +
+                "alignmentInsets=\(tabBar.alignmentRectInsets) layoutMargins=\(tabBar.layoutMargins) " +
+                "directional=\(tabBar.directionalLayoutMargins) barSafe=\(tabBar.safeAreaInsets) " +
+                "tabsViewSafe=\(tabs.view.safeAreaInsets) tabsViewMargins=\(tabs.view.layoutMargins) " +
+                "readable=\(tabBar.readableContentGuide.layoutFrame) marginsGuide=\(tabBar.layoutMarginsGuide.layoutFrame) " +
+                "safeGuide=\(tabBar.safeAreaLayoutGuide.layoutFrame) itemPositioning=\(tabBar.itemPositioning.rawValue) " +
+                "itemWidth=\(tabBar.itemWidth) itemSpacing=\(tabBar.itemSpacing)"
+        )
         tree?.1.forEach { print("RAFT_TABBAR_TREE \($0)") }
         // The bottom of the screen as a PNG, for a reviewer to measure (base64, 1x).
         let crop = CGRect(x: 0, y: top, width: bounds.width, height: bounds.height - top)
