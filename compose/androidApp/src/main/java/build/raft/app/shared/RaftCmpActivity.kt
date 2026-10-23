@@ -98,7 +98,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ComposeView
 import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import build.raft.app.compat.ui.RaftHostImeInsets
-import androidx.core.view.WindowCompat
+import build.raft.designsystem.components.applyRaftSystemBarsAppearance
+import build.raft.designsystem.components.applyRaftTransparentSystemBars
 import kotlinx.serialization.json.JsonObject
 import java.lang.ref.WeakReference
 import build.raft.app.BuildConfig
@@ -1155,12 +1156,13 @@ internal open class RaftCmpActivity :
         findViewById<View?>(R.id.raft_root)?.setBackgroundColor(argb)
     }
 
-    /** Light theme: dark status/navigation bar icons; dark theme: light icons. */
+    /**
+     * Light theme: dark status/navigation bar icons; dark theme: light icons. The same rule
+     * (designsystem raftSystemBarsAppearance) every RaftWindowDialog window applies from its
+     * own RaftTheme.isDark, so dialogs never copy this window's flags.
+     */
     private fun applySystemBarAppearance(dark: Boolean) {
-        WindowCompat.getInsetsController(window, window.decorView).apply {
-            isAppearanceLightStatusBars = !dark
-            isAppearanceLightNavigationBars = !dark
-        }
+        window.applyRaftSystemBarsAppearance(dark)
     }
 
     /** Kuikly `sendEvent`: delivered to the hosted page(s) as a pager event, on the main thread. */
@@ -2637,9 +2639,8 @@ internal open class RaftCmpActivity :
         val window = window ?: return
         applyDecorFitsSystemWindows(window)
         window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-        window.statusBarColor = Color.TRANSPARENT
-        window.navigationBarColor =
-                if (Build.VERSION.SDK_INT >= 26) Color.TRANSPARENT else 0x66000000.toInt()
+        // Same bar backgrounds as every RaftWindowDialog window (designsystem).
+        window.applyRaftTransparentSystemBars()
         if (Build.VERSION.SDK_INT >= 28) {
             val cutoutMode =
                     if (Build.VERSION.SDK_INT >= 30) {
@@ -2652,10 +2653,6 @@ internal open class RaftCmpActivity :
                 attrs.layoutInDisplayCutoutMode = cutoutMode
                 window.attributes = attrs
             }
-        }
-        if (Build.VERSION.SDK_INT >= 29) {
-            window.isStatusBarContrastEnforced = false
-            window.isNavigationBarContrastEnforced = false
         }
         applySystemBarAppearance(RaftAppAppearanceRuntime.isDark)
     }

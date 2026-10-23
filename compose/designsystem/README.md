@@ -207,6 +207,7 @@ Other checks:
 | `RaftPopoverSurface` | Popover (`PopoverPopup`) | Done | The popover layer of the menus (`layer-popover`, container radius, `line-seam` ring, `shadow-float`): 300dp and 16dp padding by default (Popover rules); `width = null` takes the room it is given (at least 220dp, no intrinsics, so lazy content may go in); `contentPadding`, flush `header`. Surface only: positioning is the caller's |
 | `RaftDialog`, `RaftDialogSurface`, `RaftDialogHeader` | Dialog | Done | sm / md / lg, title, ×, description, body, footer (one row at the end; stacks full width, the confirm on top, only when it doesn't fit, raft-ui #673; stacked, a ghost Cancel takes the `default` frame, #727, `LocalRaftButtonsStacked`, also in a sheet's actions); dialog radius 16. `RaftDialogHeader` is the title row (title, description 6dp under it, × named by `LocalRaftStrings`) on its own, for a surface whose body the caller lays out. Cancel or a minor action in the footer (an announcement's "Not Now" too) is a `Ghost` button, never an underlined link |
 | `RaftSheet`, `RaftSheetSurface` | Drawer (bottom sheet) | Done | Top radius 16, stacked actions, slides up |
+| `RaftWindowDialog`, `RaftWindowDialogProperties`, `RaftTheme.scrim` | (window) | Done | The one platform window under every dialog, sheet and modal: back-swipe block, edge to edge, the theme scrim (or none, for content that draws its own), system bars that follow `RaftTheme.isDark` |
 | `RaftDialogSheet`, `RaftDialogSheetSurface` | Dialog, "On a phone" (2026-10-21) | Done | A phone dialog with a long list, several fields or steps: 90% of the window tall, top radius 16, slides up; 56dp head with × at the start, the title and the one commit button (32dp, primary) at the end (none for a null `commitLabel`, a view that commits nothing; `commitIcon` leads its label, as the web keeps its icon there), a seam under it, no footer; the content fills the rest and scrolls itself. A tap on the scrim does not close it; × and Back do |
 | `RaftToast` | Toast | Done | HUD surface (title only, `intent` icon 16dp: Info / CircleCheck / TriangleAlert, an avatar in its place, action with a 44dp touch target, description) and the pages' foreground banner on the popover surface |
 | `RaftMessageListJumpControls`, `RaftMessageListJumpPill`, `RaftMessageListJumpPillGroup`, `RaftMessageListJumpPillDismiss` | MessageList > Jump controls (wip) | Done | One pill for every jump (Back to Bottom, N New Messages, Next / Earliest Unread Thread (N)): Button `outline` / `md` (32dp, 1.5dp `line-strong` on `layer-card`, control radius, 13/18 bold, 16dp arrow, 12dp padding both sides), pressed `fill-pressed`, 44dp touch target. The group joins a dismiss (32dp square, no start edge, 16dp ✕ in `foreground-muted`, `foreground` pressed, its touch target reaching past its end only) on the pill's end edge. Controls: centred, 12dp from the list's bottom (or top) edge and sides; one row 8dp apart while it fits, else stacked 12dp apart with the first pill nearest the edge. No shadow, no animation |
@@ -229,11 +230,14 @@ Other checks:
 - Dialog and Sheet open / close animation (dialogs appear and vanish at once; the sheet
   slides up but not down) and swipe-to-dismiss on the sheet. Both are needed before any
   production screen moves to these overlays.
-- **Device check: popup insets.** `Popup` / `Dialog` default to `usePlatformInsets = true`,
-  and `RaftDropdownMenu` / `RaftDialog` / `RaftSheet` also subtract `WindowInsets.safeDrawing`
-  themselves, so the insets may be applied twice (a menu flipped above its anchor, or
-  anything open with the keyboard up, sitting too low or too far in). Verify on an Android
-  and an iOS device.
+- **Device check: popup insets.** `Popup` defaults to `usePlatformInsets = true`, and
+  `RaftDropdownMenu` also subtracts `WindowInsets.safeDrawing` itself, so a menu's insets
+  may be applied twice (flipped above its anchor, or open with the keyboard up, sitting too
+  low or too far in). Dialogs and sheets don't have this: `RaftWindowDialog` opens them edge
+  to edge (Android `decorFitsSystemWindows = false`, iOS `usePlatformInsets = false`) and
+  they pad for `safeDrawing` once. On iOS their window still shrinks for the keyboard
+  (`useSoftwareKeyboardInset`, except `Modal`); check a form in a `RaftDialog` with the
+  keyboard up there. Verify on an Android and an iOS device.
 - **Device check: menu height cap.** `raftMenuHeightCap` and `raftMenuPosition` assume the
   popup's constraints and window size are the whole window and subtract the
   `safeDrawing` insets (bars, keyboard) themselves. On Android, `PopupLayout` may already
@@ -426,8 +430,14 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
 - **Popups.** `RaftDropdownMenu` is a platform popup with transparent room round the
   surface for its shadow (16dp sides, 8dp top, 24dp bottom); a tap in that room dismisses
   like a tap outside. Collision handling is the simple flip / clamp of `raftMenuPosition`.
-- **Scrim.** `RaftDialog` and `RaftSheet` use the platform dialog window, whose own scrim
-  (about 60% black) stands in for `layer-backdrop` (65% light / 60% dark). Dialogs appear
+- **Windows and scrim.** `RaftDialog`, `RaftSheet`, `RaftDialogSheet`, the combobox's sheet
+  and the app's `Modal` all open `RaftWindowDialog`, the only caller of Compose's `Dialog`
+  (`scripts/check_raft_window_dialog.sh` fails CI on any other `Dialog` / `ModalBottomSheet`).
+  It blocks the back swipe, makes the window edge to edge with no platform dim, draws
+  `RaftTheme.scrim` (`layer-backdrop`, 65% light / 60% dark), and sets the window's system bar
+  icons from `RaftTheme.isDark` (`RaftDialogWindowPolicy`, the module's one platform hook:
+  `androidMain` / `iosMain` / `desktopMain`; the Android host activity applies the same
+  `raftSystemBarsAppearance` rule to its own bars). Dialogs appear
   without animation; the sheet slides up but closes without the slide, and has no swipe
   to dismiss or snap points (see the TODO above).
 - **Choice picker on a phone.** raft-ui's Select opens its list in a popup under the

@@ -5350,7 +5350,8 @@ private fun HomeServerDrawerPanel(
     val density = LocalDensity.current
     val swipeThresholdPx = with(density) { HomeServerDrawerSwipeDismissThreshold.toPx() }
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().background(if (RaftAppThemeState.isDark) RaftColor.Backdrop else RaftColor.TextBlack.copy(alpha = 0.28f)))
+        // The one modal scrim (raft `layer-backdrop`), as behind every RaftWindowDialog.
+        Box(Modifier.fillMaxSize().background(RaftTheme.scrim))
         val drawerWidth = homeServerDrawerWidth(maxWidth = maxWidth, maxHeight = maxHeight)
         var horizontalDragPx by remember { mutableStateOf(0f) }
         Column(

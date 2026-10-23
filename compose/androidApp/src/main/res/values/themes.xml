@@ -10,9 +10,11 @@
         <item name="android:textColorHighlight">@color/raft_accent_pink</item>
         <item name="android:forceDarkAllowed">false</item>
         <!-- Dark bar icons from the first frame. Compose Dialog windows (menus, sheets,
-             popovers) inherit this theme; without it they were added with light icons
-             and RaftModalDialogWindowEffect only fixed them a frame later, so the status
-             bar icons blinked white-on-white whenever a menu opened. -->
+             popovers, all opened through designsystem RaftWindowDialog) inherit this theme;
+             without it they were added with light icons and RaftDialogWindowPolicy only set
+             them a frame later, so the status bar icons blinked white-on-white whenever a
+             menu opened in the light theme. RaftDialogWindowPolicy then sets them from
+             RaftTheme.isDark (light icons in the dark theme). -->
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
     </style>
