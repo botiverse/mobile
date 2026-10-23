@@ -13,7 +13,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import build.raft.app.base.Utils
 import build.raft.app.base.BridgeModule
-import build.raft.app.components.RaftBrutalActionButton
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftIconTileSize
+import build.raft.designsystem.components.RaftStickerTile
+import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.AppLocale
 import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.RaftShellStoreScope
@@ -702,15 +706,8 @@ internal fun SettingsWebViewErrorContent(
         modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(52.dp)
-                    .background(RaftColor.BrandYellow)
-                    .border(RaftAppStroke.Default, RaftColor.StickerInk),
-            contentAlignment = Alignment.Center,
-        ) {
-            RaftLucideIcon(RaftLucideIconName.TriangleAlert, modifier = Modifier.size(26.dp), color = raftArgbHex(RaftColor.StickerInk))
+        RaftStickerTile(fill = RaftColor.Brand, size = RaftIconTileSize.Lg) {
+            RaftSlotIcon(RaftLucideIconName.TriangleAlert, size = RaftIconTileSize.Lg.icon)
         }
         Text(
             stringResource(MR.strings.settings_webview_error_title),
@@ -722,11 +719,11 @@ internal fun SettingsWebViewErrorContent(
             style = RaftType.Body.copy(color = RaftColor.TextMutedGray),
             color = RaftColor.TextMutedGray,
         )
-        RaftBrutalActionButton(
-            label = actionLabel,
+        RaftButton(
+            text = actionLabel,
             onClick = onAction,
-            leadingIcon = actionIcon,
-            backgroundColor = RaftColor.SurfaceWhite,
+            size = RaftButtonSize.Lg,
+            leadingIcon = { RaftSlotIcon(actionIcon) },
         )
     }
 }

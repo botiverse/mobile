@@ -6,8 +6,19 @@ import build.raft.designsystem.components.raftCopyable
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import build.raft.designsystem.components.rememberRaftCopyAction
-import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalCard
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeVariant
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftCard
+import build.raft.designsystem.components.RaftCombobox
+import build.raft.designsystem.components.RaftComboboxOption
+import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftTextField
+import build.raft.app.components.RaftSlotIcon
+import build.raft.app.resources.MR
+import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.app.components.RaftSwitchButton
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
@@ -71,30 +82,10 @@ internal data class RaftSharedSettingsRow(
     val copyValue: String = ""
 )
 
+/** A settings row's "Beta" (or similar) mark: the raft-ui solid `primary` Badge. */
 @Composable
-internal fun SettingsConnectedAppsBadge(
-    label: String,
-    backgroundColor: Color
-) {
-    // Sticker fills keep ink in both modes; the neutral loading fill is themed.
-    val ink = if (backgroundColor == RaftColor.EmptyStateGray) RaftColor.TextBlack else RaftColor.StickerInk
-    Box(
-        modifier =
-            Modifier
-                // raft-ui Badge: sticker radius, 1.5dp sticker-ink edge.
-                .background(backgroundColor, RoundedCornerShape(RaftAppRadius.Sticker))
-                .border(RaftAppStroke.Control, ink, RoundedCornerShape(RaftAppRadius.Sticker))
-                .padding(horizontal = 7.dp, vertical = 3.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            label,
-            style = RaftType.TabLabel.copy(color = ink),
-            color = ink,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+internal fun SettingsConnectedAppsBadge(label: String) {
+    RaftBadge(text = label, variant = RaftBadgeVariant.Primary)
 }
 
 @Composable
@@ -108,11 +99,11 @@ internal fun SettingsLoadStateCard(
     SettingsFormSectionCard(iconName = iconName, title = title) {
         SettingsFormDetailText(detail)
         retryLabel?.let {
-            RaftBrutalActionButton(
-                label = it,
+            RaftButton(
+                text = it,
                 onClick = onRetry,
-                leadingIcon = RaftLucideIconName.RefreshCw,
-                backgroundColor = RaftColor.SurfaceWhite
+                size = RaftButtonSize.Md,
+                leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
             )
         }
     }
@@ -149,11 +140,8 @@ internal fun SettingsFormSectionCard(
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         SettingsServerSectionHeader(iconName = iconName, title = title)
-        RaftBrutalCard(
-            contentPadding = 14.dp,
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            content()
+        RaftCard(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
         }
     }
 }
@@ -190,7 +178,7 @@ internal fun SettingsServerActionRow(
     detail: String,
     buttonLabel: String,
     buttonIcon: RaftLucideIconName,
-    buttonColor: Color,
+    buttonVariant: RaftButtonVariant,
     enabled: Boolean,
     // Long-press copy of the title (raftCopyable): a name, an email, a link.
     copyText: String? = null,
@@ -205,13 +193,13 @@ internal fun SettingsServerActionRow(
             Text(title, modifier = Modifier.raftCopyable(copyText), style = RaftType.Button.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
             Text(detail, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
         }
-        RaftBrutalActionButton(
-            label = buttonLabel,
+        RaftButton(
+            text = buttonLabel,
             onClick = onClick,
             enabled = enabled,
-            leadingIcon = buttonIcon,
-            backgroundColor = buttonColor,
-            minWidth = 108.dp
+            variant = buttonVariant,
+            size = RaftButtonSize.Md,
+            leadingIcon = { RaftSlotIcon(buttonIcon) }
         )
     }
 }
@@ -253,6 +241,54 @@ internal fun SettingsServerSelectRow(
                 }
             }
         }
+    }
+}
+
+/** A settings text field: raft-ui Field (`sm` label) around an Input. */
+@Composable
+internal fun SettingsTextField(
+    label: String,
+    value: String,
+    placeholder: String,
+    onValueChange: (String) -> Unit,
+    enabled: Boolean,
+    required: Boolean = false,
+    optional: Boolean = false
+) {
+    RaftField(
+        label = label,
+        modifier = Modifier.fillMaxWidth(),
+        enabled = enabled,
+        required = required,
+        optional = optional,
+        labelSize = RaftFieldLabelSize.Sm
+    ) {
+        RaftTextField(value = value, onValueChange = onValueChange, placeholder = placeholder)
+    }
+}
+
+/**
+ * A settings field that picks one value: raft-ui Field + ComboboxSelect (an anchored list for
+ * up to ten options, a searchable sheet for more, such as the timezones).
+ */
+@Composable
+internal fun SettingsComboboxField(
+    label: String,
+    description: String,
+    value: String,
+    options: List<RaftComboboxOption<String>>,
+    onValueChange: (String) -> Unit,
+    enabled: Boolean
+) {
+    RaftField(label = label, description = description, enabled = enabled, labelSize = RaftFieldLabelSize.Sm) {
+        val noMatches = stringResource(MR.strings.common_no_matches)
+        RaftCombobox(
+            value = value,
+            options = options,
+            onValueChange = onValueChange,
+            emptyText = { noMatches },
+            searchPlaceholder = stringResource(MR.strings.thread_action_search)
+        )
     }
 }
 
@@ -375,7 +411,7 @@ private fun SharedSettingsRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Box(
-                modifier = Modifier.size(34.dp).background(if (row.enabled) RaftColor.AccentCyan else RaftColor.EmptyStateGray, RoundedCornerShape(RaftAppRadius.Sticker)).border(RaftAppStroke.Control, if (row.enabled) RaftColor.StickerInk else RaftColor.BorderBlack, RoundedCornerShape(RaftAppRadius.Sticker)),
+                modifier = Modifier.size(34.dp).background(if (row.enabled) RaftColor.Info else RaftColor.EmptyStateGray, RoundedCornerShape(RaftAppRadius.Sticker)).border(RaftAppStroke.Control, if (row.enabled) RaftColor.StickerInk else RaftColor.BorderBlack, RoundedCornerShape(RaftAppRadius.Sticker)),
                 contentAlignment = androidx.compose.ui.Alignment.Center
             ) {
                 RaftLucideIcon(
@@ -395,7 +431,7 @@ private fun SharedSettingsRow(
                         overflow = TextOverflow.Ellipsis
                     )
                     row.badgeLabel.takeIf { it.isNotBlank() }?.let {
-                        SettingsConnectedAppsBadge(it, RaftColor.BrandYellow)
+                        SettingsConnectedAppsBadge(it)
                     }
                 }
                 row.detail.takeIf { it.isNotBlank() }?.let {

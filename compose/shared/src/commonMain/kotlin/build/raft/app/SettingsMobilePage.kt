@@ -219,7 +219,7 @@ private fun SettingsMultiShellHostCard(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_badge_beta), RaftColor.BrandYellow)
+                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_badge_beta))
                     Text(
                         preference.localizedToggleStatus(),
                         style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
@@ -334,7 +334,7 @@ private fun SettingsServerDrawerCard(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_badge_beta), RaftColor.BrandYellow)
+                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_badge_beta))
                     Text(
                         preference.localizedToggleStatus(),
                         style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
@@ -734,10 +734,7 @@ private fun SettingsNewMessageMenuCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SettingsConnectedAppsBadge(
-                        stringResource(MR.strings.settings_badge_beta),
-                        RaftColor.BrandYellow
-                    )
+                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_badge_beta))
                     Text(
                         preference.localizedToggleStatus(),
                         style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
@@ -805,10 +802,7 @@ private fun SettingsConversationForwardGestureCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SettingsConnectedAppsBadge(
-                        stringResource(MR.strings.settings_badge_beta),
-                        RaftColor.BrandYellow
-                    )
+                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_badge_beta))
                     Text(
                         localizedStateDescription,
                         style = RaftType.Button.copy(color = RaftColor.TextBlack),
