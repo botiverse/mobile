@@ -8,7 +8,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -29,7 +28,7 @@ class SharedAuthTokenProviderTest {
         val store = InMemoryRaftAuthSessionStore(original)
         var persistedBeforeTransport: StoredAuthRefreshAttempt? = null
         val api =
-            FakeAuthApi(
+            FakeRefreshAuthApi(
                 refreshTokenAssertion = original.refreshToken,
                 responses =
                     listOf(
@@ -79,7 +78,7 @@ class SharedAuthTokenProviderTest {
             )
         store.readOrCreateAuthInstallationId(persistedAttempt.installationId)
         val api =
-            FakeAuthApi(
+            FakeRefreshAuthApi(
                 refreshTokenAssertion = "predecessor-refresh",
                 responses =
                     listOf(
@@ -112,7 +111,7 @@ class SharedAuthTokenProviderTest {
         val store =
             InMemoryRaftAuthSessionStore(sampleSession("ambiguous-access", "ambiguous-refresh"))
         val api =
-            FakeAuthApi(
+            FakeRefreshAuthApi(
                 refreshTokenAssertion = "ambiguous-refresh",
                 responses =
                     listOf(
@@ -152,7 +151,7 @@ class SharedAuthTokenProviderTest {
                 .copy(user = StoredAuthUser(id = "user-2", email = "b@raft.build"))
         )
         val api =
-            FakeAuthApi(
+            FakeRefreshAuthApi(
                 refreshTokenAssertion = "account-b-refresh",
                 responses = listOf(AuthApiResult.Success(AuthRefreshResponse("b-new-access", "b-new-refresh"))),
             )
@@ -187,7 +186,7 @@ class SharedAuthTokenProviderTest {
                 sampleSession("healed-access", "healed-refresh").copy(refreshAttempt = malformed)
             )
         val api =
-            FakeAuthApi(
+            FakeRefreshAuthApi(
                 refreshTokenAssertion = "healed-refresh",
                 responses =
                     listOf(
@@ -226,7 +225,7 @@ class SharedAuthTokenProviderTest {
                 sampleSession("install-access", "install-refresh").copy(refreshAttempt = foreignAttempt)
             )
         val api =
-            FakeAuthApi(
+            FakeRefreshAuthApi(
                 refreshTokenAssertion = "install-refresh",
                 responses =
                     listOf(AuthApiResult.Success(AuthRefreshResponse("new-access", "new-refresh"))),
@@ -255,7 +254,7 @@ class SharedAuthTokenProviderTest {
             SharedAuthRefreshCoordinator(
                 sessionStore = store,
                 authApi =
-                    FakeAuthApi(
+                    FakeRefreshAuthApi(
                         refreshTokenAssertion = secrets[1],
                         responses =
                             listOf(AuthApiResult.Success(AuthRefreshResponse(secrets[2], secrets[3]))),
@@ -302,7 +301,7 @@ class SharedAuthTokenProviderTest {
             assertFalse(script.contains(original.refreshToken))
         }
         val api =
-            FakeAuthApi(
+            FakeRefreshAuthApi(
                 refreshTokenAssertion = "native-refresh-secret",
                 responses =
                     listOf(
@@ -342,7 +341,7 @@ class SharedAuthTokenProviderTest {
                 sampleSession(accessToken = "old-access", refreshToken = "old-refresh")
             )
         val api =
-            FakeAuthApi(
+            FakeRefreshAuthApi(
                 refreshTokenAssertion = "old-refresh",
                 responses =
                     listOf(
@@ -387,7 +386,7 @@ class SharedAuthTokenProviderTest {
                 blockedAccessToken = "cancel-owner-fresh-access"
             )
         val api =
-            FakeAuthApi(
+            FakeRefreshAuthApi(
                 refreshTokenAssertion = "cancel-owner-old-refresh",
                 responses =
                     listOf(
@@ -439,7 +438,7 @@ class SharedAuthTokenProviderTest {
                 )
             )
         val api =
-            FakeAuthApi(
+            FakeRefreshAuthApi(
                 refreshTokenAssertion = "unused-refresh",
                 responses = emptyList()
             )
@@ -475,7 +474,7 @@ class SharedAuthTokenProviderTest {
                 )
             )
         val api =
-            FakeAuthApi(
+            FakeRefreshAuthApi(
                 refreshTokenAssertion = "cross-caller-old-refresh",
                 responses =
                     listOf(
@@ -552,7 +551,7 @@ class SharedAuthTokenProviderTest {
                 )
             )
         val api =
-            FakeAuthApi(
+            FakeRefreshAuthApi(
                 refreshTokenAssertion = "ambiguous-old-refresh",
                 responses =
                     listOf(
@@ -610,7 +609,7 @@ class SharedAuthTokenProviderTest {
                 )
             )
         val api =
-            FakeAuthApi(
+            FakeRefreshAuthApi(
                 refreshTokenAssertion = "timeout-old-refresh",
                 responses =
                     listOf(
@@ -675,7 +674,7 @@ class SharedAuthTokenProviderTest {
                 )
             )
         val api =
-            FakeAuthApi(
+            FakeRefreshAuthApi(
                 refreshTokenAssertion = "suspend-old-refresh",
                 responses =
                     listOf(
@@ -728,7 +727,7 @@ class SharedAuthTokenProviderTest {
                 )
             )
         val api =
-            FakeAuthApi(
+            FakeRefreshAuthApi(
                 refreshTokenAssertion = "ambiguous-network-refresh",
                 responses =
                     listOf(
@@ -767,7 +766,7 @@ class SharedAuthTokenProviderTest {
         val store = InMemoryRaftAuthSessionStore(
             sampleSession("cancelled-flight-access", "cancelled-flight-refresh")
         )
-        val api = FakeAuthApi(
+        val api = FakeRefreshAuthApi(
             refreshTokenAssertion = "cancelled-flight-refresh",
             responses = listOf(
                 AuthApiResult.Success(AuthRefreshResponse("unused", "unused")),
@@ -806,7 +805,7 @@ class SharedAuthTokenProviderTest {
                 )
             )
         val api =
-            FakeAuthApi(
+            FakeRefreshAuthApi(
                 refreshTokenAssertion = "near-expiry-refresh",
                 responses =
                     listOf(
@@ -857,7 +856,7 @@ class SharedAuthTokenProviderTest {
                 )
             )
         val api =
-            FakeAuthApi(
+            FakeRefreshAuthApi(
                 refreshTokenAssertion = "unauthorized-shared-refresh",
                 responses =
                     listOf(
@@ -930,7 +929,7 @@ class SharedAuthTokenProviderTest {
             SharedAuthTokenProvider(
                 sessionStore = store,
                 authApi =
-                    FakeAuthApi(
+                    FakeRefreshAuthApi(
                         refreshTokenAssertion = "old-refresh",
                         responses =
                             listOf(
@@ -946,8 +945,8 @@ class SharedAuthTokenProviderTest {
         assertNull(store.readSession())
         assertEquals(
             listOf(
-                "refresh_failed status=401 reason=unknown caller=unknown",
-                "refresh_unauthorized_session_cleared status=401 reason=unknown caller=unknown"
+                "refresh_failed status=401 reason=unknown caller=unknown attemptAgeMs=0",
+                "refresh_unauthorized_session_cleared status=401 reason=unknown caller=unknown attemptAgeMs=0"
             ),
             criticalWarnings
         )
@@ -966,7 +965,7 @@ class SharedAuthTokenProviderTest {
             SharedAuthTokenProvider(
                 sessionStore = store,
                 authApi =
-                    FakeAuthApi(
+                    FakeRefreshAuthApi(
                         refreshTokenAssertion = "stale-refresh",
                         responses =
                             listOf(
@@ -1003,7 +1002,7 @@ class SharedAuthTokenProviderTest {
             SharedAuthTokenProvider(
                 sessionStore = store,
                 authApi =
-                    FakeAuthApi(
+                    FakeRefreshAuthApi(
                         refreshTokenAssertion = "old-refresh-token",
                         responses =
                             listOf(
@@ -1055,7 +1054,7 @@ class SharedAuthTokenProviderTest {
             SharedAuthTokenProvider(
                 sessionStore = store,
                 authApi =
-                    FakeAuthApi(
+                    FakeRefreshAuthApi(
                         refreshTokenAssertion = "preserve-refresh",
                         responses =
                             listOf(
@@ -1075,8 +1074,8 @@ class SharedAuthTokenProviderTest {
         assertEquals("preserve-access", store.readSession()?.accessToken)
         assertEquals(
             listOf(
-                "refresh_failed status=401 reason=unknown caller=unknown",
-                "refresh_unauthorized_session_preserved status=401 reason=unknown caller=unknown"
+                "refresh_failed status=401 reason=unknown caller=unknown attemptAgeMs=0",
+                "refresh_unauthorized_session_preserved status=401 reason=unknown caller=unknown attemptAgeMs=0"
             ),
             warnings
         )
@@ -1093,7 +1092,7 @@ class SharedAuthTokenProviderTest {
             SharedAuthTokenProvider(
                 sessionStore = store,
                 authApi =
-                    FakeAuthApi(
+                    FakeRefreshAuthApi(
                         refreshTokenAssertion = "unused",
                         responses = emptyList()
                     ),
@@ -1119,7 +1118,7 @@ class SharedAuthTokenProviderTest {
             RaftNetworkAuthMiddleware(
                 sessionStore = store,
                 authApi =
-                    FakeAuthApi(
+                    FakeRefreshAuthApi(
                         refreshTokenAssertion = "middleware-preserve-refresh",
                         responses =
                             listOf(
@@ -1135,82 +1134,6 @@ class SharedAuthTokenProviderTest {
 
         assertEquals(401, response.code)
         assertEquals("middleware-preserve-access", store.readSession()?.accessToken)
-    }
-
-    private class FakeAuthApi(
-        private val refreshTokenAssertion: String,
-        private val responses: List<AuthApiResult<AuthRefreshResponse>>,
-        private val delayMillis: Long = 0L,
-        private val beforeResponse: suspend (Int) -> Unit = {}
-    ) : RaftAuthApi {
-        var refreshCalls: Int = 0
-            private set
-        val attempts = mutableListOf<AuthRefreshAttemptContext>()
-
-        override suspend fun refreshWithAttempt(
-            refreshToken: String,
-            attempt: AuthRefreshAttemptContext,
-        ): AuthApiResult<AuthRefreshResponse> {
-            attempts += attempt
-            return refresh(refreshToken)
-        }
-
-        override suspend fun refresh(refreshToken: String): AuthApiResult<AuthRefreshResponse> {
-            assertEquals(refreshTokenAssertion, refreshToken)
-            refreshCalls += 1
-            beforeResponse(refreshCalls)
-            if (delayMillis > 0) delay(delayMillis)
-            return responses.getOrElse(refreshCalls - 1) { responses.last() }
-        }
-
-        override suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse> =
-            error("not used")
-
-        override suspend fun completeSocialLogin(
-            provider: String,
-            bodyText: String
-        ): AuthApiResult<AuthSocialCompleteResponse> =
-            error("not used")
-
-        override suspend fun fetchSocialAuthProviders(platform: String): AuthApiResult<Set<String>> =
-            error("not used")
-
-        override suspend fun startMobileOAuthLink(
-            provider: String,
-            returnUri: String,
-            codeChallenge: String,
-            authorization: String
-        ): AuthApiResult<AuthMobileOAuthStartResponse> =
-            error("not used")
-
-        override suspend fun completeMobileOAuthLink(
-            provider: String,
-            code: String,
-            codeVerifier: String,
-            authorization: String
-        ): AuthApiResult<AuthMobileOAuthLinkCompleteResponse> =
-            error("not used")
-
-        override suspend fun resendVerification(authorization: String): AuthApiResult<Unit> =
-            error("not used")
-
-        override suspend fun verifyEmail(token: String): AuthApiResult<Unit> =
-            error("not used")
-
-        override suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser> =
-            error("not used")
-
-        override suspend fun logout(refreshToken: String): AuthApiResult<Unit> =
-            error("not used")
-
-        override suspend fun servers(authorization: String): AuthApiResult<List<StoredAuthServer>> =
-            error("not used")
-
-        override suspend fun serverOrder(authorization: String): AuthApiResult<ServerSwitcherOrderPreference> =
-            error("not used")
-
-        override suspend fun createServer(authorization: String, bodyText: String): AuthApiResult<StoredAuthServer> =
-            error("not used")
     }
 
     private class BlockingCommitSessionStore(

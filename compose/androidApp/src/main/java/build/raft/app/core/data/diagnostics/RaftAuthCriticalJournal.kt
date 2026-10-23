@@ -279,7 +279,7 @@ private val SharedRealtimeAuthRefreshMarker =
     Regex("""\bshared_realtime_auth_refresh_(?:skip|success|failed)\b""")
 private val AuthTokenRefreshMarker =
     Regex(
-        """(?:^|\s)(?:refresh_start|refresh_success|refresh_failed|refresh_unauthorized_session_cleared|refresh_unauthorized_session_preserved)(?:\s|$)"""
+        """(?:^|\s)(?:refresh_start|refresh_success|refresh_failed|refresh_unauthorized_session_cleared|refresh_unauthorized_session_preserved|refresh_unauthorized_ignored|refresh_attempt_reused|refresh_attempt_ambiguous|refresh_replay_rejected|refresh_rotation_superseded)(?:\s|$)"""
     )
 private val AuthRetryMarker = Regex("""(?:^|\s)auth_retry_unauthorized_session_preserved(?:\s|$)""")
 private val HttpUnauthorizedMarker = Regex("""(?:^|[\s,])(?:code|status|http)\s*[:=]\s*401(?:[\s,]|$)""")
@@ -296,6 +296,11 @@ private val FixedCostAuthCriticalMarkers =
         "refresh_failed",
         "refresh_unauthorized_session_cleared",
         "refresh_unauthorized_session_preserved",
+        "refresh_unauthorized_ignored",
+        "refresh_attempt_reused",
+        "refresh_attempt_ambiguous",
+        "refresh_replay_rejected",
+        "refresh_rotation_superseded",
         "auth_retry_unauthorized_session_preserved",
         "code=401",
         "code:401",

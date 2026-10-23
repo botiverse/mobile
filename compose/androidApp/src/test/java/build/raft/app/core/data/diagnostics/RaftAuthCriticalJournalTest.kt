@@ -46,6 +46,38 @@ class RaftAuthCriticalJournalTest {
     }
 
     @Test
+    fun journalsRefreshReplayAndSocketLifecycleEvents() {
+        // Lines as SharedAuthRefreshCoordinator emits them (feedback 6feec67c), including the
+        // android_socket lifecycle lines that the socket path logs through RaftAppLog.auth.
+        val expected =
+            mapOf(
+                "refresh_start reason=connect_error caller=android_socket access=len=276:tail4=abcd:hash=1 " +
+                    "refresh=len=64:tail4=ef01:hash=2 attempt=len=20:tail4=41c8:hash=3 replayed=true" to "refresh_start",
+                "refresh_success reason=connect_error caller=android_socket accessRotated=true refreshRotated=true" to
+                    "refresh_success",
+                "refresh_attempt_reused reason=connect_error caller=android_socket attempt=len=20:tail4=41c8:hash=3 " +
+                    "attemptAgeMs=1441516 replayReceiptTtlMs=900000 replayReceiptLikelyExpired=true " +
+                    "diagnosis=likely_expired_server_replay_receipt" to "refresh_attempt_reused",
+                "refresh_replay_rejected status=401 reason=connect_error caller=android_socket " +
+                    "attemptAgeMs=1441516 replayReceiptLikelyExpired=true outcome=lost_rotation_after_freeze" to
+                    "refresh_replay_rejected",
+                "shared_auth refresh_rotation_superseded status=401 reason=auth_restore_401 caller=auth_restore " +
+                    "replayed=false attemptAgeMs=1440000" to "refresh_rotation_superseded",
+                "refresh_unauthorized_ignored status=401 decision=newer_session_held " +
+                    "cause=refresh_rotation_superseded" to "refresh_unauthorized_ignored",
+                "shared_network refresh_attempt_ambiguous action=preserve_session reason=replay_window_elapsed " +
+                    "elapsedMs=1441516" to "refresh_attempt_ambiguous",
+                "refresh_failed status=401 reason=connect_error caller=android_socket " +
+                    "cause=refresh_replay_rejected replayed=true attemptAgeMs=1441516" to "refresh_failed",
+            )
+
+        expected.forEach { (message, event) ->
+            assertEquals(message, event, classifyAuthCriticalEvent(message))
+            assertTrue(message, hasFixedCostAuthCriticalHint(message))
+        }
+    }
+
+    @Test
     fun retainsOnlyLatestFiftyEntries() {
         val retained = retainLatestAuthJournalLines((1..60).map { "line-$it" }, "line-61")
 

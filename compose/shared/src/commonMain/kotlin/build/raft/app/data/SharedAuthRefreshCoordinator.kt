@@ -11,6 +11,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import kotlin.random.Random
 
 /**
@@ -135,8 +137,8 @@ internal class SharedAuthRefreshCoordinator(
                 } else if (!latest.sameTokensAs(flight.originalSession)) {
                     RefreshExchange.AlreadyUpdated(latest)
                 } else {
-                    val attempt = prepareDurableAttempt(latest)
-                    if (attempt == null) {
+                    val prepared = prepareDurableAttempt(latest)
+                    if (prepared == null) {
                         val reconciled = sessionStore.readSession()
                         if (reconciled == null) {
                             RefreshExchange.Unavailable
@@ -144,11 +146,24 @@ internal class SharedAuthRefreshCoordinator(
                             RefreshExchange.AlreadyUpdated(reconciled)
                         }
                     } else {
+                        val attempt = prepared.attempt
+                        val replayedAgeMillis = prepared.reusedAttemptAgeMillis
+                        if (replayedAgeMillis != null) {
+                            // The same attempt id is replayed. Past the server's replay receipt TTL the
+                            // replay can no longer return the successor, so a 401 means the rotation
+                            // was lost (for example after the OS froze the app mid-refresh).
+                            criticalLogger(
+                                "refresh_attempt_reused reason=$safeReason caller=$safeCaller " +
+                                    "attempt=${attempt.attemptId.authTokenDiagnosticsFingerprint()} " +
+                                    refreshReplayAgeDiagnosticsFields(replayedAgeMillis)
+                            )
+                        }
                         logger(
                             "refresh_start reason=$safeReason caller=$safeCaller " +
                                 "access=${latest.accessToken.authTokenDiagnosticsFingerprint()} " +
                                 "refresh=${refreshToken.authTokenDiagnosticsFingerprint()} " +
-                                "attempt=${attempt.attemptId.authTokenDiagnosticsFingerprint()}"
+                                "attempt=${attempt.attemptId.authTokenDiagnosticsFingerprint()} " +
+                                "replayed=${replayedAgeMillis != null}"
                         )
                         val response =
                             refreshWithAmbiguousTimeoutRecovery(
@@ -167,14 +182,30 @@ internal class SharedAuthRefreshCoordinator(
                                     safeReason = safeReason
                                 )
                             is AuthApiResult.Failure -> {
+                                val diagnosis =
+                                    RefreshFailureDiagnosis(
+                                        unauthorized = response.code == 401 || response.code == 403,
+                                        serverCode = parseAuthRefreshErrorCode(response.errorBodyText),
+                                        replayed = replayedAgeMillis != null,
+                                        attemptAgeMillis = attempt.refreshAttemptAgeMillis(clockMillis()),
+                                    )
                                 criticalLogger(
                                     "refresh_failed status=${response.code} " +
-                                        "reason=$safeReason caller=$safeCaller"
+                                        "reason=$safeReason caller=$safeCaller" +
+                                        diagnosis.diagnosticsFields()
+                                )
+                                logUnauthorizedDiagnosis(
+                                    status = response.code,
+                                    diagnosis = diagnosis,
+                                    attempt = attempt,
+                                    safeCaller = safeCaller,
+                                    safeReason = safeReason,
                                 )
                                 RefreshExchange.Failure(
                                     originalSession = flight.originalSession,
                                     response = response,
-                                    failedAtMillis = clockMillis()
+                                    failedAtMillis = clockMillis(),
+                                    diagnosis = diagnosis,
                                 )
                             }
                         }
@@ -315,7 +346,36 @@ internal class SharedAuthRefreshCoordinator(
             RefreshExchange.Success(originalSession = original, session = updated)
         }
 
-    private suspend fun prepareDurableAttempt(session: StoredAuthSession): StoredAuthRefreshAttempt? {
+    private fun logUnauthorizedDiagnosis(
+        status: Int,
+        diagnosis: RefreshFailureDiagnosis,
+        attempt: StoredAuthRefreshAttempt,
+        safeCaller: String,
+        safeReason: String,
+    ) {
+        if (status != 401 && status != 403) return
+        val attemptFingerprint = attempt.attemptId.authTokenDiagnosticsFingerprint()
+        val attemptAgeMillis = diagnosis.attemptAgeMillis ?: attempt.refreshAttemptAgeMillis(clockMillis())
+        if (diagnosis.replayed) {
+            val lostRotation = attemptAgeMillis >= AUTH_REFRESH_REPLAY_RECEIPT_TTL_MILLIS
+            criticalLogger(
+                "refresh_replay_rejected status=$status reason=$safeReason caller=$safeCaller " +
+                    "attempt=$attemptFingerprint attemptAgeMs=$attemptAgeMillis " +
+                    "replayReceiptLikelyExpired=$lostRotation " +
+                    "outcome=${if (lostRotation) "lost_rotation_after_freeze" else "replay_rejected"}" +
+                    (diagnosis.serverCode?.let { " serverCode=${it.toSafeAuthRefreshDiagnosticsToken()}" } ?: "")
+            )
+        }
+        if (diagnosis.serverCode == AUTH_REFRESH_ROTATION_SUPERSEDED_CODE) {
+            criticalLogger(
+                "refresh_rotation_superseded status=$status reason=$safeReason caller=$safeCaller " +
+                    "attempt=$attemptFingerprint replayed=${diagnosis.replayed} attemptAgeMs=$attemptAgeMillis " +
+                    "replayReceiptLikelyExpired=${attemptAgeMillis >= AUTH_REFRESH_REPLAY_RECEIPT_TTL_MILLIS}"
+            )
+        }
+    }
+
+    private suspend fun prepareDurableAttempt(session: StoredAuthSession): PreparedRefreshAttempt? {
         val installationId =
             sessionStore.readOrCreateAuthInstallationId(installationIdFactory())
         val candidate =
@@ -327,11 +387,18 @@ internal class SharedAuthRefreshCoordinator(
                 predecessorRefreshToken = session.refreshToken,
                 createdAtMillis = clockMillis(),
             )
-        return sessionStore.prepareRefreshAttemptIfMatch(
-            expectedAccountId = session.user.id,
-            expectedAccessToken = session.accessToken,
-            expectedRefreshToken = session.refreshToken,
-            candidate = candidate,
+        val attempt =
+            sessionStore.prepareRefreshAttemptIfMatch(
+                expectedAccountId = session.user.id,
+                expectedAccessToken = session.accessToken,
+                expectedRefreshToken = session.refreshToken,
+                candidate = candidate,
+            ) ?: return null
+        return PreparedRefreshAttempt(
+            attempt = attempt,
+            reusedAttemptAgeMillis =
+                attempt.takeIf { it.attemptId != candidate.attemptId }
+                    ?.refreshAttemptAgeMillis(candidate.createdAtMillis),
         )
     }
 
@@ -389,6 +456,15 @@ internal class SharedAuthRefreshCoordinator(
             if (!cleared) {
                 val successor = sessionStore.readSession()
                 if (successor != null && !successor.sameTokensAs(exchange.originalSession)) {
+                    // The rejected refresh used tokens this app has already replaced. The newer
+                    // session stays; record why the 401 did not sign the user out.
+                    criticalLogger(
+                        "refresh_unauthorized_ignored status=$code reason=$safeReason caller=$safeCaller " +
+                            "decision=newer_session_held " +
+                            "currentAccess=${successor.accessToken.authTokenDiagnosticsFingerprint()} " +
+                            "currentRefresh=${successor.refreshToken.authTokenDiagnosticsFingerprint()}" +
+                            exchange.diagnosis.diagnosticsFields()
+                    )
                     logAlreadyUpdated(successor, null, null, safeCaller, safeReason)
                     return SharedAuthRefreshResult.Success(successor)
                 }
@@ -399,13 +475,15 @@ internal class SharedAuthRefreshCoordinator(
             if (cleared) {
                 criticalLogger(
                     "refresh_unauthorized_session_cleared status=$code " +
-                        "reason=$safeReason caller=$safeCaller"
+                        "reason=$safeReason caller=$safeCaller" +
+                        exchange.diagnosis.diagnosticsFields()
                 )
             }
         } else {
             criticalLogger(
                 "refresh_unauthorized_session_preserved status=$code " +
-                    "reason=$safeReason caller=$safeCaller"
+                    "reason=$safeReason caller=$safeCaller" +
+                    exchange.diagnosis.diagnosticsFields()
             )
         }
         return SharedAuthRefreshResult.Failure(exchange.response)
@@ -495,6 +573,38 @@ internal sealed interface SharedAuthRefreshResult {
     data object Unavailable : SharedAuthRefreshResult
 }
 
+private data class PreparedRefreshAttempt(
+    val attempt: StoredAuthRefreshAttempt,
+    /** Age of a persisted attempt that is being replayed; null when a fresh attempt was minted. */
+    val reusedAttemptAgeMillis: Long?,
+)
+
+/** Diagnostics-only context for a failed refresh. Never changes the clear/preserve decision. */
+private data class RefreshFailureDiagnosis(
+    val unauthorized: Boolean = false,
+    val serverCode: String? = null,
+    val replayed: Boolean = false,
+    /** Attempt age when the failure arrived (createdAtMillis to response); covers OS freezes. */
+    val attemptAgeMillis: Long? = null,
+) {
+    private val cause: String?
+        get() =
+            when {
+                !unauthorized -> null
+                serverCode == AUTH_REFRESH_ROTATION_SUPERSEDED_CODE -> AUTH_REFRESH_ROTATION_SUPERSEDED_CODE
+                replayed -> "refresh_replay_rejected"
+                else -> null
+            }
+
+    fun diagnosticsFields(): String =
+        buildString {
+            cause?.let { append(" cause=").append(it) }
+            serverCode?.let { append(" serverCode=").append(it.toSafeAuthRefreshDiagnosticsToken()) }
+            if (replayed) append(" replayed=true")
+            attemptAgeMillis?.let { append(" attemptAgeMs=").append(it) }
+        }
+}
+
 private data class InFlightRefresh(
     val originalSession: StoredAuthSession,
     val result: CompletableDeferred<RefreshExchange>,
@@ -517,7 +627,8 @@ private sealed interface RefreshExchange {
     data class Failure(
         val originalSession: StoredAuthSession,
         val response: AuthApiResult.Failure,
-        val failedAtMillis: Long
+        val failedAtMillis: Long,
+        val diagnosis: RefreshFailureDiagnosis = RefreshFailureDiagnosis(),
     ) : RefreshExchange
 
     data class Exception(val throwable: Throwable) : RefreshExchange
@@ -557,6 +668,49 @@ internal const val AUTH_REFRESH_ATTEMPT_TIMEOUT_MILLIS = 4_000L
  */
 internal const val AUTH_REFRESH_MAX_ATTEMPTS = 2
 private const val AUTH_REFRESH_REPLAY_RETRY_WINDOW_MILLIS = 8_000L
+
+/**
+ * How long the server keeps a refresh replay receipt (`X-Slock-Auth-Refresh-Attempt-Id`). A replay
+ * of an older attempt most likely finds no receipt, so the server answers 401. Diagnostics only.
+ */
+internal const val AUTH_REFRESH_REPLAY_RECEIPT_TTL_MILLIS = 15L * 60L * 1_000L
+
+/**
+ * `code` the server returns with a 401 from `POST /auth/refresh` when a replayed refresh's receipt
+ * is gone because the presented refresh token has already rotated to a successor.
+ */
+internal const val AUTH_REFRESH_ROTATION_SUPERSEDED_CODE = "refresh_rotation_superseded"
+
+internal fun StoredAuthRefreshAttempt.refreshAttemptAgeMillis(nowMillis: Long): Long =
+    (nowMillis - createdAtMillis).coerceAtLeast(0L)
+
+internal fun refreshReplayAgeDiagnosticsFields(ageMillis: Long): String {
+    val likelyExpired = ageMillis >= AUTH_REFRESH_REPLAY_RECEIPT_TTL_MILLIS
+    return "attemptAgeMs=$ageMillis replayReceiptTtlMs=$AUTH_REFRESH_REPLAY_RECEIPT_TTL_MILLIS " +
+        "replayReceiptLikelyExpired=$likelyExpired" +
+        if (likelyExpired) " diagnosis=likely_expired_server_replay_receipt" else ""
+}
+
+/** Error body of `POST /auth/refresh`: `{ error, code? }` like the server's other auth errors. */
+@Serializable
+internal data class AuthRefreshErrorBodyDto(
+    val error: String? = null,
+    val code: String? = null,
+)
+
+private val authRefreshErrorJson = Json { ignoreUnknownKeys = true }
+
+internal fun parseAuthRefreshErrorCode(errorBodyText: String?): String? {
+    val body = errorBodyText?.takeIf { it.isNotBlank() } ?: return null
+    val dto =
+        try {
+            authRefreshErrorJson.decodeFromString(AuthRefreshErrorBodyDto.serializer(), body)
+        } catch (_: IllegalArgumentException) {
+            // SerializationException is an IllegalArgumentException: plain-text or foreign bodies.
+            return null
+        }
+    return dto.code?.trim()?.takeIf { it.isNotEmpty() }
+}
 
 internal fun String?.authTokenDiagnosticsFingerprint(): String {
     if (this.isNullOrBlank()) return "blank"

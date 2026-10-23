@@ -29,6 +29,11 @@ object RaftAppLog {
         )
     }
 
+    /** Auth-critical line: always kept, on the critical lane, and journaled when it carries an auth marker. */
+    fun authCritical(tag: String, message: String) {
+        RaftAndroidLocalDiagnostics.recordCriticalLog(level = "warn", tag = tag, message = message)
+    }
+
     fun i(tag: String, message: String) {
         if (!verboseLoggingEnabled.get()) return
         RaftAndroidLocalDiagnostics.recordLog("info", tag, message)

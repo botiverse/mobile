@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -105,6 +106,48 @@ class AuthSessionStoreTest {
         assertEquals("successor-refresh", secondRestart.readSession()?.refreshToken)
         assertNull(secondRestart.readSession()?.refreshAttempt)
     }
+    @Test
+    fun reusedRefreshAttemptLogsItsAgeAgainstTheReplayReceiptTtl() = runTest {
+        val logs = mutableListOf<String>()
+        val store = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore(), diagnosticsLogger = logs::add)
+        val original = sampleSession()
+        store.replaceAuthenticatedSession(original)
+        fun candidate(id: String, createdAtMillis: Long) =
+            StoredAuthRefreshAttempt(
+                attemptId = id,
+                installationId = "ari_00000000000000000000000000000021",
+                accountId = original.user.id,
+                predecessorAccessToken = original.accessToken,
+                predecessorRefreshToken = original.refreshToken,
+                createdAtMillis = createdAtMillis,
+            )
+        suspend fun prepare(attempt: StoredAuthRefreshAttempt) =
+            store.prepareRefreshAttemptIfMatch(
+                expectedAccountId = original.user.id,
+                expectedAccessToken = original.accessToken,
+                expectedRefreshToken = original.refreshToken,
+                candidate = attempt,
+            )
+        fun prepareFields(): Map<String, String> =
+            logs.last { it.startsWith("auth_refresh_attempt_prepare ") }
+                .split(' ')
+                .drop(1)
+                .associate { it.substringBefore('=') to it.substringAfter('=') }
+
+        val first = prepare(candidate("arf_0000000000000020", createdAtMillis = 1_000L))
+        assertEquals("false", prepareFields()["reused"])
+
+        val ageMillis = 24L * 60L * 1_000L
+        val replayed = prepare(candidate("arf_0000000000000022", createdAtMillis = 1_000L + ageMillis))
+
+        assertEquals(first, replayed)
+        val fields = prepareFields()
+        assertEquals("true", fields["reused"])
+        assertEquals(ageMillis.toString(), fields["attemptAgeMs"])
+        assertEquals("true", fields["replayReceiptLikelyExpired"])
+        assertEquals("likely_expired_server_replay_receipt", fields["diagnosis"])
+    }
+
     @Test
     fun serverPermissionProjectionMatchesMachineManagementCapability() {
         fun permissions(role: String?) =
