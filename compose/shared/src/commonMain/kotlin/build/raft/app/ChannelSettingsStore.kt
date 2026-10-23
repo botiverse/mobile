@@ -257,6 +257,8 @@ internal data class ChannelSettingsState(
     val profileErrorCode: String? = null,
     val errorCode: String? = null,
     val effect: ChannelSettingsEffect? = null,
+    /** The closing action took the channel away from the user (left, archived, deleted, disconnected). */
+    val closedWithAccessLost: Boolean = false,
 ) {
     fun permissions(): ChannelSettingsPermissions =
         channel?.let { channelSettingsPermissions(it, canManage) } ?: ChannelSettingsPermissions()
@@ -919,7 +921,12 @@ internal class ChannelSettingsStore(
                 ChannelSettingsAction.Archive,
                 ChannelSettingsAction.Delete,
                 ChannelSettingsAction.Disconnect,
-                ChannelSettingsAction.Leave,
+                ChannelSettingsAction.Leave ->
+                    current.copy(
+                        actionInFlight = null,
+                        effect = ChannelSettingsEffect.Close,
+                        closedWithAccessLost = true
+                    )
                 ChannelSettingsAction.Unarchive ->
                     current.copy(actionInFlight = null, effect = ChannelSettingsEffect.Close)
             }

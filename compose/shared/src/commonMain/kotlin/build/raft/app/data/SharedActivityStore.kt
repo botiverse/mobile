@@ -18,7 +18,11 @@ import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.PerReceiverReadStateScope
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
+import build.raft.app.model.RealtimeRefreshScope
+import build.raft.app.data.realtime.RealtimeSocketEvents
+import build.raft.app.model.ServerDeleted
 import build.raft.app.model.ServerId
+import build.raft.app.model.ServerMembershipRemoved
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskSummary
@@ -274,6 +278,9 @@ class SharedActivityStore internal constructor(
             SharedActivityIntent.DetachPrewarmViewport -> prewarmVisibleReplyThreads(emptySet())
             SharedActivityIntent.SurfaceHidden -> onSurfaceHidden()
             is SharedActivityIntent.RowOpened -> onRowOpened(intent)
+            is SharedActivityIntent.ChannelAccessLost -> dropRetainedRows(intent) { item ->
+                item.touchesChannel(intent.channelIds)
+            }
             is SharedActivityIntent.ApplyRealtimeEvent -> {
                 if (intent.event is PerReceiverReadStateChanged) {
                     scope.launch { applyPerReceiverReadStateChanged(intent.event) }
@@ -323,6 +330,33 @@ class SharedActivityStore internal constructor(
             retainReadRowLocked(intent, intent.item)
         }
     }
+
+    /**
+     * Access loss (left or removed from a channel, channel deleted / archived, server left or
+     * deleted): the retained rows [matching] cannot stay as "read" rows. Each leaves the list and the
+     * retained set at once. A row that was merely read keeps its place (see [withRetainedReadRows]).
+     */
+    private fun dropRetainedRows(intent: SharedActivityIntent, matching: (InboxItem) -> Boolean) {
+        synchronized(realtimeOwnerLock) {
+            val current = _state.value
+            if (current.retainedReadRowKeys.isEmpty()) return@synchronized
+            val next = current.withRetainedRowsDropped(matching)
+            if (next !== current) reduceState(intent, next)
+        }
+    }
+
+    /** True when the realtime [event] means the current user lost access to the whole Server. */
+    private fun RealtimeEvent.dropsServerAccess(current: SharedActivityState): Boolean =
+        when (this) {
+            is ServerMembershipRemoved -> serverId.value == current.ownerServerId
+            is ServerDeleted -> serverId.value == current.ownerServerId
+            is RealtimeRefreshRequired ->
+                scope == RealtimeRefreshScope.ServerMembers &&
+                    (reason == RealtimeSocketEvents.ServerMemberLeft || reason == RealtimeSocketEvents.ServerMemberRemoved) &&
+                    memberId?.value != null && memberId?.value == current.ownerUserId &&
+                    (serverId == null || serverId?.value == current.ownerServerId)
+            else -> false
+        }
 
     private fun releaseRetainedReadRows(intent: SharedActivityIntent) {
         synchronized(realtimeOwnerLock) {
@@ -848,6 +882,9 @@ class SharedActivityStore internal constructor(
 
     private fun applyRealtimeEventLocked(intent: SharedActivityIntent.ApplyRealtimeEvent): Job? {
         val event = intent.event
+        if (event.dropsServerAccess(_state.value)) {
+            dropRetainedRows(intent) { true }
+        }
         if (!event.refreshesActivity()) return null
         when (event) {
             is MessageUpdated -> acceptMessageUpdatedFreshness(event.message)
@@ -3029,6 +3066,31 @@ internal fun SharedActivityState.withRetainedReadRowsReleased(): SharedActivityS
     )
 }
 
+private fun InboxItem.touchesChannel(channelIds: Set<String>): Boolean =
+    channelId.value in channelIds ||
+        threadChannelId?.value in channelIds ||
+        parentChannelId?.value in channelIds
+
+/**
+ * Drops the retained rows [matching] from the list and from the retained set; the other retained rows
+ * stay. A read row already left the counts; a retained row that turned unread leaves them now. Returns this when nothing is retained and matches.
+ */
+internal fun SharedActivityState.withRetainedRowsDropped(matching: (InboxItem) -> Boolean): SharedActivityState {
+    val current = snapshot
+    val leaving = current?.items.orEmpty().filter { item -> item.key in retainedReadRowKeys && matching(item) }
+    val leavingKeys = leaving.mapTo(mutableSetOf(), InboxItem::key)
+    if (leavingKeys.isEmpty()) return this
+    return copy(
+        retainedReadRowKeys = retainedReadRowKeys - leavingKeys,
+        snapshot =
+            current?.copy(
+                items = current.items.filterNot { it.key in leavingKeys },
+                totalCount = (current.totalCount - leaving.count { it.unreadCount > 0 }).coerceAtLeast(0),
+                totalUnreadCount = (current.totalUnreadCount - leaving.sumOf { it.unreadCount }).coerceAtLeast(0)
+            )
+    )
+}
+
 /**
  * A canonical page in a filter that drops read rows no longer lists the retained rows once they
  * are read; each is put back, read, where it stood (before the first row that followed it and is
@@ -3098,6 +3160,11 @@ sealed interface SharedActivityIntent {
      * reading it keeps it in place; rows retained earlier stay.
      */
     data class RowOpened(val item: InboxItem) : SharedActivityIntent
+    /**
+     * The user lost access to [channelIds] (left through the app, channel archived or deleted).
+     * Retained rows of those channels, their threads, or threads under them leave at once.
+     */
+    data class ChannelAccessLost(val channelIds: Set<String>) : SharedActivityIntent
     data class ApplyRealtimeEvent(
         val event: RealtimeEvent,
         val allowLocalPatch: Boolean = true
@@ -3130,6 +3197,7 @@ private fun SharedActivityIntent.activitySummarySource(): String =
         SharedActivityIntent.DetachPrewarmViewport -> "prewarm_detach"
         SharedActivityIntent.SurfaceHidden -> "surface_hidden"
         is SharedActivityIntent.RowOpened -> "row_opened"
+        is SharedActivityIntent.ChannelAccessLost -> "channel_access_lost"
         is SharedActivityIntent.ApplyRealtimeEvent -> "realtime"
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> "realtime_summary"
     }
@@ -3157,7 +3225,8 @@ private fun SharedActivityIntent.invalidatesGlobalActivitySummary(): Boolean =
         is SharedActivityIntent.PrewarmActivityTail,
         SharedActivityIntent.DetachPrewarmViewport,
         SharedActivityIntent.SurfaceHidden,
-        is SharedActivityIntent.RowOpened -> false
+        is SharedActivityIntent.RowOpened,
+        is SharedActivityIntent.ChannelAccessLost -> false
     }
 
 private fun RealtimeEvent.refreshesActivity(): Boolean = affectsActivityContent()

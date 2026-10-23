@@ -1,10 +1,18 @@
 package build.raft.app.data
 
 import build.raft.app.model.ChannelId
+import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.PerReceiverReadStateScope
+import build.raft.app.model.RealtimeEvent
+import build.raft.app.model.RealtimeRefreshRequired
+import build.raft.app.model.RealtimeRefreshScope
+import build.raft.app.model.ServerDeleted
+import build.raft.app.model.ServerMembershipRemoved
+import build.raft.app.model.MemberId
+import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -234,6 +242,92 @@ class SharedActivityStoreRetainedReadRowTest {
         assertEquals(2, inbox.initialLoadCount, "one background reconcile")
         assertUnreadList(store, listOf(rowA.key to 0, rowB.key to 0, rowD.key to 1), "after reconcile")
         assertEquals(setOf(rowA.key, rowB.key), store.state.value.retainedReadRowKeys)
+    }
+
+    /** A retained row must leave when the user lost access to it; read-only rows keep their place. */
+    private class AccessCase(
+        val name: String,
+        val intent: SharedActivityIntent,
+        val dropped: Set<String>
+    )
+
+    @Test
+    fun aRetainedRowLeavesWhenTheUserLosesAccessToIt() = runTest {
+        val thread =
+            activityItem("thread-1", unreadCount = 1).copy(
+                key = "thread:thread-1",
+                kind = InboxItemKind.Thread,
+                threadChannelId = ChannelId("thread-1"),
+                parentChannelId = ChannelId("channel-p")
+            )
+        val all = setOf(rowA.key, rowB.key, thread.key)
+        fun channels(vararg ids: String) = SharedActivityIntent.ChannelAccessLost(ids.toSet())
+        fun event(e: RealtimeEvent) = SharedActivityIntent.ApplyRealtimeEvent(e)
+        fun member(reason: String, memberId: String) =
+            event(
+                RealtimeRefreshRequired(
+                    scope = RealtimeRefreshScope.ServerMembers,
+                    reason = reason,
+                    serverId = ServerId("server-1"),
+                    memberId = MemberId(memberId)
+                )
+            )
+        val cases =
+            listOf(
+                // The app's own leave / archive / delete of a channel.
+                AccessCase("left channel-a", channels("channel-a"), setOf(rowA.key)),
+                AccessCase("left the thread's parent channel", channels("channel-p"), setOf(thread.key)),
+                AccessCase("left the thread channel", channels("thread-1"), setOf(thread.key)),
+                AccessCase("left two channels", channels("channel-a", "channel-b"), setOf(rowA.key, rowB.key)),
+                // The user left or was removed from, or lost, the Server.
+                AccessCase("server membership removed", event(ServerMembershipRemoved(ServerId("server-1"))), all),
+                AccessCase("server deleted", event(ServerDeleted(ServerId("server-1"))), all),
+                AccessCase("left the server", member(RealtimeSocketEvents.ServerMemberLeft, "user-1"), all),
+                AccessCase("removed from the server", member(RealtimeSocketEvents.ServerMemberRemoved, "user-1"), all),
+                // Nothing the user lost: every retained row stays.
+                AccessCase("another channel", channels("channel-z"), emptySet()),
+                AccessCase("another server removed", event(ServerMembershipRemoved(ServerId("server-2"))), emptySet()),
+                AccessCase("another server deleted", event(ServerDeleted(ServerId("server-2"))), emptySet()),
+                AccessCase("another member left", member(RealtimeSocketEvents.ServerMemberLeft, "user-2"), emptySet()),
+                AccessCase("another member removed", member(RealtimeSocketEvents.ServerMemberRemoved, "user-2"), emptySet())
+            )
+        cases.forEach { case ->
+            val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(rowA, rowB, thread, rowC))))
+            val store = unreadStore(inbox)
+            store.open(rowA, ReadPath.OpenMarksRead, revision = 1L)
+            store.open(rowB, ReadPath.OpenMarksRead, revision = 2L)
+            store.open(thread, ReadPath.OpenMarksRead, revision = 3L)
+            runCurrent()
+            assertEquals(all, store.state.value.retainedReadRowKeys, case.name)
+
+            store.dispatch(case.intent)
+            runCurrent()
+
+            val expectedKeys = listOf(rowA.key, rowB.key, thread.key, rowC.key).filterNot { it in case.dropped }
+            assertEquals(expectedKeys, store.state.value.items.map { it.key }, case.name)
+            assertEquals(all - case.dropped, store.state.value.retainedReadRowKeys, case.name)
+            assertEquals(1, store.state.value.totalCount, "${case.name}: read rows already left the counts")
+            assertEquals(1, store.state.value.totalUnreadCount, "${case.name}: the unread C stays counted")
+        }
+    }
+
+    @Test
+    fun aDroppedRowStaysGoneWhenTheServerStopsListingIt() = runTest {
+        val inbox =
+            FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(rowA, rowB, rowC)), snapshot(listOf(rowC))))
+        val store = unreadStore(inbox, refreshIntervalMillis = 2_500L)
+        store.open(rowA, ReadPath.OpenMarksRead, revision = 1L)
+        store.open(rowB, ReadPath.OpenMarksRead, revision = 2L)
+        runCurrent()
+        store.dispatch(SharedActivityIntent.ChannelAccessLost(setOf("channel-a")))
+        runCurrent()
+
+        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(readState("channel-c", version = 2, maxReadSeq = 1)))
+        advanceTimeBy(2_501L)
+        runCurrent()
+
+        assertUnreadList(store, listOf(rowB.key to 0, rowC.key to 1), "the page no longer lists A or B; only B is retained")
+        assertEquals(setOf(rowB.key), store.state.value.retainedReadRowKeys)
     }
 
     private fun TestScope.unreadStore(
