@@ -71,20 +71,35 @@ class ActivityConversationRowsScreenshotTest {
     @Test
     fun activityRowsDark() = capture("screens.activity.rows.dark", RaftAppAppearance.Dark)
 
-    /** Rule L swipe toward the end, held open: Unfollow behind a thread row, Mute Activity behind a channel row. */
+    /**
+     * raft-design #785, rows left open on their buttons: a followed thread (Done, Unfollow), a joined
+     * channel (Done, Mute) and a DM thread (Done only), between rows at rest.
+     */
     @Test
-    fun activityRowsSwipeEndLight() =
-        capture("screens.activity.rows.swipe-end", RaftAppAppearance.Light) { ActivityRowsSwipeEndVisualContent() }
+    fun activityRowsSwipeOpenLight() =
+        capture("screens.activity.rows.swipe-open", RaftAppAppearance.Light) {
+            ActivityRowsSwipeVisualContent(RaftAppAppearance.Light, ActivityRowsSwipePose.Open)
+        }
 
-    /** The same rows before the release threshold: the soft layer (raft-design #775 / #779). */
     @Test
-    fun activityRowsSwipeEndSoftLight() =
-        capture("screens.activity.rows.swipe-end.soft", RaftAppAppearance.Light) { ActivityRowsSwipeEndVisualContent(reveal = 0.25f) }
+    fun activityRowsSwipeOpenDark() =
+        capture("screens.activity.rows.swipe-open.dark", RaftAppAppearance.Dark) {
+            ActivityRowsSwipeVisualContent(RaftAppAppearance.Dark, ActivityRowsSwipePose.Open)
+        }
 
-    /** Done swipe, soft above and solid below the threshold. */
+    /** The same rows as a finger slides them in: the buttons share the uncovered width. */
     @Test
-    fun activityRowsSwipeDoneLight() =
-        capture("screens.activity.rows.swipe-done", RaftAppAppearance.Light) { ActivityRowsSwipeEndVisualContent(done = true) }
+    fun activityRowsSwipeSlidingLight() =
+        capture("screens.activity.rows.swipe-sliding", RaftAppAppearance.Light) {
+            ActivityRowsSwipeVisualContent(RaftAppAppearance.Light, ActivityRowsSwipePose.Sliding)
+        }
+
+    /** Pulled past 60% of the row: Done covers the uncovered width (release applies it); one row short of it. */
+    @Test
+    fun activityRowsSwipeFullDoneLight() =
+        capture("screens.activity.rows.swipe-full-done", RaftAppAppearance.Light) {
+            ActivityRowsSwipeVisualContent(RaftAppAppearance.Light, ActivityRowsSwipePose.FullDone)
+        }
 
     private fun capture(
         name: String,
@@ -322,9 +337,11 @@ private fun ActivityRowsVisualContent(appearance: RaftAppAppearance) {
     }
 }
 
-/** Two rows opened toward the end (as while a finger holds them) between two at rest. */
+private enum class ActivityRowsSwipePose { Open, Sliding, FullDone }
+
+/** Swiped rows (open, sliding in, or pulled to full Done) between rows at rest. */
 @Composable
-private fun ActivityRowsSwipeEndVisualContent(reveal: Float = 0.42f, done: Boolean = false) {
+private fun ActivityRowsSwipeVisualContent(appearance: RaftAppAppearance, pose: ActivityRowsSwipePose) {
     val timeContext =
         RaftTimeContext(
             localOffsetMinutes = 8 * 60,
@@ -361,6 +378,19 @@ private fun ActivityRowsSwipeEndVisualContent(reveal: Float = 0.42f, done: Boole
             lastMessagePreview = "部署了，而且刚又测了一遍确认现在还生效。",
             lastMessageAt = "2026-10-21T16:17:00Z",
         )
+    val dm =
+        InboxItem(
+            key = "dm:lagoon",
+            kind = InboxItemKind.DirectMessage,
+            channelId = ChannelId("dm-lagoon"),
+            channelName = "Lagoon",
+            channelKind = ConversationKind.DirectMessage,
+            unreadCount = 1,
+            lastMessageSenderName = "Lagoon",
+            lastMessageSenderKind = MemberKind.Agent,
+            lastMessagePreview = "goldens 帮我再录一遍",
+            lastMessageAt = "2026-10-21T15:12:00Z",
+        )
     val resting =
         InboxItem(
             key = "channel:launch",
@@ -369,23 +399,40 @@ private fun ActivityRowsSwipeEndVisualContent(reveal: Float = 0.42f, done: Boole
             channelName = "launch-week",
             lastMessageSenderName = "Lagoon",
             lastMessageSenderKind = MemberKind.Agent,
-            lastMessagePreview = "Swipe right to unfollow or mute.",
+            lastMessagePreview = "Swipe left for Done, Unfollow or Mute.",
             lastMessageAt = "2026-10-21T14:02:00Z",
         )
     val mutes = mapOf("release" to false, "launch-week" to false)
     val context =
         ActivityConversationListContext(
             channelSymbolsByChannelId = mapOf("release" to "#", "mobile" to "#", "launch-week" to "#"),
+            dmPeersByChannelId =
+                mapOf(
+                    "dm-lagoon" to
+                        ActivityConversationDmPeer(
+                            peerId = "agent-lagoon",
+                            peerIsAgent = true,
+                            avatarWireValue = null,
+                            displayName = "Lagoon",
+                            activityMuted = false,
+                        ),
+                ),
         )
+    // (row, open on its buttons, extra slide as a share of the row's width)
     val rows =
-        if (done) {
-            listOf(resting to 0f, thread to 0.25f, channel to 0.42f, resting.copy(key = "channel:launch-2") to 0f)
-        } else {
-            listOf(resting to 0f, thread to -reveal, channel to -reveal, resting.copy(key = "channel:launch-2") to 0f)
+        when (pose) {
+            ActivityRowsSwipePose.Open ->
+                listOf(resting to (false to 0f), thread to (true to 0f), channel to (true to 0f), dm to (true to 0f), resting.copy(key = "channel:launch-2") to (false to 0f))
+            ActivityRowsSwipePose.Sliding ->
+                // The thread row at the mock's 112dp of 390 (past half its 144dp: release opens), the others short of it.
+                listOf(resting to (false to 0f), thread to (false to 112f / 390f), channel to (false to 0.22f), dm to (false to 0.08f), resting.copy(key = "channel:launch-2") to (false to 0f))
+            ActivityRowsSwipePose.FullDone ->
+                listOf(resting to (false to 0f), thread to (false to 0.7f), channel to (false to 0.55f), resting.copy(key = "channel:launch-2") to (false to 0f))
         }
-    RaftTheme(appearance = RaftAppearance.Light) {
+    RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light) {
         Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
-            rows.forEachIndexed { index, (item, rowReveal) ->
+            rows.forEachIndexed { index, (item, rowState) ->
+                val (open, slide) = rowState
                 ActivityConversationListRow(
                     item = item,
                     model = item.activityConversationRowModel(context, InboxFilter.All),
@@ -402,7 +449,8 @@ private fun ActivityRowsSwipeEndVisualContent(reveal: Float = 0.42f, done: Boole
                     onSwipeDone = {},
                     swipeEndAction = item.activitySwipeEndAction(mutes),
                     onSwipeEnd = {},
-                    swipePreviewRevealFraction = rowReveal,
+                    swipeOpen = open,
+                    swipePreviewRevealFraction = slide,
                 )
             }
         }

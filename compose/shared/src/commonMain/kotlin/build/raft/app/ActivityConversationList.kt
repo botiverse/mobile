@@ -29,6 +29,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
@@ -87,7 +88,7 @@ import com.tencent.tmm.kmmresource.compose.stringResource
  *
  * This file is presentation only. Opening, Done, read/unread and the press-and-hold menu stay the
  * Activity list's own intents (SharedActivityList); this layout never changes how Done is applied. The
- * touch rules (Rule L: no Done button on the row; Done is reached by swipe left or the press-and-hold menu, and swipe right is Unfollow / Mute Activity, with undo)
+ * touch rules (raft-design #785: no Done button on the row; a left swipe uncovers Done / Unfollow / Mute buttons, and the press-and-hold menu has the same actions, with undo)
  * are in ActivityConversationSwipe.kt.
  */
 
@@ -558,12 +559,18 @@ internal fun ActivityConversationListRow(
     onOpen: () -> Unit,
     onOpenMenu: (RaftPopoverAnchor) -> Unit,
     modifier: Modifier = Modifier,
-    /** Rule L swipe toward the start (ActivitySwipeActionsBox); null: no Done swipe. */
+    /** The swipe's Done button (ActivitySwipeActionsBox); null: no Done button. */
     onSwipeDone: (() -> Unit)? = null,
-    /** Rule L swipe toward the end ([activitySwipeEndAction]); null action or callback: no end swipe. */
+    /** The swipe's Unfollow / Mute button ([activitySwipeEndAction]); null action or callback: none. */
     swipeEndAction: ActivitySwipeEndAction? = null,
     onSwipeEnd: (() -> Unit)? = null,
-    /** Screenshots only: the row opened by this share of its width (positive toward the start). */
+    /** Whether the list has this row's swipe buttons open ([ActivitySwipeOpenRow]). */
+    swipeOpen: Boolean = false,
+    /** The row claimed a swipe or settled open (true), or closed (false). */
+    onSwipeOpenChange: (Boolean) -> Unit = {},
+    /** Where the open row is, so a tap outside it closes it ([ActivitySwipeOpenRowGeometry]). */
+    onSwipeOpenRowPlaced: ((LayoutCoordinates) -> Unit)? = null,
+    /** Screenshots only: the row slid by this share of its width on top of [swipeOpen]. */
     swipePreviewRevealFraction: Float = 0f,
 ) {
     val colors = RaftTheme.colors
@@ -593,12 +600,20 @@ internal fun ActivityConversationListRow(
             else -> conversationFallback
         }
     var pressed by remember(item.key) { mutableStateOf(false) }
+    val swipeButtons =
+        activitySwipeButtons(
+            doneEnabled = canMarkDone && onSwipeDone != null,
+            endActions = listOfNotNull(swipeEndAction.takeIf { onSwipeEnd != null }),
+        )
     ActivitySwipeActionsBox(
         gestureKey = openGestureKey,
-        onSwipeDone = onSwipeDone.takeIf { canMarkDone },
+        buttons = swipeButtons,
+        open = swipeOpen,
+        onOpenChange = onSwipeOpenChange,
+        onDone = { onSwipeDone?.invoke() },
+        onAction = { onSwipeEnd?.invoke() },
         modifier = modifier.fillMaxWidth(),
-        endAction = swipeEndAction,
-        onSwipeEnd = onSwipeEnd,
+        onOpenRowPlaced = onSwipeOpenRowPlaced,
         previewRevealFraction = swipePreviewRevealFraction,
     ) {
         Row(
