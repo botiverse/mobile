@@ -200,6 +200,15 @@ object RaftTheme {
         @Composable @ReadOnlyComposable
         get() = LocalRaftIsDark.current
 
+    /**
+     * The one scrim behind every modal window (raft `layer-backdrop`: black 65% in light, 60%
+     * in dark). [build.raft.designsystem.components.RaftWindowDialog] draws it; an in-window
+     * overlay (a drawer over the page) uses the same colour.
+     */
+    val scrim: Color
+        @Composable @ReadOnlyComposable
+        get() = LocalRaftColors.current.layerBackdrop
+
     /** [LocalRaftStrings]: the components' own words, English unless the app provides them. */
     val strings: RaftStrings
         @Composable @ReadOnlyComposable

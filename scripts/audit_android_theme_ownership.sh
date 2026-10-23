@@ -44,7 +44,12 @@ find compose/androidApp/src/main/java/build/raft/app/ui compose/androidApp/src/m
   | sed 's#^#  - #'
 
 echo
+echo "5) Platform windows outside RaftWindowDialog (CI gate: scripts/check_raft_window_dialog.sh)"
+scripts/check_raft_window_dialog.sh || true
+
+echo
 echo "Interpretation:"
 echo "- Android host-only APIs such as ui/system and Kuikly native render adapters may remain Android-owned."
 echo "- Product visual tokens/components/screens should trend to compose/shared/commonMain."
+echo "- Every dialog/sheet/modal window opens through designsystem RaftWindowDialog: theme bars, one scrim, back-swipe block."
 echo "- A file is not safe to delete until this audit shows no runtime MainActivity/product caller, or the caller has a shared replacement."

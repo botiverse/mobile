@@ -45,6 +45,10 @@ kotlin {
             implementation(libs.cmp.material3)
             implementation(libs.cmp.components.resources)
         }
+        // RaftDialogWindowPolicy's Android actual: the dialog window's system bars.
+        androidMain.dependencies {
+            implementation(libs.androidx.core.ktx)
+        }
         commonTest.dependencies {
             implementation(kotlin("test"))
             // Virtual time for the located highlight's frame loop (RaftLocatedTest).

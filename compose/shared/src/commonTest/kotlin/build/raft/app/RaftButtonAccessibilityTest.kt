@@ -130,11 +130,11 @@ class RaftButtonAccessibilityTest {
     }
 
     @Test
-    fun modalDisablesKuiklyFrameworkOutsideClickWrappers() {
-        val properties = raftModalDialogPropertiesWithoutScrim()
-
-        assertFalse(properties.dismissOnClickOutside)
-        assertFalse(properties.usePlatformDefaultWidth)
+    fun modalDrawsItsOwnScrimAndKeyboardPadding() {
+        // The framework outside-click wrapper is off for every RaftWindowDialog
+        // (RaftWindowDialogTest); Modal's pages draw their own veil and keyboard padding.
+        assertFalse(RaftModalWindowDialogProperties.drawScrim)
+        assertTrue(RaftModalWindowDialogProperties.contentHandlesKeyboard)
     }
 }
 

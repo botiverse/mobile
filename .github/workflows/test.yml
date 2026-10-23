@@ -274,6 +274,12 @@ jobs:
           scripts/check_commonmain_map_compat.sh --self-test
           scripts/check_commonmain_map_compat.sh
 
+      - name: Guard RaftWindowDialog ownership (no raw Dialog / ModalBottomSheet)
+        shell: bash
+        run: |
+          scripts/check_raft_window_dialog.sh --self-test
+          scripts/check_raft_window_dialog.sh
+
       - name: Guard SlockMarkdownSpike println gate (task #20)
         shell: bash
         run: |

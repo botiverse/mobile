@@ -8,7 +8,6 @@ import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.gesture.raftBackSwipeRegion
-import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import build.raft.app.compat.ui.nativeEvent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
@@ -130,8 +129,8 @@ import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import build.raft.designsystem.components.RaftWindowDialog
+import build.raft.designsystem.components.RaftWindowDialogProperties
 import build.raft.app.compat.ui.BorderStyle
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.ui.KeyboardParams
@@ -1479,13 +1478,13 @@ fun Modal(
     onWillDismiss: ((Any?) -> Unit)? = null,
     content: (@Composable () -> Unit)
 ) {
-    // A right swipe must not pop the page underneath an open modal.
-    RaftBlockBackSwipe()
-    Dialog(
+    // RaftWindowDialog: back-swipe block, edge-to-edge window, system bars that follow the theme.
+    // Kuikly's Modal had no framework scrim and left the keyboard to the page: the pages draw
+    // RaftModalDismissBarrier and pad for keyboardHeightChange themselves.
+    RaftWindowDialog(
         onDismissRequest = { onWillDismiss?.invoke("") },
-        properties = raftModalDialogPropertiesWithoutScrim()
+        properties = RaftModalWindowDialogProperties
     ) {
-        RaftModalDialogWindowEffect()
         // The dialog is its own window with its own keyboard animation; the host's IME report
         // describes the activity window underneath (RaftHostImeInsets).
         CompositionLocalProvider(LocalRaftHostImeInsets provides null) {
@@ -1499,18 +1498,11 @@ fun Modal(
 }
 
 /**
- * Slock renders and handles its own dismiss scrim inside every modal.
- *
- * Kuikly's default `dismissOnClickOutside = true` adds another full-window clickable plus a no-op
- * clickable around the dialog content. Those framework nodes are harmless on Android's virtual
- * accessibility tree, but UIKit exposes the full-window native parent as an accessibility leaf and
- * hides the independent child actions. Disable the framework click wrappers and leave outside-tap
- * dismissal to [RaftModalDismissBarrier].
+ * Slock renders and handles its own dismiss scrim inside every modal ([RaftModalDismissBarrier]),
+ * so the window draws none, and the pages pad for the keyboard themselves.
  */
-internal fun raftModalDialogPropertiesWithoutScrim(): DialogProperties =
-    // Per platform: no framework scrim / window dim (Kuikly passed scrimColor = Transparent),
-    // edge to edge, insets left to the page. See raftModalDialogProperties.
-    raftModalDialogProperties()
+internal val RaftModalWindowDialogProperties =
+    RaftWindowDialogProperties(drawScrim = false, contentHandlesKeyboard = true)
 
 /** Kuikly native drag toggle; nothing to configure on CMP. */
 @Composable

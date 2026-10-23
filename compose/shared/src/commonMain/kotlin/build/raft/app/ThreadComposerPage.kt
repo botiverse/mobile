@@ -2,9 +2,13 @@ package build.raft.app
 
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftSeparator
+import build.raft.designsystem.components.RaftSheet
+import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.RaftTheme
+import androidx.compose.ui.graphics.isSpecified
 import build.raft.designsystem.components.RaftEmbeddedControls
-import build.raft.designsystem.components.RaftGlyph
-import build.raft.designsystem.components.RaftBackButton
 import build.raft.app.base.Utils
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.markdown.traceMarkdownSection
@@ -64,13 +68,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -3840,7 +3837,6 @@ private fun MentionActionNotice(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PendingMentionActionBanner(
     actions: List<RaftPendingMentionActionItem>,
@@ -3927,58 +3923,38 @@ private fun PendingMentionActionBanner(
             }
         }
     }
-    val mentionSheetBottomSafeArea = raftBottomSafeAreaPadding()
-    val mentionSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val mentionSheetScope = rememberCoroutineScope()
-    val closeMentionSheet: () -> Unit = {
-        mentionSheetScope
-            .launch { mentionSheetState.hide() }
-            .invokeOnCompletion { detailsVisible = false }
-    }
-    // Kuikly's sheet took `visible`/`dismissOnDrag`; the M3 sheet is shown while composed and
-    // swipe-to-dismiss is on by default. Kuikly drew no drag handle, surface or insets.
-    if (detailsVisible) ModalBottomSheet(
-        onDismissRequest = { detailsVisible = false },
-        sheetState = mentionSheetState,
-        modifier = Modifier.padding(horizontal = 12.dp),
-        shape = RectangleShape,
-        containerColor = Color.Transparent,
-        tonalElevation = 0.dp,
-        dragHandle = null,
-        contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
-    ) {
-        // task #176: ModalBottomSheet applies no insets; lift the card (and its
-        // Add all / Done buttons) above the system navigation bar.
-        Box(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp + mentionSheetBottomSafeArea)) {
-            // raft-ui dialog surface: dialog radius, popover layer, seam ring, float shadow.
-            Column(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 256.dp)
-                        .raftLookOverlaySurface(RaftAppRadius.Dialog)
-            ) {
-                PendingMentionActionDetailsSheet(
-                    actions = displayedActions,
-                    memberSuggestions = memberSuggestions,
-                    channelLabel = channelLabel,
-                    actionStates = actionStates,
-                    removingIds = removingIds,
-                    executingIds = executingIds,
-                    executingStates = executingStates,
+    // raft-ui Drawer as a bottom sheet (RaftSheet): the summary as its title, the actions in the
+    // scrolling body, Add all / Done stacked at the bottom. Its RaftWindowDialog gives it the
+    // theme's scrim and system bars and blocks the back swipe.
+    if (detailsVisible) {
+        val closeMentionSheet: () -> Unit = { detailsVisible = false }
+        RaftSheet(
+            onDismissRequest = closeMentionSheet,
+            title = localizedPendingMentionBatchSummary(displayedActions.size, channelLabel),
+            actions = {
+                PendingMentionActionDetailsActions(
                     eligibleCount = eligibleActions.size,
                     batchExecuting = batchExecuting,
-                    mentionActionNoticeTitle = mentionActionNoticeTitle,
-                    mentionActionNotice = mentionActionNotice,
-                    onInvite = onInvite,
-                    onNotify = onNotify,
-                    onDismiss = onDismiss,
                     onAddAll = onAddAll,
                     onClose = closeMentionSheet
                 )
             }
+        ) {
+            PendingMentionActionDetailsList(
+                actions = displayedActions,
+                memberSuggestions = memberSuggestions,
+                channelLabel = channelLabel,
+                actionStates = actionStates,
+                removingIds = removingIds,
+                executingIds = executingIds,
+                executingStates = executingStates,
+                mentionActionNoticeTitle = mentionActionNoticeTitle,
+                mentionActionNotice = mentionActionNotice,
+                onInvite = onInvite,
+                onNotify = onNotify,
+                onDismiss = onDismiss
+            )
         }
-        Spacer(modifier = Modifier.height(20.dp))
     }
 }
 
@@ -4107,7 +4083,7 @@ private fun PendingMentionActionAvatarStack(
 }
 
 @Composable
-private fun ColumnScope.PendingMentionActionDetailsSheet(
+private fun PendingMentionActionDetailsList(
     actions: List<RaftPendingMentionActionItem>,
     memberSuggestions: List<RaftComposerMemberItem>,
     channelLabel: String,
@@ -4115,113 +4091,69 @@ private fun ColumnScope.PendingMentionActionDetailsSheet(
     removingIds: Set<String>,
     executingIds: Set<String>,
     executingStates: Map<String, String>,
-    eligibleCount: Int,
-    batchExecuting: Boolean,
     mentionActionNoticeTitle: String?,
     mentionActionNotice: String?,
     onInvite: (String) -> Unit,
     onNotify: (String) -> Unit,
-    onDismiss: (String) -> Unit,
+    onDismiss: (String) -> Unit
+) {
+    mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
+        Box(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+            MentionActionNotice(title = mentionActionNoticeTitle, detail = notice)
+        }
+    }
+    // The sheet's body scrolls: a plain column (a mention batch is a handful of rows).
+    actions.forEachIndexed { index, action ->
+        key(action.resolutionId) {
+            PendingMentionActionCompactRow(
+                action = action,
+                targetSuggestion = action.matchingTargetSuggestion(memberSuggestions),
+                channelLabel = action.channelName.toComposerChannelMentionLabel() ?: channelLabel,
+                executing = action.resolutionId in executingIds,
+                localState = actionStates[action.resolutionId],
+                removing = action.resolutionId in removingIds,
+                executingState = executingStates[action.resolutionId],
+                onInvite = { onInvite(action.resolutionId) },
+                onNotify = { onNotify(action.resolutionId) },
+                onDismiss = { onDismiss(action.resolutionId) }
+            )
+            if (index < actions.lastIndex) RaftSeparator()
+        }
+    }
+}
+
+@Composable
+private fun PendingMentionActionDetailsActions(
+    eligibleCount: Int,
+    batchExecuting: Boolean,
     onAddAll: () -> Unit,
     onClose: () -> Unit
 ) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(RaftColor.Popover)
-                .padding(start = 24.dp, top = 32.dp, end = 24.dp, bottom = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = localizedPendingMentionBatchSummary(actions.size, channelLabel),
-            modifier = Modifier.weight(1f),
-            style = RaftType.PageTitle.copy(fontSize = 16.sp, lineHeight = 20.sp),
-            color = RaftColor.TextBlack,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
-        RaftBackButton(
-            onClick = onClose,
-            label = stringResource(MR.strings.common_close),
-            glyph = RaftGlyph.X,
-        )
-    }
-    LazyColumn(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .heightIn(max = 420.dp)
-                .background(RaftColor.Popover)
-                .padding(start = 24.dp, top = 16.dp, end = 24.dp, bottom = 24.dp)
-    ) {
-        mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
-            item(key = "mention-action-notice", contentType = "notice") {
-                Box(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                    MentionActionNotice(title = mentionActionNoticeTitle, detail = notice)
-                }
-            }
-        }
-        items(actions.size, key = { actions[it].resolutionId }) { index ->
-            val action = actions[index]
-            Column(modifier = Modifier.fillMaxWidth()) {
-                PendingMentionActionCompactRow(
-                    action = action,
-                    targetSuggestion = action.matchingTargetSuggestion(memberSuggestions),
-                    channelLabel = action.channelName.toComposerChannelMentionLabel() ?: channelLabel,
-                    executing = action.resolutionId in executingIds,
-                    localState = actionStates[action.resolutionId],
-                    removing = action.resolutionId in removingIds,
-                    executingState = executingStates[action.resolutionId],
-                    onInvite = { onInvite(action.resolutionId) },
-                    onNotify = { onNotify(action.resolutionId) },
-                    onDismiss = { onDismiss(action.resolutionId) }
-                )
-                if (index < actions.lastIndex) {
-                    Box(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .height(RaftAppStroke.Thin)
-                                .background(RaftColor.BorderHairline)
-                    )
-                }
-            }
-        }
-    }
-    Column(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(RaftColor.Popover)
-                .padding(horizontal = 24.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        if (eligibleCount >= 2 || batchExecuting) {
-            RaftBrutalActionButton(
-                label =
-                    if (batchExecuting) {
-                        stringResource(MR.strings.thread_composer_mention_batch_adding)
-                    } else {
-                        stringResource(MR.strings.thread_composer_mention_batch_add_all)
-                    },
-                onClick = onAddAll,
-                enabled = !batchExecuting,
-                modifier = Modifier.fillMaxWidth(),
-                minWidth = 0.dp,
-                minHeight = 40.dp,
-                leadingIcon = if (batchExecuting) RaftLucideIconName.LoaderCircle else RaftLucideIconName.UserPlus,
-                backgroundColor = RaftColor.AccentPink
-            )
-        }
+    if (eligibleCount >= 2 || batchExecuting) {
         RaftButton(
-            text = stringResource(MR.strings.common_done),
-            onClick = onClose,
+            text =
+                if (batchExecuting) {
+                    stringResource(MR.strings.thread_composer_mention_batch_adding)
+                } else {
+                    stringResource(MR.strings.thread_composer_mention_batch_add_all)
+                },
+            onClick = onAddAll,
             modifier = Modifier.fillMaxWidth(),
-            size = RaftButtonSize.Lg
+            variant = RaftButtonVariant.Primary,
+            size = RaftButtonSize.Lg,
+            loading = batchExecuting,
+            leadingIcon = {
+                val ink = LocalRaftContentColor.current.takeIf { it.isSpecified } ?: RaftTheme.colors.foreground
+                RaftLucideIcon(RaftLucideIconName.UserPlus, modifier = Modifier.size(16.dp), color = raftArgbHex(ink))
+            }
         )
     }
+    RaftButton(
+        text = stringResource(MR.strings.common_done),
+        onClick = onClose,
+        modifier = Modifier.fillMaxWidth(),
+        size = RaftButtonSize.Lg
+    )
 }
 
 @Composable

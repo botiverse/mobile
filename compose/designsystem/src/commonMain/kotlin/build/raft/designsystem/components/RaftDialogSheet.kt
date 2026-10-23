@@ -37,9 +37,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftStrings
@@ -195,12 +192,7 @@ fun RaftDialogSheet(
     cancelLabel: String = LocalRaftStrings.current.cancel,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    // A right swipe must not pop the page underneath an open sheet.
-    RaftBlockBackSwipe()
-    Dialog(
-        onDismissRequest = onDismissRequest,
-        properties = DialogProperties(dismissOnClickOutside = false, usePlatformDefaultWidth = false),
-    ) {
+    RaftWindowDialog(onDismissRequest = onDismissRequest) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             if (raftDialogSheetCentered(maxWidth)) {
                 Box(

@@ -1,6 +1,5 @@
 package build.raft.designsystem.components
 
-import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
@@ -42,8 +41,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftStrings
@@ -192,8 +189,8 @@ fun RaftDialogHeader(
  * doesn't lose it). To confirm an action, use the same surface with a coloured confirm
  * button (AlertDialog).
  *
- * The scrim is the platform dialog's (about 60% black on Android and desktop; raft
- * `layer-backdrop` is 65% in light, 60% in dark).
+ * It opens in a [RaftWindowDialog]: the scrim is [RaftTheme.scrim] (raft `layer-backdrop`,
+ * 65% black in light, 60% in dark) and the system bars follow the theme.
  */
 @Composable
 fun RaftDialog(
@@ -209,12 +206,7 @@ fun RaftDialog(
     content: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val dismiss by rememberUpdatedState(onDismissRequest)
-    // A right swipe must not pop the page underneath an open dialog.
-    RaftBlockBackSwipe()
-    Dialog(
-        onDismissRequest = onDismissRequest,
-        properties = DialogProperties(dismissOnClickOutside = false, usePlatformDefaultWidth = false),
-    ) {
+    RaftWindowDialog(onDismissRequest = onDismissRequest) {
         Box(
             Modifier
                 .fillMaxSize()
@@ -377,7 +369,7 @@ fun RaftSheet(
 }
 
 /**
- * The window of a [RaftSheet]: the platform dialog with its scrim, the slide up, a tap on
+ * The window of a [RaftSheet]: a [RaftWindowDialog] with its scrim, the slide up, a tap on
  * the scrim and Back calling [onDismissRequest], and the 82% height cap. [surface] draws
  * the sheet with the modifier it is given (the caller's [modifier] plus the slide, the
  * tap guard and the cap); pass it a [RaftSheetSurfaceImpl] with `clearNavigationBar`.
@@ -389,12 +381,7 @@ internal fun RaftSheetWindow(
     surface: @Composable (Modifier) -> Unit,
 ) {
     val dismiss by rememberUpdatedState(onDismissRequest)
-    // A right swipe must not pop the page underneath an open dialog.
-    RaftBlockBackSwipe()
-    Dialog(
-        onDismissRequest = onDismissRequest,
-        properties = DialogProperties(dismissOnClickOutside = false, usePlatformDefaultWidth = false),
-    ) {
+    RaftWindowDialog(onDismissRequest = onDismissRequest) {
         val slide = remember { Animatable(1f) }
         LaunchedEffect(Unit) { slide.animateTo(0f, tween(240, easing = RaftSheetEase)) }
         Box(
