@@ -45,6 +45,14 @@ enum class RaftToastSurface {
     Popover,
 }
 
+/** raft-ui Toast `intent` and its one icon (`TOAST_ICON`); the toast itself stays neutral. */
+enum class RaftToastIntent(internal val glyph: RaftGlyph) {
+    Info(RaftGlyph.Info),
+    Success(RaftGlyph.CircleCheck),
+    Warning(RaftGlyph.TriangleAlert),
+    Error(RaftGlyph.TriangleAlert),
+}
+
 @Immutable
 internal data class RaftToastLook(val fill: Color, val ring: Color, val ink: Color, val muted: Color)
 
@@ -60,7 +68,10 @@ internal fun raftToastLook(surface: RaftToastSurface, colors: RaftUiThemeColors)
  * ("Wug finished reviewing #25."), floating with `shadow-float`, container radius, at
  * most 384dp wide. 16 / 12dp padding, 12dp gaps, `text-callout` regular.
  *
- * - [icon]: a 20dp slot for who did it (an avatar) or a status pixel.
+ * - [intent]: leads with the intent's icon (raft-ui 0.22, #709): 16dp, in the toast's ink, in
+ *   the 20dp column, centred on the first line; never a status light.
+ * - [icon]: raft-ui `leading`, a 20dp slot for who did it (an avatar); replaces the
+ *   [intent]'s icon.
  * - [description]: more detail in the muted ink.
  * - [actionLabel] / [onAction]: one underlined bold text action ("View", "Undo"),
  *   never a button; it takes touches 44dp round it.
@@ -75,13 +86,16 @@ fun RaftToast(
     modifier: Modifier = Modifier,
     description: String? = null,
     surface: RaftToastSurface = RaftToastSurface.Hud,
+    intent: RaftToastIntent? = null,
     icon: (@Composable () -> Unit)? = null,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
 ) {
     val look = raftToastLook(surface, RaftTheme.colors)
     val typography = RaftTheme.typography
-    val titleOnly = icon == null && description == null && actionLabel == null
+    val leading: (@Composable () -> Unit)? =
+        icon ?: intent?.let { { RaftGlyphIcon(it.glyph, size = 16.dp, color = look.ink) } }
+    val titleOnly = leading == null && description == null && actionLabel == null
     CompositionLocalProvider(LocalRaftContentColor provides look.ink, LocalRaftSurfaceColor provides look.fill) {
         Row(
             modifier
@@ -93,7 +107,8 @@ fun RaftToast(
             horizontalArrangement = Arrangement.spacedBy(12.dp, if (titleOnly) Alignment.CenterHorizontally else Alignment.Start),
             verticalAlignment = if (description != null) Alignment.Top else Alignment.CenterVertically,
         ) {
-            if (icon != null) Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) { icon() }
+            // `ToastIcon`: `w-5 h-lh`, on the first line however the title wraps.
+            if (leading != null) Box(Modifier.size(20.dp).align(Alignment.Top), contentAlignment = Alignment.Center) { leading() }
             val hasAction = actionLabel != null && onAction != null
             // The text gives way to the action, but the toast still hugs its content.
             Column(if (hasAction) Modifier.weight(1f, fill = false) else Modifier) {

@@ -77,8 +77,6 @@ import build.raft.designsystem.components.RaftSegment
 import build.raft.designsystem.components.RaftSegmentedControl
 import build.raft.designsystem.components.RaftSelectTrigger
 import build.raft.designsystem.components.RaftSheetSurface
-import build.raft.designsystem.components.RaftStatusDot
-import build.raft.designsystem.components.RaftStatusVariant
 import build.raft.designsystem.components.RaftSwitch
 import build.raft.designsystem.components.RaftTab
 import build.raft.designsystem.components.RaftTabStrip
@@ -92,6 +90,7 @@ import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftTextLinkVariant
 import build.raft.designsystem.components.appendRaftTextLink
 import build.raft.designsystem.components.RaftToast
+import build.raft.designsystem.components.RaftToastIntent
 import build.raft.designsystem.components.RaftToastSurface
 import build.raft.designsystem.components.RaftToggleGroup
 import build.raft.designsystem.components.RaftToggleGroupItem
@@ -686,7 +685,7 @@ class InteractiveComponentScreenshotTest {
                             RaftButton("Leave Channel", {}, variant = RaftButtonVariant.Warning, size = RaftButtonSize.Lg)
                         },
                     )
-                    Caption("Toast: title only, icon and action, description", Modifier.padding(top = 20.dp))
+                    Caption("Toast: title only, avatar and action, intents", Modifier.padding(top = 20.dp))
                     RaftToast("Link copied.")
                     RaftToast(
                         "Wug finished reviewing #25.",
@@ -697,8 +696,11 @@ class InteractiveComponentScreenshotTest {
                     RaftToast(
                         "Settings saved.",
                         description = "Your teammates see the new name now.",
-                        icon = { RaftStatusDot(variant = RaftStatusVariant.Success) },
+                        intent = RaftToastIntent.Success,
                     )
+                    RaftToast("Copied the link to #25.", intent = RaftToastIntent.Info)
+                    RaftToast("Wug is offline. Messages wait until it's back.", intent = RaftToastIntent.Warning)
+                    RaftToast("Couldn't save the settings.", intent = RaftToastIntent.Error, actionLabel = "Retry", onAction = {})
                     Caption("Foreground banner (popover surface)", Modifier.padding(top = 8.dp))
                     RaftToast(
                         "Ada in #design",
