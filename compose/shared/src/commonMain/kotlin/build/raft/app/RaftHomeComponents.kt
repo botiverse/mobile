@@ -2280,6 +2280,14 @@ private fun RaftStructuralHomeShellContent(
             topBarBell.onView = onNotificationView
             topBarBell.onDismiss = onNotificationDismiss
         }
+        DisposableEffect(topBarBell) {
+            onDispose {
+                topBarBell.bellOpen.value = false
+                topBarBell.notifications = emptyList()
+                topBarBell.onView = {}
+                topBarBell.onDismiss = {}
+            }
+        }
     }
     LaunchedEffect(externalFocusLossDismissEpoch) {
         if (externalFocusLossDismissEpoch > 0) {

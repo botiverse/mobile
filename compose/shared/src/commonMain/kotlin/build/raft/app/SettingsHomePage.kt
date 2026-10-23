@@ -19474,7 +19474,10 @@ private fun SharedMembersScreen(
     when (val current = state) {
         SharedMembersUiState.Loading ->
             Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
-                MembersPageHeader(title = membersTitle, onBack = onBack)
+                // No head under the wide top bar, as the loaded list (MembersListContent).
+                if (LocalRaftAppShellTopBar.current == null || onBack != null) {
+                    MembersPageHeader(title = membersTitle, onBack = onBack)
+                }
                 RaftCenteredLoading()
         }
         is SharedMembersUiState.Error ->
