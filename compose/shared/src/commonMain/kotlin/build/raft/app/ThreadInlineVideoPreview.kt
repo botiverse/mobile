@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.resources.MR
@@ -90,6 +91,31 @@ internal data class ThreadInlineVideoPreviewHost(
 
 internal val LocalThreadInlineVideoPreviewHost =
     compositionLocalOf<ThreadInlineVideoPreviewHost?> { null }
+
+/** Draws the inline video itself: the platform player, or a still frame in screenshot fixtures. */
+internal typealias ThreadInlineVideoPlayer =
+    @Composable (
+        source: String,
+        playControl: VideoPlayControl,
+        onPlayStateChanged: (PlayState) -> Unit,
+        onFirstFrame: () -> Unit,
+        modifier: Modifier
+    ) -> Unit
+
+internal val LocalThreadInlineVideoPlayer =
+    staticCompositionLocalOf<ThreadInlineVideoPlayer> {
+        { source, playControl, onPlayStateChanged, onFirstFrame, modifier ->
+            RaftFilePreviewKuiklyVideo(
+                source = source,
+                playControl = playControl,
+                seekRequest = null,
+                onPlayStateChanged = onPlayStateChanged,
+                onPlayTimeChanged = { _, _ -> },
+                onFirstFrame = onFirstFrame,
+                modifier = modifier
+            )
+        }
+    }
 
 @Composable
 internal fun ThreadInlineVideoAttachmentCard(
@@ -187,14 +213,12 @@ private fun ThreadInlineVideoSurface(
         contentAlignment = Alignment.Center
     ) {
         if (renderMode == ThreadInlineVideoRenderMode.Ready) {
-            RaftFilePreviewKuiklyVideo(
-                source = source,
-                playControl = playControl,
-                seekRequest = null,
-                onPlayStateChanged = { playState = it },
-                onPlayTimeChanged = { _, _ -> },
-                onFirstFrame = { firstFrameVisible = true },
-                modifier = Modifier.fillMaxSize()
+            LocalThreadInlineVideoPlayer.current(
+                source,
+                playControl,
+                { playState = it },
+                { firstFrameVisible = true },
+                Modifier.fillMaxSize()
             )
         }
 
