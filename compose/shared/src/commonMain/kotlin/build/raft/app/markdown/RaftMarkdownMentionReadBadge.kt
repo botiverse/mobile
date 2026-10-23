@@ -58,6 +58,9 @@ private const val MentionReadInlineId = "raft-mention-read:read"
  */
 private val MentionReadBadgeReserve = 10.dp
 private val MentionReadBadgeGap = 2.dp
+
+/** The square's top is 2dp below the text line box's top (not relative to the glyphs). */
+private val MentionReadBadgeTop = 2.dp
 private val MentionReadCheckSize = 6.5.dp
 private const val MentionReadCheckStroke = 3f
 
@@ -76,8 +79,8 @@ internal val RaftMarkdownMentionReadInlineContent: Map<String, InlineTextContent
                 placeholder =
                     Placeholder(
                         width = MentionReadBadgeReserve.value.sp,
-                        height = RaftStatusSize.Sm.edge.value.sp,
-                        placeholderVerticalAlign = PlaceholderVerticalAlign.TextTop,
+                        height = (RaftStatusSize.Sm.edge + MentionReadBadgeTop).value.sp,
+                        placeholderVerticalAlign = PlaceholderVerticalAlign.Top,
                     ),
             ) {
                 RaftMarkdownMentionReadBadge()
@@ -93,7 +96,7 @@ internal val RaftMarkdownMentionReadInlineContent: Map<String, InlineTextContent
 internal fun RaftMarkdownMentionReadBadge() {
     val label = stringResource(MR.strings.thread_mention_agent_read)
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopStart) {
-        Box(Modifier.offset(x = MentionReadBadgeGap), contentAlignment = Alignment.Center) {
+        Box(Modifier.offset(x = MentionReadBadgeGap, y = MentionReadBadgeTop), contentAlignment = Alignment.Center) {
             RaftStatusDot(size = RaftStatusSize.Sm, presence = RaftPresence.Online, contentDescription = label)
             RaftGlyphIcon(
                 glyph = RaftGlyph.Check,

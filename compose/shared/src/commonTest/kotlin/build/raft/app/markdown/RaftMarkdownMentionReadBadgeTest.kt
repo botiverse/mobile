@@ -28,7 +28,7 @@ class RaftMarkdownMentionReadBadgeTest {
         assertEquals(setOf("raft-mention-read:read"), RaftMarkdownMentionReadInlineContent.keys)
         val placeholder = RaftMarkdownMentionReadInlineContent.getValue("raft-mention-read:read").placeholder
         assertEquals(10f, placeholder.width.value)
-        assertEquals(8f, placeholder.height.value)
+        assertEquals(10f, placeholder.height.value)
     }
 
     @Test
