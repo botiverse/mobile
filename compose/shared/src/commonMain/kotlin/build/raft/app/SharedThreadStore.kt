@@ -1831,7 +1831,12 @@ internal class SharedThreadDataSource(
      * [build.raft.app.data.SharedCreateAgentCoordinator] so the
      * Members page and Thread action card share the same code path.
      */
-    private val createAgentCoordinator: build.raft.app.data.SharedCreateAgentCoordinator? = null
+    private val createAgentCoordinator: build.raft.app.data.SharedCreateAgentCoordinator? = null,
+    /**
+     * What the Activity list holds right now (artin 10-23). Read at page start as a candidate
+     * snapshot for the first frame; see [threadActivityOpenSeedMessages]. Absent means no seed.
+     */
+    private val activityOpenSeedSource: (() -> ThreadActivityOpenSeedSource?)? = null,
 ) {
     /**
      * Public accessor for the [build.raft.app.data.SharedCreateAgentCoordinator]
@@ -1925,7 +1930,8 @@ internal class SharedThreadDataSource(
         canonicalConversationIdentityPublisher:
             suspend (ReplyCacheProvenance, build.raft.app.model.ConversationSummary) -> Boolean = { _, _ -> false },
         createAgentCoordinator: build.raft.app.data.SharedCreateAgentCoordinator? = null,
-        diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
+        diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
+        activityOpenSeedSource: (() -> ThreadActivityOpenSeedSource?)? = null,
     ) : this(
         api = RaftThreadApiClient(networkApi, diagnosticsLogger),
         sessionStore = sessionStore,
@@ -1956,8 +1962,27 @@ internal class SharedThreadDataSource(
         replyOriginHydrationGraceMillis = replyOriginHydrationGraceMillis,
         canonicalConversationIdentityPublisher = canonicalConversationIdentityPublisher,
         diagnosticsLogger = diagnosticsLogger,
-        createAgentCoordinator = createAgentCoordinator
+        createAgentCoordinator = createAgentCoordinator,
+        activityOpenSeedSource = activityOpenSeedSource,
     )
+
+    /**
+     * The messages Activity holds for this route's conversation (artin 10-23), matched to the route
+     * identity and to the current owner; empty when nothing matches or the owner changed.
+     */
+    internal fun activityOpenSeedMessagesIfCurrent(
+        routeIdentity: ThreadRouteIdentity,
+        context: ReplyCacheProducerContext,
+    ): List<RaftThreadMessageItem> {
+        val source = activityOpenSeedSource?.invoke() ?: return emptyList()
+        if (!isCurrentReplyCacheProvenance(context.provenance)) return emptyList()
+        return threadActivityOpenSeedMessages(
+            source = source,
+            routeIdentity = routeIdentity,
+            serverId = context.provenance.serverId,
+            principalId = context.provenance.principalId,
+        )
+    }
 
     private val payloadCache = payloadStore ?: SharedThreadPayloadStore()
     /** Shared with Activity reply prewarm through the process-wide [SharedThreadPayloadStore]. */
@@ -7450,6 +7475,16 @@ internal class SharedThreadStore(
             } else {
                 null
             }
+        // artin 10-23: the row the user tapped in Activity already holds this conversation's latest
+        // message (a thread row its latest replies). With no canonical memory frame, those messages are
+        // a candidate for the first frame: matched to this route's stream and owner, filling only what the
+        // stand-in lacks, replaced by the canonical load. They also make waiting for the baseline moot.
+        val activitySeed =
+            if (cached == null && current == null && producerContext != null) {
+                dataSource.activityOpenSeedMessagesIfCurrent(routeIdentity, producerContext)
+            } else {
+                emptyList()
+            }
         // Offline cache write entry (task #1124): every entry of a channel / DM refreshes that one
         // channel's durable baseline in the background. Task #390 moves the launch ahead of the
         // offline read below so that on a memory miss the load and the read overlap: the durable
@@ -7488,8 +7523,9 @@ internal class SharedThreadStore(
                         routePayload = routeContextPayload,
                         routeIdentity = routeIdentity,
                         context = context,
-                    ) ?: if (supersededMemory != null) {
-                        // A memory candidate already stands in: no reason to hold the first frame for the baseline.
+                    ) ?: if (supersededMemory != null || activitySeed.isNotEmpty()) {
+                        // A memory or Activity candidate already stands in: no reason to hold the first
+                        // frame for the baseline.
                         null
                     } else {
                         awaitBaselineThenReadDurable(threadId, routeContextPayload, routeIdentity, context, entryBaselineJob)
@@ -7553,16 +7589,26 @@ internal class SharedThreadStore(
                 "status=${routeContextPayload.status} messages=${routeContextPayload.messages.size} " +
                 routeContextPayload.originDiagnostics()
         )
-        val visiblePayload =
-            (cached
-                ?: current
-                ?: supersededFirstFrame
+        val standInFirstFrame =
+            supersededFirstFrame
                 ?: durableLastKnownWithReplies
                 ?: if (threadId == null) {
                     routeContextPayload
                 } else {
                     routeContextPayload.copy(status = "loading", errorCode = null)
-                }).let { candidate ->
+                }
+        val seededStandIn = standInFirstFrame.withActivityOpenSeed(activitySeed)
+        if (activitySeed.isNotEmpty()) {
+            diagnosticsLogger?.invoke(
+                "thread_start_activity_seed threadId=${threadId.orEmpty()} seed=${activitySeed.size} " +
+                    "standIn=${standInFirstFrame.status}/${standInFirstFrame.messages.size} " +
+                    "added=${seededStandIn.messages.size - standInFirstFrame.messages.size}"
+            )
+        }
+        val visiblePayload =
+            (cached
+                ?: current
+                ?: seededStandIn).let { candidate ->
                 rememberedAccessFailure?.let { failure ->
                     candidate
                         .asRefreshFailed(failure.code)
