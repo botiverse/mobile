@@ -26,6 +26,7 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftIsDark
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftStroke
 import build.raft.app.RaftCachedImage
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftBrutalCard
@@ -696,8 +697,8 @@ private fun SettingsProfileAvatar(
                 modifier =
                     Modifier
                         .size(30.dp)
-                        .background(RaftColor.SurfaceWhite)
-                        .border(RaftAppStroke.Default, RaftColor.BorderBlack),
+                        .background(RaftTheme.colors.layerCard, RaftTheme.shapes.control)
+                        .border(RaftStroke.Hairline, RaftTheme.colors.lineHairline, RaftTheme.shapes.control),
                 contentAlignment = Alignment.Center
             ) {
                 RaftLucideIcon(RaftLucideIconName.LoaderCircle, modifier = Modifier.size(16.dp), spinning = true)
@@ -1036,22 +1037,6 @@ private fun SettingsDisconnectProviderDialog(
 }
 
 @Composable
-private fun SettingsDisclosureRow(iconName: RaftLucideIconName, title: String, subtitle: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 62.dp).background(RaftColor.SurfaceWhite).border(RaftAppStroke.Default, RaftColor.BorderBlack).padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        IconBox(iconName, RaftColor.SurfaceWhite)
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(title, style = RaftType.Body.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, style = RaftType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
-        RaftLucideIcon(RaftLucideIconName.ChevronRight, modifier = Modifier.size(16.dp))
-    }
-}
-
-@Composable
 private fun SettingsLogoutAction(payload: RaftSettingsAccountPayload, onConfirmLogout: () -> Unit) {
     val confirming = remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1097,14 +1082,6 @@ private fun SettingsLogoutAction(payload: RaftSettingsAccountPayload, onConfirmL
 }
 
 @Composable
-private fun SettingsMetaRow(iconName: RaftLucideIconName, text: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        RaftLucideIcon(iconName, color = RaftColor.TextMutedGrayArgb, modifier = Modifier.size(14.dp))
-        Text(text, style = RaftType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
 private fun SettingsAccountSectionTitle(text: String, iconName: RaftLucideIconName? = null) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(start = 2.dp, bottom = 2.dp),
@@ -1120,36 +1097,8 @@ private fun SettingsAccountSectionTitle(text: String, iconName: RaftLucideIconNa
 
 @Composable
 private fun SettingsAccountWarning(text: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth().background(RaftColor.SurfaceCream).border(RaftAppStroke.Default, RaftColor.BorderBlack).padding(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        RaftLucideIcon(RaftLucideIconName.TriangleAlert, modifier = Modifier.size(14.dp))
-        Text(text, style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextBlack), color = RaftColor.TextBlack, maxLines = 3, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
-private fun SettingsAccountSuccess(text: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth().background(RaftColor.AccentLime).border(RaftAppStroke.Default, RaftColor.StickerInk).padding(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        RaftLucideIcon(RaftLucideIconName.Check, modifier = Modifier.size(14.dp), color = raftArgbHex(RaftColor.StickerInk))
-        Text(text, style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.StickerInk), color = RaftColor.StickerInk, maxLines = 2, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
-private fun IconBox(iconName: RaftLucideIconName, color: Color, invert: Boolean = false) {
-    Box(
-        modifier = Modifier.size(38.dp).background(color).border(RaftAppStroke.Default, RaftColor.BorderBlack),
-        contentAlignment = Alignment.Center
-    ) {
-        RaftLucideIcon(iconName, color = if (invert) raftArgbHex(RaftColor.StickerPaper) else RaftColor.TextBlackArgb, modifier = Modifier.size(18.dp))
-    }
+    // Web `<Banner intent="warning" density="sm">` (a rounded design-system banner).
+    RaftBanner(description = text, status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm, modifier = Modifier.fillMaxWidth())
 }
 
 // Known providers keep their own marks. Unknown social identities retain the
@@ -1166,13 +1115,7 @@ private fun providerIconAssetSource(provider: String, dark: Boolean): String? =
 
 @Composable
 private fun SettingsAccountEmptyMessage(title: String, detail: String) {
-    Column(
-        modifier = Modifier.fillMaxWidth().background(RaftColor.SurfaceCream).border(RaftAppStroke.Default, RaftColor.BorderBlack).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Text(title, style = RaftType.Body.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(detail, style = RaftType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray, maxLines = 2, overflow = TextOverflow.Ellipsis)
-    }
+    RaftCard(modifier = Modifier.fillMaxWidth(), title = title, description = detail)
 }
 
 // React parity: the web Connected accounts section lists only social auth
