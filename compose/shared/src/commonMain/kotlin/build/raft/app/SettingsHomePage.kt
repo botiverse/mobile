@@ -7372,6 +7372,8 @@ private fun RaftAppShellReadyContent(
                                 prefersChineseCommunity = prefersChineseCommunity,
                                 serverDrawerEnabled = serverDrawerEnabled,
                                 homeServerAvatarEnabled = homeServerAvatarEnabled,
+                                // artin task #8: on a wide screen the top bar holds the server.
+                                serverSwitcherInTopBar = navRailActive,
                                 // The phone bar or the wide rail carries Search and Activity (nav
                                 // spec §5): the list keeps only Saved, never a second copy.
                                 searchAndActivityOnShellNav = appShellNavCarriesSearchAndActivity(navRailActive),
@@ -20017,6 +20019,8 @@ private fun SharedHomeScreen(
     prefersChineseCommunity: Boolean = false,
     serverDrawerEnabled: Boolean = false,
     homeServerAvatarEnabled: Boolean = false,
+    /** Wide layout: the top bar holds the server switcher, so the list's head shows "Home". */
+    serverSwitcherInTopBar: Boolean = false,
     /** The phone bottom bar is on screen: the list drops its Search / Activity rows. */
     searchAndActivityOnShellNav: Boolean = false,
     /** Server flag `thread_unread_badge_v0`: channel rows show followed-thread unread (web parity). */
@@ -20128,6 +20132,7 @@ private fun SharedHomeScreen(
                     serverSwitcherExpanded = serverSwitcherExpanded,
                     serverDrawerEnabled = serverDrawerEnabled,
                     homeServerAvatarEnabled = homeServerAvatarEnabled,
+                    serverSwitcherInTopBar = serverSwitcherInTopBar,
                     serverDrawerSections = serverDrawerSections,
                     serverUnreadCounts = state.serverUnreadCounts,
                     serverActivityExpectedOwner = serverActivityExpectedOwner,
@@ -20167,6 +20172,7 @@ private fun SharedHomeScreen(
                 serverSwitcherExpanded = serverSwitcherExpanded,
                 serverDrawerEnabled = serverDrawerEnabled,
                 homeServerAvatarEnabled = homeServerAvatarEnabled,
+                serverSwitcherInTopBar = serverSwitcherInTopBar,
                 serverDrawerSections = serverDrawerSections,
                 serverUnreadCounts = state.serverUnreadCounts,
                 serverActivityExpectedOwner = serverActivityExpectedOwner,
@@ -20202,6 +20208,7 @@ private fun SharedHomeScreen(
                     serverSwitcherExpanded = serverSwitcherExpanded,
                     serverDrawerEnabled = serverDrawerEnabled,
                     homeServerAvatarEnabled = homeServerAvatarEnabled,
+                    serverSwitcherInTopBar = serverSwitcherInTopBar,
                     serverDrawerSections = serverDrawerSections,
                     serverUnreadCounts = state.serverUnreadCounts,
                     serverActivityExpectedOwner = serverActivityExpectedOwner,
@@ -20414,6 +20421,7 @@ private fun SharedHomeScreen(
                 serverSwitcherExpanded = serverSwitcherExpanded,
                 serverDrawerEnabled = serverDrawerEnabled,
                 homeServerAvatarEnabled = homeServerAvatarEnabled,
+                serverSwitcherInTopBar = serverSwitcherInTopBar,
                 serverDrawerSections = serverDrawerSections,
                 pendingServerId = serverSwitchState.pendingServerId,
                 prefersChineseCommunity = prefersChineseCommunity,
@@ -24340,6 +24348,7 @@ private fun SharedHomeSessionShell(
     serverSwitcherExpanded: Boolean,
     serverDrawerEnabled: Boolean = false,
     homeServerAvatarEnabled: Boolean = false,
+    serverSwitcherInTopBar: Boolean = false,
     serverDrawerSections: List<RaftHomeServerDrawerSection> = emptyList(),
     scrollToTopRequest: Int = 0,
     serverUnreadCounts: Map<String, Int> = emptyMap(),
@@ -24387,6 +24396,7 @@ private fun SharedHomeSessionShell(
         serverSwitcherExpanded = serverSwitcherExpanded,
         serverDrawerEnabled = serverDrawerEnabled,
         homeServerAvatarEnabled = homeServerAvatarEnabled,
+        serverSwitcherInTopBar = serverSwitcherInTopBar,
         serverDrawerSections = serverDrawerSections,
         prefersChineseCommunity = prefersChineseCommunity,
         topSafeAreaOverride = topSafeAreaOverride,

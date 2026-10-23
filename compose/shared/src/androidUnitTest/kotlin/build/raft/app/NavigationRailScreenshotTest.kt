@@ -27,7 +27,8 @@ import org.robolectric.annotation.GraphicsMode
  * ([RaftAppShellTopBar]) across the window, with the current server's workspace button, the
  * workspace strip of five servers (Botiverse current, Acme Labs with unread) and the search field
  * centred; under it the navigation rail ([RaftNavigationRailTabBar]) with no header and no Search:
- * Home selected, Activity with unread, Tasks, Members, then Settings in the footer. Fixed fixture
+ * Home selected, Activity with unread, Tasks, Members, then Settings in the footer; beside it the
+ * Home list pane, whose head shows "Home" rather than a second server switcher. Fixed fixture
  * data; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -84,6 +85,30 @@ class NavigationRailScreenshotTest {
                             bottomItems =
                                 listOf(RaftBottomTabItemPayload(key = "settings", label = "Settings", iconName = RaftLucideIconName.Settings)),
                         )
+                        // The Home list pane: its head shows the page name, not a second server
+                        // switcher (the top bar holds the server).
+                        Box(Modifier.width(320.dp).fillMaxHeight()) {
+                            RaftStructuralHomeShell(
+                                currentServerName = servers.first().name,
+                                currentServerId = servers.first().id,
+                                servers = servers,
+                                channels =
+                                    listOf(
+                                        RaftHomeConversationItem(id = "c-general", name = "general", kind = "channel"),
+                                        RaftHomeConversationItem(id = "c-design", name = "design", kind = "channel", unreadCount = 3),
+                                    ),
+                                directMessages =
+                                    listOf(RaftHomeConversationItem(id = "dm-ada", name = "Ada", kind = "dm", avatarLabel = "AD")),
+                                serverSwitcherInTopBar = true,
+                                applyTopSafeArea = false,
+                                topSafeAreaOverride = 0.dp,
+                                showBottomBar = false,
+                                searchAndActivityOnShellNav = true,
+                                bottomContentPadding = 0.dp,
+                                outerPadding = 0.dp,
+                                contentRefreshEnabled = false,
+                            )
+                        }
                         Box(Modifier.weight(1f).fillMaxHeight())
                     }
                 }
