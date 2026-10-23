@@ -244,7 +244,8 @@ class RaftBackgroundConnectionService : Service() {
             }
         }
 
-        private fun ensureChannel(context: Context) {
+        internal fun ensureChannel(context: Context) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             if (manager.getNotificationChannel(CHANNEL_ID) != null) return
             manager.createNotificationChannel(

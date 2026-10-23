@@ -44,6 +44,8 @@ class RaftApplication : Application() {
         RaftCmpRouter.configure(debugBuild = BuildConfig.DEBUG)
         RaftPageRegistry.install()
         RaftAndroidHostHooks.install(this)
+        // All notification channels up front, independent of permission (see RaftNotificationChannels).
+        build.raft.app.shared.RaftNotificationChannels.ensureAll(this)
         // Download centre notifications attach when the centre is first used, not at startup.
         val application = this
         build.raft.app.downloads.RaftDownloadCenterProcess.onCreated = { center ->

@@ -5141,8 +5141,8 @@ internal class RaftBridgeModule(
             )
 
     private fun requestNotificationPermissionCapability(): Map<String, Any> {
+        AndroidUnreadNotificationPoster.ensureSharedNotificationChannels(appContext)
         if (hasNotificationPermission()) {
-            AndroidUnreadNotificationPoster.ensureSharedNotificationChannels(appContext)
             return if (NotificationManagerCompat.from(appContext).areNotificationsEnabled()) {
                 mapOf("status" to "ok", "code" to "permission_granted")
             } else {
