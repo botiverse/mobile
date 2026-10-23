@@ -12,6 +12,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.unit.Velocity
+import kotlin.math.ceil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
@@ -91,6 +92,25 @@ internal fun raftRubberBandSlope(pull: Float, dimension: Float, coefficient: Flo
     return coefficient / (x * x)
 }
 
+/** [offset] as a fraction of the [trigger] distance, clamped to 0..1. */
+internal fun raftPullProgress(offset: Float, trigger: Float): Float =
+    if (trigger > 0f) (offset / trigger).coerceIn(0f, 1f) else 0f
+
+/**
+ * How many of an activity indicator's [tickCount] spokes a pull at [progress] (0..1) reveals,
+ * clockwise from 12 o'clock: none at rest, one more per 1/[tickCount] of the pull, all of them at
+ * the threshold. This is UIRefreshControl's pull-down reveal (its spokes appear one by one as the
+ * content comes down, then the full indicator starts spinning when the pull commits).
+ */
+internal fun raftRefreshRevealedTicks(progress: Float, tickCount: Int = RaftActivityIndicatorTickCount): Int {
+    if (progress <= 0f) return 0
+    if (progress >= 1f) return tickCount
+    return ceil(progress * tickCount).toInt().coerceIn(1, tickCount)
+}
+
+/** UIActivityIndicatorView's `.medium` / `.large` styles (iOS 13+) draw 8 spokes. */
+internal const val RaftActivityIndicatorTickCount = 8
+
 /**
  * The pull → refresh → settle state machine behind [RaftPullToRefreshBox]. Drags arrive through
  * [nestedScrollConnection] (user input only: programmatic scrolls and flings never move it), the
@@ -131,6 +151,20 @@ internal class RaftPullToRefreshController(
     /** The indicator spins (refresh requested or running), as opposed to following the pull. */
     val showsRefreshing: Boolean
         get() = phase == RaftPullToRefreshPhase.AwaitingRefresh || phase == RaftPullToRefreshPhase.Refreshing
+
+    /**
+     * Cupertino only: this pull has reached [RaftPullToRefreshGeometry.triggerPx] and is committed.
+     * UIRefreshControl commits the moment the pull crosses its threshold (the spinner starts and
+     * the haptic plays while the finger is still down) and does not take it back if the finger
+     * then eases off; the release then refreshes regardless of where the content is. Cleared when
+     * the pull is released (or grabbed again, or disabled).
+     */
+    var armed: Boolean by mutableStateOf(false)
+        private set
+
+    /** The pull's progress towards the threshold, 0..1 (the indicator's reveal before it arms). */
+    val pullProgress: Float
+        get() = raftPullProgress(contentOffset, geometry.triggerPx)
 
     val isAnimating: Boolean
         get() = animationJob?.isActive == true
@@ -219,13 +253,15 @@ internal class RaftPullToRefreshController(
         if (phase != RaftPullToRefreshPhase.Pulling) return 0f
         val offsetVelocity = velocityY * raftRubberBandSlope(pull, dimension, geometry.coefficient)
         pull = 0f
+        val wasArmed = armed
+        armed = false
         when {
             !enabled -> settle(offsetVelocity)
             storeRefreshing -> {
                 phase = RaftPullToRefreshPhase.Refreshing
                 springToRefreshing(offsetVelocity)
             }
-            contentOffset >= geometry.triggerPx -> {
+            wasArmed || contentOffset >= geometry.triggerPx -> {
                 phase = RaftPullToRefreshPhase.AwaitingRefresh
                 springToRefreshing(offsetVelocity)
                 onRefresh()
@@ -262,6 +298,7 @@ internal class RaftPullToRefreshController(
         this.enabled = enabled
         if (!enabled && phase != RaftPullToRefreshPhase.Idle) {
             pull = 0f
+            armed = false
             settle(0f)
         }
     }
@@ -273,7 +310,9 @@ internal class RaftPullToRefreshController(
         val offset = raftRubberBandOffset(pull, dimension, geometry.coefficient)
         contentOffset = offset
         indicatorOffset = offset
-        if (pull == 0f) phase = RaftPullToRefreshPhase.Idle
+        if (style == RaftPullToRefreshStyle.Cupertino && offset >= geometry.triggerPx) armed = true
+        // An armed pull stays a pull at rest: the release still refreshes, as UIRefreshControl does.
+        if (pull == 0f && !armed) phase = RaftPullToRefreshPhase.Idle
         return consumed
     }
 
@@ -282,6 +321,7 @@ internal class RaftPullToRefreshController(
         cancelAnimation()
         pull = raftRubberBandPull(contentOffset, dimension, geometry.coefficient)
         indicatorOffset = contentOffset
+        armed = false
         phase = RaftPullToRefreshPhase.Pulling
     }
 
@@ -336,7 +376,13 @@ internal class RaftPullToRefreshController(
     }
 }
 
-/** Critically damped settle, close to UIScrollView's bounce-back and Android's stretch release. */
+/**
+ * Critically damped settle, close to UIScrollView's bounce-back and Android's stretch release.
+ * Stiffness 400 (natural frequency 20 rad/s) brings the 60pt refresh gap to within 1pt of rest in
+ * about 0.3s with no overshoot, the length of UIKit's default view animation and of the collapse
+ * after `UIRefreshControl.endRefreshing()` (observed; Apple documents neither curve). A spring
+ * rather than a fixed curve keeps the release velocity when the finger lets go mid-motion.
+ */
 internal val RaftPullToRefreshSpring =
     spring<Float>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
 
