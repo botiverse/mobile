@@ -1,12 +1,12 @@
 # Raft Visual Testing
 
-Generated: 2026-10-23 11:37:17 UTC
+Generated: 2026-10-23 12:06:19 UTC
 Latest run: d2f13bc-20261023113615
 Latest commit: d2f13bc-20261023113615
 Commit subject: feat(members): one shared member picker for the create-channel dialogs (#3585)
 Providers: react vs android
 Summary: total 101, same 0, pass 2, basic-pass 8, different 86, missing 5
-AI analysis: ready 29 / total 101, pending 72
+AI analysis: ready 41 / total 101, pending 60
 Visual coverage matrix: active 110 / total 130, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 

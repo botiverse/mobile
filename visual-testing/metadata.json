@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-23T11:37:17.021Z",
+  "generatedAt": "2026-10-23T12:06:19.930Z",
   "runId": "d2f13bc-20261023113615",
   "commit": "d2f13bc-20261023113615",
   "commitSubject": "feat(members): one shared member picker for the create-channel dialogs (#3585)",
@@ -27,8 +27,8 @@
       },
       "analysisSummary": {
         "total": 101,
-        "ready": 29,
-        "pending": 72
+        "ready": 41,
+        "pending": 60
       }
     }
   ],
@@ -42,8 +42,8 @@
   },
   "analysisSummary": {
     "total": 101,
-    "ready": 29,
-    "pending": 72
+    "ready": 41,
+    "pending": 60
   },
   "componentMatrixSummary": {
     "total": 130,
