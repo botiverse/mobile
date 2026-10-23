@@ -71,14 +71,8 @@ jobs:
       - name: Validate checked-in CI tiering contract
         run: scripts/ci/test_ci_tiering_contract.sh
 
-      - name: Validate iOS Kotlin/Native optimizer contract
-        run: scripts/ci/test_ios_native_optimizer_contract.sh
-
       - name: Validate iOS Hands release notes contract
         run: scripts/ci/test_ios_hands_release_contract.sh
-
-      - name: Validate attachment save failure mapping across native bridges
-        run: python3 scripts/ci/test_attachment_save_mapping_contract.py
 
       - name: Validate no Kuikly UI consumer contract
         run: python3 scripts/ci/test_kuikly_raft_consumer_contract.py

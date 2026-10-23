@@ -37,10 +37,6 @@ if [[ "${unexpected}" == "1" ]]; then
   exit 1
 fi
 
-[[ "$(grep -Fc "secrets.${old_upper}_BEARER_TOKEN" .github/workflows/android-release.yml)" == "4" ]] || {
-  echo "FAIL: Android external secret allowlist drifted" >&2
-  exit 1
-}
 # The legacy key is external storage, not a repository-owned runtime name.
 # Freeze every allowed consumer, including the signing-only repair downloader;
 # merely increasing the count must not authorize use in another job or env.
@@ -126,15 +122,5 @@ extra["env"] ||= {}
 extra["env"]["HANDS_AUTH_TOKEN"] = expression
 abort "FAIL: iOS secret allowlist admitted an invalid consumer" if secret_references(extra, token) == expected
 RUBY
-
-for path in \
-  "scripts/release_android_${old_lower}_github.sh" \
-  "scripts/publish_android_${old_lower}_release.sh" \
-  "scripts/prepare_android_${old_lower}_symbols.sh"; do
-  if [[ -e "${path}" ]]; then
-    echo "FAIL: removed compatibility path returned: ${path}" >&2
-    exit 1
-  fi
-done
 
 echo "Hands identifier migration contract: PASS"

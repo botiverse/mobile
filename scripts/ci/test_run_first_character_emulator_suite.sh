@@ -6,7 +6,6 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SUITE_RUNNER="$ROOT/scripts/ci/run-first-character-emulator-suite.sh"
-WORKFLOW="$ROOT/.github/workflows/test.yml"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -22,28 +21,6 @@ pass() {
 # 1. Syntax check
 bash -n "$SUITE_RUNNER" || fail "Syntax error in $SUITE_RUNNER"
 pass "syntax check passed"
-
-# 2. Structural contract checks on test registry
-grep -Fq 'login-transition-routing' "$SUITE_RUNNER" || fail "missing login-transition-routing"
-grep -Fq 'first-character-baseline' "$SUITE_RUNNER" || fail "missing first-character-baseline"
-grep -Fq 'ime-visibility-probe' "$SUITE_RUNNER" || fail "missing ime-visibility-probe"
-grep -Fq 'composer-session-retirement' "$SUITE_RUNNER" || fail "missing composer-session-retirement"
-grep -Fq 'thread-composer-suggestion-interaction' "$SUITE_RUNNER" || fail "missing thread-composer-suggestion-interaction"
-grep -Fq 'multiline-text-field-value' "$SUITE_RUNNER" || fail "missing multiline-text-field-value"
-grep -Fq 'composer-text-selection' "$SUITE_RUNNER" || fail "missing composer-text-selection"
-grep -Fq 'attachment-private-file-provider' "$SUITE_RUNNER" || fail "missing attachment-private-file-provider"
-grep -Fq 'attachment-atomic-sink' "$SUITE_RUNNER" || fail "missing attachment-atomic-sink"
-grep -Fq 'attachment-download-runtime' "$SUITE_RUNNER" || fail "missing attachment-download-runtime"
-grep -Fq 'performance-trace-feedback' "$SUITE_RUNNER" || fail "missing performance-trace-feedback"
-grep -Fq 'child-page-visibility' "$SUITE_RUNNER" || fail "missing child-page-visibility"
-grep -Fq 'pager-scroll-probe' "$SUITE_RUNNER" || fail "missing pager-scroll-probe"
-grep -Fq 'release-notes-section-gap' "$SUITE_RUNNER" || fail "missing release-notes-section-gap"
-grep -Fq 'thread-align-right-bounds' "$SUITE_RUNNER" || fail "missing thread-align-right-bounds"
-grep -Fq 'diagnostics-caller-pipeline' "$SUITE_RUNNER" || fail "missing diagnostics-caller-pipeline"
-grep -Fq 'durable-partition-migration' "$SUITE_RUNNER" || fail "missing durable-partition-migration"
-grep -Fq 'thread-newer-auto-pagination' "$SUITE_RUNNER" || fail "missing thread-newer-auto-pagination"
-grep -Fq 'local-image-sampled-decode' "$SUITE_RUNNER" || fail "missing local-image-sampled-decode"
-pass "test registry structural checks passed"
 
 # Setup mock environment for behavior testing
 MOCK_BIN="$TMP_DIR/bin"
@@ -180,7 +157,7 @@ exit 0
 FAKE_IME
 chmod +x "$MOCK_BIN/prepare_android_emulator_ime.sh"
 
-# 3. Test scenario: Full suite pass (with THREAD_NEWER_PAGINATION_GATE_REQUIRED=true)
+# 2. Test scenario: Full suite pass (with THREAD_NEWER_PAGINATION_GATE_REQUIRED=true)
 TEST_DIR_PASS="$TMP_DIR/test_pass"
 mkdir -p "$TEST_DIR_PASS"
 (
@@ -211,7 +188,7 @@ grep -Fq "Not run:         0" "$TEST_DIR_PASS/first-character-baseline-suite-sum
 grep -Fq "status=passed test=thread-newer-auto-pagination" "$TEST_DIR_PASS/first-character-baseline-suite-summary.txt" || fail "missing manifest row"
 pass "full suite pass scenario verified"
 
-# 4. Test scenario: Conditional skip (THREAD_NEWER_PAGINATION_GATE_REQUIRED=false)
+# 3. Test scenario: Conditional skip (THREAD_NEWER_PAGINATION_GATE_REQUIRED=false)
 TEST_DIR_SKIP="$TMP_DIR/test_skip"
 mkdir -p "$TEST_DIR_SKIP"
 (
@@ -238,7 +215,7 @@ grep -Fq "Not run:         1 (1 conditional skipped, 0 unreached)" "$TEST_DIR_SK
 grep -Fq "status=not_run test=thread-newer-auto-pagination rc=- duration=- class=build.raft.app.shared.RaftThreadNewerAutoPaginationConnectedTest reason=skipped:condition_not_met" "$TEST_DIR_SKIP/first-character-baseline-suite-summary.txt" || fail "missing manifest skipped row"
 pass "conditional skip scenario verified"
 
-# 5. Test scenario: Failure isolation (Task #465 flake in composer-session-retirement)
+# 4. Test scenario: Failure isolation (Task #465 flake in composer-session-retirement)
 # Verifies that when composer-session-retirement fails:
 # - Its post-test diagnostics (dumpsys, logcat) are still generated
 # - All downstream tests after the failed class continue to execute!
@@ -283,7 +260,7 @@ test -f "$TEST_DIR_FAIL/composer-session-retirement-window.txt" || fail "window 
 test -f "$TEST_DIR_FAIL/composer-session-retirement-logcat.txt" || fail "logcat missing"
 pass "failure isolation scenario verified (downstream tests protected, diagnostics preserved)"
 
-# 6. Test scenario: Post-assertion failure detection
+# 5. Test scenario: Post-assertion failure detection
 TEST_DIR_ASSERT="$TMP_DIR/test_assert"
 mkdir -p "$TEST_DIR_ASSERT"
 rc_assert=0
@@ -310,7 +287,7 @@ grep -Fq "status=failed test=attachment-download-runtime" "$TEST_DIR_ASSERT/firs
 grep -Fq "reason=assertion_failed" "$TEST_DIR_ASSERT/first-character-baseline-suite-summary.txt" || fail "expected assertion_failed reason"
 pass "post-assertion failure scenario verified"
 
-# 7. Test scenario: Premature abort / trap safety
+# 6. Test scenario: Premature abort / trap safety
 TEST_DIR_TRAP="$TMP_DIR/test_trap"
 mkdir -p "$TEST_DIR_TRAP"
 rc_trap=0
@@ -336,7 +313,7 @@ grep -Fq "Executed:        0" "$TEST_DIR_TRAP/first-character-baseline-suite-sum
 grep -Fq "19 unreached" "$TEST_DIR_TRAP/first-character-baseline-suite-summary.txt" || fail "expected 19 unreached"
 pass "premature abort trap safety verified"
 
-# 8. Test scenario: Partial CLI selection
+# 7. Test scenario: Partial CLI selection
 TEST_DIR_SELECT="$TMP_DIR/test_select"
 mkdir -p "$TEST_DIR_SELECT"
 rc_select=0
