@@ -1,0 +1,30 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.thread.message-row.deleted-human",
+  "image": "visual-testing-results/react/components.thread.message-row.deleted-human.png",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "selector": "[data-visual-case='components.thread.message-row.deleted-human']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 16,
+      "y": 16,
+      "width": 374,
+      "height": 117
+    },
+    "targetRect": {
+      "x": 16,
+      "y": 16,
+      "width": 374,
+      "height": 117
+    },
+    "outset": null
+  },
+  "capturedAt": "2026-10-23T11:27:05.028Z"
+}

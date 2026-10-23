@@ -1,18 +1,18 @@
 # Raft Visual Testing
 
-Generated: 2026-10-23 11:05:53 UTC
-Latest run: 857e1fe-20261023102553
-Latest commit: 857e1fe-20261023102553
-Commit subject: fix(visual): Android captures see CMP dialog windows, Compose nodes and SVG data URIs (#3583)
+Generated: 2026-10-23 11:37:17 UTC
+Latest run: d2f13bc-20261023113615
+Latest commit: d2f13bc-20261023113615
+Commit subject: feat(members): one shared member picker for the create-channel dialogs (#3585)
 Providers: react vs android
-Summary: total 101, same 0, pass 2, basic-pass 7, different 87, missing 5
-AI analysis: ready 31 / total 101, pending 70
+Summary: total 101, same 0, pass 2, basic-pass 8, different 86, missing 5
+AI analysis: ready 29 / total 101, pending 72
 Visual coverage matrix: active 110 / total 130, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
-- react__android: total 101, same 0, pass 2, basic-pass 7, different 87, missing 5
+- react__android: total 101, same 0, pass 2, basic-pass 8, different 86, missing 5
 
 ## Capture Type Coverage
 
@@ -117,6 +117,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- d2f13bc-20261023113615: react vs android, total 101, pass 2, basic-pass 8, different 86, matrix runs/d2f13bc-20261023113615/component-matrix.json, page runs/d2f13bc-20261023113615/
 - 857e1fe-20261023102553: react vs android, total 101, pass 2, basic-pass 7, different 87, matrix runs/857e1fe-20261023102553/component-matrix.json, page runs/857e1fe-20261023102553/
 - a52d784-20261019224352: react vs android, total 99, pass 0, basic-pass 2, different 89, matrix runs/a52d784-20261019224352/component-matrix.json, page runs/a52d784-20261019224352/
 - 2c1bc667-20261018063524: react vs android, total 99, pass 0, basic-pass 1, different 90, matrix runs/2c1bc667-20261018063524/component-matrix.json, page runs/2c1bc667-20261018063524/
