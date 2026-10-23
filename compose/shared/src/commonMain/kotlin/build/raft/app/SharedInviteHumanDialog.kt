@@ -448,6 +448,13 @@ private fun InviteHumanDialogContent(
     // raft-ui Dialog "On a phone" (web `DialogCard narrow="sheet"`): a sheet with × at the start
     // of its head and Send Invites at its end; the link tab commits nothing, so its head has no
     // button. On a tablet the centred dialog, with Cancel beside the commit.
+    val scrollState = rememberScrollState()
+    // The commit is in the head, the error banner at the top of the body: a failed send after
+    // scrolling down a long list of invitees would otherwise show it out of sight (raft-ui
+    // dialog-sheet `useRevealNewProblems`).
+    LaunchedEffect(error) {
+        if (!error.isNullOrBlank()) scrollState.animateScrollTo(0)
+    }
     RaftDialogSheet(
         onDismissRequest = onDismiss,
         title = stringResource(MR.strings.agent_invite_title),
@@ -459,6 +466,7 @@ private fun InviteHumanDialogContent(
             },
         onCommit = onSubmit,
         commitEnabled = !sending,
+        commitIcon = { InviteHumanIcon(RaftLucideIconName.Mail, 18.dp) },
         closeLabel = stringResource(MR.strings.common_close),
         cancelLabel = stringResource(MR.strings.common_cancel),
     ) {
@@ -467,7 +475,7 @@ private fun InviteHumanDialogContent(
                 .fillMaxWidth()
                 .weight(1f, fill = false)
                 .imePadding()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -512,6 +520,7 @@ internal fun InviteHumanSheetSurfaceForFixture(
         title = stringResource(MR.strings.agent_invite_title),
         commitLabel = if (tab == InviteHumanTab.Email) stringResource(MR.strings.invite_human_send_invites) else null,
         onCommit = {},
+        commitIcon = { InviteHumanIcon(RaftLucideIconName.Mail, 18.dp) },
         onClose = {},
         modifier = modifier,
         closeLabel = stringResource(MR.strings.common_close),

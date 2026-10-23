@@ -59,6 +59,8 @@ import build.raft.designsystem.tokens.RaftStroke
  *   [commitVariant]: the same colour and words as on a desktop). No footer: × is Cancel.
  *   A null [commitLabel] leaves the head without one, for a view of the dialog that commits
  *   nothing (the web drops its `DialogCommit` there too, as Invite's link tab does).
+ *   [commitIcon] leads its label, as the web's commit keeps its icon in the head (Invite's
+ *   Mail).
  * - Body: [content] fills the rest of the sheet as given (a lazy list scrolls itself) and
  *   clears the home indicator; keep the phone's 16dp margin inside it.
  */
@@ -71,9 +73,10 @@ fun RaftDialogSheetSurface(
     modifier: Modifier = Modifier,
     commitEnabled: Boolean = true,
     commitVariant: RaftButtonVariant = RaftButtonVariant.Primary,
+    commitIcon: (@Composable () -> Unit)? = null,
     closeLabel: String = LocalRaftStrings.current.close,
     content: @Composable ColumnScope.() -> Unit,
-) = RaftDialogSheetSurfaceImpl(title, commitLabel, onCommit, onClose, modifier, commitEnabled, commitVariant, closeLabel, clearNavigationBar = false, content)
+) = RaftDialogSheetSurfaceImpl(title, commitLabel, onCommit, onClose, modifier, commitEnabled, commitVariant, commitIcon, closeLabel, clearNavigationBar = false, content)
 
 @Composable
 private fun RaftDialogSheetSurfaceImpl(
@@ -84,6 +87,7 @@ private fun RaftDialogSheetSurfaceImpl(
     modifier: Modifier,
     commitEnabled: Boolean,
     commitVariant: RaftButtonVariant,
+    commitIcon: (@Composable () -> Unit)?,
     closeLabel: String,
     clearNavigationBar: Boolean,
     content: @Composable ColumnScope.() -> Unit,
@@ -120,6 +124,7 @@ private fun RaftDialogSheetSurfaceImpl(
                         variant = commitVariant,
                         size = RaftButtonSize.Md,
                         enabled = commitEnabled,
+                        leadingIcon = commitIcon,
                     )
                 }
             }
@@ -185,6 +190,7 @@ fun RaftDialogSheet(
     modifier: Modifier = Modifier,
     commitEnabled: Boolean = true,
     commitVariant: RaftButtonVariant = RaftButtonVariant.Primary,
+    commitIcon: (@Composable () -> Unit)? = null,
     closeLabel: String = LocalRaftStrings.current.close,
     cancelLabel: String = LocalRaftStrings.current.cancel,
     content: @Composable ColumnScope.() -> Unit,
@@ -213,6 +219,7 @@ fun RaftDialogSheet(
                         modifier = modifier.pointerInput(Unit) { detectTapGestures { } },
                         commitEnabled = commitEnabled,
                         commitVariant = commitVariant,
+                        commitIcon = commitIcon,
                         closeLabel = closeLabel,
                         cancelLabel = cancelLabel,
                         content = content,
@@ -227,6 +234,7 @@ fun RaftDialogSheet(
                     modifier = modifier,
                     commitEnabled = commitEnabled,
                     commitVariant = commitVariant,
+                    commitIcon = commitIcon,
                     closeLabel = closeLabel,
                     content = content,
                 )
@@ -244,6 +252,7 @@ private fun RaftDialogSheetBottom(
     modifier: Modifier,
     commitEnabled: Boolean,
     commitVariant: RaftButtonVariant,
+    commitIcon: (@Composable () -> Unit)?,
     closeLabel: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -271,6 +280,7 @@ private fun RaftDialogSheetBottom(
                     },
             commitEnabled = commitEnabled,
             commitVariant = commitVariant,
+            commitIcon = commitIcon,
             closeLabel = closeLabel,
             clearNavigationBar = true,
             content = content,
@@ -288,7 +298,7 @@ private fun RaftDialogSheetBottom(
  * - Body: [content] under the header, 6dp below it, filling the height it is given (a lazy
  *   list scrolls itself); keep a 16dp margin inside it, as on the phone sheet.
  * - Footer: a ghost Cancel ([cancelLabel], calls [onClose]) and the commit button
- *   ([commitLabel], [commitVariant]) at the end, `Lg`, 8dp apart, 20dp from the edges.
+ *   ([commitLabel], [commitVariant], [commitIcon]) at the end, `Lg`, 8dp apart, 20dp from the edges.
  */
 @Composable
 fun RaftDialogSheetCenteredSurface(
@@ -299,6 +309,7 @@ fun RaftDialogSheetCenteredSurface(
     modifier: Modifier = Modifier,
     commitEnabled: Boolean = true,
     commitVariant: RaftButtonVariant = RaftButtonVariant.Primary,
+    commitIcon: (@Composable () -> Unit)? = null,
     closeLabel: String = LocalRaftStrings.current.close,
     cancelLabel: String = LocalRaftStrings.current.cancel,
     content: @Composable ColumnScope.() -> Unit,
@@ -330,6 +341,7 @@ fun RaftDialogSheetCenteredSurface(
                         variant = commitVariant,
                         size = RaftButtonSize.Lg,
                         enabled = commitEnabled,
+                        leadingIcon = commitIcon,
                     )
                 }
             }
