@@ -441,6 +441,8 @@ sealed interface SharedSettingsIntent {
     data object RequestAccountAvatarUpload : SharedSettingsIntent
     data class ChangeAccountPassword(val request: AccountPasswordChangeRequest) : SharedSettingsIntent
     data class ConnectAccountProvider(val request: AccountProviderLinkStartRequest) : SharedSettingsIntent
+    /** Web Disconnect (after its confirm dialog): unlink the social sign-in [providerId]. */
+    data class DisconnectAccountProvider(val providerId: String) : SharedSettingsIntent
     /** Settings › Account "Share usage data" switch: optimistic, rolled back if the save fails. */
     data class SetShareUsageData(val enabled: Boolean) : SharedSettingsIntent
     /** The "Learn more" link under "Share usage data": the privacy policy, outside the app (web `target=_blank`). */
@@ -785,6 +787,9 @@ class SharedSettingsDataSource(
             is DataResult.Error -> DataResult.Error(mobile.error)
             is DataResult.NoPermission -> DataResult.NoPermission(mobile.blocker)
         }
+
+    suspend fun disconnectAccountProvider(providerId: String): DataResult<AccountSettingsSnapshot> =
+        settingsRepository?.disconnectAccountProvider(providerId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun loadConnectedApps(): DataResult<SettingsConnectedAppsSnapshot> =
         settingsRepository?.getConnectedApps() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -2251,6 +2256,12 @@ class SharedSettingsStore(
                         .applyAccountProviderLinkResult(intent.request.providerId)
                 }
             }
+            is SharedSettingsIntent.DisconnectAccountProvider -> {
+                runAction(ACCOUNT_ACTION_PROVIDER_DISCONNECT, intent.providerId) {
+                    dataSource.disconnectAccountProvider(intent.providerId)
+                        .applyAccountActionResult(ACCOUNT_ACTION_PROVIDER_DISCONNECT, intent.providerId)
+                }
+            }
             is SharedSettingsIntent.RegisterConnectedApp -> {
                 runAction(CONNECTED_APPS_ACTION_REGISTER) {
                     dataSource.registerConnectedApp(intent.request)
@@ -3651,7 +3662,7 @@ class SharedSettingsStore(
             )
     }
 
-    private fun DataResult<AccountSettingsSnapshot>.applyAccountActionResult(action: String) {
+    private fun DataResult<AccountSettingsSnapshot>.applyAccountActionResult(action: String, itemId: String? = null) {
         val nextAccount = toScreenLoadState()
         _state.value =
             _state.value.copy(
@@ -3660,7 +3671,7 @@ class SharedSettingsStore(
                         is ScreenLoadState.Content -> nextAccount
                         else -> _state.value.account
                     },
-                actionState = nextAccount.toSettingsActionState(action),
+                actionState = nextAccount.toSettingsActionState(action, itemId),
                 routeErrorCode = nextAccount.routeErrorCode()
             )
     }
@@ -4096,6 +4107,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             SharedSettingsIntent.RequestAccountAvatarUpload,
             is SharedSettingsIntent.ChangeAccountPassword,
             is SharedSettingsIntent.ConnectAccountProvider,
+            is SharedSettingsIntent.DisconnectAccountProvider,
             is SharedSettingsIntent.SetShareUsageData,
             SharedSettingsIntent.OpenShareUsageDataPrivacy,
             is SharedSettingsIntent.RegisterConnectedApp,
@@ -4431,6 +4443,7 @@ internal const val ACCOUNT_ACTION_PROFILE_SAVE = "saveProfile"
 internal const val ACCOUNT_ACTION_AVATAR_UPLOAD = "accountAvatarUpload"
 internal const val ACCOUNT_ACTION_PASSWORD_CHANGE = "accountPasswordChange"
 internal const val ACCOUNT_ACTION_PROVIDER_CONNECT = "accountProviderConnect"
+internal const val ACCOUNT_ACTION_PROVIDER_DISCONNECT = "accountProviderDisconnect"
 internal const val ACCOUNT_ACTION_SHARE_USAGE_DATA = "accountShareUsageData"
 
 /** slock `packages/shared/src/legalAcceptance.ts` `PRIVACY_URL`: web's "Learn more" under "Share usage data". */

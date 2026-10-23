@@ -1,8 +1,20 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerSize
+import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftCard
+import build.raft.designsystem.components.RaftCardVariant
+import build.raft.designsystem.components.RaftDialog
+import build.raft.designsystem.components.RaftDialogSize
+import build.raft.designsystem.components.RaftIconTile
+import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftListRowVariant
@@ -10,12 +22,15 @@ import build.raft.designsystem.components.RaftSwitch
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftTextLinkVariant
 import build.raft.designsystem.components.raftCopyable
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.LocalRaftIsDark
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.RaftCachedImage
 import build.raft.app.base.Utils
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalCard
 import build.raft.app.components.RaftBrutalReadOnlyField
+import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftBrutalTextField
 import build.raft.app.components.RaftFormFieldSize
 import build.raft.app.data.AccountPasswordChangeRequest
@@ -142,6 +157,10 @@ internal data class RaftSettingsAccountPayload(
     val providerConnectingId: String? = null,
     val providerErrorId: String? = null,
     val providerErrorCode: String? = null,
+    /** The provider whose Disconnect is running, and the provider / message of a failed one. */
+    val providerDisconnectingId: String? = null,
+    val providerDisconnectErrorId: String? = null,
+    val providerDisconnectError: String? = null,
     val canEditProfile: Boolean = true,
     val canUploadAvatar: Boolean = true,
     val canChangePassword: Boolean = true,
@@ -352,6 +371,10 @@ private fun handleStandaloneAccountAction(
             value?.takeIf { it.isNotBlank() }?.let { providerId ->
                 dispatch(SharedSettingsIntent.ConnectAccountProvider(AccountProviderLinkStartRequest(providerId = providerId)))
             }
+        SETTINGS_ACCOUNT_ACTION_DISCONNECT_PROVIDER ->
+            value?.takeIf { it.isNotBlank() }?.let { providerId ->
+                dispatch(SharedSettingsIntent.DisconnectAccountProvider(providerId))
+            }
         "saveProfile" -> {
             val account = (settingsState.account as? ScreenLoadState.Content<AccountSettingsSnapshot>)?.data
             val displayName = value.orEmpty().trim()
@@ -383,39 +406,72 @@ internal fun SettingsAccountContent(
     val localizedPayload = payload.localizedPresentationCopy()
     val topSafeArea = if (applyTopSafeArea) raftTopSafeAreaPadding() else 0.dp
     val visibleConnectedAccounts = localizedPayload.connectedAccounts.visibleSettingsConnectedAccounts()
-    LazyColumn(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .dismissInputFocusOnScrollableChrome()
-                .background(RaftColor.SurfaceWhite)
-                .padding(top = topSafeArea)
-                .padding(horizontal = 20.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        item { SettingsAccountSectionHeader(localizedPayload.profileSectionTitle) }
-        item {
-            SettingsAccountProfileCard(
-                localizedPayload,
-                visibleConnectedAccounts,
-                avatarCacheIdentity,
-                onEvent,
-                onPasswordChange
-            )
-        }
-        if (localizedPayload.usageDataVisible) {
+    // Web SettingsPanel `pendingDisconnectProvider`: the provider whose confirm dialog is open.
+    val pendingDisconnect = remember { mutableStateOf<String?>(null) }
+    val disconnectSubmitted = remember { mutableStateOf(false) }
+    RaftDesignSystemTheme {
+        LazyColumn(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .dismissInputFocusOnScrollableChrome()
+                    .background(RaftColor.SurfaceWhite)
+                    .padding(top = topSafeArea)
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            item { SettingsAccountSectionHeader(localizedPayload.profileSectionTitle) }
             item {
-                SettingsAccountUsageDataRow(
-                    sharing = localizedPayload.usageDataSharing,
-                    saving = localizedPayload.usageDataSaving,
-                    onEvent = onEvent
+                SettingsAccountProfileCard(
+                    localizedPayload,
+                    visibleConnectedAccounts,
+                    avatarCacheIdentity,
+                    onEvent,
+                    onPasswordChange,
+                    onRequestDisconnect = { providerId ->
+                        disconnectSubmitted.value = false
+                        pendingDisconnect.value = providerId
+                    }
                 )
             }
+            if (localizedPayload.usageDataVisible) {
+                item {
+                    SettingsAccountUsageDataRow(
+                        sharing = localizedPayload.usageDataSharing,
+                        saving = localizedPayload.usageDataSaving,
+                        onEvent = onEvent
+                    )
+                }
+            }
+            item { SettingsLogoutAction(localizedPayload) { onEvent("logout", null) } }
+            item { Spacer(Modifier.height(bottomContentPadding)) }
         }
-        item { SettingsLogoutAction(localizedPayload) { onEvent("logout", null) } }
-        item { Spacer(Modifier.height(bottomContentPadding)) }
+        // The dialog closes once the account reads back with the provider no longer connected.
+        val pendingAccount =
+            visibleConnectedAccounts.firstOrNull { it.resolvedProviderId() == pendingDisconnect.value && it.status == "connected" }
+        LaunchedEffect(pendingDisconnect.value, pendingAccount == null) {
+            if (pendingDisconnect.value != null && pendingAccount == null) pendingDisconnect.value = null
+        }
+        if (pendingAccount != null) {
+            val providerId = pendingAccount.resolvedProviderId()
+            val busy = localizedPayload.providerDisconnectingId == providerId
+            SettingsDisconnectProviderDialog(
+                label = pendingAccount.provider.ifBlank { providerId },
+                busy = busy,
+                error =
+                    localizedPayload.providerDisconnectError
+                        .takeIf { disconnectSubmitted.value && !busy && localizedPayload.providerDisconnectErrorId == providerId },
+                onConfirm = {
+                    disconnectSubmitted.value = true
+                    onEvent(SETTINGS_ACCOUNT_ACTION_DISCONNECT_PROVIDER, providerId)
+                },
+                onDismiss = { if (!busy) pendingDisconnect.value = null }
+            )
+        }
     }
 }
+
+internal const val SETTINGS_ACCOUNT_ACTION_DISCONNECT_PROVIDER = "disconnectProvider"
 
 internal const val SETTINGS_ACCOUNT_ACTION_SET_SHARE_USAGE_DATA = "setShareUsageData"
 internal const val SETTINGS_ACCOUNT_ACTION_OPEN_USAGE_DATA_PRIVACY = "openUsageDataPrivacy"
@@ -484,7 +540,8 @@ private fun SettingsAccountProfileCard(
     connectedAccounts: List<RaftSettingsConnectedAccount>,
     avatarCacheIdentity: RaftMemberAvatarCacheIdentity?,
     onEvent: (String, String?) -> Unit,
-    onPasswordChange: (currentPassword: String, newPassword: String) -> Unit
+    onPasswordChange: (currentPassword: String, newPassword: String) -> Unit,
+    onRequestDisconnect: (providerId: String) -> Unit
 ) {
     val profile = payload.profile
     val displayNameState = remember(profile.displayName) { mutableStateOf(profile.displayName) }
@@ -544,16 +601,17 @@ private fun SettingsAccountProfileCard(
         SettingsEmailField(payload.emailLabel, profile.email, payload.emailPlaceholder, profile.verified, payload.verifiedLabel)
         SettingsProfileSaveButton(
             text = payload.profileSaveButtonLabel(),
-            enabled = payload.canEditProfile && !payload.saveInProgress,
+            // Web `disabled={!profileDirty || saving}`.
+            enabled = payload.canEditProfile && !payload.saveInProgress && displayName.trim() != profile.displayName,
             onClick = { onEvent("saveProfile", displayName.trim()) }
         )
         payload.saveErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
             SettingsAccountWarning(stringResource(MR.strings.settings_account_profile_save_failed, code))
         }
-        Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftColor.BorderBlack))
+        RaftSeparator()
         if (connectedAccounts.isNotEmpty()) {
-            SettingsConnectedAccounts(payload, connectedAccounts, onEvent)
-            Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftColor.BorderBlack))
+            SettingsConnectedAccounts(payload, connectedAccounts, onEvent, onRequestDisconnect)
+            RaftSeparator()
         }
         SettingsPasswordDisclosure(
             title = payload.changePasswordTitle,
@@ -667,8 +725,26 @@ private fun SettingsEmailField(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            // Web: a soft success "Verified" badge with a 10px shield, or a soft warning "Unverified".
             if (verified) {
-                SettingsStatusBadge(verifiedLabel.raftDisplayUppercase(), RaftColor.AccentLime, RaftLucideIconName.Shield)
+                RaftBadge(
+                    text = verifiedLabel,
+                    appearance = RaftBadgeAppearance.Soft,
+                    variant = RaftBadgeVariant.Success,
+                    icon = {
+                        RaftLucideIcon(
+                            RaftLucideIconName.Shield,
+                            modifier = Modifier.size(10.dp),
+                            color = raftArgbHex(LocalRaftContentColor.current)
+                        )
+                    }
+                )
+            } else if (value.isNotBlank()) {
+                RaftBadge(
+                    text = stringResource(MR.strings.settings_account_unverified),
+                    appearance = RaftBadgeAppearance.Soft,
+                    variant = RaftBadgeVariant.Warning
+                )
             }
         }
     }
@@ -676,15 +752,13 @@ private fun SettingsEmailField(
 
 @Composable
 private fun SettingsProfileSaveButton(text: String, enabled: Boolean = true, onClick: () -> Unit) {
-    RaftBrutalActionButton(
-        label = text,
+    // Web `<Button variant="accent" size="md">` (Save Profile, Change Password).
+    RaftButton(
+        text = text,
         onClick = onClick,
         enabled = enabled,
-        backgroundColor = RaftColor.AccentPink,
-        disabledBackgroundColor = RaftColor.EmptyStateGray,
-        minWidth = 96.dp,
-        minHeight = 32.dp,
-        textStyle = RaftType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp, color = RaftColor.TextBlack)
+        variant = RaftButtonVariant.Primary,
+        size = RaftButtonSize.Md
     )
 }
 
@@ -717,14 +791,17 @@ private fun SettingsPasswordDisclosure(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        // Web: a 16px `foreground-hint` chevron that turns 90° open, the title in subhead semibold.
         RaftLucideIcon(
-            if (expanded) RaftLucideIconName.ChevronDown else RaftLucideIconName.ChevronRight,
-            modifier = Modifier.size(14.dp)
+            RaftLucideIconName.ChevronRight,
+            modifier = Modifier.size(16.dp),
+            color = raftArgbHex(RaftTheme.colors.foregroundHint),
+            rotationDegrees = if (expanded) 90f else 0f
         )
-        Text(
+        RaftText(
             title,
-            style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack,
+            style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+            color = RaftTheme.colors.foreground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -790,13 +867,15 @@ private fun SettingsPasswordForm(
 private fun SettingsConnectedAccounts(
     payload: RaftSettingsAccountPayload,
     accounts: List<RaftSettingsConnectedAccount>,
-    onEvent: (String, String?) -> Unit
+    onEvent: (String, String?) -> Unit,
+    onRequestDisconnect: (providerId: String) -> Unit
 ) {
+    // Web: the title (`text-subhead font-semibold`, mb-2) over the rows, 8dp apart.
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
+        RaftText(
             payload.connectedAccountsTitle,
-            style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack,
+            style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+            color = RaftTheme.colors.foreground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -807,83 +886,151 @@ private fun SettingsConnectedAccounts(
             )
         } else {
             accounts.forEachIndexed { index, account ->
-                SettingsConnectedAccountRow(account, index, payload, onEvent)
+                SettingsConnectedAccountRow(account, index, payload, onEvent, onRequestDisconnect)
             }
         }
     }
 }
 
+private fun RaftSettingsConnectedAccount.resolvedProviderId(): String = providerId.ifBlank { provider.lowercase() }
+
+/**
+ * Web `ProviderAccountRow`: a raft-ui Card (min-h-11, px-4 py-3, gap-3) holding the provider mark in
+ * an IconTile, the label (subhead semibold) over "Connected as …" / "Not connected" (footnote,
+ * `foreground-muted`), and an outline md button: Connect ("Connecting…" while it starts) or
+ * Disconnect, which opens the confirm dialog. The card is the Inset variant only for its unpadded
+ * body; the row pads itself to the web's 16 x 12.
+ */
 @Composable
 private fun SettingsConnectedAccountRow(
     account: RaftSettingsConnectedAccount,
     index: Int,
     payload: RaftSettingsAccountPayload,
-    onEvent: (String, String?) -> Unit
+    onEvent: (String, String?) -> Unit,
+    onRequestDisconnect: (providerId: String) -> Unit
 ) {
-    val providerId = account.providerId.ifBlank { account.provider.lowercase() }
+    val providerId = account.resolvedProviderId()
     val connecting = payload.providerConnectingId == providerId
     val failed = payload.providerErrorId == providerId
-    val status =
-        when {
-            connecting -> "loading"
-            failed -> "failed"
-            else -> account.status
-        }
-    val connected = status == "connected"
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 64.dp)
-                    .background(RaftColor.SurfaceWhite)
-                    .border(RaftAppStroke.Default, RaftColor.BorderBlack.copy(alpha = 0.30f))
-                    .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            RaftCachedImage(
-                source = providerIconAssetSource(providerId),
-                contentDescription = account.provider,
-                modifier = Modifier.size(28.dp)
-            )
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    account.provider.ifBlank { stringResource(MR.strings.settings_account_provider_fallback, index + 1) },
-                    style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                val statusDetail = connectedAccountStatusDetail(account, connected)
-                Text(
-                    statusDetail,
-                    // "Connected as x" copies as shown; the bare "Connected" / "Not connected" status doesn't.
-                    modifier = Modifier.raftCopyable(statusDetail.takeIf { connected && account.identifier.isNotBlank() }),
-                    style = RaftType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray),
-                    color = RaftColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            if (account.canConnect && !connected) {
-                SettingsProviderConnectButton(
-                    text = if (connecting) payload.connectingLabel else payload.connectLabel,
-                    enabled = !connecting,
-                    onClick = { onEvent("connectProvider", providerId) }
-                )
-            } else {
-                val (label, color, icon) = connectedStatus(status, payload)
-                SettingsStatusBadge(label, color, icon)
+    val connected = account.status == "connected"
+    val label = account.provider.ifBlank { stringResource(MR.strings.settings_account_provider_fallback, index + 1) }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        RaftCard(modifier = Modifier.fillMaxWidth(), variant = RaftCardVariant.Inset) {
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 44.dp)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                RaftIconTile {
+                    Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) {
+                        RaftCachedImage(
+                            source = providerIconAssetSource(providerId, dark = LocalRaftIsDark.current),
+                            contentDescription = label,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    RaftText(
+                        label,
+                        style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+                        color = RaftTheme.colors.foreground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    val statusDetail = connectedAccountStatusDetail(account, connected)
+                    RaftText(
+                        statusDetail,
+                        // "Connected as x" copies as shown; the bare "Connected" / "Not connected" status doesn't.
+                        modifier = Modifier.raftCopyable(statusDetail.takeIf { connected && account.identifier.isNotBlank() }),
+                        style = RaftTheme.typography.footnote,
+                        color = RaftTheme.colors.foregroundMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                if (connected) {
+                    RaftButton(
+                        text = stringResource(MR.strings.settings_account_disconnect),
+                        onClick = { onRequestDisconnect(providerId) },
+                        enabled = payload.providerDisconnectingId != providerId,
+                        variant = RaftButtonVariant.Default,
+                        size = RaftButtonSize.Md
+                    )
+                } else if (account.canConnect) {
+                    RaftButton(
+                        text = if (connecting) payload.connectingLabel else payload.connectLabel,
+                        onClick = { onEvent("connectProvider", providerId) },
+                        enabled = !connecting,
+                        variant = RaftButtonVariant.Default,
+                        size = RaftButtonSize.Md
+                    )
+                }
             }
         }
         if (failed) {
-            SettingsAccountWarning(
-                stringResource(
-                    MR.strings.settings_account_provider_link_failed,
-                    payload.providerErrorCode ?: payload.failedLabel
-                )
+            RaftBanner(
+                description =
+                    stringResource(
+                        MR.strings.settings_account_provider_link_failed,
+                        payload.providerErrorCode ?: payload.failedLabel
+                    ),
+                status = RaftBannerStatus.Warning,
+                size = RaftBannerSize.Sm
             )
+        }
+    }
+}
+
+/**
+ * Web ConfirmDialog for Disconnect: "Disconnect {label}", the explanation in the destructive
+ * banner, a failure in a warning banner under it, ghost Cancel and the red Disconnect
+ * ("Disconnecting…" while it runs). A scrim tap does not close it (web `disablePointerDismissal`).
+ */
+@Composable
+private fun SettingsDisconnectProviderDialog(
+    label: String,
+    busy: Boolean,
+    error: String?,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    RaftDialog(
+        onDismissRequest = onDismiss,
+        title = stringResource(MR.strings.settings_account_disconnect_title, label),
+        size = RaftDialogSize.Sm,
+        dismissOnClickOutside = false,
+        closeLabel = stringResource(MR.strings.common_close),
+        footer = {
+            RaftButton(
+                text = stringResource(MR.strings.common_cancel),
+                onClick = onDismiss,
+                variant = RaftButtonVariant.Ghost,
+                size = RaftButtonSize.Lg,
+                enabled = !busy
+            )
+            RaftButton(
+                text = stringResource(MR.strings.settings_account_disconnect),
+                onClick = onConfirm,
+                variant = RaftButtonVariant.Danger,
+                size = RaftButtonSize.Lg,
+                loading = busy,
+                loadingLabel = stringResource(MR.strings.settings_account_disconnecting)
+            )
+        }
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            RaftBanner(
+                description = stringResource(MR.strings.settings_account_disconnect_message, label),
+                status = RaftBannerStatus.Destructive
+            )
+            error?.takeIf { it.isNotBlank() }?.let {
+                RaftBanner(description = it, status = RaftBannerStatus.Warning)
+            }
         }
     }
 }
@@ -972,40 +1119,6 @@ private fun SettingsAccountSectionTitle(text: String, iconName: RaftLucideIconNa
 }
 
 @Composable
-private fun SettingsStatusBadge(text: String, color: Color, iconName: RaftLucideIconName? = null) {
-    // Sticker fills keep ink type in both modes; the paper (connect) badge is a themed surface.
-    val ink = if (color == RaftColor.SurfaceWhite) RaftColor.TextBlack else RaftColor.StickerInk
-    Row(
-        modifier = Modifier.background(color).border(1.dp, ink).padding(horizontal = 6.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        iconName?.let { RaftLucideIcon(it, modifier = Modifier.size(12.dp), color = raftArgbHex(ink)) }
-        Text(
-            text,
-            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, color = ink),
-            color = ink,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@Composable
-private fun SettingsProviderConnectButton(text: String, enabled: Boolean, onClick: () -> Unit) {
-    RaftBrutalActionButton(
-        label = text,
-        onClick = onClick,
-        enabled = enabled,
-        backgroundColor = RaftColor.SurfaceWhite,
-        disabledBackgroundColor = RaftColor.EmptyStateGray,
-        minWidth = 84.dp,
-        minHeight = 32.dp,
-        textStyle = RaftType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp, color = RaftColor.TextBlack)
-    )
-}
-
-@Composable
 private fun SettingsAccountWarning(text: String) {
     Row(
         modifier = Modifier.fillMaxWidth().background(RaftColor.SurfaceCream).border(RaftAppStroke.Default, RaftColor.BorderBlack).padding(10.dp),
@@ -1042,11 +1155,13 @@ private fun IconBox(iconName: RaftLucideIconName, color: Color, invert: Boolean 
 // Known providers keep their own marks. Unknown social identities retain the
 // existing GitHub fallback rather than borrowing another provider's logo.
 // task #60: every platform loads the MR-bundled SVG asset (see ProviderIconAsset.kt).
-private fun providerIconAssetSource(provider: String): String? =
+// The GitHub and Apple marks are ink (web `text-foreground`): the white files in dark.
+private fun providerIconAssetSource(provider: String, dark: Boolean): String? =
     when {
         provider.lowercase().contains("google") -> providerIconAssetSource(ProviderIconKey.GoogleColor)
-        provider.lowercase().contains("apple") -> providerIconAssetSource(ProviderIconKey.AppleBlack)
-        else -> providerIconAssetSource(ProviderIconKey.GitHubBlack)
+        provider.lowercase().contains("apple") ->
+            providerIconAssetSource(if (dark) ProviderIconKey.AppleWhite else ProviderIconKey.AppleBlack)
+        else -> providerIconAssetSource(if (dark) ProviderIconKey.GitHubWhite else ProviderIconKey.GitHubBlack)
     }
 
 @Composable
@@ -1091,12 +1206,4 @@ private fun connectedAccountStatusDetail(account: RaftSettingsConnectedAccount, 
         } ?: stringResource(MR.strings.settings_account_connected)
     } else {
         stringResource(MR.strings.settings_account_not_connected)
-    }
-
-private fun connectedStatus(status: String, payload: RaftSettingsAccountPayload): Triple<String, Color, RaftLucideIconName?> =
-    when (status) {
-        "connected" -> Triple(payload.connectedLabel, RaftColor.AccentCyan, RaftLucideIconName.Link)
-        "loading" -> Triple(payload.connectingLabel, RaftColor.BrandYellow, RaftLucideIconName.Link)
-        "failed" -> Triple(payload.failedLabel, RaftColor.AccentPink, null)
-        else -> Triple(payload.connectLabel, RaftColor.SurfaceWhite, null)
     }

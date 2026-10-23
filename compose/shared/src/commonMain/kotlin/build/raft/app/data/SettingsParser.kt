@@ -71,6 +71,14 @@ private data class WireAuthIdentity(
     val email: String? = null
 )
 
+/** `DELETE /api/auth/identities/:provider` body (slock `userService.unlinkSocialIdentity`). */
+@Serializable
+private data class WireAuthIdentityUnlinkResponse(
+    val unlinked: Boolean,
+    val identities: List<WireAuthIdentity> = emptyList(),
+    val passwordConfigured: Boolean = false
+)
+
 @Serializable
 private data class WireAccountProviderLinkStartResponse(
     val url: String
@@ -122,6 +130,16 @@ fun parseSharedAccountProviderLinkStartResult(
     AccountProviderLinkStartResult(providerId = providerId, url = response.url.takeIf { it.isNotBlank() } ?: return@runCatching null)
 }.getOrNull()
 
+/** The providers still linked after `DELETE /api/auth/identities/:provider`; null when the body is not that shape. */
+fun parseSharedAccountProviderUnlinkResult(bodyText: String): AccountProviderUnlinkResult? = runCatching {
+    val response = settingsJson.decodeFromString(WireAuthIdentityUnlinkResponse.serializer(), bodyText)
+    AccountProviderUnlinkResult(
+        unlinked = response.unlinked,
+        linkedProviderIds = response.identities.map { it.provider.trim().lowercase() },
+        passwordConfigured = response.passwordConfigured
+    )
+}.getOrNull()
+
 fun parseSharedAccountConnectedAccounts(
     providersBodyText: String,
     identitiesBodyText: String,
@@ -143,8 +161,9 @@ fun parseSharedAccountConnectedAccounts(
                 canConnect = false
             )
         )
+        // Web `visibleProviders`: enabled providers, plus a disabled one that is still linked (so it can be disconnected).
         providers
-            .filter { it.enabled }
+            .filter { it.enabled || identities.containsKey(it.id.trim().lowercase()) }
             .forEach { provider ->
                 val providerId = provider.id.trim().lowercase()
                 val identity = identities[providerId]
