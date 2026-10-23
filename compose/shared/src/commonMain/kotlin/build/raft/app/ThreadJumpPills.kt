@@ -297,16 +297,18 @@ internal fun reduceThreadNewMessagesBelow(
     awayFromBottom: Boolean,
     canLoadMoreAfter: Boolean,
 ): ThreadNewMessagesBelow {
-    val newest = messages.lastOrNull()?.messageId
+    // Task #78: the reader's own local sends (sending / failed) sit below every server message; they
+    // are not arrivals and must not hide the server messages that land above them, so the frontier
+    // is the newest countable message (the loaded tail only when every row is local).
+    val newest = (messages.lastOrNull { it.countable } ?: messages.lastOrNull())?.messageId
     if (!awayFromBottom) return ThreadNewMessagesBelow(count = 0, lastMessageId = newest)
     val previous = state.lastMessageId
     if (canLoadMoreAfter || previous == null || previous == newest) return state.copy(lastMessageId = newest)
     val previousIndex = messages.indexOfLast { it.messageId == previous }
     if (previousIndex < 0) return state.copy(lastMessageId = newest)
-    val appended = messages.subList(previousIndex + 1, messages.size)
-    val arrived = appended.count { it.countable }
+    val arrived = messages.subList(previousIndex + 1, messages.size).count { it.countable }
     return ThreadNewMessagesBelow(
-        count = if (appended.size <= ThreadNewMessagesBelowMaxBatch) state.count + arrived else state.count,
+        count = if (arrived <= ThreadNewMessagesBelowMaxBatch) state.count + arrived else state.count,
         lastMessageId = newest,
     )
 }

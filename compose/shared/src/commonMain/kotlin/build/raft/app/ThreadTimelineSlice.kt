@@ -273,10 +273,7 @@ internal fun ThreadTimelineSlice.visibleReadMarkerKey(
 ): String? {
     val threadId = sourceThreadId?.takeIf { it.isNotBlank() } ?: return null
     if (status != "content") return null
-    val latest =
-        visibleTailIndex?.takeIf { it in messages.indices }?.let { messages[it] }
-            ?: messages.lastOrNull()
-            ?: return null
+    val latest = readMarkerMessage(visibleTailIndex) ?: return null
     return buildString {
         append(threadId)
         append(':')
@@ -286,17 +283,23 @@ internal fun ThreadTimelineSlice.visibleReadMarkerKey(
     }
 }
 
-internal fun ThreadTimelineSlice.visibleReadMarkerKey(sourceThreadId: String?): String? {
-    val threadId = sourceThreadId?.takeIf { it.isNotBlank() } ?: return null
-    if (status != "content") return null
-    val latest = messages.lastOrNull() ?: return null
-    return buildString {
-        append(threadId)
-        append(':')
-        append(latest.seq?.toString() ?: "no-seq")
-        append(':')
-        append(latest.id)
-    }
+internal fun ThreadTimelineSlice.visibleReadMarkerKey(sourceThreadId: String?): String? =
+    visibleReadMarkerKey(sourceThreadId, visibleTailIndex = null)
+
+/**
+ * The message the read marker follows: the rendered tail, or the loaded tail when none is known.
+ * A local-only send (sending / failed, task #78) is never a read frontier and sits last, below every
+ * server message, so the marker steps back to the newest server-backed message at or before it;
+ * otherwise a failed send pinned at the tail would freeze the marker key and the read state would
+ * never advance past the messages that arrived above it.
+ */
+private fun ThreadTimelineSlice.readMarkerMessage(visibleTailIndex: Int?): RaftThreadMessageItem? {
+    val tailIndex = visibleTailIndex?.takeIf { it in messages.indices } ?: messages.lastIndex
+    if (tailIndex < 0) return null
+    return (tailIndex downTo 0)
+        .map { index -> messages[index] }
+        .firstOrNull { message -> !message.hasLocalSendState() }
+        ?: messages[tailIndex]
 }
 
 internal fun ThreadTimelineSlice.threadMessageById(messageId: String): RaftThreadMessageItem? =
@@ -504,4 +507,35 @@ internal fun ThreadTimelineSlice.withThreadLinkedTasksProjection(
             }
         }
     return copy(messages = projectedMessages, originMessage = projectedOriginMessage)
+}
+
+internal fun List<RaftThreadMessageItem>.localSendIds(): Set<String> =
+    filter { message -> message.hasLocalSendState() }.mapTo(mutableSetOf()) { message -> message.id }
+
+/**
+ * How the list's message ids changed. Local-only sends (sending / failed, [localSendIds]) always sit
+ * below every server message, so a server message that arrives above a failed send is still an
+ * append at the tail, not an unrelated height change (task #78): the comparison ignores local rows
+ * whenever the literal one is not a prefix / suffix match.
+ */
+internal fun classifyThreadViewportMutation(
+    previousIds: List<String>,
+    nextIds: List<String>,
+    localSendIds: Set<String> = emptySet(),
+): LazyViewportMutation {
+    fun literal(previous: List<String>, next: List<String>): LazyViewportMutation? =
+        when {
+            previous.isEmpty() || next.take(previous.size) == previous -> LazyViewportMutation.Append
+            next.takeLast(previous.size) == previous -> LazyViewportMutation.Prepend
+            else -> null
+        }
+    literal(previousIds, nextIds)?.let { return it }
+    if (localSendIds.isNotEmpty()) {
+        val previousServer = previousIds.filterNot { it in localSendIds }
+        val nextServer = nextIds.filterNot { it in localSendIds }
+        if (previousServer != previousIds || nextServer != nextIds) {
+            literal(previousServer, nextServer)?.let { return it }
+        }
+    }
+    return LazyViewportMutation.HeightChange
 }

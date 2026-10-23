@@ -19342,19 +19342,17 @@ private fun ThreadMessagesListContent(
     var previousViewportMessageIds by remember(threadInstanceKey) {
         mutableStateOf(renderPayload.messages.map { message -> message.id })
     }
+    var previousViewportLocalSendIds by remember(threadInstanceKey) {
+        mutableStateOf(renderPayload.messages.localSendIds())
+    }
     LaunchedEffect(threadInstanceKey, messageIndexSignature) {
         val nextIds = renderPayload.messages.map { message -> message.id }
         val previousIds = previousViewportMessageIds
+        val localSendIds = previousViewportLocalSendIds + renderPayload.messages.localSendIds()
         previousViewportMessageIds = nextIds
+        previousViewportLocalSendIds = renderPayload.messages.localSendIds()
         if (previousIds == nextIds) return@LaunchedEffect
-        val mutation =
-            when {
-                previousIds.isEmpty() || nextIds.take(previousIds.size) == previousIds ->
-                    LazyViewportMutation.Append
-                nextIds.takeLast(previousIds.size) == previousIds ->
-                    LazyViewportMutation.Prepend
-                else -> LazyViewportMutation.HeightChange
-            }
+        val mutation = classifyThreadViewportMutation(previousIds, nextIds, localSendIds)
         viewportLayoutGeneration += 1L
         diagnosticsLogger(
             "thread_content_mutation key=$threadInstanceKey mutation=$mutation " +
