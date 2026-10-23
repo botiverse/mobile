@@ -42,6 +42,18 @@ final class RaftIosTabBarController: UIViewController {
     private var tabKeys: [String] = []
     private var tabBarVisible: Bool?
     private var reportedBottomBand: CGFloat = -1
+    private var tapGate = RaftIosTabTapGate()
+    /// iOS 26: the current-server tab as its own round glass button beside the bar.
+    private var serverButton: UIButton?
+    private var serverButtonKey: String?
+    private var serverAvatarSource: RaftNativeTabBarAvatar?
+    private var serverAvatarImage: UIImage?
+
+    /// iOS 26 splits the panel tab out of the Liquid Glass bar; earlier bars keep it as a tab.
+    private static var separatesPanelButton: Bool {
+        if #available(iOS 26.0, *) { return true }
+        return false
+    }
 
     /// [bridge] must already be registered under [hostId]; this controller unregisters it.
     init(content: UIViewController, bridge: RaftNativeTabBarBridge, hostId: String) {
@@ -86,6 +98,7 @@ final class RaftIosTabBarController: UIViewController {
             setOverrideTraitCollection(UITraitCollection(horizontalSizeClass: .compact), forChild: tabs)
         }
         tabs.view.frame = overlayView.bounds
+        // Laid out in layoutServerButton(): narrowed beside the iOS 26 server button.
         tabs.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         tabs.view.backgroundColor = .clear
         overlayView.addSubview(tabs.view)
@@ -111,6 +124,7 @@ final class RaftIosTabBarController: UIViewController {
         let style = RaftIosAppearanceHost.currentStyle
         systemTabBarController.overrideUserInterfaceStyle = style
         systemTabBarController.tabBar.overrideUserInterfaceStyle = style
+        serverButton?.overrideUserInterfaceStyle = style
     }
 
     @objc private func appearanceDidChange() {
@@ -119,19 +133,88 @@ final class RaftIosTabBarController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        layoutServerButton()
         reportBottomBand()
+    }
+
+    /// The system bar's container gives up the button's width, so the bar lays its pill out in
+    /// the rest (no overlap at any width); the button sits in the freed trailing space, level
+    /// with the pill.
+    private func layoutServerButton() {
+        let bounds = overlayView.bounds
+        let showsButton = serverButton != nil && serverButtonKey != nil
+        let width = RaftIosServerButtonLayout.tabBarContainerWidth(containerWidth: bounds.width, showsButton: showsButton)
+        let tabsFrame = CGRect(x: 0, y: 0, width: width, height: bounds.height)
+        if systemTabBarController.view.frame != tabsFrame {
+            systemTabBarController.view.frame = tabsFrame
+            systemTabBarController.view.layoutIfNeeded()
+        }
+        guard let button = serverButton, showsButton else { return }
+        let tabBar = systemTabBarController.tabBar
+        button.frame = RaftIosServerButtonLayout.buttonFrame(
+            containerWidth: bounds.width,
+            safeAreaRight: view.safeAreaInsets.right,
+            barFrame: tabBar.convert(tabBar.bounds, to: overlayView),
+            barBottomInset: tabBar.safeAreaInsets.bottom
+        )
+    }
+
+    /// Creates, updates or removes the iOS 26 server button for [spec] (nil = no panel tab).
+    private func applyServerButton(_ spec: RaftIosTabBarItemSpec?, avatar: RaftNativeTabBarAvatar?) {
+        guard #available(iOS 26.0, *), let spec = spec else {
+            serverButton?.removeFromSuperview()
+            serverButton = nil
+            overlayView.serverButton = nil
+            serverButtonKey = nil
+            return
+        }
+        let button: RaftIosServerTabButton
+        if let existing = serverButton as? RaftIosServerTabButton {
+            button = existing
+        } else {
+            button = RaftIosServerTabButton.make()
+            button.addTarget(self, action: #selector(serverButtonTapped), for: .primaryActionTriggered)
+            button.overrideUserInterfaceStyle = RaftIosAppearanceHost.currentStyle
+            overlayView.addSubview(button)
+            overlayView.serverButton = button
+            serverButton = button
+        }
+        if avatar !== serverAvatarSource {
+            serverAvatarSource = avatar
+            serverAvatarImage = avatar.flatMap { avatar in
+                let count = Int(avatar.argb.size)
+                let pixels = (0..<count).map { avatar.argb.get(index: Int32($0)) }
+                return RaftIosServerAvatarImage.image(argb: pixels, width: Int(avatar.width), height: Int(avatar.height))
+            }
+        }
+        button.apply(spec, avatar: serverAvatarImage)
+        serverButtonKey = spec.key
+        button.isHidden = tabBarVisible != true
+        view.setNeedsLayout()
+    }
+
+    /// The server button toggles the panel through the shell's tab handler; it is not a tab, so
+    /// the bar's selection never moves.
+    @objc private func serverButtonTapped() {
+        guard let key = serverButtonKey else { return }
+        RaftIosDiagnosticsRecord("info", "RaftIosTabBar", "server_button_tap")
+        if !bridge.selectTab(key: key) {
+            RaftIosDiagnosticsRecord("warn", "RaftIosTabBar", "tab_tap_unhandled key=\(key)")
+        }
     }
 
     // MARK: - Shared state -> UIKit
 
     fileprivate func apply(_ state: RaftNativeTabBarState) {
         let shared = state.items.map(RaftIosTabBarItemSpec.init(shared:))
-        let specs = RaftIosTabBarItemMapping.displayItems(shared)
-        if specs.count < shared.count {
+        let displayed = RaftIosTabBarItemMapping.displayItems(shared)
+        let split = RaftIosTabBarItemMapping.splitPanelButton(displayed, separatePanelButton: Self.separatesPanelButton)
+        let specs = split.tabs
+        if displayed.count < shared.count {
             RaftIosDiagnosticsRecord(
                 "warn",
                 "RaftIosTabBar",
-                "tab_items_dropped published=\(shared.count) shown=\(specs.count)"
+                "tab_items_dropped published=\(shared.count) shown=\(displayed.count)"
             )
         }
         let keys = specs.map(\.key)
@@ -153,6 +236,8 @@ final class RaftIosTabBarController: UIViewController {
            systemTabBarController.selectedIndex != index {
             systemTabBarController.selectedIndex = index
         }
+        let panelAvatar = split.panel.flatMap { panel in state.items.first { $0.key == panel.key }?.avatar }
+        applyServerButton(split.panel, avatar: panelAvatar)
         applyVisibility(state.visible && !keys.isEmpty, animated: view.window != nil)
     }
 
@@ -161,6 +246,9 @@ final class RaftIosTabBarController: UIViewController {
         tabBarVisible = visible
         overlayView.isUserInteractionEnabled = visible
         systemTabBarController.view.accessibilityElementsHidden = !visible
+        if let button = serverButton {
+            button.isHidden = !visible
+        }
         if #available(iOS 18.0, *) {
             systemTabBarController.setTabBarHidden(!visible, animated: animated)
         } else {
@@ -199,6 +287,16 @@ extension RaftIosTabBarController: UITabBarControllerDelegate {
         shouldSelect viewController: UIViewController
     ) -> Bool {
         guard let slot = viewController as? RaftIosTabSlotViewController else { return false }
+        // One action per tap: UIKit may ask more than once for one tap, which toggled the server
+        // panel open and shut again (the last tab "could not be tapped").
+        guard tapGate.admit(
+            key: slot.tabKey,
+            now: ProcessInfo.processInfo.systemUptime,
+            touchBeganAt: overlayView.lastTouchBeganAt
+        ) else {
+            RaftIosDiagnosticsRecord("info", "RaftIosTabBar", "tab_tap_repeat_dropped key=\(slot.tabKey)")
+            return false
+        }
         if slot.searchAction {
             RaftIosDiagnosticsRecord("info", "RaftIosTabBar", "search_action_tap")
         }
@@ -218,9 +316,11 @@ private extension RaftIosTabBarItemSpec {
             selectedSystemImageName: item.selectedSystemImageName,
             badgeValue: item.badgeValue,
             enabled: item.enabled,
-            attentionDot: item.attentionDot,
             searchAction: item.searchAction,
-            imageAssetName: item.imageAssetName
+            imageAssetName: item.imageAssetName,
+            opensPanel: item.opensPanel,
+            accessibilityLabel: item.accessibilityLabel,
+            avatarFallbackLabel: item.avatarFallbackLabel
         )
     }
 }
@@ -257,6 +357,10 @@ private final class RaftIosSystemTabBarController: UITabBarController {
 /// land on the tab bar itself.
 private final class RaftIosTabBarOverlayView: UIView {
     weak var tabBar: UITabBar?
+    /// The iOS 26 server button, which also takes touches.
+    weak var serverButton: UIView?
+    /// Timestamp (system uptime) of the last touch-down on the bar: one tap = one touch sequence.
+    private(set) var lastTouchBeganAt: TimeInterval?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -270,9 +374,15 @@ private final class RaftIosTabBarOverlayView: UIView {
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         guard let hit = super.hitTest(point, with: event),
-              let tabBar = tabBar,
-              hit.isDescendant(of: tabBar) else {
+              let tabBar = tabBar else {
             return nil
+        }
+        if let button = serverButton, hit.isDescendant(of: button) {
+            return hit
+        }
+        guard hit.isDescendant(of: tabBar) else { return nil }
+        if let event = event, event.type == .touches {
+            lastTouchBeganAt = event.timestamp
         }
         return hit
     }
@@ -308,7 +418,7 @@ private final class RaftIosTabSlotViewController: UIViewController {
         if item.title != spec.title {
             item.title = spec.title
         }
-        item.accessibilityLabel = spec.title
+        item.accessibilityLabel = spec.accessibilityLabel ?? spec.title
         item.accessibilityIdentifier = "raft-tab-\(spec.key)"
         // The web's Lucide glyph (template asset, tinted by the bar) when the app ships it;
         // Lucide has no filled variants, so selection is the tint alone. SF Symbols otherwise.
@@ -325,6 +435,7 @@ private final class RaftIosTabSlotViewController: UIViewController {
                 )
             )
         }
+        // The system badge, counts only (a dot's count comes from shared; see the spec).
         if item.badgeValue != spec.badgeValue {
             item.badgeValue = spec.badgeValue
         }

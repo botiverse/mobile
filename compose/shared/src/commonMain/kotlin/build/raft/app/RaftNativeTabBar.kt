@@ -6,6 +6,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.ImageBitmap
+import build.raft.app.compat.ui.rememberAsyncImageBitmap
+import build.raft.app.data.RaftSharedStoreRegistry
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -68,7 +71,40 @@ data class RaftNativeTabBarItem(
      * The host prefers it and falls back to [systemImageName] when the asset is missing.
      */
     val imageAssetName: String? = null,
+    /**
+     * Opens a panel, never a page, and is never selected (the current-server tab). The iOS 26
+     * host shows it as its own round glass button beside the bar, so pressing it never moves
+     * the bar's selection; before iOS 26 it stays the last tab.
+     */
+    val opensPanel: Boolean = false,
+    /** Screen-reader label; null = [title]. */
+    val accessibilityLabel: String? = null,
+    /** The server's avatar, loaded by the app's image loader; null = not loaded or none. */
+    val avatar: RaftNativeTabBarAvatar? = null,
+    /** The server's initial for the app's ink tile when [avatar] is null. */
+    val avatarFallbackLabel: String? = null,
 )
+
+/**
+ * A decoded avatar for the host: [argb] holds [width] x [height] non-premultiplied ARGB pixels,
+ * row by row. Equality is identity (one instance per decoded image). Exported to Swift.
+ */
+class RaftNativeTabBarAvatar(val width: Int, val height: Int, val argb: IntArray)
+
+/** Decode bound (px) for the iOS 26 server button's avatar: a 40pt circle at 3x, rounded up. */
+internal const val RaftNativeTabBarAvatarDecodePx = 128
+
+/** Largest avatar handed to the host; a larger decode keeps the initial tile instead. */
+internal const val RaftNativeTabBarAvatarMaxPixels = 512 * 512
+
+internal fun raftNativeTabBarAvatar(bitmap: ImageBitmap): RaftNativeTabBarAvatar? {
+    val width = bitmap.width
+    val height = bitmap.height
+    if (width <= 0 || height <= 0 || width.toLong() * height > RaftNativeTabBarAvatarMaxPixels) return null
+    val pixels = IntArray(width * height)
+    bitmap.readPixels(pixels)
+    return RaftNativeTabBarAvatar(width, height, pixels)
+}
 
 /** Everything the host needs to render the bar. Exported to Swift. */
 data class RaftNativeTabBarState(
@@ -236,7 +272,14 @@ internal fun RaftNativeTabBarPublisher(
     val token = remember(bridge) { Any() }
     val currentOnSelect by rememberUpdatedState(onSelect)
     val selectHandler = remember(bridge) { { key: String -> currentOnSelect(key) } }
-    val state = remember(items) { raftNativeTabBarState(items, visible = true) }
+    // The server button's avatar, through the app's image loader (the panel's own candidates).
+    val avatarSource = items.firstOrNull { it.opensPanel }?.avatarSource
+    val apiBaseUrl =
+        RaftSharedStoreRegistry.currentOrNull()?.apiEnvironmentStore?.current()?.apiBaseUrl?.trimEnd('/')
+    val avatarModel = avatarSource?.let { raftAvatarImageCandidates(it, apiBaseUrl).firstOrNull() }
+    val avatarBitmap = rememberAsyncImageBitmap(avatarModel, RaftNativeTabBarAvatarDecodePx)
+    val avatar = remember(avatarBitmap) { avatarBitmap?.let(::raftNativeTabBarAvatar) }
+    val state = remember(items, avatar) { raftNativeTabBarState(items, visible = true, panelAvatar = avatar) }
     DisposableEffect(bridge, state) {
         bridge.publish(token, state, selectHandler)
         onDispose { }
@@ -249,16 +292,20 @@ internal fun RaftNativeTabBarPublisher(
 internal fun raftNativeTabBarState(
     items: List<RaftBottomTabItemPayload>,
     visible: Boolean,
+    panelAvatar: RaftNativeTabBarAvatar? = null,
 ): RaftNativeTabBarState =
     RaftNativeTabBarState(
-        items = items.map(::raftNativeTabBarItem),
+        items = items.map { item ->
+            raftNativeTabBarItem(item).let { if (item.opensPanel) it.copy(avatar = panelAvatar) else it }
+        },
         selectedKey = items.firstOrNull { it.selected }?.key,
         visible = visible,
     )
 
 internal fun raftNativeTabBarItem(item: RaftBottomTabItemPayload): RaftNativeTabBarItem {
     val symbol = raftNativeTabBarSymbol(item.iconName)
-    val badgeCount = item.badgeCount.coerceAtLeast(0)
+    // UIKit has no small-dot badge: a dot with a known count shows the count, the native way.
+    val badgeCount = item.badgeCount.takeIf { it > 0 } ?: item.nativeBadgeCount.coerceAtLeast(0)
     return RaftNativeTabBarItem(
         key = item.key,
         title = item.label,
@@ -269,6 +316,9 @@ internal fun raftNativeTabBarItem(item: RaftBottomTabItemPayload): RaftNativeTab
         enabled = item.enabled,
         attentionDot = item.attentionDot && badgeCount == 0,
         imageAssetName = raftNativeTabBarImageAssetName(item.iconName),
+        opensPanel = item.opensPanel,
+        accessibilityLabel = item.accessibilityLabel?.takeIf { it.isNotBlank() },
+        avatarFallbackLabel = item.avatarFallbackLabel?.takeIf { it.isNotBlank() },
     )
 }
 
