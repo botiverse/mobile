@@ -2280,10 +2280,10 @@
     <string name="settings_server_action_save_profile">Save Profile</string>
     <string name="settings_server_state_read_only">Read only</string>
     <string name="settings_server_action_leave">Leave Server</string>
-    <string name="settings_server_leave_detail">You will lose access to %1$s and all of its channels. You can be re-invited later.</string>
+    <string name="settings_server_leave_detail">You will lose access to this server\'s channels and DMs. You can rejoin if invited again.</string>
     <string name="settings_server_leave_confirm">Tap Leave Server again to confirm.</string>
     <string name="settings_server_action_delete">Delete Server</string>
-    <string name="settings_server_delete_detail">Permanently remove %1$s and all of its data. This cannot be undone.</string>
+    <string name="settings_server_delete_detail">Permanently remove this server and all its data. This cannot be undone.</string>
     <string name="settings_server_this_server">this server</string>
     <string name="settings_server_delete_type_prefix">Type</string>
     <string name="settings_server_delete_confirm_suffix">&#160;to confirm:</string>

@@ -545,6 +545,8 @@ class KmmResourceI18nTest {
             MR.strings.settings_server_section_owners_admins,
             MR.strings.settings_server_action_create_join_link,
             MR.strings.settings_server_delete_warning_prefix,
+            MR.strings.settings_server_leave_detail,
+            MR.strings.settings_server_delete_detail,
             MR.strings.settings_server_action_save_permissions
         ).forEach { resource ->
             assertTrue(
@@ -556,7 +558,6 @@ class KmmResourceI18nTest {
         listOf(
             MR.strings.settings_connected_apps_delete_detail.format(listOf("Example")),
             MR.strings.settings_connected_apps_publish_rejection.format(listOf("Reason")),
-            MR.strings.settings_server_leave_detail.format(listOf("Workspace")),
             MR.strings.settings_server_invited_by.format(listOf("Owner"))
         ).forEach { desc ->
             assertTrue(desc is ResourceFormattedStringDesc)

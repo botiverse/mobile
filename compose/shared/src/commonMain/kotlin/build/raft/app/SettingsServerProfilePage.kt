@@ -68,9 +68,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tencent.tmm.kmmresource.compose.localized
 import com.tencent.tmm.kmmresource.compose.stringResource
-import com.tencent.tmm.kmmresource.resource.format
 
 @Composable
 internal fun rememberSettingsServerPublicAccessBinding(
@@ -271,7 +269,7 @@ private fun SettingsServerDangerZoneCard(
         if (canLeave) {
             SettingsServerActionRow(
                 title = stringResource(MR.strings.settings_server_action_leave),
-                detail = MR.strings.settings_server_leave_detail.format(listOf(serverName.ifBlank { stringResource(MR.strings.settings_server_this_server) })).localized(),
+                detail = stringResource(MR.strings.settings_server_leave_detail),
                 buttonLabel = actionState.serverLocalizedStatusFor(SERVER_ACTION_LEAVE, stringResource(MR.strings.settings_server_action_leave)),
                 buttonIcon = RaftLucideIconName.LogOut,
                 buttonVariant = RaftButtonVariant.Warning,
@@ -289,7 +287,7 @@ private fun SettingsServerDangerZoneCard(
         if (canDelete) {
             SettingsServerActionRow(
                 title = stringResource(MR.strings.settings_server_action_delete),
-                detail = MR.strings.settings_server_delete_detail.format(listOf(serverName.ifBlank { stringResource(MR.strings.settings_server_this_server) })).localized(),
+                detail = stringResource(MR.strings.settings_server_delete_detail),
                 buttonLabel = stringResource(MR.strings.settings_server_action_delete),
                 buttonIcon = RaftLucideIconName.Trash2,
                 buttonVariant = RaftButtonVariant.Danger,
