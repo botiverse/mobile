@@ -6275,6 +6275,22 @@ private fun RaftAppShellReadyContent(
     // The menu belongs to the bar or the rail it rose from: it closes when they go (a pushed page
     // hides the bar, the window crosses the rail breakpoint).
     LaunchedEffect(showAppShellBottomTabs, navRailActive) { serverMenuState.dismiss() }
+    // artin 10-23: the Home switcher dropdown and the server panel never show together; the one
+    // opened last stays.
+    val serverMenusOpenBefore = remember { RaftServerMenusOpen() }
+    LaunchedEffect(serverMenuState.open, homeState.serverSwitcherExpanded) {
+        val now = RaftServerMenusOpen(panel = serverMenuState.open, homeSwitcher = homeState.serverSwitcherExpanded)
+        when (raftServerMenuToClose(before = serverMenusOpenBefore.copy(), now = now)) {
+            RaftServerMenuSurface.Panel -> serverMenuState.dismiss()
+            RaftServerMenuSurface.HomeSwitcher -> {
+                serverDrawerProgrammaticCloseFence?.invoke("server_panel")
+                homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
+            }
+            null -> Unit
+        }
+        serverMenusOpenBefore.panel = now.panel
+        serverMenusOpenBefore.homeSwitcher = now.homeSwitcher
+    }
     // A server page's origin lives only while a server page shows; a deep link to one finds none
     // and goes back to Home.
     LaunchedEffect(selectedTab) {
@@ -6744,6 +6760,10 @@ private fun RaftAppShellReadyContent(
                         guest = serverMenuContent.snapshot.server.role.equals("guest", ignoreCase = true),
                     ),
                 onPick = ::onServerMenuPick,
+                onServerOrderChange = { order ->
+                    bridge.log("app_shell_server_menu_reorder count=${order.size}")
+                    homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.ReorderServers(order)))
+                },
                 prefersChineseCommunity = localePreferenceStore.readLocaleSync() == AppLocale.SimplifiedChinese,
                 onCreateServerClick = {
                     pager.openAuthChooseServerPage(

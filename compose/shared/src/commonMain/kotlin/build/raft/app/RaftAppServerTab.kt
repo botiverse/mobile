@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.focus.FocusRequester
@@ -28,6 +29,8 @@ import build.raft.designsystem.components.RaftMobileNavServerPopoverSeparator
 import build.raft.designsystem.components.RaftMobileNavServerPopoverState
 import build.raft.designsystem.components.RaftMutedCount
 import build.raft.designsystem.components.RaftUnreadCount
+import build.raft.designsystem.components.raftReorderableItem
+import build.raft.designsystem.components.rememberRaftReorderState
 import com.tencent.tmm.kmmresource.compose.stringResource
 
 // Design D1a (#proj-raft-ui task #152; raft-design #712): the app's current-server tab and its
@@ -53,6 +56,28 @@ internal fun raftServerMenuPick(key: String): RaftServerMenuPick? =
         key.startsWith("server:") -> key.removePrefix("server:").takeIf { it.isNotBlank() }?.let(RaftServerMenuPick::Server)
         key.startsWith("page:") -> RaftServerMenuEntry.fromKey(key.removePrefix("page:"))?.let(RaftServerMenuPick::Page)
         else -> null
+    }
+
+/** The two server menus: the server panel (the server tab's popover) and the Home switcher dropdown. */
+internal enum class RaftServerMenuSurface { Panel, HomeSwitcher }
+
+/** Which server menus are open. */
+internal data class RaftServerMenusOpen(var panel: Boolean = false, var homeSwitcher: Boolean = false)
+
+/**
+ * The server panel and the Home switcher dropdown never show together (artin 10-23: both open
+ * at once on a phone): when both are open [now], the one that was already open [before] closes
+ * and the one just opened stays. Null when there is nothing to close.
+ */
+internal fun raftServerMenuToClose(before: RaftServerMenusOpen, now: RaftServerMenusOpen): RaftServerMenuSurface? =
+    when {
+        !now.panel || !now.homeSwitcher -> null
+        // The panel just opened (or both did at once: the panel is the newer surface).
+        !before.panel -> RaftServerMenuSurface.HomeSwitcher
+        !before.homeSwitcher -> RaftServerMenuSurface.Panel
+        // Both were already open (a state from before this rule): keep the panel the person
+        // reached for at the bottom.
+        else -> RaftServerMenuSurface.HomeSwitcher
     }
 
 /**
@@ -140,6 +165,11 @@ internal fun RaftAppServerMenuOverlay(
     screenHeight: Dp? = null,
     /** The pages in the bottom row ([raftServerMenuEntriesFor]); none draws no row. */
     entries: List<RaftServerMenuEntry> = model.entries,
+    /**
+     * A held server row dropped in a new place (artin 10-23): the whole order, as the Home
+     * switcher's grip sends it ([SharedHomeIntent.ReorderServers]).
+     */
+    onServerOrderChange: (List<String>) -> Unit = {},
 ) {
     if (!state.open) return
     // The overlay host registers Back as well; the popover names its own handler so Back closes
@@ -155,6 +185,13 @@ internal fun RaftAppServerMenuOverlay(
             includeChineseCommunity = prefersChineseCommunity,
         )
     val attentionDescription = stringResource(MR.strings.more_row_attention_dot)
+    // artin 10-23: hold a server row to lift it, drag, let go to save the order (the Home
+    // switcher's order and intent); a tap still switches.
+    val serversById = model.servers.associateBy { it.id }
+    val reorderState = rememberRaftReorderState(model.servers.map { it.id })
+    val reorderable = model.servers.size > 1
+    val moveUpLabel = stringResource(MR.strings.server_panel_move_up)
+    val moveDownLabel = stringResource(MR.strings.server_panel_move_down)
     val pageLabels =
         mapOf(
             RaftServerMenuEntry.Members to stringResource(MR.strings.tab_members),
@@ -184,28 +221,42 @@ internal fun RaftAppServerMenuOverlay(
                             .raftFloatingContentClickTarget(),
                     paneTitle = panelTitle,
                 ) {
-                    RaftMobileNavServerPopoverList {
-                        model.servers.forEach { server ->
-                            val current = server.id == model.currentServer.id
-                            RaftMobileNavServerPopoverRow(
-                                label = server.name,
-                                description = server.slug.takeIf { it.isNotBlank() }?.let { "/$it" },
-                                onClick = { onPick(RaftServerMenuPick.Server(server.id)) },
-                                current = current,
-                                state = state,
-                                key = raftServerMenuServerKey(server.id),
-                                leading = {
-                                    ServerSwitcherAvatarTile(server, size = RaftMobileNavDefaults.ServerPopoverAvatarSize)
-                                },
-                                trailing =
-                                    if (current) {
-                                        { RaftGlyphIcon(RaftGlyph.Check, color = RaftColor.TextBlack) }
-                                    } else {
-                                        raftServerMenuUnreadCount(server)?.let { (count, muted) ->
-                                            { if (muted) RaftMutedCount(count) else RaftUnreadCount(count) }
-                                        }
+                    RaftMobileNavServerPopoverList(reorderState = reorderState.takeIf { reorderable }) {
+                        // The rows follow the reorder state's order (the lifted row's slot while
+                        // dragging); keyed, so a row keeps its gesture as it moves.
+                        reorderState.order.forEach { serverId ->
+                            val server = serversById[serverId] ?: return@forEach
+                            key(serverId) {
+                                val current = server.id == model.currentServer.id
+                                RaftMobileNavServerPopoverRow(
+                                    modifier =
+                                        Modifier.raftReorderableItem(
+                                            state = reorderState,
+                                            key = server.id,
+                                            onOrderChange = onServerOrderChange,
+                                            moveUpLabel = moveUpLabel,
+                                            moveDownLabel = moveDownLabel,
+                                            enabled = reorderable,
+                                        ),
+                                    label = server.name,
+                                    description = server.slug.takeIf { it.isNotBlank() }?.let { "/$it" },
+                                    onClick = { onPick(RaftServerMenuPick.Server(server.id)) },
+                                    current = current,
+                                    state = state,
+                                    key = raftServerMenuServerKey(server.id),
+                                    leading = {
+                                        ServerSwitcherAvatarTile(server, size = RaftMobileNavDefaults.ServerPopoverAvatarSize)
                                     },
-                            )
+                                    trailing =
+                                        if (current) {
+                                            { RaftGlyphIcon(RaftGlyph.Check, color = RaftColor.TextBlack) }
+                                        } else {
+                                            raftServerMenuUnreadCount(server)?.let { (count, muted) ->
+                                                { if (muted) RaftMutedCount(count) else RaftUnreadCount(count) }
+                                            }
+                                        },
+                                )
+                            }
                         }
                     }
                     RaftMobileNavServerPopoverSeparator()

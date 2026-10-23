@@ -37,7 +37,9 @@ import build.raft.designsystem.components.RaftMobileNavServerPopoverList
 import build.raft.designsystem.components.RaftMobileNavServerPopoverRow
 import build.raft.designsystem.components.RaftMobileNavServerPopoverSeparator
 import build.raft.designsystem.components.RaftMobileNavServerPopoverState
+import build.raft.designsystem.components.RaftReorderState
 import build.raft.designsystem.components.RaftUnreadCount
+import build.raft.designsystem.components.raftReorderableItem
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
@@ -115,18 +117,32 @@ class MobileNavServerScreenshotTest {
             }
         }
 
+    @Test
+    fun mobileNavServerPopoverReorder() =
+        capture("mobile_nav_server_popover_reorder") {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Caption("Acme Labs held and lifted, dragged down a little (artin 10-23)")
+                val reorder = RaftReorderState(sampleServers(4).map { it.first })
+                reorder.lift("acme")
+                reorder.dragBy(14f)
+                Phone(menuState(open = true), servers = 4, reorder = reorder)
+            }
+        }
+
     private fun menuState(open: Boolean) = RaftMobileNavServerPopoverState().apply { if (open) show() }
 
     @Composable
-    private fun Phone(state: RaftMobileNavServerPopoverState, servers: Int) {
+    private fun Phone(state: RaftMobileNavServerPopoverState, servers: Int, reorder: RaftReorderState? = null) {
         Column(Modifier.width(375.dp)) {
             Box(Modifier.width(375.dp).height(640.dp).background(RaftTheme.colors.layerCanvas)) {
                 RaftMobileNavServerPopover(state, screenHeight = 640.dp + RaftMobileNavDefaults.BarHeight) {
                     RaftMobileNavServerPopoverContent(paneTitle = "Server panel") {
-                        RaftMobileNavServerPopoverList {
+                        RaftMobileNavServerPopoverList(reorderState = reorder) {
                             sampleServers(servers).forEach { (id, name, unread) ->
                                 val current = id == "botiverse"
                                 RaftMobileNavServerPopoverRow(
+                                    modifier =
+                                        if (reorder != null) Modifier.raftReorderableItem(reorder, id, onOrderChange = {}) else Modifier,
                                     label = name,
                                     description = "/$id",
                                     onClick = {},

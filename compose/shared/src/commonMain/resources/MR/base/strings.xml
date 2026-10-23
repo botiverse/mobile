@@ -41,6 +41,8 @@
     <string name="server_tab_a11y_label">Current server: %1$s</string>
     <string name="server_tab_switch_action">Switch Server</string>
     <string name="server_panel_title">Server panel</string>
+    <string name="server_panel_move_up">Move up</string>
+    <string name="server_panel_move_down">Move down</string>
     <string name="more_hub_tasks_subtitle">Track and follow work</string>
     <string name="more_hub_members_subtitle">Browse humans and agents</string>
     <string name="more_hub_settings_subtitle">Preferences and account</string>

@@ -515,11 +515,25 @@ fun RaftMobileNavServerPopoverContent(
     )
 }
 
-/** raft-ui `MobileNavServerPopoverList`: the server list; takes the room left and scrolls (4dp padding). */
+/**
+ * raft-ui `MobileNavServerPopoverList`: the server list; takes the room left and scrolls (4dp
+ * padding). With a [reorderState] its rows can be held and dragged into a new order (give each
+ * server row [raftReorderableItem]); a lifted row near the list's edge scrolls it.
+ */
 @Composable
-fun ColumnScope.RaftMobileNavServerPopoverList(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+fun ColumnScope.RaftMobileNavServerPopoverList(
+    modifier: Modifier = Modifier,
+    reorderState: RaftReorderState? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val scroll = rememberScrollState()
     Column(
-        modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(4.dp),
+        modifier
+            .fillMaxWidth()
+            .weight(1f, fill = false)
+            .then(if (reorderState != null) Modifier.raftReorderableViewport(reorderState, scroll) else Modifier)
+            .verticalScroll(scroll)
+            .padding(4.dp),
         content = content,
     )
 }

@@ -218,4 +218,28 @@ class RaftServerMenuModelTest {
         val plain = appShellPhoneBottomTabs("home", "h", "a", "s", "t", "m").single { it.key == "more" }
         assertFalse(plain.opensPanel)
     }
+
+    @Test
+    fun openingOneServerMenuClosesTheOther() {
+        // artin 10-23: the Home dropdown and the bottom-tab server panel were open together.
+        fun open(panel: Boolean, home: Boolean) = RaftServerMenusOpen(panel = panel, homeSwitcher = home)
+        assertEquals(
+            RaftServerMenuSurface.HomeSwitcher,
+            raftServerMenuToClose(before = open(panel = false, home = true), now = open(panel = true, home = true)),
+            "the panel opened over the Home dropdown: the dropdown closes",
+        )
+        assertEquals(
+            RaftServerMenuSurface.Panel,
+            raftServerMenuToClose(before = open(panel = true, home = false), now = open(panel = true, home = true)),
+            "the Home dropdown opened over the panel: the panel closes",
+        )
+        assertEquals(
+            RaftServerMenuSurface.HomeSwitcher,
+            raftServerMenuToClose(before = open(panel = false, home = false), now = open(panel = true, home = true)),
+            "both at once: the panel stays",
+        )
+        assertNull(raftServerMenuToClose(before = open(panel = false, home = false), now = open(panel = true, home = false)))
+        assertNull(raftServerMenuToClose(before = open(panel = true, home = false), now = open(panel = false, home = true)))
+        assertNull(raftServerMenuToClose(before = open(panel = false, home = true), now = open(panel = false, home = true)))
+    }
 }
