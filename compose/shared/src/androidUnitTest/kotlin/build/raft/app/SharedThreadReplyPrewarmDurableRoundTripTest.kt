@@ -26,6 +26,7 @@ import build.raft.app.network.sync.CanonicalMessageV2ProductionCanary
 import build.raft.app.network.sync.CanonicalMessageV2SnapshotCommitObserver
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.SqlDelightCanonicalMessageV2Store
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -108,7 +109,10 @@ class SharedThreadReplyPrewarmDurableRoundTripTest {
     }
 
     private class Rig(database: RaftSqlDatabase, replyResult: DataResult<build.raft.app.data.ThreadSnapshot>) {
-        val logs = mutableListOf<String>()
+        // Thread-safe: the reply fetch, the parent-context lookup (an `async` sibling that may still be logging
+        // after the prewarm returns) and the durable writer all log from different threads. A plain ArrayList
+        // lost lines or threw ArrayIndexOutOfBounds inside a logger under concurrent `add`.
+        val logs: MutableList<String> = CopyOnWriteArrayList()
         val network = PathNetworkClient(
             mutableMapOf(
                 "channels/thread-1" to """{"id":"thread-1","type":"thread","parentChannelId":"channel-1","parentMessageId":"root-1"}""",
