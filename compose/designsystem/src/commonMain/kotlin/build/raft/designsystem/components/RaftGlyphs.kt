@@ -23,7 +23,8 @@ import build.raft.designsystem.theme.RaftTheme
  * components themselves draw: the banner intents, the list and select chevrons, the @ marker,
  * the check of a checkbox and of a menu's current value, the dialog's close, a menu's search,
  * the top bar's Back arrow, the jump pills' arrows, a sidebar channel's `hash` / `lock`, a group header's sort
- * arrows and an action card's default `zap`. Each is the 24x24 outline drawn with Lucide's
+ * arrows and an action card's default `zap`, a thread
+ * summary's draft `pencil` and a saved message's `bookmark`. Each is the 24x24 outline drawn with Lucide's
  * 2-unit round stroke. App icons are not this module's business: pass them through the components' icon
  * slots.
  */
@@ -74,6 +75,19 @@ enum class RaftGlyph(internal vararg val paths: String) {
     Zap(
         "M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7" +
             "a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z",
+    ),
+
+    /** Lucide `pencil`: the draft marker of a thread summary (raft-ui MessageReplies). */
+    Pencil(
+        "M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622" +
+            "l4.353-1.32a2 2 0 0 0 .83-.497z",
+        "m15 5 4 4",
+    ),
+
+    /** Lucide `bookmark`: a saved message's footer marker, drawn filled (raft-ui MessageItemSavedIndicator). */
+    Bookmark(
+        "M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5" +
+            "a2 2 0 0 1 2-2z",
     ),
     ;
 

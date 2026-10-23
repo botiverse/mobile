@@ -9058,8 +9058,6 @@ class ThreadPayloadTest {
 
     @Test
     fun threadMessageSavedBadgeTracksSavedStateIndependentlyOfRowActionPreferences() {
-        assertEquals(RaftColor.AccentOrange.copy(alpha = 0.15f), ThreadMessageSavedBadgeColor)
-        assertEquals(RaftColor.AccentOrangeArgb, ThreadMessageSavedBadgeIconColorArgb)
         assertTrue(
             shouldShowThreadMessageSavedBadge(
                 showSaveAction = true,

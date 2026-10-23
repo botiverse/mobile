@@ -107,7 +107,7 @@ GESTURE_OWNER_REGIONS = (
     (SETTINGS_FORM_PARTS, "private fun SharedSettingsRow(", "private data class SharedSettingsRowGestureCallbacks(", "settings-row"),
     (SETTINGS_HOME_PAGE, "private fun SharedHomeSavedResultCard(", "private fun SharedHomeSavedUnsaveButton(", "home-saved-result"),
     (SETTINGS_HOME_PAGE, "private fun SharedHomeSearchEntityRow(", "internal data class SearchEntityPinTarget(", "home-search-entity"),
-    (THREAD_PAGE, "private fun ThreadReactionChip(", "internal fun threadNeutralMessageSurfaceColor(", "thread-reaction-chip"),
+    (THREAD_PAGE, "private fun ThreadReactionChip(", "private data class ThreadReactionChipGestureCallbacks(", "thread-reaction-chip"),
     (THREAD_PAGE, "private fun ThreadMessageAvatar(", "private fun ThreadMessageStaticAvatar(", "thread-message-avatar"),
     (BRUTAL_DROPDOWN, "internal fun RaftBrutalDropdownMenuRow(", "private data class RaftBrutalDropdownRowGestureCallbacks(", "brutal-dropdown-row"),
     (FOREGROUND_BANNER, "internal fun RaftForegroundMessageBannerView(", "private data class ForegroundBannerGestureCallbacks(", "foreground-banner"),

@@ -55,29 +55,6 @@ class ThreadInlineRepliesTest {
     }
 
     @Test
-    fun neutralMessageSurfacesMatchWebBlackOpacityContract() {
-        assertEquals(
-            RaftColor.TextBlack.copy(alpha = 0.03f),
-            threadNeutralMessageSurfaceColor(emphasized = false),
-        )
-        assertEquals(
-            RaftColor.TextBlack.copy(alpha = 0.08f),
-            threadNeutralMessageSurfaceColor(emphasized = true),
-        )
-        assertEquals(RaftColor.TextBlack.copy(alpha = 0.03f), threadReactionChipBackground(selected = false))
-        assertEquals(
-            RaftColor.TextBlack.copy(alpha = 0.08f),
-            threadReactionChipBackground(selected = false, emphasized = true),
-        )
-        assertEquals(RaftColor.AccentPink.copy(alpha = 0.2f), threadReactionChipBackground(selected = true))
-        assertEquals(RaftColor.TextBlack.copy(alpha = 0.03f), threadReactionAddChipBackground())
-        assertEquals(
-            RaftColor.TextBlack.copy(alpha = 0.08f),
-            threadReactionAddChipBackground(emphasized = true),
-        )
-    }
-
-    @Test
     fun metaChipsRenderBeforeInlineRepliesWhenBothAreVisible() {
         assertEquals(
             listOf(
@@ -211,11 +188,6 @@ class ThreadInlineRepliesTest {
             absoluteTolerance = 0.001f,
         )
         assertEquals(20f, threadInlineReplyRowHeightDp(fontScale = 0.85f))
-    }
-
-    @Test
-    fun inlineReplyTimestampUsesTheSharedMonospaceFamily() {
-        assertEquals(RaftMonoFamily, ThreadInlineReplyTimestampStyle.fontFamily)
     }
 
     @Test
