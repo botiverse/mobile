@@ -63,11 +63,38 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.flow.StateFlow
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.layout.ContentScale
+import build.raft.app.data.AgentActivityAppEvent
+import build.raft.app.data.agentMemoryLimitExit
+import build.raft.app.data.isAgentBackgroundOomActivityTitle
+import build.raft.app.data.openableMessage
+import build.raft.app.markdown.markdownToPreview
+import build.raft.app.model.MessageId
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconTile
+import build.raft.designsystem.components.RaftIconTileSize
+import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftListRowGroup
+import build.raft.designsystem.components.RaftListRowVariant
+import build.raft.designsystem.components.RaftTextLink
+import build.raft.designsystem.components.RaftTextLinkVariant
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 /*
- * Agent Activity tab "Overview" (web packages/web/src/components/agent/AgentActivityOverview.tsx,
- * behind `activity_overview_web_v0`): what the agent is doing now, then one block per finished
- * turn, newest first. Detail stays in the raw log, one segment away.
+ * Agent Activity tab "Overview" (web packages/web/src/components/agent/AgentActivityOverview.tsx at
+ * botiverse/slock 24873fd5be37, behind `activity_overview_web_v0`): one block per finished turn in
+ * time order, oldest at the top like the raw log, then the turn still running, then what the agent
+ * is doing now at the bottom. Detail stays in the raw log, one segment away.
  */
 
 /**
@@ -129,6 +156,8 @@ internal fun MembersAgentActivityOverview(
     onOpenComputer: (() -> Unit)?,
     onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier,
+    /** Opens a message by its channel and id (web `toMessage`). */
+    onOpenMessage: (channelId: String, messageId: MessageId) -> Unit = { _, _ -> },
 ) {
     val state by binding.state.collectAsState()
     val status = state.status
@@ -143,22 +172,65 @@ internal fun MembersAgentActivityOverview(
         return
     }
     val loaded = status == AgentActivityOverviewStatus.Loaded
+    val finished = state.finishedTurns
+    val running = state.running
+    // The API pages newest first; the overview reads in time order like the log: earlier turns
+    // above, then the running turn, then what the agent is doing now at the bottom (web).
+    val chronological = remember(finished) { finished.asReversed() }
+    val showTurns = loaded && (finished.isNotEmpty() || running != null)
+    val listState = remember(state.agentId) { LazyListState() }
+    val lastIndex = (if (state.next != null) 1 else 0) + chronological.size + (if (running != null) 1 else 0)
+    val latestTurnKey = running?.key ?: finished.firstOrNull()?.key
+    // Parked bottom feed (docs/programmatic-scroll-ownership-contract.md, "Members Agent Activity
+    // tail"): it follows new turns while the reader is at the bottom; leaving the tail retires that,
+    // and a new turn then shows the "New turn" hint instead of moving what is being read.
+    var followingBottom by remember(state.agentId) { mutableStateOf(true) }
+    var placed by remember(state.agentId) { mutableStateOf(false) }
+    var newTurnBelow by remember(state.agentId) { mutableStateOf(false) }
+    if (showTurns) {
+        LaunchedEffect(state.agentId, lastIndex) {
+            snapshotFlow { listState.isScrollInProgress to listState.isActivityOverviewAtBottom(lastIndex) }
+                .distinctUntilChanged()
+                .collect { (scrolling, atBottom) ->
+                    followingBottom = membersAgentActivityNextBottomAnchor(followingBottom, scrolling, atBottom)
+                    if (atBottom) newTurnBelow = false
+                }
+        }
+        LaunchedEffect(state.agentId, latestTurnKey) {
+            when (membersActivityOverviewNewTurnAction(placed, followingBottom, listState.isScrollInProgress)) {
+                MembersActivityOverviewNewTurnAction.FollowBottom -> listState.scrollToItem(lastIndex)
+                MembersActivityOverviewNewTurnAction.ShowHint -> newTurnBelow = true
+                MembersActivityOverviewNewTurnAction.None -> Unit
+            }
+            placed = true
+        }
+        // Replies and sent messages load after the first paint and grow their cards: keep a
+        // reader who follows the bottom there.
+        LaunchedEffect(state.agentId, state.replies.size) {
+            if (placed && followingBottom && !listState.isScrollInProgress) listState.scrollToItem(lastIndex)
+        }
+    }
     RaftStorePullToRefreshBox(
         refreshing = state.refreshing,
         onRefresh = { binding.onIntent(AgentActivityOverviewIntent.Refresh) },
         modifier = modifier,
         enabled = loaded,
     ) {
+    Box(Modifier.fillMaxSize()) {
     LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxSize()
             .nestedScroll(scrollUp = NestedScrollMode.SELF_FIRST, scrollDown = NestedScrollMode.SELF_FIRST),
         contentPadding = PaddingValues(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
-        // The "now" card stays above loading and empty states: it is what shows a live error.
-        item(key = "activity-overview-now") {
-            MembersAgentActivityNowCard(now = now, turns = state.turns, timeContext = timeContext, onOpenUrl = onOpenUrl)
+        if (!showTurns) {
+            // With no turns the "now" card stays above loading and empty states: it is what shows
+            // a live error (e.g. a usage limit).
+            item(key = "activity-overview-now") {
+                MembersAgentActivityNowCard(now = now, finished = finished, running = running, timeContext = timeContext, onOpenUrl = onOpenUrl)
+            }
         }
         when {
             !loaded ->
@@ -168,14 +240,14 @@ internal fun MembersAgentActivityOverview(
                         modifier = Modifier.fillMaxWidth().padding(vertical = RaftAppSpacing.Lg),
                     )
                 }
-            state.turns.isEmpty() && !hasRawActivity ->
+            !showTurns && !hasRawActivity ->
                 item(key = "activity-overview-empty") {
                     MembersAgentActivityOverviewEmpty(
                         title = stringResource(MR.strings.member_state_no_activity),
                         detail = stringResource(MR.strings.member_state_activity_start_agent),
                     )
                 }
-            state.turns.isEmpty() ->
+            !showTurns ->
                 item(key = "activity-overview-empty") {
                     MembersAgentActivityOverviewEmpty(
                         title = stringResource(MR.strings.member_activity_overview_empty_title),
@@ -197,15 +269,6 @@ internal fun MembersAgentActivityOverview(
                     }
                 }
             else -> {
-                items(state.turns, key = { "activity-overview-turn-${it.key}" }) { turn ->
-                    MembersAgentActivityTurnSection(
-                        turn = turn,
-                        replies = state.replies,
-                        timeContext = timeContext,
-                        onIntent = binding.onIntent,
-                        onOpenUrl = onOpenUrl,
-                    )
-                }
                 if (state.next != null) {
                     item(key = "activity-overview-load-more") {
                         Box(Modifier.fillMaxWidth()) {
@@ -218,21 +281,107 @@ internal fun MembersAgentActivityOverview(
                         }
                     }
                 }
+                items(chronological, key = { "activity-overview-turn-${it.key}" }) { turn ->
+                    MembersAgentActivityTurnSection(
+                        turn = turn,
+                        replies = state.replies,
+                        timeContext = timeContext,
+                        onIntent = binding.onIntent,
+                        onOpenUrl = onOpenUrl,
+                        onOpenMessage = onOpenMessage,
+                    )
+                }
+                running?.let { turn ->
+                    item(key = "activity-overview-turn-${turn.key}") {
+                        MembersAgentActivityTurnSection(
+                            turn = turn,
+                            replies = state.replies,
+                            timeContext = timeContext,
+                            onIntent = binding.onIntent,
+                            onOpenUrl = onOpenUrl,
+                            onOpenMessage = onOpenMessage,
+                        )
+                    }
+                }
+                item(key = "activity-overview-now") {
+                    MembersAgentActivityNowCard(now = now, finished = finished, running = running, timeContext = timeContext, onOpenUrl = onOpenUrl)
+                }
             }
         }
+    }
+    if (newTurnBelow && showTurns) {
+        val scope = rememberCoroutineScope()
+        RaftButton(
+            text = stringResource(MR.strings.member_activity_overview_new_turn),
+            onClick = {
+                // Direct user action: an explicit viewport replacement.
+                followingBottom = true
+                newTurnBelow = false
+                scope.launch { listState.scrollToItem(lastIndex) }
+            },
+            variant = RaftButtonVariant.Primary,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = RaftAppSpacing.Md),
+        )
+    }
     }
     }
 }
 
+/** What a newly finished (or newly running) turn does to the view. */
+internal enum class MembersActivityOverviewNewTurnAction { None, FollowBottom, ShowHint }
+
+/**
+ * Web AgentActivityOverview: the first load places the view at the bottom; later a new latest turn
+ * follows the bottom only for a reader parked there and not scrolling; anyone else gets the hint.
+ */
+internal fun membersActivityOverviewNewTurnAction(
+    placed: Boolean,
+    followingBottom: Boolean,
+    scrolling: Boolean,
+): MembersActivityOverviewNewTurnAction =
+    when {
+        !placed -> MembersActivityOverviewNewTurnAction.FollowBottom
+        followingBottom && !scrolling -> MembersActivityOverviewNewTurnAction.FollowBottom
+        else -> MembersActivityOverviewNewTurnAction.ShowHint
+    }
+
+private fun LazyListState.isActivityOverviewAtBottom(lastIndex: Int): Boolean {
+    if (!canScrollForward) return true
+    return layoutInfo.visibleItemsInfo.any { item ->
+        item.index == lastIndex && item.offset + item.size <= layoutInfo.viewportEndOffset + 4
+    }
+}
+
+/**
+ * The "now" card's headline: the live label, with the daemon's memory-limit texts in this locale
+ * (web `getActivityTextDescriptor`, #10860).
+ */
+@Composable
+private fun MembersAgentActivityNow.headline(): String {
+    val detailKind = indicator?.detailKind
+    agentMemoryLimitExit(label, detailKind)?.let { exit ->
+        return exit.memoryLimit?.let { stringResource(MR.strings.agent_activity_memory_limit_stopped_with_limit, it) }
+            ?: stringResource(MR.strings.agent_activity_memory_limit_stopped)
+    }
+    if ((detailKind == null || detailKind == "system_message") && isAgentBackgroundOomActivityTitle(label)) {
+        return stringResource(MR.strings.agent_activity_background_oom)
+    }
+    // Same localized caption as the profile badge (raw free-text activity passes through).
+    return indicator?.copy(label = label)?.localizedMemberStatusLabel() ?: label
+}
+
+/** [finished]: the finished turns shown, newest first; [running]: the turn still running, if any. */
 @Composable
 private fun MembersAgentActivityNowCard(
     now: MembersAgentActivityNow,
-    turns: List<AgentActivityTurn>,
+    finished: List<AgentActivityTurn>,
+    running: AgentActivityTurn?,
     timeContext: RaftTimeContext,
     onOpenUrl: (String) -> Unit,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
+    val shown = listOfNotNull(running) + finished
     RaftCard(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = RaftAppSpacing.Sm),
@@ -242,34 +391,37 @@ private fun MembersAgentActivityNowCard(
             now.dotColor()?.let { RaftStatusDot(color = it, size = RaftStatusSize.Lg) }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 RaftText(
-                    // Same localized caption as the profile badge (raw free-text activity passes through).
-                    text = now.indicator?.copy(label = now.label)?.localizedMemberStatusLabel() ?: now.label,
+                    text = now.headline(),
                     style = typography.headline.copy(fontWeight = FontWeight.Bold),
                     color = colors.foreground,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                val last = turns.firstOrNull()
-                if (last != null) {
-                    val time = membersActivityOverviewClock(last.endedAtEpochMillis, timeContext)
-                    val trigger = membersActivityOverviewTriggerText(last.trigger.describe())
-                    MembersActivityOverviewRefText(
-                        text = if (trigger != null) {
-                            stringResource(MR.strings.member_activity_overview_now_last_turn_for, time, trigger)
-                        } else {
-                            stringResource(MR.strings.member_activity_overview_now_last_turn, time)
-                        },
-                        style = typography.callout,
-                        color = colors.foregroundMuted,
-                        onOpenUrl = onOpenUrl,
-                    )
+                val last = finished.firstOrNull()
+                val line = when {
+                    running != null -> {
+                        val time = membersActivityOverviewClock(running.startedAtEpochMillis, timeContext)
+                        membersActivityOverviewTriggerText(running.trigger.describe())
+                            ?.let { stringResource(MR.strings.member_activity_overview_now_current_turn_for, time, it) }
+                            ?: stringResource(MR.strings.member_activity_overview_now_current_turn, time)
+                    }
+                    last != null -> {
+                        val time = membersActivityOverviewClock(last.endedAtEpochMillis, timeContext)
+                        membersActivityOverviewTriggerText(last.trigger.describe())
+                            ?.let { stringResource(MR.strings.member_activity_overview_now_last_turn_for, time, it) }
+                            ?: stringResource(MR.strings.member_activity_overview_now_last_turn, time)
+                    }
+                    else -> null
                 }
-                if (turns.isNotEmpty()) {
-                    val steps = turns.sumOf { it.toolCalls }
-                    val problems = turns.sumOf { it.problemStepCount }
+                line?.let {
+                    MembersActivityOverviewRefText(text = it, style = typography.callout, color = colors.foregroundMuted, onOpenUrl = onOpenUrl)
+                }
+                if (shown.isNotEmpty()) {
+                    val steps = shown.sumOf { it.toolCalls }
+                    val problems = shown.sumOf { it.problemStepCount }
                     val parts = listOf(
-                        if (turns.size == 1) stringResource(MR.strings.member_activity_overview_now_turns_one)
-                        else stringResource(MR.strings.member_activity_overview_now_turns_other, turns.size),
+                        if (shown.size == 1) stringResource(MR.strings.member_activity_overview_now_turns_one)
+                        else stringResource(MR.strings.member_activity_overview_now_turns_other, shown.size),
                         if (steps == 1) stringResource(MR.strings.member_activity_overview_now_steps_one)
                         else stringResource(MR.strings.member_activity_overview_now_steps_other, steps),
                         when (problems) {
@@ -278,11 +430,7 @@ private fun MembersAgentActivityNowCard(
                             else -> stringResource(MR.strings.member_activity_overview_now_problems_other, problems)
                         },
                     )
-                    RaftText(
-                        text = parts.joinToString(" · "),
-                        style = typography.caption,
-                        color = colors.foregroundHint,
-                    )
+                    RaftText(text = parts.joinToString(" · "), style = typography.caption, color = colors.foregroundHint)
                 }
             }
         }
@@ -293,16 +441,23 @@ private fun MembersAgentActivityNowCard(
 @Composable
 private fun MembersAgentActivityTurnSection(
     turn: AgentActivityTurn,
-    replies: Map<build.raft.app.model.MessageId, AgentActivityReplyState>,
+    replies: Map<MessageId, AgentActivityReplyState>,
     timeContext: RaftTimeContext,
     onIntent: (AgentActivityOverviewIntent) -> Unit,
     onOpenUrl: (String) -> Unit,
+    onOpenMessage: (String, MessageId) -> Unit,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    val range = membersActivityOverviewClockRange(turn.startedAtEpochMillis, turn.endedAtEpochMillis, timeContext)
+    // A running turn has no end yet: its start time only.
+    val range = if (turn.running) {
+        membersActivityOverviewClock(turn.startedAtEpochMillis, timeContext) to null
+    } else {
+        membersActivityOverviewClockRange(turn.startedAtEpochMillis, turn.endedAtEpochMillis, timeContext)
+    }
     val duration = membersActivityOverviewDuration(turn.endedAtEpochMillis - turn.startedAtEpochMillis)
     val trigger = membersActivityOverviewTriggerText(turn.trigger.describe())
+    val triggerMessage = turn.trigger.openableMessage()
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
@@ -319,48 +474,90 @@ private fun MembersAgentActivityTurnSection(
             // Badges sit right after the time so they stay on the first line (web).
             MembersAgentActivityTurnBadges(turn, Modifier.align(Alignment.CenterVertically))
             MembersActivityOverviewRefText(
-                text = if (trigger != null) {
-                    stringResource(MR.strings.member_activity_overview_turn_trigger_and_duration, trigger, duration)
-                } else {
-                    stringResource(MR.strings.member_activity_overview_turn_took, duration)
+                text = when {
+                    trigger != null && turn.running ->
+                        stringResource(MR.strings.member_activity_overview_turn_trigger_and_running_for, trigger, duration)
+                    trigger != null -> stringResource(MR.strings.member_activity_overview_turn_trigger_and_duration, trigger, duration)
+                    turn.running -> stringResource(MR.strings.member_activity_overview_turn_running_for, duration)
+                    else -> stringResource(MR.strings.member_activity_overview_turn_took, duration)
                 },
                 style = typography.caption,
                 color = colors.foregroundHint,
                 onOpenUrl = onOpenUrl,
                 modifier = Modifier.align(Alignment.CenterVertically),
             )
+            // The exact waking message, only where the viewer may see it (web TriggerMessageLink).
+            if (trigger != null && triggerMessage != null) {
+                RaftTextLink(
+                    text = stringResource(MR.strings.member_activity_overview_trigger_open),
+                    onClick = { onOpenMessage(triggerMessage.first, triggerMessage.second) },
+                    variant = RaftTextLinkVariant.Strong,
+                    style = typography.caption,
+                    modifier = Modifier.align(Alignment.CenterVertically),
+                )
+            }
         }
         RaftText(
-            text = membersActivityOverviewActionsText(turn.actions),
+            text = membersActivityOverviewActionsText(turn.actions, turn.messagesSent),
             style = typography.callout,
             color = colors.foregroundMuted,
         )
-        turn.problems.forEach { problem -> MembersAgentActivityProblemLine(problem, timeContext) }
-        if (turn.problemCount > turn.problems.size) {
+        turn.problems.forEach { problem ->
+            if (!problem.isRoutineHold) MembersAgentActivityProblemLine(problem, timeContext)
+        }
+        if (turn.problemCount > turn.problems.size && turn.problems.any { !it.isRoutineHold }) {
             RaftText(
                 text = stringResource(MR.strings.member_activity_overview_problem_more, turn.problemCount - turn.problems.size),
                 style = typography.caption,
                 color = colors.foregroundHint,
             )
         }
-        turn.lastReplyMessageId?.let { messageId ->
-            // Idempotent: the store loads each reply id once (a failed one again on the next view).
-            LaunchedEffect(messageId) { onIntent(AgentActivityOverviewIntent.LoadReply(messageId)) }
-            MembersAgentActivityLastReply(
-                state = replies[messageId] ?: AgentActivityReplyState.Loading,
-                count = turn.messagesSent,
-                timeContext = timeContext,
-            )
+        // What the turn received, then what it sent: two lists, each in time order (web).
+        if (turn.appEvents.isNotEmpty()) {
+            MembersAgentActivityAppEvents(turn.appEvents, turn.appEventCount ?: turn.appEvents.size, timeContext)
+        }
+        val sentIds = turn.sentMessageIds.orEmpty()
+        when {
+            sentIds.isNotEmpty() || turn.hiddenSentCount > 0 ->
+                MembersAgentActivitySentMessages(
+                    ids = sentIds,
+                    visible = turn.sentMessageCount ?: sentIds.size,
+                    hidden = turn.hiddenSentCount,
+                    replies = replies,
+                    timeContext = timeContext,
+                    onIntent = onIntent,
+                    onOpenMessage = onOpenMessage,
+                )
+            turn.lastReplyMessageId != null -> {
+                val messageId = turn.lastReplyMessageId
+                // Idempotent: the store loads each reply id once (a failed one again on the next view).
+                LaunchedEffect(messageId) { onIntent(AgentActivityOverviewIntent.LoadReply(messageId)) }
+                MembersAgentActivityLastReply(
+                    state = replies[messageId] ?: AgentActivityReplyState.Loading,
+                    count = turn.messagesSent,
+                    timeContext = timeContext,
+                )
+            }
         }
     }
 }
 
 /**
- * Only a turn that needs a look gets a badge (web TurnBadges): steps that went wrong, an error
- * ending, a stop or an unknown ending; a turn that sent nothing gets a muted one.
+ * Only a turn that needs a look gets a badge (web TurnBadges): the running turn, steps that went
+ * wrong, an error ending, a stop or an unknown ending; a turn that sent nothing gets a muted one.
  */
 @Composable
 private fun MembersAgentActivityTurnBadges(turn: AgentActivityTurn, modifier: Modifier = Modifier) {
+    if (turn.running) {
+        RaftBadge(
+            text = stringResource(MR.strings.member_activity_overview_outcome_running),
+            appearance = RaftBadgeAppearance.Soft,
+            variant = RaftBadgeVariant.Primary,
+            icon = { RaftStatusDot(presence = RaftPresence.Busy, size = RaftStatusSize.Sm) },
+            modifier = modifier,
+        )
+        return
+    }
     val problems = turn.problemStepCount
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
         when {
@@ -404,24 +601,43 @@ private fun MembersAgentActivityTurnBadges(turn: AgentActivityTurn, modifier: Mo
 private fun MembersAgentActivityProblemLine(problem: AgentActivityTurnProblem, timeContext: RaftTimeContext) {
     val colors = RaftTheme.colors
     val time = membersActivityOverviewClock(problem.atEpochMillis, timeContext)
+    val exitNonzero = problem.reason == AgentActivityProblemReason.ExitNonzero
+    // A test run that reports failures is ordinary work, not an agent error: lighter wording.
     val text = when {
-        problem.reason == AgentActivityProblemReason.SendHeld ->
-            stringResource(MR.strings.member_activity_overview_problem_send_held, time)
-        !problem.countsAsProblem ->
+        exitNonzero && problem.kind == AgentActivityActionKind.RunChecks ->
             stringResource(MR.strings.member_activity_overview_problem_checks_failed, time)
-        problem.reason == AgentActivityProblemReason.ExitNonzero ->
+        exitNonzero ->
             stringResource(MR.strings.member_activity_overview_problem_exit_nonzero, time, problem.exitCode?.toString().orEmpty())
         else -> stringResource(MR.strings.member_activity_overview_problem_call_failed, time)
     }
+    val icon = when {
+        problem.countsAsProblem -> RaftLucideIconName.TriangleAlert
+        problem.kind == AgentActivityActionKind.RunChecks -> RaftLucideIconName.FlaskConical
+        else -> RaftLucideIconName.SquareTerminal
+    }
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-        // A test run that reports failures is ordinary work: a hint-ink check icon, not a warning.
+        // A non-zero exit is process information: a hint-ink icon, not a warning (web).
         RaftLucideIcon(
-            if (problem.countsAsProblem) RaftLucideIconName.TriangleAlert else RaftLucideIconName.ClipboardCheck,
+            icon,
             modifier = Modifier.size(14.dp),
             color = raftArgbHex(if (problem.countsAsProblem) colors.warningStrong else colors.foregroundHint),
         )
         RaftText(text = text, style = RaftTheme.typography.caption, color = colors.foregroundMuted)
     }
+}
+
+/** A message the agent wrote, as web InlineMarkdownPreview shows it: inline marks, three lines. */
+@Composable
+private fun MembersActivityOverviewMessageText(content: String) {
+    val colors = RaftTheme.colors
+    val preview = remember(content) { markdownToPreview(content) }
+    RaftText(
+        text = preview.toAnnotatedString(colors.foregroundLink),
+        style = RaftTheme.typography.callout,
+        color = colors.foreground,
+        maxLines = 3,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
 
 @Composable
@@ -456,18 +672,196 @@ private fun MembersAgentActivityLastReply(
                     color = colors.foregroundHint,
                 )
             }
-            RaftText(
-                text = when {
-                    loadedReply != null -> loadedReply.content
-                    loading -> stringResource(MR.strings.member_activity_overview_reply_loading)
-                    else -> stringResource(MR.strings.member_activity_overview_reply_unavailable)
-                },
-                style = typography.callout,
-                color = colors.foreground,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
+            if (loadedReply != null) {
+                MembersActivityOverviewMessageText(loadedReply.content)
+            } else {
+                RaftText(
+                    text = stringResource(
+                        if (loading) MR.strings.member_activity_overview_reply_loading
+                        else MR.strings.member_activity_overview_reply_unavailable
+                    ),
+                    style = typography.callout,
+                    color = colors.foreground,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/** How many sent messages show before "Show N More" (web SENT_MESSAGES_SHOWN). */
+private const val SentMessagesShown = 3
+
+/** Every message the turn sent (web SentMessages): the first few shown, the rest a tap away. */
+@Composable
+private fun MembersAgentActivitySentMessages(
+    ids: List<MessageId>,
+    visible: Int,
+    hidden: Int,
+    replies: Map<MessageId, AgentActivityReplyState>,
+    timeContext: RaftTimeContext,
+    onIntent: (AgentActivityOverviewIntent) -> Unit,
+    onOpenMessage: (String, MessageId) -> Unit,
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    var expanded by remember(ids) { mutableStateOf(false) }
+    val shown = if (expanded) ids else ids.take(SentMessagesShown)
+    Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
+        val total = visible + hidden
+        RaftText(
+            text = if (total == 1) stringResource(MR.strings.member_activity_overview_sent_title_one)
+            else stringResource(MR.strings.member_activity_overview_sent_title_other, total),
+            style = typography.caption,
+            color = colors.foregroundHint,
+        )
+        shown.forEach { id ->
+            LaunchedEffect(id) { onIntent(AgentActivityOverviewIntent.LoadReply(id)) }
+            MembersAgentActivitySentMessageCard(id, replies[id] ?: AgentActivityReplyState.Loading, timeContext, onOpenMessage)
+        }
+        if (!expanded && ids.size > SentMessagesShown) {
+            RaftTextLink(
+                text = stringResource(MR.strings.member_activity_overview_sent_more, ids.size - SentMessagesShown),
+                onClick = { expanded = true },
+                style = typography.caption,
             )
         }
+        if (visible > ids.size) {
+            RaftText(
+                text = stringResource(MR.strings.member_activity_overview_sent_unlisted, visible - ids.size),
+                style = typography.caption,
+                color = colors.foregroundHint,
+            )
+        }
+        if (hidden > 0) {
+            RaftText(
+                text = if (hidden == 1) stringResource(MR.strings.member_activity_overview_sent_hidden_one)
+                else stringResource(MR.strings.member_activity_overview_sent_hidden_other, hidden),
+                style = typography.caption,
+                color = colors.foregroundHint,
+            )
+        }
+    }
+}
+
+/** One message the turn sent, read by id under its own permissions, with a way to it (web SentMessageCard). */
+@Composable
+private fun MembersAgentActivitySentMessageCard(
+    messageId: MessageId,
+    state: AgentActivityReplyState,
+    timeContext: RaftTimeContext,
+    onOpenMessage: (String, MessageId) -> Unit,
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    val loaded = ((state as? AgentActivityReplyState.Ready)?.reply) as? AgentActivityTurnReply.Loaded
+    RaftCard(modifier = Modifier.fillMaxWidth()) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                RaftLucideIcon(RaftLucideIconName.MessageSquare, modifier = Modifier.size(14.dp), color = raftArgbHex(colors.foregroundHint))
+                RaftText(
+                    text = loaded?.createdAtEpochMillis?.let { membersActivityOverviewClock(it, timeContext) }
+                        ?: stringResource(MR.strings.member_activity_overview_reply_label),
+                    style = typography.caption,
+                    color = colors.foregroundHint,
+                    modifier = Modifier.weight(1f),
+                )
+                val channelId = loaded?.channelId
+                if (channelId != null) {
+                    RaftTextLink(
+                        text = stringResource(MR.strings.member_activity_overview_sent_open),
+                        onClick = { onOpenMessage(channelId, messageId) },
+                        style = typography.caption,
+                    )
+                }
+            }
+            if (loaded != null) {
+                MembersActivityOverviewMessageText(loaded.content)
+            } else {
+                RaftText(
+                    text = stringResource(
+                        if (state == AgentActivityReplyState.Loading) MR.strings.member_activity_overview_reply_loading
+                        else MR.strings.member_activity_overview_reply_unavailable
+                    ),
+                    style = typography.callout,
+                    color = colors.foreground,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/** How many app events show before "Show N More" (web APP_EVENTS_SHOWN). */
+private const val AppEventsShown = 5
+
+/**
+ * The app notifications delivered in the turn (web AppEvents, #10830), oldest first: compact list
+ * rows, not message cards, so what the agent received never reads as something it sent. Rows link
+ * nowhere: the Apps tab has no way to open one event.
+ */
+@Composable
+private fun MembersAgentActivityAppEvents(events: List<AgentActivityAppEvent>, count: Int, timeContext: RaftTimeContext) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    var expanded by remember(events) { mutableStateOf(false) }
+    val shown = if (expanded) events else events.take(AppEventsShown)
+    Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
+        RaftText(
+            text = if (count == 1) stringResource(MR.strings.member_activity_overview_app_events_title_one)
+            else stringResource(MR.strings.member_activity_overview_app_events_title_other, count),
+            style = typography.caption,
+            color = colors.foregroundHint,
+        )
+        RaftListRowGroup(modifier = Modifier.fillMaxWidth()) {
+            shown.forEachIndexed { index, event ->
+                RaftListRow(
+                    title = event.appName,
+                    variant = RaftListRowVariant.Plain,
+                    divider = index > 0,
+                    meta = membersActivityOverviewClock(event.deliveredAtEpochMillis, timeContext),
+                    description = event.summary,
+                    wrapDescription = true,
+                    leading = { MembersAgentActivityAppLogo(event) },
+                )
+            }
+        }
+        if (!expanded && events.size > AppEventsShown) {
+            RaftTextLink(
+                text = stringResource(MR.strings.member_activity_overview_app_events_more, events.size - AppEventsShown),
+                onClick = { expanded = true },
+                style = typography.caption,
+            )
+        }
+        if (count > events.size) {
+            RaftText(
+                text = stringResource(MR.strings.member_activity_overview_app_events_unlisted, count - events.size),
+                style = typography.caption,
+                color = colors.foregroundHint,
+            )
+        }
+    }
+}
+
+/** The app's logo (web ConnectedAppLogo `xs`), or the generic app tile. */
+@Composable
+private fun MembersAgentActivityAppLogo(event: AgentActivityAppEvent) {
+    val logoUrl = event.logoUrl
+    if (logoUrl == null) {
+        RaftIconTile(size = RaftIconTileSize.Sm) {
+            RaftContentLucideIcon(RaftLucideIconName.AppWindow, size = RaftIconTileSize.Sm.icon)
+        }
+        return
+    }
+    val shape = RoundedCornerShape(RaftAppRadius.Sticker)
+    Box(
+        Modifier.size(RaftIconTileSize.Sm.edge)
+            .background(RaftColor.StickerPaper, shape)
+            .border(RaftAppStroke.Control, RaftColor.StickerInk, shape),
+    ) {
+        RaftCachedImage(source = logoUrl, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
     }
 }
 
@@ -532,7 +926,11 @@ private fun membersActivityOverviewTriggerText(description: AgentActivityTrigger
         AgentActivityTriggerDescription.HiddenDm -> stringResource(MR.strings.member_activity_overview_trigger_dm)
         AgentActivityTriggerDescription.HiddenPrivateChannel ->
             stringResource(MR.strings.member_activity_overview_trigger_private_channel)
+        AgentActivityTriggerDescription.Unresolved -> stringResource(MR.strings.member_activity_overview_trigger_unresolved)
+        AgentActivityTriggerDescription.Dm -> stringResource(MR.strings.member_activity_overview_trigger_dm)
         AgentActivityTriggerDescription.AppEvent -> stringResource(MR.strings.member_activity_overview_trigger_app_event)
+        is AgentActivityTriggerDescription.AppEventFrom ->
+            stringResource(MR.strings.member_activity_overview_trigger_app_event_from, description.app, description.summary)
         is AgentActivityTriggerDescription.DmFrom ->
             stringResource(MR.strings.member_activity_overview_trigger_dm_from, description.peer)
         is AgentActivityTriggerDescription.Target ->
@@ -544,9 +942,14 @@ private fun membersActivityOverviewTriggerText(description: AgentActivityTrigger
     }
 
 @Composable
-private fun membersActivityOverviewActionsText(actions: List<AgentActivityActionCount>): String {
+private fun membersActivityOverviewActionsText(actions: List<AgentActivityActionCount>, messagesSent: Int): String {
     if (actions.isEmpty()) return stringResource(MR.strings.member_activity_overview_actions_none)
-    val parts = actions.map { membersActivityOverviewActionText(it) }
+    // One send command can post several messages (web): count what was sent, not the commands.
+    val parts = actions.map {
+        membersActivityOverviewActionText(
+            if (it.kind == AgentActivityActionKind.SendMessage && messagesSent > 0) it.copy(count = messagesSent) else it
+        )
+    }
     val joinTemplate = stringResource(MR.strings.member_activity_overview_actions_join, "%1\$s", "%2\$s")
     val lastTemplate = stringResource(MR.strings.member_activity_overview_actions_join_last, "%1\$s", "%2\$s")
     val pairTemplate = stringResource(MR.strings.member_activity_overview_actions_join_pair, "%1\$s", "%2\$s")

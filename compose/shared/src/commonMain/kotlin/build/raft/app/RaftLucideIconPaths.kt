@@ -1114,6 +1114,15 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4"),
                     ),
                 )
+            RaftLucideIconName.FlaskConical ->
+                RaftLucideIconSpec(
+                    "flask-conical",
+                    listOf(
+                        RaftLucidePathSpec("M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"),
+                        RaftLucidePathSpec("M6.453 15h11.094"),
+                        RaftLucidePathSpec("M8.5 2h7"),
+                    ),
+                )
             RaftLucideIconName.Folder ->
                 RaftLucideIconSpec(
                     "folder",
@@ -1770,6 +1779,15 @@ internal object RaftLucideIconPaths {
                     listOf(
                         RaftLucidePathSpec("M21 10.656V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12.344"),
                         RaftLucidePathSpec("m9 11 3 3L22 4"),
+                    ),
+                )
+            RaftLucideIconName.SquareTerminal ->
+                RaftLucideIconSpec(
+                    "square-terminal",
+                    listOf(
+                        RaftLucidePathSpec("m7 11 2-2-2-2"),
+                        RaftLucidePathSpec("M11 13h4"),
+                        RaftLucidePathSpec("M 5.0 3.0 H 19.0 A 2.0 2.0 0 0 1 21.0 5.0 V 19.0 A 2.0 2.0 0 0 1 19.0 21.0 H 5.0 A 2.0 2.0 0 0 1 3.0 19.0 V 5.0 A 2.0 2.0 0 0 1 5.0 3.0 Z"),
                     ),
                 )
             RaftLucideIconName.Store ->

@@ -12,12 +12,17 @@ import kotlin.test.assertTrue
 
 /**
  * Wire contract for the Activity tab Overview, verified against botiverse/slock
- * c1105a1766e9836429826d304f7ea26fdea1a1fe:
+ * 24873fd5be37f58097aa8aa735893b7c9bd658e9 (staging; first verified at c1105a1766e9):
  * - packages/shared/src/activityTurnSummary.ts (`ActivityTurnSummary`), vector from
  *   packages/shared/src/activityTurnSummary.test.ts "folds a turn" (finish("completed", 8_000));
  * - packages/server/src/routes/agents.api.test.ts "activity-summaries hides where a turn came from"
  *   (`{ hidden }` triggers, `next` = "<endedAt>:<uuid>");
- * - packages/web/tests/agentActivityOverview.behavior.test.tsx (stored row `id`, reply context).
+ * - packages/web/tests/agentActivityOverview.behavior.test.tsx (stored row `id`, reply context);
+ * - packages/server/src/routes/agents.api.test.ts "activity-summaries lists the app events ..."
+ *   (`appEvents` rows, `trigger.appEvent`, `current` with `running: true` and no outcome),
+ *   "... names a trigger's channel and sender from the server's rows" (`display`, `{ unresolved: true }`)
+ *   and "... folds the running turn" (`current.sentMessageIds`); packages/shared/src/activityTurnSummary.ts
+ *   (`ActivityTurnAppEventView`, `ActivityTurnTriggerDisplay`, `RunningActivityTurnSummary`).
  */
 class AgentActivityOverviewParserTest {
     private val sharedVector = """
@@ -68,8 +73,11 @@ class AgentActivityOverviewParserTest {
             ),
             turn.problems
         )
-        // Failed checks are process information, not a step that went wrong (web turnProblemCount).
-        assertEquals(2, turn.problemStepCount)
+        // A non-zero exit (failed checks included) is process information and a held send the
+        // normal flow: only the failed tool call went wrong (web turnProblemCount).
+        assertEquals(1, turn.problemStepCount)
+        assertEquals(listOf(false, true, false), turn.problems.map { it.countsAsProblem })
+        assertEquals(listOf(false, false, true), turn.problems.map { it.isRoutineHold })
         assertEquals(2, turn.messagesSent)
         assertEquals(MessageId("d2c98a0b"), turn.lastReplyMessageId)
         assertEquals(
@@ -115,6 +123,101 @@ class AgentActivityOverviewParserTest {
         assertNull(visible(null, "ann").describe())
     }
 
+    /** agents.api.test.ts "activity-summaries lists the app events", the response's own shapes. */
+    @Test
+    fun parsesAppEventsTheirTriggerAndTheRunningTurn() {
+        val t = 1781870400000L
+        val body = """
+            {"summaries":[
+              {"v":1,"id":"00000000-0000-4000-8000-0000000000b2","startedAt":${t + 100_000},"endedAt":${t + 200_000},
+               "outcome":"completed","trigger":{"target":"agent-event:deadbeef"},"actions":[],"toolCalls":0,
+               "problems":[],"problemCount":0,"messagesSent":0,
+               "appEvents":[{"id":"33333333-0000-4000-8000-000000000003","appName":"system.assistant","clientKey":"system.assistant",
+                             "logoUrl":null,"summary":"Reminder fired","deliveredAt":${t + 76_000},"kind":"event"}],
+               "appEventCount":1},
+              {"v":1,"id":"00000000-0000-4000-8000-0000000000b1","startedAt":$t,"endedAt":${t + 50_000},
+               "outcome":"completed","trigger":{"target":"agent-event:11111111","appEvent":{"appName":"Stamp","summary":"CI failed on #10827"}},
+               "actions":[],"toolCalls":0,"problems":[],"problemCount":0,"messagesSent":0,
+               "appEvents":[{"id":"11111111-0000-4000-8000-000000000001","appName":"Stamp","clientKey":"stamp-overview","logoUrl":null,
+                             "summary":"CI failed on #10827","deliveredAt":${t + 10_000},"kind":"event"},
+                            {"id":"22222222-0000-4000-8000-000000000002","appName":"Stamp","clientKey":"stamp-overview",
+                             "logoUrl":"https://cdn.example/stamp.png","summary":"PR merged","deliveredAt":${t + 74_000},"kind":"event"}],
+               "appEventCount":2}],
+             "current":{"v":1,"running":true,"startedAt":${t + 300_000},"endedAt":${t + 400_000},
+               "trigger":{"target":"agent-event:abcdef01"},"actions":[{"kind":"run_checks","count":1}],"toolCalls":1,
+               "problems":[{"kind":"run_checks","reason":"exit_nonzero","exitCode":1,"at":${t + 310_000}}],"problemCount":1,
+               "messagesSent":1,"sentMessageIds":["m-sent-1"],"sentMessageCount":1}}
+        """.trimIndent()
+        val page = assertIsNotNull(parseSharedAgentActivityTurnPage(body))
+        assertEquals(listOf(listOf("33333333"), listOf("11111111", "22222222")), page.turns.map { turn -> turn.appEvents.map { it.id.take(8) } })
+        assertEquals(listOf(1, 2), page.turns.map { it.appEventCount })
+        val stamp = page.turns[1].appEvents
+        assertEquals(
+            AgentActivityAppEvent("11111111-0000-4000-8000-000000000001", "Stamp", "stamp-overview", null, "CI failed on #10827", t + 10_000),
+            stamp[0]
+        )
+        assertEquals("https://cdn.example/stamp.png", stamp[1].logoUrl)
+        // The trigger: named when the server resolved it, the generic sentence otherwise.
+        assertEquals(AgentActivityTriggerDescription.AppEventFrom("Stamp", "CI failed on #10827"), page.turns[1].trigger.describe())
+        assertEquals(AgentActivityTriggerDescription.AppEvent, page.turns[0].trigger.describe())
+
+        val current = assertIsNotNull(page.current)
+        assertTrue(current.running)
+        assertEquals(AgentActivityTurnOutcome.Unknown, current.outcome)
+        assertEquals("running:${t + 300_000}", current.key)
+        assertEquals(listOf(MessageId("m-sent-1")), current.sentMessageIds)
+        assertEquals(1, current.sentMessageCount)
+        assertEquals(0, current.problemStepCount)
+    }
+
+    /** agents.api.test.ts "names a trigger's channel and sender from the server's rows". */
+    @Test
+    fun theServersDisplayNamesTheTriggerAndUnresolvedOnesSayNothing() {
+        fun row(at: Long, trigger: String) =
+            """{"v":1,"outcome":"completed","actions":[],"toolCalls":1,"problems":[],"problemCount":0,"messagesSent":0,""" +
+                """"startedAt":$at,"endedAt":${at + 1_000},"trigger":$trigger}"""
+        val body = """{"summaries":[""" + listOf(
+            row(50, """{"target":"#ceo-private","channelId":"c-general","sender":"ceo","messageId":"m1","display":{"kind":"channel","channelName":"display-general","senderName":"activity-display-alice"}}"""),
+            row(40, """{"unresolved":true}"""),
+            row(30, """{"target":"#ceo-private:9b526607","channelId":"c-general","sender":"ceo","display":{"kind":"channel","channelName":"display-general"}}"""),
+            row(20, """{"target":"dm:@ceo","channelId":"d1","sender":"ceo","display":{"kind":"dm","peerName":"activity-display-owner"}}"""),
+            row(10, """{"target":"#x:1","channelId":"c2","sender":"bob","messageId":"m2","display":{"kind":"thread","channelName":"proj-runtime","senderName":"tenny"}}"""),
+            row(0, """{"target":"dm:@ceo","channelId":"d1","display":{"kind":"dm"}}"""),
+        ).joinToString(",") + "]}"
+        val page = assertIsNotNull(parseSharedAgentActivityTurnPage(body))
+        assertEquals(
+            listOf(
+                AgentActivityTriggerDescription.Message("@activity-display-alice", "#display-general"),
+                AgentActivityTriggerDescription.Unresolved,
+                AgentActivityTriggerDescription.Target("#display-general"),
+                AgentActivityTriggerDescription.DmFrom("@activity-display-owner"),
+                AgentActivityTriggerDescription.Thread("@tenny", "#proj-runtime"),
+                AgentActivityTriggerDescription.Dm,
+            ),
+            page.turns.map { it.trigger.describe() }
+        )
+        // Never the producer's text for an unresolved trigger, and a link only with both ids.
+        assertEquals(AgentActivityTurnTrigger.Unresolved, page.turns[1].trigger)
+        assertEquals("c-general" to MessageId("m1"), page.turns[0].trigger.openableMessage())
+        assertNull(page.turns[1].trigger.openableMessage())
+        assertNull(page.turns[2].trigger.openableMessage())
+    }
+
+    /** activityTurnSummaryView.ts attachTurnSentMessages: visible ids, their count, and a hidden count. */
+    @Test
+    fun parsesSentMessagesAndARowWithoutOutcomeIsNoFinishedTurn() {
+        val sent = base(1, 2, null).removeSuffix("}") + ""","sentMessageIds":["s1","s2"],"sentMessageCount":3,"hiddenSentCount":2}"""
+        val noOutcome = base(3, 4, null).replace("\"outcome\":\"completed\",", "")
+        val notRunning = base(5, 6, null).replace("\"outcome\":\"completed\",", "")
+        val page = assertIsNotNull(parseSharedAgentActivityTurnPage("""{"summaries":[$sent,$noOutcome],"current":$notRunning}"""))
+        val turn = page.turns.single()
+        assertEquals(listOf(MessageId("s1"), MessageId("s2")), turn.sentMessageIds)
+        assertEquals(3, turn.sentMessageCount)
+        assertEquals(2, turn.hiddenSentCount)
+        // `current` must say it is running.
+        assertNull(page.current)
+    }
+
     @Test
     fun unknownEnumsDegradeAndMalformedRowsAreDropped() {
         val newer = base(10, 20, null).replace("\"outcome\":\"completed\"", "\"outcome\":\"timed_out\"")
@@ -152,7 +255,7 @@ class AgentActivityOverviewParserTest {
         ).data
         assertEquals("8000:00000000-0000-4000-8000-000000000001", page.next)
         val reply = repository.loadReply(DataRequestPriority.Visible, MessageId("reply-1"))
-        assertEquals(AgentActivityTurnReply.Loaded("Fixed it: tests pass now.", 1781870490000L), reply)
+        assertEquals(AgentActivityTurnReply.Loaded("Fixed it: tests pass now.", 1781870490000L, channelId = "c1"), reply)
 
         assertEquals(
             listOf(

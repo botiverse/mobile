@@ -437,7 +437,10 @@ private fun AgentMigrationProgressPanel(
     val copy = agentMigrationNoticeCopy(notice, inputs)
     val attention = notice.needsAttention()
     if (notice.endedComputerMigration() == AgentMigrationEnding.Failed) {
+        // A failed move between computers keeps its steps, stopped at the one that failed, then
+        // one banner (web MigrationProgressPanel, botiverse/slock #10833).
         Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
+            AgentMigrationSteps(notice, current = notice.progressStep(), stoppedAt = true)
             RaftBanner(
                 title = agentMigrationLastSummary(notice, inputs),
                 description = listOfNotNull(copy.placement, copy.message).joinToString("\n"),
@@ -470,49 +473,11 @@ private fun AgentMigrationProgressPanel(
                 if (notice.isHosted) stringResource(MR.strings.agent_migration_hosted_header_idle)
                 else stringResource(MR.strings.agent_migration_detail_migration_to_target, "", target)
         }
-    val steps =
-        if (notice.isHosted) {
-            listOf(
-                MR.strings.agent_migration_hosted_step_upload,
-                MR.strings.agent_migration_hosted_step_check_files,
-                MR.strings.agent_migration_hosted_step_review,
-                MR.strings.agent_migration_hosted_step_switch,
-                MR.strings.agent_migration_hosted_step_complete
-            )
-        } else {
-            listOf(
-                MR.strings.agent_migration_detail_migration_step_stop_agent,
-                MR.strings.agent_migration_detail_migration_step_pack_workspace,
-                MR.strings.agent_migration_detail_migration_step_transfer,
-                MR.strings.agent_migration_detail_migration_step_start_on_target,
-                MR.strings.agent_migration_detail_migration_step_complete
-            )
-        }
     val current = if (notice.isCompleted) AGENT_MIGRATION_STEP_COUNT else notice.progressStep()
     val reviewSummary = if (notice.isHostedReviewPending()) notice.hosted?.importSummary else null
     Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
         RaftText(text = header, style = typography.subhead.copy(fontWeight = FontWeight.SemiBold), color = colors.foreground)
-        steps.forEachIndexed { index, label ->
-            val icon =
-                when {
-                    index < current -> RaftLucideIconName.CircleCheck
-                    index == current && attention -> RaftLucideIconName.TriangleAlert
-                    index == current && notice.isActive -> RaftLucideIconName.LoaderCircle
-                    else -> RaftLucideIconName.Circle
-                }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
-                RaftLucideIcon(
-                    name = icon,
-                    modifier = Modifier.size(16.dp),
-                    color = if (index <= current) RaftColor.TextBlackArgb else RaftColor.TextMutedGrayArgb
-                )
-                RaftText(
-                    text = stringResource(label),
-                    style = typography.callout,
-                    color = if (index <= current) colors.foreground else colors.foregroundHint
-                )
-            }
-        }
+        AgentMigrationSteps(notice, current = current, stoppedAt = attention)
         if (attention) {
             RaftBanner(
                 title = copy.title,
@@ -551,6 +516,57 @@ private fun AgentMigrationProgressPanel(
                     text = stringResource(MR.strings.agent_migration_detail_cancel),
                     onClick = onShowCancel,
                     size = RaftButtonSize.Md
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The move's steps (web `Steps`): done up to [current], [current] marked as the failure when
+ * [stoppedAt], or as running while the move is active.
+ */
+@Composable
+private fun AgentMigrationSteps(notice: AgentMigrationNotice, current: Int, stoppedAt: Boolean) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    val steps =
+        if (notice.isHosted) {
+            listOf(
+                MR.strings.agent_migration_hosted_step_upload,
+                MR.strings.agent_migration_hosted_step_check_files,
+                MR.strings.agent_migration_hosted_step_review,
+                MR.strings.agent_migration_hosted_step_switch,
+                MR.strings.agent_migration_hosted_step_complete
+            )
+        } else {
+            listOf(
+                MR.strings.agent_migration_detail_migration_step_stop_agent,
+                MR.strings.agent_migration_detail_migration_step_pack_workspace,
+                MR.strings.agent_migration_detail_migration_step_transfer,
+                MR.strings.agent_migration_detail_migration_step_start_on_target,
+                MR.strings.agent_migration_detail_migration_step_complete
+            )
+        }
+    Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
+        steps.forEachIndexed { index, label ->
+            val icon =
+                when {
+                    index < current -> RaftLucideIconName.CircleCheck
+                    index == current && stoppedAt -> RaftLucideIconName.TriangleAlert
+                    index == current && notice.isActive -> RaftLucideIconName.LoaderCircle
+                    else -> RaftLucideIconName.Circle
+                }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
+                RaftLucideIcon(
+                    name = icon,
+                    modifier = Modifier.size(16.dp),
+                    color = if (index <= current) RaftColor.TextBlackArgb else RaftColor.TextMutedGrayArgb
+                )
+                RaftText(
+                    text = stringResource(label),
+                    style = typography.callout,
+                    color = if (index <= current) colors.foreground else colors.foregroundHint
                 )
             }
         }

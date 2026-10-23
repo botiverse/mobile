@@ -44,7 +44,19 @@ data class AgentActivityOverviewState(
      * holds its indicator on it). Silent live reloads do not set it.
      */
     val refreshing: Boolean = false,
-)
+    /** The turn still running (the newest page's `current`); null when none is or the server is older. */
+    val running: AgentActivityTurn? = null,
+) {
+    /**
+     * Finished turns to show, newest first. The empty wake a running turn took over (same row id)
+     * shows only as that turn (web `finished`).
+     */
+    val finishedTurns: List<AgentActivityTurn>
+        get() {
+            val runningId = running?.id ?: return turns
+            return turns.filter { it.id != runningId }
+        }
+}
 
 sealed interface AgentActivityOverviewIntent {
     /**
@@ -75,7 +87,7 @@ sealed interface AgentActivityOverviewIntent {
     /** "Show Earlier Turns": the page after `next`. */
     data object LoadMore : AgentActivityOverviewIntent
 
-    /** A turn's last reply is on screen. */
+    /** A turn's last reply, or one of the messages it sent, is on screen. */
     data class LoadReply(val messageId: MessageId) : AgentActivityOverviewIntent
 }
 
@@ -225,6 +237,8 @@ class SharedAgentActivityOverviewStore(
                     it.copy(
                         turns = head.turns,
                         next = head.next,
+                        // Only the newest page carries it: every latest reload replaces it.
+                        running = result.data.current,
                         status = AgentActivityOverviewStatus.Loaded,
                         // A "load earlier" still in flight keeps its spinner.
                         loadingMore = loadMoreCursor != null,
@@ -235,6 +249,7 @@ class SharedAgentActivityOverviewStore(
                     it.copy(
                         turns = emptyList(),
                         next = null,
+                        running = null,
                         status = AgentActivityOverviewStatus.Loaded,
                         loadingMore = loadMoreCursor != null,
                     )
@@ -337,5 +352,5 @@ internal fun mergeAgentActivityHead(
     val newKeys = latest.turns.mapTo(HashSet()) { it.key }
     val older = loaded.drop(anchor + 1).filter { it.key !in newKeys }
     if (older.isEmpty()) return latest
-    return AgentActivityTurnPage(turns = latest.turns + older, next = loadedNext)
+    return AgentActivityTurnPage(turns = latest.turns + older, next = loadedNext, current = latest.current)
 }
