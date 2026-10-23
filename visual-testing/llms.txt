@@ -1,18 +1,20 @@
 # Raft Visual Testing
 
-Generated: 2026-10-23 12:06:19 UTC
-Latest run: d2f13bc-20261023113615
-Latest commit: d2f13bc-20261023113615
-Commit subject: feat(members): one shared member picker for the create-channel dialogs (#3585)
-Providers: react vs android
+Generated: 2026-10-23 22:06:49 UTC
+Latest run: 098d263-20261023220346
+Latest commit: 098d263-20261023220346
+Commit subject: fix(designsystem): one RaftWindowDialog for every dialog, sheet and modal window (#3623)
+Providers: react vs android, react vs ios, android vs ios
 Summary: total 101, same 0, pass 2, basic-pass 8, different 86, missing 5
-AI analysis: ready 41 / total 101, pending 60
+AI analysis: ready 34 / total 101, pending 67
 Visual coverage matrix: active 110 / total 130, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
 - react__android: total 101, same 0, pass 2, basic-pass 8, different 86, missing 5
+- react__ios: total 101, same 0, pass 15, basic-pass 16, different 50, missing 20
+- android__ios: total 101, same 0, pass 23, basic-pass 25, different 33, missing 20
 
 ## Capture Type Coverage
 
@@ -117,6 +119,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 098d263-20261023220346: react vs android, total 101, pass 2, basic-pass 8, different 86, matrix runs/098d263-20261023220346/component-matrix.json, page runs/098d263-20261023220346/
 - d2f13bc-20261023113615: react vs android, total 101, pass 2, basic-pass 8, different 86, matrix runs/d2f13bc-20261023113615/component-matrix.json, page runs/d2f13bc-20261023113615/
 - 857e1fe-20261023102553: react vs android, total 101, pass 2, basic-pass 7, different 87, matrix runs/857e1fe-20261023102553/component-matrix.json, page runs/857e1fe-20261023102553/
 - a52d784-20261019224352: react vs android, total 99, pass 0, basic-pass 2, different 89, matrix runs/a52d784-20261019224352/component-matrix.json, page runs/a52d784-20261019224352/

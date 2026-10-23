@@ -1,0 +1,30 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.thread.files.list",
+  "image": "visual-testing-results/react/components.thread.files.list.png",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "selector": "[data-visual-case='components.thread.files.list']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 360
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 390,
+      "height": 360
+    },
+    "outset": null
+  },
+  "capturedAt": "2026-10-23T21:39:24.461Z"
+}
