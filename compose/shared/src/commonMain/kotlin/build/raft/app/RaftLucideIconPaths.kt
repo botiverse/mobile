@@ -1237,6 +1237,18 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"),
                     ),
                 )
+            RaftLucideIconName.ImageOff ->
+                RaftLucideIconSpec(
+                    "image-off",
+                    listOf(
+                        RaftLucidePathSpec("M 2.0 2.0 L 22.0 22.0"),
+                        RaftLucidePathSpec("M10.41 10.41a2 2 0 1 1-2.83-2.83"),
+                        RaftLucidePathSpec("M 13.5 13.5 L 6.0 21.0"),
+                        RaftLucidePathSpec("M 18.0 12.0 L 21.0 15.0"),
+                        RaftLucidePathSpec("M3.59 3.59A1.99 1.99 0 0 0 3 5v14a2 2 0 0 0 2 2h14c.55 0 1.052-.22 1.41-.59"),
+                        RaftLucidePathSpec("M21 15V5a2 2 0 0 0-2-2H9"),
+                    ),
+                )
             RaftLucideIconName.ImagePlus ->
                 RaftLucideIconSpec(
                     "image-plus",

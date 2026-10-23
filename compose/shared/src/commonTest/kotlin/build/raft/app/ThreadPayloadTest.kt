@@ -1274,7 +1274,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun attachmentChipMetaKeepsSemanticPreviewLabelsWithoutMime() {
+    fun attachmentCardMetaLabelIsTheKindLikeTheWeb() {
         val pdf =
             RaftThreadAttachmentItem(
                 id = "att-pdf",
@@ -1290,8 +1290,35 @@ class ThreadPayloadTest {
                 mimeType = "text/html"
             )
 
-        assertEquals("184 KB", pdf.threadAttachmentChipMetaLine(htmlPreviewLabel = "HTML preview"))
-        assertEquals("HTML preview · 32 KB", html.threadAttachmentChipMetaLine(htmlPreviewLabel = "HTML preview"))
+        assertEquals("application/pdf", pdf.threadAttachmentCardMetaLabel(htmlPreviewLabel = "HTML preview", fileLabel = "file"))
+        assertEquals("HTML preview", html.threadAttachmentCardMetaLabel(htmlPreviewLabel = "HTML preview", fileLabel = "file"))
+        assertEquals("file", pdf.copy(mimeType = "").threadAttachmentCardMetaLabel(htmlPreviewLabel = "HTML preview", fileLabel = "file"))
+        assertEquals("184 KB", pdf.displaySizeLabel())
+    }
+
+    @Test
+    fun attachmentGroupsFollowTheWebOrderVideosAudioThenOneCardGroup() {
+        val doc = RaftThreadAttachmentItem(id = "doc", name = "notes.pdf", mimeType = "application/pdf")
+        val video = RaftThreadAttachmentItem(id = "video", name = "clip.mp4", mimeType = "video/mp4")
+        val zip = RaftThreadAttachmentItem(id = "zip", name = "bundle.zip", mimeType = "application/zip")
+        val audio = RaftThreadAttachmentItem(id = "audio", name = "memo.mp3", mimeType = "audio/mpeg")
+        val runs = listOf(doc, audio, video, zip).threadAttachmentCardRuns()
+        assertEquals(listOf(listOf("video"), listOf("audio"), listOf("doc", "zip")), runs.map { run -> run.map { it.id } })
+    }
+
+    @Test
+    fun attachmentCardCommentCountSkipsPdf() {
+        val doc = RaftThreadAttachmentItem(id = "doc", name = "notes.md", mimeType = "text/markdown", commentCount = 3)
+        assertEquals(3, doc.threadAttachmentCardCommentCount())
+        assertEquals(0, doc.copy(name = "notes.pdf", mimeType = "application/pdf").threadAttachmentCardCommentCount())
+    }
+
+    @Test
+    fun inlineImageShowsFailureOnlyOnceEverySourceFailed() {
+        assertEquals(false, threadInlineImageShowsFailure(sourceCount = 2, failedSources = 1, awaitingRemoteFallback = false))
+        assertEquals(true, threadInlineImageShowsFailure(sourceCount = 2, failedSources = 2, awaitingRemoteFallback = false))
+        assertEquals(true, threadInlineImageShowsFailure(sourceCount = 0, failedSources = 0, awaitingRemoteFallback = false))
+        assertEquals(false, threadInlineImageShowsFailure(sourceCount = 0, failedSources = 0, awaitingRemoteFallback = true))
     }
 
     @Test

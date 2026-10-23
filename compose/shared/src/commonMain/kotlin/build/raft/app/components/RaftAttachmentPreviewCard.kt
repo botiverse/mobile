@@ -14,6 +14,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.drawWithContent
+import build.raft.app.ThreadFileTypeBadge
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,10 +56,12 @@ internal data class RaftAttachmentPreviewCardAction(
 /**
  * raft-ui `MessageAttachmentCard` (web MessageItem file attachment): a fixed 176 x 80 tile on
  * layer-card with a line-hairline edge and the container radius, padded `py-2 pr-1.5 pl-2.5`.
- * The file name sits on top (`text-callout font-semibold`, one truncated line); the meta line is
- * pushed to the bottom (`mt-auto`) with the size in Space Mono hint on the start and the icon
- * actions on the end. While the file opens a spinner takes the actions' place; a failed open
- * draws the edge in danger-strong.
+ * The title row holds the file-type chip ([typeBadge], web `AttachmentTypeBadge`) and the name
+ * (`text-callout font-semibold`, one truncated line); the meta line is pushed to the bottom
+ * (`mt-auto`) in Space Mono hint: [meta] (the kind, e.g. "application/pdf"), then " · [metaSize]",
+ * then the comment count, with the icon actions on the end. While the file opens a spinner takes
+ * the actions' place; a failed open draws the edge in danger-strong. Pressing lays
+ * `overlay-medium` over the card.
  */
 @Composable
 internal fun RaftAttachmentPreviewCard(
@@ -62,6 +70,9 @@ internal fun RaftAttachmentPreviewCard(
     actions: List<RaftAttachmentPreviewCardAction>,
     loading: Boolean,
     modifier: Modifier = Modifier,
+    typeBadge: String? = null,
+    metaSize: String? = null,
+    commentCount: Int = 0,
     failed: Boolean = false,
     onClick: () -> Unit
 ) {
@@ -73,14 +84,22 @@ internal fun RaftAttachmentPreviewCard(
             // Flattened onto the card so the rounded edge matches the web (see ThreadFileRow).
             RaftColor.BorderHairline.compositeOver(RaftColor.Card)
         }
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val pressedOverlay = RaftColor.FillPressed
     Column(
         modifier =
             modifier
                 .size(RaftAttachmentPreviewCardWidth, RaftAttachmentPreviewCardHeight)
                 .clip(shape)
                 .background(RaftColor.Card, shape)
+                .drawWithContent {
+                    drawContent()
+                    // `active:overlay-medium`: a wash over the whole card.
+                    if (pressed) drawRect(pressedOverlay)
+                }
                 .border(RaftAppStroke.Thin, edgeColor, shape)
-                .clickable(onClick = onClick)
+                .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
                 // CSS `border` + `py-2 pr-1.5 pl-2.5`: the 1dp edge takes layout space on the web.
                 .padding(
                     start = 10.dp + RaftAppStroke.Thin,
@@ -89,28 +108,62 @@ internal fun RaftAttachmentPreviewCard(
                     bottom = 8.dp + RaftAppStroke.Thin
                 )
     ) {
-        Text(
-            text = title,
-            style = RaftAttachmentCardTitleStyle,
-            color = RaftColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth().padding(end = 4.dp)
-        )
+        // `MessageAttachmentTitle pr-1` > `flex items-center gap-1.5`: badge, then the name.
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(end = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (typeBadge != null) ThreadFileTypeBadge(label = typeBadge, inline = true)
+            Text(
+                text = title,
+                style = RaftAttachmentCardTitleStyle,
+                color = RaftColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+        }
         Spacer(Modifier.weight(1f))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = meta,
-                style = RaftAttachmentCardMetaStyle,
-                color = RaftColor.ForegroundHint,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
+            // `AttachmentMetaText`: the kind truncates; the dot and size keep their width.
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = meta,
+                    style = RaftAttachmentCardMetaStyle,
+                    color = RaftColor.ForegroundHint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (!metaSize.isNullOrBlank()) {
+                    RaftAttachmentCardMetaText("·")
+                    RaftAttachmentCardMetaText(metaSize)
+                }
+                // Web `attachment-comment-count`: "· [MessageSquare 12] N" (`gap-1 pl-1`).
+                if (commentCount > 0) {
+                    RaftAttachmentCardMetaText("·")
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RaftLucideIcon(
+                            RaftLucideIconName.MessageSquare,
+                            modifier = Modifier.size(12.dp),
+                            color = raftArgbHex(RaftColor.ForegroundHint)
+                        )
+                        RaftAttachmentCardMetaText(commentCount.toString())
+                    }
+                }
+            }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -127,16 +180,30 @@ internal fun RaftAttachmentPreviewCard(
     }
 }
 
-// `-my-1 size-6 rounded-control text-foreground hover:bg-fill-pressed`, a 16dp glyph.
+@Composable
+private fun RaftAttachmentCardMetaText(text: String) {
+    Text(
+        text = text,
+        style = RaftAttachmentCardMetaStyle,
+        color = RaftColor.ForegroundHint,
+        maxLines = 1,
+        softWrap = false
+    )
+}
+
+// `-my-1 size-6 rounded-chip text-foreground active:bg-fill-medium`, a 16dp glyph.
 @Composable
 private fun RaftAttachmentPreviewCardActionButton(action: RaftAttachmentPreviewCardAction) {
-    val shape = RoundedCornerShape(RaftAppRadius.Control)
+    val shape = RoundedCornerShape(RaftAppRadius.Chip)
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
     Box(
         modifier =
             Modifier
                 .size(24.dp)
                 .clip(shape)
-                .clickable(onClick = action.onClick)
+                .then(if (pressed) Modifier.background(RaftAppThemeState.colors.fillMedium, shape) else Modifier)
+                .clickable(interactionSource = interactionSource, indication = null, onClick = action.onClick)
                 .semantics { contentDescription = action.contentDescription },
         contentAlignment = Alignment.Center
     ) {

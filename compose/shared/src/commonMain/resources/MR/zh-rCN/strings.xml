@@ -442,6 +442,7 @@
     <string name="thread_error_remove_saved_message">无法移除收藏的消息</string>
     <string name="thread_attachment_skipped_one">有 1 个附件无法读取，已跳过。</string>
     <string name="thread_attachment_skipped_many">有 %1$s 个附件无法读取，已跳过。</string>
+    <string name="thread_attachment_meta_file">文件</string>
     <string name="thread_composer_payload_failed">编辑器数据解析失败</string>
     <string name="thread_composer_placeholder_message">输入消息</string>
     <string name="thread_composer_placeholder_dm">给 @%1$s 发消息</string>

@@ -293,6 +293,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
@@ -25607,6 +25608,7 @@ private fun ThreadMessageCardContent(
                                 ThreadMessageAttachments(
                                     attachments = message.attachments,
                                     alignEnd = alignOwnMessageRight,
+                                    pending = message.isSendingLocalSend(),
                                     attachmentOpenStates = attachmentOpenStates,
                                     onOpenAttachment = onOpenAttachment,
                                     onDownloadAttachment = onDownloadAttachment
@@ -30388,30 +30390,32 @@ private fun RaftThreadAttachmentItem.threadAttachmentDownloadId(generation: Long
         .take(160)
         .ifBlank { "thread-attachment-download" }
 
-internal fun RaftThreadAttachmentItem.threadAttachmentChipMetaLine(htmlPreviewLabel: String): String =
-    listOf(
-        htmlPreviewLabel.takeIf { isHtmlAttachment() },
-        displaySizeLabel()
-    )
-        .filterNotNull()
-        .filter { it.isNotBlank() }
-        .joinToString(" · ")
+/**
+ * The kind on a file card's meta line, before the size (web `primaryMetaLabel`): "HTML preview"
+ * for a page, else the MIME type, else [fileLabel].
+ */
+internal fun RaftThreadAttachmentItem.threadAttachmentCardMetaLabel(htmlPreviewLabel: String, fileLabel: String): String =
+    when {
+        isHtmlAttachment() -> htmlPreviewLabel
+        else -> mimeType.trim().ifBlank { fileLabel }
+    }
+
+/** Web: the comment count shows on the card, except for images and PDFs (no comment entry there). */
+internal fun RaftThreadAttachmentItem.threadAttachmentCardCommentCount(): Int =
+    commentCount.takeIf { it > 0 && !isImageAttachment() && normalizedMimeType() != "application/pdf" } ?: 0
 
 private fun RaftThreadAttachmentItem.threadAttachmentRendersAsCard(): Boolean =
     !isPreviewableVideoAttachment() && !isPreviewableAudioAttachment()
 
-/** Consecutive file cards share one wrapping group; each inline player stands alone, in order. */
-private fun List<RaftThreadAttachmentItem>.threadAttachmentCardRuns(): List<List<RaftThreadAttachmentItem>> {
-    val runs = mutableListOf<MutableList<RaftThreadAttachmentItem>>()
-    forEach { attachment ->
-        val last = runs.lastOrNull()
-        if (attachment.threadAttachmentRendersAsCard() && last != null && last.first().threadAttachmentRendersAsCard()) {
-            last += attachment
-        } else {
-            runs += mutableListOf(attachment)
-        }
-    }
-    return runs
+/**
+ * Web MessageItem order for the non-image attachments: each inline video, then each inline
+ * audio, then every file card in one wrapping group. Returns the groups in that order.
+ */
+internal fun List<RaftThreadAttachmentItem>.threadAttachmentCardRuns(): List<List<RaftThreadAttachmentItem>> {
+    val videos = filter { it.isPreviewableVideoAttachment() }
+    val audio = filter { !it.isPreviewableVideoAttachment() && it.isPreviewableAudioAttachment() }
+    val cards = filter { it.threadAttachmentRendersAsCard() }
+    return videos.map(::listOf) + audio.map(::listOf) + listOfNotNull(cards.takeIf { it.isNotEmpty() })
 }
 
 private fun ThreadAttachmentOpenUiState?.threadAttachmentOpenFailed(): Boolean =
@@ -30593,9 +30597,11 @@ internal fun PlatformFile.isComposerImageOwnedTemporary(): Boolean {
 }
 
 @Composable
-private fun ThreadMessageAttachments(
+internal fun ThreadMessageAttachments(
     attachments: List<RaftThreadAttachmentItem>,
     alignEnd: Boolean,
+    /** The message is still sending (web `isOptimistic`): images dim under a spinner and do not open. */
+    pending: Boolean = false,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     onOpenAttachment: (String) -> Unit,
     onDownloadAttachment: (String) -> Unit = {}
@@ -30627,7 +30633,8 @@ private fun ThreadMessageAttachments(
             ) {
                 RaftMessageImageGallery(
                     images = imageDimensions,
-                    onClick = { index -> onOpenAttachment(imageAttachments[index].id) }
+                    pending = { pending },
+                    onClick = if (pending) null else { index -> onOpenAttachment(imageAttachments[index].id) }
                 ) { layout ->
                     ThreadImageAttachmentContent(
                         attachment = imageAttachments[layout.index],
@@ -30636,8 +30643,8 @@ private fun ThreadMessageAttachments(
                 }
             }
         }
-        // raft-ui MessageAttachmentGroup: file cards wrap side by side (`flex flex-wrap gap-2`,
-        // at most 360 wide); inline video / audio players keep their own full-width rows.
+        // Web order: gallery, videos, audio, then one MessageAttachmentGroup in which the file
+        // cards wrap side by side (`flex flex-wrap gap-2`, at most 360 wide).
         val fileAttachmentRuns =
             remember(fileAttachments) { fileAttachments.threadAttachmentCardRuns() }
         fileAttachmentRuns.forEach { run ->
@@ -30695,6 +30702,16 @@ private fun ThreadImageAttachmentContent(
             fallbackHost?.requestFallback?.invoke(attachment.id)
         }
     }
+    // Every source the surface will try (it moves to the fallback after the first fails); the
+    // image has failed once each has errored.
+    val sourceCount = listOfNotNull(sourcePlan.source, sourcePlan.fallbackSource).distinct().size
+    var failedSources by remember(sourcePlan.source, sourcePlan.fallbackSource) { mutableIntStateOf(0) }
+    val failed =
+        threadInlineImageShowsFailure(
+            sourceCount = sourceCount,
+            failedSources = failedSources,
+            awaitingRemoteFallback = sourcePlan.requestRemoteFallback && fallbackHostAvailable
+        )
     // The frame (fill, border, radius, press) is RaftMessageImageFrame's; the surface only
     // draws the image, so it brings no fill or border of its own.
     RaftAspectFitImagePreviewSurface(
@@ -30702,15 +30719,47 @@ private fun ThreadImageAttachmentContent(
         fallbackSource = sourcePlan.fallbackSource,
         contentDescription = attachment.name,
         modifier = Modifier.fillMaxSize(),
+        // The failed state is drawn below (ImageOff), not the surface's text placeholder.
+        placeholderLabel = "",
         backgroundColor = Color.Transparent,
         borderWidth = 0.dp,
         contentScale = if (fit == RaftMessageImageFit.Cover) RaftImageThumbnailContentScale else ContentScale.Fit,
         onImageStateChange = { state ->
-            if (state is AsyncImagePainter.State.Error && fallbackUrl == null) {
-                fallbackHost?.requestFallback?.invoke(attachment.id)
+            if (state is AsyncImagePainter.State.Error) {
+                failedSources += 1
+                if (fallbackUrl == null) fallbackHost?.requestFallback?.invoke(attachment.id)
             }
         }
     )
+    if (failed) ThreadImageAttachmentFailedPlaceholder()
+}
+
+/**
+ * Whether an inline image shows its failed placeholder: it has no source at all (and none is
+ * on its way from the fallback host), or every source it tried has errored.
+ */
+internal fun threadInlineImageShowsFailure(sourceCount: Int, failedSources: Int, awaitingRemoteFallback: Boolean): Boolean =
+    when {
+        sourceCount == 0 -> !awaitingRemoteFallback
+        else -> failedSources >= sourceCount
+    }
+
+/**
+ * Web GalleryImageItem `gallery-image-placeholder`: an image that fails to load keeps its tile,
+ * `bg-fill-muted` with a 20dp ImageOff in `foreground-hint`, never a broken-image glyph.
+ */
+@Composable
+private fun ThreadImageAttachmentFailedPlaceholder() {
+    Box(
+        modifier = Modifier.fillMaxSize().background(RaftColor.FillMuted),
+        contentAlignment = Alignment.Center
+    ) {
+        RaftLucideIcon(
+            RaftLucideIconName.ImageOff,
+            modifier = Modifier.size(20.dp),
+            color = raftArgbHex(RaftColor.ForegroundHint)
+        )
+    }
 }
 
 @Composable
@@ -30736,7 +30785,11 @@ private fun ThreadAttachmentChip(
         return
     }
     val isOpening = openState.threadAttachmentIsOpening()
-    val meta = attachment.threadAttachmentChipMetaLine(stringResource(MR.strings.file_preview_html))
+    val metaLabel =
+        attachment.threadAttachmentCardMetaLabel(
+            htmlPreviewLabel = stringResource(MR.strings.file_preview_html),
+            fileLabel = stringResource(MR.strings.thread_attachment_meta_file)
+        )
     // A download started on the file page keeps running in the download centre; the card only
     // mirrors it (task #75). The card itself never downloads.
     val downloadHost = LocalThreadAttachmentDownloadHost.current
@@ -30774,7 +30827,10 @@ private fun ThreadAttachmentChip(
         }
     RaftAttachmentPreviewCard(
         title = attachment.name,
-        meta = statusLabel ?: meta,
+        typeBadge = threadFileTypeBadgeLabel(attachment.name),
+        meta = statusLabel ?: metaLabel,
+        metaSize = attachment.displaySizeLabel().takeIf { statusLabel == null },
+        commentCount = if (statusLabel == null) attachment.threadAttachmentCardCommentCount() else 0,
         actions = listOf(affordance),
         loading = isOpening || centerEntry?.status == RaftDownloadStatus.Downloading,
         failed = centerLabel == null && openState.threadAttachmentOpenFailed(),
