@@ -91,10 +91,10 @@ private fun String.raftInlineRefRange(start: Int): IntRange? {
     if (start >= length || (this[start] != '#' && this[start] != '@' && !startsWith("dm:@", start, ignoreCase = true))) {
         return null
     }
-    if (isRaftMarkdownEscaped(start) || !isRaftInlineRefBoundary(start - 1)) return null
+    if (isRaftMarkdownEscaped(start)) return null
     return when {
         startsWith("dm:@", start, ignoreCase = true) -> raftDirectMessageRange(start)
-        this[start] == '@' -> raftMentionRange(start)
+        this[start] == '@' -> if (isRaftMentionBoundary(start - 1)) raftMentionRange(start) else null
         else -> raftHashRange(start)
     }
 }
@@ -184,9 +184,10 @@ private fun String.raftHashRange(start: Int): IntRange? {
     val valueStart = start + 1
     if (valueStart >= length) return null
     if (this[valueStart].isDigit()) {
+        if (!isRaftTaskRefBoundary(start - 1)) return null
         var end = valueStart + 1
         while (end < length && this[end].isDigit()) end++
-        if (end < length && this[end].isRaftTaskTrailingPart()) return null
+        if (end < length && this[end].isRaftAsciiWordCharacter()) return null
         return start until end
     }
     if (!this[valueStart].isLetter()) return null
@@ -213,8 +214,20 @@ private fun String.raftHashRange(start: Int): IntRange? {
     return start until nameEnd
 }
 
-private fun String.isRaftInlineRefBoundary(index: Int): Boolean =
-    index < 0 || !(this[index].isLetterOrDigit() || this[index] == '_')
+// Left boundaries follow Web `raftRefs.ts`, per ref kind:
+// - `#channel`, `#channel:short` and `dm:@peer` have none
+//   (`createRaftChannelRefRegex` is a bare `#name`), so `去#proj` and `a#b`
+//   are channel candidates; only a known channel becomes a chip.
+// - `@name` needs a non letter/digit/`_`/`-` before it
+//   (`createRaftUserRefRegex`), which keeps `alice@example.com` plain.
+// - `#12` needs a non ASCII-word, non-`/` character before it and an ASCII
+//   word boundary after it (`createRaftBareTaskRefRegex`, `\w`/`\b` are
+//   ASCII), so `去#12` and `#12，` are tasks but `word#2` and `path/#9` are not.
+private fun String.isRaftMentionBoundary(index: Int): Boolean =
+    index < 0 || !(this[index].isLetterOrDigit() || this[index] == '_' || this[index] == '-')
+
+private fun String.isRaftTaskRefBoundary(index: Int): Boolean =
+    index < 0 || !(this[index].isRaftAsciiWordCharacter() || this[index] == '/')
 
 private fun String.isRaftMarkdownEscaped(index: Int): Boolean {
     var slashCount = 0
@@ -232,4 +245,3 @@ private fun Char.isRaftAsciiWordCharacter(): Boolean =
     this in 'a'..'z' || this in 'A'..'Z' || isDigit() || this == '_'
 private fun Char.isRaftChannelPart(): Boolean = isLetterOrDigit() || this == '_' || this == '-'
 private fun Char.isRaftShortIdPart(): Boolean = isDigit() || this in 'a'..'f' || this in 'A'..'F'
-private fun Char.isRaftTaskTrailingPart(): Boolean = isLetterOrDigit() || this == '_'
