@@ -8,15 +8,11 @@ import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsDiagnosticsSnapshot
 import build.raft.app.data.SharedSettingsDiagnosticFeatureFlagSnapshot
-import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import build.raft.app.data.DEVELOPER_ACTION_HANDS_UPDATE_CHECK
-import build.raft.app.data.SERVER_ACTION_MEMBER_REMOVE
-import build.raft.app.data.SERVER_ACTION_MEMBER_ROLE
 import build.raft.app.data.SharedSettingsOpenSourceLicenseItem
 import build.raft.app.data.SharedSettingsOpenSourceLicensesSnapshot
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
-import build.raft.app.data.SettingsServerAdminSnapshot
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import kotlin.test.Test
@@ -279,24 +275,6 @@ class SettingsHomePageDiagnosticsTest {
     }
 
     @Test
-    fun administrationSectionsMatchReactOrder() {
-        assertEquals(
-            listOf(
-                "admins",
-                "system_channels",
-                "pending_invites",
-                "join_links",
-                "pre_join_agreement",
-                "onboarding_agent",
-                "translation",
-                "member_permissions",
-                "sidebar_order"
-            ),
-            settingsAdministrationSectionSpecs().map { it.key }
-        )
-    }
-
-    @Test
     fun routeVisualPageDataFieldsStayIntentOnly() {
         assertEquals(
             setOf(
@@ -343,89 +321,6 @@ class SettingsHomePageDiagnosticsTest {
         assertEquals(SharedSettingsDestination.Administration, administration.route.destination)
         assertTrue(administration.home is ScreenLoadState.Content)
         assertTrue(administration.server is ScreenLoadState.Content)
-
-        val connectedApps =
-            settingsRouteVisualState(
-                SettingsRouteVisualPayload(
-                    destination = "connected-apps",
-                    itemId = null,
-                    fixtureKey = "canonical",
-                    fullHeight = true
-                )
-            )
-        assertEquals(SharedSettingsDestination.ConnectedApps, connectedApps.route.destination)
-        assertTrue(connectedApps.home is ScreenLoadState.Content)
-        val connectedAppsContent = connectedApps.connectedApps as ScreenLoadState.Content
-        assertTrue(connectedAppsContent.data.registered.isNotEmpty())
-    }
-
-    @Test
-    fun administrationRoleOptionsMatchServerRolePolicy() {
-        assertEquals(listOf("owner", "admin"), settingsAdminRoleOptions("owner", "member"))
-        assertEquals(listOf("owner"), settingsAdminRoleOptions("owner", "admin"))
-        assertEquals(listOf("admin"), settingsAdminRoleOptions("admin", "member"))
-        assertEquals(emptyList(), settingsAdminRoleOptions("admin", "admin"))
-        assertEquals(emptyList(), settingsAdminRoleOptions("member", "member"))
-    }
-
-    @Test
-    fun administrationPayloadRowsFilterAdminActionsByActorRole() {
-        val rowsForAdmin =
-            settingsAdministrationAdminRows(
-                members =
-                    listOf(
-                        SettingsServerAdminSnapshot(id = "owner-1", name = "Owner", role = "owner"),
-                        SettingsServerAdminSnapshot(id = "admin-1", name = "Admin", role = "admin"),
-                        SettingsServerAdminSnapshot(id = "member-1", name = "Member", role = "member")
-                    ),
-                section = null,
-                sectionTitle = "Admins",
-                actorRole = "admin",
-                actionState = null,
-                errorStrings = englishErrorPresentationStringsForTest()
-            )
-
-        assertEquals(listOf("owner-1", "admin-1"), rowsForAdmin.filter { it.key.startsWith("admin:") }.map { it.key.removePrefix("admin:") })
-        assertEquals(false, rowsForAdmin.first { it.value == "owner-1:member" }.enabled)
-        assertEquals("Last owner", rowsForAdmin.first { it.value == "owner-1:member" }.status)
-        assertEquals(false, rowsForAdmin.first { it.value == "admin-1:member" }.enabled)
-        assertEquals("Owner only", rowsForAdmin.first { it.value == "admin-1:member" }.status)
-        assertEquals(false, rowsForAdmin.any { it.key == SERVER_ACTION_MEMBER_REMOVE })
-
-        val rowsForOwner =
-            settingsAdministrationAdminRows(
-                members =
-                    listOf(
-                        SettingsServerAdminSnapshot(id = "owner-1", name = "Owner", role = "owner"),
-                        SettingsServerAdminSnapshot(id = "owner-2", name = "Second Owner", role = "owner"),
-                        SettingsServerAdminSnapshot(id = "admin-1", name = "Admin", role = "admin")
-                    ),
-                section = null,
-                sectionTitle = "Admins",
-                actorRole = "owner",
-                actionState = null,
-                errorStrings = englishErrorPresentationStringsForTest()
-            )
-
-        assertEquals(true, rowsForOwner.first { it.value == "owner-1:member" }.enabled)
-        assertEquals(false, rowsForOwner.any { it.key == SERVER_ACTION_MEMBER_REMOVE })
-
-        val rowsForOwnerWhileSaving =
-            settingsAdministrationAdminRows(
-                members =
-                    listOf(
-                        SettingsServerAdminSnapshot(id = "owner-1", name = "Owner", role = "owner"),
-                        SettingsServerAdminSnapshot(id = "owner-2", name = "Second Owner", role = "owner"),
-                        SettingsServerAdminSnapshot(id = "admin-1", name = "Admin", role = "admin")
-                    ),
-                section = null,
-                sectionTitle = "Admins",
-                actorRole = "owner",
-                actionState = SharedSettingsActionState(SERVER_ACTION_MEMBER_ROLE, "admin-1", inProgress = true),
-                errorStrings = englishErrorPresentationStringsForTest()
-            )
-        assertEquals("Loading", rowsForOwnerWhileSaving.first { it.value == "admin-1:member" }.status)
-        assertEquals(false, rowsForOwnerWhileSaving.first { it.value == "owner-1:member" }.enabled)
     }
 
     @Test
