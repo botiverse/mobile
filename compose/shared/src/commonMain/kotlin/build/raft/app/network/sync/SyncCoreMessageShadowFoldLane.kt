@@ -1,8 +1,6 @@
 package build.raft.app.network.sync
 
 import build.raft.app.canonical.message.CanonicalMessageCarry
-import build.raft.app.data.SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY
-import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.RaftSqlDatabase
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -20,7 +18,7 @@ internal data class PartitionDenied(
 )
 
 /**
- * The `sync_core_messages_v1` "sole-apply t0" SHADOW fold+persist lane for message-canonical frames.
+ * The sync-core messages "sole-apply t0" SHADOW fold+persist lane for message-canonical frames.
  *
  * This is a SHADOW-OF-RECORD: it folds each accepted message frame through the pure [SyncCore] messages
  * domain and durably persists the resulting per-channel fact window via the one-txn [FoldPersistenceAdapter].
@@ -28,12 +26,8 @@ internal data class PartitionDenied(
  * FAIL-OPEN — every fold/persist error is logged with a bounded diagnostic and swallowed, so it can never
  * block or throw into the legacy accept path. Sole-apply stays OFF ([CANONICAL_FACT_SOLE_APPLY_ELIGIBLE]);
  * nothing here changes any read path.
- *
- * The flag gate ([isEnabled]) is the same `isEnabledForAnyResolvedServer` global gate the shadow-compare
- * observer uses. When the flag is off (default) the caller never invokes the lane, so it is dormant.
  */
 internal class SyncCoreMessageShadowFoldLane(
-    private val featureFlags: SharedServerFeatureFlags,
     private val adapter: FoldPersistenceAdapter,
     private val scope: CoroutineScope,
     private val logger: (String) -> Unit,
@@ -56,9 +50,6 @@ internal class SyncCoreMessageShadowFoldLane(
             }
         }.invokeOnCompletion { persistQueue.close() }
     }
-
-    fun isEnabled(): Boolean =
-        featureFlags.isEnabledForAnyResolvedServer(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY)
 
     /**
      * Fold one canonical message frame into the shadow core, then persist the channel scope derived from the
@@ -177,14 +168,12 @@ internal class SyncCoreMessageShadowFoldLane(
 
         /** Build the production lane over the real SQLite one-txn persistence for [sqlDatabase]. */
         fun create(
-            featureFlags: SharedServerFeatureFlags,
             sqlDatabase: RaftSqlDatabase,
             now: () -> Long,
             scope: CoroutineScope,
             logger: (String) -> Unit,
         ): SyncCoreMessageShadowFoldLane =
             SyncCoreMessageShadowFoldLane(
-                featureFlags = featureFlags,
                 adapter = DefaultFoldPersistenceAdapter(
                     runner = SqlDelightFoldPersistTransactionRunner(sqlDatabase),
                     store = SqlDelightFoldPersistStore(sqlDatabase, now = now),

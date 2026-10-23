@@ -714,8 +714,8 @@ sealed interface RealtimeEvent
 @Serializable
 data class MessageNew(
     val message: Message,
-    // In-process carry (sync_core_messages_v1): the raw-wire canonical decode produced ONCE by the
-    // flag-gated projection gateway (MessageShadowObserver), threaded to the SharedRealtimeDomainEventOwner
+    // In-process carry (sync-core messages): the raw-wire canonical decode produced ONCE by the
+    // projection gateway (MessageShadowObserver), threaded to the SharedRealtimeDomainEventOwner
     // shadow fold+persist lane so it is not re-decoded there. @Transient — never serialized (not part of the
     // wire/cache shape), so a deserialized event carries null and the shadow lane simply skips it (fail-open).
     @Transient val decodedCanonical: CanonicalMessageCarry? = null,

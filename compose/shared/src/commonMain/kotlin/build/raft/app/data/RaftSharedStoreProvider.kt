@@ -749,27 +749,20 @@ internal class RaftSharedStoreProvider private constructor(
     }
 
     /**
-     * Server feature-flag evaluation (sync-core rollout gate). Prefetched per shell when its selected
-     * server changes (see [selectedServerStore]) — this is what makes `sync_core_messages_v1` traffic
-     * appear at `feature-flags/evaluate`. Reads default OFF until resolved, so gated features stay dark.
-     */
-    /**
-     * Flag-gated canonical projection gateway injected into [RealtimeEventMapper]. Off by default
-     * (`sync_core_messages_v1`), so it is a single flag lookup on the hot path until the rollout enables it;
-     * when on, it decodes each message frame ONCE, runs the shadow-compare over that decode and emits
-     * divergence diagnostics without touching the store, then returns the decoded carry for the shadow
-     * fold+persist lane. A provider-level singleton so all mapper instances share one gate.
+     * Canonical projection gateway injected into [RealtimeEventMapper]. It decodes each message frame ONCE,
+     * runs the shadow-compare over that decode and emits divergence diagnostics without touching the store,
+     * then returns the decoded carry for the shadow fold+persist lane. A provider-level singleton so all
+     * mapper instances share one gateway.
      */
     val messageShadowObserver: MessageShadowObserver =
         SyncCoreMessageShadowObserver(
-            featureFlags = serverFeatureFlags,
             diagnosticsLogger = sharedInfoLogger("SyncCoreShadow", "sync_core_shadow"),
         )
 
     /**
      * One provider-central current-grant shadow lane shared by every realtime owner backed by this database.
-     * The server flag defaults OFF; when enabled, guarded canonical frames synchronously fold, commit, strict
-     * read back, and atomically publish before the unchanged legacy continuation runs.
+     * Guarded canonical frames synchronously fold, commit, strict read back, and atomically publish before the
+     * unchanged legacy continuation runs.
      */
     init {
         val processAuthTerminalGate = AuthSessionTerminalRouteGate()
@@ -948,7 +941,6 @@ internal class RaftSharedStoreProvider private constructor(
     /** Legacy/unowned shadow lane retained on the process owner. */
     private fun buildMessageShadowFoldLane(): SyncCoreMessageShadowFoldLane =
         SyncCoreMessageShadowFoldLane.create(
-            featureFlags = serverFeatureFlags,
             sqlDatabase = sqlDatabase,
             now = ::defaultNowMillis,
             scope = CoroutineScope(SupervisorJob()),
@@ -957,7 +949,6 @@ internal class RaftSharedStoreProvider private constructor(
 
     private fun buildReactionShadowLane(): SyncCoreReactionShadowLane =
         SyncCoreReactionShadowLane(
-            featureFlags = serverFeatureFlags,
             logger = sharedInfoLogger("SyncCoreReactionShadow", "sync_core_reaction_shadow"),
         )
 
@@ -2372,13 +2363,12 @@ internal class RaftSharedStoreProvider private constructor(
                 SharedServerFeatureFlags(
                     api = RaftFeatureFlagsNetworkApi(networkClient),
                     diagnosticsLogger = sharedInfoLogger("SlockFeatureFlags", "feature_flags"),
-                    // Diagnostics "Local Feature Overrides" seam for `sync_core_messages_v1` ONLY: internal
-                    // builds can ForceOn/ForceOff the whole offline-cache line on one binary. Not entitled
-                    // (release, or the page never opened) => the registry returns the server value unchanged.
+                    // Diagnostics "Local Feature Overrides" seam for the DoH fallback and curl Socket.IO keys
+                    // ONLY: internal builds can ForceOn/ForceOff them on one binary. Not entitled (release, or
+                    // the page never opened) => the registry returns the server value unchanged.
                     diagnosticOverride = { serverId, key, serverEffective ->
                         if (
-                            key != SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY &&
-                                key != MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY &&
+                            key != MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY &&
                                 key != MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY
                         ) {
                             serverEffective
@@ -2443,12 +2433,9 @@ internal class RaftSharedStoreProvider private constructor(
                             runner = SqlDelightFoldPersistTransactionRunner(database),
                             store = SqlDelightFoldPersistStore(database, now = ::defaultNowMillis),
                         ),
-                    isEnabledForServer = { serverId ->
-                        serverFeatureFlags.isEnabled(
-                            ServerId(serverId),
-                            SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
-                        )
-                    },
+                    // The offline-cache line is always on: `sync_core_messages_v1` is retired, so every
+                    // sync-core message reader and writer below gets a constant true.
+                    isEnabledForServer = { _ -> true },
                 )
             val attachmentCommentsReadCacheV2 = AttachmentCommentsReadCacheV2()
             val canonicalMessageV2Store =
@@ -2468,12 +2455,7 @@ internal class RaftSharedStoreProvider private constructor(
                 )
             val canonicalMessageV2Canary =
                 CanonicalMessageV2ProductionCanary(
-                    isEnabledForServer = { serverId ->
-                        serverFeatureFlags.isEnabled(
-                            ServerId(serverId),
-                            SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
-                        )
-                    },
+                    isEnabledForServer = { _ -> true },
                     generationEngine = canonicalMessageV2GenerationEngine,
                     // Lines already start with `canonical_v2_canary` (task #168: no doubled prefix).
                     logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2Canary"),
@@ -2492,12 +2474,7 @@ internal class RaftSharedStoreProvider private constructor(
             val threadDurableLastKnownReader =
                 CanonicalMessageV2DurableLastKnownReader(
                     store = canonicalMessageV2Store,
-                    isEnabledForServer = { serverId ->
-                        serverFeatureFlags.isEnabled(
-                            ServerId(serverId),
-                            SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
-                        )
-                    },
+                    isEnabledForServer = { _ -> true },
                     logger = sharedInfoLogger("ThreadDurableLastKnown", "thread_durable_last_known"),
                     replyWindowCache = threadReplyWindowCache,
                 )
@@ -2706,12 +2683,7 @@ internal class RaftSharedStoreProvider private constructor(
                             networkClient = networkClient,
                             logger = sharedInfoLogger("CanonicalMessageV2EnterSnapshot", "canonical_v2_enter_snapshot"),
                         ),
-                    isEnabledForServer = { serverId ->
-                        serverFeatureFlags.isEnabled(
-                            ServerId(serverId),
-                            SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
-                        )
-                    },
+                    isEnabledForServer = { _ -> true },
                     logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2EnterSnapshot"),
                     isKnownNonMember = { serverId, channelId -> provider.isKnownNonMemberConversation(serverId, channelId) },
                 )
@@ -2726,12 +2698,7 @@ internal class RaftSharedStoreProvider private constructor(
                             networkClient = networkClient,
                             logger = sharedInfoLogger("CanonicalMessageV2AdjacentPage", "canonical_v2_adjacent_page"),
                         ),
-                    isEnabledForServer = { serverId ->
-                        serverFeatureFlags.isEnabled(
-                            ServerId(serverId),
-                            SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
-                        )
-                    },
+                    isEnabledForServer = { _ -> true },
                     // Lines already start with `canonical_v2_adjacent_page` / `canonical_v2_latest_page`: a prefix
                     // here doubled the latest-page line on device (task #168).
                     logger = canonicalMessageV2SelfTaggedLogger("CanonicalMessageV2AdjacentPage"),
@@ -3082,7 +3049,7 @@ internal class SharedRealtimeDomainEventOwner(
     private val acceptedKeySet = mutableSetOf<String>()
     private val recoveryStates = mutableMapOf<String, MessageSeqRecoveryState<RealtimeEvent>>()
 
-    // Flag-gated `sync_core_messages_v1` shadow fold+persist lane. Null until the provider installs it (see
+    // Sync-core messages shadow fold+persist lane. Null until the provider installs it (see
     // installMessageShadowFoldLane); a null lane means the shadow path is entirely absent (e.g. unit tests
     // that don't exercise it). Invisible to sinks and fail-open; the legacy unowned path can only emit a
     // bounded partition-denial diagnostic and never persists.
@@ -3381,7 +3348,7 @@ internal class SharedRealtimeDomainEventOwner(
         }
         val acceptedEvents = acceptedEventsForFold(resolvedServerId, event, source)
         if (acceptedEvents.isEmpty()) return
-        // `sync_core_messages_v1` SHADOW partition gate, BEFORE the sink fan-out and invisible to it. This
+        // Sync-core messages SHADOW partition gate, BEFORE the sink fan-out and invisible to it. This
         // legacy overload has no principal, so only canonical MessageNew/Updated frames are counted and
         // denied; non-message and non-canonical events produce no diagnostic. The sink path stays untouched.
         // Slice-2 lane insert point: when sole-apply becomes eligible (CANONICAL_FACT_SOLE_APPLY_ELIGIBLE,
@@ -3390,26 +3357,22 @@ internal class SharedRealtimeDomainEventOwner(
         // CommitSucceeded. Dormant in slice-2: MessageSoleApplyLane.createIfEligible is structurally
         // false-gated, so no lane exists in production and this path stays byte-identical.
         messageShadowFoldLane?.let { lane ->
-            if (lane.isEnabled()) {
-                val deniedFrameCount = acceptedEvents.count { acceptedEvent ->
-                    when (acceptedEvent) {
-                        is MessageNew -> acceptedEvent.decodedCanonical != null
-                        is MessageUpdated -> acceptedEvent.decodedCanonical != null
-                        else -> false
-                    }
-                }
-                if (deniedFrameCount > 0) {
-                    lane.partitionDenied(
-                        serverId = resolvedServerId,
-                        reason = PartitionDenialReason.PrincipalUnavailable,
-                        deniedFrameCount = deniedFrameCount,
-                    )
+            val deniedFrameCount = acceptedEvents.count { acceptedEvent ->
+                when (acceptedEvent) {
+                    is MessageNew -> acceptedEvent.decodedCanonical != null
+                    is MessageUpdated -> acceptedEvent.decodedCanonical != null
+                    else -> false
                 }
             }
+            if (deniedFrameCount > 0) {
+                lane.partitionDenied(
+                    serverId = resolvedServerId,
+                    reason = PartitionDenialReason.PrincipalUnavailable,
+                    deniedFrameCount = deniedFrameCount,
+                )
+            }
         }
-        reactionShadowLane?.let { lane ->
-            if (lane.isEnabled()) observeReactionShadow(lane, resolvedServerId, acceptedEvents)
-        }
+        reactionShadowLane?.let { lane -> observeReactionShadow(lane, resolvedServerId, acceptedEvents) }
         val activeSinks = sinks
         // Tee to Thread routes before the Heartbeat early-return: Thread
         // consumes Heartbeat seq for realtime gap recovery. Snapshot the list

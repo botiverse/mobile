@@ -12,12 +12,12 @@ const val SERVER_FEATURE_FLAG_LAST_KNOWN_STORAGE_KEY: String = "serverFeatureFla
 
 /**
  * Flags whose last server evaluation is kept on disk so a cold start WITHOUT network still gates the
- * same way the last online session did (task #1133): the offline-cache line. Every other flag keeps the
- * defaults-off-until-evaluated contract.
+ * same way the last online session did (task #1133): the DoH fallback, so a cold start during a DNS
+ * outage still honours the last explicit decision. Every other flag keeps the defaults-off-until-evaluated
+ * contract.
  */
 val SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS: Set<String> =
     setOf(
-        SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
         MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY,
     )
 
