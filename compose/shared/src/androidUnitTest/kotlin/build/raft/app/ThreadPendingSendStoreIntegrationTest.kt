@@ -2,6 +2,7 @@ package build.raft.app
 
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import build.raft.app.SharedThreadStoreTest.Companion.pageResponse
 import build.raft.app.SharedThreadStoreTest.FakeThreadApi
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
@@ -109,6 +110,46 @@ class ThreadPendingSendStoreIntegrationTest {
             )
             assertEquals(1, api.sendMessageCalls, "explicit retry must cross the boundary once")
             assertEquals(randomId, api.lastRandomId)
+            second.scope.cancel()
+            second.driver.close()
+        }
+    }
+
+    @Test
+    fun reEntryWithFailedSendLoadsNewerServerMessagesAndKeepsFailedSendLast() = runTest {
+        withDatabase { path ->
+            val identity = identity()
+            val routePayload = basePayload()
+            val failedLocalId = "local-send-failed-reentry"
+
+            val first = open(path, FakeThreadApi(bodyText = pageResponse(Triple("m10", 10L, "old"))), identity)
+            first.store.accept(SharedThreadIntent.Start(routePayload))
+            val route = first.store.state.value.payload.resolveThreadRouteIdentity()
+            assertTrue(
+                first.store.admitLocalSend(
+                    message = pendingMessage(failedLocalId, "random-reentry", createdAt = 10L),
+                    expectedProvenance = requireNotNull(first.dataSource.currentReplyCacheProvenance()),
+                    expectedRoute = route
+                )
+            )
+            assertTrue(
+                first.journal.markFailed(identity.toProvenance(), route, failedLocalId, "thread_send_network", "offline")
+            )
+            first.scope.cancel()
+            first.driver.close()
+
+            // Re-enter: the server moved on while the send was failed.
+            val api =
+                FakeThreadApi(
+                    bodyText = pageResponse(Triple("m10", 10L, "old"), Triple("m11", 11L, "new one"), Triple("m30", 30L, "new two"))
+                )
+            val second = open(path, api, identity)
+            second.store.accept(SharedThreadIntent.Start(routePayload))
+
+            val payload = second.store.state.value.payload
+            assertEquals(listOf("m10", "m11", "m30", failedLocalId), payload.messages.map { it.id })
+            assertEquals(ThreadMessageDeliveryFailed, payload.messages.last().deliveryState)
+            assertFalse(payload.canLoadMoreAfter, "a local-only failed send must not pin the timeline off the tail")
             second.scope.cancel()
             second.driver.close()
         }
