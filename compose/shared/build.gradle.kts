@@ -207,6 +207,10 @@ kotlin {
                 implementation(libs.androidx.activity.compose)
                 // CMP switch: RaftSandboxWebView (document-start scripts, web message listener).
                 implementation(libs.androidx.webkit)
+                // Animated GIF / WebP in the image viewer (AnimatedImageDecoder on API 28+, GifDecoder
+                // below). Android-only artifact; iOS plays them through Skia's Codec instead. The
+                // loader turns Coil's service loader off so this never decodes outside the viewer.
+                implementation(libs.coil.gif)
             }
         }
         val androidUnitTest by getting {
