@@ -264,5 +264,136 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
         button.sendActions(for: .primaryActionTriggered)
         XCTAssertEqual(taps, 1)
     }
+
+    // MARK: - iOS 26: the server button beside a real system tab bar
+
+    /// Test-only: the bar's capsule from its private view tree (production never walks it).
+    private func capsuleFrame(in tabBar: UITabBar, to target: UIView) -> (CGRect, [String])? {
+        var notes: [String] = []
+        var best: CGRect?
+        func walk(_ view: UIView) {
+            for sub in view.subviews where !sub.isHidden {
+                let frame = sub.convert(sub.bounds, to: target)
+                if frame.height >= 40, frame.height <= 100, frame.width >= 150, notes.count < 20 {
+                    notes.append("\(type(of: sub)) \(frame) r=\(sub.layer.cornerRadius)")
+                    let capsule = sub.layer.cornerRadius >= frame.height * 0.4
+                    if capsule, frame.width > (best?.width ?? 0) { best = frame }
+                }
+                walk(sub)
+            }
+        }
+        walk(tabBar)
+        return best.map { ($0, notes) } ?? (notes.isEmpty ? nil : (.null, notes))
+    }
+
+    /// Rows of [column] (points) whose pixels differ from the background in [image].
+    private func span(_ image: UIImage, column x: CGFloat, from top: CGFloat, background: (Int, Int, Int)) -> (CGFloat, CGFloat)? {
+        guard let cg = image.cgImage else { return nil }
+        let scale = image.scale
+        let width = cg.width, height = cg.height
+        var data = [UInt8](repeating: 0, count: width * height * 4)
+        let context = CGContext(
+            data: &data, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        context.draw(cg, in: CGRect(x: 0, y: 0, width: width, height: height))
+        let px = min(width - 1, max(0, Int(x * scale)))
+        var first: Int?, last: Int?
+        for row in Int(top * scale)..<height {
+            // CGContext memory row 0 is the top of the image.
+            let o = (row * width + px) * 4
+            let d = abs(Int(data[o]) - background.0) + abs(Int(data[o + 1]) - background.1) + abs(Int(data[o + 2]) - background.2)
+            if d > 60 {
+                if first == nil { first = row }
+                last = row
+            }
+        }
+        guard let f = first, let l = last else { return nil }
+        return (CGFloat(f) / scale, CGFloat(l + 1) / scale)
+    }
+
+    func testServerButtonIsLevelWithTheSystemTabBarCapsule() throws {
+        guard #available(iOS 26.0, *) else {
+            throw XCTSkip("the separate server button is iOS 26 only")
+        }
+        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        let window = scene.map { UIWindow(windowScene: $0) } ?? UIWindow(frame: UIScreen.main.bounds)
+        window.frame = scene?.screen.bounds ?? UIScreen.main.bounds
+        window.overrideUserInterfaceStyle = .dark
+        defer { window.isHidden = true }
+        let root = UIViewController()
+        let background = (255, 0, 255)
+        root.view.backgroundColor = UIColor(red: 1, green: 0, blue: 1, alpha: 1)
+        window.rootViewController = root
+        window.isHidden = false
+        let tabs = UITabBarController()
+        tabs.traitOverrides.horizontalSizeClass = .compact
+        tabs.viewControllers = ["house", "waveform.path.ecg", "checkmark.square", "magnifyingglass"].map { name in
+            let child = UIViewController()
+            child.view.backgroundColor = .clear
+            child.tabBarItem = UITabBarItem(title: name.prefix(4).capitalized, image: UIImage(systemName: name), selectedImage: nil)
+            return child
+        }
+        root.addChild(tabs)
+        tabs.view.backgroundColor = .clear
+        let bounds = root.view.bounds
+        tabs.view.frame = CGRect(
+            x: 0, y: 0,
+            width: RaftIosServerButtonLayout.tabBarContainerWidth(containerWidth: bounds.width, showsButton: true),
+            height: bounds.height
+        )
+        root.view.addSubview(tabs.view)
+        tabs.didMove(toParent: root)
+        let button = RaftIosServerTabButton.make()
+        button.apply(serverSpec(), avatar: nil)
+        root.view.addSubview(button)
+        root.view.layoutIfNeeded()
+        tabs.view.layoutIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.6))
+        let tabBar = tabs.tabBar
+        let barFrame = tabBar.convert(tabBar.bounds, to: root.view)
+        button.frame = RaftIosServerButtonLayout.buttonFrame(
+            containerWidth: bounds.width,
+            safeAreaRight: root.view.safeAreaInsets.right,
+            barFrame: barFrame,
+            barBottomInset: tabBar.safeAreaInsets.bottom
+        )
+        button.layoutIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.6))
+
+        let tree = capsuleFrame(in: tabBar, to: root.view)
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        let top = max(0, barFrame.minY - 40)
+        let capsuleColumn = (tree?.0).flatMap { $0.isNull ? nil : $0.minX + 30 } ?? 60
+        let capsuleSpan = span(image, column: capsuleColumn, from: top, background: background)
+        let buttonSpan = span(image, column: button.frame.midX, from: top, background: background)
+        let geometry =
+            "iOS \(UIDevice.current.systemVersion) screen=\(bounds.size) scale=\(image.scale) " +
+            "bar=\(barFrame) barSafeBottom=\(tabBar.safeAreaInsets.bottom) viewSafe=\(root.view.safeAreaInsets) " +
+            "button=\(button.frame) treeCapsule=\(String(describing: tree?.0)) " +
+            "pixelCapsule=\(String(describing: capsuleSpan)) pixelButton=\(String(describing: buttonSpan))"
+        print("RAFT_TABBAR_GEOM \(geometry)")
+        tree?.1.forEach { print("RAFT_TABBAR_TREE \($0)") }
+        // The bottom of the screen as a PNG, for a reviewer to measure (base64, 1x).
+        let crop = CGRect(x: 0, y: top, width: bounds.width, height: bounds.height - top)
+        let cropped = UIGraphicsImageRenderer(size: crop.size, format: {
+            let f = UIGraphicsImageRendererFormat(); f.scale = 2; return f
+        }()).image { _ in image.draw(at: CGPoint(x: 0, y: -top)) }
+        if let png = cropped.pngData() {
+            let b64 = png.base64EncodedString()
+            stride(from: 0, to: b64.count, by: 2000).forEach { start in
+                let a = b64.index(b64.startIndex, offsetBy: start)
+                let b = b64.index(a, offsetBy: min(2000, b64.count - start))
+                print("RAFT_TABBAR_PNG \(b64[a..<b])")
+            }
+        }
+        // Level: the button's centre is the capsule's centre (within 1pt), and it is as tall.
+        let capsule = try XCTUnwrap(tree.flatMap { $0.0.isNull ? nil : $0.0 }, "no capsule found: \(geometry)")
+        XCTAssertEqual(button.frame.midY, capsule.midY, accuracy: 1, geometry)
+        XCTAssertEqual(button.frame.height, capsule.height, accuracy: 1, geometry)
+        XCTAssertGreaterThanOrEqual(button.frame.minX - capsule.maxX, RaftIosServerButtonLayout.spacing - 1, geometry)
+    }
 }
 
