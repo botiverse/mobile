@@ -147,6 +147,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
@@ -10208,9 +10210,15 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun replyThreadStartJoinsActivityPrewarmAndHydratesParentAfterGraceTimeout() = runBlocking {
-        val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val payloadStore = SharedThreadPayloadStore(appScope, prewarmStartIntervalMillis = 0L)
+    fun replyThreadStartJoinsActivityPrewarmAndHydratesParentAfterGraceTimeout() = runTest {
+        // Payload store, message store, prewarm and store all run on the one test scheduler. The
+        // store's state writes are plain read-modify-write and rely on the single-threaded scope
+        // it gets in production (viewModelScope). On Dispatchers.Default the members hydration
+        // could write membersLoadKey between the secondary refresh's two reads of the state, so
+        // the "unchanged" secondary commit reported emitted=true (flaky in CI).
+        val payloadStore = SharedThreadPayloadStore(backgroundScope, prewarmStartIntervalMillis = 0L)
+        val logs = mutableListOf<String>()
+        fun logDump(): String = logs.joinToString(separator = "\n", prefix = "\nlogs:\n")
         val parentMessageId = MessageId("m1")
         val releaseParent = CompletableDeferred<Unit>()
         val repository =
@@ -10248,7 +10256,14 @@ class SharedThreadStoreTest {
                     SelectedServerStore(RaftShellStoreScope.create("thread-prewarm-visible-start", "server-1")),
                 conversationRepository = repository,
                 payloadStore = payloadStore,
-                replyOriginHydrationGraceMillis = 0L
+                // The default message store launches the parent-lookup producer on its own
+                // Dispatchers.Default scope; keep it on the test scheduler too.
+                messageStore = SharedThreadMessageStore(scope = backgroundScope),
+                replyOriginHydrationGraceMillis = 0L,
+                diagnosticsLogger = { message ->
+                    projectionRejectingDiagnosticsLogger(message)
+                    logs += "data_source $message"
+                }
             )
         val marker =
             ActivityReplyThreadPrewarmMarker(
@@ -10262,46 +10277,60 @@ class SharedThreadStoreTest {
         val prewarm = async { dataSource.prewarmReplyThread(marker) }
         replyFetchStarted.await()
 
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val logs = ConcurrentTestLogBuffer()
-        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        val store = SharedThreadStore(dataSource = dataSource, scope = backgroundScope, diagnosticsLogger = logs::add)
         val visibleStart = async {
             store.accept(
                 SharedThreadIntent.Start(replyPayload(parentMessageId.value, "thread-m1").copy(originStatus = "loading"))
             )
         }
-        delay(20L)
+        // Run everything due at virtual time zero without advancing the clock: the prewarm is
+        // held on releaseReplyFetch, so the visible Start has either joined that flight or issued
+        // its own request by now. Advancing time here would expire the 5s prewarm join timeout.
+        runCurrent()
         assertEquals(
             listOf(ChannelId("channel-1") to parentMessageId),
             repository.getReplyThreadRequests,
-            "the visible Start must join the in-flight Activity prewarm instead of issuing another request"
+            "the visible Start must join the in-flight Activity prewarm instead of issuing another request" +
+                logDump()
+        )
+        assertFalse(
+            visibleStart.isCompleted,
+            "the visible Start must be waiting on the joined prewarm flight while it is held" + logDump()
         )
         releaseReplyFetch.complete(Unit)
-        assertTrue(prewarm.await() is DataResult.Content)
+        assertTrue(prewarm.await() is DataResult.Content, "the Activity prewarm must load the reply thread")
         visibleStart.await()
+        val reuse = logs.filter { it.startsWith("data_source thread_refresh_reuse_prewarm ") }
+        assertTrue(
+            reuse.size == 1 &&
+                (reuse.single().contains("outcome=consumed_ready") || reuse.single().contains("outcome=joined_in_flight")),
+            "the visible Start must reuse the Activity prewarm result, not time out into its own fetch" + logDump()
+        )
+        // Let the launched secondary refresh and focused-origin hydration park (the latter on
+        // releaseParent) before snapshotting the pre-parent state.
+        runCurrent()
 
         val beforeParent = store.state.value.payload
-        assertEquals("loading", beforeParent.originStatus)
+        assertEquals("loading", beforeParent.originStatus, "parent is still held after the grace timeout" + logDump())
         assertEquals(listOf("focused reply"), beforeParent.messages.map { it.body })
         assertEquals("loading", dataSource.cachedPayload("thread-m1")?.originStatus)
         releaseParent.complete(Unit)
-        val loaded =
-            withTimeout(10_000L) {
-                store.state.map { it.payload }.first { it.originStatus == "loaded" }
-            }
+        runCurrent()
+        val loaded = store.state.value.payload
+        assertEquals(
+            "loaded",
+            loaded.originStatus,
+            "the late parent must hydrate the visible route after the grace timeout" + logDump()
+        )
         assertEquals("late parent", loaded.originMessage?.body)
-        assertEquals(1, repository.getMessageContextRequests.count { it == parentMessageId })
+        assertEquals(
+            1,
+            repository.getMessageContextRequests.count { it == parentMessageId },
+            "the visible route must reuse the prewarm's parent lookup: ${repository.getMessageContextRequests}" +
+                logDump()
+        )
         store.accept(SharedThreadIntent.FirstContentReady)
-        withTimeout(10_000L) {
-            // The immediate secondary refresh may finish before FirstContentReady and log
-            // `result=pending_first_content`; wait for the applied result (`emitted=`), which is
-            // what the assertion below inspects.
-            while (
-                !logs.any { it.startsWith("thread_secondary_refresh_result") && it.contains("emitted=") }
-            ) {
-                delay(10L)
-            }
-        }
+        runCurrent()
 
         assertEquals(
             listOf(ChannelId("channel-1") to parentMessageId),
@@ -10310,15 +10339,17 @@ class SharedThreadStoreTest {
         assertEquals(listOf(false), repository.getReplyThreadIncludeFollowedSummaries)
         assertEquals(listOf(DataRequestPriority.Background), repository.getReplyThreadPriorities)
         assertEquals("focused reply", store.state.value.payload.messages.single().body)
-        assertTrue(
-            logs.any {
-                it.startsWith("thread_secondary_refresh_result") &&
-                    it.contains("emitted=false")
-            },
-            "an unchanged secondary payload must not emit a second state or trigger recomposition"
+        val secondaryResults =
+            logs.filter { it.startsWith("thread_secondary_refresh_result") && it.contains("emitted=") }
+        assertEquals(
+            1,
+            secondaryResults.size,
+            "the stashed secondary refresh must apply exactly once after FirstContentReady" + logDump()
         )
-        scope.cancel()
-        appScope.cancel()
+        assertTrue(
+            secondaryResults.single().contains("emitted=false"),
+            "an unchanged secondary payload must not emit a second state or trigger recomposition" + logDump()
+        )
     }
 
     @Test
