@@ -1342,6 +1342,7 @@
     <string name="file_preview_no_preview">此文件类型没有可用预览。</string>
     <string name="file_preview_download_to_open">可下载此文件，或使用“打开方式”在其他应用中查看。</string>
     <string name="file_preview_error_image_unavailable">图片预览不可用。</string>
+    <string name="file_preview_image_full_load_failed">无法加载完整图片</string>
     <string name="file_preview_error_load_generic">无法加载此文件预览。</string>
     <string name="file_preview_error_load_text">无法加载文本预览。</string>
     <string name="file_preview_error_load_markdown">无法加载 Markdown 预览。</string>
