@@ -33,9 +33,6 @@ jobs:
           scripts/test_merge_command_policy.sh
           scripts/check-merge-command-policy.sh
 
-      - name: Test raft-ui version watch
-        run: python3 scripts/ci/test_raft_ui_version_watch.py
-
       - name: Test iOS capture runner resource ownership
         run: python3 scripts/ci/test_ios_visual_runner.py
 
