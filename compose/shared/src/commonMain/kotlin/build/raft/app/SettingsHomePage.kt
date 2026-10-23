@@ -7234,6 +7234,10 @@ private fun RaftAppShellReadyContent(
                     }
                     val tasksTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         PerformanceSceneEffect(bridge, "kuikly_tasks", active = active)
+                        // Foreground is the shell's visible-route refresh; a socket reconnect re-reads missed task pushes.
+                        RaftLiveCatchUpEffect(serverId = selectedServerId, visible = active, foreground = false) {
+                            tasksViewModel.dispatch(SharedTasksRouteIntent.CatchUp)
+                        }
                         Box(modifier = Modifier.fillMaxSize()) {
                         key(tasksRoute) {
                         SharedTasksScreen(

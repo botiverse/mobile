@@ -243,6 +243,13 @@ sealed interface SharedTasksRouteIntent {
     data object Start : SharedTasksRouteIntent
     data object StartBackground : SharedTasksRouteIntent
     data object Refresh : SharedTasksRouteIntent
+
+    /**
+     * The page follows task pushes and missed some: the app returned to the foreground or the
+     * realtime socket reconnected. A silent (Background) forced reload that keeps the tasks on
+     * screen and joins a load already in flight.
+     */
+    data object CatchUp : SharedTasksRouteIntent
     data class SelectFilter(val status: TaskStatus?) : SharedTasksRouteIntent
     data class UpdateStatus(val task: TaskSummary, val status: TaskStatus) : SharedTasksRouteIntent
 
@@ -578,6 +585,7 @@ internal class SharedTasksViewModel(
             SharedTasksRouteIntent.Start,
             SharedTasksRouteIntent.StartBackground,
             SharedTasksRouteIntent.Refresh,
+            SharedTasksRouteIntent.CatchUp,
             is SharedTasksRouteIntent.SelectFilter ->
                 load(action)
             is SharedTasksRouteIntent.UpdateStatus -> {
@@ -701,7 +709,7 @@ internal class SharedTasksViewModel(
             TasksLoadRequest(
                 filter = TaskFilter(statuses = selectedFilter?.let(::setOf) ?: emptySet()),
                 priority =
-                    if (intent == SharedTasksRouteIntent.StartBackground) {
+                    if (intent == SharedTasksRouteIntent.StartBackground || intent == SharedTasksRouteIntent.CatchUp) {
                         DataRequestPriority.Background
                     } else {
                         DataRequestPriority.Visible
@@ -715,7 +723,7 @@ internal class SharedTasksViewModel(
             "tasks_screen_enter reason=$reason hasSnapshot=$hasSnapshot " +
                 "snapshotAgeMs=${snapshotAgeMs ?: -1L} filter=${selectedFilter?.name.orEmpty()}"
         )
-        val forceRefresh = intent == SharedTasksRouteIntent.Refresh
+        val forceRefresh = intent == SharedTasksRouteIntent.Refresh || intent == SharedTasksRouteIntent.CatchUp
         val inFlight = loadJob?.isActive == true
         val canUpgradeInFlight = inFlight && request.priority.canUpgradeTasksLoad(loadJobPriority)
         val skipReason =
@@ -758,7 +766,7 @@ internal class SharedTasksViewModel(
                         request = request,
                         selectedFilter = selectedFilter,
                         reason = reason,
-                        mergeResult = intent == SharedTasksRouteIntent.Refresh || hasSnapshot,
+                        mergeResult = forceRefresh || hasSnapshot,
                         forceSharedRefresh = forceRefresh
                     )
                 } finally {
@@ -1313,6 +1321,7 @@ private fun SharedTasksRouteIntent.tasksRefreshReason(): String =
         SharedTasksRouteIntent.Start -> "start"
         SharedTasksRouteIntent.StartBackground -> "background_start"
         SharedTasksRouteIntent.Refresh -> "manual"
+        SharedTasksRouteIntent.CatchUp -> "catch_up"
         is SharedTasksRouteIntent.SelectFilter -> "filter"
         is SharedTasksRouteIntent.UpdateStatus -> "status"
         is SharedTasksRouteIntent.AssignTask -> "assign"

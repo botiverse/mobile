@@ -6531,6 +6531,7 @@ private fun MembersDetailContent(
                     } else if (pageTab == MembersAgentDetailTab.Activity) {
                         MembersAgentActivityTab(
                             detail = detail,
+                            serverId = currentServerId,
                             agentStatusIndicatorState = agentStatusObservedState,
                             loadState = agentActivityLoadState,
                             overview = activityOverview,
@@ -13487,6 +13488,7 @@ private fun MembersAgentAppLoginScopeChip(scope: String) {
 @Composable
 private fun MembersAgentActivityTab(
     detail: AgentDetailSnapshot?,
+    serverId: String?,
     /** The detail page's observed live status (null = not observed: no dot). */
     agentStatusIndicatorState: RaftAgentStatusIndicatorState?,
     loadState: MembersAgentActivityLoadState,
@@ -13512,6 +13514,10 @@ private fun MembersAgentActivityTab(
         val liveActivity = detail.summary?.activity
         LaunchedEffect(agentId, liveActivity) {
             overview.onIntent(AgentActivityOverviewIntent.LiveActivityObserved(agentId, liveActivity))
+        }
+        // Pushes missed in the background or while the socket was down: catch up on return.
+        RaftLiveCatchUpEffect(serverId = serverId, visible = true) {
+            overview.onIntent(AgentActivityOverviewIntent.CatchUp)
         }
     }
     // raft-ui agent page Activity tab: the activity log as a Timeline under a section head

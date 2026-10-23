@@ -110,6 +110,65 @@ class SharedSettingsStoreComputersTest {
     }
 
     @Test
+    fun catchUpReloadsTheOpenComputersPageOnceAndKeepsItOnFailure() = runTest {
+        // Foreground / socket-reconnect catch-up of the Computers list and a computer page.
+        data class Case(val label: String, val destination: SharedSettingsDestination, val itemId: String?, val call: String)
+        val cases =
+            listOf(
+                Case("list", SharedSettingsDestination.Computers, null, "computers"),
+                Case("detail", SharedSettingsDestination.ComputerDetail, "m-1", "computerDetail:m-1"),
+            )
+        fun shownName(store: SharedSettingsStore, destination: SharedSettingsDestination): String =
+            when (destination) {
+                SharedSettingsDestination.Computers -> listNames(store).single()
+                else -> assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(store.state.value.computerDetail).data.computer.name
+            }
+        cases.forEach { case ->
+            val repository = detailRepository().apply { computersResult = DataResult.Content(computers(machine("m-1", "Studio"))) }
+            val store = store(repository, standalone = true)
+            store.accept(SharedSettingsIntent.LoadPageContent(case.destination, case.itemId))
+
+            // Renamed while the pushes were missed.
+            repository.computersResult = DataResult.Content(computers(machine("m-1", "Studio Mac")))
+            repository.computerDetailResult =
+                DataResult.Content(SettingsComputerDetailSnapshot(machine("m-1", "Studio Mac"), emptyList(), emptyList(), emptyList()))
+            store.dispatch(SharedSettingsIntent.CatchUpComputers)
+            runCurrent()
+            assertEquals("Studio Mac", shownName(store, case.destination), case.label)
+
+            val block = BlockingCall()
+            repository.computersBlock = block
+            repository.computerDetailBlock = block
+            repository.computersResult = DataResult.Error(ScreenError("server_unavailable", retryable = true))
+            repository.computerDetailResult = DataResult.Error(ScreenError("server_unavailable", retryable = true))
+            repository.calls.clear()
+            // Foreground and reconnect together: one reload.
+            store.dispatch(SharedSettingsIntent.CatchUpComputers)
+            runCurrent()
+            store.dispatch(SharedSettingsIntent.CatchUpComputers)
+            runCurrent()
+            assertEquals(listOf(case.call), repository.calls, "${case.label}: a catch-up in flight is joined")
+
+            block.release()
+            runCurrent()
+            assertEquals(false, store.state.value.isRefreshing(case.destination), case.label)
+            assertEquals("Studio Mac", shownName(store, case.destination), "${case.label}: the page stays on failure")
+        }
+    }
+
+    @Test
+    fun catchUpLeavesOtherSettingsPagesAlone() = runTest {
+        val repository = FakeSettingsRepository(computersResult = DataResult.Content(computers(machine("m-1", "Studio"))))
+        val store = store(repository, standalone = true)
+        repository.calls.clear()
+
+        store.dispatch(SharedSettingsIntent.CatchUpComputers)
+        runCurrent()
+
+        assertEquals(emptyList(), repository.calls)
+    }
+
+    @Test
     fun detailRefreshForcesTheComputersFetch() = runTest {
         val computersSource =
             FakeSettingsComputersSource(computerResult = DataResult.Content(machine("m-1", "Studio")))

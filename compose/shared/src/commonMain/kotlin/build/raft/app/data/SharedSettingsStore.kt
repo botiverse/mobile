@@ -434,6 +434,14 @@ sealed interface SharedSettingsIntent {
     data object Back : SharedSettingsIntent
     data object Refresh : SharedSettingsIntent
     data object RefreshComputers : SharedSettingsIntent
+
+    /**
+     * The Computers list or a computer page follows machine pushes and missed some: the app
+     * returned to the foreground or the realtime socket reconnected. Reloads the open Computers
+     * page past the cache, keeps what is shown (also on failure) and joins any load or refresh
+     * already in flight. Ignored on every other page.
+     */
+    data object CatchUpComputers : SharedSettingsIntent
     data class ScanComputerWorkspaces(val machineId: String) : SharedSettingsIntent
     data object Logout : SharedSettingsIntent
     data object RequestNotificationPermission : SharedSettingsIntent
@@ -2119,6 +2127,20 @@ class SharedSettingsStore(
     fun dispatch(intent: SharedSettingsIntent) {
         // Single-flight: a refresh (header button, pull-to-refresh) while the same page is already
         // refreshing joins that refresh instead of cancelling and restarting it.
+        if (intent == SharedSettingsIntent.CatchUpComputers) {
+            val destination = _state.value.route.destination
+            val skipReason =
+                when {
+                    destination != SharedSettingsDestination.Computers &&
+                        destination != SharedSettingsDestination.ComputerDetail -> "route"
+                    loadJob?.isActive == true -> "in_flight"
+                    else -> null
+                }
+            if (skipReason != null) {
+                diagnosticsLogger("settings_computers_catch_up_skip destination=${destination.name} reason=$skipReason")
+                return
+            }
+        }
         val refreshDestination = intent.refreshDestination()
         if (refreshDestination != null && _state.value.isRefreshing(refreshDestination)) {
             diagnosticsLogger("settings_refresh_skip destination=${refreshDestination.name} reason=in_flight")
@@ -2186,6 +2208,8 @@ class SharedSettingsStore(
                 whileRefreshing(_state.value.route.destination) { loadCurrentRoute(forceComputers = true) }
             SharedSettingsIntent.RefreshComputers ->
                 whileRefreshing(SharedSettingsDestination.Computers) { refreshComputers() }
+            SharedSettingsIntent.CatchUpComputers ->
+                whileRefreshing(_state.value.route.destination) { loadCurrentRoute(forceComputers = true) }
             is SharedSettingsIntent.ScanComputerWorkspaces -> {
                 runAction(COMPUTER_ACTION_SCAN_WORKSPACES, intent.machineId) {
                     dataSource.scanComputerWorkspaces(intent.machineId)
@@ -2912,6 +2936,7 @@ class SharedSettingsStore(
         when (this) {
             SharedSettingsIntent.Refresh -> _state.value.route.destination
             SharedSettingsIntent.RefreshComputers -> SharedSettingsDestination.Computers
+            SharedSettingsIntent.CatchUpComputers -> _state.value.route.destination
             else -> null
         }
 
@@ -4104,6 +4129,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             SharedSettingsIntent.Back,
             SharedSettingsIntent.Refresh,
             SharedSettingsIntent.RefreshComputers,
+            SharedSettingsIntent.CatchUpComputers,
             SharedSettingsIntent.RefreshStorage -> true
             SharedSettingsIntent.Logout,
             SharedSettingsIntent.RequestNotificationPermission,

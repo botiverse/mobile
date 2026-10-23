@@ -194,6 +194,14 @@ internal class SharedHomeStore(
      */
     private val realtimeUnreadDirtyByLoad = mutableMapOf<Long, Boolean>()
     private val realtimeUnreadDirtyLock = SynchronizedObject()
+
+    /**
+     * Rows a realtime message advanced, by row key: a re-fetch from the lagging Home read model
+     * may not include that message yet ([keepingNewerLocalMessagesFrom]). Held until a fetch
+     * reaches the seq or [HOME_REPLICA_LAG_GUARD] passes.
+     */
+    private val realtimeRowGuards = mutableMapOf<String, HomeRealtimeRowGuard>()
+    private val realtimeRowGuardLock = SynchronizedObject()
     private var nextHomeLoadToken = 0L
     /** Monotonic fence for non-cooperative loads that outlive an auth/session reset. */
     private val homeSessionGeneration = atomic(0L)
@@ -434,6 +442,7 @@ internal class SharedHomeStore(
     fun reset() {
         homeSessionGeneration.incrementAndGet()
         clearRealtimeUnreadWatches()
+        synchronized(realtimeRowGuardLock) { realtimeRowGuards.clear() }
         clear()
         dismissedLocalNotificationIds.clear()
         homeSurfaceVisible = true
@@ -1342,6 +1351,7 @@ internal class SharedHomeStore(
                 patch = messagePatch,
                 activeConversationId = activeConversationId
             )
+        recordRealtimeRowGuards(nextBaseSnapshot.server.id, nextBaseSnapshot.rowsWithNewerMessageThan(content.baseSnapshot))
         val nextContent =
             content.copy(
                 snapshot = nextSnapshot,
@@ -1474,6 +1484,26 @@ internal class SharedHomeStore(
                 }
             }
     }
+
+    private fun recordRealtimeRowGuards(serverId: ServerId, advanced: Map<String, Long>) {
+        if (advanced.isEmpty()) return
+        val now = kotlin.time.TimeSource.Monotonic.markNow()
+        synchronized(realtimeRowGuardLock) {
+            advanced.forEach { (key, seq) -> realtimeRowGuards[key] = HomeRealtimeRowGuard(serverId, seq, now) }
+        }
+    }
+
+    /**
+     * The guarded row keys for a fetch of [serverId] that answered [fetchedSeqs]; drops guards the
+     * fetch reached, guards past [HOME_REPLICA_LAG_GUARD] and guards of another server.
+     */
+    private fun settleRealtimeRowGuards(serverId: ServerId, fetchedSeqs: Map<String, Long>): Set<String> =
+        synchronized(realtimeRowGuardLock) {
+            if (realtimeRowGuards.isEmpty()) return@synchronized emptySet()
+            val guarded = realtimeRowGuards.filter { (key, guard) -> guard.guards(serverId, key, fetchedSeqs) }.keys.toSet()
+            realtimeRowGuards.keys.retainAll(guarded)
+            guarded
+        }
 
     private fun beginRealtimeUnreadWatch(): Long =
         synchronized(realtimeUnreadDirtyLock) {
@@ -2209,7 +2239,7 @@ internal class SharedHomeStore(
         // predate it, so keep every unread-bearing field at the live counts and let the reconcile load
         // scheduled when this load ends replace them.
         val realtimeUnreadDirty = isRealtimeUnreadDirty(realtimeUnreadToken)
-        val freshSnapshot =
+        val unreadGuardedSnapshot =
             if (rawSnapshot != null && !rawSnapshot.unreadEnrichmentAvailable && previousContent != null) {
                 rawSnapshot.frozenUnreadFrom(previousContent.baseSnapshot)
             } else if (rawSnapshot != null && realtimeUnreadDirty && previousContent != null) {
@@ -2217,6 +2247,17 @@ internal class SharedHomeStore(
                 rawSnapshot.frozenUnreadFrom(previousContent.baseSnapshot)
             } else {
                 rawSnapshot
+            }
+        // The Home read model lags the primary: a row older than a realtime message already applied
+        // keeps the newer local message (and its unread), per row by `lastMessageSeq`.
+        val freshSnapshot =
+            unreadGuardedSnapshot?.let { fetched ->
+                val guardedRowKeys = settleRealtimeRowGuards(fetched.server.id, fetched.rowMessageSeqs())
+                fetched.keepingNewerLocalMessagesFrom(previousContent?.baseSnapshot, guardedRowKeys).also { merged ->
+                    if (merged !== fetched) {
+                        diagnosticsLogger("home_rows_keep_local reason=fetch_older_than_realtime guarded=${guardedRowKeys.size}")
+                    }
+                }
             }
         // task #322: the sidebar-order fetch runs concurrently with the home request.
         // Wait a short cap for it before building the published content so the pinned
@@ -5422,3 +5463,20 @@ private fun Throwable.safeHomeStoreDiagnosticsType(): String =
  */
 internal fun SharedHomeStore?.homeStateForPage(): StateFlow<SharedHomeState> =
     this?.state ?: MutableStateFlow(SharedHomeState())
+
+/** How long a realtime-advanced Home row outranks an older fetched copy (replica lag p99 is > 20 s). */
+internal val HOME_REPLICA_LAG_GUARD: kotlin.time.Duration = kotlin.time.Duration.parse("60s")
+
+internal data class HomeRealtimeRowGuard(
+    val serverId: ServerId,
+    val seq: Long,
+    val at: kotlin.time.TimeSource.Monotonic.ValueTimeMark,
+) {
+    /** Still protects [key] against a fetch of [fetchServerId] that answered [fetchedSeqs]. */
+    fun guards(fetchServerId: ServerId, key: String, fetchedSeqs: Map<String, Long>): Boolean {
+        if (serverId != fetchServerId) return false
+        if (at.elapsedNow() >= HOME_REPLICA_LAG_GUARD) return false
+        val fetchedSeq = fetchedSeqs[key] ?: return true
+        return fetchedSeq < seq
+    }
+}

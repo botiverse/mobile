@@ -4803,6 +4803,25 @@ private fun ThreadMembersPageScreen() {
     LaunchedEffect(serverMembersStore, liveOwner, routeOwner, route.serverId, route.channelId) {
         if (liveOwner == routeOwner) refreshMembers()
     }
+    // Membership and presence follow pushes; on foreground / socket reconnect the roster re-reads
+    // what was missed: silently (Background), keeping the rows, one reload at a time.
+    val catchUpGate = remember(serverMembersStore, routeOwner, route.channelId) { RaftCatchUpSingleFlight() }
+    RaftLiveCatchUpEffect(serverId = route.serverId.value, visible = true) { trigger ->
+        if (liveOwner != routeOwner || !catchUpGate.tryStart()) return@RaftLiveCatchUpEffect
+        bridge.log("thread_members_catch_up trigger=${trigger.wireName} channelId=${route.channelId.value}")
+        memberScope.launch {
+            try {
+                serverMembersStore.loadChannelMembers(
+                    owner = routeOwner,
+                    channelId = route.channelId,
+                    priority = DataRequestPriority.Background,
+                    force = true
+                )
+            } finally {
+                catchUpGate.finish()
+            }
+        }
+    }
     val members = remember(channelMembersSlice.members, channelMembersSlice.canRemoveMembers, route.serverId) {
         channelMembersSlice.members
             .distinctBy { it.threadMemberKey }
@@ -15555,6 +15574,8 @@ private fun ThreadPageContentContent(
                     ThreadTasksTab(
                         tasksViewModel = tasksViewModel,
                         channelId = taskPanelChannelId,
+                        serverId = forwardServerId?.value,
+                        active = tab == selectedTab,
                         identityOptions = taskIdentityOptions,
                         openTaskEnabled = payload.showTaskOpenActions,
                         draftProjection = draftProjection,
@@ -31289,6 +31310,8 @@ private fun ThreadFilesTab(
 private fun ThreadTasksTab(
     tasksViewModel: SharedTasksViewModel?,
     channelId: ChannelId,
+    serverId: String?,
+    active: Boolean,
     identityOptions: List<MemberProfile>,
     openTaskEnabled: Boolean,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
@@ -31304,6 +31327,10 @@ private fun ThreadTasksTab(
         } else {
             pendingTasksState
         }
+    // The channel's tasks follow task pushes: catch up on foreground and on socket reconnect.
+    RaftLiveCatchUpEffect(serverId = serverId, visible = active && tasksViewModel != null) {
+        onIntent(SharedTasksRouteIntent.CatchUp)
+    }
     SharedTasksPanel(
         state = state,
         showHeader = false,
