@@ -20,7 +20,7 @@ import build.raft.app.network.RaftRequestTimeoutException
 import build.raft.app.network.createPlatformRaftHttpExecutor
 import build.raft.app.network.toSafeDiagnosticsToken
 import build.raft.app.network.redactPresignedUrlText
-import com.tencent.kmm.network.export.NetworkByteStream
+import build.raft.app.network.RaftByteStream
 import kotlin.time.TimeSource
 
 internal const val RAFT_UPLOAD_SCHEDULER_DISPATCH_MARGIN_MILLIS = 15_000L
@@ -676,7 +676,7 @@ internal class SharedRaftNetworkClient(
                 if (!expectedAuthority.isCurrentForPresignedPut()) {
                     return@run routeEnvironmentChangedResponse()
                 }
-                var openedFileStream: NetworkByteStream? = null
+                var openedFileStream: RaftByteStream? = null
                 val transportBody =
                     bodyFile?.copy(
                         openStream = {
@@ -707,7 +707,7 @@ internal class SharedRaftNetworkClient(
                     } catch (failure: Throwable) {
                         // The bottom executor owns normal stream consumption. If it opens the
                         // stream and then fails during request setup, reclaim that source here;
-                        // NetworkByteStream.cancel is idempotent with bounded stream cleanup.
+                        // RaftByteStream.cancel is idempotent with bounded stream cleanup.
                         openedFileStream?.cancel()
                         throw failure
                     }

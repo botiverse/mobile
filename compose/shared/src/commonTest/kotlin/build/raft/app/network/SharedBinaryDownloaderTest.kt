@@ -44,9 +44,8 @@ class SharedBinaryDownloaderTest {
 
     @Test
     fun conditionalRequestAddsOnlyExactTypedValidators() {
-        val request =
-            sharedBinaryConditionalRequest(
-                url = "https://images.example/avatar.webp",
+        val headers =
+            sharedBinaryConditionalHeaders(
                 validators =
                     SharedBinaryConditionalValidators(
                         eTag = "\"avatar-v1\"",
@@ -54,13 +53,12 @@ class SharedBinaryDownloaderTest {
                     )
             )
 
-        assertEquals("*/*", request.headers["Accept"])
-        assertEquals("\"avatar-v1\"", request.headers["If-None-Match"])
-        assertEquals("Wed, 05 Aug 2026 10:00:00 GMT", request.headers["If-Modified-Since"])
-        assertEquals(3, request.headers.size)
+        assertEquals("*/*", headers["Accept"])
+        assertEquals("\"avatar-v1\"", headers["If-None-Match"])
+        assertEquals("Wed, 05 Aug 2026 10:00:00 GMT", headers["If-Modified-Since"])
+        assertEquals(3, headers.size)
 
-        val full = sharedBinaryConditionalRequest("https://images.example/avatar.webp", null)
-        assertEquals(mapOf("Accept" to "*/*"), full.headers)
+        assertEquals(mapOf("Accept" to "*/*"), sharedBinaryConditionalHeaders(null))
     }
 
     @Test

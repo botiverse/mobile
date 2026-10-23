@@ -18,7 +18,6 @@ const val SERVER_FEATURE_FLAG_LAST_KNOWN_STORAGE_KEY: String = "serverFeatureFla
 val SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS: Set<String> =
     setOf(
         SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
-        MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY,
     )
 
 /** The auth binding a last-known value belongs to. Token rotation does not change it. */

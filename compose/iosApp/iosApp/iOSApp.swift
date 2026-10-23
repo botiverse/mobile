@@ -635,28 +635,6 @@ private enum RaftIosSharedLogBridge {
     }
 }
 
-private func raftCurlCaBundlePath() -> String {
-    var bundles = [Bundle.main] + Bundle.allBundles + Bundle.allFrameworks
-    let nested = Bundle.main.urls(forResourcesWithExtension: "bundle", subdirectory: nil) ?? []
-    bundles.append(contentsOf: nested.compactMap { Bundle(url: $0) })
-    for bundle in bundles {
-        if let url = bundle.url(
-            forResource: "cacert-2026-05-14",
-            withExtension: "pem",
-            subdirectory: "network"
-        ) {
-            return url.path
-        }
-        if let url = bundle.url(
-            forResource: "cacert-2026-05-14",
-            withExtension: "pem"
-        ) {
-            return url.path
-        }
-    }
-    return ""
-}
-
 /// Records Kotlin unhandled exceptions (`RaftIosHostHooks` installs the runtime hook) through the
 /// synchronous critical diagnostics path, so the record survives the termination that follows.
 /// Runs on the throwing thread.
@@ -692,15 +670,11 @@ struct iOSApp: App {
         // (same as RaftApplication on Android).
         _ = KeyValueStoreKt.raftClearLegacyFontPreference()
         RaftIosInstallThreadComposerTemporaryFileRetirement()
-        let curlCaPath = raftCurlCaBundlePath()
-        let curlBootstrap = RaftIosNetworkTransportBootstrapKt
-            .installIosRaftNetworkTransportAtStartup(caBundlePath: curlCaPath)
-        RaftIosDiagnosticsRecord("info", "SlockNetworkKmm", curlBootstrap)
         RaftIosPushHost.install()
         RaftIosSharedLogBridge.install()
         // Every page renders through Compose Multiplatform: install the :shared page registry
         // (RaftPageRegistry) and the host hooks its image loader reads (managed avatar bytes),
-        // after the network transport (NetworkKMM image downloads), before the first page.
+        // before the first page.
         // Kotlin unhandled exceptions are recorded into diagnostics before termination.
         RaftIosHostHooks.shared.install(
             managedImages: RaftIosAvatarCacheHost.shared,

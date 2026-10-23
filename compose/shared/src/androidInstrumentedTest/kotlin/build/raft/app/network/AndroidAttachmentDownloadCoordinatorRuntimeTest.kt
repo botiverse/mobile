@@ -4,10 +4,6 @@ import android.app.Instrumentation
 import android.os.Bundle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.tencent.kmm.network.export.NetworkBody
-import com.tencent.kmm.network.export.NetworkRequest
-import com.tencent.kmm.network.export.NetworkResponse
-import com.tencent.kmm.network.export.NetworkResponseBody
 import java.io.File
 import java.nio.file.Files
 import java.security.MessageDigest
@@ -450,12 +446,7 @@ private class RuntimeCall(
 
     fun complete() =
         callbacks.onComplete(
-            NetworkResponse(
-                request = NetworkRequest(url = request.url, body = NetworkBody.Empty),
-                statusCode = 200,
-                headers = mapOf("Content-Type" to listOf("application/octet-stream")),
-                body = NetworkResponseBody()
-            )
+            AttachmentDownloadCompletion(statusCode = 200, headers = mapOf("Content-Type" to listOf("application/octet-stream")))
         )
 }
 

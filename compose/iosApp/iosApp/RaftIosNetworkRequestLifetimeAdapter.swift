@@ -1,7 +1,7 @@
 import Foundation
 import UIKit
 
-/// Process-level visibility adapter for the shared NetworkKMM request-lifetime owner.
+/// Process-level visibility adapter for the shared request-lifetime owner.
 ///
 /// This intentionally observes only the two process-boundary notifications. Realtime's
 /// active/resign-active signals and SwiftUI scenePhase are page/presentation signals and must not

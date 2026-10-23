@@ -1,14 +1,7 @@
 package build.raft.app.network
 
 import build.raft.app.raftLogInfo
-import com.tencent.kmm.network.export.NetworkBody
-import com.tencent.kmm.network.export.NetworkRequest
-import com.tencent.kmm.network.export.NetworkRequestPolicy
-import com.tencent.kmm.network.export.NetworkResponse
-import com.tencent.kmm.network.export.NetworkStreamTimeoutPolicy
-import com.tencent.kmm.network.export.VBTransportMethod
-import com.tencent.kmm.network.service.NetworkCall
-import com.tencent.kmm.network.service.NetworkClient
+import kotlinx.coroutines.CancellationException
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -69,7 +62,7 @@ interface AttachmentDownloadObserver {
 /**
  * Single owner for attachment transfer lifecycle, attempt fencing and progress on every platform.
  *
- * NetworkKMM owns transport. [createAttachmentDownloadAtomicSink] owns only platform filesystem
+ * The app Ktor client owns transport. [createAttachmentDownloadAtomicSink] owns only platform filesystem
  * staging and atomic publication. Android/iOS must not start a second HTTP transport.
  */
 object AttachmentDownloadCoordinator {
@@ -162,10 +155,21 @@ internal interface AttachmentDownloadTransportCall {
     fun cancel()
 }
 
+/**
+ * How a transfer ended: a status and headers when the server answered, or a transport failure
+ * ([errorKind] is the lowercase `kind`: timeout, dns, connect, tls, unknown).
+ */
+internal data class AttachmentDownloadCompletion(
+    val statusCode: Int?,
+    val headers: Map<String, List<String>> = emptyMap(),
+    val errorKind: String? = null,
+    val errorMessage: String? = null,
+)
+
 internal class AttachmentDownloadTransportCallbacks(
     val onResponseStart: (statusCode: Int?, contentLength: Long?, headers: Map<String, List<String>>) -> Unit,
     val onChunk: (ByteArray) -> Unit,
-    val onComplete: (NetworkResponse) -> Unit
+    val onComplete: (AttachmentDownloadCompletion) -> Unit
 )
 
 internal fun interface AttachmentDownloadTransport {
@@ -173,7 +177,7 @@ internal fun interface AttachmentDownloadTransport {
 }
 
 internal class AttachmentDownloadCoordinatorEngine(
-    private val transport: AttachmentDownloadTransport = NetworkKmmAttachmentDownloadTransport,
+    private val transport: AttachmentDownloadTransport = KtorAttachmentDownloadTransport,
     private val sinkFactory: AttachmentDownloadSinkFactory =
         AttachmentDownloadSinkFactory(::createAttachmentDownloadAtomicSink),
     private val watchdogScope: CoroutineScope? = null,
@@ -448,48 +452,53 @@ internal class AttachmentDownloadCoordinatorEngine(
     }
 }
 
-private object NetworkKmmAttachmentDownloadTransport : AttachmentDownloadTransport {
-    private val client: NetworkClient by lazy {
-        ensureNetworkKmmInitialized { }
-        NetworkClient(
-            raftNetworkClientConfig(
-                diagnosticsLogger = { message ->
-                    raftLogInfo("SlockAttachmentDownload", message)
-                }
-            )
-        )
-    }
+/**
+ * Download-to-file on the app's Ktor client (artin 2026-10-23; NetworkKMM before). The body streams
+ * chunk by chunk into the coordinator's atomic sink; cancel() cancels the transfer.
+ */
+private object KtorAttachmentDownloadTransport : AttachmentDownloadTransport {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     override fun start(
         request: AttachmentDownloadRequest,
         callbacks: AttachmentDownloadTransportCallbacks
     ): AttachmentDownloadTransportCall {
-        val networkCall: NetworkCall =
-            client.downloadStream(
-                request =
-                    NetworkRequest(
-                        method = VBTransportMethod.GET,
-                        url = request.url,
-                        body = NetworkBody.Empty,
-                        policy =
-                            NetworkRequestPolicy(
-                                timeoutMillis = 0L,
-                                streamTimeouts =
-                                    NetworkStreamTimeoutPolicy(
-                                        connectTimeoutMillis = request.connectTimeoutMillis,
-                                        responseHeadersTimeoutMillis = request.responseHeadersTimeoutMillis,
-                                        interChunkIdleTimeoutMillis = request.interChunkIdleTimeoutMillis,
-                                        wholeTransferTimeoutMillis = request.wholeTransferTimeoutMillis
-                                    )
+        val job =
+            scope.launch {
+                val completion =
+                    try {
+                        val response =
+                            raftStreamingGet(
+                                url = request.url,
+                                requestHeaders = mapOf("Accept" to "*/*"),
+                                priority = RaftRequestPriority.Visible,
+                                connectTimeoutMillis = request.connectTimeoutMillis,
+                                // The coordinator's watchdog owns the response-headers and idle budgets;
+                                // the socket bound is the larger of the two so it never fires first.
+                                socketTimeoutMillis =
+                                    maxOf(request.responseHeadersTimeoutMillis, request.interChunkIdleTimeoutMillis),
+                                totalTimeoutMillis = request.wholeTransferTimeoutMillis,
+                                onResponseStart = { statusCode, contentLength, headers ->
+                                    callbacks.onResponseStart(statusCode, contentLength, headers)
+                                    statusCode in 200..299
+                                },
+                                onChunk = callbacks.onChunk,
                             )
-                    ).apply { setHeader("Accept", "*/*") },
-                onResponseStart = callbacks.onResponseStart,
-                onChunk = callbacks.onChunk,
-                onComplete = callbacks.onComplete
-            )
+                        AttachmentDownloadCompletion(statusCode = response.statusCode, headers = response.headers)
+                    } catch (error: Throwable) {
+                        val kind = classifyRaftKtorFailure(error)
+                        if (error is CancellationException && kind == RaftTransportFailureKind.CANCELLED) throw error
+                        AttachmentDownloadCompletion(
+                            statusCode = null,
+                            errorKind = kind.name.lowercase(),
+                            errorMessage = error.message ?: kind.errorToken,
+                        )
+                    }
+                callbacks.onComplete(completion)
+            }
         return object : AttachmentDownloadTransportCall {
             override fun cancel() {
-                networkCall.cancel()
+                job.cancel()
             }
         }
     }
@@ -737,13 +746,12 @@ private class AttachmentDownloadAttempt(
         progress?.let(::deliverProgress)
     }
 
-    private fun onComplete(response: NetworkResponse) {
+    private fun onComplete(response: AttachmentDownloadCompletion) {
         if (!isActiveAndCurrent()) return
         val statusCode = response.statusCode
-        val error = response.error
-        if (error != null || statusCode == null || statusCode !in 200..299) {
-            val kind = error?.kind?.name?.lowercase() ?: "http_${statusCode ?: 0}"
-            val message = error?.message ?: "Download failed: HTTP ${statusCode ?: 0}"
+        if (response.errorKind != null || statusCode == null || statusCode !in 200..299) {
+            val kind = response.errorKind ?: "http_${statusCode ?: 0}"
+            val message = response.errorMessage ?: "Download failed: HTTP ${statusCode ?: 0}"
             finishFailure(kind, message)
             return
         }

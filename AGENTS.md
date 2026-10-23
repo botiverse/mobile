@@ -610,7 +610,7 @@ or helper scripts as a workaround for branch protection.
   The immutable release closure, manifest gate and artifact fetcher were
   removed; `scripts/ci/test_kuikly_raft_consumer_contract.py` now fails if a
   Gradle build file or workflow consumes Kuikly UI again. KuiklyBase libraries that are not Kuikly UI
-  (NetworkKMM `com.tencent.kuiklybase:network`, `resource-core`) stay.
+  (`resource-core`) stay. NetworkKMM was removed with the Ktor 3 switch (2026-10-23).
 
 ## HarmonyOS
 
@@ -685,9 +685,11 @@ cd /Users/artin/AndroidStudioProjects/Slock/compose
 - Priority choice: `Foreground` is only for user-blocking opens/mutations;
   `Visible` is for on-screen refresh/pagination/retry; `Background` is for
   warmup, reconcile, polling, cached silent refresh, diagnostics, and preloads.
-- OkHttp lanes stay separated per priority: Foreground `12`, Visible `8`,
-  Background `4`. Do not collapse them into one client/dispatcher; background
-  waits behind active or queued Foreground/Visible work.
+- HTTP lanes stay separated per priority: on Android each priority has its own
+  OkHttp Dispatcher (limits = `RAFT_DEFAULT_MAX_*_REQUESTS` in
+  `RequestPriority.kt`), on iOS its own NSURLSession. Do not collapse them into
+  one client/dispatcher; background waits behind active or queued
+  Foreground/Visible work.
 
 ## Shared MVI + Repository/DataSource Layered Contract
 

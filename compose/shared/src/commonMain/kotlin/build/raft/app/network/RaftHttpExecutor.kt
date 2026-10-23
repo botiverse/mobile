@@ -1,7 +1,5 @@
 package build.raft.app.network
 
-import com.tencent.kmm.network.export.NetworkByteStream
-
 /**
  * Transport-neutral response for the bottom HTTP layer. Maps 1:1 onto
  * HomeNetworkResponse / AuthNetworkResponse in the data layer.
@@ -26,7 +24,7 @@ internal data class RaftHttpFileBody(
     val path: String,
     val contentType: String,
     val contentLength: Long,
-    val openStream: suspend () -> NetworkByteStream,
+    val openStream: suspend () -> RaftByteStream,
 )
 
 /**
@@ -42,8 +40,9 @@ internal data class RaftHttpFileBody(
  *   CancellationException; they never throw for HTTP-level errors.
  * - No transport-level retry: refresh/retry policy is owned by the callers.
  *
- * Every platform gets the NetworkKMM executor (the library's
- * pooled ktor engines on Android/iOS) — see task #12.
+ * Every platform gets [KtorRaftHttpExecutor] (OkHttp on Android, NSURLSession
+ * on iOS); the NetworkKMM curl executor only behind the Developer override
+ * (see [createPlatformRaftHttpExecutor]).
  */
 internal interface RaftHttpExecutor {
     suspend fun execute(

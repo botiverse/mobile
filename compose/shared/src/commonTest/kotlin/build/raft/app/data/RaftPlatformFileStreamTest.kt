@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import com.tencent.kmm.network.export.NetworkByteStreamSink
+import build.raft.app.network.RaftByteStreamSink
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -15,7 +15,7 @@ class RaftPlatformFileStreamTest {
         val stream = boundedPlatformFileNetworkStream(PlatformFileStreamChunkBytes.toLong() + 2L, source)
 
         stream.readChunks(
-            object : NetworkByteStreamSink {
+            object : RaftByteStreamSink {
                 override suspend fun write(bytes: ByteArray) {
                     received += bytes.size
                 }
@@ -85,7 +85,7 @@ class RaftPlatformFileStreamTest {
         assertEquals(1, source.closeCount)
     }
 
-    private object DiscardingSink : NetworkByteStreamSink {
+    private object DiscardingSink : RaftByteStreamSink {
         override suspend fun write(bytes: ByteArray) = Unit
     }
 

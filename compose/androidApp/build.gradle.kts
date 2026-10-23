@@ -734,9 +734,6 @@ val generateReleaseOssLicenses by tasks.registering(GenerateOssLicensesTask::cla
     sourceConfigurationLabel.set("Android release runtime + shared KMP metadata")
     requiredModules.set(
         listOf(
-            "com.tencent.kuiklybase:network",
-            "com.tencent.kuiklybase:network-android",
-            "com.tencent.kuiklybase:network-android-curl-runtime",
             "com.tencent.kuiklybase:resource-core",
             "com.tencent.kuiklybase:resource-core-android",
             handsAndroidSdkModule
@@ -817,7 +814,6 @@ dependencies {
     // lintVitalRelease. Declare a current Fragment directly.
     implementation(libs.androidx.fragment)
     implementation(project(":designsystem"))
-    runtimeOnly("com.tencent.kuiklybase:network-android-curl-runtime:0.1.0-raft.47")
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.media3.exoplayer)
@@ -838,7 +834,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material3.adaptive.navigation.suite)
     implementation(libs.androidx.recyclerview)
-    implementation(libs.okhttp)
+    implementation(libs.okhttp.transport)
     implementation(libs.gson)
     implementation(handsAndroidSdkCoordinate)
     add(handsNativeSymbols.name, "$handsAndroidSdkCoordinate:native-symbols@zip")

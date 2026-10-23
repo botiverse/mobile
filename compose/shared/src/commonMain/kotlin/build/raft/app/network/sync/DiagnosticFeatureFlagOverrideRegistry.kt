@@ -1,8 +1,6 @@
 package build.raft.app.network.sync
 
 import build.raft.app.data.MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
-import build.raft.app.data.MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY
-import build.raft.app.data.MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY
 import build.raft.app.data.SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY
 import build.raft.app.data.SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY
 import build.raft.app.data.MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
@@ -444,22 +442,6 @@ class DiagnosticFeatureFlagOverrideRegistry(
                 nowMillis = nowMillis,
                 expiryScheduler = expiryScheduler,
                 onChanged = { bumpRevision(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY) },
-            ),
-            // Task #153: device checks of the DoH fallback on an internal build without a server rule.
-            // Consumed through SharedServerFeatureFlags' diagnostic override seam like sync-core.
-            ServerExactDiagnosticFeatureFlagConsumer(
-                key = MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY,
-                nowMillis = nowMillis,
-                expiryScheduler = expiryScheduler,
-                onChanged = { bumpRevision(MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY) },
-            ),
-            // Task #154: device checks of curl Socket.IO realtime on an internal build without a server
-            // rule. Read at the next connect or reconnect through the same override seam.
-            ServerExactDiagnosticFeatureFlagConsumer(
-                key = MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY,
-                nowMillis = nowMillis,
-                expiryScheduler = expiryScheduler,
-                onChanged = { bumpRevision(MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY) },
             ),
         ).associateBy { it.key }
 

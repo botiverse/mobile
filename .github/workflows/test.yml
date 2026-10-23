@@ -505,7 +505,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Verify NetworkKMM curl runtime and pinned CA
+      - name: Verify connected-test APK min SDK
         shell: bash
         run: |
           set -euo pipefail
@@ -515,9 +515,6 @@ jobs:
           test -x "${AAPT}"
           "${AAPT}" dump badging "${APK}" | tee connectedtest-app-badging.txt
           grep -Fq "sdkVersion:'29'" connectedtest-app-badging.txt
-          compose/androidApp/src/test/scripts/check_networkkmm_curl_runtime_package.sh \
-            --self-test \
-            "${APK}"
 
       - name: Upload Android connected-test APKs
         uses: actions/upload-artifact@v6

@@ -111,8 +111,6 @@ import build.raft.app.data.MOBILE_ACTION_DESKTOP_MODE
 import build.raft.app.data.MOBILE_ACTION_MULTI_SHELL_HOST
 import build.raft.app.data.MOBILE_ACTION_SERVER_DRAWER
 import build.raft.app.data.MOBILE_ACTION_HOME_SERVER_AVATAR
-import build.raft.app.data.MOBILE_ACTION_REALTIME_CURL_SOCKETIO
-import build.raft.app.data.MOBILE_ACTION_HTTP3
 import build.raft.app.data.MOBILE_ACTION_THREAD_REVERSE_LAYOUT
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
 import build.raft.app.data.RaftBackgroundConnectionControls
@@ -8985,12 +8983,6 @@ private fun SettingsNativeDetailPageContent(
                         onSettingsIntent(SharedSettingsIntent.SetHomeServerAvatarEnabled(enabled))
                         onHomeServerAvatarSelected(enabled)
                     },
-                    onRealtimeCurlSocketIoChange = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetRealtimeCurlSocketIoEnabled(enabled))
-                    },
-                    onHttp3Change = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetHttp3Enabled(enabled))
-                    },
                     onThreadReverseLayoutChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetThreadReverseLayoutEnabled(enabled))
                     },
@@ -10358,8 +10350,6 @@ private fun SettingsMobileContent(
     onDesktopModeOnLargeScreenChange: (Boolean) -> Unit,
     onServerDrawerChange: (Boolean) -> Unit,
     onHomeServerAvatarChange: (Boolean) -> Unit,
-    onRealtimeCurlSocketIoChange: (Boolean) -> Unit = {},
-    onHttp3Change: (Boolean) -> Unit = {},
     onThreadReverseLayoutChange: (Boolean) -> Unit = {},
     diagnosticsLogger: (String) -> Unit = {},
 ) {
@@ -10478,24 +10468,6 @@ private fun SettingsMobileContent(
                     actionState = actionState,
                     onHomeServerAvatarChange = onHomeServerAvatarChange
                 )
-            }
-            if (snapshot.realtimeCurlSocketIo.available) {
-                item {
-                    SettingsRealtimeCurlSocketIoCard(
-                        snapshot = snapshot,
-                        actionState = actionState,
-                        onRealtimeCurlSocketIoChange = onRealtimeCurlSocketIoChange
-                    )
-                }
-            }
-            if (snapshot.http3.available) {
-                item {
-                    SettingsHttp3Card(
-                        snapshot = snapshot,
-                        actionState = actionState,
-                        onHttp3Change = onHttp3Change
-                    )
-                }
             }
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
@@ -10712,51 +10684,6 @@ private fun SettingsHomeServerAvatarCard(
 
 /** Task #154: realtime over NetworkKMM's curl Socket.IO client; shows the effective value. */
 @Composable
-private fun SettingsRealtimeCurlSocketIoCard(
-    snapshot: SettingsMobileSnapshot,
-    actionState: SharedSettingsActionState?,
-    onRealtimeCurlSocketIoChange: (Boolean) -> Unit
-) {
-    val busy = actionState?.action == MOBILE_ACTION_REALTIME_CURL_SOCKETIO && actionState.inProgress
-    val preference = snapshot.realtimeCurlSocketIo
-    SettingsFormSectionCard(
-        iconName = RaftLucideIconName.Activity,
-        title = stringResource(MR.strings.settings_mobile_realtime_curl_socketio)
-    ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
-                        onRealtimeCurlSocketIoChange(!preference.enabled)
-                    }
-                    .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    preference.localizedToggleStatus(),
-                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                    color = RaftColor.TextMutedGray
-                )
-                Text(
-                    stringResource(MR.strings.settings_mobile_realtime_curl_socketio_detail),
-                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                    color = RaftColor.TextMutedGray,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
-        }
-        if (actionState?.action == MOBILE_ACTION_REALTIME_CURL_SOCKETIO && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState)
-        }
-    }
-}
-
-@Composable
 private fun SettingsThreadReverseLayoutCard(
     snapshot: SettingsMobileSnapshot,
     actionState: SharedSettingsActionState?,
@@ -10796,51 +10723,6 @@ private fun SettingsThreadReverseLayoutCard(
             RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_THREAD_REVERSE_LAYOUT && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState)
-        }
-    }
-}
-
-@Composable
-private fun SettingsHttp3Card(
-    snapshot: SettingsMobileSnapshot,
-    actionState: SharedSettingsActionState?,
-    onHttp3Change: (Boolean) -> Unit
-) {
-    val busy = actionState?.action == MOBILE_ACTION_HTTP3 && actionState.inProgress
-    val preference = snapshot.http3
-    SettingsFormSectionCard(
-        iconName = RaftLucideIconName.Globe,
-        title = stringResource(MR.strings.settings_mobile_http3)
-    ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
-                        onHttp3Change(!preference.enabled)
-                    }
-                    .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    preference.localizedToggleStatus(),
-                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                    color = RaftColor.TextMutedGray
-                )
-                Text(
-                    stringResource(MR.strings.settings_mobile_http3_detail),
-                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                    color = RaftColor.TextMutedGray,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
-        }
-        if (actionState?.action == MOBILE_ACTION_HTTP3 && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
         }
     }

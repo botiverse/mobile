@@ -157,7 +157,6 @@ import build.raft.app.network.AttachmentDownloadProgress
 import build.raft.app.network.AttachmentDownloadResult
 import build.raft.app.network.AttachmentDownloadCoordinator
 import build.raft.app.network.binaryDownloadUrlDiagnostics
-import build.raft.app.network.updateRaftNetworkKmmRecoveryEnvironment
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideMode
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideMutationResult
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideSnapshot
@@ -5983,20 +5982,6 @@ internal class RaftBridgeModule(
                         ?: return mapOf("status" to "error", "code" to "settings_developer_environment_unknown")
         val changed = before != after
         if (changed) {
-            runCatching {
-                updateRaftNetworkKmmRecoveryEnvironment(
-                    environmentKey = after.key,
-                    apiBaseUrl = after.apiBaseUrl
-                )
-            }.onSuccess { diagnostics ->
-                diagnostics?.let { RaftAppLog.record("SlockNetworkKmm", it) }
-            }.onFailure { error ->
-                RaftAppLog.record(
-                    "SlockNetworkKmm",
-                    "networkkmm_environment_update_failed " +
-                        "reason=${error::class.simpleName ?: "unknown"}"
-                )
-            }
             runBlocking {
                 KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)).clearSession(
                     reason = "api_environment_changed",

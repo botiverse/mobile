@@ -61,28 +61,9 @@ const val THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY: String =
  */
 const val MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY: String = "mobile_thread_reverse_layout_v0"
 
-/**
- * Positive default-on flag whose backend `kill_switch` reason is persisted by Android as the emergency
- * transport-off latch. Operators must provision it with `enabled=true` and `defaultEnabled=true`.
- */
-const val ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY: String = "android_reused_h2_recovery_v0"
-
-/**
- * Task #153 DNS-over-HTTPS fallback for the curl transport (see RaftDohFallbackPolicy). Default ON
- * (see [SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS]); the server turns it off with an explicit
- * decision such as a kill switch. Kept in the last-known store so a cold start during a DNS outage,
- * when evaluate itself cannot reach the server, still honours the last explicit decision; internal
- * Android builds can also force it through Local Feature Overrides.
- */
-const val MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY: String = "mobile_doh_fallback_v0"
-
-/**
- * Task #154: realtime (Socket.IO) over NetworkKMM's curl client instead of the platform Socket.IO
- * library. Default OFF (an ordinary flag: no decision reads off); read per server at each connect
- * and reconnect (see RaftCurlSocketIoPolicy), so turning it on or off takes effect on the next
- * connection. Internal Android builds can force it through Local Feature Overrides.
- */
-const val MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY: String = "mobile_curl_socketio_v0"
+// Retired with the Ktor 3 switch (artin 2026-10-23), no longer read by the app; server flag rows can be
+// cleaned up: android_reused_h2_recovery_v0 (NetworkKMM reused-HTTP/2 watchdog), mobile_doh_fallback_v0
+// (curl DNS-over-HTTPS fallback), mobile_curl_socketio_v0 (realtime over curl Socket.IO).
 
 /**
  * Keys that are ON unless the server explicitly decides otherwise (artin 2026-10-10: DoH defaults on,
@@ -98,7 +79,6 @@ const val MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY: String = "mobile_curl_socketio_
 // an explicit server off still returns the v1 form, and a v2 load failure still falls back to v1.
 val SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS: Set<String> =
     setOf(
-        MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY,
         SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
         MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY,
         RUNTIME_FORM_V2_FEATURE_FLAG_KEY,
@@ -155,9 +135,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     PRODUCT_FEEDBACK_MULTI_APP_FEATURE_FLAG_KEY,
     THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY,
     MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY,
-    ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY,
-    MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY,
-    MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY,
     RUNTIME_FORM_V2_FEATURE_FLAG_KEY,
     ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY,
     THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY,

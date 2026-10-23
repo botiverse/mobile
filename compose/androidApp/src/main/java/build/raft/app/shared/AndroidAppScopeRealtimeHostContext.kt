@@ -5,9 +5,7 @@ import build.raft.app.core.data.auth.AndroidAuthApiFactory
 import build.raft.app.core.data.auth.AndroidAppScopeMMKV
 import build.raft.app.core.data.auth.androidMMKVAuthKeyValueStore
 import build.raft.app.core.data.diagnostics.RaftAppLog
-import build.raft.app.core.data.realtime.CurlSocketIoSocketTransport
 import build.raft.app.core.data.realtime.RealtimeSocketGenerationFence
-import build.raft.app.core.data.realtime.SelectableRealtimeSocketTransport
 import build.raft.app.core.data.realtime.SessionRealtimeRepository
 import build.raft.app.core.data.realtime.SocketIoRealtimeClient
 import build.raft.app.core.data.realtime.SocketIoSocketTransport
@@ -33,9 +31,6 @@ import build.raft.app.data.realtime.RaftRealtimeAppScopePolicy
 import build.raft.app.data.realtime.RaftRealtimeHostContext
 import build.raft.app.data.realtime.RaftRealtimeNotifyContract
 import build.raft.app.model.ChannelId
-import build.raft.app.network.REALTIME_CURL_SOCKETIO_PREFERENCE_KEY
-import build.raft.app.network.RaftAndroidCurlSocketIo
-import build.raft.app.network.RaftCurlSocketIoPolicy
 import build.raft.app.push.RaftPlayServicesAvailability
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.Message
@@ -303,19 +298,9 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                 )
             val apiBaseUrl = AndroidAuthApiFactory.currentBaseUrl(appContext)
             val socketUrl = AndroidAuthApiFactory.currentSocketBaseUrl(appContext)
-            // Task #154: the Settings switch / `mobile_curl_socketio_v0` pick the Socket.IO stack per connect.
-            RaftCurlSocketIoPolicy.bindUserChoice { readCurlSocketIoUserChoice(appContext) }
-            val socketFence = RealtimeSocketGenerationFence()
-            val transport =
-                SelectableRealtimeSocketTransport(
-                    legacy = SocketIoSocketTransport(socketUrl, socketFence),
-                    curl = CurlSocketIoSocketTransport(socketUrl = socketUrl, generationFence = socketFence),
-                    fence = socketFence,
-                    useCurl = { connection -> useCurlSocketIo(connection.serverId.value) },
-                    // One line per connect (`transport_select stack=…`): recorded in release builds too,
-                    // where debug/info lines are dropped, so device checks can see which stack connected.
-                    logger = { message -> RaftAppLog.w(LOG_TAG, message) }
-                )
+            // Realtime runs on socket.io-client-java over OkHttp (curl Socket.IO was removed with the
+            // Ktor 3 switch, artin 2026-10-23).
+            val transport = SocketIoSocketTransport(socketUrl, RealtimeSocketGenerationFence())
             val client =
                 SocketIoRealtimeClient(
                     transport = transport,
@@ -479,29 +464,6 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                 isAppInForeground = isAppInForeground,
                 remotePushActive = remotePushActive
             )
-
-        private fun useCurlSocketIo(serverId: String): Boolean {
-            if (!RaftCurlSocketIoPolicy.isEnabledFor(serverId)) return false
-            val unavailable = RaftAndroidCurlSocketIo.unavailableReason() ?: return true
-            RaftAppLog.w(LOG_TAG, "curl_socket_io_selected_but_unavailable reason=$unavailable serverId=$serverId")
-            return false
-        }
-
-        /** The Settings switch as stored by the Kuikly local preference store; null = follow the server. */
-        private fun readCurlSocketIoUserChoice(context: Context): Boolean? =
-            runCatching {
-                AndroidAppScopeMMKV.ensureInitialized(context.applicationContext)
-                val store = MMKV.mmkvWithID(RaftLocalPreferenceStore.KuiklyNamespace)
-                RaftCurlSocketIoPolicy.parseUserChoice(
-                    store.decodeString(
-                        AndroidRealtimeKeepAliveController.localPreferenceKey(REALTIME_CURL_SOCKETIO_PREFERENCE_KEY),
-                        null
-                    ) ?: store.decodeString(REALTIME_CURL_SOCKETIO_PREFERENCE_KEY, null)
-                )
-            }.getOrElse { error ->
-                RaftAppLog.w(LOG_TAG, "curl_socket_io_preference_failed message=${error.message.orEmpty()}")
-                null
-            }
 
         private fun isUnreadNotificationPreferenceEnabled(context: Context): Boolean =
             runCatching {

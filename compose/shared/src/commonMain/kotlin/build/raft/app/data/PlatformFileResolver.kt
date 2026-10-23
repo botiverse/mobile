@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import com.tencent.kmm.network.export.NetworkByteStream
+import build.raft.app.network.RaftByteStream
 import kotlinx.atomicfu.atomic
 
 interface RaftPlatformFileResolver {
@@ -79,14 +79,14 @@ interface RaftPlatformFileChunkSource {
 fun boundedPlatformFileNetworkStream(
     expectedSizeBytes: Long,
     source: RaftPlatformFileChunkSource
-): NetworkByteStream {
+): RaftByteStream {
     val closed = atomic(false)
     fun closeOnce() {
         if (closed.compareAndSet(expect = false, update = true)) {
             runCatching { source.close() }
         }
     }
-    return NetworkByteStream(
+    return RaftByteStream(
         contentLength = expectedSizeBytes,
         readAllBlock = {
             closeOnce()

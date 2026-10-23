@@ -1,11 +1,5 @@
 package build.raft.app.network
 
-import com.tencent.kmm.network.export.NetworkBody
-import com.tencent.kmm.network.export.NetworkError
-import com.tencent.kmm.network.export.NetworkErrorKind
-import com.tencent.kmm.network.export.NetworkRequest
-import com.tencent.kmm.network.export.NetworkResponse
-import com.tencent.kmm.network.export.NetworkResponseBody
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -209,13 +203,7 @@ class AttachmentDownloadCoordinatorTest {
         call.start(200, 100L)
         call.chunk(byteArrayOf(1, 2, 3))
         call.complete(
-            NetworkResponse(
-                request = NetworkRequest(url = "https://example.test/file.bin"),
-                statusCode = null,
-                headers = emptyMap(),
-                body = NetworkResponseBody(),
-                error = NetworkError(NetworkErrorKind.TIMEOUT, "inter-chunk idle timeout")
-            )
+            AttachmentDownloadCompletion(statusCode = null, headers = emptyMap(), errorKind = "timeout", errorMessage = "inter-chunk idle timeout")
         )
 
         assertEquals(1, observer.results.size)
@@ -752,13 +740,8 @@ class AttachmentDownloadCoordinatorTest {
             targetPath = "/cache/file.bin"
         )
 
-    private fun successResponse(): NetworkResponse =
-        NetworkResponse(
-            request = NetworkRequest(url = "https://example.test/file.bin", body = NetworkBody.Empty),
-            statusCode = 200,
-            headers = mapOf("Content-Type" to listOf("application/octet-stream")),
-            body = NetworkResponseBody()
-        )
+    private fun successResponse(): AttachmentDownloadCompletion =
+        AttachmentDownloadCompletion(statusCode = 200, headers = mapOf("Content-Type" to listOf("application/octet-stream")))
 }
 
 private class FakeTransport : AttachmentDownloadTransport {
@@ -791,7 +774,7 @@ private class FakeTransportCall(
         callbacks.onChunk(bytes)
     }
 
-    fun complete(response: NetworkResponse) {
+    fun complete(response: AttachmentDownloadCompletion) {
         callbacks.onComplete(response)
     }
 }

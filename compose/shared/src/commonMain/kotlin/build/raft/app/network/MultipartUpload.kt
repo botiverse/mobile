@@ -1,9 +1,7 @@
 package build.raft.app.network
 
-import com.tencent.kmm.network.export.NetworkByteStream
-
 fun interface MultipartFileStreamOpener {
-    suspend fun open(): NetworkByteStream
+    suspend fun open(): RaftByteStream
 }
 
 /**

@@ -131,13 +131,6 @@ jobs:
           test -n "${APK}"
           echo "apk=${APK}" >> "$GITHUB_OUTPUT"
 
-      - name: Verify NetworkKMM curl runtime and pinned CA
-        shell: bash
-        run: |
-          compose/androidApp/src/test/scripts/check_networkkmm_curl_runtime_package.sh \
-            --self-test \
-            "${{ steps.locate.outputs.apk }}"
-
       - name: Sign alpha APK with rotated release identity
         env:
           LEGACY_KEYSTORE_FILE_B64: ${{ secrets.SLOCK_KEYSTORE_FILE_BASE64 }}

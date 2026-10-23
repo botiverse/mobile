@@ -51,7 +51,7 @@ class AgentsApiTest {
     }
 
     // task #186: the production transport delivers non-2xx bodies as
-    // `bodyText = null, errorBodyText = <envelope>` (NetworkKmmRaftHttpExecutor),
+    // `bodyText = null, errorBodyText = <envelope>` (KtorRaftHttpExecutor),
     // which is the shape the on-device 409 actually arrives in. The recovery
     // code must map it — reading only bodyText left recovery dead on device.
     @Test

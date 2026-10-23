@@ -1,7 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.RaftCoreInternalApi
-import com.tencent.kmm.network.export.NetworkUserAgent
+import build.raft.app.network.RaftAppIdentityRegistry
 
 /**
  * Client facts sent with `feature-flags/evaluate` so server rules can target an OS and a minimum build
@@ -27,7 +27,7 @@ expect fun featureFlagClientOs(): String
 
 @RaftCoreInternalApi
 fun currentFeatureFlagClientContext(): FeatureFlagClientContext {
-    val identity = NetworkUserAgent.appIdentity
+    val identity = RaftAppIdentityRegistry.current()
     return FeatureFlagClientContext(
         os = featureFlagClientOs(),
         appVersion = identity?.version?.trim()?.takeIf { it.isNotEmpty() },

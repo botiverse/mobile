@@ -1862,12 +1862,8 @@
     <string name="settings_mobile_conversation_forward_gesture_accessibility">Beta。控制对话前进手势。从对话返回首页后，从屏幕右边缘向左滑动，可重新打开最近的频道或私聊。</string>
     <string name="settings_mobile_home_server_avatar">首页顶部显示工作空间头像</string>
     <string name="settings_mobile_home_server_avatar_detail">在首页顶部的工作空间名称旁显示当前工作空间头像。关闭后继续使用原有的紧凑标题徽标。</string>
-    <string name="settings_mobile_realtime_curl_socketio">实时连接使用新网络栈（curl）</string>
-    <string name="settings_mobile_realtime_curl_socketio_detail">下次连接或重连时生效。手动更改前跟随服务器默认设置。</string>
     <string name="settings_mobile_thread_reverse_layout">从底部显示聊天</string>
     <string name="settings_mobile_thread_reverse_layout_detail">进入聊天时直接停在最新消息，从底部往上排列，不再先滚动。下次打开聊天时生效。手动更改前跟随服务器默认值。</string>
-    <string name="settings_mobile_http3">启用 HTTP/3</string>
-    <string name="settings_mobile_http3_detail">新请求优先尝试 HTTP/3，网络不支持时自动回落 HTTP/2。手动更改前跟随服务器默认值。</string>
     <string name="settings_badge_beta">Beta</string>
     <string name="settings_mobile_compact_detail">同一发送者连续发送消息时隐藏重复头像。按住消息行时会显示消息时间。</string>
     <string name="settings_mobile_status_enabled">已开启</string>

@@ -145,8 +145,6 @@ class SharedSettingsStoreContract(
                 is SharedSettingsIntent.SetServerDrawerEnabled -> MviActionKey(MOBILE_ACTION_SERVER_DRAWER)
                 is SharedSettingsIntent.SetNewDesignSettingsEnabled -> MviActionKey(MOBILE_ACTION_NEW_DESIGN_SETTINGS)
                 is SharedSettingsIntent.SetHomeServerAvatarEnabled -> MviActionKey(MOBILE_ACTION_HOME_SERVER_AVATAR)
-                is SharedSettingsIntent.SetRealtimeCurlSocketIoEnabled -> MviActionKey(MOBILE_ACTION_REALTIME_CURL_SOCKETIO)
-                is SharedSettingsIntent.SetHttp3Enabled -> MviActionKey(MOBILE_ACTION_HTTP3)
                 is SharedSettingsIntent.SetThreadReverseLayoutEnabled -> MviActionKey(MOBILE_ACTION_THREAD_REVERSE_LAYOUT)
                 is SharedSettingsIntent.UpdateAppearance -> MviActionKey(APPEARANCE_ACTION_MESSAGE_FONT_SIZE)
                 is SharedSettingsIntent.SetApiEnvironment -> MviActionKey("${DEVELOPER_ACTION_API_ENVIRONMENT}:$environmentKey")

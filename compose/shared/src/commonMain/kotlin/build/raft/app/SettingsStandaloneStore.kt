@@ -8,9 +8,6 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.KeyValueLinkOpenPreferenceStore
 import build.raft.app.data.KeyValueLocalePreferenceStore
-import build.raft.app.data.KeyValueRealtimeTransportPreferenceStore
-import build.raft.app.network.currentRaftNetworkTransportController
-import build.raft.app.data.KeyValueHttp3PreferenceStore
 import build.raft.app.data.PersistentChatLayoutPreferenceRepository
 import build.raft.app.data.PersistentLinkOpenPreferenceRepository
 import build.raft.app.data.PersistentLocaleRepository
@@ -167,9 +164,6 @@ internal fun rememberStandaloneSettingsEnvironment(
                 apiEnvironmentStore = sharedStores.apiEnvironmentStore,
                 platformCapabilities = settingsCapabilities,
                 diagnosticsLogger = { message -> bridge.log("settings_standalone $message") },
-                realtimeTransportPreferenceStore = KeyValueRealtimeTransportPreferenceStore(sharedPreferenceStore),
-                http3PreferenceStore = KeyValueHttp3PreferenceStore(sharedPreferenceStore),
-                onHttp3UserChoiceChanged = { currentRaftNetworkTransportController()?.onHttp3UserChoiceChanged() },
                 threadReverseLayoutPreferenceStore = KeyValueThreadReverseLayoutPreferenceStore(sharedPreferenceStore),
                 pushPreviewModePreferenceStore = KeyValuePushPreviewModePreferenceStore(sharedPreferenceStore),
                 threadReverseLayoutDefault = {

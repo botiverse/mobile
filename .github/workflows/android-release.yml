@@ -468,12 +468,6 @@ jobs:
           fi
           echo "apk_path=$APK" >> "$GITHUB_OUTPUT"
 
-      - name: Verify NetworkKMM curl runtime and pinned CA
-        shell: bash
-        run: |
-          compose/androidApp/src/test/scripts/check_networkkmm_curl_runtime_package.sh \
-            "${{ steps.locate.outputs.apk_path }}"
-
       - name: Sign + align APK
         id: sign
         # Lane-canonical approach: zipalign + apksigner (the release helper

@@ -9,7 +9,7 @@ import build.raft.app.network.RaftHttpFileBody
 import build.raft.app.network.RaftRequestPriority
 import build.raft.app.network.RaftRequestScheduler
 import build.raft.app.network.RaftRequestTimeoutException
-import com.tencent.kmm.network.export.NetworkByteStreamSink
+import build.raft.app.network.RaftByteStreamSink
 import kotlinx.coroutines.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -319,7 +319,7 @@ class DirectAttachmentUploadNetworkContractTest {
             RecordingExecutor(
                 consumeFile = { body ->
                     body.openStream().readChunks(
-                        object : NetworkByteStreamSink {
+                        object : RaftByteStreamSink {
                             override suspend fun write(bytes: ByteArray) {
                                 error("transport sink failed")
                             }
@@ -681,7 +681,7 @@ class DirectAttachmentUploadNetworkContractTest {
         }
     }
 
-    private object DiscardingSink : NetworkByteStreamSink {
+    private object DiscardingSink : RaftByteStreamSink {
         override suspend fun write(bytes: ByteArray) = Unit
     }
 

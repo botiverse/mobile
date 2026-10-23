@@ -26,6 +26,12 @@ fragment = "1.8.9"
 composeBom = "2026.09.00"
 recyclerview = "1.3.2"
 okhttp = "4.12.0"
+# OkHttp under the Ktor HTTP transport (ktor-client-okhttp 3.6.0 is built against 5.5.0); it also wins
+# resolution over 4.12.0 for socket.io-client and the Hands preupload.
+okhttpTransport = "5.5.0"
+# Ktor client for app HTTP (OkHttp on Android, Darwin on iOS). 3.6.0 is built against kotlinx-coroutines
+# 1.11.0, the app's version: Ktor 2.3.7 called coroutines internals 1.11 removed (Hands ae47bba1).
+ktor = "3.6.0"
 gson = "2.11.0"
 socketIoClient = "2.1.2"
 sqldelight = "2.1.0"
@@ -70,6 +76,12 @@ androidx-compose-material3 = { group = "androidx.compose.material3", name = "mat
 androidx-compose-material3-adaptive-navigation-suite = { group = "androidx.compose.material3", name = "material3-adaptive-navigation-suite" }
 androidx-recyclerview = { group = "androidx.recyclerview", name = "recyclerview", version.ref = "recyclerview" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+okhttp-transport = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttpTransport" }
+okhttp-mockwebserver3 = { group = "com.squareup.okhttp3", name = "mockwebserver3", version.ref = "okhttpTransport" }
+ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
+ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp", version.ref = "ktor" }
+ktor-client-darwin = { group = "io.ktor", name = "ktor-client-darwin", version.ref = "ktor" }
+ktor-client-mock = { group = "io.ktor", name = "ktor-client-mock", version.ref = "ktor" }
 gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 socket-io-client = { group = "io.socket", name = "socket.io-client", version.ref = "socketIoClient" }
 sqldelight-android-driver = { group = "app.cash.sqldelight", name = "android-driver", version.ref = "sqldelight" }

@@ -7,9 +7,8 @@ import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.createRaftNetworkClient
 
 /**
- * Widget-process entry to the shared network client. Since task #12 this is
- * the same seam-backed NetworkKMM client the app shell uses — the parallel
- * legacy Ktor stack is gone.
+ * Widget-process entry to the shared network client: the same seam-backed
+ * Ktor client the app shell uses.
  */
 object RealRaftNetworkClientFactory {
     /**
