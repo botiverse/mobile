@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -18,6 +17,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.JOINT_CHANNEL_MAX_SERVERS
@@ -36,7 +36,6 @@ import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftCardVariant
-import build.raft.designsystem.components.RaftCheckboxRow
 import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftField
@@ -62,6 +61,7 @@ internal fun CreateJointChannelDialogHost(
     members: List<MemberProfile>,
     membersLoading: Boolean,
     logger: (String) -> Unit,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     onDismiss: () -> Unit,
     onOpenChannel: (JointChannelAccepted) -> Unit,
     onOpenBilling: () -> Unit,
@@ -87,6 +87,7 @@ internal fun CreateJointChannelDialogHost(
         currentServerSlug = currentServerSlug,
         selectableMembers = members.filter { it.id.value != currentMemberId && (it.kind == MemberKind.Agent || it.kind == MemberKind.Human) },
         membersLoading = membersLoading,
+        agentStatusResolver = agentStatusResolver,
         onIntent = store::dispatch,
         onDismiss = { if (!state.submitting) onDismiss() },
         onOpenBilling = onOpenBilling,
@@ -103,6 +104,9 @@ internal fun CreateJointChannelDialog(
     onIntent: (CreateJointChannelIntent) -> Unit,
     onDismiss: () -> Unit,
     onOpenBilling: () -> Unit,
+    agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    // Visual fixtures and screenshots: status dots from the members' own status fields.
+    fixtureStatusFallbackEnabled: Boolean = false,
 ) {
     val title = stringResource(MR.strings.joint_create_title)
     val errorText = state.error?.let { createJointChannelErrorMessage(it, currentServerSlug) }
@@ -197,7 +201,7 @@ internal fun CreateJointChannelDialog(
                 )
             }
             CreateJointInviteDrafts(state, onIntent)
-            CreateJointMembers(state, selectableMembers, membersLoading, onIntent)
+            CreateJointMembers(state, selectableMembers, membersLoading, agentStatusResolver, fixtureStatusFallbackEnabled, onIntent)
         }
     }
 }
@@ -273,71 +277,34 @@ private fun CreateJointMembers(
     state: CreateJointChannelState,
     members: List<MemberProfile>,
     membersLoading: Boolean,
+    agentStatusResolver: RaftAgentStatusResolver,
+    fixtureStatusFallbackEnabled: Boolean,
     onIntent: (CreateJointChannelIntent) -> Unit,
 ) {
-    var query by remember { mutableStateOf("") }
+    var query by remember { mutableStateOf(TextFieldValue()) }
+    val selectedKeys = remember(state.selectedAgentIds, state.selectedUserIds) { state.memberPickerKeys() }
     RaftField(label = stringResource(MR.strings.joint_create_current_members), optional = true, enabled = !state.submitting) {
-        when {
-            membersLoading && members.isEmpty() ->
-                RaftText(stringResource(MR.strings.common_loading), style = RaftTheme.typography.callout, color = RaftTheme.colors.foregroundHint)
-            members.isEmpty() ->
-                RaftText(stringResource(MR.strings.joint_create_no_members), style = RaftTheme.typography.callout, color = RaftTheme.colors.foregroundHint)
-            else -> {
-                val filtered = createJointMemberMatches(members, query)
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RaftTextField(
-                        value = query,
-                        onValueChange = { query = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = stringResource(MR.strings.joint_create_members_search),
-                    )
-                    listOf(
-                        MemberKind.Agent to stringResource(MR.strings.joint_create_agents),
-                        MemberKind.Human to stringResource(MR.strings.joint_create_humans),
-                    ).forEach { (kind, label) ->
-                        val group = filtered.filter { it.kind == kind }
-                        if (group.isNotEmpty()) {
-                            RaftSectionEyebrow(label, Modifier.padding(top = 4.dp))
-                            group.forEach { member ->
-                                val selected =
-                                    if (kind == MemberKind.Agent) member.id.value in state.selectedAgentIds else member.id.value in state.selectedUserIds
-                                RaftCheckboxRow(
-                                    label = member.displayName.ifBlank { member.handle },
-                                    checked = selected,
-                                    onCheckedChange = {
-                                        onIntent(
-                                            if (kind == MemberKind.Agent) {
-                                                CreateJointChannelIntent.ToggleAgent(member.id.value)
-                                            } else {
-                                                CreateJointChannelIntent.ToggleUser(member.id.value)
-                                            }
-                                        )
-                                    },
-                                )
-                            }
-                        }
-                    }
-                    if (filtered.isEmpty()) {
-                        RaftText(
-                            stringResource(MR.strings.joint_create_no_matches, query.trim()),
-                            style = RaftTheme.typography.callout,
-                            color = RaftTheme.colors.foregroundHint,
-                        )
-                    }
-                }
-            }
-        }
+        RaftMemberPicker(
+            members = members,
+            query = query,
+            onQueryChange = { query = it },
+            selectedKeys = selectedKeys,
+            onToggle = { key -> onIntent(createJointMemberToggleIntent(key)) },
+            loading = membersLoading,
+            enabled = !state.submitting,
+            agentStatusResolver = agentStatusResolver,
+            fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
+        )
     }
 }
 
-/** Name/handle substring match, agents before humans as the web picker groups them. */
-internal fun createJointMemberMatches(members: List<MemberProfile>, query: String): List<MemberProfile> {
-    val needle = query.trim().lowercase()
-    if (needle.isEmpty()) return members
-    return members.filter { member ->
-        member.displayName.lowercase().contains(needle) || member.handle.lowercase().contains(needle)
-    }
-}
+/** The picker keys of the members picked so far: agents and humans keep separate id sets. */
+internal fun CreateJointChannelState.memberPickerKeys(): Set<RaftMemberPickerKey> =
+    selectedAgentIds.mapTo(LinkedHashSet()) { RaftMemberPickerKey(MemberKind.Agent, it) } +
+        selectedUserIds.map { RaftMemberPickerKey(MemberKind.Human, it) }
+
+internal fun createJointMemberToggleIntent(key: RaftMemberPickerKey): CreateJointChannelIntent =
+    if (key.kind == MemberKind.Agent) CreateJointChannelIntent.ToggleAgent(key.id) else CreateJointChannelIntent.ToggleUser(key.id)
 
 @Composable
 private fun createJointChannelErrorMessage(error: CreateJointChannelError, currentServerSlug: String?): String {

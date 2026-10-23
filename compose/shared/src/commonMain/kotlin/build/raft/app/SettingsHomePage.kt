@@ -8007,6 +8007,7 @@ private fun RaftAppShellReadyContent(
                         members = createChannelMembers,
                         membersLoading = createChannelMembersLoading,
                         logger = raftLogger("SlockCreateJointChannel", "create_joint_channel", RaftLogLevel.Warn),
+                        agentStatusResolver = createChannelAgentStatusResolver,
                         onDismiss = { createJointChannelDialogOpen = false },
                         onOpenChannel = { channel ->
                             createJointChannelDialogOpen = false
@@ -20725,7 +20726,7 @@ private fun SharedCreateChannelDialog(
     initialName: String = "",
     initialDescription: TextFieldValue = TextFieldValue(""),
     initialVisibility: SharedCreateChannelVisibility = SharedCreateChannelVisibility.Public,
-    initialSelectedMemberKeys: Set<String> = emptySet(),
+    initialSelectedMemberKeys: Set<RaftMemberPickerKey> = emptySet(),
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     fixtureStatusFallbackEnabled: Boolean = false,
     onDismiss: () -> Unit,
@@ -20779,19 +20780,6 @@ private fun SharedCreateChannelDialog(
         }
     val canSubmit = trimmedName.isSubmittableChannelName() && !submitting
     val selectableMembers = members.filter { it.kind == MemberKind.Human || it.kind == MemberKind.Agent }
-    val filteredMembers =
-        filterPeopleSuggestions(
-            query = memberSearch.text,
-            suggestions = selectableMembers,
-            handle = { member -> member.handle },
-            displayName = { member -> member.displayName },
-            description = { member -> member.roleDescription },
-            sourceServerLabel = { member -> member.serverName ?: member.serverSlug },
-            legacyId = { member -> member.id.value }
-        )
-    val filteredAgentMembers = filteredMembers.filter { it.kind == MemberKind.Agent }
-    val filteredHumanMembers = filteredMembers.filter { it.kind == MemberKind.Human }
-    val hasFilteredMembers = filteredMembers.isNotEmpty()
     RaftUnifiedDialog(
         title = stringResource(MR.strings.channel_create_title),
         dismissEnabled = !submitting,
@@ -20906,23 +20894,15 @@ private fun SharedCreateChannelDialog(
             item {
                 SharedCreateChannelMemberPicker(
                     loading = membersLoading,
-                    hasMembers = selectableMembers.isNotEmpty(),
+                    members = selectableMembers,
                     query = memberSearch,
                     onQueryChange = { memberSearch = it },
-                    filteredAgentMembers = filteredAgentMembers,
-                    filteredHumanMembers = filteredHumanMembers,
-                    hasFilteredMembers = hasFilteredMembers,
                     selectedKeys = selectedMemberKeys,
                     enabled = !submitting,
                     agentStatusResolver = agentStatusResolver,
                     fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
                     onToggle = { key ->
-                        selectedMemberKeys =
-                            if (key in selectedMemberKeys) {
-                                selectedMemberKeys - key
-                            } else {
-                                selectedMemberKeys + key
-                            }
+                        selectedMemberKeys = raftMemberPickerToggle(selectedMemberKeys, key, RaftMemberPickerMode.Multiple)
                     },
                     onFocus = {
                         memberSearchFocused = true
@@ -20971,7 +20951,7 @@ private fun SharedCreateChannelDialog(
                 backgroundColor = RaftColor.AccentPink,
                 onClick = {
                     val selectedMembers =
-                        selectableMembers.filter { it.memberSelectionKey in selectedMemberKeys }
+                        selectableMembers.filter { it.memberPickerKey in selectedMemberKeys }
                     onSubmit(
                         name,
                         description.text,
@@ -21031,224 +21011,38 @@ private fun SharedCreateChannelVisibilityControl(
     }
 }
 
+/** Create channel's Members field: its label over the shared [RaftMemberPicker]. */
 @Composable
-private fun SharedCreateChannelMemberPicker(
+internal fun SharedCreateChannelMemberPicker(
     loading: Boolean,
-    hasMembers: Boolean,
+    members: List<MemberProfile>,
     query: TextFieldValue,
     onQueryChange: (TextFieldValue) -> Unit,
-    filteredAgentMembers: List<MemberProfile>,
-    filteredHumanMembers: List<MemberProfile>,
-    hasFilteredMembers: Boolean,
-    selectedKeys: Set<String>,
+    selectedKeys: Set<RaftMemberPickerKey>,
     enabled: Boolean,
     agentStatusResolver: RaftAgentStatusResolver,
     fixtureStatusFallbackEnabled: Boolean,
-    onToggle: (String) -> Unit,
+    onToggle: (RaftMemberPickerKey) -> Unit,
     onFocus: () -> Unit = {},
     onBlur: () -> Unit = {}
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         RaftFieldLabel(text = stringResource(MR.strings.channel_create_label_members), optional = true)
-        when {
-            loading ->
-                Text(
-                    text = stringResource(MR.strings.settings_members_loading),
-                    style = RaftType.Caption,
-                    color = RaftColor.TextMutedGray
-                )
-            !hasMembers ->
-                Text(
-                    text = stringResource(MR.strings.settings_members_empty),
-                    style = RaftType.Caption,
-                    color = RaftColor.TextMutedGray
-                )
-            else -> {
-                RaftBrutalSearchField(
-                    value = query,
-                    enabled = enabled,
-                    placeholder = stringResource(MR.strings.channel_create_placeholder_member_search),
-                    onValueChange = onQueryChange,
-                    onFocus = onFocus,
-                    onBlur = onBlur
-                )
-                RaftModalListShell(
-                    height = 192.dp,
-                    modifier = Modifier.retainInputFocusForInteractions(),
-                    listModifier =
-                        Modifier
-                            .bouncesEnable(false)
-                            .nestedScroll(
-                                scrollUp = NestedScrollMode.PARENT_FIRST,
-                                scrollDown = NestedScrollMode.SELF_FIRST
-                            )
-                ) {
-                    if (!hasFilteredMembers) {
-                        item(key = "empty-search-state") {
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 14.dp, vertical = 18.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = MR.strings.settings_members_no_matches.format(listOf(query.text.trim())).localized(),
-                                    style = RaftType.Caption,
-                                    color = RaftColor.TextMutedGray
-                                )
-                            }
-                        }
-                    } else {
-                        if (filteredAgentMembers.isNotEmpty()) {
-                            item(key = "agents-header") {
-                                SharedCreateChannelMemberSectionLabel(stringResource(MR.strings.thread_members_agents))
-                            }
-                            filteredAgentMembers.forEach { member ->
-                                item(key = member.memberSelectionKey) {
-                                    SharedCreateChannelMemberRow(
-                                        member = member,
-                                        selected = member.memberSelectionKey in selectedKeys,
-                                        enabled = enabled,
-                                        agentStatusResolver = agentStatusResolver,
-                                        fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
-                                        onClick = { onToggle(member.memberSelectionKey) }
-                                    )
-                                }
-                            }
-                        }
-                        if (filteredHumanMembers.isNotEmpty()) {
-                            item(key = "humans-header") {
-                                SharedCreateChannelMemberSectionLabel(stringResource(MR.strings.thread_members_humans))
-                            }
-                            filteredHumanMembers.forEach { member ->
-                                item(key = member.memberSelectionKey) {
-                                    SharedCreateChannelMemberRow(
-                                        member = member,
-                                        selected = member.memberSelectionKey in selectedKeys,
-                                        enabled = enabled,
-                                        agentStatusResolver = agentStatusResolver,
-                                        fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
-                                        onClick = { onToggle(member.memberSelectionKey) }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SharedCreateChannelMemberSectionLabel(label: String) {
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(RaftColor.SurfaceWhite.copy(alpha = 0.5f))
-                .padding(horizontal = 12.dp, vertical = 6.dp)
-    ) {
-        Text(
-            text = label,
-            style = RaftType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
-            color = RaftColor.TextMutedGray,
-            maxLines = 1
+        RaftMemberPicker(
+            members = members,
+            query = query,
+            onQueryChange = onQueryChange,
+            selectedKeys = selectedKeys,
+            onToggle = onToggle,
+            loading = loading,
+            enabled = enabled,
+            agentStatusResolver = agentStatusResolver,
+            fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
+            onSearchFocus = onFocus,
+            onSearchBlur = onBlur
         )
     }
 }
-
-@Composable
-private fun SharedCreateChannelMemberRow(
-    member: MemberProfile,
-    selected: Boolean,
-    enabled: Boolean,
-    agentStatusResolver: RaftAgentStatusResolver,
-    fixtureStatusFallbackEnabled: Boolean,
-    onClick: () -> Unit
-) {
-    val avatarWireValue = member.avatarWireValueForAvatarSlot()
-    // Dot-facing resolution: must be the OrNull variant. The label-facing
-    // resolveMembersAgentStatusIndicatorState substitutes a placeholder whose presence is
-    // Offline, so its colour is StatusNeutralGray -- pixel-identical to a real Offline dot
-    // for an agent whose status is merely not known yet. RaftAvatarWithStatus omits the dot
-    // entirely on a null colour, which is the behaviour task #253 chose: show nothing rather
-    // than something wrong. Same defect as task #256 fixed in MembersPage; this call site
-    // survived because that sweep, and the lint written alongside it, only looked at
-    // MembersPage.kt.
-    val statusIndicatorState =
-        if (member.kind == MemberKind.Agent) {
-            resolveMembersAgentStatusIndicatorStateOrNull(
-                canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value),
-                fixtureFallback =
-                    raftAgentStatusIndicatorState(
-                        status = member.agentStatus,
-                        presence = member.presence,
-                        external = member.isExternal
-                    ),
-                fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled
-            )
-        } else {
-            null
-        }
-    val subtitle =
-        member.roleDescription
-            ?.takeIf { it.isNotBlank() }
-            ?: "${member.kind.name.lowercase()} · @${member.handle}"
-    // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1044
-    val background = if (selected) RaftColor.AccentPink.copy(alpha = 0.2f) else RaftColor.SurfaceWhite
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(background)
-                .clickable(enabled = enabled, onClick = onClick)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RaftAvatarWithStatus(
-            statusColor = statusIndicatorState?.color,
-            avatarSize = 28.dp,
-            statusPulsing = statusIndicatorState?.pulsing == true
-        ) {
-            RaftAppAvatar(
-                avatarWireValue = avatarWireValue,
-                label = member.raftAvatarName(),
-                avatarSize = 28.dp,
-                cacheSubject = member.raftAvatarCacheSubject(),
-                cacheServerId = member.serverId?.value,
-                fallbackFill = raftAvatarFallbackFill(member.kind)
-            )
-        }
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                text = member.displayName,
-                style = RaftType.Body.withRaftFontWeight(FontWeight.Medium).copy(fontSize = 13.sp, lineHeight = 16.sp),
-                color = RaftColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = subtitle,
-                style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                color = RaftColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        if (selected) {
-            RaftLucideIcon(RaftLucideIconName.Check, modifier = Modifier.size(14.dp), color = RaftColor.TextBlackArgb)
-        }
-    }
-}
-
-private val MemberProfile.memberSelectionKey: String
-    get() = "${kind.name}:${id.value}"
 
 @Composable
 private fun SharedHomeNotification.toHomeNotificationItem(): RaftHomeNotificationItem =
@@ -27348,8 +27142,8 @@ internal fun HomeCreateChannelDialogVisualContent() {
             initialDescription = textFieldValueAtEnd("Build reports, screenshots, release blockers"),
             initialVisibility = SharedCreateChannelVisibility.Public,
             initialSelectedMemberKeys = setOf(
-                homeCreateChannelVisualMembers[0].memberSelectionKey,
-                homeCreateChannelVisualMembers[2].memberSelectionKey
+                homeCreateChannelVisualMembers[0].memberPickerKey,
+                homeCreateChannelVisualMembers[2].memberPickerKey
             ),
             fixtureStatusFallbackEnabled = true,
             onDismiss = {},

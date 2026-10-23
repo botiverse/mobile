@@ -2401,8 +2401,6 @@
     <string name="settings_admin_no_join_links">有効な参加リンクはありません。</string>
     <string name="settings_admin_no_onboarding_agents">オンボーディングに利用できるアクティブなエージェントはいません。</string>
     <string name="settings_members_loading">メンバーを読み込み中…</string>
-    <string name="settings_members_empty">利用できるメンバーはいません</string>
-    <string name="settings_members_no_matches">「%1$s」に一致する項目はありません</string>
     <string name="settings_channels_loading">チャンネルを読み込み中…</string>
     <string name="settings_channels_empty">送信可能なチャンネルが見つかりません。</string>
     <string name="settings_channels_empty_detail">メッセージと添付ファイルの権限がある参加済みチャンネルが必要です。</string>
