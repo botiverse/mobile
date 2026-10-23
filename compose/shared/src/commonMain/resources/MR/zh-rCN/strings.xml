@@ -506,7 +506,6 @@
     <string name="thread_composer_mention_request_error_unexpected_response">服务返回了异常结果，请重试。</string>
     <string name="thread_composer_mention_request_error_generic">无法完成该提及操作，请重试。</string>
     <string name="thread_composer_attachment_upload_failed">上传失败</string>
-    <string name="thread_composer_attachment_tap_retry">点按重试</string>
     <string name="thread_composer_attachment_uploading">上传中</string>
     <string name="thread_composer_attachment_file">文件</string>
     <string name="thread_members_title">成员（%1$d）</string>

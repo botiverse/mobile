@@ -17,6 +17,7 @@ import build.raft.designsystem.components.RaftComposerAttachmentGap
 import build.raft.designsystem.components.RaftComposerAttachmentImage
 import build.raft.designsystem.components.RaftComposerAttachmentRemove
 import build.raft.designsystem.components.RaftComposerAttachmentRemoveOverhang
+import build.raft.designsystem.components.RaftComposerAttachmentStatus
 import build.raft.designsystem.components.RaftComposerAttachmentUploading
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
@@ -49,22 +50,31 @@ class ComposerAttachmentScreenshotTest {
                     FileTile("release-notes-october-final-v2.pdf", "application/pdf · 1.2 MB")
                     ImageTile()
                 }
-                Caption("Uploading: 42%, first byte (4% floor), image")
+                Caption("Uploading: file 42%, file first byte, image 73%, image unknown")
                 Tray {
-                    FileTile("android-smoke-log.zip", "application/zip · 8.4 MB") {
-                        RaftComposerAttachmentUploading(label = "42%", progress = 42, spinnerStillStep = 0)
-                    }
-                    FileTile("trace.json", "application/json") {
-                        RaftComposerAttachmentUploading(label = "Uploading…", progress = 0, spinnerStillStep = 0)
-                    }
-                    ImageTile { RaftComposerAttachmentUploading(label = "73%", progress = 73, spinnerStillStep = 0) }
+                    FileTile(
+                        "android-smoke-log.zip",
+                        "application/zip · 8.4 MB",
+                        RaftComposerAttachmentStatus.Uploading(label = "42%", progress = 42, spinnerStillStep = 0),
+                    )
+                    ImageTile(placeholder = false) { RaftComposerAttachmentUploading(label = "73%", progress = 73, spinnerStillStep = 0) }
+                }
+                Tray {
+                    FileTile(
+                        "trace.json",
+                        "application/json",
+                        RaftComposerAttachmentStatus.Uploading(label = "Uploading…", progress = 0, spinnerStillStep = 0),
+                    )
+                    ImageTile(placeholder = false) { RaftComposerAttachmentUploading(label = null, progress = 0, spinnerStillStep = 0) }
                 }
                 Caption("Failed: file, image")
                 Tray {
-                    FileTile("oversized-trace.jsonl", "application/json · 52 MB") {
-                        RaftComposerAttachmentFailed(text = "Upload failed", detail = "Tap to retry", onClick = {})
-                    }
-                    ImageTile { RaftComposerAttachmentFailed(text = "Failed", detail = "Retry", onClick = {}) }
+                    FileTile(
+                        "oversized-trace.jsonl",
+                        "application/json · 52 MB",
+                        RaftComposerAttachmentStatus.Failed(text = "Upload failed", action = "Retry"),
+                    )
+                    ImageTile(placeholder = false) { RaftComposerAttachmentFailed(text = "Upload failed", action = "Retry", onClick = {}) }
                 }
                 Caption("Remove: rest, pressed, focused, disabled")
                 Tray {
@@ -95,19 +105,21 @@ class ComposerAttachmentScreenshotTest {
     private fun FileTile(
         title: String,
         meta: String,
-        overlay: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit = {},
+        status: RaftComposerAttachmentStatus = RaftComposerAttachmentStatus.Ready,
     ) {
         RaftComposerAttachment {
-            RaftComposerAttachmentFile(title = title, meta = meta, onClick = {}) { RaftGlyphIcon(RaftGlyph.Copy, size = 16.dp) }
-            overlay()
+            RaftComposerAttachmentFile(title = title, meta = meta, status = status, onClick = {}) { RaftGlyphIcon(RaftGlyph.Copy, size = 16.dp) }
             RaftComposerAttachmentRemove(onClick = {}, contentDescription = "Remove $title")
         }
     }
 
     @Composable
-    private fun ImageTile(overlay: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit = {}) {
+    private fun ImageTile(
+        placeholder: Boolean = true,
+        overlay: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit = {},
+    ) {
         RaftComposerAttachment {
-            RaftComposerAttachmentImage(onClick = {}) { Placeholder() }
+            RaftComposerAttachmentImage(onClick = {}) { if (placeholder) Placeholder() }
             overlay()
             RaftComposerAttachmentRemove(onClick = {}, contentDescription = "Remove image")
         }

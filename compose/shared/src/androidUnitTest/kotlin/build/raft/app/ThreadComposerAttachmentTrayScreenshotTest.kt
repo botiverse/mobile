@@ -81,4 +81,5 @@ private val trayAttachments =
             sizeBytes = 52_000_000L,
             status = "failed",
         ),
+        RaftPendingAttachmentItem(id = "shot", fileName = "crash-screenshot.png", mimeType = "image/png", status = "failed"),
     )

@@ -508,7 +508,6 @@
     <string name="thread_composer_mention_request_error_unexpected_response">予期しない応答を受信しました。再試行してください。</string>
     <string name="thread_composer_mention_request_error_generic">このメンション操作を完了できません。再試行してください。</string>
     <string name="thread_composer_attachment_upload_failed">アップロードに失敗しました</string>
-    <string name="thread_composer_attachment_tap_retry">タップして再試行</string>
     <string name="thread_composer_attachment_uploading">アップロード中</string>
     <string name="thread_composer_attachment_file">ファイル</string>
     <string name="thread_members_title">メンバー（%1$d）</string>

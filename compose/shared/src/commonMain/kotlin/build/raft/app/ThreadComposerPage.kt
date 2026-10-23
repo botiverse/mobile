@@ -16,6 +16,7 @@ import build.raft.designsystem.components.RaftComposerAttachmentGap
 import build.raft.designsystem.components.RaftComposerAttachmentImage
 import build.raft.designsystem.components.RaftComposerAttachmentRemove
 import build.raft.designsystem.components.RaftComposerAttachmentRemoveOverhang
+import build.raft.designsystem.components.RaftComposerAttachmentStatus
 import build.raft.designsystem.components.RaftComposerAttachmentUploading
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.base.Utils
@@ -4465,6 +4466,10 @@ private fun ComposerAttachmentPreviewChip(
     val isUploading = attachment.status == "uploading"
     val imagePreviewUri = attachment.previewUri?.takeIf { it.isNotBlank() }
     val onOpen = onPreview.takeIf { attachment.canOpenComposerAttachmentPreview(previewEnabled) }
+    val progress = attachment.uploadProgress.coerceIn(0, 100)
+    val failedText = stringResource(MR.strings.thread_composer_attachment_upload_failed)
+    val retryLabel = stringResource(MR.strings.common_retry)
+    val showFailed = isFailed && enabled
     RaftComposerAttachment {
         if (attachment.isComposerImageAttachment()) {
             RaftComposerAttachmentImage(onClick = onOpen) {
@@ -4476,11 +4481,21 @@ private fun ComposerAttachmentPreviewChip(
                         borderWidth = 0.dp,
                         contentScale = RaftImageThumbnailContentScale
                     )
-                } else {
+                } else if (!isUploading && !showFailed) {
+                    // With no thumbnail, an overlay's spinner or alert stands in for the glyph.
                     RaftLucideIcon(RaftLucideIconName.Image, modifier = Modifier.size(20.dp), color = raftArgbHex(RaftTheme.colors.foregroundMuted))
                 }
             }
+            // raft-ui overlays on a thumbnail: the spinner alone until a percentage is known
+            // (a 64dp tile has no room for "Uploading…"); on failure an alert over an underlined Retry.
+            if (isUploading) {
+                RaftComposerAttachmentUploading(label = if (progress > 0) "$progress%" else null, progress = progress)
+            }
+            if (showFailed) {
+                RaftComposerAttachmentFailed(text = failedText, action = retryLabel, onClick = onRetry)
+            }
         } else {
+            // A file tile keeps its name readable and writes the upload status into its meta line.
             RaftComposerAttachmentFile(
                 title = attachment.fileName,
                 meta =
@@ -4488,24 +4503,20 @@ private fun ComposerAttachmentPreviewChip(
                         stringResource(MR.strings.thread_composer_attachment_file),
                         attachment.displaySizeLabel(),
                     ).filter { it.isNotBlank() }.joinToString(" · "),
-                onClick = onOpen
+                status =
+                    when {
+                        isUploading ->
+                            RaftComposerAttachmentStatus.Uploading(
+                                label = if (progress > 0) "$progress%" else stringResource(MR.strings.thread_composer_attachment_uploading),
+                                progress = progress
+                            )
+                        showFailed -> RaftComposerAttachmentStatus.Failed(text = failedText, action = retryLabel)
+                        else -> RaftComposerAttachmentStatus.Ready
+                    },
+                onClick = if (showFailed) onRetry else onOpen
             ) {
                 RaftLucideIcon(RaftLucideIconName.FileText, modifier = Modifier.size(16.dp), color = raftArgbHex(RaftTheme.colors.foregroundMuted))
             }
-        }
-        if (isUploading) {
-            val progress = attachment.uploadProgress.coerceIn(0, 100)
-            RaftComposerAttachmentUploading(
-                label = if (progress > 0) "$progress%" else stringResource(MR.strings.thread_composer_attachment_uploading),
-                progress = progress
-            )
-        }
-        if (isFailed && enabled) {
-            RaftComposerAttachmentFailed(
-                text = stringResource(MR.strings.thread_composer_attachment_upload_failed),
-                detail = stringResource(MR.strings.thread_composer_attachment_tap_retry),
-                onClick = onRetry
-            )
         }
         if (enabled) {
             RaftComposerAttachmentRemove(
