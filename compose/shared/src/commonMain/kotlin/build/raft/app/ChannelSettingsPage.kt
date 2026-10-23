@@ -41,6 +41,7 @@ import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftSection
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftSkeleton
+import build.raft.designsystem.components.RaftSkeletonList
 import build.raft.designsystem.components.RaftSkeletonVariant
 import build.raft.designsystem.components.RaftSwitch
 import build.raft.designsystem.components.raftCopyable
@@ -1523,10 +1524,13 @@ internal fun channelSettingsManagementActions(
         }
     }
 
-/** Placeholders in the page's shape while the first load runs. */
+/**
+ * Placeholders in the page's shape while the first load runs, shown only after 1s of it
+ * (raft-ui 0.22.1 #720), so a fast load doesn't flash them.
+ */
 @Composable
 private fun ChannelSettingsLoading() {
-    Column(
+    RaftSkeletonList(
         modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {

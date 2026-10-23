@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.raftCopyable
+import build.raft.designsystem.components.rememberRaftSkeletonDelayPassed
+import build.raft.designsystem.components.LocalRaftListSkeletonDelayMillis
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftDialogSheet
@@ -94,6 +96,7 @@ import build.raft.app.resources.MR
 import build.raft.app.compat.pager.BridgeManager
 import build.raft.app.compat.module.RouterModule
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.withFrameNanos
@@ -1194,16 +1197,19 @@ internal fun HomeTitlebarLoadingVisualScreen() {
             name = "Loading workspace",
             slug = "loading-workspace"
         )
-    RaftStructuralHomeShell(
-        currentServerName = server.name,
-        currentServerId = server.id,
-        servers = listOf(server),
-        homeServerAvatarEnabled = true,
-        showLoadingSkeletons = true,
-        applyTopSafeArea = false,
-        showBottomBar = false,
-        outerPadding = 0.dp
-    )
+    // A capture: the skeleton rows show in the first frame, not after the 1s list delay.
+    CompositionLocalProvider(LocalRaftListSkeletonDelayMillis provides 0L) {
+        RaftStructuralHomeShell(
+            currentServerName = server.name,
+            currentServerId = server.id,
+            servers = listOf(server),
+            homeServerAvatarEnabled = true,
+            showLoadingSkeletons = true,
+            applyTopSafeArea = false,
+            showBottomBar = false,
+            outerPadding = 0.dp
+        )
+    }
 }
 
 @Composable
@@ -1833,6 +1839,9 @@ private fun RaftStructuralHomeShellContent(
     val hideEmptySections = data.hideEmptySections
     val canArchiveChannels = data.canArchiveChannels
     val showLoadingSkeletons = data.showLoadingSkeletons
+    // raft-ui 0.22.1 (#720): list skeleton rows show only after 1s of loading, so a fast load
+    // doesn't flash them. The empty hints still wait on [showLoadingSkeletons].
+    val loadingSkeletonRowsShown = rememberRaftSkeletonDelayPassed(loading = showLoadingSkeletons)
     val selectedTabKey = data.selectedTabKey
     val showBottomBar = data.showBottomBar
     val searchAndActivityOnShellNav = data.searchAndActivityOnShellNav
@@ -2161,9 +2170,9 @@ private fun RaftStructuralHomeShellContent(
             pinnedExpanded = pinnedExpanded,
             hasInlineError = inlineError != null,
             channelSkeletonCount =
-                if (channelsExpanded && showLoadingSkeletons) HomeLoadingChannelSkeletonRows else 0,
+                if (channelsExpanded && loadingSkeletonRowsShown) HomeLoadingChannelSkeletonRows else 0,
             directMessageSkeletonCount =
-                if (directMessagesExpanded && showLoadingSkeletons) HomeLoadingDirectMessageSkeletonRows else 0
+                if (directMessagesExpanded && loadingSkeletonRowsShown) HomeLoadingDirectMessageSkeletonRows else 0
         )
     val lazyKeyRegistry = remember { HomeSidebarLazyKeyRegistry() }
     val pinnedLazyKeys =
@@ -2757,7 +2766,7 @@ private fun RaftStructuralHomeShellContent(
                                                 )
                                             }
                                         }
-                                        if (channelsExpanded && showLoadingSkeletons) {
+                                        if (channelsExpanded && loadingSkeletonRowsShown) {
                                             items(HomeLoadingChannelSkeletonRows, key = { index -> "channel-skeleton-$index" }) {
                                                 HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding))
                                             }
@@ -2828,7 +2837,7 @@ private fun RaftStructuralHomeShellContent(
                                                 )
                                             }
                                         }
-                                        if (directMessagesExpanded && showLoadingSkeletons) {
+                                        if (directMessagesExpanded && loadingSkeletonRowsShown) {
                                             items(HomeLoadingDirectMessageSkeletonRows, key = { index -> "dm-skeleton-$index" }) {
                                                 HomeSidebarSkeletonRow(modifier = Modifier.padding(horizontal = HomeListRowHorizontalPadding))
                                             }
@@ -5247,6 +5256,9 @@ private fun HomeServerDrawerPanel(
     onInviteHumanClick: (() -> Unit)? = null
 ) {
     val rows = remember(sections) { homeServerDrawerRows(sections) }
+    // raft-ui 0.22.1 (#720): skeleton rows only after 1s of loading.
+    val skeletonRowsShown =
+        rememberRaftSkeletonDelayPassed(loading = rows.any { it is RaftHomeServerDrawerRow.Skeleton })
     val density = LocalDensity.current
     val swipeThresholdPx = with(density) { HomeServerDrawerSwipeDismissThreshold.toPx() }
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -5325,13 +5337,15 @@ private fun HomeServerDrawerPanel(
                             is RaftHomeServerDrawerRow.Conversation ->
                                 HomeServerDrawerConversationRow(row)
                             is RaftHomeServerDrawerRow.Skeleton ->
-                                HomeSidebarSkeletonRow(
-                                    modifier =
-                                        Modifier.padding(
-                                            horizontal = HomeServerDrawerConversationHorizontalPadding,
-                                            vertical = RaftAppSpacing.Xs
-                                        )
-                                )
+                                if (skeletonRowsShown) {
+                                    HomeSidebarSkeletonRow(
+                                        modifier =
+                                            Modifier.padding(
+                                                horizontal = HomeServerDrawerConversationHorizontalPadding,
+                                                vertical = RaftAppSpacing.Xs
+                                            )
+                                    )
+                                }
                             is RaftHomeServerDrawerRow.Error ->
                                 HomeServerDrawerErrorRow(
                                     row = row,
@@ -5373,6 +5387,9 @@ internal fun HomeServerDrawerHostedPanel(
                 it.header.expanded && it.normalizedContent.firstConversationIndex >= 0
             }?.header?.server?.id
         }
+    // raft-ui 0.22.1 (#720): skeleton rows only after 1s of loading.
+    val skeletonRowsShown =
+        rememberRaftSkeletonDelayPassed(loading = sections.any { it.header.expanded && it.showsHomeServerDrawerSkeleton() })
 
     Box(
         modifier =
@@ -5445,22 +5462,17 @@ internal fun HomeServerDrawerHostedPanel(
 
                         val normalized = hostedSection.normalizedContent
                         val hasCache = hostedSection.hasCachedConversations
-                        if (
-                            !hasCache &&
-                            section.status in
-                                setOf(
-                                    HomeServerDrawerLoadStatus.Unloaded,
-                                    HomeServerDrawerLoadStatus.Loading
-                                )
-                        ) {
-                            items(3, key = { index -> "skeleton:$serverId:$index" }) {
-                                HomeSidebarSkeletonRow(
-                                    modifier =
-                                        Modifier.padding(
-                                            horizontal = HomeServerDrawerConversationHorizontalPadding,
-                                            vertical = RaftAppSpacing.Xs
-                                        )
-                                )
+                        if (hostedSection.showsHomeServerDrawerSkeleton()) {
+                            if (skeletonRowsShown) {
+                                items(3, key = { index -> "skeleton:$serverId:$index" }) {
+                                    HomeSidebarSkeletonRow(
+                                        modifier =
+                                            Modifier.padding(
+                                                horizontal = HomeServerDrawerConversationHorizontalPadding,
+                                                vertical = RaftAppSpacing.Xs
+                                            )
+                                    )
+                                }
                             }
                         } else {
                             items(
@@ -6659,6 +6671,11 @@ private fun HomeSidebarSortAction(label: String, onClick: (RaftPopoverAnchor) ->
 // sidebar row (44dp, 1dp margins, 8dp start padding) so the loaded
 // conversation list replaces the skeletons in place. RaftAppSkeleton is fully static (no
 // shimmer), which keeps visual captures deterministic.
+/** A server with nothing cached yet, still loading, shows skeleton rows in the drawer. */
+private fun RaftHomeServerDrawerHostedSection.showsHomeServerDrawerSkeleton(): Boolean =
+    !hasCachedConversations &&
+        header.status in setOf(HomeServerDrawerLoadStatus.Unloaded, HomeServerDrawerLoadStatus.Loading)
+
 @Composable
 private fun HomeSidebarSkeletonRow(modifier: Modifier = Modifier) {
     Row(

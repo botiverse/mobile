@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.pager.Page
+import build.raft.designsystem.components.LocalRaftListSkeletonDelayMillis
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 
 @Page("compose_home_titlebar_visual", supportInLocal = true)
@@ -107,23 +109,26 @@ internal class ComposeHomeLoadingVisualPage : BasePager() {
 
 @Composable
 private fun HomeLoadingVisualContent() {
-    RaftStructuralHomeShell(
-        currentServerName = VisualFixtureData.Server.NAME,
-        currentServerId = VisualFixtureData.Server.ID,
-        servers =
-            listOf(
-                RaftServerSwitcherItem(
-                    id = VisualFixtureData.Server.ID,
-                    name = VisualFixtureData.Server.NAME,
-                    slug = VisualFixtureData.Server.SLUG
-                )
-            ),
-        channels = emptyList(),
-        directMessages = emptyList(),
-        showLoadingSkeletons = true,
-        showBottomBar = true,
-        outerPadding = 0.dp
-    )
+    // A capture: the skeleton rows show in the first frame, not after the 1s list delay.
+    CompositionLocalProvider(LocalRaftListSkeletonDelayMillis provides 0L) {
+        RaftStructuralHomeShell(
+            currentServerName = VisualFixtureData.Server.NAME,
+            currentServerId = VisualFixtureData.Server.ID,
+            servers =
+                listOf(
+                    RaftServerSwitcherItem(
+                        id = VisualFixtureData.Server.ID,
+                        name = VisualFixtureData.Server.NAME,
+                        slug = VisualFixtureData.Server.SLUG
+                    )
+                ),
+            channels = emptyList(),
+            directMessages = emptyList(),
+            showLoadingSkeletons = true,
+            showBottomBar = true,
+            outerPadding = 0.dp
+        )
+    }
 }
 
 @Page("compose_home_notification_center_visual", supportInLocal = true)

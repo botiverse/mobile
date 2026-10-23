@@ -47,6 +47,8 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
+            // Virtual time for the located highlight's frame loop (RaftLocatedTest).
+            implementation(libs.kotlinx.coroutines.test)
         }
         val desktopTest by getting {
             dependencies {
