@@ -971,41 +971,6 @@ class RealtimeRepositoryTest {
     }
 
     @Test
-    fun clientRebaselineSkipsResumeCursorAfterReconnect() {
-        val transport = FakeRealtimeSocketTransport()
-        val client = SocketIoRealtimeClient(transport)
-
-        client.connect(
-            RealtimeConnectRequest(
-                auth = RealtimeAuth(token = "sample-access", serverId = ServerId("server-1"))
-            )
-        )
-        client.joinChannel(ChannelId("channel-1"))
-        transport.receive(
-            RealtimeSocketEvents.MessageNew,
-            mapOf(
-                "id" to "message-1",
-                "threadId" to "channel-1",
-                "channelId" to "channel-1",
-                "seq" to 89,
-                "content" to "Realtime body",
-                "messageType" to "chat",
-                "senderType" to "user",
-                "senderId" to "user-1",
-                "senderName" to "Artin"
-            )
-        )
-        transport.emitted.clear()
-
-        transport.receive(RealtimeSocketEvents.Reconnect)
-
-        assertFalse(transport.emitted.any { it.first == RealtimeSocketEvents.SyncResume })
-        transport.receive(RealtimeSocketEvents.RoomsJoined)
-
-        assertFalse(transport.emitted.any { it.first == RealtimeSocketEvents.SyncResume })
-    }
-
-    @Test
     fun clientForcesReconnectWhenAppHeartbeatAndInboundEventsAreSilent() {
         var now = 1_000L
         val transport = FakeRealtimeSocketTransport()
@@ -2033,56 +1998,6 @@ class RealtimeRepositoryTest {
         assertTrue(event is MessageNew)
         val message = (event as MessageNew).message
         assertEquals(MessageType.System, message.messageType)
-    }
-
-    private class FakeRealtimeSocketTransport : RealtimeSocketTransport {
-        private val linearizationLock = Any()
-        val handlers =
-            mutableMapOf<String, MutableList<(RealtimeSocketConnectionContext, Any?) -> Unit>>()
-        var lastAuth: Map<String, String> = emptyMap()
-        val emitted = mutableListOf<Pair<String, Map<String, Any>>>()
-        var connectCount = 0
-        var disconnectCount = 0
-        private var currentContext: RealtimeSocketConnectionContext? = null
-
-        override fun <T> linearize(block: () -> T): T = synchronized(linearizationLock, block)
-
-        override fun connect(auth: Map<String, String>, context: RealtimeSocketConnectionContext) {
-            linearize {
-                connectCount += 1
-                lastAuth = auth
-                currentContext = context
-            }
-        }
-
-        override fun disconnect() {
-            linearize {
-                disconnectCount += 1
-                currentContext = null
-            }
-        }
-
-        override fun emit(eventName: String, payload: Map<String, Any>) {
-            linearize { emitted += eventName to payload }
-        }
-
-        override fun on(
-            eventName: String,
-            listener: (RealtimeSocketConnectionContext, Any?) -> Unit,
-        ): RealtimeSubscription =
-            linearize {
-                handlers.getOrPut(eventName) { mutableListOf() } += listener
-                RealtimeSubscription {
-                    linearize { handlers[eventName]?.remove(listener) }
-                }
-            }
-
-        fun receive(eventName: String, payload: Any? = null) {
-            linearize {
-                val context = checkNotNull(currentContext)
-                handlers[eventName].orEmpty().forEach { it(context, payload) }
-            }
-        }
     }
 
     private data class LinearizedConnection(

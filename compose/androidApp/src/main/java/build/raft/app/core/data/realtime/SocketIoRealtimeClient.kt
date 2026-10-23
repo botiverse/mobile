@@ -12,6 +12,7 @@ import build.raft.app.data.realtime.RealtimeCursorState
 import build.raft.app.data.realtime.RealtimeCursorUpdate
 import build.raft.app.data.realtime.RealtimeHeartbeatWatchdog
 import build.raft.app.data.realtime.RealtimeHeartbeatWatchdogSnapshot
+import build.raft.app.data.realtime.RealtimeLocalEvents
 import build.raft.app.data.realtime.RealtimeResumeRequest
 import build.raft.app.data.realtime.RealtimeSocketTransport
 import build.raft.app.data.realtime.RealtimeSocketEvents
@@ -87,6 +88,8 @@ class SocketIoRealtimeClient(
     private var lastHeartbeatAtMillis: Long? = null
     private var lastInboundEventAtMillis: Long? = null
     private var resumeProjectionRetryLastSeq: Long? = null
+    // Set when a reconnect could not keep a resume cursor; the catch-up runs on that socket's rooms:joined.
+    private var pendingCatchUpReason: String? = null
     private var nextWatchdogEpoch = 0L
     private var watchdogRegistration: WatchdogRegistration? = null
     private var reconnectAllowed = true
@@ -128,6 +131,7 @@ class SocketIoRealtimeClient(
             currentConnectionContext = connectionContext
             cursor = RealtimeCursorPolicy.fromAppliedSeq(request.lastSeq)
             resumeProjectionRetryLastSeq = null
+            pendingCatchUpReason = null
             if (!reconnectAllowed) {
                 connectionState = RealtimeConnectionState.Disconnected
                 logger("client_connect_skip reason=reconnect_suspended serverId=${request.auth.serverId.value}")
@@ -155,6 +159,7 @@ class SocketIoRealtimeClient(
             joinedChannels.clear()
             cursor = RealtimeCursorPolicy.fromAppliedSeq(0L)
             resumeProjectionRetryLastSeq = null
+            pendingCatchUpReason = null
             connectionState = RealtimeConnectionState.Disconnected
             transport.disconnect()
             diagnostics?.onIntentionalDisconnect(
@@ -193,7 +198,7 @@ class SocketIoRealtimeClient(
         connectionState = RealtimeConnectionState.Connecting
         lastHeartbeatAtMillis = null
         lastInboundEventAtMillis = nowMillis
-        rebaselineCursor(reason = "heartbeat_silent")
+        reconnectCursor(reason = "heartbeat_silent", serverId = connectionContext.serverId)
         beforeHeartbeatReconnect?.invoke()
         transport.connect(auth.toWireMap(), connectionContext)
         return true
@@ -312,6 +317,10 @@ class SocketIoRealtimeClient(
                     "appliedSeq=${cursor.appliedLastSeq} serverMaxSeq=${cursor.serverMaxSeq}"
             )
             emitSyncResume(reason = "rooms_joined")
+            pendingCatchUpReason?.let { reason ->
+                pendingCatchUpReason = null
+                requestCatchUp(capturedContext, reason = "${reason}_resume_unavailable")
+            }
         }
         listOf(RealtimeSocketEvents.ChannelJoined to true, RealtimeSocketEvents.ChannelJoinDenied to false)
             .forEach { (eventName, joined) ->
@@ -358,7 +367,7 @@ class SocketIoRealtimeClient(
             markInbound()
             startHeartbeatWatchdog()
             connectionState = RealtimeConnectionState.Connected
-            rebaselineCursor(reason = "transport_reconnect")
+            reconnectCursor(reason = "transport_reconnect", serverId = capturedContext.serverId)
             diagnostics?.onConnected(capturedContext.serverId)
             logger(
                 "client_reconnected serverId=${capturedContext.serverId.value} joinedRooms=${joinedChannels.size} " +
@@ -419,7 +428,7 @@ class SocketIoRealtimeClient(
                 }
                 val cursorUpdate = dispatch(event)
                 if (eventName == RealtimeSocketEvents.SyncResumeResponse && event is Heartbeat) {
-                    requestResumeAfterProjectionRejection()
+                    requestResumeAfterProjectionRejection(capturedContext)
                 }
                 val shouldFanOutRaw = shouldFanOutRawEvent(eventName, cursorUpdate.serverAhead)
                 if (shouldFanOutRaw) {
@@ -467,15 +476,46 @@ class SocketIoRealtimeClient(
         }
     }
 
-    private fun rebaselineCursor(reason: String) {
+    /**
+     * A new socket replaces a dropped one of the same connection context (transport auto-reconnect,
+     * heartbeat-silence reconnect). #255 rotates the cursor epoch here; the applied watermark is kept
+     * for the same server so that socket's `rooms:joined` replays the gap with `sync:resume`, as web
+     * and iOS do. Without a watermark the gap cannot be replayed and Home/Activity re-fetch instead.
+     */
+    private fun reconnectCursor(reason: String, serverId: ServerId) {
         val nextEpoch = "${reason}-${clockMillis()}"
-        val update = RealtimeCursorPolicy.rebaseline(cursor, nextEpoch)
-        cursor = update.state
+        val plan =
+            RealtimeCursorPolicy.reconnect(
+                state = cursor,
+                nextEpoch = nextEpoch,
+                sameServer = serverId.value == connectedServerId,
+            )
+        cursor = plan.state
         resumeProjectionRetryLastSeq = null
+        pendingCatchUpReason = if (plan.catchUpRequired) reason else null
         logger(
             "cursor_rebaseline reason=$reason serverId=${connectedServerId.orEmpty()} " +
-                "epoch=${cursor.epoch} rebaselineRequired=${update.rebaselineRequired}"
+                "epoch=${cursor.epoch} resumeLastSeq=${plan.resumeLastSeq} catchUpRequired=${plan.catchUpRequired}"
         )
+    }
+
+    /**
+     * Missed events cannot be replayed: ask Home and Activity to re-fetch. The typed event reaches the
+     * app-scope owner; shared stores only consume the raw path, so the same request also goes there
+     * as a mobile-local frame (mapped to `RealtimeRefreshRequired(Home)` by the shared mapper).
+     */
+    private fun requestCatchUp(capturedContext: RealtimeSocketConnectionContext, reason: String) {
+        val serverId = capturedContext.serverId
+        logger("realtime_catch_up_request serverId=${serverId.value} reason=$reason")
+        dispatch(
+            RealtimeRefreshRequired(
+                scope = RealtimeRefreshScope.Home,
+                reason = reason,
+                serverId = serverId,
+            )
+        )
+        val payload = JSONObject().put("serverId", serverId.value).put("reason", reason).toString()
+        rawListeners.toList().forEach { it(capturedContext, RealtimeLocalEvents.CatchUpRequired, payload) }
     }
 
     private fun emitSyncResume(reason: String) {
@@ -485,7 +525,7 @@ class SocketIoRealtimeClient(
         transport.emit(RealtimeSocketEvents.SyncResume, RealtimeResumeRequest(resumeLastSeq).toWireMap())
     }
 
-    private fun requestResumeAfterProjectionRejection() {
+    private fun requestResumeAfterProjectionRejection(capturedContext: RealtimeSocketConnectionContext) {
         val resumeLastSeq = cursor.resumeLastSeq
         if (resumeLastSeq <= 0L) {
             logger("sync_resume_recovery_skip reason=no_applied_cursor")
@@ -493,13 +533,7 @@ class SocketIoRealtimeClient(
         }
         if (resumeProjectionRetryLastSeq == resumeLastSeq) {
             logger("sync_resume_recovery_escalate reason=repeat_projection_rejection lastSeq=$resumeLastSeq")
-            dispatch(
-                RealtimeRefreshRequired(
-                    scope = RealtimeRefreshScope.Home,
-                    reason = "sync_resume_projection_rejected_repeatedly",
-                    serverId = connectedServerId?.let(::ServerId),
-                )
-            )
+            requestCatchUp(capturedContext, reason = "sync_resume_projection_rejected_repeatedly")
             return
         }
         resumeProjectionRetryLastSeq = resumeLastSeq
@@ -605,6 +639,7 @@ class SocketIoRealtimeClient(
             joinedChannels.clear()
             cursor = RealtimeCursorPolicy.fromAppliedSeq(0L)
             resumeProjectionRetryLastSeq = null
+            pendingCatchUpReason = null
         }
         currentAuth = next
         connectedServerId = next.serverId.value
