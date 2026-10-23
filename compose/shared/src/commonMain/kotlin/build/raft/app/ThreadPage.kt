@@ -23,6 +23,7 @@ import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY
 import build.raft.app.downloads.RaftDownloadCenterProcess
 import build.raft.app.downloads.RaftDownloadStatus
+import build.raft.app.data.AttachmentUploadCapabilities
 import build.raft.app.data.KnownEntityScope
 import build.raft.app.data.homeStateForPage
 import build.raft.app.data.RaftKnownEntityResolver
@@ -8343,6 +8344,11 @@ private fun SharedThreadRouteContentContent(
             }
         }
     }
+    // Warm the upload-capability cache when the composer opens so a later pick adds its chip
+    // without waiting on `attachments/upload-capabilities` (slow on weak networks).
+    LaunchedEffect(threadInstanceKey) {
+        runCatchingPreservingCancellation { dataSource.prefetchAttachmentUploadCapabilities() }
+    }
     LaunchedEffect(composerDraftViewModel, threadInstanceKey) {
         composerDraftViewModel.state.collect { draftState ->
             val draftKey = normalizeThreadAttachmentUploadDraftKey(draftState.draftKey)
@@ -9676,26 +9682,27 @@ private fun SharedThreadRouteContentContent(
             bridge.logWarn("thread_composer_attachment_batch_rejected reason=authority_unavailable")
             return false
         }
-        val capabilitiesProbe =
-            if (directUploadOperation != null) {
-                directUploadOperation.capabilities()
-            } else {
+        // Never await the capabilities request on the per-file pick path: on a weak network it
+        // takes seconds and would hold the composer chip back.  Use the cached value if fresh;
+        // otherwise the background upload task resolves it after the chip is admitted.  The
+        // all-files (Gallery) path must have an explicit receipt before admission, so it awaits.
+        val directCapabilities: AttachmentUploadCapabilities? =
+            if (directUploadOperation == null) {
                 null
+            } else if (requireAllFiles) {
+                val probe = dataSource.attachmentUploadCapabilities(directUploadOperation)
+                if (probe is DataResult.NoPermission) {
+                    routeAuthRequired(probe)
+                    bridge.toast(attachmentLimitUnavailableLabel)
+                    return false
+                }
+                if ((probe as? DataResult.Error)?.error?.code.equals("cancelled", ignoreCase = true)) {
+                    return false
+                }
+                (probe as? DataResult.Content)?.data
+            } else {
+                dataSource.peekAttachmentUploadCapabilities(directUploadOperation)
             }
-        if (capabilitiesProbe is DataResult.NoPermission) {
-            routeAuthRequired(capabilitiesProbe)
-            if (requireAllFiles) {
-                bridge.toast(attachmentLimitUnavailableLabel)
-                return false
-            }
-        }
-        val capabilitiesCancelled =
-            (capabilitiesProbe as? DataResult.Error)?.error?.code.equals("cancelled", ignoreCase = true)
-        if (capabilitiesCancelled) {
-            return false
-        }
-        val directCapabilities =
-            (capabilitiesProbe as? DataResult.Content)?.data
         // Per-file Thread path fail-opens to multipart when capabilities cannot be read.
         // Gallery N/N remains fail-closed: it cannot compensate without an explicit capability.
         if (requireAllFiles && directCapabilities == null) {
@@ -10225,6 +10232,17 @@ private fun SharedThreadRouteContentContent(
                         bridge.log(
                             "thread_composer_attachment_upload_start attachmentId=$localAttachmentId fileName=${file.fileName}"
                         )
+                        // The chip is already on screen; resolve upload limits in the background
+                        // (cache hit, or one shared request) and fail open to multipart on error.
+                        var taskCapabilities = directCapabilities
+                        if (taskCapabilities == null && directUploadOperation != null) {
+                            when (val fetched = dataSource.attachmentUploadCapabilities(directUploadOperation)) {
+                                is DataResult.Content -> taskCapabilities = fetched.data
+                                is DataResult.NoPermission -> routeAuthRequired(fetched)
+                                is DataResult.Error,
+                                is DataResult.Empty -> Unit
+                            }
+                        }
                         val uploadResult =
                             withContext(Dispatchers.Default) {
                                 attachmentUploadSemaphore.withPermit {
@@ -10233,7 +10251,7 @@ private fun SharedThreadRouteContentContent(
                                             val resolved =
                                                 resolveThreadComposerDirectUpload(
                                                     file = file,
-                                                    capabilities = directCapabilities,
+                                                    capabilities = taskCapabilities,
                                                     cancelled = false,
                                                     prepare = { candidate ->
                                                         val operation = directUploadOperation

@@ -1,7 +1,10 @@
 package build.raft.app
 
 import build.raft.app.model.PerReceiverReadStateChanged
+import build.raft.app.data.AttachmentUploadCapabilities
+import build.raft.app.data.AttachmentUploadCapabilitiesCache
 import build.raft.app.data.DataResult
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.isAuthSessionBlocker
 import build.raft.app.data.isEdgeBlockedMarker
 import build.raft.app.data.EmptyReason
@@ -1768,6 +1771,9 @@ internal data class SharedThreadDurablePage(
     val rawPage: RawMessagePage
 )
 
+private val processAttachmentUploadCapabilitiesCache =
+    AttachmentUploadCapabilitiesCache(nowMillis = ::defaultNowMillis)
+
 internal class SharedThreadDataSource(
     private val api: RaftThreadApi,
     private val sessionStore: RaftAuthSessionStore,
@@ -1785,6 +1791,9 @@ internal class SharedThreadDataSource(
     private val cacheEnvironmentIdProvider: () -> String,
     /** Current API environment used to bind direct-session uploads to one route authority. */
     private val apiEnvironmentIdProvider: () -> String = { cacheEnvironmentIdProvider() },
+    /** Upload limits are per server and rarely change; share one TTL cache across thread pages. */
+    private val attachmentUploadCapabilitiesCache: AttachmentUploadCapabilitiesCache =
+        processAttachmentUploadCapabilitiesCache,
     // REQUIRED (task #1122): reply-cache identity comes only from the provider-owned authority
     // (`ThreadReplyCacheIdentityAuthority`). There is no private fallback resolver any more, so a
     // data source that cannot name its authority cannot be constructed.
@@ -5100,6 +5109,23 @@ internal class SharedThreadDataSource(
         val authority = captureExternalShareSendAuthority() ?: return null
         return (repository as? RealConversationRepository)
             ?.directAttachmentUploadOperation(authority, diagnosticsLogger)
+    }
+
+    /** Fresh cached capabilities for [operation]'s authority; never suspends or hits the network. */
+    fun peekAttachmentUploadCapabilities(
+        operation: DirectAttachmentUploadOperation,
+    ): AttachmentUploadCapabilities? = attachmentUploadCapabilitiesCache.peek(operation.authority)
+
+    /** Cached (TTL) or single-flight fetched capabilities for the operation's authority. */
+    suspend fun attachmentUploadCapabilities(
+        operation: DirectAttachmentUploadOperation,
+    ): DataResult<AttachmentUploadCapabilities> =
+        attachmentUploadCapabilitiesCache.getOrFetch(operation.authority) { operation.capabilities() }
+
+    /** Warm the capability cache when the composer opens so the first pick needs no round trip. */
+    suspend fun prefetchAttachmentUploadCapabilities() {
+        val operation = captureDirectAttachmentUploadOperation() ?: return
+        attachmentUploadCapabilities(operation)
     }
 
     suspend fun attachmentUploadMaxBytes(
