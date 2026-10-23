@@ -2386,8 +2386,6 @@
     <string name="settings_admin_no_join_links">No active join links.</string>
     <string name="settings_admin_no_onboarding_agents">No active agents are available for onboarding.</string>
     <string name="settings_members_loading">Loading members…</string>
-    <string name="settings_members_empty">No members available</string>
-    <string name="settings_members_no_matches">No matches for “%1$s”</string>
     <string name="settings_channels_loading">Loading channels…</string>
     <string name="settings_channels_empty">No sendable channels found.</string>
     <string name="settings_channels_empty_detail">You need a joined channel with message and attachment permission.</string>

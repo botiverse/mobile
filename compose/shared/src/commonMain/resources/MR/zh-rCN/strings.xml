@@ -2386,8 +2386,6 @@
     <string name="settings_admin_no_join_links">暂无有效加入链接。</string>
     <string name="settings_admin_no_onboarding_agents">暂无可用于入门引导的活跃 Agent。</string>
     <string name="settings_members_loading">正在加载成员…</string>
-    <string name="settings_members_empty">暂无可用成员</string>
-    <string name="settings_members_no_matches">没有匹配“%1$s”的成员</string>
     <string name="settings_channels_loading">正在加载频道…</string>
     <string name="settings_channels_empty">没有可发送的频道。</string>
     <string name="settings_channels_empty_detail">你需要加入一个拥有消息和附件权限的频道。</string>

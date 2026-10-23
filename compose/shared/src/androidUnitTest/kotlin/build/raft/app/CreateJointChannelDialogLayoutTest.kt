@@ -86,6 +86,55 @@ class CreateJointChannelDialogLayoutTest {
         }
     }
 
+    @Test
+    fun memberPickerRowsAreCheckboxesThatToggleTheirKind() {
+        val activity = activities.launch()
+        build.raft.app.data.RaftAndroidSqlDatabaseContext.init(activity)
+        val intents = mutableListOf<CreateJointChannelIntent>()
+        activity.setContent {
+            CreateJointChannelDialog(
+                state = CreateJointChannelState(selectedUserIds = setOf("user-designer")),
+                freePlan = false,
+                currentServerSlug = "mobile",
+                // Two rows, so both fit the picker's 192dp list and are composed.
+                selectableMembers = MemberPickerTestFixtures.roster.filter { it.id.value in setOf("agent-cindy", "user-designer") },
+                membersLoading = false,
+                onIntent = { intents += it },
+                onDismiss = {},
+                onOpenBilling = {},
+            )
+        }
+        settle()
+        val dialog = assertNotNull(ShadowDialog.getLatestDialog(), "the dialog window did not open")
+        val root = assertNotNull(findComposeRoot(dialog.window!!.decorView), "no compose root in the dialog window")
+        val nodes = mutableListOf<SemanticsNode>()
+        fun walk(node: SemanticsNode) {
+            nodes += node
+            node.children.forEach(::walk)
+        }
+        walk((root as ViewRootForTest).semanticsOwner.rootSemanticsNode)
+        val rows = nodes.filter { it.config.getOrNull(SemanticsProperties.Role) == androidx.compose.ui.semantics.Role.Checkbox }
+        fun row(name: String) =
+            assertNotNull(
+                rows.firstOrNull { node -> node.config.getOrNull(SemanticsProperties.Text).orEmpty().any { it.text == name } },
+                "no checkbox row for $name in ${rows.map { it.config.getOrNull(SemanticsProperties.Text) }}",
+            )
+        kotlin.test.assertEquals(
+            androidx.compose.ui.state.ToggleableState.On,
+            row("Designer").config.getOrNull(SemanticsProperties.ToggleableState),
+        )
+        kotlin.test.assertEquals(
+            androidx.compose.ui.state.ToggleableState.Off,
+            row("Cindy").config.getOrNull(SemanticsProperties.ToggleableState),
+        )
+        row("Cindy").config[androidx.compose.ui.semantics.SemanticsActions.OnClick].action!!.invoke()
+        row("Designer").config[androidx.compose.ui.semantics.SemanticsActions.OnClick].action!!.invoke()
+        kotlin.test.assertEquals(
+            listOf(CreateJointChannelIntent.ToggleAgent("agent-cindy"), CreateJointChannelIntent.ToggleUser("user-designer")),
+            intents,
+        )
+    }
+
     private fun settle() {
         repeat(6) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200)) }
     }

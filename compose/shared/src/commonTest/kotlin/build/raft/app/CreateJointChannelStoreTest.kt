@@ -13,9 +13,7 @@ import build.raft.app.data.JointInviteTarget
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.model.ChannelId
-import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
-import build.raft.app.model.MemberProfile
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -206,15 +204,18 @@ class CreateJointChannelStoreTest {
     }
 
     @Test
-    fun memberSearchMatchesNameAndHandle() {
-        val members =
-            listOf(
-                MemberProfile(id = MemberId("a1"), displayName = "Ada Bot", handle = "ada", kind = MemberKind.Agent),
-                MemberProfile(id = MemberId("u1"), displayName = "Bo", handle = "bo-r", kind = MemberKind.Human),
-            )
-        assertEquals(members, createJointMemberMatches(members, " "))
-        assertEquals(listOf("a1"), createJointMemberMatches(members, "BOT").map { it.id.value })
-        assertEquals(listOf("u1"), createJointMemberMatches(members, "bo-").map { it.id.value })
+    fun memberPickerKeysAndTogglesKeepAgentsAndHumansApart() {
+        val state = CreateJointChannelState(selectedAgentIds = setOf("a1"), selectedUserIds = setOf("u1", "a1"))
+        assertEquals(
+            setOf(
+                RaftMemberPickerKey(MemberKind.Agent, "a1"),
+                RaftMemberPickerKey(MemberKind.Human, "u1"),
+                RaftMemberPickerKey(MemberKind.Human, "a1"),
+            ),
+            state.memberPickerKeys(),
+        )
+        assertEquals(CreateJointChannelIntent.ToggleAgent("a1"), createJointMemberToggleIntent(RaftMemberPickerKey(MemberKind.Agent, "a1")))
+        assertEquals(CreateJointChannelIntent.ToggleUser("a1"), createJointMemberToggleIntent(RaftMemberPickerKey(MemberKind.Human, "a1")))
     }
 
     private fun TestScope.filledStore(
