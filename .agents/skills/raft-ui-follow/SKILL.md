@@ -14,11 +14,9 @@ Agreed in #wg-mobile (2026-10-23, Lagoon, Codex-Android-DevOPS, sindresorhus).
 
 ## 0. Know there is one
 
-- A daily CI job compares `manifest.json` with the raft-ui version
-  `slock/packages/web` locks and, on a mismatch, opens one GitHub issue per
-  version ("raft-ui <version> can be followed"; an open issue with the same
-  title is not reopened). Codex-Android-DevOPS forwards it to #wg-mobile. When
-  that issue appears, follow this skill and close the issue with the PRs.
+- Stamp pushes an event when the Web upgrades raft-ui, that is, when the
+  version locked in `packages/web/package.json` on slock `staging` changes.
+  When you receive that event, follow this skill.
 - Also watch #proj-raft-ui release announcements and
   `botiverse/raft-design` `packages/ui/CHANGELOG.md`.
 
