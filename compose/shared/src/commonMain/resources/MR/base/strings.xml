@@ -2918,6 +2918,13 @@
     <string name="agent_migration_canceled_post_message">The migration was canceled after the agent switched computers. The agent is stopped on the new computer, and cleanup is done.</string>
     <string name="agent_migration_hosted_canceled_message">The move to the cloud was canceled. The agent is still on %1$s.</string>
     <string name="agent_migration_reference_label">Migration ID</string>
+    <string name="agent_migration_reference_copy">Copy migration ID</string>
+    <string name="agent_migration_reference_copied">Migration ID copied</string>
+    <string name="agent_migration_step_done">done</string>
+    <string name="agent_migration_step_failed">failed</string>
+    <string name="agent_migration_section_description_with_last">%1$s %2$s</string>
+    <string name="agent_migration_detail_target_computer_search">Search computers</string>
+    <string name="agent_migration_hosted_review_more_paths">and %1$d more</string>
     <string name="agent_migration_cancel_dialog_title">Cancel migration?</string>
     <string name="agent_migration_cancel_dialog_confirm">Cancel Migration</string>
     <string name="agent_migration_cancel_dialog_requesting">Canceling…</string>

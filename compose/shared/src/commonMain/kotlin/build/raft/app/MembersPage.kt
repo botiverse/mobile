@@ -6782,8 +6782,7 @@ private fun MembersDetailContent(
                                                     build.raft.app.model.formatRaftTimestampLabel(value, timeContext).takeIf { it.isNotBlank() }
                                                 },
                                                 onAgentPlacementChanged = migrationBinding.onAgentPlacementChanged
-                                            ),
-                                        modifier = Modifier.padding(horizontal = MembersPageInset)
+                                            )
                                     )
                                 }
                             }

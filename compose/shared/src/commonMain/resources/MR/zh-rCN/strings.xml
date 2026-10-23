@@ -2918,6 +2918,13 @@
     <string name="agent_migration_canceled_post_message">迁移在 Agent 切换计算机后被取消。Agent 已在新计算机上停止，清理已完成。</string>
     <string name="agent_migration_hosted_canceled_message">迁移到云端已取消，Agent 仍在 %1$s 上。</string>
     <string name="agent_migration_reference_label">迁移编号</string>
+    <string name="agent_migration_reference_copy">复制迁移编号</string>
+    <string name="agent_migration_reference_copied">迁移编号已复制</string>
+    <string name="agent_migration_step_done">已完成</string>
+    <string name="agent_migration_step_failed">失败</string>
+    <string name="agent_migration_section_description_with_last">%1$s%2$s</string>
+    <string name="agent_migration_detail_target_computer_search">搜索计算机</string>
+    <string name="agent_migration_hosted_review_more_paths">还有 %1$d 个</string>
     <string name="agent_migration_cancel_dialog_title">取消迁移？</string>
     <string name="agent_migration_cancel_dialog_confirm">取消迁移</string>
     <string name="agent_migration_cancel_dialog_requesting">取消中…</string>
