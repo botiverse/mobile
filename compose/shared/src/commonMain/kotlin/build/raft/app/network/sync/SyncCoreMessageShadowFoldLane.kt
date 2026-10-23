@@ -1,8 +1,5 @@
 package build.raft.app.network.sync
 
-import build.raft.app.data.SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY
-import build.raft.app.data.SharedServerFeatureFlags
-
 internal enum class PartitionDenialReason(val wireValue: String) {
     PrincipalUnavailable("principal_unavailable"),
 }
@@ -13,7 +10,7 @@ internal data class PartitionDenied(
 )
 
 /**
- * The `sync_core_messages_v1` legacy-overload diagnostic lane for message-canonical frames.
+ * The sync-core messages legacy-overload diagnostic lane for message-canonical frames.
  *
  * It used to fold each frame through the pure SyncCore messages domain and persist a V1
  * (`sync-core.messages.v1`) shadow window. Those rows were never read, so the persisting half was deleted
@@ -22,12 +19,8 @@ internal data class PartitionDenied(
  * invisible to the legacy realtime sinks and fail-open (a logger failure is swallowed).
  */
 internal class SyncCoreMessageShadowFoldLane(
-    private val featureFlags: SharedServerFeatureFlags,
     private val logger: (String) -> Unit,
 ) {
-    fun isEnabled(): Boolean =
-        featureFlags.isEnabledForAnyResolvedServer(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY)
-
     /** Fail closed when a legacy/unowned caller cannot supply the durable principal partition. */
     fun partitionDenied(
         serverId: String,

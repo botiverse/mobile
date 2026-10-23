@@ -2,7 +2,6 @@ package build.raft.app.network.sync
 
 import build.raft.app.data.MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
 import build.raft.app.data.MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY
-import build.raft.app.data.SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY
 import build.raft.app.data.SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY
 import build.raft.app.data.MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
 import build.raft.app.data.THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY
@@ -439,16 +438,6 @@ class DiagnosticFeatureFlagOverrideRegistry(
                 nowMillis = nowMillis,
                 expiryScheduler = expiryScheduler,
                 onChanged = { bumpRevision(MOBILE_SYNC_CHANGES_FEATURE_FLAG_KEY) },
-            ),
-            // Offline-cache line (task #1123/#1124/#1125): lets an internal build run before/ON on ONE binary.
-            // Consumed through SharedServerFeatureFlags' diagnostic override seam (see RaftSharedStoreProvider),
-            // so every reader of this key — durable last-known reader, entered-scope REST writer, fold lane,
-            // shadow observers — follows the same decision. Release builds are never entitled.
-            ServerExactDiagnosticFeatureFlagConsumer(
-                key = SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
-                nowMillis = nowMillis,
-                expiryScheduler = expiryScheduler,
-                onChanged = { bumpRevision(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY) },
             ),
         ).associateBy { it.key }
 

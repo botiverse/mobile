@@ -92,7 +92,7 @@ class SyncCoreMessagesV1RetirementTest {
                     authorityProvider = provider,
                 ).also { owner ->
                     owner.installMessageShadowFoldLane(
-                        SyncCoreMessageShadowFoldLane(featureFlags = flagsOn(), logger = {}),
+                        SyncCoreMessageShadowFoldLane(logger = {}),
                     )
                 }
             val displayed = mutableListOf<String>()
@@ -132,22 +132,6 @@ class SyncCoreMessagesV1RetirementTest {
                 decodedCanonical = CanonicalMessageCarry(row, emptySet()),
             )
         }
-    }
-
-    private fun flagsOn(): SharedServerFeatureFlags {
-        val flags =
-            SharedServerFeatureFlags(
-                object : RaftFeatureFlagsApi {
-                    override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
-                        HomeNetworkResponse(
-                            code = 200,
-                            bodyText =
-                                """{"evaluations":[{"key":"$SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY","enabled":true}]}""",
-                        )
-                },
-            )
-        runBlocking { flags.prefetch(ServerId("server-a")) }
-        return flags
     }
 
     private fun freshDatabase(): Pair<JdbcSqliteDriver, RaftSqlDatabase> {

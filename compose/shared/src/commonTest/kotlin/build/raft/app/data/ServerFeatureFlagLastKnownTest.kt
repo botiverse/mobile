@@ -11,13 +11,16 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * task #1133: offline cold start gates the offline-cache flag with the last online evaluation of the
+ * task #1133: offline cold start gates a last-known flag with the last online evaluation of the
  * same (environment, account, server); an online evaluation always wins; logout / account switch never
  * leaks a value to the next account. Each `SharedServerFeatureFlags` instance below is one process.
  *
- * `sync_core_messages_v1` reads ON without a decision (client default-on since 2026-10-11), so a stored
- * value is only observable when it is OFF: these tests store an explicit server OFF and check who sees it.
+ * No production key is stored last-known today, so these tests opt `mobile_thread_reverse_layout_v0` in. It
+ * reads ON without a decision (client default-on), so a stored value is only observable when it is OFF:
+ * these tests store an explicit server OFF and check who sees it.
  */
+private val lastKnownKeys: Set<String> = setOf(MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY)
+
 class ServerFeatureFlagLastKnownTest {
 
     private val server = ServerId("s1")
@@ -38,7 +41,7 @@ class ServerFeatureFlagLastKnownTest {
         HomeNetworkResponse(
             code = 200,
             bodyText =
-                """{"evaluations":[{"key":"sync_core_messages_v1","enabled":$enabled},""" +
+                """{"evaluations":[{"key":"mobile_thread_reverse_layout_v0","enabled":$enabled},""" +
                     """{"key":"read_receipts_v0","enabled":true}]}""",
         )
 
@@ -53,7 +56,7 @@ class ServerFeatureFlagLastKnownTest {
             SharedServerFeatureFlags(
                 api = api,
                 diagnosticsLogger = { logs += it },
-                lastKnown = ServerFeatureFlagLastKnownStore(store = disk, currentBinding = { binding }),
+                lastKnown = ServerFeatureFlagLastKnownStore(store = disk, currentBinding = { binding }, keys = lastKnownKeys),
             )
     }
 
@@ -67,13 +70,12 @@ class ServerFeatureFlagLastKnownTest {
         device.onlineSession(enabled = false)
 
         val coldStart = device.process(ScriptedApi { offline })
-        assertFalse(coldStart.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertFalse(coldStart.isEnabled(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY))
         coldStart.prefetch(server) // evaluate fails offline: still the stored value
-        assertFalse(coldStart.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
-        assertTrue(device.logs.any { it.startsWith("feature_flags last_known_used server=s1 key=sync_core_messages_v1 enabled=false") })
-        // Raw / process-wide reads never see the stored value.
+        assertFalse(coldStart.isEnabled(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY))
+        assertTrue(device.logs.any { it.startsWith("feature_flags last_known_used server=s1 key=mobile_thread_reverse_layout_v0 enabled=false") })
+        // Raw reads never see the stored value.
         assertFalse(coldStart.snapshotFor(server).resolved)
-        assertFalse(coldStart.isEnabledForAnyResolvedServer(SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
     }
 
     @Test
@@ -81,7 +83,7 @@ class ServerFeatureFlagLastKnownTest {
         val device = Device().apply { binding = accountA }
         val coldStart = device.process(ScriptedApi { offline })
         coldStart.prefetch(server)
-        assertTrue(coldStart.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertTrue(coldStart.isEnabled(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY))
     }
 
     @Test
@@ -99,13 +101,13 @@ class ServerFeatureFlagLastKnownTest {
         device.onlineSession(enabled = false)
 
         val onlineColdStart = device.process(ScriptedApi { evaluated(true) })
-        assertFalse(onlineColdStart.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY)) // before evaluate lands
+        assertFalse(onlineColdStart.isEnabled(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY)) // before evaluate lands
         onlineColdStart.prefetch(server)
-        assertTrue(onlineColdStart.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertTrue(onlineColdStart.isEnabled(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY))
 
         // The online decision is also what the next offline cold start reads.
         val nextOffline = device.process(ScriptedApi { offline })
-        assertTrue(nextOffline.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertTrue(nextOffline.isEnabled(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY))
     }
 
     @Test
@@ -121,11 +123,11 @@ class ServerFeatureFlagLastKnownTest {
         val inFlight = async { flags.prefetch(server) }
         api.entered.await()
         device.binding = accountA
-        assertFalse(flags.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY)) // stored value until it lands
+        assertFalse(flags.isEnabled(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY)) // stored value until it lands
         api.gate?.complete(Unit)
         inFlight.await()
 
-        assertTrue(flags.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertTrue(flags.isEnabled(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY))
         assertTrue(device.logs.any { it.startsWith("feature_flags last_known_skipped server=s1") })
     }
 
@@ -136,11 +138,11 @@ class ServerFeatureFlagLastKnownTest {
 
         device.binding = accountB
         val coldStartAsB = device.process(ScriptedApi { offline })
-        assertTrue(coldStartAsB.isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertTrue(coldStartAsB.isEnabled(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY))
 
         // Same account in another environment is another binding too.
         device.binding = accountA.copy(environmentId = "https://staging.example")
-        assertTrue(device.process(ScriptedApi { offline }).isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertTrue(device.process(ScriptedApi { offline }).isEnabled(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY))
     }
 
     @Test
@@ -151,16 +153,16 @@ class ServerFeatureFlagLastKnownTest {
         device.onlineSession(enabled = true)
 
         device.binding = accountA
-        assertTrue(device.process(ScriptedApi { offline }).isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertTrue(device.process(ScriptedApi { offline }).isEnabled(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY))
     }
 
     @Test
     fun clearAllOnLogoutRemovesTheStoredValue() = runBlocking {
         val device = Device().apply { binding = accountA }
         device.onlineSession(enabled = false)
-        ServerFeatureFlagLastKnownStore(store = device.disk, currentBinding = { device.binding }).clearAll()
+        ServerFeatureFlagLastKnownStore(store = device.disk, currentBinding = { device.binding }, keys = lastKnownKeys).clearAll()
 
-        assertTrue(device.process(ScriptedApi { offline }).isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertTrue(device.process(ScriptedApi { offline }).isEnabled(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY))
     }
 
     @Test
@@ -177,11 +179,11 @@ class ServerFeatureFlagLastKnownTest {
 
         // Silent refresh: same binding, authorityGeneration + 1.
         device.binding = context.copy(authorityGeneration = 4).toServerFeatureFlagLastKnownBinding()
-        assertFalse(device.process(ScriptedApi { offline }).isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertFalse(device.process(ScriptedApi { offline }).isEnabled(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY))
 
         // Control with identical generations: another principal.
         device.binding = context.copy(accountId = "user-b").toServerFeatureFlagLastKnownBinding()
-        assertTrue(device.process(ScriptedApi { offline }).isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertTrue(device.process(ScriptedApi { offline }).isEnabled(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY))
     }
 
     @Test
@@ -197,9 +199,9 @@ class ServerFeatureFlagLastKnownTest {
         inFlight.await()
 
         assertTrue(device.logs.any { it.startsWith("feature_flags last_known_skipped server=s1") })
-        assertTrue(device.process(ScriptedApi { offline }).isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertTrue(device.process(ScriptedApi { offline }).isEnabled(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY))
         device.binding = accountA
-        assertTrue(device.process(ScriptedApi { offline }).isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertTrue(device.process(ScriptedApi { offline }).isEnabled(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY))
     }
 
     @Test
@@ -208,7 +210,7 @@ class ServerFeatureFlagLastKnownTest {
         device.onlineSession(enabled = false)
         assertNull(device.disk.getString(SERVER_FEATURE_FLAG_LAST_KNOWN_STORAGE_KEY))
         device.binding = accountA
-        assertTrue(device.process(ScriptedApi { offline }).isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertTrue(device.process(ScriptedApi { offline }).isEnabled(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY))
     }
 
     @Test
@@ -216,7 +218,7 @@ class ServerFeatureFlagLastKnownTest {
         val device = Device().apply { binding = accountA.copy(environmentId = "https://api.example/") }
         device.onlineSession(enabled = false)
         device.binding = accountA
-        assertFalse(device.process(ScriptedApi { offline }).isEnabled(server, SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY))
+        assertFalse(device.process(ScriptedApi { offline }).isEnabled(server, MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY))
         assertEquals(1, device.logs.count { it.contains("last_known_stored") })
     }
 }

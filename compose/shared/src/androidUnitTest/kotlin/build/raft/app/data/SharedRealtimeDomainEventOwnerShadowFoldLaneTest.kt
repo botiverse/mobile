@@ -16,7 +16,6 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.RealtimeEvent
-import build.raft.app.model.ServerId
 import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.ThreadId
 import build.raft.app.network.sync.CanonicalMessageV2CanaryOutcome
@@ -41,35 +40,6 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         scopeId = channelId,
         scopeKind = "channel",
     )
-
-    private class FakeFlagsApi(private val enabled: Boolean) : RaftFeatureFlagsApi {
-        override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
-            HomeNetworkResponse(
-                code = 200,
-                bodyText = """{"evaluations":[{"key":"$SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY","enabled":$enabled}]}""",
-            )
-    }
-
-    private fun resolvedFlags(enabled: Boolean): SharedServerFeatureFlags {
-        val flags = SharedServerFeatureFlags(FakeFlagsApi(enabled))
-        runBlocking { flags.prefetch(ServerId(serverId)) }
-        return flags
-    }
-
-    private fun resolvedReactionFlags(enabled: Boolean): SharedServerFeatureFlags {
-        val flags = SharedServerFeatureFlags(
-            object : RaftFeatureFlagsApi {
-                override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
-                    HomeNetworkResponse(
-                        code = 200,
-                        bodyText =
-                            """{"evaluations":[{"key":"$SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY","enabled":$enabled}]}""",
-                    )
-            },
-        )
-        runBlocking { flags.prefetch(ServerId(serverId)) }
-        return flags
-    }
 
     private fun ownerWith(lane: SyncCoreMessageShadowFoldLane): Pair<SharedRealtimeDomainEventOwner, MutableList<Pair<String, RealtimeEvent>>> {
         val owner = SharedRealtimeDomainEventOwner(
@@ -146,7 +116,6 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     )
 
     private fun recordingLane(logs: MutableList<String>) = SyncCoreMessageShadowFoldLane(
-        featureFlags = resolvedFlags(enabled = true),
         logger = logs::add,
     )
 
@@ -244,25 +213,28 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
     }
 
     @Test
-    fun shadowLaneIsInvisibleToSinksRegardlessOfFlag() {
+    fun shadowLaneIsInvisibleToSinks() {
         val event = messageNewWithCanonical(id = "m1", seq = 1)
 
         val laneOn = SyncCoreMessageShadowFoldLane(
-            featureFlags = resolvedFlags(enabled = true),
             logger = {},
         )
         val (ownerOn, homeEventsOn) = ownerWith(laneOn)
         ownerOn.accept(serverId, event, source = "app_shell")
 
-        val laneOff = SyncCoreMessageShadowFoldLane(
-            featureFlags = resolvedFlags(enabled = false),
-            logger = {},
+        val ownerWithoutLane = SharedRealtimeDomainEventOwner(
+            cursorStore = RealtimeAppliedSeqCursorStore(InMemoryRaftKeyValueStore()),
         )
-        val (ownerOff, homeEventsOff) = ownerWith(laneOff)
-        ownerOff.accept(serverId, event, source = "app_shell")
+        val homeEventsWithoutLane = mutableListOf<Pair<String, RealtimeEvent>>()
+        ownerWithoutLane.registerSinks(
+            RealtimeDomainEventSinks(
+                applyHomeShell = { server, sinkEvent -> homeEventsWithoutLane += server to sinkEvent },
+            ),
+        )
+        ownerWithoutLane.accept(serverId, event, source = "app_shell")
 
-        // The sink-facing output must be byte-identical whether the shadow lane is on or off.
-        assertEquals(homeEventsOff, homeEventsOn)
+        // The sink-facing output must be byte-identical with or without the shadow lane.
+        assertEquals<List<Pair<String, RealtimeEvent>>>(homeEventsWithoutLane, homeEventsOn)
         assertEquals<List<Pair<String, RealtimeEvent>>>(listOf(serverId to event), homeEventsOn)
     }
 
@@ -275,7 +247,6 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         val callOrder = mutableListOf<String>()
         owner.installReactionShadowLane(
             SyncCoreReactionShadowLane(
-                featureFlags = resolvedReactionFlags(enabled = true),
                 logger = { message ->
                     logs += message
                     callOrder += "shadow"
@@ -314,7 +285,6 @@ class SharedRealtimeDomainEventOwnerShadowFoldLaneTest {
         )
         owner.installReactionShadowLane(
             SyncCoreReactionShadowLane(
-                featureFlags = resolvedReactionFlags(enabled = true),
                 logger = { error("diagnostics unavailable") },
             ),
         )

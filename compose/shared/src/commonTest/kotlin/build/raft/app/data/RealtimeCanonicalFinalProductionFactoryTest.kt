@@ -34,7 +34,7 @@ class RealtimeCanonicalFinalProductionFactoryTest {
 
     @Test
     fun providerFactoryConfiguredInjectionExposesOneGatewayAndLazyRouter() {
-        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), commitStep = finalizableStep())
+        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(t4 = true), commitStep = finalizableStep())
         try {
             assertNotNull(fixture.provider.canonicalFinalRegistrationDirectoryOrNull())
             assertSame(
@@ -67,7 +67,7 @@ class RealtimeCanonicalFinalProductionFactoryTest {
     @Test
     fun legacyAndShellOwnerFactoriesShareConfiguredProviderGateway() = runBlocking {
         var final = 0
-        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(true, true), commitStep = finalizableStep())
+        val fixture = CanonicalFinalGatewayFixture(initialSnapshot = snapshot(t4 = true), commitStep = finalizableStep())
         try {
             val secondOwner =
                 createSharedRealtimeDomainEventOwner(
