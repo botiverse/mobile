@@ -17,6 +17,9 @@ import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.resources.MR
+import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.RaftGlyphIcon
+import build.raft.designsystem.components.RaftPresence
 import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftStatusSize
 import build.raft.designsystem.tokens.RaftUiPalette
@@ -47,57 +50,58 @@ internal fun RaftMarkdownMentionReadStateScope(
 }
 
 private const val MentionReadInlineId = "raft-mention-read:read"
-private const val MentionUnreadInlineId = "raft-mention-read:unread"
 
 /**
- * Web `mr-2`: the badge's own width is reserved after the mention so the next word never collides
- * with it; the badge (`-right-1.5 top-0`) then hangs 2dp back over the mention's top-right corner.
+ * Ik2: the read mark sits 2dp right of the mention's last stroke, top-aligned with the mention's
+ * line, and 10dp are reserved after the mention (the mark's 8dp plus its 2dp gap) before the
+ * normal space. Unread draws nothing at all, so no placeholder is appended for it.
  */
-private val MentionReadBadgeReserve = 8.dp
-private val MentionReadBadgeOverlap = (-2).dp
+private val MentionReadBadgeReserve = 10.dp
+private val MentionReadBadgeGap = 2.dp
+private val MentionReadCheckSize = 6.5.dp
+private const val MentionReadCheckStroke = 3f
 
-/** Appends the badge placeholder right after a mention, kept on the mention's line by a word joiner. */
+/** Appends the read mark placeholder right after a mention (kept on its line by a word joiner); unread appends nothing. */
 internal fun AnnotatedString.Builder.appendRaftMarkdownMentionReadBadge(read: Boolean) {
+    if (!read) return
     append(RaftMarkdownTaskChipWordJoiner)
-    appendInlineContent(if (read) MentionReadInlineId else MentionUnreadInlineId, "￼")
+    appendInlineContent(MentionReadInlineId, "￼")
 }
 
-/** Both badge placeholders; the colours are mode-invariant (lime / sticker paper, ink edge). */
+/** The read mark placeholder; the colours are mode-invariant (online green, ink edge and check). */
 internal val RaftMarkdownMentionReadInlineContent: Map<String, InlineTextContent> by lazy {
     mapOf(
-        MentionReadInlineId to mentionReadBadgeInlineContent(read = true),
-        MentionUnreadInlineId to mentionReadBadgeInlineContent(read = false),
+        MentionReadInlineId to
+            InlineTextContent(
+                placeholder =
+                    Placeholder(
+                        width = MentionReadBadgeReserve.value.sp,
+                        height = RaftStatusSize.Sm.edge.value.sp,
+                        placeholderVerticalAlign = PlaceholderVerticalAlign.TextTop,
+                    ),
+            ) {
+                RaftMarkdownMentionReadBadge()
+            },
     )
 }
 
-private fun mentionReadBadgeInlineContent(read: Boolean): InlineTextContent =
-    InlineTextContent(
-        placeholder =
-            Placeholder(
-                width = MentionReadBadgeReserve.value.sp,
-                height = RaftStatusSize.Sm.edge.value.sp,
-                placeholderVerticalAlign = PlaceholderVerticalAlign.TextTop,
-            ),
-    ) {
-        RaftMarkdownMentionReadBadge(read)
-    }
-
 /**
- * raft-ui status pixel `sm` (8dp, 2dp corners, ink edge): lime once the agent has read the message,
- * a white sticker until then (web `bg-success` / `bg-sticker-paper`). Labelled "Read" / "Not read
- * yet" like the web tooltip.
+ * The read mark: the online status pixel (`sm`, 8dp, 2dp corners, 1.5dp ink edge, online green)
+ * with a 6.5dp ink Lucide check (stroke 3 on the 24 grid) centred in it. Labelled "Read".
  */
 @Composable
-internal fun RaftMarkdownMentionReadBadge(read: Boolean) {
-    val label =
-        stringResource(if (read) MR.strings.thread_mention_agent_read else MR.strings.thread_mention_agent_unread)
+internal fun RaftMarkdownMentionReadBadge() {
+    val label = stringResource(MR.strings.thread_mention_agent_read)
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopStart) {
-        RaftStatusDot(
-            modifier = Modifier.offset(x = MentionReadBadgeOverlap),
-            size = RaftStatusSize.Sm,
-            color = if (read) RaftUiPalette.success else RaftUiPalette.stickerPaper,
-            contentDescription = label,
-        )
+        Box(Modifier.offset(x = MentionReadBadgeGap), contentAlignment = Alignment.Center) {
+            RaftStatusDot(size = RaftStatusSize.Sm, presence = RaftPresence.Online, contentDescription = label)
+            RaftGlyphIcon(
+                glyph = RaftGlyph.Check,
+                size = MentionReadCheckSize,
+                color = RaftUiPalette.stickerInk,
+                strokeWidth = MentionReadCheckStroke,
+            )
+        }
     }
 }
 

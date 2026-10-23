@@ -595,6 +595,20 @@ class DisplayComponentScreenshotTest {
         }
 
     @Test
+    fun statusDotWithCheck() =
+        capture("status_dot_check") {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                // The Ik2 read mark: the online sm pixel with a 6.5dp ink check, stroke 3 on the 24 grid.
+                RaftStatusSize.entries.forEach { size ->
+                    Box(contentAlignment = Alignment.Center) {
+                        RaftStatusDot(presence = RaftPresence.Online, size = size)
+                        RaftGlyphIcon(RaftGlyph.Check, size = size.edge * 0.8f, color = RaftUiPalette.stickerInk, strokeWidth = 3f)
+                    }
+                }
+            }
+        }
+
+    @Test
     fun skeleton() =
         capture("skeleton") {
             Column(Modifier.width(320.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
