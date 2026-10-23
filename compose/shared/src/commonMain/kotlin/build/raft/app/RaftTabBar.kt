@@ -94,6 +94,17 @@ internal data class RaftBottomTabItemPayload(
      * ignores it and keeps the dot.
      */
     val nativeBadgeCount: Int = 0,
+    /**
+     * The tab opens a panel instead of a page and is never selected (the current-server tab).
+     * The iOS 26 system bar shows it as a separate round button beside the tab bar.
+     */
+    val opensPanel: Boolean = false,
+    /** Screen-reader label when it differs from [label] ("Current server: Raft HQ"). */
+    val accessibilityLabel: String? = null,
+    /** The server's avatar wire value (an image URL), for the iOS 26 server button; null = none. */
+    val avatarSource: String? = null,
+    /** The server's initial, drawn on the app's ink tile when there is no avatar image. */
+    val avatarFallbackLabel: String? = null,
 )
 
 internal enum class RaftTabBarPresentation {
