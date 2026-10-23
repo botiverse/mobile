@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -100,13 +101,20 @@ internal fun RaftAppServerTab(
     }
 }
 
+/** The server panel's width under the wide top bar (web AppTopBar's server menu, `w-64`). */
+internal val RaftServerMenuTopBarWidth = 256.dp
+
 /** Where the server popover rises from. */
 internal enum class RaftServerMenuAnchor {
     /** Above the phone bar, 8dp from each side. */
     BottomBar,
 
-    /** Beside the wide rail's foot, against its start edge. */
-    RailFoot,
+    /**
+     * Under the wide top bar's workspace button, at the top start, 256dp wide (web AppTopBar:
+     * the server menu opens 8dp under the button, `w-64`). On a wide screen the button is the
+     * one server entry.
+     */
+    TopBar,
 }
 
 /**
@@ -130,6 +138,8 @@ internal fun RaftAppServerMenuOverlay(
     bottomInset: Dp = 0.dp,
     topInset: Dp = 0.dp,
     screenHeight: Dp? = null,
+    /** The pages in the bottom row ([raftServerMenuEntriesFor]); none draws no row. */
+    entries: List<RaftServerMenuEntry> = model.entries,
 ) {
     if (!state.open) return
     // The overlay host registers Back as well; the popover names its own handler so Back closes
@@ -161,10 +171,17 @@ internal fun RaftAppServerMenuOverlay(
                 bottomInset = bottomInset,
                 topInset = topInset,
                 screenHeight = screenHeight,
-                alignment = if (anchor == RaftServerMenuAnchor.RailFoot) Alignment.BottomStart else Alignment.BottomCenter,
+                alignment =
+                    when (anchor) {
+                        RaftServerMenuAnchor.TopBar -> Alignment.TopStart
+                        RaftServerMenuAnchor.BottomBar -> Alignment.BottomCenter
+                    },
             ) {
                 RaftMobileNavServerPopoverContent(
-                    modifier = Modifier.raftFloatingContentClickTarget(),
+                    modifier =
+                        Modifier
+                            .then(if (anchor == RaftServerMenuAnchor.TopBar) Modifier.width(RaftServerMenuTopBarWidth) else Modifier)
+                            .raftFloatingContentClickTarget(),
                     paneTitle = panelTitle,
                 ) {
                     RaftMobileNavServerPopoverList {
@@ -224,9 +241,9 @@ internal fun RaftAppServerMenuOverlay(
                             )
                         }
                     }
-                    RaftMobileNavServerPopoverSeparator()
-                    RaftMobileNavServerPopoverDestinations {
-                        model.entries.forEach { entry ->
+                    if (entries.isNotEmpty()) RaftMobileNavServerPopoverSeparator()
+                    if (entries.isNotEmpty()) RaftMobileNavServerPopoverDestinations {
+                        entries.forEach { entry ->
                             RaftMobileNavServerPopoverDestination(
                                 label = pageLabels.getValue(entry),
                                 onClick = { onPick(RaftServerMenuPick.Page(entry)) },

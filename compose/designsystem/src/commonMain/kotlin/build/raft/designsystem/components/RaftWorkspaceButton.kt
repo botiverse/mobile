@@ -31,7 +31,11 @@ object RaftWorkspaceButtonDefaults {
     internal val AvatarNameGap: Dp = 8.dp
     internal val NameChevronGap: Dp = 4.dp
     internal val MarkGap: Dp = 4.dp
-    internal val NameMaxWidth: Dp = 200.dp
+    /** The name's cap: raft-ui `WorkspaceButtonName`, at most 200dp, then an ellipsis. */
+    val NameMaxWidth: Dp = 200.dp
+
+    /** The name's cap while the workspace strip shows beside the button (web AppTopBar `max-w-[120px]`). */
+    val NameMaxWidthBesideStrip: Dp = 120.dp
     internal val ChevronSize: Dp = 16.dp
 }
 
@@ -42,7 +46,8 @@ object RaftWorkspaceButtonDefaults {
  *
  * - [avatar] is the server's avatar at [RaftWorkspaceButtonDefaults.AvatarSize], with any
  *   unread mark on its corner; 8dp before the name.
- * - [name] is at most 200dp, then an ellipsis. The button shrinks from the name: the avatar
+ * - [name] is at most [nameMaxWidth] (200dp; 120dp beside the top bar's workspace strip), then
+ *   an ellipsis. The button shrinks from the name: the avatar
  *   and the chevron keep their size.
  * - [mark] (the public-page globe) sits 4dp after the name.
  * - The 16dp chevron is part of the button and always shows, 4dp after the name.
@@ -58,6 +63,7 @@ fun RaftWorkspaceButton(
     mark: (@Composable () -> Unit)? = null,
     open: Boolean = false,
     interactionSource: MutableInteractionSource? = null,
+    nameMaxWidth: Dp = RaftWorkspaceButtonDefaults.NameMaxWidth,
 ) {
     val look = raftButtonLook(RaftButtonVariant.OnFrame, enabled = true, frameless = false, colors = RaftTheme.colors)
     val textStyle = raftButtonTextStyle(RaftButtonSize.Md, RaftButtonVariant.OnFrame, RaftTheme.typography)
@@ -85,7 +91,7 @@ fun RaftWorkspaceButton(
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false).widthIn(max = RaftWorkspaceButtonDefaults.NameMaxWidth),
+                modifier = Modifier.weight(1f, fill = false).widthIn(max = nameMaxWidth),
             )
             if (mark != null) {
                 Spacer(Modifier.width(RaftWorkspaceButtonDefaults.MarkGap))

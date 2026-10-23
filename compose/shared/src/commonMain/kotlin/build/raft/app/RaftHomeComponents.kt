@@ -1467,6 +1467,8 @@ internal data class RaftStructuralHomeShellData(
     val serverSwitcherExpanded: Boolean = false,
     val serverDrawerEnabled: Boolean = false,
     val homeServerAvatarEnabled: Boolean = false,
+    /** Wide layout: the top bar holds the server switcher, so the head shows the page name. */
+    val serverSwitcherInTopBar: Boolean = false,
     val serverDrawerSections: List<RaftHomeServerDrawerSection> = emptyList(),
     val pendingServerId: String? = null,
     val prefersChineseCommunity: Boolean = false,
@@ -1590,6 +1592,8 @@ internal fun RaftStructuralHomeShell(
     serverSwitcherExpanded: Boolean = false,
     serverDrawerEnabled: Boolean = false,
     homeServerAvatarEnabled: Boolean = false,
+    /** Wide layout (artin task #8): the top bar holds the server switcher; the head shows "Home". */
+    serverSwitcherInTopBar: Boolean = false,
     serverDrawerSections: List<RaftHomeServerDrawerSection> = emptyList(),
     pendingServerId: String? = null,
     prefersChineseCommunity: Boolean = false,
@@ -1703,6 +1707,7 @@ internal fun RaftStructuralHomeShell(
                 serverSwitcherExpanded = serverSwitcherExpanded,
                 serverDrawerEnabled = serverDrawerEnabled,
                 homeServerAvatarEnabled = homeServerAvatarEnabled,
+                serverSwitcherInTopBar = serverSwitcherInTopBar,
                 serverDrawerSections = serverDrawerSections,
                 pendingServerId = pendingServerId,
                 prefersChineseCommunity = prefersChineseCommunity,
@@ -1816,6 +1821,7 @@ private fun RaftStructuralHomeShellContent(
     val serverSwitcherExpanded = data.serverSwitcherExpanded
     val serverDrawerEnabled = data.serverDrawerEnabled
     val homeServerAvatarEnabled = data.homeServerAvatarEnabled
+    val serverSwitcherInTopBar = data.serverSwitcherInTopBar
     val serverDrawerSections = data.serverDrawerSections
     val pendingServerId = data.pendingServerId
     val prefersChineseCommunity = data.prefersChineseCommunity
@@ -2327,6 +2333,7 @@ private fun RaftStructuralHomeShellContent(
                     HomeTitlebar(
                         serverName = currentServerName,
                         serverIdentity = currentHomeHeaderServer.takeIf { homeServerAvatarEnabled },
+                        title = if (serverSwitcherInTopBar) stringResource(MR.strings.tab_home) else null,
                         serverPublicPageLive = currentHomeHeaderServer.publicPageLive,
                         hasOtherServerUnread = serverSwitcherHasOtherUnread,
                         serverSwitcherOpen = serverSwitcherExpanded,
@@ -4698,6 +4705,11 @@ private fun List<RaftHomePinnedRow>.sortedPinnedRows(mode: RaftSidebarSortMode):
 private fun HomeTitlebar(
     serverName: String,
     serverIdentity: RaftServerSwitcherItem? = null,
+    /**
+     * Wide layout: the page name in place of the server switcher, which is in the top bar there
+     * (web: with the top bar the sidebar has no workspace button).
+     */
+    title: String? = null,
     serverPublicPageLive: Boolean = false,
     hasOtherServerUnread: Boolean,
     serverSwitcherOpen: Boolean = false,
@@ -4731,14 +4743,18 @@ private fun HomeTitlebar(
         ) {
             // The header always shows the identity cluster (avatar tile, name, chevron). Before
             // the server identity loads (cold start, fixtures) it is built from the name alone.
-            HomeServerIdentityCluster(
-                server = homeTitlebarServerIdentity(serverIdentity, serverName, serverPublicPageLive),
-                unread = hasOtherServerUnread,
-                open = serverSwitcherOpen,
-                onClick = onServerBadgeClick,
-                onBlankClick = onBlankClick,
-                modifier = Modifier.weight(1f)
-            )
+            if (title != null) {
+                HomeTitlebarPageTitle(title = title, onClick = onBlankClick, modifier = Modifier.weight(1f))
+            } else {
+                HomeServerIdentityCluster(
+                    server = homeTitlebarServerIdentity(serverIdentity, serverName, serverPublicPageLive),
+                    unread = hasOtherServerUnread,
+                    open = serverSwitcherOpen,
+                    onClick = onServerBadgeClick,
+                    onBlankClick = onBlankClick,
+                    modifier = Modifier.weight(1f)
+                )
+            }
             if (refreshing) {
                 RaftHeaderRefreshIndicator()
             }
@@ -4751,6 +4767,33 @@ private fun HomeTitlebar(
                 modifier = Modifier.offset(x = HomeNotificationBellEdgeInset)
             )
         }
+    }
+}
+
+/**
+ * The wide Home head's page name, in the tab root heads' title style ([RaftTopPageHeader]); a tap
+ * scrolls the list to the top, as the blank head does on the phone.
+ */
+@Composable
+private fun HomeTitlebarPageTitle(title: String, onClick: (() -> Unit)?, modifier: Modifier = Modifier) {
+    Box(
+        modifier =
+            modifier
+                .height(RaftAppSize.PageHeaderContentHeight)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    enabled = onClick != null,
+                ) { onClick?.invoke() },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Text(
+            text = title,
+            style = RaftType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
+            color = RaftColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
