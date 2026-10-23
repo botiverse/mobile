@@ -543,17 +543,6 @@
   }
 }
 
-/* Anchor jump flash (attachment comments task #15): orientation highlight on
-   the structure a comment anchor points at — the cyan-soft of "the thing you
-   jumped to" (Raft Design System › Message is-target). */
-.anchor-flash {
-  animation: anchor-flash 1.6s ease-out;
-}
-@keyframes anchor-flash {
-  0%, 35% { background-color: var(--info-soft); }
-  100% { background-color: transparent; }
-}
-
 /* Responsive high-frequency actions use the width of their owning surface,
    not a viewport breakpoint. This keeps narrow desktop drawers readable
    while preserving the same affordance on phones. */

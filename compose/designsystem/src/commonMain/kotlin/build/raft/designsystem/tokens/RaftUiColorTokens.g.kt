@@ -2,9 +2,9 @@
 // Regenerate: python3 tools/design-tokens/gen_tokens.py
 // Sources (tools/design-tokens/manifest.json):
 //   npm:tailwindcss@4.3.3/theme.css sha256=443d7af364200f8e
-//   npm:@botiverse/raft-ui@0.20.0/dist/styles.css sha256=49dc07ca172c4e57
-//   npm:@botiverse/raft-ui@0.20.0/dist/foundation.css sha256=ef4cdb058f5a1e49
-//   botiverse/slock@42695027722fd96919f1be05676adfca1c769be8:packages/web/src/index.css sha256=e0c22a67b7c14810
+//   npm:@botiverse/raft-ui@0.22.1/dist/styles.css sha256=2baece367aea6ece
+//   npm:@botiverse/raft-ui@0.22.1/dist/foundation.css sha256=6a94916693d9676a
+//   botiverse/slock@f1459e8b121ac91332baa286e08dd0883a813396:packages/web/src/index.css sha256=6e63d66d3ee7932a
 
 package build.raft.designsystem.tokens
 
@@ -938,6 +938,8 @@ object RaftUiPalette {
     val infoHover = Color(0xFF25B9DC)
     /** `--line-frame-active` */
     val lineFrameActive = Color(0xFF141111)
+    /** `--located-fill`: The jump highlight's resting value (transparent): raft-ui animates it to `info-soft`. Paint `infoSoft` for the highlight, not this. */
+    val locatedFill = Color(0x00000000)
     /** `--palette-cream-100` */
     val paletteCream100 = Color(0xFFFFFCF5)
     /** `--palette-cream-200` */
@@ -1446,7 +1448,7 @@ sealed class RaftUiThemeColors {
         override val foregroundHover = Color(0xFF141111)
         override val foregroundIcon = Color(0xAD141111)
         override val foregroundInverse = Color(0xFFFFFFFF)
-        override val foregroundLink = Color(0xFF1447E6)
+        override val foregroundLink = Color(0xFF184F95)
         override val foregroundMuted = Color(0xAD141111)
         override val foregroundOnFrame = Color(0xFF141111)
         override val foregroundOnFrameMuted = Color(0xFF564919)
@@ -1543,7 +1545,7 @@ sealed class RaftUiThemeColors {
         override val foregroundHover = Color(0xFFE5E5E2)
         override val foregroundIcon = Color(0xFFC4C4C1)
         override val foregroundInverse = Color(0xFF1B1B19)
-        override val foregroundLink = Color(0xFF8EC5FF)
+        override val foregroundLink = Color(0xFF6DA7EC)
         override val foregroundMuted = Color(0xFFC4C4C1)
         override val foregroundOnFrame = Color(0xFFE5E5E2)
         override val foregroundOnFrameMuted = Color(0xFF9E9E9B)
