@@ -7213,7 +7213,7 @@ private fun RaftAppShellReadyContent(
                                         Modifier
                                             .width(RAFT_SIDE_THREAD_DIVIDER_DP.dp)
                                             .fillMaxHeight()
-                                            .background(if (RaftAppThemeState.isDark) RaftColor.BorderSeam else Color.Black), // raft-color: light pane divider stays pure black
+                                            .background(RaftColor.BorderSeam), // raft-ui: one line-seam between regions, as the rail's
                                 )
                             }
                             RaftChildPage(
@@ -7345,7 +7345,7 @@ private fun RaftAppShellReadyContent(
                                         Modifier
                                             .width(if (dualPane) RAFT_LIST_PANE_DIVIDER_DP.dp else 0.dp)
                                             .fillMaxHeight()
-                                            .background(if (RaftAppThemeState.isDark) RaftColor.BorderSeam else Color.Black), // raft-color: light pane divider stays pure black
+                                            .background(RaftColor.BorderSeam), // raft-ui: one line-seam between regions, as the rail's
                                 )
                                 Box(
                                     modifier =

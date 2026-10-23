@@ -44,6 +44,9 @@ import build.raft.app.compat.pager.Pager
 import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.components.RaftMobileNavDefaults
 import build.raft.designsystem.components.RaftMobileNavItem
+import build.raft.designsystem.components.RaftAppRailDefaults
+import build.raft.designsystem.components.RaftAppRailItem
+import build.raft.designsystem.components.RaftAppRail
 import build.raft.app.components.RaftDesignSystemTheme
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
@@ -316,14 +319,6 @@ internal fun raftBottomTabIconScale(icon: RaftLucideIconName): Float =
 
 internal const val RaftBottomTabActivityIconScale = 18f / 20f
 
-/** The attention dot on a tab icon, announced as unread activity / something new. */
-@Composable
-private fun RaftTabAttentionDot(key: String, modifier: Modifier = Modifier) {
-    val description =
-        if (key == "more") stringResource(MR.strings.tab_more_attention_dot) else stringResource(MR.strings.tab_activity_unread_dot)
-    RaftAttentionDot(modifier = modifier.zIndex(1f).semantics { contentDescription = description })
-}
-
 internal fun raftBottomTabLabelWeight(selected: Boolean): FontWeight =
     if (selected) RaftBottomTabBarSpec.SelectedLabelWeight else RaftBottomTabBarSpec.LabelWeight
 
@@ -495,83 +490,39 @@ internal fun RaftNavigationRailTabBar(
     topSafeArea: Dp = 0.dp,
     bottomSafeArea: Dp = 0.dp
 ) {
-    Row(modifier = modifier.fillMaxHeight()) {
-        Column(
-            modifier = Modifier
-                .width(RaftNavigationRailWidth)
-                .fillMaxHeight()
-                // The rail is the yellow frame: brand yellow in light, the dark frame layer in dark.
-                .background(if (RaftAppThemeState.isDark) RaftColor.Frame else RaftColor.BrandYellow)
+    // The design system's raft-ui AppRail: 56dp plus the seam, the 56dp header square, 40dp
+    // items 6dp apart and 8dp from both ends, the selected sticker on the frame.
+    RaftDesignSystemTheme {
+        RaftAppRail(
+            modifier = modifier,
+            topInset = topSafeArea,
+            bottomInset = bottomSafeArea,
+            header =
+                header?.let { railHeader ->
+                    {
+                        if (headerContent != null) {
+                            headerContent()
+                        } else {
+                            RaftNavigationRailServerTile(header = railHeader, onSelect = onSelect)
+                        }
+                    }
+                },
+            footer =
+                if (bottomItems.isNotEmpty() || bottomServerEntry != null) {
+                    {
+                        bottomItems.forEach { item ->
+                            RaftNavigationRailTabItem(item = item, onSelect = onBottomItemSelect ?: onSelect)
+                        }
+                        bottomServerEntry?.invoke()
+                    }
+                } else {
+                    null
+                },
         ) {
-            if (header != null) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        // Page-header frame contract (raftTopPageHeaderFrameMetrics): total
-                        // band = topSafeArea + 62dp with the 2dp divider as the LAST 2dp of
-                        // that band. This Column is the content area — topSafeArea + (62 −
-                        // stroke) — so the divider drawn after it ends at safeArea + 62dp,
-                        // exactly the channel list header baseline; and the 40dp tile keeps
-                        // ~60dp of room instead of clipping.
-                        .height(
-                            RaftNavigationRailHeaderHeight + topSafeArea - RaftAppStroke.Thin
-                        )
-                        .padding(top = topSafeArea),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    if (headerContent != null) {
-                        headerContent()
-                    } else {
-                        RaftNavigationRailServerTile(header = header, onSelect = onSelect)
-                    }
-                }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(RaftAppStroke.Thin)
-                        .background(RaftColor.BorderSeam)
-                )
-            } else {
-                Spacer(Modifier.height(RaftAppSpacing.Sm + topSafeArea))
-            }
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(vertical = RaftAppSpacing.Sm),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(RaftNavigationRailItemSpacing)
-            ) {
-                items.forEach { item ->
-                    RaftNavigationRailTabItem(item = item, onSelect = onSelect)
-                }
-            }
-            if (bottomItems.isNotEmpty() || bottomServerEntry != null) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = RaftAppSpacing.Sm, bottom = RaftAppSpacing.Sm + bottomSafeArea),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(RaftNavigationRailItemSpacing)
-                ) {
-                    bottomItems.forEach { item ->
-                        RaftNavigationRailTabItem(item = item, onSelect = onBottomItemSelect ?: onSelect)
-                    }
-                    bottomServerEntry?.invoke()
-                }
+            items.forEach { item ->
+                RaftNavigationRailTabItem(item = item, onSelect = onSelect)
             }
         }
-        // The rail's right-edge divider runs the full window height, through the status bar.
-        // task #482 had started it below the top inset, which left the status-bar part of
-        // this column transparent and showed a thin white line between the rail and the
-        // list; artin (2026-10-03) chose the full-height line instead.
-        Box(
-            modifier = Modifier
-                .width(RaftAppStroke.Thin)
-                .fillMaxHeight()
-                .background(RaftColor.BorderSeam)
-        )
     }
 }
 
@@ -580,55 +531,25 @@ private fun RaftNavigationRailTabItem(
     item: RaftBottomTabItemPayload,
     onSelect: (String) -> Unit
 ) {
-    val selected = item.selected
-    // 48dp outer cell owns the tap (min 44dp touch target); the 40dp visual tile
-    // inside keeps the web button size.
-    Box(
-        modifier =
-            Modifier
-                .size(RaftNavigationRailTouchSize)
-                .clickable(enabled = item.enabled) { onSelect(item.key) }
-                // task #31: icon-only buttons keep an accessible label.
-                .semantics { contentDescription = item.label },
-        contentAlignment = Alignment.Center
-    ) {
-        Box(modifier = Modifier.size(RaftNavigationRailButtonSize)) {
-            // raft-ui ghost control (web desktop rail): no edge, no offset shadow; "you are here"
-            // is the pressed-fill wash on the control radius.
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .background(
-                        if (selected) RaftColor.FillPressed else Color.Transparent,
-                        RoundedCornerShape(RaftAppRadius.Control),
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                RaftLucideIcon(
-                    name = item.iconName,
-                    color = if (item.enabled) RaftColor.TextBlackArgb else RaftColor.TextMutedGrayArgb,
-                    modifier = Modifier.size(RaftNavigationRailIconSize)
-                )
-            }
-            RaftTabIconBadge(
-                count = item.badgeCount,
-                modifier = Modifier.align(Alignment.TopEnd).offset(x = 8.dp, y = (-6).dp)
+    // raft-ui AppRail: a rail icon shows only the attention pixel, never a count (Badge rules),
+    // so an unread count reads as the dot here.
+    val attentionDescription =
+        if (item.key == "more") stringResource(MR.strings.tab_more_attention_dot) else stringResource(MR.strings.tab_activity_unread_dot)
+    RaftAppRailItem(
+        label = item.label,
+        selected = item.selected,
+        onClick = { onSelect(item.key) },
+        icon = { ink ->
+            RaftLucideIcon(
+                name = item.iconName,
+                color = raftArgbHex(ink),
+                modifier = Modifier.size(RaftAppRailDefaults.IconSize)
             )
-            if (item.attentionDot) {
-                RaftTabAttentionDot(key = item.key, modifier = Modifier.align(Alignment.TopEnd).offset(x = 3.dp, y = (-3).dp))
-            }
-        }
-    }
-}
-
-/**
- * The unread count on a tab icon (Activity tab): raft-ui's pink count sticker, the same one the
- * Home sidebar rows wear. Nothing for 0; `99+` above 99.
- */
-@Composable
-private fun RaftTabIconBadge(count: Int, modifier: Modifier = Modifier) {
-    if (count <= 0) return
-    RaftUnreadCount(count = count, modifier = modifier.zIndex(1f))
+        },
+        enabled = item.enabled,
+        attention = item.attentionDot || item.badgeCount > 0,
+        attentionDescription = attentionDescription,
+    )
 }
 
 @Composable
@@ -675,12 +596,6 @@ private fun RaftNavigationRailServerTile(
     }
 }
 
-private val RaftNavigationRailWidth = 64.dp
-private val RaftNavigationRailHeaderHeight = 62.dp
-private val RaftNavigationRailButtonSize = 40.dp
-private val RaftNavigationRailTouchSize = 48.dp
-private val RaftNavigationRailIconSize = 18.dp
-private val RaftNavigationRailItemSpacing = 6.dp
 
 @Composable
 private fun RaftVerticalTabItem(
