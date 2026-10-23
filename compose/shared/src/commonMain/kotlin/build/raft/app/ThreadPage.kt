@@ -13664,8 +13664,8 @@ internal fun raftThreadAttachmentSavedMessage(
     fallbackMessage: String
 ): String = nativeMessage.trim().ifBlank { fallbackMessage }
 
-internal fun String.toRaftThreadWebLinkTarget(configuredWebUrl: String? = null): RaftThreadWebLinkTarget? {
-    toRaftMessagePermalinkTarget(configuredWebUrl)?.let { target ->
+internal fun String.toRaftThreadWebLinkTarget(): RaftThreadWebLinkTarget? {
+    toRaftMessagePermalinkTarget()?.let { target ->
         return RaftThreadWebLinkTarget(
             channelId = target.channelId.value,
             messageId = target.messageId.value,

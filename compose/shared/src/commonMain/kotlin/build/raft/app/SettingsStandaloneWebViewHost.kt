@@ -33,8 +33,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -570,11 +568,6 @@ internal fun SettingsWebViewContent(
     onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
     onWebViewInvalidated: () -> Unit = {},
     onDocumentReadyChange: (Boolean) -> Unit = {},
-    /** Backdrop under and behind the native WebView; also its pre-paint colour when set. */
-    backgroundColor: Color = RaftColor.SurfaceCream,
-    paintNativeBackground: Boolean = false,
-    suppressLongPress: Boolean = false,
-    loadingCover: @Composable () -> Unit = { SettingsWebViewLoadingCover() },
 ) {
     var reloadKey by remember(url, generationKey) { mutableStateOf(0) }
     var contentVisible by remember(url, generationKey, reloadKey) { mutableStateOf(false) }
@@ -602,7 +595,7 @@ internal fun SettingsWebViewContent(
         modifier =
             modifier
                 .fillMaxSize()
-                .background(backgroundColor)
+                .background(RaftColor.SurfaceCream)
                 .onGloballyPositioned { coordinates ->
                     bodyFrameReady =
                         settingsWebViewFrameIsReady(
@@ -630,7 +623,7 @@ internal fun SettingsWebViewContent(
                         Modifier
                             .fillMaxWidth()
                             .height(webViewHeight)
-                            .background(backgroundColor)
+                            .background(RaftColor.SurfaceCream)
                             .padding(bottom = bottomContentPadding)
                             .alpha(if (contentVisible) 1f else 0f),
                     allowNavigation = allowNavigation,
@@ -641,8 +634,6 @@ internal fun SettingsWebViewContent(
                     injectedJavaScript = injectedJavaScript,
                     hostEventsEnabled = hostEventsEnabled,
                     controller = controller,
-                    suppressLongPress = suppressLongPress,
-                    backgroundArgb = if (paintNativeBackground) backgroundColor.toArgb() else null,
                     onLoadCommit = {
                         loadError = null
                         contentVisible = true
@@ -690,7 +681,7 @@ internal fun SettingsWebViewContent(
                     actionIcon = RaftLucideIconName.RefreshCw,
                     onAction = { reloadKey += 1 },
                 )
-            SettingsWebViewPresentation.LoadingCover -> loadingCover()
+            SettingsWebViewPresentation.LoadingCover -> SettingsWebViewLoadingCover()
             SettingsWebViewPresentation.Content -> Unit
         }
     }
@@ -922,7 +913,7 @@ internal const val SETTINGS_WEB_VIEW_BODY_Z_INDEX = 0f
 private const val SETTINGS_WEB_VIEW_ATTACH_DELAY_FRAMES = 2
 
 @Composable
-internal fun rememberStandaloneSettingsLocaleTag(enabled: Boolean): String =
+private fun rememberStandaloneSettingsLocaleTag(enabled: Boolean): String =
     remember(enabled) {
         if (!enabled) {
             AppLocale.Default.languageTag
