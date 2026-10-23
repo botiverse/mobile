@@ -382,6 +382,32 @@
      MessageAttachment. */
   --spacing-control-embedded: var(--control-embedded-size);
   --spacing-embedded-inset: var(--control-embedded-inset);
+  /* ─── Timeline rhythm ───────────────────────────────────────────────────────
+     Two steps between the lines of a conversation, measured from text to text
+     (design/foundations/spacing.md#timeline-rhythm): `timeline-message` (16px)
+     between turns, `timeline-section` (24px) at a boundary. Every row carries
+     `timeline-row` (4px) above and below its text, the reach of its highlight;
+     a turn's first row adds `timeline-turn` (8px, a transparent border the
+     highlight doesn't paint) above that, so it starts `timeline-lead` (12px)
+     above its text. A date line takes those insets back out of its own
+     padding, so it sits a section from the text on both sides.
+     A product uses only two of them, around its list: `timeline-start`
+     over the first row (a section less the lead every row brings, the
+     notice included) and `timeline-end` under the last row (a section less
+     its row inset); `turn` and `lead` stay inside the components.
+
+     Consumers: MessageItem, SystemMessage, MessageListDateDivider,
+     MessageListNotice, ThreadPanelReplySummary, and the product's list top
+     and end. */
+  --spacing-timeline-message: var(--timeline-gap-message);
+  --spacing-timeline-section: var(--timeline-gap-section);
+  --spacing-timeline-row: var(--timeline-row-inset);
+  --spacing-timeline-turn: calc(var(--timeline-gap-message) - 2 * var(--timeline-row-inset));
+  --spacing-timeline-lead: calc(var(--timeline-gap-message) - var(--timeline-row-inset));
+  --spacing-timeline-end: calc(var(--timeline-gap-section) - var(--timeline-row-inset));
+  --spacing-timeline-start: calc(
+    var(--timeline-gap-section) - var(--timeline-gap-message) + var(--timeline-row-inset)
+  );
   /* ─── Option metric axis ────────────────────────────────────────────────────
      An option in a popup list (a Select, Combobox or ComboboxSelect option, a
      menu item) is as tall as its content, with the same space above and below
@@ -486,6 +512,14 @@
   initial-value: 0px;
 }
 
+/* A reference chip's own type size, kept as a length so a smaller note inside
+   it can measure itself against the label (message-reference.recipe.ts). */
+@property --message-reference-em {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
 *,
 ::before,
 ::after {
@@ -544,6 +578,79 @@ textarea:-webkit-autofill:disabled {
   text-decoration-line: none;
 }
 
+/* Located: the item a jump took someone to (a link to a message, Back to the
+   results, a comment's anchor, the rows a bulk change touched) shows
+   `info-soft` at once, holds it 1.2s, fades out over 0.8s and is gone at 2s
+   (design/foundations/states.md#located). The fill is a registered colour so
+   it can animate; it is painted as a layer over the item's own fill, so a
+   row's surface stays underneath and comes back as the cyan fades.
+   - Stronger marks win: an item that is selected, active, current, a search
+     match, checked, or has its popup open isn't painted; its own mark already
+     says where it is.
+   - Unlayered, so it beats the hover utilities (a located item doesn't answer
+     hover: the pointer often rests where the item lands, and a grey would
+     hide the cyan). Not while pressed: :active lets the press tier show.
+   - The app sets data-located through useLocated (lib/located.ts), which
+     drops it after LOCATED_MS. Setting the attribute again while it is on
+     doesn't restart the animation; it restarts only after it was removed
+     for a frame, which useLocated does. Left on, the end state is a
+     transparent layer that still hides hover, so don't set it by hand.
+   - A message row takes the fill as --mi-row-fill instead: its resting
+     fill is var(--located-fill), so its own marks (an open menu, a search
+     match, a checked box) override it like any other state, with no has-selector
+     here, and the delegated face's ring keeps matching the row
+     (message-item.recipe.ts). */
+@property --located-fill {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
+}
+
+@keyframes raft-located {
+  0%,
+  60% {
+    --located-fill: var(--info-soft);
+    animation-timing-function: ease-out;
+  }
+  100% {
+    --located-fill: transparent;
+  }
+}
+
+@keyframes raft-located-still {
+  from,
+  to {
+    --located-fill: var(--info-soft);
+  }
+}
+
+/* The shorthand replaces any animation of the element's own while it is
+   located; no raft-ui row has one. It runs on every located item, marked or
+   not, so a mark that comes and goes (a popup opened and closed) doesn't
+   start the highlight over. */
+[data-located] {
+  animation: var(--located-animation, raft-located) 2s linear;
+}
+
+[data-located]:not(
+  [data-message-item],
+  :active,
+  [data-selected]:not([data-selected="false"]),
+  [data-active="true"],
+  [aria-selected="true"],
+  [aria-current]:not([aria-current="false"]),
+  [data-popup-open]
+) {
+  background-image: linear-gradient(var(--located-fill), var(--located-fill));
+}
+
+/* Reduced motion: the same 2s, held still, then off without a fade. */
+@media (prefers-reduced-motion: reduce) {
+  [data-located] {
+    --located-animation: raft-located-still;
+  }
+}
+
 @utility image-transparency-bg {
   --checker-cell: light-dark(oklch(0.1813 0.00497 17.62 / 0.12), oklch(1 0 0 / 0.1));
   background-color: light-dark(oklch(1 0 0), oklch(0.23 0 0));
@@ -589,6 +696,40 @@ textarea:-webkit-autofill:disabled {
 /* Deprecated overlay names, kept until raft-ui 1.0 (see codemods/token-names.mjs). */
 @utility press-overlay {
   background-image: linear-gradient(var(--fill-medium), var(--fill-medium));
+}
+
+/* A mark that leads a line of text: the icon at the start of a banner, a
+   toast or a panel notice, or the status light of a chip, sits on the first
+   line of its text, centred on it, and stays there when the text wraps
+   (design/foundations/alignment.md#a-mark-that-leads-text). In Space
+   Grotesk's metrics the centre of the line box is the centre of the cap
+   height (to 0.006em); Chromium's rounding can lift the letters 0.5px, which
+   is left alone, as the alignment page explains. Only
+   the place is shared: each component keeps its own icon size and gap.
+
+   `lead-icon` centres an icon of any size on the line its parent sets, by
+   moving it half a line down and back up by half its own height. Set the
+   type on the row that holds the mark and the text, as PanelNotice does:
+   the mark reads `1lh` from it.
+
+   `lead-dot` places a status light the same way, in a box one line tall,
+   and keeps it at its one size beside text, 10px with a 1.5px ink edge
+   (status.md#sizes). It is kept at 10px inside components (Badge,
+   PanelActivity, a panel header); when placing Status yourself, don't pass
+   a size. A notice never uses a status light to say what kind of notice
+   it is; it leads with its intent's icon (status.md#sizes). */
+@utility lead-icon {
+  flex-shrink: 0;
+  align-self: start;
+  translate: 0 calc(0.5lh - 50%);
+}
+@utility lead-dot {
+  --lead-dot: 10px;
+  flex-shrink: 0;
+  width: var(--lead-dot);
+  height: var(--lead-dot);
+  border-width: 1.5px;
+  margin-block: calc((1lh - var(--lead-dot)) / 2);
 }
 
 @utility press-overlay-sticker {
