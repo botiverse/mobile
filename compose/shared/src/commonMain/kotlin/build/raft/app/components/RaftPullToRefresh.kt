@@ -7,6 +7,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
@@ -109,6 +110,11 @@ internal fun RaftStorePullToRefreshBox(
 ) {
     LaunchedEffect(refreshing) {
         if (!refreshing) pullState.pulled = false
+    }
+    // A hoisted state outlives this box: if the box leaves mid-refresh, nothing would clear the
+    // pull, and a later refresh the user did not pull would read as pulled.
+    DisposableEffect(pullState) {
+        onDispose { pullState.pulled = false }
     }
     val latestRefreshing by rememberUpdatedState(refreshing)
     RaftPullToRefreshBox(
