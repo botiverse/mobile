@@ -394,10 +394,11 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun activityOnlyExplicitPullRefreshOwnsVisibleHeaderProgress() {
+    fun activityOnlyExplicitPullRefreshOwnsVisibleRefreshChrome() {
+        // artin task #22: the pull indicator is the only chrome; the header spinner never doubles it.
         assertEquals(
             ActivityRefreshPresentation(
-                headerRefreshing = true,
+                headerRefreshing = false,
                 pullRefreshing = true
             ),
             activityRefreshPresentation(refreshing = true, pullRefreshing = true)
@@ -415,6 +416,13 @@ class SharedInboxPanelTest {
                 pullRefreshing = false
             ),
             activityRefreshPresentation(refreshing = false, pullRefreshing = false)
+        )
+        assertEquals(
+            ActivityRefreshPresentation(
+                headerRefreshing = false,
+                pullRefreshing = true
+            ),
+            activityRefreshPresentation(refreshing = false, pullRefreshing = true)
         )
     }
 

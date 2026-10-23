@@ -1824,10 +1824,12 @@ class RaftHomeComponentsTest {
     }
 
     @Test
-    fun homeHeaderRefreshIndicatorStaysVisibleDuringPullRefresh() {
+    fun homeHeaderRefreshIndicatorHidesWhilePullIndicatorShows() {
+        // Non-pull refreshes (open, resume, realtime) keep the header spinner.
         assertTrue(homeHeaderRefreshIndicatorVisible(contentRefreshing = true, pullRefreshing = false))
-        assertTrue(homeHeaderRefreshIndicatorVisible(contentRefreshing = true, pullRefreshing = true))
-        assertTrue(homeHeaderRefreshIndicatorVisible(contentRefreshing = false, pullRefreshing = true))
+        // artin task #22: a pulled refresh shows the pull indicator only.
+        assertFalse(homeHeaderRefreshIndicatorVisible(contentRefreshing = true, pullRefreshing = true))
+        assertFalse(homeHeaderRefreshIndicatorVisible(contentRefreshing = false, pullRefreshing = true))
         assertFalse(homeHeaderRefreshIndicatorVisible(contentRefreshing = false, pullRefreshing = false))
     }
 

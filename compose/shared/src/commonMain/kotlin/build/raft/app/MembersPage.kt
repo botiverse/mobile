@@ -284,6 +284,7 @@ import build.raft.app.compat.ui.NestedScrollMode
 import build.raft.app.compat.ui.nestedScroll
 import androidx.compose.material3.Text
 import build.raft.app.components.RaftPullToRefreshBox
+import build.raft.app.components.raftHeaderRefreshIndicatorVisible
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -5572,7 +5573,11 @@ internal fun MembersListContent(
             .fillMaxSize()
             .background(RaftColor.SurfaceWhite)
     ) {
-        MembersPageHeader(title = displayTitle, refreshing = refreshing, onBack = onBack)
+        MembersPageHeader(
+            title = displayTitle,
+            refreshing = raftHeaderRefreshIndicatorVisible(refreshing, pullRefreshing),
+            onBack = onBack
+        )
         BoxWithConstraints(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentAlignment = Alignment.TopCenter,

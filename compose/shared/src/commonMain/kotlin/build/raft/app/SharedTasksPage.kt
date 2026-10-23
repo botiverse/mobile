@@ -99,6 +99,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftStorePullToRefreshBox
+import build.raft.app.components.rememberRaftStorePullRefreshState
 import androidx.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.app.compat.pager.Pager
@@ -649,6 +650,8 @@ private fun SharedTasksLoadedBodyContent(
         }
     }
 
+    // artin task #22: a pulled refresh shows the pull indicator only, not the header spinner too.
+    val tasksPullState = rememberRaftStorePullRefreshState()
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         if (showHeader) {
             SharedTasksHeader(
@@ -657,7 +660,7 @@ private fun SharedTasksLoadedBodyContent(
                         totalTasks = content.tasks.size,
                         visibleTasks = visibleContent.filteredTasks.size
                     ),
-                refreshing = state.refreshing
+                refreshing = tasksPullState.headerRefreshing(state.refreshing)
             )
         }
         Box(modifier = Modifier.weight(1f).background(RaftColor.SurfaceWhite)) {
@@ -732,6 +735,7 @@ private fun SharedTasksLoadedBodyContent(
                     refreshing = state.refreshing,
                     onRefresh = { onIntent(SharedTasksRouteIntent.Refresh) },
                     modifier = Modifier.weight(1f).fillMaxWidth(),
+                    pullState = tasksPullState,
                 ) {
                 when (presentationState.selectedMode) {
                     TasksViewMode.Board -> {

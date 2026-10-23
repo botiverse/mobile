@@ -582,6 +582,7 @@ import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Text
 import build.raft.app.components.RaftPullToRefreshBox
+import build.raft.app.components.raftHeaderRefreshIndicatorVisible
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import build.raft.app.components.RaftMetrics
@@ -22175,7 +22176,8 @@ internal fun SharedHomeSavedPanel(
             SharedHomeSavedHeader(
                 count = state.totalCount.takeIf { it > 0 } ?: projectedItems.size,
                 onClose = onClose,
-                refreshing = state.refreshing || state.pullRefreshing,
+                // artin task #22: the pull indicator below is the only chrome for a pulled refresh.
+                refreshing = raftHeaderRefreshIndicatorVisible(state.refreshing, state.pullRefreshing),
                 topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
                 onTitleClick = onTitleClick
             )

@@ -16,6 +16,7 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.components.RaftStorePullToRefreshBox
+import build.raft.app.components.rememberRaftStorePullRefreshState
 import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftBackButton
@@ -5218,6 +5219,8 @@ internal fun ThreadMembersPageContent(
     localServerId: String? = null,
 ) {
     val rosterListState = rememberLazyListState()
+    // artin task #22: a pulled refresh shows the pull indicator only, not the header spinner too.
+    val rosterPullState = rememberRaftStorePullRefreshState()
     // task #175: the page draws under the system navigation bar; whichever
     // element sits last (the Add Member bar, else the roster) keeps clear of it.
     val bottomSafeArea = raftBottomSafeAreaPadding()
@@ -5228,7 +5231,7 @@ internal fun ThreadMembersPageContent(
         ChannelMembersPageHeader(
             title = stringResource(if (addDialogVisible) MR.strings.thread_action_add_member else MR.strings.thread_members_heading),
             count = (members.size + externalMemberCount).takeIf { !addDialogVisible && !membersLoading },
-            refreshing = refreshing,
+            refreshing = rosterPullState.headerRefreshing(refreshing),
             onBack = {
                 if (addDialogVisible) {
                     if (addMemberStatus != "adding") onAddVisibleChange(false)
@@ -5263,6 +5266,7 @@ internal fun ThreadMembersPageContent(
             onRefresh = onRefresh,
             modifier = Modifier.weight(1f).fillMaxWidth(),
             enabled = !membersLoading,
+            pullState = rosterPullState,
         ) {
         LazyColumn(
             state = rosterListState,
