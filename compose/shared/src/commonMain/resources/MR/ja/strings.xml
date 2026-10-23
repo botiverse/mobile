@@ -2693,6 +2693,9 @@
     <string name="joint_connections_people_required">招待する人を 1 人以上指定してください</string>
     <string name="joint_limit_free_servers">この共同チャンネルにはすでに無料サーバーが 2 個参加しています。続行するには、いずれかのサーバーを Pro にアップグレードするか、無料サーバーに退出してもらってください（サーバーは最大 30 個）。</string>
     <string name="joint_limit_servers">共同チャンネルに参加できるサーバーは最大 %1$d 個です。上限の引き上げをご希望の場合は、設定からフィードバックを送信してください。</string>
+    <string name="joint_invite_rate_limited_one">短時間に招待しすぎました。1 分後にもう一度お試しください。</string>
+    <string name="joint_invite_rate_limited_other">短時間に招待しすぎました。%1$d 分後にもう一度お試しください。</string>
+    <string name="joint_invite_rate_limited_later">短時間に招待しすぎました。しばらくしてからもう一度お試しください。</string>
     <string name="joint_limit_host_free">この共同チャンネルをホストしているサーバーは、共同チャンネルの上限に達しています。そのサーバーの管理者に枠を空けてもらってから、もう一度招待を承諾してください。</string>
     <string name="joint_disconnect_channel">チャンネルの接続を解除</string>
     <string name="joint_disconnect_title">共同チャンネルの接続を解除</string>

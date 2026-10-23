@@ -47,6 +47,14 @@ internal const val JOINT_INVITEE_NOT_ADMIN = "joint_invitee_not_admin"
 internal const val JOINT_INVITE_REQUIRED = "joint_invite_required"
 internal const val JOINT_INVITE_LIMIT_EXCEEDED = "joint_invite_limit_exceeded"
 
+/**
+ * 429 from `POST channels` with joint invites and `POST channels/:id/joint-invites`: the inviter
+ * spent their hourly budget of invited people. Body `{ error, code, retryAfterSeconds }` plus a
+ * `Retry-After` header (botiverse/slock `agent/joint-invite-rate-limit` 4ab05c6e3,
+ * `routes/channels.ts`). Pending server PR: verify against the merged route before release.
+ */
+internal const val JOINT_INVITE_RATE_LIMITED = "joint_invite_rate_limited"
+
 internal val JOINT_LIMIT_ERROR_CODES =
     setOf(JOINT_FREE_SERVER_LIMIT, JOINT_SERVER_LIMIT, JOINT_CHANNEL_FREE_LIMIT_REACHED)
 
@@ -132,6 +140,8 @@ private data class WireJointErrorBody(
     val archivedChannelType: String? = null,
     val canUnarchiveArchivedChannel: Boolean = false,
     val blockingChannel: WireJointBlockingChannel? = null,
+    /** `joint_invite_rate_limited`: seconds until the inviter's budget frees up. */
+    val retryAfterSeconds: Long? = null,
 )
 
 @Serializable
@@ -564,9 +574,37 @@ internal fun <T> HomeNetworkResponse.toJointDataError(): DataResult<T> {
                 )
             )
         in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true, serverMessage = serverMessage))
-        else -> DataResult.Error(ScreenError(code = serverCode ?: "joint_http_$code", retryable = false, serverMessage = serverMessage))
+        else ->
+            DataResult.Error(
+                ScreenError(
+                    code = serverCode ?: "joint_http_$code",
+                    retryable = false,
+                    serverMessage = serverMessage,
+                    retryAfterSeconds = if (code == 429) body?.retryAfterSeconds ?: retryAfterHeaderSeconds() else null,
+                )
+            )
     }
 }
+
+/** `Retry-After` as delta-seconds (the form the joint routes send); an HTTP-date reads as null. */
+internal fun HomeNetworkResponse.retryAfterHeaderSeconds(): Long? =
+    responseHeaders.entries
+        .firstOrNull { (name, _) -> name.equals("Retry-After", ignoreCase = true) }
+        ?.value
+        ?.firstOrNull()
+        ?.trim()
+        ?.toLongOrNull()
+        ?.takeIf { it >= 0 }
+
+/**
+ * Web `formatJointInviteRateLimited`: the wait in whole minutes, rounded up and at least 1; null
+ * when the response named no wait (the copy then says "later").
+ */
+internal fun jointInviteRateLimitMinutes(retryAfterSeconds: Long?): Int? =
+    retryAfterSeconds?.let { seconds -> ((seconds + 59) / 60).coerceAtLeast(1).toInt() }
+
+/** The rate-limit wait carried by a failed joint result. */
+internal fun DataResult<*>.jointRetryAfterSeconds(): Long? = (this as? DataResult.Error)?.error?.retryAfterSeconds
 
 /** The server/limit code of a failed result, or null (network, parse, auth). */
 internal fun DataResult<*>.jointFailureCode(): String? =

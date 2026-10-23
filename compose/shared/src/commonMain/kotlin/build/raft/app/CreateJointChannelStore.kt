@@ -8,6 +8,9 @@ import build.raft.app.data.JOINT_CHANNEL_MAX_SERVERS
 import build.raft.app.data.JOINT_FREE_SERVER_LIMIT
 import build.raft.app.data.JOINT_INVITEE_NOT_ADMIN
 import build.raft.app.data.JOINT_INVITEE_NOT_FOUND
+import build.raft.app.data.JOINT_INVITE_RATE_LIMITED
+import build.raft.app.data.jointInviteRateLimitMinutes
+import build.raft.app.data.jointRetryAfterSeconds
 import build.raft.app.data.JOINT_INVITE_REQUIRED
 import build.raft.app.data.JOINT_SERVER_LIMIT
 import build.raft.app.data.JOINT_TARGET_SERVER_INVALID
@@ -307,6 +310,8 @@ internal data class CreateJointErrorCopy(
     val serverNotFound: (String) -> String,
     val cannotInviteSelf: String,
     val failedCreate: String,
+    /** `joint_invite_rate_limited`: the wait in minutes, or null for "try again later". */
+    val inviteRateLimited: (minutes: Int?) -> String,
 )
 
 internal fun createJointChannelErrorText(
@@ -340,6 +345,7 @@ internal fun createJointChannelErrorText(
                         else -> serverText ?: copy.failedCreate
                     }
                 JOINT_INVITE_REQUIRED -> copy.peopleRequired
+                JOINT_INVITE_RATE_LIMITED -> copy.inviteRateLimited(jointInviteRateLimitMinutes(error.result.jointRetryAfterSeconds()))
                 ARCHIVED_NAME_COLLISION -> serverText ?: copy.failedCreate
                 else -> serverText ?: pipeline(error.result)?.takeIf(String::isNotBlank) ?: copy.failedCreate
             }

@@ -183,6 +183,7 @@ class CreateJointChannelStoreTest {
                 serverNotFound = { "noserver:$it" },
                 cannotInviteSelf = "self",
                 failedCreate = "failed",
+                inviteRateLimited = { "wait:$it" },
             )
         fun text(code: String?, slug: String? = null, invitee: String? = null, blocking: String? = null, message: String? = null) =
             createJointChannelErrorText(

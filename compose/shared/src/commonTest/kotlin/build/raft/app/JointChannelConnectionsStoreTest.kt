@@ -196,7 +196,7 @@ class JointChannelConnectionsStoreTest {
 
     @Test
     fun failureCopyFollowsWebPrecedence() {
-        val copy = JointFailureCopy(freeServerLimit = "free", serverLimit = "max", hostFreeLimit = "host", fallback = "fallback")
+        val copy = JointFailureCopy(freeServerLimit = "free", serverLimit = "max", hostFreeLimit = "host", fallback = "fallback", inviteRateLimited = { "wait:$it" })
         val pipeline: (JointChannelFailure) -> String = { "pipeline:${it.code}" }
 
         assertEquals("free", jointChannelFailureText(JointChannelFailure.Blocked(PermissionBlocker(JOINT_FREE_SERVER_LIMIT, serverMessage = "raw")), copy, pipeline))

@@ -34,6 +34,8 @@ import build.raft.app.data.JOINT_CHANNEL_MAX_SERVERS
 import build.raft.app.data.JOINT_FREE_SERVER_LIMIT
 import build.raft.app.data.JOINT_INVITEE_NOT_ADMIN
 import build.raft.app.data.JOINT_INVITEE_NOT_FOUND
+import build.raft.app.data.JOINT_INVITE_RATE_LIMITED
+import build.raft.app.data.jointInviteRateLimitMinutes
 import build.raft.app.data.JOINT_INVITE_LIMIT_EXCEEDED
 import build.raft.app.data.JOINT_INVITE_REQUIRED
 import build.raft.app.data.JOINT_SERVER_LIMIT
@@ -466,12 +468,26 @@ private fun JointConnectionsStateBlock(
     }
 }
 
+/**
+ * Web `channel.jointInvite.error.rateLimited`: "Too many invites in a short time. Try again in X
+ * minutes." with X from [jointInviteRateLimitMinutes]; "later" when the response named no wait.
+ */
+@Composable
+internal fun jointInviteRateLimitedMessage(retryAfterSeconds: Long?): String =
+    when (val minutes = jointInviteRateLimitMinutes(retryAfterSeconds)) {
+        null -> stringResource(MR.strings.joint_invite_rate_limited_later)
+        1 -> stringResource(MR.strings.joint_invite_rate_limited_one)
+        else -> stringResource(MR.strings.joint_invite_rate_limited_other, minutes)
+    }
+
 /** Localized copy for each joint failure, with the web's precedence. */
 internal data class JointFailureCopy(
     val freeServerLimit: String,
     val serverLimit: String,
     val hostFreeLimit: String,
     val fallback: String,
+    /** `joint_invite_rate_limited`: the wait in minutes, or null for "try again later". */
+    val inviteRateLimited: (minutes: Int?) -> String,
 )
 
 private val JOINT_VALIDATION_CODES =
@@ -497,6 +513,8 @@ internal fun jointChannelFailureText(
         JOINT_FREE_SERVER_LIMIT -> copy.freeServerLimit
         JOINT_SERVER_LIMIT -> copy.serverLimit
         JOINT_CHANNEL_FREE_LIMIT_REACHED -> copy.hostFreeLimit
+        JOINT_INVITE_RATE_LIMITED ->
+            copy.inviteRateLimited(jointInviteRateLimitMinutes((failure as? JointChannelFailure.Error)?.error?.retryAfterSeconds))
         in JOINT_VALIDATION_CODES -> failure.serverMessage()?.takeIf(String::isNotBlank) ?: copy.fallback
         else -> pipeline(failure).takeIf(String::isNotBlank) ?: copy.fallback
     }
@@ -510,12 +528,14 @@ private fun JointChannelFailure.serverMessage(): String? =
 @Composable
 internal fun jointChannelFailureMessage(failure: JointChannelFailure, fallback: String): String {
     val strings = localizedErrorPresentationStrings()
+    val rateLimited = jointInviteRateLimitedMessage((failure as? JointChannelFailure.Error)?.error?.retryAfterSeconds)
     val copy =
         JointFailureCopy(
             freeServerLimit = stringResource(MR.strings.joint_limit_free_servers),
             serverLimit = stringResource(MR.strings.joint_limit_servers, JOINT_CHANNEL_MAX_SERVERS),
             hostFreeLimit = stringResource(MR.strings.joint_limit_host_free),
             fallback = fallback,
+            inviteRateLimited = { rateLimited },
         )
     return jointChannelFailureText(failure, copy) { value ->
         when (value) {

@@ -6,8 +6,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -26,6 +24,7 @@ import build.raft.app.data.JOINT_CHANNEL_MAX_SERVERS
 import build.raft.app.data.JointChannelAccepted
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.errorPresentationOrNull
+import build.raft.app.data.jointRetryAfterSeconds
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.resources.MR
@@ -95,7 +94,7 @@ internal fun CreateJointChannelDialogHost(
 }
 
 @Composable
-private fun CreateJointChannelDialog(
+internal fun CreateJointChannelDialog(
     state: CreateJointChannelState,
     freePlan: Boolean,
     currentServerSlug: String?,
@@ -132,76 +131,73 @@ private fun CreateJointChannelDialog(
                 )
             },
         ) {
-            Column(
-                Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                if (freePlan) {
-                    RaftBanner(
-                        description = stringResource(MR.strings.joint_create_free_allowance),
-                        status = RaftBannerStatus.Info,
-                        size = RaftBannerSize.Sm,
-                    )
-                }
-                errorText?.let { message ->
-                    RaftBanner(
-                        description = message,
-                        status = RaftBannerStatus.Warning,
-                        size = RaftBannerSize.Sm,
-                        action =
-                            if (state.showsBillingLink) {
-                                {
-                                    RaftButton(
-                                        text = stringResource(MR.strings.joint_create_view_billing),
-                                        onClick = onOpenBilling,
-                                        variant = RaftButtonVariant.Default,
-                                    )
-                                }
-                            } else {
-                                null
-                            },
-                    )
-                }
-                state.collision?.let { collision ->
-                    RaftBanner(
-                        description = stringResource(MR.strings.joint_create_archived_name_held, collision.archivedChannelName),
-                        status = RaftBannerStatus.Warning,
-                        size = RaftBannerSize.Sm,
-                        action = {
-                            if (collision.canUnarchive) {
+            // RaftDialog's body already scrolls, 16dp between its children: no weight or scroll of
+            // our own here (a weighted column inside that scroll is measured 0dp tall).
+            if (freePlan) {
+                RaftBanner(
+                    description = stringResource(MR.strings.joint_create_free_allowance),
+                    status = RaftBannerStatus.Info,
+                    size = RaftBannerSize.Sm,
+                )
+            }
+            errorText?.let { message ->
+                RaftBanner(
+                    description = message,
+                    status = RaftBannerStatus.Warning,
+                    size = RaftBannerSize.Sm,
+                    action =
+                        if (state.showsBillingLink) {
+                            {
                                 RaftButton(
-                                    text = stringResource(MR.strings.joint_create_unarchive),
-                                    onClick = { onIntent(CreateJointChannelIntent.UnarchiveCollision) },
-                                    enabled = !state.submitting,
+                                    text = stringResource(MR.strings.joint_create_view_billing),
+                                    onClick = onOpenBilling,
+                                    variant = RaftButtonVariant.Default,
                                 )
                             }
-                            RaftButton(
-                                text = stringResource(MR.strings.joint_create_change_name),
-                                onClick = { onIntent(CreateJointChannelIntent.ChangeCollidingName) },
-                                variant = RaftButtonVariant.Ghost,
-                            )
+                        } else {
+                            null
                         },
-                    )
-                }
-                RaftField(label = stringResource(MR.strings.joint_create_name_label), required = true, enabled = !state.submitting) {
-                    RaftTextField(
-                        value = state.name,
-                        onValueChange = { onIntent(CreateJointChannelIntent.SetName(it)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = stringResource(MR.strings.joint_create_name_placeholder),
-                    )
-                }
-                RaftField(label = stringResource(MR.strings.joint_create_description_label), optional = true, enabled = !state.submitting) {
-                    RaftTextarea(
-                        value = state.description,
-                        onValueChange = { onIntent(CreateJointChannelIntent.SetDescription(it)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = stringResource(MR.strings.joint_create_description_placeholder),
-                    )
-                }
-                CreateJointInviteDrafts(state, onIntent)
-                CreateJointMembers(state, selectableMembers, membersLoading, onIntent)
+                )
             }
+            state.collision?.let { collision ->
+                RaftBanner(
+                    description = stringResource(MR.strings.joint_create_archived_name_held, collision.archivedChannelName),
+                    status = RaftBannerStatus.Warning,
+                    size = RaftBannerSize.Sm,
+                    action = {
+                        if (collision.canUnarchive) {
+                            RaftButton(
+                                text = stringResource(MR.strings.joint_create_unarchive),
+                                onClick = { onIntent(CreateJointChannelIntent.UnarchiveCollision) },
+                                enabled = !state.submitting,
+                            )
+                        }
+                        RaftButton(
+                            text = stringResource(MR.strings.joint_create_change_name),
+                            onClick = { onIntent(CreateJointChannelIntent.ChangeCollidingName) },
+                            variant = RaftButtonVariant.Ghost,
+                        )
+                    },
+                )
+            }
+            RaftField(label = stringResource(MR.strings.joint_create_name_label), required = true, enabled = !state.submitting) {
+                RaftTextField(
+                    value = state.name,
+                    onValueChange = { onIntent(CreateJointChannelIntent.SetName(it)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = stringResource(MR.strings.joint_create_name_placeholder),
+                )
+            }
+            RaftField(label = stringResource(MR.strings.joint_create_description_label), optional = true, enabled = !state.submitting) {
+                RaftTextarea(
+                    value = state.description,
+                    onValueChange = { onIntent(CreateJointChannelIntent.SetDescription(it)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = stringResource(MR.strings.joint_create_description_placeholder),
+                )
+            }
+            CreateJointInviteDrafts(state, onIntent)
+            CreateJointMembers(state, selectableMembers, membersLoading, onIntent)
         }
     }
 }
@@ -355,6 +351,7 @@ private fun createJointChannelErrorMessage(error: CreateJointChannelError, curre
     val notFound = stringResource(MR.strings.joint_invite_error_invitee_not_found, invitee, server)
     val notAdmin = stringResource(MR.strings.joint_invite_error_invitee_not_admin, invitee, server)
     val serverNotFound = stringResource(MR.strings.joint_invite_error_server_not_found, server)
+    val rateLimited = jointInviteRateLimitedMessage((error as? CreateJointChannelError.Server)?.result?.jointRetryAfterSeconds())
     val copy =
         CreateJointErrorCopy(
             nameInvalid = stringResource(MR.strings.channel_create_error_name_format),
@@ -369,6 +366,7 @@ private fun createJointChannelErrorMessage(error: CreateJointChannelError, curre
             serverNotFound = { serverNotFound },
             cannotInviteSelf = stringResource(MR.strings.joint_invite_error_cannot_invite_self),
             failedCreate = stringResource(MR.strings.joint_create_failed),
+            inviteRateLimited = { rateLimited },
         )
     return createJointChannelErrorText(error, copy, currentServerSlug) { result ->
         result.errorPresentationOrNull()?.resolve(strings)

@@ -2693,6 +2693,9 @@
     <string name="joint_connections_people_required">At least one invited person is required</string>
     <string name="joint_limit_free_servers">This Joint Channel already has 2 free servers. Upgrade either side to Pro, or have a free server leave, to continue (30 servers max).</string>
     <string name="joint_limit_servers">Joint Channels are limited to %1$d servers. To request a higher limit, send feedback from Settings.</string>
+    <string name="joint_invite_rate_limited_one">Too many invites in a short time. Try again in 1 minute.</string>
+    <string name="joint_invite_rate_limited_other">Too many invites in a short time. Try again in %1$d minutes.</string>
+    <string name="joint_invite_rate_limited_later">Too many invites in a short time. Try again later.</string>
     <string name="joint_limit_host_free">The server hosting this Joint Channel has reached its Joint Channel limit. Ask its admin to make room, then accept the invite again.</string>
     <string name="joint_disconnect_channel">Disconnect Channel</string>
     <string name="joint_disconnect_title">Disconnect Joint Channel</string>
