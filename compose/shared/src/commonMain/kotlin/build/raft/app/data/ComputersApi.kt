@@ -542,7 +542,9 @@ internal data class ComputerSummary(
     /** List-level `latestComputerReleaseNotes`, copied onto each row by [RaftComputersApiClient.machines]. */
     val latestComputerReleaseNotes: SettingsComputerReleaseNotesSnapshot? = null,
     /** The human who attached a managed Computer (server `creator`); null for raw daemons or a departed attacher. */
-    val creator: SettingsComputerCreatorSnapshot? = null
+    val creator: SettingsComputerCreatorSnapshot? = null,
+    /** Server `agentScopes`: per-agent memory scope state; null when offline, off, or from an older server/daemon. */
+    val agentScopes: SettingsComputerAgentScopesSnapshot? = null
 )
 
 /** `POST …/computer/restart` accepted: [requestId] correlates the later `computer:restart:done`. */
@@ -729,8 +731,41 @@ private data class ComputerDto(
     val versionGate: ComputerVersionGateDto? = null,
     // GET /:id/machines in routes/servers.ts: `creator: computerLinkedMachineCreators.get(m.id) ?? null`,
     // the active attacher of a managed Computer (services/computerCredentialService.ts ComputerCreatorSummary).
-    val creator: ComputerCreatorDto? = null
+    val creator: ComputerCreatorDto? = null,
+    // services/machineReadModel.ts `agentScopes: MachineAgentScopesStatus | null` (packages/shared/src/agentMemoryLimit.ts),
+    // null unless the machine is online and its daemon reports `machine:agent_scopes`.
+    val agentScopes: MachineAgentScopesDto? = null
 )
+
+/**
+ * slock packages/shared/src/agentMemoryLimit.ts `MachineAgentScopesStatus`:
+ * `{ state, limitsConfigured, limitsNotApplied, reason?, memoryMax?, memoryHigh? }`.
+ */
+@Serializable
+private data class MachineAgentScopesDto(
+    val state: String? = null,
+    val limitsConfigured: Boolean? = null,
+    val limitsNotApplied: Boolean? = null,
+    val reason: String? = null,
+    val memoryMax: String? = null,
+    val memoryHigh: String? = null
+) {
+    // Same shape check as the shared `normalizeMachineAgentScopesStatus`: a known state and both flags, else dropped.
+    fun toSnapshot(): SettingsComputerAgentScopesSnapshot? {
+        val cleanState = state?.takeIf { it in MACHINE_AGENT_SCOPE_STATES } ?: return null
+        return SettingsComputerAgentScopesSnapshot(
+            state = cleanState,
+            limitsConfigured = limitsConfigured ?: return null,
+            limitsNotApplied = limitsNotApplied ?: return null,
+            reason = reason?.takeIf { MACHINE_AGENT_SCOPE_REASON.matches(it) },
+            memoryMax = memoryMax?.takeIf { it.isNotBlank() && it.length <= 32 },
+            memoryHigh = memoryHigh?.takeIf { it.isNotBlank() && it.length <= 32 }
+        )
+    }
+}
+
+private val MACHINE_AGENT_SCOPE_STATES = setOf("pending", "available", "unavailable", "suspended", "stopped")
+private val MACHINE_AGENT_SCOPE_REASON = Regex("^[a-z][a-z0-9_]{0,63}$")
 
 /**
  * slock packages/server/src/services/computerCredentialService.ts `ComputerCreatorSummary`:
@@ -903,7 +938,8 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         upgradeRequest = upgradeRequest?.toSnapshot(),
         remoteUpgradeSupported = remoteUpgradeSupported,
         versionGate = versionGate?.toSnapshot(),
-        creator = creator?.toSnapshot()
+        creator = creator?.toSnapshot(),
+        agentScopes = agentScopes?.toSnapshot()
     )
 }
 

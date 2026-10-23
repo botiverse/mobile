@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import build.raft.app.data.ScreenLoadState
+import build.raft.app.data.SettingsComputerAgentScopesSnapshot
 import build.raft.app.data.SettingsComputerCreatorSnapshot
 import build.raft.app.data.SettingsComputerDetailSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
@@ -39,7 +40,9 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * JVM screenshots of a computer's detail page (`settings.computer.info`): the Info section's
- * detected runtimes as chips, its created date and its creator, as on the web. Same capture, tolerance and
+ * detected runtimes as chips, its created date and its creator, as on the web; and
+ * `settings.computer.memory_limit_not_applied`, the same page with the "configured but not applied"
+ * per-agent memory-limit warning (botiverse/slock #10860). Same capture, tolerance and
  * [RobolectricComposeActivityRule] as [ActivityConversationRowsScreenshotTest]; CI uploads the
  * report folder as `shared-home-screenshots`.
  */
@@ -63,7 +66,13 @@ class ComputerDetailInfoScreenshotTest {
     @Test
     fun computerInfoDark() = capture("settings.computer.info.dark", RaftAppAppearance.Dark)
 
-    private fun capture(name: String, appearance: RaftAppAppearance) {
+    @Test
+    fun memoryLimitNotAppliedLight() = capture("settings.computer.memory_limit_not_applied", RaftAppAppearance.Light, MEMORY_LIMIT_NOT_APPLIED)
+
+    @Test
+    fun memoryLimitNotAppliedDark() = capture("settings.computer.memory_limit_not_applied.dark", RaftAppAppearance.Dark, MEMORY_LIMIT_NOT_APPLIED)
+
+    private fun capture(name: String, appearance: RaftAppAppearance, agentScopes: SettingsComputerAgentScopesSnapshot? = null) {
         RaftAppThemeState.apply(appearance)
         val activity = activities.launch()
         // Moko string resources read the app context through the shared SQLDelight holder.
@@ -73,7 +82,7 @@ class ComputerDetailInfoScreenshotTest {
                 pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) })
             }
         activity.setContent {
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { ComputerDetailVisualContent(appearance) }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { ComputerDetailVisualContent(appearance, agentScopes) }
         }
         settle()
         val composeView = findComposeRoot(activity.window.decorView)
@@ -130,6 +139,15 @@ class ComputerDetailInfoScreenshotTest {
         const val CHANNEL_DELTA = 8
         const val MAX_MISMATCH_RATIO = 0.001
 
+        val MEMORY_LIMIT_NOT_APPLIED =
+            SettingsComputerAgentScopesSnapshot(
+                state = "unavailable",
+                limitsConfigured = true,
+                limitsNotApplied = true,
+                reason = "memory_controller_not_delegated",
+                memoryMax = "6G",
+            )
+
         val record: Boolean =
             System.getProperty("raft.screenshot.record").toBoolean() ||
                 System.getenv("RAFT_SCREENSHOT_RECORD").toBoolean()
@@ -157,7 +175,7 @@ class ComputerDetailInfoScreenshotTest {
 
 /** A fixed computer and a fixed clock, so the capture is deterministic. */
 @Composable
-private fun ComputerDetailVisualContent(appearance: RaftAppAppearance) {
+private fun ComputerDetailVisualContent(appearance: RaftAppAppearance, agentScopes: SettingsComputerAgentScopesSnapshot?) {
     val timeContext =
         RaftTimeContext(
             localOffsetMinutes = 8 * 60,
@@ -180,6 +198,7 @@ private fun ComputerDetailVisualContent(appearance: RaftAppAppearance) {
                     createdAt = "2026-10-08T09:14:00Z",
                     // No photo or Gravatar, so the capture draws the placeholder person without a fetch.
                     creator = SettingsComputerCreatorSnapshot(id = "user-1", name = "artin", displayName = "Artin"),
+                    agentScopes = agentScopes,
                 ),
             workspaces = emptyList(),
             agents = emptyList(),

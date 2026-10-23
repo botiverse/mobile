@@ -1456,7 +1456,25 @@ data class SettingsComputerSnapshot(
     /** The list's `latestComputerReleaseNotes` (notes for exactly [latestComputerVersion]), carried on each row. */
     val latestComputerReleaseNotes: SettingsComputerReleaseNotesSnapshot? = null,
     /** Server `creator`: the human who attached a managed Computer; null when none (raw daemon, departed attacher). */
-    val creator: SettingsComputerCreatorSnapshot? = null
+    val creator: SettingsComputerCreatorSnapshot? = null,
+    /** Server `agentScopes`: the per-agent memory scope state the machine reported while online; null otherwise. */
+    val agentScopes: SettingsComputerAgentScopesSnapshot? = null
+)
+
+/**
+ * `agentScopes` of a machines row (slock packages/shared/src/agentMemoryLimit.ts
+ * `MachineAgentScopesStatus`, served by packages/server/src/services/machineReadModel.ts only while the
+ * machine is online). [limitsNotApplied]: a per-agent memory limit is configured but agents run without it.
+ */
+data class SettingsComputerAgentScopesSnapshot(
+    /** `pending`, `available`, `unavailable`, `suspended` or `stopped`. */
+    val state: String,
+    val limitsConfigured: Boolean,
+    val limitsNotApplied: Boolean,
+    /** Closed enum from the daemon's preflight or suspension (e.g. `memory_controller_not_delegated`). */
+    val reason: String? = null,
+    val memoryMax: String? = null,
+    val memoryHigh: String? = null
 )
 
 /**

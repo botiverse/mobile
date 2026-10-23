@@ -83,6 +83,52 @@ class ComputerControlApiTest {
         assertNull(list.machines.first().latestComputerReleaseNotes)
     }
 
+    /**
+     * `agentScopes` (slock packages/shared/src/agentMemoryLimit.ts `MachineAgentScopesStatus`, served by
+     * services/machineReadModel.ts since botiverse/slock #10860): parsed when well-formed, dropped otherwise.
+     */
+    @Test
+    fun machinesRowsCarryTheAgentScopesStatus() = runPortableCoroutineTest {
+        val body =
+            """
+            {"machines":[
+              {"id":"m-1","name":"A","status":"online","agentScopes":{"state":"unavailable","limitsConfigured":true,"limitsNotApplied":true,
+               "reason":"memory_controller_not_delegated","memoryMax":"6G"}},
+              {"id":"m-2","name":"B","status":"online","agentScopes":{"state":"available","limitsConfigured":true,"limitsNotApplied":false,
+               "memoryMax":"6G","memoryHigh":"5G"}},
+              {"id":"m-3","name":"C","status":"offline","agentScopes":null},
+              {"id":"m-4","name":"D","status":"online"},
+              {"id":"m-5","name":"E","status":"online","agentScopes":{"state":"weird","limitsConfigured":true,"limitsNotApplied":true}},
+              {"id":"m-6","name":"F","status":"online","agentScopes":{"state":"suspended","limitsConfigured":true,"limitsNotApplied":true,"reason":"Not An Enum"}}
+            ]}
+            """.trimIndent()
+        val client = RaftComputersApiClient(ControlComputersApi(machinesBody = body))
+
+        val machines = assertIs<DataResult.Content<ComputerListSummary>>(client.machines(ServerId("server-1"))).data.machines.associateBy { it.id }
+
+        val notApplied =
+            SettingsComputerAgentScopesSnapshot(
+                state = "unavailable",
+                limitsConfigured = true,
+                limitsNotApplied = true,
+                reason = "memory_controller_not_delegated",
+                memoryMax = "6G"
+            )
+        assertEquals(notApplied, machines.getValue("m-1").agentScopes)
+        assertEquals(notApplied, machines.getValue("m-1").toSettingsComputerSnapshot().agentScopes)
+        assertEquals(
+            SettingsComputerAgentScopesSnapshot(state = "available", limitsConfigured = true, limitsNotApplied = false, memoryMax = "6G", memoryHigh = "5G"),
+            machines.getValue("m-2").agentScopes
+        )
+        assertNull(machines.getValue("m-3").agentScopes)
+        assertNull(machines.getValue("m-4").agentScopes)
+        assertNull(machines.getValue("m-5").agentScopes)
+        assertEquals(
+            SettingsComputerAgentScopesSnapshot(state = "suspended", limitsConfigured = true, limitsNotApplied = true),
+            machines.getValue("m-6").agentScopes
+        )
+    }
+
     @Test
     fun restartPostsAnEmptyBodyAndReturnsTheRequestId() = runPortableCoroutineTest {
         val api = ControlComputersApi()
