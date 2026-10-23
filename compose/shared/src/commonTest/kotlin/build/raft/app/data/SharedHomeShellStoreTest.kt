@@ -145,7 +145,7 @@ class SharedHomeShellStoreTest {
         fixture.homeState.value = homeStateForServer("server-2")
 
         assertEquals(
-            listOf<SharedActivityIntent>(SharedActivityIntent.ClearSummary),
+            listOf<SharedActivityIntent>(SharedActivityIntent.ServerSelected("server-2")),
             fixture.activityIntents
         )
         assertEquals(listOf<Pair<String?, String>>("server-2" to "server_switch"), fixture.activitySummaryRefreshes)
@@ -166,7 +166,7 @@ class SharedHomeShellStoreTest {
         fixture.homeState.value = homeStateForServer("server-2")
 
         assertEquals(
-            listOf<SharedActivityIntent>(SharedActivityIntent.ClearSummary),
+            listOf<SharedActivityIntent>(SharedActivityIntent.ServerSelected("server-2")),
             fixture.activityIntents
         )
         assertEquals(listOf<Pair<String?, String>>("server-2" to "server_switch"), fixture.activitySummaryRefreshes)
@@ -187,7 +187,7 @@ class SharedHomeShellStoreTest {
         fixture.homeState.value = loadingHomeStateForServer("server-2")
 
         assertEquals(
-            listOf<SharedActivityIntent>(SharedActivityIntent.ClearSummary),
+            listOf<SharedActivityIntent>(SharedActivityIntent.ServerSelected("server-2")),
             fixture.activityIntents
         )
         assertEquals(listOf<Pair<String?, String>>("server-2" to "server_switch"), fixture.activitySummaryRefreshes)
@@ -199,7 +199,7 @@ class SharedHomeShellStoreTest {
         fixture.homeState.value = homeStateForServer("server-2", contentRefreshing = true)
 
         assertEquals(
-            listOf<SharedActivityIntent>(SharedActivityIntent.ClearSummary),
+            listOf<SharedActivityIntent>(SharedActivityIntent.ServerSelected("server-2")),
             fixture.activityIntents
         )
         assertEquals(
@@ -210,7 +210,7 @@ class SharedHomeShellStoreTest {
         fixture.homeState.value = homeStateForServer("server-2", contentRefreshing = false)
 
         assertEquals(
-            listOf<SharedActivityIntent>(SharedActivityIntent.ClearSummary),
+            listOf<SharedActivityIntent>(SharedActivityIntent.ServerSelected("server-2")),
             fixture.activityIntents
         )
         assertEquals(

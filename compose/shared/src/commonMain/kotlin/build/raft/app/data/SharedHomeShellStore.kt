@@ -92,7 +92,10 @@ class SharedHomeShellStore(
                     _state.value = _state.value.copy(home = home)
                     if (nextServerId != null && previousServerId != nextServerId) {
                         if (previousServerId != null) {
-                            clearBadgeSummaries()
+                            // The Activity store shows the new server's cached feed and refetches
+                            // it on every switch, including back to a server seen before.
+                            dispatchActivity(SharedActivityIntent.ServerSelected(nextServerId))
+                            dispatchSearchSaved(SharedHomeSearchSavedIntent.ClearSavedSummary)
                             refreshActivitySummary(nextServerId, "server_switch")
                         }
                         if (summariesCanRefresh) {
@@ -280,11 +283,6 @@ class SharedHomeShellStore(
                 )
             )
         }
-    }
-
-    private fun clearBadgeSummaries() {
-        dispatchActivity(SharedActivityIntent.ClearSummary)
-        dispatchSearchSaved(SharedHomeSearchSavedIntent.ClearSavedSummary)
     }
 
     private fun refreshSavedSummary() {
