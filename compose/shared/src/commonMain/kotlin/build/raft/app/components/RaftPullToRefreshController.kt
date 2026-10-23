@@ -12,7 +12,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.unit.Velocity
-import kotlin.math.ceil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
@@ -97,21 +96,6 @@ internal fun raftPullProgress(offset: Float, trigger: Float): Float =
     if (trigger > 0f) (offset / trigger).coerceIn(0f, 1f) else 0f
 
 /**
- * How many of an activity indicator's [tickCount] spokes a pull at [progress] (0..1) reveals,
- * clockwise from 12 o'clock: none at rest, one more per 1/[tickCount] of the pull, all of them at
- * the threshold. This is UIRefreshControl's pull-down reveal (its spokes appear one by one as the
- * content comes down, then the full indicator starts spinning when the pull commits).
- */
-internal fun raftRefreshRevealedTicks(progress: Float, tickCount: Int = RaftActivityIndicatorTickCount): Int {
-    if (progress <= 0f) return 0
-    if (progress >= 1f) return tickCount
-    return ceil(progress * tickCount).toInt().coerceIn(1, tickCount)
-}
-
-/** UIActivityIndicatorView's `.medium` / `.large` styles (iOS 13+) draw 8 spokes. */
-internal const val RaftActivityIndicatorTickCount = 8
-
-/**
  * The pull → refresh → settle state machine behind [RaftPullToRefreshBox]. Drags arrive through
  * [nestedScrollConnection] (user input only: programmatic scrolls and flings never move it), the
  * refresh signal arrives from the caller's store through [onStoreRefreshingChanged]; nothing here
@@ -162,7 +146,7 @@ internal class RaftPullToRefreshController(
     var armed: Boolean by mutableStateOf(false)
         private set
 
-    /** The pull's progress towards the threshold, 0..1 (the indicator's reveal before it arms). */
+    /** The pull's progress towards the threshold, 0..1 (the indicator's fill before it arms). */
     val pullProgress: Float
         get() = raftPullProgress(contentOffset, geometry.triggerPx)
 

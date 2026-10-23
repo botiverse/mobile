@@ -263,34 +263,12 @@ class RaftPullToRefreshControllerTest {
     }
 
     @Test
-    fun spokesAppearOneByOneWithThePullAndAllAtTheThreshold() {
-        assertEquals(8, RaftActivityIndicatorTickCount)
-        assertEquals(0, raftRefreshRevealedTicks(0f))
-        // The first spoke shows as soon as the content moves.
-        assertEquals(1, raftRefreshRevealedTicks(0.01f))
-        assertEquals(1, raftRefreshRevealedTicks(0.125f))
-        assertEquals(2, raftRefreshRevealedTicks(0.126f))
-        assertEquals(4, raftRefreshRevealedTicks(0.5f))
-        assertEquals(7, raftRefreshRevealedTicks(0.87f))
-        assertEquals(8, raftRefreshRevealedTicks(0.999f))
-        assertEquals(8, raftRefreshRevealedTicks(1f))
-        assertEquals(8, raftRefreshRevealedTicks(3f))
-        // Monotonic in the pull.
-        var last = 0
-        for (i in 0..100) {
-            val ticks = raftRefreshRevealedTicks(i / 100f)
-            assertTrue(ticks >= last, "ticks fell at ${i / 100f}")
-            last = ticks
-        }
-    }
-
-    @Test
     fun cupertinoGeometryMatchesUiRefreshControlMetrics() {
         val g = raftPullToRefreshGeometry(RaftPullToRefreshStyle.Cupertino, Density(3f))
         assertEquals(300f, g.triggerPx)
         assertEquals(180f, g.indicatorHoldPx)
         assertEquals(0.55f, g.coefficient)
-        assertTrue(g.triggerPx > g.indicatorHoldPx, "spokes finish after the gap reaches its rest height")
+        assertTrue(g.triggerPx > g.indicatorHoldPx, "the indicator fills in after the gap passes its rest height")
     }
 
     @Test
