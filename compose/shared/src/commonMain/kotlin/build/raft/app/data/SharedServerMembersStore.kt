@@ -8,6 +8,7 @@ import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelExternalMemberProfile
 import build.raft.app.model.ChannelId
 import build.raft.app.model.AgentStatus
+import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberId
@@ -320,6 +321,8 @@ data class SharedServerMemberStatus(
     val detailKind: String? = null,
     /** Normalized tool name when [statusLabel] is a client-built tool label. */
     val activityToolName: String? = null,
+    /** Why automatic wakes are paused, with [detailKind] `wake_crash_loop_blocked`. */
+    val wakeCrashLoop: AgentWakeCrashLoop? = null,
     /** The agent's runtime id (profile `roleDescription` for agents); null for humans/unknown. */
     val runtime: String? = null,
     /**
@@ -434,6 +437,7 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             statusLabel = presenceFact.statusLabel,
             detailKind = presenceFact.detailKind,
             activityToolName = presenceFact.activityToolName,
+            wakeCrashLoop = presenceFact.wakeCrashLoop,
             runtime = this?.agentRuntimeOrNull(),
             // A presence fact never carries external-ness; it comes from the
             // authoritative profile and must survive every liveness update.

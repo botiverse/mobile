@@ -1,7 +1,10 @@
 package build.raft.app.data
 
 import build.raft.app.model.isExternalAgent
+import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.MemberId
+import build.raft.app.data.realtime.WakeCrashLoopDto
+import build.raft.app.data.realtime.toAgentWakeCrashLoop
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
 import build.raft.app.data.runtimeform.v2.runtimeFormV2ServerError
 import build.raft.app.data.runtimeform.v2.withRuntimeFormV2
@@ -619,7 +622,11 @@ internal data class AgentSummary(
     /** Web parity: `agent.external === true || runtime === "external"`. */
     val isExternal: Boolean = false,
     /** External agents only: `lastSeenAt` from `GET /agents*` (`agent:seen` updates it in the store). */
-    val lastSeenAt: String? = null
+    val lastSeenAt: String? = null,
+    /** The typed kind behind [activityDetail] (`activityDetailKind`); null from older servers. */
+    val activityDetailKind: String? = null,
+    /** Why automatic wakes are paused, with [activityDetailKind] `wake_crash_loop_blocked`. */
+    val wakeCrashLoop: AgentWakeCrashLoop? = null
 )
 
 internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
@@ -651,7 +658,9 @@ internal fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         activity = activity,
         activityDetail = activityDetail,
         deletedAt = deletedAt,
-        lastSeenAt = lastSeenAt
+        lastSeenAt = lastSeenAt,
+        activityDetailKind = activityDetailKind,
+        wakeCrashLoop = wakeCrashLoop
     )
 internal data class AgentCommandResult(val ok: Boolean)
 internal data class AgentDmPage(val itemCount: Int)
@@ -863,6 +872,10 @@ private data class AgentWireDto(
      */
     val lastSeenAt: String? = null,
     val runtimeProfile: AgentRuntimeProfileDto? = null,
+    /** `GET /agents*` typed kind of [activityDetail] (shared `AgentActivityDetailKind`). */
+    val activityDetailKind: String? = null,
+    /** Shared `WakeCrashLoopActivityDiagnostic`, sent with `activityDetailKind` `wake_crash_loop_blocked`. */
+    val wakeCrashLoop: WakeCrashLoopDto? = null,
 )
 
 @Serializable
@@ -910,7 +923,9 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         activity = activity,
         activityDetail = activityDetail,
         deletedAt = deletedAt,
-        lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() }
+        lastSeenAt = lastSeenAt?.takeIf { it.isNotBlank() },
+        activityDetailKind = activityDetailKind?.trim()?.takeIf { it.isNotEmpty() },
+        wakeCrashLoop = wakeCrashLoop.toAgentWakeCrashLoop(activityDetailKind)
     )
 }
 

@@ -31,6 +31,7 @@ import build.raft.app.components.RaftStorePullToRefreshBox
 import build.raft.app.compat.ui.NestedScrollMode
 import build.raft.app.compat.ui.nestedScroll
 import build.raft.app.data.AgentActivityActionCount
+import build.raft.app.data.AgentActivityDetailKindWakeCrashLoopBlocked
 import build.raft.app.data.AgentActivityActionKind
 import build.raft.app.data.AgentActivityOverviewIntent
 import build.raft.app.data.AgentActivityOverviewState
@@ -44,6 +45,8 @@ import build.raft.app.data.AgentActivityTurnProblem
 import build.raft.app.data.AgentActivityTurnReply
 import build.raft.app.data.describe
 import build.raft.app.markdown.RaftMarkdownBody
+import build.raft.app.model.AgentStatus
+import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.MillisPerDay
 import build.raft.app.model.MillisPerMinute
 import build.raft.app.model.RaftTimeContext
@@ -140,7 +143,26 @@ internal fun MembersAgentActivityViewSwitch(
 internal data class MembersAgentActivityNow(
     val label: String,
     val indicator: RaftAgentStatusIndicatorState?,
+    /** Why automatic wakes are paused ([membersAgentActivityWakeCrashLoop]); null when they are not. */
+    val wakeCrashLoop: AgentWakeCrashLoop? = null,
 )
+
+/**
+ * The automatic-wake pause the "now" card explains: the live status's, else the loaded profile's
+ * (`GET /agents/:id`) while the live status has no kind of its own and is not past the pause (a
+ * paused agent is offline; a start lifts the pause).
+ */
+internal fun membersAgentActivityWakeCrashLoop(
+    indicator: RaftAgentStatusIndicatorState?,
+    summaryDetailKind: String?,
+    summaryWakeCrashLoop: AgentWakeCrashLoop?,
+): AgentWakeCrashLoop? {
+    val liveKind = indicator?.detailKind
+    if (liveKind != null) return indicator?.wakeCrashLoop.takeIf { liveKind == AgentActivityDetailKindWakeCrashLoopBlocked }
+    val liveStatus = indicator?.status
+    if (liveStatus != null && liveStatus != AgentStatus.Offline) return null
+    return summaryWakeCrashLoop.takeIf { summaryDetailKind == AgentActivityDetailKindWakeCrashLoopBlocked }
+}
 
 /** The "now" card's dot colour: the live indicator's, or none. */
 internal fun MembersAgentActivityNow.dotColor(): Color? = indicator?.color
@@ -359,6 +381,10 @@ private fun LazyListState.isActivityOverviewAtBottom(lastIndex: Int): Boolean {
 @Composable
 private fun MembersAgentActivityNow.headline(): String {
     val detailKind = indicator?.detailKind
+    // The server paused automatic wakes; a manual start lifts it (web `activity.status.wakeCrashLoopBlocked`).
+    if (wakeCrashLoop != null || detailKind == AgentActivityDetailKindWakeCrashLoopBlocked) {
+        return stringResource(MR.strings.agent_activity_wake_crash_loop_blocked)
+    }
     agentMemoryLimitExit(label, detailKind)?.let { exit ->
         return exit.memoryLimit?.let { stringResource(MR.strings.agent_activity_memory_limit_stopped_with_limit, it) }
             ?: stringResource(MR.strings.agent_activity_memory_limit_stopped)
@@ -397,6 +423,15 @@ private fun MembersAgentActivityNowCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                // Paused after repeated stops at the Computer's per-agent memory limit: why, and what
+                // to do (web AgentStatusBadge, botiverse/slock #10860). Older servers send no reason.
+                now.wakeCrashLoop?.takeIf { it.pausedAtMemoryLimit }?.let { pause ->
+                    RaftText(
+                        text = stringResource(MR.strings.agent_activity_wake_crash_loop_memory_limit_detail, pause.earlyExitCount),
+                        style = typography.callout,
+                        color = colors.foregroundMuted,
+                    )
+                }
                 val last = finished.firstOrNull()
                 val line = when {
                     running != null -> {

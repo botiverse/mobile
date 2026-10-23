@@ -853,7 +853,11 @@ data class AgentDetailSummary(
     val activityDetail: String? = null,
     val deletedAt: String? = null,
     /** External agents only: `lastSeenAt` — credential last-use; realtime `agent:seen` advances it (task #410). */
-    val lastSeenAt: String? = null
+    val lastSeenAt: String? = null,
+    /** The typed kind behind [activityDetail] (`activityDetailKind`); null from older servers. */
+    val activityDetailKind: String? = null,
+    /** Why automatic wakes are paused, with [activityDetailKind] `wake_crash_loop_blocked`. */
+    val wakeCrashLoop: build.raft.app.model.AgentWakeCrashLoop? = null
 )
 
 data class AgentCreatorSummary(

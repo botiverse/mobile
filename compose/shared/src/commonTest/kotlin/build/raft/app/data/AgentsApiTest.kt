@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.runPortableCoroutineTest
+import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.MemberId
 import build.raft.app.model.RuntimeConfig
 import build.raft.app.model.RuntimeHostUserState
@@ -409,6 +410,38 @@ class AgentsApiTest {
             assertEquals(RuntimeProviderConfig.Preset("deepseek", ""), detail.runtimeProvider)
             assertEquals(false, sentinel in detail.toString())
         }
+    }
+
+    @Test
+    fun agentDetailCarriesTheWakePauseOnlyWithItsDetailKind() = runPortableCoroutineTest {
+        // GET /agents/:id at botiverse/slock 24873fd5be37 (routes/agents.ts): `activityDetailKind`
+        // and the shared WakeCrashLoopActivityDiagnostic, `lastExitReason` from #10860.
+        val paused =
+            """{"id":"agent-1","name":"Agent One","status":"active","activity":"offline",""" +
+                """"activityDetail":"Automatic wake paused: stopped 3 times in a row at this Computer's per-agent memory limit",""" +
+                """"activityDetailKind":"wake_crash_loop_blocked","wakeCrashLoop":{"episode":2,"earlyExitCount":3,"threshold":3,""" +
+                """"windowMs":120000,"blocked":true,"blockedAtMs":1782367200000,"firstExitAtMs":1782360000000,""" +
+                """"lastExitAtMs":1782367100000,"lastExitKind":"agent_process_exited","lastSignal":"SIGKILL",""" +
+                """"lastLaunchId":"launch-1","lastExitReason":"memory_limit"}}"""
+        val detail =
+            assertIs<DataResult.Content<AgentSummary>>(
+                RaftAgentsApiClient(RecordingAgentsApi(agentBody = paused)).agent(MemberId("agent-1"))
+            ).data.toAgentDetailSummary()
+        assertEquals("wake_crash_loop_blocked", detail.activityDetailKind)
+        assertEquals(AgentWakeCrashLoop(earlyExitCount = 3, lastExitReason = "memory_limit"), detail.wakeCrashLoop)
+        assertTrue(detail.wakeCrashLoop!!.pausedAtMemoryLimit)
+
+        // An older server sends no reason; a carrier beside another kind is not a pause.
+        val older = paused.replace(""","lastExitReason":"memory_limit"""", "")
+        val olderDetail =
+            assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = older)).agent(MemberId("agent-1"))).data
+        assertEquals(AgentWakeCrashLoop(earlyExitCount = 3), olderDetail.wakeCrashLoop)
+        assertEquals(false, olderDetail.wakeCrashLoop!!.pausedAtMemoryLimit)
+        val otherKind = paused.replace(""""activityDetailKind":"wake_crash_loop_blocked"""", """"activityDetailKind":"stopped"""")
+        val otherDetail =
+            assertIs<DataResult.Content<AgentSummary>>(RaftAgentsApiClient(RecordingAgentsApi(agentBody = otherKind)).agent(MemberId("agent-1"))).data
+        assertEquals("stopped", otherDetail.activityDetailKind)
+        assertEquals(null, otherDetail.wakeCrashLoop)
     }
 
     @Test

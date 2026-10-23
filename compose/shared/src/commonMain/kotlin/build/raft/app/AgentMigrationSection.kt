@@ -1,6 +1,12 @@
 package build.raft.app
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.key
+import androidx.compose.ui.semantics.Role
+import build.raft.designsystem.components.RaftDescriptionListDirection
+import build.raft.designsystem.components.RaftListRowGroup
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -163,35 +169,39 @@ internal fun AgentMigrationSection(
                 RaftSectionEyebrow(text = stringResource(MR.strings.agent_migration_section_title))
                 RaftProBadge()
             }
-            // What migration does matters before one exists; once a migration is shown, its block says it.
-            if (notice == null || notice.isCompleted || notice.isCanceled) {
-                val description = stringResource(MR.strings.agent_migration_section_description)
+            val showCancelDialog = {
+                inputs.onIntent(AgentMigrationIntent.ClearCancelError)
+                showCancel = true
+            }
+            // What migration does, unless a running (or unsettled) migration's block is shown instead.
+            if (notice == null || ended != null || notice.isCompleted || notice.isCanceled) {
                 RaftText(
-                    text =
-                        if (notice != null && ended == AgentMigrationEnding.Completed) {
-                            stringResource(
-                                MR.strings.agent_migration_section_description_with_last,
-                                description,
-                                agentMigrationLastSummary(notice, inputs)
-                            )
-                        } else {
-                            description
-                        },
+                    text = stringResource(MR.strings.agent_migration_section_description),
                     modifier = Modifier.padding(top = 4.dp),
                     style = typography.caption,
                     color = colors.foregroundHint
                 )
             }
-            // A completed or canceled move between computers has no block: the line above covers it.
-            if (notice != null && ended != AgentMigrationEnding.Completed && ended != AgentMigrationEnding.Canceled) {
+            // An ended move between computers (other than a cancel) folds into one line (web
+            // LastMigration, botiverse/slock #10951); a new migration starts folded again.
+            if (notice != null && (ended == AgentMigrationEnding.Completed || ended == AgentMigrationEnding.Failed)) {
+                key(notice.migrationRef) {
+                    AgentLastMigration(
+                        notice = notice,
+                        state = state,
+                        inputs = inputs,
+                        onShowCancel = showCancelDialog,
+                        modifier = Modifier.padding(top = AgentMigrationBlockGap)
+                    )
+                }
+            }
+            // Running moves, moves to the cloud and unsettled cancels keep the progress block.
+            if (notice != null && ended == null) {
                 AgentMigrationProgressPanel(
                     notice = notice,
                     state = state,
                     inputs = inputs,
-                    onShowCancel = {
-                        inputs.onIntent(AgentMigrationIntent.ClearCancelError)
-                        showCancel = true
-                    },
+                    onShowCancel = showCancelDialog,
                     modifier = Modifier.padding(top = AgentMigrationBlockGap)
                 )
             }
@@ -309,17 +319,97 @@ private fun agentMigrationTargetLabel(inputs: AgentMigrationSectionInputs, notic
         agentMigrationComputerLabel(inputs, notice.targetMachineId)
     }
 
+/** Web `lastMigrationFacts`: where an ended move between computers went, who started it, and when it ended. */
+private data class AgentLastMigrationFacts(val source: String, val target: String, val startedBy: String?, val endedAt: String?)
+
 @Composable
-private fun agentMigrationLastSummary(notice: AgentMigrationNotice, inputs: AgentMigrationSectionInputs): String {
-    val source = agentMigrationComputerLabel(inputs, notice.sourceMachineId)
-    val target = agentMigrationTargetLabel(inputs, notice)
+private fun agentLastMigrationFacts(notice: AgentMigrationNotice, inputs: AgentMigrationSectionInputs): AgentLastMigrationFacts {
     val endedAt = (if (notice.isFailed) notice.abortedAt else notice.completedAt) ?: notice.updatedAt
-    val time = endedAt?.let(inputs.formatTimestamp)
-    return when {
-        notice.isFailed && time != null -> stringResource(MR.strings.agent_migration_last_failed_with_time, source, target, time)
-        notice.isFailed -> stringResource(MR.strings.agent_migration_last_failed, source, target)
-        time != null -> stringResource(MR.strings.agent_migration_last_moved_with_time, source, target, time)
-        else -> stringResource(MR.strings.agent_migration_last_moved, source, target)
+    return AgentLastMigrationFacts(
+        source = agentMigrationComputerLabel(inputs, notice.sourceMachineId),
+        target = agentMigrationTargetLabel(inputs, notice),
+        startedBy = notice.initiatedBy?.label,
+        endedAt = endedAt?.let(inputs.formatTimestamp)
+    )
+}
+
+/**
+ * Web `LastMigration` (botiverse/slock 24873fd5be37, #10951): the last move between computers inside
+ * the migration section, between its description and buttons. Folded it is one line (Last
+ * migration: from → to · who · when · outcome) and the whole line toggles the details, in an inset
+ * group: the facts and the migration ID for a completed move; the stopped steps, why, and the ID for
+ * a failed one. A failure starts open because the user has to read why before trying again.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AgentLastMigration(
+    notice: AgentMigrationNotice,
+    state: AgentMigrationState,
+    inputs: AgentMigrationSectionInputs,
+    onShowCancel: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    val failed = notice.isFailed
+    var open by remember { mutableStateOf(failed) }
+    val facts = agentLastMigrationFacts(notice, inputs)
+    val outcome = stringResource(if (failed) MR.strings.agent_migration_last_failed_outcome else MR.strings.agent_migration_last_completed)
+    val summary =
+        buildAnnotatedString {
+            append(
+                (listOf(stringResource(MR.strings.agent_migration_last_route, facts.source, facts.target)) +
+                    listOfNotNull(facts.startedBy, facts.endedAt) + "")
+                    .joinToString(" · ")
+            )
+            // The outcome is a word, not a status dot: dots are for presence and tasks.
+            if (failed) {
+                withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = colors.foreground)) { append(outcome) }
+            } else {
+                append(outcome)
+            }
+        }
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AgentMigrationBlockGap)) {
+        // One row is the toggle: chevron, label, summary.
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) { open = !open },
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            RaftLucideIcon(
+                name = if (open) RaftLucideIconName.ChevronDown else RaftLucideIconName.ChevronRight,
+                modifier = Modifier.padding(top = 2.dp).size(16.dp),
+                color = raftArgbHex(colors.foregroundMuted)
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // A small label inside the migration section, not a second section heading.
+                RaftText(
+                    text = stringResource(MR.strings.agent_migration_last_title),
+                    style = typography.caption.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.foregroundMuted
+                )
+                RaftText(text = summary, style = typography.caption, color = colors.foregroundMuted)
+            }
+        }
+        if (open) {
+            // The DS inset group holds the details, so the steps and banner read as this row's.
+            RaftListRowGroup(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                    if (failed) {
+                        AgentMigrationProgressPanel(notice = notice, state = state, inputs = inputs, onShowCancel = onShowCancel)
+                    } else {
+                        RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
+                            Item(term = stringResource(MR.strings.agent_migration_last_source), value = facts.source)
+                            Item(term = stringResource(MR.strings.agent_migration_detail_target_computer), value = facts.target)
+                            facts.startedBy?.let { Item(term = stringResource(MR.strings.agent_migration_last_started_by), value = it) }
+                            facts.endedAt?.let { Item(term = stringResource(MR.strings.agent_migration_last_finished_at), value = it) }
+                            Item(term = stringResource(MR.strings.agent_migration_reference_label)) {
+                                AgentMigrationReferenceValue(notice, inputs)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -575,18 +665,22 @@ private fun AgentMigrationProgressPanel(
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val copy = agentMigrationNoticeCopy(notice, inputs)
-    // A failed move between computers keeps the steps, stopped at the one that failed, then
-    // one banner: the summary, where the agent is and why, plus the reference.
+    // A failed move between computers (the open "Last migration" row): the steps, stopped at the
+    // one that failed, then why, then the reference (web MigrationProgressPanel, botiverse/slock
+    // #10951). The row's summary already names the move, so the banner has no title.
     if (notice.endedComputerMigration() == AgentMigrationEnding.Failed) {
         Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AgentMigrationBlockGap)) {
             AgentMigrationProgressSteps(notice)
             RaftBanner(
-                title = agentMigrationLastSummary(notice, inputs),
                 description = agentMigrationNoticeText(copy, boldPlacement = false),
                 status = RaftBannerStatus.Warning,
                 size = RaftBannerSize.Sm
             )
-            AgentMigrationReference(notice, inputs)
+            RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
+                Item(term = stringResource(MR.strings.agent_migration_reference_label)) {
+                    AgentMigrationReferenceValue(notice, inputs)
+                }
+            }
         }
         return
     }
@@ -651,19 +745,10 @@ private fun AgentMigrationProgressPanel(
     }
 }
 
-/** Web MigrationReference: the label, the ID in Space Mono, and a copy button that turns into a check for 2s. */
+/** Web MigrationReference: the label, then [AgentMigrationReferenceValue]. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AgentMigrationReference(notice: AgentMigrationNotice, inputs: AgentMigrationSectionInputs) {
-    val colors = RaftTheme.colors
-    val typography = RaftTheme.typography
-    var copied by remember(notice.migrationRef) { mutableStateOf(false) }
-    LaunchedEffect(copied) {
-        if (copied) {
-            delay(2_000)
-            copied = false
-        }
-    }
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -672,29 +757,45 @@ private fun AgentMigrationReference(notice: AgentMigrationNotice, inputs: AgentM
         RaftText(
             text = stringResource(MR.strings.agent_migration_reference_label),
             modifier = Modifier.align(Alignment.CenterVertically),
-            style = typography.caption.copy(fontWeight = FontWeight.SemiBold),
-            color = colors.foregroundMuted
+            style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.SemiBold),
+            color = RaftTheme.colors.foregroundMuted
         )
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            RaftText(
-                text = notice.migrationRef,
-                modifier = Modifier.weight(1f, fill = false),
-                style = typography.monoMeta,
-                color = colors.foreground
-            )
-            RaftIconButton(
-                onClick = {
-                    inputs.onCopy(notice.migrationRef)
-                    copied = true
-                },
-                tooltip =
-                    stringResource(
-                        if (copied) MR.strings.agent_migration_reference_copied else MR.strings.agent_migration_reference_copy
-                    ),
-                variant = RaftButtonVariant.Ghost
-            ) {
-                RaftGlyphIcon(if (copied) RaftGlyph.Check else RaftGlyph.Copy, size = 14.dp)
-            }
+        AgentMigrationReferenceValue(notice, inputs)
+    }
+}
+
+/**
+ * Web MigrationReferenceValue: the ID in Space Mono and a copy button that turns into a check for
+ * 2s, for a row whose label sits elsewhere.
+ */
+@Composable
+private fun AgentMigrationReferenceValue(notice: AgentMigrationNotice, inputs: AgentMigrationSectionInputs) {
+    var copied by remember(notice.migrationRef) { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(2_000)
+            copied = false
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        RaftText(
+            text = notice.migrationRef,
+            modifier = Modifier.weight(1f, fill = false),
+            style = RaftTheme.typography.monoMeta,
+            color = RaftTheme.colors.foreground
+        )
+        RaftIconButton(
+            onClick = {
+                inputs.onCopy(notice.migrationRef)
+                copied = true
+            },
+            tooltip =
+                stringResource(
+                    if (copied) MR.strings.agent_migration_reference_copied else MR.strings.agent_migration_reference_copy
+                ),
+            variant = RaftButtonVariant.Ghost
+        ) {
+            RaftGlyphIcon(if (copied) RaftGlyph.Check else RaftGlyph.Copy, size = 14.dp)
         }
     }
 }
