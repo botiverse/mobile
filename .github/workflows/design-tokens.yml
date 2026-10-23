@@ -9,6 +9,10 @@ on:
       - "compose/shared/src/commonMain/kotlin/build/raft/app/designtokens/**"
       - "compose/designsystem/src/commonMain/kotlin/build/raft/designsystem/tokens/**"
       - ".github/workflows/design-tokens.yml"
+      - "scripts/generate_lucide_icons.py"
+      - "scripts/test_generate_lucide_icons.py"
+      - "compose/shared/src/commonMain/kotlin/build/raft/app/RaftLucideIcon*.kt"
+      - "compose/shared/src/commonMain/assets/lucide/**"
   push:
     branches:
       - main
@@ -30,3 +34,54 @@ jobs:
 
       - name: Check sources, generated Kotlin and oracle
         run: python3 tools/design-tokens/gen_tokens.py --check
+
+  # The committed Lucide Kotlin outputs (RaftLucideIconPaths.kt, RaftLucideIconCatalog.kt) must
+  # match the generator run against the pinned Lucide tag. test_generate_lucide_icons.py only
+  # compares them when the pinned checkout is cached, and skips otherwise; nothing ran it before
+  # task #18. The checkout is cached, so the network is only used when the pin changes.
+  lucide-icons:
+    name: Generated Lucide icons current
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Resolve pinned Lucide checkout
+        id: lucide
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'PY'
+          import importlib.util
+          spec = importlib.util.spec_from_file_location("gen", "scripts/generate_lucide_icons.py")
+          gen = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(gen)
+          print(f"version={gen.DEFAULT_VERSION}")
+          print(f"commit={gen.LUCIDE_SOURCE_COMMITS[gen.DEFAULT_VERSION]}")
+          PY
+
+      - name: Restore pinned Lucide checkout
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/slock-lucide
+          key: lucide-${{ steps.lucide.outputs.commit }}
+
+      - name: Fetch pinned Lucide checkout
+        env:
+          LUCIDE_VERSION: ${{ steps.lucide.outputs.version }}
+          LUCIDE_COMMIT: ${{ steps.lucide.outputs.commit }}
+        run: |
+          dir="$HOME/.cache/slock-lucide/lucide-$LUCIDE_COMMIT"
+          if [ ! -d "$dir/.git" ]; then
+            mkdir -p "$(dirname "$dir")"
+            git -c advice.detachedHead=false clone --quiet --depth 1 --branch "$LUCIDE_VERSION" https://github.com/lucide-icons/lucide.git "$dir"
+          fi
+          test "$(git -C "$dir" rev-parse HEAD)" = "$LUCIDE_COMMIT"
+
+      - name: Check generated Lucide Kotlin is up to date
+        run: python3 scripts/generate_lucide_icons.py --check
+
+      - name: Test the Lucide generator (including the pinned-checkout comparison)
+        run: |
+          set -o pipefail
+          python3 scripts/test_generate_lucide_icons.py -v 2>&1 | tee lucide-tests.log
+          grep -Eq '^test_repository_compose_table_matches_pinned_checkout_when_available .* \.\.\. ok$' lucide-tests.log

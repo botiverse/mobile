@@ -483,6 +483,14 @@ jobs:
         working-directory: compose
         run: ./gradlew :core:testAndroidHostTest :shared:testDebugUnitTest :androidApp:testDebugUnitTest :ui-cmp:testAndroidHostTest :designsystem:desktopTest --continue --no-daemon --console=plain --stacktrace
 
+      # Gradle 9 does not run buildSrc's own tests as part of a build; the hang watchdog that every
+      # JVM test task installs is only checked here.
+      - name: Run buildSrc tests (hang watchdog)
+        working-directory: compose
+        run: |
+          ./gradlew -p buildSrc test --no-daemon --console=plain --stacktrace
+          grep -ho 'tests="[0-9]*"' buildSrc/build/test-results/test/*.xml | grep -qv 'tests="0"'
+
       - name: Upload design system screenshot diffs
         if: failure()
         uses: actions/upload-artifact@v6
@@ -719,6 +727,9 @@ jobs:
             durable-partition-migration-instrumentation.txt
             thread-newer-auto-pagination-instrumentation.txt
             local-image-sampled-decode-instrumentation.txt
+            adaptive-pane-host-instrumentation.txt
+            qa-session-bootstrap-inbox-instrumentation.txt
+            composed-character-boundary-instrumentation.txt
             thread-open-budget-telemetry.txt
             *-instrumentation.txt.attempt-*
           if-no-files-found: warn
@@ -951,6 +962,35 @@ jobs:
             --console=plain \
             --stacktrace
 
+      # compose/shared/src/iosTest used to be compiled only. Run the iOS-specific classes
+      # (*IosTest / *IosSmokeTest) on a simulator; commonTest already runs on the JVM in the
+      # android job. Gradle fails if the filters match no test, and the report check below
+      # fails on zero executed cases.
+      - name: Run shared iosTest on the simulator
+        working-directory: compose
+        run: |
+          set -euo pipefail
+          device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k,vs in sorted(d.items(), reverse=True) if "iOS" in k for v in vs if "iPhone" in v["name"]))')
+          ./gradlew :shared:iosSimulatorArm64Test \
+            -Praft.iosSimulatorTestDevice="$device_id" \
+            --tests '*IosTest' \
+            --tests '*IosSmokeTest' \
+            --no-daemon \
+            --console=plain \
+            --stacktrace
+          python3 - <<'PY'
+          import pathlib, sys, xml.etree.ElementTree as ET
+          reports = sorted(pathlib.Path("shared/build/test-results/iosSimulatorArm64Test").glob("*.xml"))
+          total = 0
+          for report in reports:
+              suite = ET.parse(report).getroot()
+              count = int(suite.get("tests", "0"))
+              total += count
+              print(f"{suite.get('name')}: {count} tests, {suite.get('failures')} failures, {suite.get('skipped')} skipped")
+          print(f"iosTest total: {total} tests in {len(reports)} classes")
+          sys.exit(0 if total > 0 else 1)
+          PY
+
       - name: Test adaptive navigation transaction fences
         run: bash compose/iosApp/scripts/test_adaptive_navigation_session.sh
 
@@ -1033,8 +1073,9 @@ jobs:
             RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES \
             test > "$log" 2>&1 || { tail -200 "$log"; exit 1; }
           tail -60 "$log"
+          python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/assert_xctest_ran.py" "$log" RaftAdaptiveEditorSnapshotTests
 
-      - name: Test login route transition admission, CMP bridge selectors and native tab bar mapping (UIKit)
+      - name: Test iOS host XCTests (iosAppTests bundle, UIKit)
         working-directory: compose/iosApp
         run: |
           set -o pipefail
@@ -1046,18 +1087,28 @@ jobs:
             -configuration Debug \
             -destination "platform=iOS Simulator,id=$device_id" \
             -derivedDataPath "$RUNNER_TEMP/ios-build" \
-            -only-testing:iosAppTests/RaftRouterLoginTransitionTests \
-            -only-testing:iosAppTests/RaftCmpBridgeSelectorTests \
-            -only-testing:iosAppTests/RaftIosTabBarItemMappingTests \
+            -only-testing:iosAppTests \
             -parallel-testing-enabled NO \
             ARCHS=arm64 CODE_SIGNING_ALLOWED=NO \
             OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES \
             RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES \
             test > "$log" 2>&1 || { tail -200 "$log"; exit 1; }
           tail -60 "$log"
+          # Every class in the bundle must have run at least one case; xcodebuild itself
+          # reports success when a selector matches nothing.
+          python3 "$GITHUB_WORKSPACE/compose/iosApp/scripts/assert_xctest_ran.py" "$log" \
+            RaftRouterLoginTransitionTests \
+            RaftCmpBridgeSelectorTests \
+            RaftIosTabBarItemMappingTests \
+            RaftInteractivePopGestureTests \
+            RaftIosAdaptivePanePublisherTests \
+            RaftIosAvatarCacheProviderTests \
+            RaftIosNetworkRequestLifetimeAdapterTests \
+            RaftIosOpenAttachmentTests \
+            RaftShareControllerFailureReasonTests
 
-      # The UI-test bundle is only compiled here; no UI case is ever executed in
-      # this workflow, and qa-acceptance-ios.yml does its own build-for-testing
+      # The UI-test bundle is only compiled here; its one case (QaAcceptanceLoopTests) is a
+      # driver loop run by qa-acceptance-ios.yml, which does its own build-for-testing
       # before test-without-building. So on pull requests we build just the host
       # app -- which is what actually proves shared/iOS integration still
       # compiles -- and leave the harness compile to non-PR runs.
@@ -1087,26 +1138,6 @@ jobs:
           fi
           exit "$status"
 
-      - name: Test native image loader and media audio session
-        if: ${{ github.event_name != 'pull_request' }}
-        working-directory: compose/iosApp
-        run: |
-          set -o pipefail
-          device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k,vs in sorted(d.items(), reverse=True) if "iOS" in k for v in vs if "iPhone" in v["name"]))')
-          set +e
-          xcodebuild -workspace iosApp.xcworkspace -scheme iosAppUITests \
-            -destination "platform=iOS Simulator,id=$device_id" \
-            -derivedDataPath "$RUNNER_TEMP/ios-build" \
-            -only-testing:iosAppTests/SlockImageLoaderTests \
-            -only-testing:iosAppTests/SlockMediaAudioSessionTests \
-            -parallel-testing-enabled NO \
-            CODE_SIGNING_ALLOWED=NO test-without-building \
-            > "$GITHUB_WORKSPACE/xcodebuild-image-loader-tests.log" 2>&1
-          status=$?
-          set -e
-          tail -50 "$GITHUB_WORKSPACE/xcodebuild-image-loader-tests.log"
-          exit "$status"
-
       - name: Upload xcodebuild log
         if: ${{ always() }}
         uses: actions/upload-artifact@v6
@@ -1116,7 +1147,6 @@ jobs:
             xcodebuild-ios.log
             xcodebuild-adaptive-editor-tests.log
             xcodebuild-login-router-tests.log
-            xcodebuild-image-loader-tests.log
           if-no-files-found: ignore
           retention-days: 7
 

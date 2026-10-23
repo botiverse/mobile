@@ -31,14 +31,12 @@
 		A53100010000000000000002 /* RaftIosTabBarItemMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A53100020000000000000002 /* RaftIosTabBarItemMapping.swift */; };
 		A53100010000000000000003 /* RaftIosTabBarItemMapping.swift in Sources */ = {isa = PBXBuildFile; fileRef = A53100020000000000000002 /* RaftIosTabBarItemMapping.swift */; };
 		A53100010000000000000004 /* RaftIosTabBarItemMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A53100020000000000000003 /* RaftIosTabBarItemMappingTests.swift */; };
-		A13000010000000000000004 /* RaftAdaptivePaneRuntimeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000003 /* RaftAdaptivePaneRuntimeTests.swift */; };
 		A39600010000000000000001 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = A39600020000000000000001 /* InfoPlist.strings */; };
 		A39700010000000000000001 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = A39700020000000000000001 /* Localizable.strings */; };
 		A42100010000000000000001 /* RaftAdaptiveNavigationSession.m in Sources */ = {isa = PBXBuildFile; fileRef = A42100020000000000000001 /* RaftAdaptiveNavigationSession.m */; };
 		A42400010000000000000001 /* RaftIosAvatarCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42400020000000000000001 /* RaftIosAvatarCacheProvider.swift */; };
 		A42400010000000000000002 /* RaftIosAvatarCacheProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42400020000000000000001 /* RaftIosAvatarCacheProvider.swift */; };
 		A42400010000000000000003 /* RaftIosAvatarCacheProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A42400020000000000000002 /* RaftIosAvatarCacheProviderTests.swift */; };
-		B84B15A29AB40BD06D3F34C8 /* IosUseInteractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C465599FD991429AC545C211 /* IosUseInteractionTests.swift */; };
 		B84B15A39AB40BD06D3F34C9 /* QaAcceptanceLoopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C46559A0D991429AC545C212 /* QaAcceptanceLoopTests.swift */; };
 		D41350012E0F000100C0DE02 /* GeneratedRealtimeContract.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350032E0F000100C0DE02 /* GeneratedRealtimeContract.swift */; };
 		D41350022E0F000100C0DE02 /* RaftIosRealtimeHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41350042E0F000100C0DE02 /* RaftIosRealtimeHost.swift */; };
@@ -62,7 +60,6 @@
 		A20500010000000000000001 /* RaftRouterLoginTransitionTests.m in Sources */ = {isa = PBXBuildFile; fileRef = A20500020000000000000001 /* RaftRouterLoginTransitionTests.m */; };
 		RCB100010000000000000001 /* RaftCmpBridgeSelectorTests.m in Sources */ = {isa = PBXBuildFile; fileRef = RCB100020000000000000001 /* RaftCmpBridgeSelectorTests.m */; };
 		J0NY00030000000000000001 /* RaftIosOpenAttachmentTests.m in Sources */ = {isa = PBXBuildFile; fileRef = J0NY00040000000000000001 /* RaftIosOpenAttachmentTests.m */; };
-		T25800010000000000000001 /* T258ConsumerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T25800010000000000000002 /* T258ConsumerUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -113,7 +110,6 @@
 		A53100020000000000000001 /* RaftIosTabBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosTabBarController.swift; sourceTree = "<group>"; };
 		A53100020000000000000002 /* RaftIosTabBarItemMapping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosTabBarItemMapping.swift; sourceTree = "<group>"; };
 		A53100020000000000000003 /* RaftIosTabBarItemMappingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosTabBarItemMappingTests.swift; sourceTree = "<group>"; };
-		A13000020000000000000003 /* RaftAdaptivePaneRuntimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftAdaptivePaneRuntimeTests.swift; sourceTree = "<group>"; };
 		A39600030000000000000001 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A39600030000000000000002 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		A39600030000000000000003 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ja; path = ja.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -129,7 +125,6 @@
 		A82F000129F6A41000F43E31 /* RaftConversationForwardGestureAdmission.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RaftConversationForwardGestureAdmission.h; sourceTree = "<group>"; };
 		A82F000229F6A41000F43E31 /* RaftInteractivePopGestureAdmission.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RaftInteractivePopGestureAdmission.h; sourceTree = "<group>"; };
 		B8FDA997E9DD2D474C82E853 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
-		C465599FD991429AC545C211 /* IosUseInteractionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = IosUseInteractionTests.swift; sourceTree = "<group>"; };
 		C46559A0D991429AC545C212 /* QaAcceptanceLoopTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = QaAcceptanceLoopTests.swift; sourceTree = "<group>"; };
 		CFD86DD765CA5210E2F6061E /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 		D41350032E0F000100C0DE02 /* GeneratedRealtimeContract.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedRealtimeContract.swift; sourceTree = "<group>"; };
@@ -157,7 +152,6 @@
 		A20500020000000000000001 /* RaftRouterLoginTransitionTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftRouterLoginTransitionTests.m; sourceTree = "<group>"; };
 		RCB100020000000000000001 /* RaftCmpBridgeSelectorTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftCmpBridgeSelectorTests.m; sourceTree = "<group>"; };
 		J0NY00040000000000000001 /* RaftIosOpenAttachmentTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RaftIosOpenAttachmentTests.m; sourceTree = "<group>"; };
-		T25800010000000000000002 /* T258ConsumerUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = T258ConsumerUITests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -316,10 +310,7 @@
 		A0C1056F00055DC2789CB933 /* iosAppUITests */ = {
 			isa = PBXGroup;
 			children = (
-				C465599FD991429AC545C211 /* IosUseInteractionTests.swift */,
-				T25800010000000000000002 /* T258ConsumerUITests.swift */,
 				C46559A0D991429AC545C212 /* QaAcceptanceLoopTests.swift */,
-				A13000020000000000000003 /* RaftAdaptivePaneRuntimeTests.swift */,
 			);
 			path = iosAppUITests;
 			sourceTree = "<group>";
@@ -757,10 +748,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B84B15A29AB40BD06D3F34C8 /* IosUseInteractionTests.swift in Sources */,
 				B84B15A39AB40BD06D3F34C9 /* QaAcceptanceLoopTests.swift in Sources */,
-				T25800010000000000000001 /* T258ConsumerUITests.swift in Sources */,
-				A13000010000000000000004 /* RaftAdaptivePaneRuntimeTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

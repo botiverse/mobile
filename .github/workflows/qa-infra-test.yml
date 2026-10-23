@@ -7,6 +7,9 @@ on:
       - ".github/workflows/qa-acceptance-ios.yml"
       - ".github/workflows/android-alpha.yml"
       - ".github/workflows/qa-infra-test.yml"
+      # stamp_report.test.mjs reads these two workflows.
+      - ".github/workflows/qa-review-panel.yml"
+      - ".github/workflows/qa-failure-diagnosis.yml"
       - "docs/qa-acceptance/case-schema.md"
       - "docs/qa-acceptance/cases/**"
       - "scripts/qa/**"
@@ -22,6 +25,9 @@ on:
       - ".github/workflows/qa-acceptance-ios.yml"
       - ".github/workflows/android-alpha.yml"
       - ".github/workflows/qa-infra-test.yml"
+      # stamp_report.test.mjs reads these two workflows.
+      - ".github/workflows/qa-review-panel.yml"
+      - ".github/workflows/qa-failure-diagnosis.yml"
       - "docs/qa-acceptance/case-schema.md"
       - "docs/qa-acceptance/cases/**"
       - "scripts/qa/**"
@@ -53,6 +59,13 @@ jobs:
         run: python3 -m pip install --disable-pip-version-check PyYAML==6.0.2
       - name: Run QA contract tests
         run: node --test scripts/qa/*.test.mjs
+      # These were in scripts/qa but no workflow ran them (task #18).
+      - name: Run QA Python and shell tests
+        run: |
+          python3 scripts/qa/test_build_testbox_preflight_manifest.py
+          python3 scripts/qa/test_generate_ios_case_manifest.py
+          python3 scripts/qa/test_i18n_code_literal_scan.py
+          scripts/qa/export_ios_simulator_app.test.sh
       - name: Check canonical release acceptance cases
         run: |
           python3 scripts/qa/test_release_acceptance_contract.py

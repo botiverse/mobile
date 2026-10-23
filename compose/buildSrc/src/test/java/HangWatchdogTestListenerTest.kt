@@ -35,6 +35,7 @@ class HangWatchdogTestListenerTest {
         override fun getException(): Throwable? = null
         override fun getExceptions(): List<Throwable> = emptyList()
         override fun getFailures(): List<org.gradle.api.tasks.testing.TestFailure> = emptyList()
+        override fun getAssumptionFailure(): org.gradle.api.tasks.testing.TestFailure? = null
         override fun getEndTime(): Long = 0
         override fun getStartTime(): Long = 0
     }

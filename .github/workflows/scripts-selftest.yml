@@ -15,7 +15,7 @@ jobs:
   selftest:
     name: Merge tooling self-test
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -51,9 +51,31 @@ jobs:
       - name: Test interactive visual Testbox workflow boundary
         run: python3 scripts/qa/test_visual_testbox_contract.py
 
+      # Script tests that no workflow ran before task #18. All are self-contained (temp dirs,
+      # mocked tools, no network).
+      - name: Test build and release helper scripts
+        shell: bash
+        run: |
+          scripts/ci/test_version_code.sh
+          scripts/test_resolve_git_revision.sh
+          scripts/test_run_android_visual_capture.sh
+          python3 scripts/test_collect_richtext_caps.py
+
+      - name: Test iOS device automation helpers
+        shell: bash
+        run: |
+          # The default ios-use driver is agent-device (an npm CLI); these cases cover the
+          # qa-loop XCUITest path and mock xcodebuild/simctl, so pin that driver.
+          IOS_USE_DRIVER=qa-loop python3 scripts/test_slock_ios_simctl.py
+          PYTHONPATH=tools/mobile-use/src python3 tools/mobile-use/tests/test_ios_use.py
+          python3 compose/iosApp/scripts/assert_xctest_ran.py --self-test
+
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
 
       - name: Test WebView host bridge and feedback bootstrap scripts
         run: node --test scripts/tests/*.test.mjs
+
+      - name: Test visual patrol fix queue and identity
+        run: node --test scripts/patrol/*.test.mjs

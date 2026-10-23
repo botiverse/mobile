@@ -47,4 +47,21 @@
     XCTAssertTrue(callSync.name != NULL, @"SharedRaftCmpIosBridge no longer declares callSyncMethod:paramsJson:");
 }
 
+- (void)testBridgeModuleAnswersTheMethodsSharedCallsByName {
+    // RaftCmpBridgeHost resolves a bridge call as `<method>:` on HRBridgeModule at runtime and
+    // answers a miss with "Method not implemented" instead of failing, so a renamed handler only
+    // shows up as a silently broken feature. These names are sent by shared Kotlin
+    // (BridgeModule.kt) and have no other native guard.
+    Class moduleClass = NSClassFromString(@"HRBridgeModule");
+    XCTAssertNotNil(moduleClass, @"HRBridgeModule is not linked into the host app");
+    if (moduleClass == Nil) {
+        return;
+    }
+    for (NSString *method in @[ @"adaptiveNavigation" ]) {
+        SEL selector = NSSelectorFromString([method stringByAppendingString:@":"]);
+        XCTAssertTrue([moduleClass instancesRespondToSelector:selector],
+                      @"HRBridgeModule no longer answers bridge method %@", method);
+    }
+}
+
 @end
