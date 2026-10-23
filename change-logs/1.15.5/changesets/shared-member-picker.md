@@ -4,7 +4,7 @@ area: channels
 platforms:
   - android
   - ios
-pull_request: TBD
+pull_request: 3585
 rollout: full
 ---
 
