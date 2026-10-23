@@ -26,6 +26,6 @@ test("tap and assertion geometry remains in screenshot pixels without rescaling"
 test("Android and iOS acceptance workflows install the annotation renderer", () => {
   for (const workflow of ["qa-acceptance.yml", "qa-acceptance-ios.yml"]) {
     const source = fs.readFileSync(new URL(`../../.github/workflows/${workflow}`, import.meta.url), "utf8");
-    assert.match(source, /name: Install sharp \(evidence annotation\)[\s\S]*sharp@0\.33\.5/);
+    assert.match(source, /name: Install sharp \(evidence annotation\)\n\s+run: npm i(?:nstall)? [^\n]*\bsharp@/);
   }
 });

@@ -47,3 +47,13 @@ jobs:
 
       - name: Test one-time Upterm inspection boundary
         run: python3 scripts/ci/test_ios_runner_upterm_workflow.py
+
+      - name: Test interactive visual Testbox workflow boundary
+        run: python3 scripts/qa/test_visual_testbox_contract.py
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Test WebView host bridge and feedback bootstrap scripts
+        run: node --test scripts/tests/*.test.mjs

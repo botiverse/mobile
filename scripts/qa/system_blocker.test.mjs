@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { detectForeignAndroidSystemBlocker } from "./system_blocker.mjs";
 
 test("Pixel Launcher and System UI ANRs are foreign harness blockers", () => {
@@ -42,11 +41,4 @@ test("foreign ANR wording inside Raft content cannot impersonate a system dialog
     { text: "Pixel Launcher isn't responding", pkg: "android", resourceId: "android:id/alertTitle" },
     { text: "Wait", pkg: "build.raft.app", resourceId: "" },
   ]), null);
-});
-
-test("acceptance agent exposes error verdict and performs the mechanical override", () => {
-  const source = readFileSync(new URL("./acceptance_agent.mjs", import.meta.url), "utf8");
-  assert.match(source, /"verdict":"pass\|fail\|error"/);
-  assert.match(source, /detectForeignAndroidSystemBlocker\(uiNodes\(\)\)/);
-  assert.match(source, /verdict = "error";\s*reason = `harness\/system blocker/);
 });

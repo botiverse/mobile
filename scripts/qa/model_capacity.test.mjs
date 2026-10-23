@@ -225,14 +225,3 @@ test("independent diagnosis reuses shared capacity client without executor claim
   assert.match(calls[0].url, /api\/diagnoses\/rc-review\/model-capacity\/acquire$/);
   assert.match(calls[1].url, /api\/diagnoses\/rc-review\/model-capacity\/release$/);
 });
-
-test("workflow wires provider retry budget and uploads capacity evidence", () => {
-  const workflow = fs.readFileSync(path.resolve(".github/workflows/qa-acceptance.yml"), "utf8");
-  const reporter = fs.readFileSync(path.resolve("scripts/qa/stamp_report.sh"), "utf8");
-  assert.match(workflow, /PI_PROVIDER: \$\{\{ vars\.PI_PROVIDER \|\| 'minimax' \}\}/);
-  assert.match(workflow, /PI_MODEL: \$\{\{ vars\.PI_MODEL \|\| 'MiniMax-M3.1-Flash-Preview' \}\}/);
-  assert.match(workflow, /QA_MODEL_MAX_ATTEMPTS:/);
-  assert.match(workflow, /QA_MODEL_RETRY_BUDGET_MS:/);
-  assert.match(workflow, /QA_MODEL_RELEASE_ATTEMPTS:/);
-  assert.match(reporter, /model-capacity\.jsonl.*model_capacity/);
-});

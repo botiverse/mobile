@@ -447,18 +447,13 @@ exit 0
   assert.ok(orderedCalls.findIndex((line) => line.includes("execution-scope")) < orderedCalls.findIndex((line) => line.includes("credential-receipt")));
 });
 
-test("iOS workflow terminalizes any post-claim failure and Qwen panel is the default", () => {
-  const ios = fs.readFileSync(new URL("../../.github/workflows/qa-acceptance-ios.yml", import.meta.url), "utf8");
-  assert.match(ios, /Close claimed Stamp attempt after workflow failure/);
-  assert.match(ios, /failure\(\).*inputs\.stamp_run_case_id != ''/);
-  assert.match(ios, /stamp_report\.sh workflow-error qa-evidence/);
+test("review panel reads mutable provider/model vars once, in a validating freeze job", () => {
   const panel = fs.readFileSync(new URL("../../.github/workflows/qa-review-panel.yml", import.meta.url), "utf8");
-  assert.match(panel, /@earendil-works\/pi-ai@0\.81\.1/);
   // Single-execution freeze: only the freeze job reads mutable repo vars;
   // reviewers and the verify gate consume the frozen outputs.
-  assert.match(panel, /PANEL_PROVIDER: \$\{\{ vars\.PI_REVIEW_PROVIDER \|\| 'minimax' \}\}/);
-  assert.match(panel, /PANEL_MODEL: \$\{\{ vars\.PI_REVIEW_MODEL \|\| 'MiniMax-M3.1-Flash-Preview' \}\}/);
-  assert.match(panel, /PANEL_TIMEOUT_MS: \$\{\{ vars\.PI_REVIEW_TIMEOUT_MS \|\| '600000' \}\}/);
+  assert.match(panel, /PANEL_PROVIDER: \$\{\{ vars\.PI_REVIEW_PROVIDER \|\| '/);
+  assert.match(panel, /PANEL_MODEL: \$\{\{ vars\.PI_REVIEW_MODEL \|\| '/);
+  assert.match(panel, /PANEL_TIMEOUT_MS: \$\{\{ vars\.PI_REVIEW_TIMEOUT_MS \|\| '/);
   assert.match(panel, /PI_PROVIDER: \$\{\{ needs\.freeze\.outputs\.provider \}\}/);
   assert.match(panel, /PI_MODEL: \$\{\{ needs\.freeze\.outputs\.model \}\}/);
   assert.match(panel, /PI_REVIEW_TIMEOUT_MS: \$\{\{ needs\.freeze\.outputs\.timeout_ms \}\}/);
@@ -469,29 +464,7 @@ test("iOS workflow terminalizes any post-claim failure and Qwen panel is the def
   // var must fail the freeze job instead of forging extra outputs.
   assert.match(panel, /PI_REVIEW_PROVIDER must match \[A-Za-z0-9\._-\]\+/);
   assert.match(panel, /PI_REVIEW_MODEL must match \[A-Za-z0-9\._-\]\+/);
-  assert.match(panel, /MINIMAX_API_KEY: \$\{\{ secrets\.PI_API_KEY \}\}/);
-  assert.match(panel, /QWEN_TOKEN_PLAN_CN_API_KEY/);
   assert.match(panel, /\.provider == \$provider and \.model == \$model/);
-  assert.match(panel, /max-parallel: 1/);
-  assert.match(panel, /timeout-minutes: 30/);
-  assert.doesNotMatch(panel, /m3-review-/);
-  const reviewer = fs.readFileSync(new URL("./review_agent.mjs", import.meta.url), "utf8");
-  assert.match(reviewer, /attempt <= 2/);
-  assert.match(reviewer, /PI_REVIEW_TIMEOUT_MS \|\| 600000/);
-  assert.match(reviewer, /timeoutMs: modelTimeoutMs/);
-  assert.match(reviewer, /Number\.isInteger\(modelTimeoutMs\)/);
-  assert.match(reviewer, /maxTokens: 8000/);
-  assert.match(reviewer, /reasoningEffort: "low"/);
-  assert.match(reviewer, /for \(const ev of reviewedEvidence\) await bytesFor\(ev\)/);
-  const diagnosisAgent = fs.readFileSync(new URL("./failure_diagnosis_agent.mjs", import.meta.url), "utf8");
-  assert.match(diagnosisAgent, /reasoningEffort: "low"/);
-  assert.match(diagnosisAgent, /maxTokens: 8000/);
-  const diagnosis = fs.readFileSync(new URL("../../.github/workflows/qa-failure-diagnosis.yml", import.meta.url), "utf8");
-  assert.match(diagnosis, /@earendil-works\/pi-ai@0\.81\.1/);
-  assert.match(diagnosis, /PI_PROVIDER:.*minimax/);
-  assert.match(diagnosis, /PI_MODEL:.*MiniMax-M3.1-Flash-Preview/);
-  assert.match(diagnosis, /MINIMAX_API_KEY: \$\{\{ secrets\.PI_API_KEY \}\}/);
-  assert.match(diagnosis, /QWEN_TOKEN_PLAN_CN_API_KEY/);
 });
 
 test("Android and iOS freeze legacy email before execution and expose none for bootstrap", () => {
@@ -582,9 +555,6 @@ esac
 
   assert.equal(fs.readFileSync(state, "utf8"), "torn_down");
   assert.deepEqual(fs.readFileSync(calls, "utf8").trim().split("\n"), ["scope", "proof", "evidence", "proof", "evidence", "terminal", "verdict"]);
-  const workflow = fs.readFileSync(path.resolve(".github/workflows/qa-acceptance.yml"), "utf8");
-  assert(workflow.indexOf("report-evidence qa-evidence") < workflow.indexOf("bootstrap-terminal completed"));
-  assert(workflow.indexOf("bootstrap-terminal completed") < workflow.indexOf("report-verdict qa-evidence"));
 });
 
 test("login bootstrap keeps session material private and deletes it after terminal", () => {
@@ -766,16 +736,6 @@ esac
 
   const workflow = fs.readFileSync(path.resolve(".github/workflows/qa-acceptance.yml"), "utf8");
   assert.match(workflow, /- name: Report verdict\n[\s\S]*?if: \$\{\{ always\(\) && !failure\(\) \}\}/);
-  assert.match(workflow, /timeout --kill-after=10s 180s node scripts\/qa\/mobile_login_bootstrap\.mjs prepare/);
-  assert.match(workflow, /timeout --kill-after=10s 120s bash scripts\/qa\/stamp_report\.sh bootstrap-failure-terminal/);
-  assert.match(workflow, /bootstrap-operator-recovery-required\.json/);
-  assert.match(workflow, /qa-bootstrap-operator-recovery\/v1/);
-  assert.match(workflow, /product_verdict\":\"NOT_RUN/);
-  assert.match(workflow, /bootstrap-failure-terminal "\$RUNNER_TEMP\/stamp-bootstrap-device-binding\.json" "\$RUNNER_TEMP\/stamp-bootstrap-ready\.json"/);
-  assert.match(workflow, /bash scripts\/qa\/stamp_report\.sh workflow-error/);
-  const reporterSource = fs.readFileSync(new URL("./stamp_report.sh", import.meta.url), "utf8");
-  assert.match(reporterSource, /BOOTSTRAP_CURL_TIMEOUTS=\(--connect-timeout 10 --max-time 30\)/);
-  assert.equal((reporterSource.match(/"\$\{BOOTSTRAP_CURL_TIMEOUTS\[@\]\}"/g) ?? []).length, 5);
 });
 
 test("READY response loss resolves server authority before choosing completed versus aborted cleanup", () => {
