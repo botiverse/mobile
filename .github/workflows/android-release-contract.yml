@@ -85,3 +85,6 @@ jobs:
 
       - name: Validate Hands identifier migration
         run: scripts/test_hands_identifier_migration.sh
+
+      - name: Validate the release-channel guard
+        run: scripts/tests/check_android_hands_release_channel_test.sh
