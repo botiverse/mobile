@@ -792,21 +792,21 @@ internal fun channelSettingsActionRows(model: ChannelSettingsUiModel): List<Chan
 
 /**
  * Web overflow header: `#name` with its visibility as a neutral outline tag, the description under it.
- * A long press copies the name (the raw name, without the `#`) or the description.
+ * A long press copies the name or the description, as shown (`#name` with its `#`).
  */
 @Composable
 private fun ChannelIdentityHeader(channel: HomeChannelRow) {
     val colors = RaftTheme.colors
     val description = channel.subtitle?.trim().takeUnless { it.isNullOrBlank() }
-    val rawName = channelSettingsCopyName(channel.name)
+    val shownName = channelSettingsHeaderName(channel.name)
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             RaftText(
-                text = "#$rawName",
-                modifier = Modifier.weight(1f, fill = false).raftCopyable(rawName),
+                text = shownName,
+                modifier = Modifier.weight(1f, fill = false).raftCopyable(shownName),
                 style = RaftTheme.typography.headline,
                 color = colors.foreground,
                 maxLines = 1,
@@ -825,8 +825,8 @@ private fun ChannelIdentityHeader(channel: HomeChannelRow) {
     }
 }
 
-/** The channel name a long press copies: the raw name, no `#` (shown as `#name`). */
-internal fun channelSettingsCopyName(name: String): String = name.removePrefix("#")
+/** The header's channel name, shown and copied as `#name` (one `#`, whatever the stored form). */
+internal fun channelSettingsHeaderName(name: String): String = "#${name.removePrefix("#")}"
 
 @Composable
 private fun channelSettingsStatusLabel(channel: HomeChannelRow): String =

@@ -5315,9 +5315,10 @@ internal fun ThreadMembersPageContent(
                         // SSOT audit: the live time context (as rememberRaftAgentStatusIndicatorState
                         // reads it), so the lime/cyan boundary moves on its minute tick.
                         val now = LocalRaftTimeContextProvider.current?.current?.nowEpochMillis ?: defaultNowMillis()
+                        val handlesLine = member.handles.joinToString(" · ") { "@${it.removePrefix("@")}" }
                         ChannelMembersRow(
                             title = member.displayName,
-                            subtitle = member.handles.joinToString(" · ") { "@${it.removePrefix("@")}" },
+                            subtitle = handlesLine,
                             avatarWireValue = member.avatarUrl, avatarLabel = member.avatarLabel,
                             avatarFill = RaftColor.AccentLavender,
                             cacheSubject = null, cacheServerId = null,
@@ -5329,8 +5330,8 @@ internal fun ThreadMembersPageContent(
                                 member.provider?.takeIf { it.isNotBlank() }?.let { ChannelMemberBadge(it, ChannelMemberBadgeKind.Provider) }
                             ),
                             divider = index > 0,
-                            // One handle: a long press copies it ("@handle"); several share the line.
-                            subtitleCopyText = member.handles.singleOrNull()?.let { "@${it.removePrefix("@")}" },
+                            // A long press copies the handle line as shown ("@a", "@a · @b").
+                            subtitleCopyText = handlesLine,
                         )
                     }
                 }
@@ -16427,7 +16428,7 @@ private fun ThreadActivityMutedBadge() {
 }
 
 /**
- * What a long press on the conversation header copies: a channel's or DM peer's name, raw.
+ * What a long press on the conversation header copies: the channel or DM peer name as shown.
  * Null for a reply thread (its title previews the parent message, a message body) and for the
  * generic stand-ins ("Channel", "Direct Message") shown before the name loads.
  */
@@ -16437,13 +16438,6 @@ internal fun threadHeaderCopyText(title: String, surfaceKind: String): String? =
             surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
             !it.isGenericThreadHeaderFallbackLabel()
     }
-
-/**
- * What a long press on the task detail dialog's title copies: "#5" for "Task #5" (the task's
- * reference form, as a handle keeps its "@"); the channel name when the task has no number.
- */
-internal fun threadTaskDetailTitleCopyText(taskNumber: Int?, channelName: String?): String? =
-    taskNumber?.let { "#$it" } ?: channelName?.trim()?.takeIf { it.isNotEmpty() }
 
 internal fun localizedThreadHeaderTitle(
     title: String,
@@ -34214,13 +34208,14 @@ private fun ThreadTaskDetailDialog(
         stringResource(MR.strings.tasks_detail_task_identifier, number)
     }
     val headerOverline = task.taskNumber?.let { task.channelName?.takeIf { name -> name.isNotBlank() }?.let { "#$it" } }
+    val dialogTitle = taskNumberLabel ?: task.channelName.orEmpty()
     RaftUnifiedDialog(
-        title = taskNumberLabel ?: task.channelName.orEmpty(),
-        // Long press: "Task #5" copies "#5" (how a task is referenced); the overline the channel name.
-        titleCopyText = threadTaskDetailTitleCopyText(task.taskNumber, task.channelName),
+        title = dialogTitle,
+        // Long press copies what is shown: "Task #5" (localized), "#general".
+        titleCopyText = dialogTitle.trim().ifEmpty { null },
         uppercaseTitle = false,
         overline = headerOverline,
-        overlineCopyText = task.channelName?.takeIf { headerOverline != null },
+        overlineCopyText = headerOverline,
         titleFontSize = 14,
         titleLineHeight = 18,
         titleMaxLines = 1,

@@ -82,8 +82,8 @@ fun RaftCodeBlock(
  * above and below them (a one-line value sits where it does in the 44dp box), and
  * ellipsizes past [maxLines] (`Int.MAX_VALUE`: never).
  *
- * A long press copies [copyText] ([raftCopyable]): the shown value by default; pass the raw
- * value when the field shows a decorated one, or null when it shows a placeholder.
+ * A long press copies [copyText] ([raftCopyable]): the shown value by default (what you see is
+ * what you copy); null when the field shows a placeholder.
  */
 @Composable
 fun RaftReadOnlyField(

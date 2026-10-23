@@ -527,8 +527,8 @@ private fun SettingsAccountProfileCard(
         RaftBrutalReadOnlyField(
             label = payload.handleLabel,
             value = profile.handle.removePrefix("@").ifBlank { payload.handlePlaceholder.removePrefix("@") },
-            // Copies "@handle" (the handle's form everywhere else); nothing for the placeholder.
-            copyText = settingsAccountHeaderHandleLabel(profile.handle),
+            // Copies the handle as shown here (no "@"); nothing for the placeholder.
+            copyText = profile.handle.removePrefix("@").ifBlank { null },
             textStyle = settingsAccountInputTextStyle(RaftColor.TextMutedGray),
             textColor = RaftColor.TextMutedGray
         )
@@ -855,10 +855,11 @@ private fun SettingsConnectedAccountRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                val statusDetail = connectedAccountStatusDetail(account, connected)
                 Text(
-                    connectedAccountStatusDetail(account, connected),
-                    // "Connected as x": copies x, not the sentence.
-                    modifier = Modifier.raftCopyable(account.identifier.takeIf { connected }),
+                    statusDetail,
+                    // "Connected as x" copies as shown; the bare "Connected" / "Not connected" status doesn't.
+                    modifier = Modifier.raftCopyable(statusDetail.takeIf { connected && account.identifier.isNotBlank() }),
                     style = RaftType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextMutedGray),
                     color = RaftColor.TextMutedGray,
                     maxLines = 1,

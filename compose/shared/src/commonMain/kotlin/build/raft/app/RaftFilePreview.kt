@@ -9992,6 +9992,7 @@ internal fun RaftFilePreviewMarkdownPanel(
     ) {
         RaftFilePreviewPanelHeader(
             name = name.ifBlank { stringResource(MR.strings.file_preview_fallback_markdown) },
+            copyText = name.ifBlank { null },
             meta = meta,
             statusLabel = statusLabel
         )
@@ -10066,6 +10067,7 @@ internal fun RaftFilePreviewTextPanel(
     ) {
         RaftFilePreviewPanelHeader(
             name = name.ifBlank { stringResource(MR.strings.file_preview_fallback_text_file) },
+            copyText = name.ifBlank { null },
             meta = meta,
             statusLabel = null
         )
@@ -10315,7 +10317,9 @@ private fun RaftFilePreviewLoadingIndicator(
 private fun RaftFilePreviewPanelHeader(
     name: String,
     meta: String,
-    statusLabel: String?
+    statusLabel: String?,
+    // The shown name; null when [name] is a stand-in ("Markdown", "Text file").
+    copyText: String? = name,
 ) {
     Column(
         modifier = Modifier
@@ -10326,7 +10330,7 @@ private fun RaftFilePreviewPanelHeader(
     ) {
         Text(
             text = name,
-            modifier = Modifier.raftCopyable(name),
+            modifier = Modifier.raftCopyable(copyText),
             style = RaftType.Input.copy(fontSize = 16.sp, lineHeight = 20.sp),
             color = RaftColor.TextBlack,
             maxLines = 1,
