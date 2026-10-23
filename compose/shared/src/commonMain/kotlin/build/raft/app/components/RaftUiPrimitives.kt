@@ -43,6 +43,10 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftBadge's variant. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal enum class RaftBrutalTone(val color: Color) {
     White(RaftColor.SurfaceWhite),
     Black(RaftColor.TextBlack),
@@ -68,6 +72,10 @@ internal enum class RaftBrutalTone(val color: Color) {
  */
 @Suppress("UNUSED_PARAMETER")
 @Composable
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftBadge. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal fun RaftBrutalBadge(
     label: String,
     modifier: Modifier = Modifier,

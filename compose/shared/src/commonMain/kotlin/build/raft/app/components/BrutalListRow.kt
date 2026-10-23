@@ -12,6 +12,10 @@ import build.raft.designsystem.components.RaftListRowVariant
  * (`plain`) in a [RaftListRowGroup].
  */
 @Composable
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftListRow in a RaftListRowGroup. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal fun RaftBrutalListRow(
     title: String,
     subtitle: String,

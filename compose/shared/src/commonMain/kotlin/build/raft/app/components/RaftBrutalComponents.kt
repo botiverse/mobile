@@ -328,6 +328,10 @@ internal val RaftFormFieldSize.raftFieldLabelSize: RaftFieldLabelSize
     get() = if (this == RaftFormFieldSize.Compact) RaftFieldLabelSize.Sm else RaftFieldLabelSize.Md
 
 @Composable
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftDialog / RaftSheet / RaftDialogSheet. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal fun RaftBrutalModalLayer(
     model: RaftModalShellModel,
     onDismiss: () -> Unit,
@@ -370,6 +374,10 @@ internal fun RaftBrutalModalLayer(
 }
 
 @Composable
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftMenuItem in a RaftSheet (or RaftListRow). New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal fun RaftBrutalActionSheetRow(
     model: RaftActionSheetRowModel,
     onClick: () -> Unit,
@@ -455,6 +463,10 @@ private fun RaftLookActionSheetRow(
  * [TextFieldValue] overload below so the native editing token survives controlled recomposition.
  */
 @Composable
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextField inside a RaftField. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal fun RaftBrutalTextField(
     label: String,
     value: String,
@@ -514,6 +526,10 @@ internal fun RaftBrutalTextField(
  * Secret callers opt into native masking explicitly with [password].
  */
 @Composable
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextField inside a RaftField. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal fun RaftBrutalTextField(
     label: String,
     value: TextFieldValue,
@@ -579,6 +595,10 @@ internal fun RaftBrutalTextField(
  * of the label row, help or error line, field state for the control).
  */
 @Composable
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftField. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal fun RaftBrutalFieldFrame(
     label: String,
     modifier: Modifier,
@@ -708,6 +728,10 @@ private fun RaftBrutalInputFieldFrame(
 /** [showShadow] and [forceFocused] are ignored: raft fields cast no shadow. */
 @Suppress("UNUSED_PARAMETER")
 @Composable
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextField inside a RaftField. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal fun RaftBrutalInputField(
     value: String,
     onValueChange: (String) -> Unit,
@@ -875,6 +899,10 @@ internal fun RaftBrutalInputField(
 /** [showShadow] and [forceFocused] are ignored: raft fields cast no shadow. */
 @Suppress("UNUSED_PARAMETER")
 @Composable
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextField inside a RaftField. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal fun RaftBrutalInputField(
     value: TextFieldValue,
     onValueChange: (TextFieldValue) -> Unit,
@@ -1156,6 +1184,10 @@ internal fun raftBrutalInputFocusPolicy(
  */
 @Suppress("UNUSED_PARAMETER")
 @Composable
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextField(readOnly = true) inside a RaftField. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal fun RaftBrutalReadOnlyField(
     label: String,
     value: String,
@@ -1182,6 +1214,10 @@ internal fun RaftBrutalReadOnlyField(
  */
 @Suppress("UNUSED_PARAMETER")
 @Composable
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextField with a search leading icon (RaftMenuSearchField inside menus). New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal fun RaftBrutalSearchField(
     value: String,
     placeholder: String,
@@ -1210,6 +1246,10 @@ internal fun RaftBrutalSearchField(
 
 @Suppress("UNUSED_PARAMETER")
 @Composable
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextField with a search leading icon (RaftMenuSearchField inside menus). New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal fun RaftBrutalSearchField(
     value: TextFieldValue,
     placeholder: String,
@@ -1263,6 +1303,10 @@ internal val RaftBrutalSearchDefaultTextStyle: TextStyle
  */
 @Suppress("UNUSED_PARAMETER")
 @Composable
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftButton. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal fun RaftBrutalActionButton(
     label: String,
     onClick: () -> Unit,
@@ -1561,6 +1605,10 @@ private fun RaftPickerChip(
  */
 @Suppress("UNUSED_PARAMETER")
 @Composable
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftIconButton. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal fun RaftBrutalIconButton(
     iconName: RaftLucideIconName,
     onClick: () -> Unit,

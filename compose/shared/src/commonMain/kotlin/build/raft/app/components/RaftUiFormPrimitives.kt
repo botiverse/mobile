@@ -66,6 +66,10 @@ internal val RaftSlugInputDisabledPrefixBackground: Color
  * dismiss).
  */
 @Composable
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextarea inside a RaftField. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal fun RaftBrutalTextarea(
     value: String,
     onValueChange: (String) -> Unit,
@@ -97,6 +101,10 @@ internal fun RaftBrutalTextarea(
  * controlled recomposition; the counter counts the text.
  */
 @Composable
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextarea inside a RaftField. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal fun RaftBrutalTextarea(
     value: TextFieldValue,
     onValueChange: (TextFieldValue) -> Unit,
