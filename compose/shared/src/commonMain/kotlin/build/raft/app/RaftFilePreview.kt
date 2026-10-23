@@ -604,6 +604,8 @@ private const val RaftFilePreviewSaveToFilesActionId = "save-to-files"
 private const val RaftFilePreviewOpenWithActionId = "open-with"
 private const val RaftFilePreviewDeleteDownloadActionId = "delete-download"
 private const val RaftFilePreviewCommentsActionId = "comments"
+private const val RaftFilePreviewDownloadActionId = "download"
+private const val RaftFilePreviewShareActionId = "share"
 
 internal enum class RaftFilePreviewExportIsolationEvent {
     Started,
@@ -2805,6 +2807,72 @@ private fun RaftFilePreviewStandalonePageContent() {
         }.start()
     }
 
+    // PDF preview: download the file into the attachment cache (the same private copy Open uses),
+    // with progress, then hand the local path to the platform viewer. Leaving the page cancels
+    // the download through the bridge call's cancellation.
+    var pdfState by remember(payload.attachmentId) { mutableStateOf<RaftFilePreviewPdfState>(RaftFilePreviewPdfState.Idle) }
+    var pdfAttempt by remember(payload.attachmentId) { mutableStateOf(0) }
+    val pdfOwnerReady = attachmentOwner != null
+    LaunchedEffect(payload.kind, payload.attachmentId, pdfAttempt, pdfOwnerReady, remoteAuthorityCurrent) {
+        if (payload.kind != RaftFilePreviewPdfKind) return@LaunchedEffect
+        // A shown or failed document stays; Retry resets a download failure to Idle first.
+        if (pdfState is RaftFilePreviewPdfState.Ready || pdfState is RaftFilePreviewPdfState.Failed) return@LaunchedEffect
+        val owner = attachmentOwner ?: return@LaunchedEffect
+        val requestPayload = payload
+        pdfState = raftFilePreviewPdfDownloadStarted()
+        val cachedPath =
+            raftFilePreviewPrivateCachedOpenUrl(requestPayload, owner)?.removePrefix("file://")
+        if (!cachedPath.isNullOrBlank()) {
+            pdfState = pdfState.onPdfPrepared(status = "ready", path = cachedPath)
+            return@LaunchedEffect
+        }
+        val url =
+            try {
+                resolveRemoteExternalUrl(requestPayload)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                null
+            }
+        if (url.isNullOrBlank()) {
+            pdfState = pdfState.onPdfPrepared(status = "failed", path = null, message = unableToDownloadAttachment)
+            return@LaunchedEffect
+        }
+        bridge.log("file_preview_pdf phase=prepare attachment=${requestPayload.attachmentId.take(8)} ${binaryDownloadUrlDiagnostics(url)}")
+        val result =
+            bridge.openAttachment(
+                url = url,
+                attachmentId = requestPayload.attachmentCacheId(),
+                fileName = requestPayload.attachmentCacheFileName(),
+                owner = owner,
+                mimeType = requestPayload.externalMimeType,
+                prepareOnly = true,
+                onProgress = { progress -> pdfState = pdfState.onPdfDownloadProgress(progress) }
+            )
+        val status = result?.optString("status").orEmpty()
+        bridge.log("file_preview_pdf phase=prepared attachment=${requestPayload.attachmentId.take(8)} status=$status")
+        pdfState =
+            pdfState.onPdfPrepared(
+                status = status,
+                path = result?.optString("path"),
+                message =
+                    when (status) {
+                        "storage_failed" -> raftAttachmentOpenResultMessage("storage_failed", attachmentOpenResultTerms)
+                        "download_failed" -> raftAttachmentOpenResultMessage("download_failed", attachmentOpenResultTerms)
+                        else -> null
+                    }
+            )
+    }
+    fun onPdfRenderError(error: RaftPdfDocumentError) {
+        bridge.log("file_preview_pdf phase=render_error attachment=${payload.attachmentId.take(8)} error=$error")
+        pdfState = pdfState.onPdfRenderError(error)
+    }
+    fun retryPdf() {
+        if (!pdfState.canRetry) return
+        pdfState = RaftFilePreviewPdfState.Idle
+        pdfAttempt += 1
+    }
+
     fun requestExternalSave(toPhotos: Boolean = false, exportPrivateDownload: Boolean = false) {
         if (!canOpenWith || exportInProgress || !raftFilePreviewCanStartExternalOperation(downloadStatus)) return
         if (toPhotos && !payload.supportsSaveToPhotos()) return
@@ -2919,8 +2987,10 @@ private fun RaftFilePreviewStandalonePageContent() {
         if (!traceRaftFilePreviewExternalOpenAdmission(rejectionReason, policy, bridge::log)) return
         val owner = attachmentOwner ?: return
         val admittedPolicy = policy ?: return
-        // Share hands over the file already on the device; it never starts a download.
-        if (share && !admittedPolicy.requirePublicDownload) return
+        // Share hands over the file already on the device; it never starts a download. A shown
+        // PDF is on the device already: its cached copy is shared.
+        val sharesPdfPreviewCopy = payload.kind == RaftFilePreviewPdfKind && pdfState is RaftFilePreviewPdfState.Ready
+        if (share && !admittedPolicy.requirePublicDownload && !sharesPdfPreviewCopy) return
         externalOperation = "open"
         downloadMessage = ""
         nextDownloadGeneration += 1L
@@ -3893,6 +3963,32 @@ private fun RaftFilePreviewStandalonePageContent() {
                 } else {
                     null
                 },
+                // The PDF viewer replaces the file page, so its Download and Share stay reachable
+                // here (Open with above is "open in another app").
+                if (
+                    payload.kind == RaftFilePreviewPdfKind &&
+                    canOpenWith &&
+                    downloadUiState == RaftFilePreviewDownloadUiState.NotDownloaded
+                ) {
+                    RaftUiMenuItem(
+                        id = RaftFilePreviewDownloadActionId,
+                        label = actionTerms.download,
+                        icon = RaftLucideIconName.Download,
+                        enabled = !exportInProgress && raftFilePreviewCanStartExternalOperation(downloadStatus)
+                    )
+                } else {
+                    null
+                },
+                if (payload.kind == RaftFilePreviewPdfKind && raftFilePreviewPdfShowsShareAction(canOpenWith, downloadUiState, pdfState)) {
+                    RaftUiMenuItem(
+                        id = RaftFilePreviewShareActionId,
+                        label = stringResource(MR.strings.common_share),
+                        icon = RaftLucideIconName.Share2,
+                        enabled = !exportInProgress && raftFilePreviewCanStartExternalOperation(downloadStatus)
+                    )
+                } else {
+                    null
+                },
                 if (
                     canOpenWith &&
                     supportsPrivateAttachmentExport &&
@@ -3934,6 +4030,8 @@ private fun RaftFilePreviewStandalonePageContent() {
                 RaftFilePreviewSaveToPhotosActionId -> requestExternalSave(toPhotos = true)
                 RaftFilePreviewCommentsActionId -> openAttachmentComments()
                 RaftFilePreviewOpenWithActionId -> requestExternalOpen()
+                RaftFilePreviewDownloadActionId -> requestExternalSave()
+                RaftFilePreviewShareActionId -> requestExternalOpen(share = true)
                 RaftFilePreviewSaveToFilesActionId -> requestExternalSave(exportPrivateDownload = true)
                 RaftFilePreviewDeleteDownloadActionId -> requestDeleteDownload()
                 // task #188: toggle the HTML desktop viewport. Selection goes through this one
@@ -4009,6 +4107,10 @@ private fun RaftFilePreviewStandalonePageContent() {
                         payload.withImageGalleryIndex(index, imageGalleryResolutionState.resolvedPayloadByAttachmentId)
                     },
                     onImageSwipeDismiss = ::closePreviewPage,
+                    pdfState = pdfState,
+                    onPdfRenderError = ::onPdfRenderError,
+                    onPdfRetry = ::retryPdf,
+                    onPdfOpenInOtherApp = if (canOpenWith) ({ requestExternalOpen() }) else null,
                     onShare =
                         if (raftFilePreviewShowsShareAction(canOpenWith, downloadUiState)) {
                             { requestExternalOpen(share = true) }
@@ -6506,7 +6608,7 @@ private fun WireRaftFilePreviewLaunchPayload.normalizedOrNull(): WireRaftFilePre
 
 private fun String.normalizedRemotePreviewKindOrNull(): String? =
     trim().lowercase().takeIf {
-        it in setOf("image", "markdown", "text", "html", "video", "audio", "file")
+        it in setOf("image", "markdown", "text", "html", "video", "audio", RaftFilePreviewPdfKind, "file")
     }
 
 private fun RaftFilePreviewPayload.matchesFilePreviewLaunch(
@@ -6556,6 +6658,7 @@ private fun String.filePreviewTitleDesc(): StringDesc =
         "html" -> MR.strings.file_preview_html.desc()
         "video" -> MR.strings.file_preview_video.desc()
         "audio" -> MR.strings.file_preview_audio.desc()
+        RaftFilePreviewPdfKind -> MR.strings.file_preview_pdf.desc()
         else -> MR.strings.file_preview_title.desc()
     }
 
@@ -6616,6 +6719,11 @@ private fun RaftFilePreviewPayload.durableRemotePreviewKind(): String =
         requestedKind == "image" -> "image"
         requestedKind == "html" -> "html"
         requestedKind == "audio" -> "audio"
+        requestedKind == RaftFilePreviewPdfKind -> RaftFilePreviewPdfKind
+        raftFilePreviewIsPdfAttachment(
+            fileName = name.ifBlank { path.ifBlank { externalFileName } },
+            mimeType = externalMimeType
+        ) -> RaftFilePreviewPdfKind
         raftFilePreviewIsMarkdownAttachment(
             fileName = name.ifBlank { path.ifBlank { externalFileName } },
             mimeType = externalMimeType
@@ -6813,6 +6921,7 @@ internal fun RaftThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(
             "markdown" -> MR.strings.file_preview_markdown.desc()
             "text" -> MR.strings.file_preview_text.desc()
             "video" -> MR.strings.file_preview_video.desc()
+            RaftFilePreviewPdfKind -> MR.strings.file_preview_pdf.desc()
             else -> MR.strings.file_preview_title.desc()
         },
         subtitle = name,
@@ -6923,6 +7032,11 @@ internal suspend fun RaftFilePreviewPayload.loadThreadAttachmentPreview(
             )
     val wantsCsv =
         !wantsXlsx && raftFilePreviewIsCsvAttachment(fileName = previewFileName, mimeType = externalMimeType)
+    // Web parity (attachmentPreview.ts): a `.pdf` name or `application/pdf`. The file itself is
+    // fetched into the attachment cache by the page, so no preview request is needed here.
+    val wantsPdf =
+        requestedKind == RaftFilePreviewPdfKind ||
+            raftFilePreviewIsPdfAttachment(fileName = previewFileName, mimeType = externalMimeType)
     val wantsText =
         requestedKind == "text" ||
             (!wantsMarkdown &&
@@ -6933,6 +7047,13 @@ internal suspend fun RaftFilePreviewPayload.loadThreadAttachmentPreview(
                 mimeType = externalMimeType
             ))
     return when {
+        wantsPdf ->
+            copy(
+                kind = RaftFilePreviewPdfKind,
+                titleDesc = MR.strings.file_preview_pdf.desc(),
+                message = "",
+                messageDesc = null
+            )
         wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkClient, priority, truncatedPreviewHint)
         wantsXlsx -> loadThreadXlsxAttachmentPreview(networkClient)
         wantsImage -> loadThreadImageAttachmentPreview(threadApi, priority, expiresAtSink)
@@ -7841,6 +7962,12 @@ internal fun RaftFilePreviewPayloadContent(
     imageGalleryPagePayload: ((Int) -> RaftFilePreviewPayload?)? = null,
     /** Swipe down on an unzoomed image closes the viewer through this; null disables the gesture. */
     onImageSwipeDismiss: (() -> Unit)? = null,
+    /** PDF: the cache download, then the viewer (see [RaftFilePreviewPdfState]). */
+    pdfState: RaftFilePreviewPdfState = RaftFilePreviewPdfState.Idle,
+    onPdfRenderError: (RaftPdfDocumentError) -> Unit = {},
+    onPdfRetry: (() -> Unit)? = null,
+    /** PDF failure fallback: hand the file to another app (the Open with action). */
+    onPdfOpenInOtherApp: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val onToggleDownload = if (downloadPaused) onResumeDownload else onPauseDownload
@@ -8111,6 +8238,28 @@ internal fun RaftFilePreviewPayloadContent(
                     modifier = Modifier.fillMaxSize()
                 )
             }
+        RaftFilePreviewPdfKind ->
+            RaftFilePreviewDownloadStatusOverlay(
+                statusLabel = downloadStatusLabel,
+                showProgress = downloadInProgress,
+                progressPercent = downloadProgressPercent,
+                downloadView = downloadView,
+                downloadPaused = downloadPaused,
+                onToggleDownload = onToggleDownload,
+                onStopDownload = onStopDownload,
+                modifier = modifier.fillMaxSize()
+            ) {
+                RaftFilePreviewPdfPanel(
+                    name = payload.name.ifBlank { payload.path.ifBlank { fallbackFile } },
+                    meta = payload.meta,
+                    state = pdfState,
+                    onRenderError = onPdfRenderError,
+                    onRetry = onPdfRetry,
+                    onOpenInOtherApp = onPdfOpenInOtherApp,
+                    openInOtherAppEnabled = primaryActionEnabled,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         "error" ->
             RaftFilePreviewMessage(
                 iconName = RaftLucideIconName.TriangleAlert,
@@ -8360,6 +8509,7 @@ internal fun RaftFilePreviewPayload.previewIconName(): RaftLucideIconName =
         "markdown", "text" -> RaftLucideIconName.FileText
         "image" -> RaftLucideIconName.Image
         "video" -> RaftLucideIconName.Film
+        RaftFilePreviewPdfKind -> RaftLucideIconName.FileText
         "loading" -> RaftLucideIconName.LoaderCircle
         "error" -> RaftLucideIconName.TriangleAlert
         else -> raftFilePreviewFileIconName(this)

@@ -1333,6 +1333,12 @@
     <string name="file_preview_html">HTML プレビュー</string>
     <string name="file_preview_audio">音声プレビュー</string>
     <string name="file_preview_video">動画プレビュー</string>
+    <string name="file_preview_pdf">PDF プレビュー</string>
+    <string name="file_preview_pdf_page_indicator">%1$s / %2$s</string>
+    <string name="file_preview_pdf_password_title">この PDF はパスワードで保護されています</string>
+    <string name="file_preview_pdf_password_detail">パスワードで保護された PDF は Raft で表示できません。他のアプリで開いてパスワードを入力してください。</string>
+    <string name="file_preview_pdf_corrupt_title">この PDF を表示できません</string>
+    <string name="file_preview_pdf_corrupt_detail">ファイルが破損しているか、有効な PDF ではない可能性があります。他のアプリで開いてみてください。</string>
     <string name="file_preview_document">ドキュメントプレビュー</string>
     <string name="file_preview_fallback_file">ファイル</string>
     <string name="file_preview_fallback_attachment">添付ファイル</string>
@@ -1367,6 +1373,7 @@
     <string name="file_preview_action_open_with">アプリで開く…</string>
     <string name="file_preview_action_save_to_files">保存</string>
     <string name="file_preview_action_open_in_browser">ブラウザで開く</string>
+    <string name="file_preview_action_open_in_other_app">他のアプリで開く</string>
     <string name="file_preview_action_saving_to_files">保存中…</string>
     <string name="file_preview_action_delete_downloaded">キャッシュコピーを削除</string>
     <string name="file_preview_placeholder_tap_to_add_text">画像をタップしてテキストを配置</string>

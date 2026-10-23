@@ -50,6 +50,7 @@ static NSUInteger const RaftThreadImageCompressionMaxFileNameLength = 256;
 static NSString *const RaftAttachmentExportDestinationFiles = @"files";
 static NSString *const RaftAttachmentExportDestinationPhotos = @"photos";
 static NSString *const RaftAttachmentExportDestinationOpen = @"open";
+static NSString *const RaftAttachmentExportDestinationPreview = @"preview";
 static NSString *const RaftAttachmentExportDirectoryName = @"SlockAttachmentExports";
 // Camera captures are written as tmp/<UUID>.<RaftCameraCaptureFileExtension>.
 static NSString *const RaftCameraCaptureFileExtension = @"jpg";
@@ -4844,16 +4845,27 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     NSString *fileName = RaftBridgeString(params[@"fileName"]) ?: @"attachment";
     NSString *downloadId = RaftBridgeString(params[@"downloadId"]) ?: attachmentId;
     BOOL requirePublicDownload = [params[@"requirePublicDownload"] boolValue];
+    // In-app preview (PDF): download into the same attachment cache and report the local path;
+    // no share sheet is presented.
+    BOOL prepareOnly = [params[@"prepareOnly"] boolValue];
 
-    // Capture the presenter at tap time while the page is certainly alive (weak),
-    // then prefer it with a frontmost fallback — Signal AttachmentSharing L117.
-    self.raft_sharePresenterController = [self raft_currentViewController];
+    if (!prepareOnly) {
+        // Capture the presenter at tap time while the page is certainly alive (weak),
+        // then prefer it with a frontmost fallback — Signal AttachmentSharing L117.
+        self.raft_sharePresenterController = [self raft_currentViewController];
+    }
 
     NSString *cachedDir = RaftAttachmentCacheDirectory(ownerKey, attachmentId);
     NSString *cachedPath = RaftAttachmentCachedFilePath(ownerKey, attachmentId, fileName);
     NSDictionary *status = cachedPath
         ? RaftAttachmentCacheStatusDict(cachedDir)
         : @{ @"status" : @"missing" };
+
+    if (prepareOnly && [status[@"cached"] boolValue]) {
+        NSString *cachedFilePath = [NSURL URLWithString:status[@"uri"] ?: @""].path ?: cachedPath;
+        callback(@{ @"status" : @"ready", @"cached" : @YES, @"path" : cachedFilePath ?: @"" });
+        return;
+    }
 
     if ([status[@"cached"] boolValue]) {
         [self raft_presentShareItems:@[ [NSURL fileURLWithPath:cachedPath] ] attempt:1];
@@ -4892,7 +4904,10 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
     }
     self.raft_attachmentExportDownloadId = downloadId;
     self.raft_attachmentExportURL = [NSURL fileURLWithPath:cachedPath];
-    self.raft_attachmentExportDestination = RaftAttachmentExportDestinationOpen;
+    self.raft_attachmentExportDestination =
+        prepareOnly ? RaftAttachmentExportDestinationPreview : RaftAttachmentExportDestinationOpen;
+    // Only the preview download reports progress; Open keeps its previous behaviour.
+    self.raft_attachmentExportTrackProgress = prepareOnly && RaftBridgeBool(params[@"trackProgress"]);
     self.raft_attachmentExportFileName = fileName;
     self.raft_attachmentExportMimeType = RaftBridgeString(params[@"mimeType"]);
     self.raft_attachmentExportCallback = callback;
@@ -5202,6 +5217,28 @@ static NSDictionary *RaftAttachmentCacheStatusDict(NSString *directoryPath) {
             return;
         }
         strongSelf.raft_attachmentExportSizeBytes = @(result.downloadedBytes);
+        if ([strongSelf.raft_attachmentExportDestination isEqualToString:RaftAttachmentExportDestinationPreview]) {
+            // In-app preview: keep the cached copy (no raft_finishAttachmentExport, which deletes
+            // the parent dir) and report its path; nothing is presented.
+            RaftBridgeCallback previewCallback = strongSelf.raft_attachmentExportCallback;
+            strongSelf.raft_attachmentExportCallback = nil;
+            strongSelf.raft_attachmentExportRequestId = nil;
+            strongSelf.raft_attachmentExportDownloadId = nil;
+            strongSelf.raft_attachmentExportURL = nil;
+            strongSelf.raft_attachmentExportFileName = nil;
+            strongSelf.raft_attachmentExportSizeBytes = nil;
+            strongSelf.raft_attachmentExportDestination = nil;
+            strongSelf.raft_attachmentExportMimeType = nil;
+            strongSelf.raft_attachmentExportTrackProgress = NO;
+            if (previewCallback) {
+                previewCallback(@{
+                    @"status" : @"ready",
+                    @"cached" : @NO,
+                    @"path" : targetURL.path ?: @"",
+                });
+            }
+            return;
+        }
         if ([strongSelf.raft_attachmentExportDestination isEqualToString:RaftAttachmentExportDestinationOpen]) {
             // Open-with: the file is a persistent local copy — present the share sheet on it,
             // do NOT call raft_finishAttachmentExport (it deletes the parent dir) or the

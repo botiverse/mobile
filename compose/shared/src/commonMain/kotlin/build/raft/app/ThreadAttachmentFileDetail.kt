@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * Where a tap on a message attachment card goes (artin, task #75). A tap never downloads: a file
- * the app can show opens its preview, any other file (apk, zip, pdf, ...) opens its file page,
+ * the app can show (a PDF included) opens its preview, any other file (apk, zip, ...) opens its file page,
  * where the download runs with its progress and Open / Share follow.
  */
 internal sealed interface RaftThreadAttachmentOpenRoute {
@@ -21,6 +21,9 @@ internal sealed interface RaftThreadAttachmentOpenRoute {
 internal fun RaftThreadAttachmentItem.threadAttachmentOpenRoute(): RaftThreadAttachmentOpenRoute =
     when {
         isImageAttachment() -> RaftThreadAttachmentOpenRoute.Preview("image")
+        // In-app PDF viewer (web parity: `.pdf` name or `application/pdf`).
+        raftFilePreviewIsPdfAttachment(fileName = name, mimeType = mimeType) ->
+            RaftThreadAttachmentOpenRoute.Preview(RaftFilePreviewPdfKind)
         isMarkdownAttachment() -> RaftThreadAttachmentOpenRoute.Preview("markdown")
         isTextLikeAttachment() || isHtmlAttachment() -> RaftThreadAttachmentOpenRoute.Preview("text")
         isPreviewableVideoAttachment() -> RaftThreadAttachmentOpenRoute.Preview("video")

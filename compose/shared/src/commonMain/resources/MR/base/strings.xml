@@ -1329,6 +1329,12 @@
     <string name="file_preview_html">HTML preview</string>
     <string name="file_preview_audio">Audio preview</string>
     <string name="file_preview_video">Video preview</string>
+    <string name="file_preview_pdf">PDF preview</string>
+    <string name="file_preview_pdf_page_indicator">%1$s / %2$s</string>
+    <string name="file_preview_pdf_password_title">This PDF is password protected</string>
+    <string name="file_preview_pdf_password_detail">Raft can\'t show password-protected PDFs. Open it in another app to enter the password.</string>
+    <string name="file_preview_pdf_corrupt_title">This PDF can\'t be shown</string>
+    <string name="file_preview_pdf_corrupt_detail">The file may be damaged or not a valid PDF. Try opening it in another app.</string>
     <string name="file_preview_document">Document preview</string>
     <string name="file_preview_fallback_file">File</string>
     <string name="file_preview_fallback_attachment">Attachment</string>
@@ -1363,6 +1369,7 @@
     <string name="file_preview_action_open_with">Open with…</string>
     <string name="file_preview_action_save_to_files">Save</string>
     <string name="file_preview_action_open_in_browser">Open in browser</string>
+    <string name="file_preview_action_open_in_other_app">Open in another app</string>
     <string name="file_preview_action_saving_to_files">Saving…</string>
     <string name="file_preview_action_delete_downloaded">Clear cached copy</string>
     <string name="file_preview_placeholder_tap_to_add_text">Tap image to place text</string>
