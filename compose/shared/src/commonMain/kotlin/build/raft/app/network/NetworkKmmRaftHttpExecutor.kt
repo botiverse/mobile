@@ -21,13 +21,74 @@ import kotlin.random.Random
 import kotlin.time.TimeSource
 
 /**
- * All platforms route HTTP through the KuiklyBase NetworkKMM client
- * (task #12) so the app has one explicit network stack with pooling
- * owned by the infra library (raft.6).
+ * artin 2026-10-23: app HTTP runs on Ktor ([KtorRaftHttpExecutor]: OkHttp on Android, NSURLSession on
+ * iOS). The NetworkKMM executor below (curl over HTTP/2) is reached only through the Developer
+ * override, picked per request so a flip applies to the next request.
  */
 internal fun createPlatformRaftHttpExecutor(
     warningLogger: (String) -> Unit
-): RaftHttpExecutor = NetworkKmmRaftHttpExecutor(warningLogger)
+): RaftHttpExecutor =
+    RaftTransportSelectingHttpExecutor(
+        ktor = KtorRaftHttpExecutor(warningLogger),
+        curl = lazy { NetworkKmmRaftHttpExecutor(warningLogger) },
+        useCurl = ::raftCurlTransportActive
+    )
+
+/** True only while the Developer curl override is on and curl is ready (the controller's active transport). */
+internal fun raftCurlTransportActive(): Boolean {
+    val controller = currentRaftNetworkTransportController()
+    return if (controller != null) {
+        controller.getPreferenceSync().activeTransport == RaftHttpTransport.Curl
+    } else {
+        RaftHttpTransportPolicy.curlOverrideRequested()
+    }
+}
+
+/** Routes each request to Ktor, or to the NetworkKMM curl executor while [useCurl] says so. */
+internal class RaftTransportSelectingHttpExecutor(
+    private val ktor: RaftHttpExecutor,
+    private val curl: Lazy<RaftHttpExecutor>,
+    private val useCurl: () -> Boolean,
+) : RaftHttpExecutor {
+    private fun current(): RaftHttpExecutor =
+        if (runCatching(useCurl).getOrDefault(false)) curl.value else ktor
+
+    override suspend fun execute(
+        priority: RaftRequestPriority,
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        bodyText: String?,
+        jsonBody: Boolean
+    ): RaftHttpExecutorResponse = current().execute(priority, url, method, headers, bodyText, jsonBody)
+
+    override suspend fun executeMultipart(
+        priority: RaftRequestPriority,
+        url: String,
+        fields: Map<String, String>,
+        files: List<MultipartFile>,
+        headers: Map<String, String>,
+        onUploadProgress: ((RaftTransferProgress) -> Unit)?
+    ): RaftHttpExecutorResponse = current().executeMultipart(priority, url, fields, files, headers, onUploadProgress)
+
+    override suspend fun executeBytes(
+        priority: RaftRequestPriority,
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        bodyBytes: ByteArray,
+        onUploadProgress: ((RaftTransferProgress) -> Unit)?,
+    ): RaftHttpExecutorResponse = current().executeBytes(priority, url, method, headers, bodyBytes, onUploadProgress)
+
+    override suspend fun executeFile(
+        priority: RaftRequestPriority,
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        body: RaftHttpFileBody,
+        onUploadProgress: ((RaftTransferProgress) -> Unit)?,
+    ): RaftHttpExecutorResponse = current().executeFile(priority, url, method, headers, body, onUploadProgress)
+}
 
 private const val RAFT_REQUEST_TIMEOUT_MILLIS = 30_000L
 

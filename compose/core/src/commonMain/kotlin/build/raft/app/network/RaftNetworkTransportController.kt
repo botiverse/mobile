@@ -14,14 +14,12 @@ import com.tencent.kmm.network.service.NetworkEngineSelection
 import com.tencent.kmm.network.service.NetworkEngineSelectionDiagnostics
 import com.tencent.kmm.network.service.NetworkTransportEngine
 import kotlinx.atomicfu.atomic
-import kotlinx.atomicfu.locks.SynchronizedObject
-import kotlinx.atomicfu.locks.synchronized
 
 @RaftCoreInternalApi
 data class RaftNetworkTransportPlatformPolicy(
     val platformLabel: String,
-    /** Platform has no Ktor delegate; off means curl with H3 not requested. */
-    val curlRequired: Boolean,
+    /** The engine under Ktor on this platform, shown in Developer settings and diagnostics. */
+    val ktorEngineLabel: String,
     val appOwnedTrustRequired: Boolean,
     val readyDetail: String
 )
@@ -50,16 +48,11 @@ fun NetworkRequest.isHttp1Only(): Boolean =
 @RaftCoreInternalApi
 expect fun raftNetworkTransportPlatformPolicy(): RaftNetworkTransportPlatformPolicy
 
-/** Mirrors the process-global transport policy into non-NetworkClient platform consumers. */
-@RaftCoreInternalApi
-expect fun raftApplyPlatformHttp3Preference(
-    enabled: Boolean,
-    generation: Long
-): Boolean
-
 /**
- * Process-owned transport policy: curl over HTTP/2 for new requests, HTTP/3 only when the user turns it on
- * in Settings. Each new request reads the committed snapshot without reconstructing NetworkClient instances.
+ * Process-owned transport policy (artin 2026-10-23): Ktor carries app HTTP (OkHttp on Android,
+ * NSURLSession on iOS). Curl over HTTP/2 is used only while the Developer override asks for it and the
+ * curl runtime is ready; otherwise NetworkKMM's own Ktor engine runs its requests. HTTP/3 is never
+ * requested. Each new request reads the committed snapshot without rebuilding NetworkClient instances.
  */
 @RaftCoreInternalApi
 class RaftNetworkTransportController(
@@ -69,113 +62,58 @@ class RaftNetworkTransportController(
     private val curlConfigurationFailureProvider: () -> Pair<NetworkCurlConfigurationFailureReason, String?> = {
         VBTransportCurl.configurationStatus.let { it.failureReason to it.detail }
     },
-    private val platformPreferencePublisher: (Boolean, Long) -> Boolean =
-        ::raftApplyPlatformHttp3Preference
+    private val requestedTransport: () -> RaftHttpTransport = RaftHttpTransportPolicy::requested
 ) {
-    private val platformPolicyPublicationLock = SynchronizedObject()
     private val policyGeneration = atomic(0L)
-    private val publishedPlatformPolicy = atomic<PublishedPlatformPolicy?>(null)
 
-    fun getPreferenceSync(): NetworkTransportPreferenceSnapshot =
-        synchronized(platformPolicyPublicationLock) {
-            committedSnapshotLocked().also { publishPlatformPolicyLocked(it) }
+    val platformLabel: String
+        get() = platformPolicy.platformLabel
+
+    /** "Ktor · OkHttp" / "Ktor · NSURLSession" / "curl · HTTP/2": the stack new requests use. */
+    fun activeTransportLabel(snapshot: NetworkTransportPreferenceSnapshot = getPreferenceSync()): String =
+        when (snapshot.activeTransport) {
+            RaftHttpTransport.Ktor -> "Ktor · ${platformPolicy.ktorEngineLabel}"
+            RaftHttpTransport.Curl -> "curl · HTTP/2"
         }
 
+    fun getPreferenceSync(): NetworkTransportPreferenceSnapshot {
+        val requested = runCatching(requestedTransport).getOrDefault(RaftHttpTransport.Ktor)
+        val readiness = currentReadiness()
+        val curlReady = readiness.availability == NetworkTransportPreferenceAvailability.Ready
+        return NetworkTransportPreferenceSnapshot(
+            requestedTransport = requested,
+            activeTransport =
+                if (requested == RaftHttpTransport.Curl && curlReady) RaftHttpTransport.Curl else RaftHttpTransport.Ktor,
+            curlAvailability = readiness.availability,
+            detail = readiness.detail,
+            generation = policyGeneration.value
+        )
+    }
+
+    /**
+     * Engine choice for requests that still go through NetworkKMM: the curl-override API executor,
+     * binary downloads and attachment streams. Ktor unless the override is on and curl is ready.
+     */
     fun selectionFor(request: NetworkRequest): NetworkEngineSelection {
         val snapshot = getPreferenceSync()
-        val http1Only = request.isHttp1Only()
-        // Request-owned and copied by NetworkKMM. A later Settings change does
-        // not mutate this call, including auth/retry attempts owned by it.
-        // Presigned direct-upload PUTs are pinned to HTTP/1.1: their R2 S3
-        // endpoints must not attempt an HTTP/3 upgrade even when the user
-        // turned HTTP/3 on.
-        request.setCurlHttp3Enabled(if (http1Only) false else snapshot.effectiveHttp3Enabled)
+        // Request-owned and copied by NetworkKMM. Curl, when overridden in, always runs over HTTP/2;
+        // presigned direct-upload PUTs (http1Only) keep their HTTP/1.1 pin inside curl.
+        request.setCurlHttp3Enabled(false)
         return NetworkEngineSelection(
             requestedEngine =
-                if (http1Only || snapshot.curlRequestedForNewCalls) {
-                    NetworkTransportEngine.CURL
-                } else {
-                    NetworkTransportEngine.KTOR
-                },
-            allowedEngines =
-                if (platformPolicy.curlRequired) {
-                    setOf(NetworkTransportEngine.CURL)
-                } else {
-                    NetworkTransportEngine.entries.toSet()
-                },
+                if (snapshot.curlRequestedForNewCalls) NetworkTransportEngine.CURL else NetworkTransportEngine.KTOR,
+            allowedEngines = NetworkTransportEngine.entries.toSet(),
             hostSelectionTag = "remote-generation-${snapshot.generation}"
         )
     }
 
-    private fun snapshot(intent: TransportIntent, generationValue: Long): NetworkTransportPreferenceSnapshot {
-        val readiness = currentReadiness()
-        val ready = readiness.availability == NetworkTransportPreferenceAvailability.Ready
-        val effective = intent.http3Requested && ready
-        return NetworkTransportPreferenceSnapshot(
-            requestedHttp3Enabled = intent.http3Requested,
-            effectiveHttp3Enabled = effective,
-            curlRequestedForNewCalls = platformPolicy.curlRequired || (intent.curlRequested && ready),
-            available = ready,
-            availability = readiness.availability,
-            detail = readiness.detail,
-            generation = generationValue
-        )
-    }
-
-    private fun committedSnapshotLocked(): NetworkTransportPreferenceSnapshot {
-        return snapshot(transportIntent(), policyGeneration.value)
-    }
-
-    // Task #3: HTTP/3 is off unless the user turns it on in Settings. Curl is always the requested
-    // engine; [snapshot] still falls back to Ktor where the platform allows it and curl is not ready.
-    private fun transportIntent(): TransportIntent =
-        TransportIntent(curlRequested = true, http3Requested = RaftHttp3Policy.resolve())
-
-    /**
-     * Task #3: called after the user flips the HTTP/3 switch. The choice is read live through
-     * [RaftHttp3Policy], so this only advances the generation and republishes the platform
-     * policy.
-     */
-    fun onHttp3UserChoiceChanged(): String? = synchronized(platformPolicyPublicationLock) {
-        val nextGeneration = policyGeneration.value + 1L
-        val targetSnapshot = snapshot(transportIntent(), nextGeneration)
-        if (!publishPlatformPolicyLocked(targetSnapshot, force = true)) {
-            return@synchronized "network_transport_http3_choice applied=false"
-        }
-        policyGeneration.value = nextGeneration
-        "network_transport_http3_choice applied=true requested=${targetSnapshot.requestedHttp3Enabled} " +
-            "effective=${targetSnapshot.effectiveHttp3Enabled} generation=$nextGeneration"
-    }
-
-    private fun publishPlatformPolicyLocked(
-        snapshot: NetworkTransportPreferenceSnapshot,
-        force: Boolean = false
-    ): Boolean {
-        val current = publishedPlatformPolicy.value
-        if (!force && current != null && snapshot.generation < current.generation) {
-            // A request that read the old generation while a mutation was committing must not
-            // overwrite the newer host policy.
-            return true
-        }
-        if (!force &&
-            current?.generation == snapshot.generation &&
-            current.enabled == snapshot.effectiveHttp3Enabled
-        ) {
-            return true
-        }
-        val published =
-            platformPreferencePublisher(
-                snapshot.effectiveHttp3Enabled,
-                snapshot.generation
-            )
-        if (published) {
-            publishedPlatformPolicy.value =
-                PublishedPlatformPolicy(
-                    generation = snapshot.generation,
-                    enabled = snapshot.effectiveHttp3Enabled
-                )
-        }
-        return published
+    /** Called after the Developer override changes. The override is read live; this only advances the generation. */
+    fun onTransportOverrideChanged(): String {
+        val nextGeneration = policyGeneration.incrementAndGet()
+        val snapshot = getPreferenceSync()
+        return "network_transport_override requested=${snapshot.requestedTransport.diagnosticsValue} " +
+            "active=${snapshot.activeTransport.diagnosticsValue} curlAvailability=${snapshot.curlAvailability} " +
+            "generation=$nextGeneration"
     }
 
     private fun currentReadiness(): RaftNetworkTransportReadiness {
@@ -184,12 +122,6 @@ class RaftNetworkTransportController(
             return RaftNetworkTransportReadiness(
                 NetworkTransportPreferenceAvailability.NativeUnavailable,
                 native.detail ?: "${platformPolicy.platformLabel} curl native runtime is not linked."
-            )
-        }
-        if (!native.http3FeatureAvailable) {
-            return RaftNetworkTransportReadiness(
-                NetworkTransportPreferenceAvailability.Http3Unsupported,
-                native.detail ?: "The linked curl runtime does not report HTTP/3 support."
             )
         }
         if (platformPolicy.appOwnedTrustRequired && !curlConfiguredProvider()) {
@@ -214,16 +146,6 @@ class RaftNetworkTransportController(
 private data class RaftNetworkTransportReadiness(
     val availability: NetworkTransportPreferenceAvailability,
     val detail: String
-)
-
-private data class PublishedPlatformPolicy(
-    val generation: Long,
-    val enabled: Boolean
-)
-
-private data class TransportIntent(
-    val curlRequested: Boolean,
-    val http3Requested: Boolean
 )
 
 private object RaftNetworkTransportRegistry {
@@ -261,23 +183,16 @@ fun raftNetworkClientConfig(
             if (controller != null) {
                 controller.selectionFor(request)
             } else {
-                val policy = raftNetworkTransportPlatformPolicy()
-                // Task #3: only an explicit user choice turns HTTP/3 on.
-                val http3 = RaftHttp3Policy.resolve()
-                request.setCurlHttp3Enabled(http3)
+                // No controller yet (early process work, tests): Ktor, curl only by override.
+                request.setCurlHttp3Enabled(false)
                 NetworkEngineSelection(
                     requestedEngine =
-                        if (policy.curlRequired || http3) {
+                        if (RaftHttpTransportPolicy.curlOverrideRequested()) {
                             NetworkTransportEngine.CURL
                         } else {
                             NetworkTransportEngine.KTOR
                         },
-                    allowedEngines =
-                        if (policy.curlRequired) {
-                            setOf(NetworkTransportEngine.CURL)
-                        } else {
-                            NetworkTransportEngine.entries.toSet()
-                        }
+                    allowedEngines = NetworkTransportEngine.entries.toSet()
                 )
             }
         },

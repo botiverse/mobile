@@ -161,8 +161,6 @@
     <string name="settings_mobile_subtitle">自分のメッセージの配置</string>
     <string name="settings_mobile_thread_reverse_layout">チャットを最新メッセージから開く</string>
     <string name="settings_mobile_thread_reverse_layout_detail">チャットを最新メッセージから開き、下から上へ並べて表示します（先にスクロールする必要はありません）。次にチャットを開いたときから適用されます。変更するまではサーバーのデフォルトに従います。</string>
-    <string name="settings_mobile_http3">HTTP/3 を有効にする</string>
-    <string name="settings_mobile_http3_detail">新しいリクエストは HTTP/3 を試し、ネットワークが対応していない場合は HTTP/2 にフォールバックします。変更するまではサーバーのデフォルトに従います。</string>
     <string name="settings_computers_title">コンピューター</string>
     <string name="settings_computers_subtitle">接続されたマシンとワークスペース</string>
     <string name="settings_server_title">サーバー</string>
@@ -2399,6 +2397,8 @@
     <string name="settings_developer_route_launcher_detail">Kuikly ルートランチャーとアイコン比較を開きます。</string>
     <string name="settings_developer_text_input_trace">テキスト入力トレース</string>
     <string name="settings_developer_text_input_trace_detail">テキストフィールドのキーボード編集とテキスト同期をすべてアプリログに記録します（長さのみで、内容は記録しません）。入力メソッドの不具合報告用です。</string>
+    <string name="settings_developer_http_transport">HTTP トランスポート</string>
+    <string name="settings_developer_http_transport_detail">アプリのリクエストが使うネットワークスタックを表示します。オンにすると、比較のため新しいリクエストを旧 curl スタックで送ります（診断専用）。</string>
     <string name="settings_developer_presets">プリセット</string>
     <string name="settings_developer_presets_detail">プリセットを選択して環境フォームに反映し、保存して適用します。</string>
     <string name="settings_developer_presets_empty">このホストから利用できるプリセットはありません。</string>

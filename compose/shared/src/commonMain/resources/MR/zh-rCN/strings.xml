@@ -1866,8 +1866,6 @@
     <string name="settings_mobile_realtime_curl_socketio_detail">下次连接或重连时生效。手动更改前跟随服务器默认设置。</string>
     <string name="settings_mobile_thread_reverse_layout">从底部显示聊天</string>
     <string name="settings_mobile_thread_reverse_layout_detail">进入聊天时直接停在最新消息，从底部往上排列，不再先滚动。下次打开聊天时生效。手动更改前跟随服务器默认值。</string>
-    <string name="settings_mobile_http3">启用 HTTP/3</string>
-    <string name="settings_mobile_http3_detail">新请求优先尝试 HTTP/3，网络不支持时自动回落 HTTP/2。手动更改前跟随服务器默认值。</string>
     <string name="settings_badge_beta">Beta</string>
     <string name="settings_mobile_compact_detail">同一发送者连续发送消息时隐藏重复头像。按住消息行时会显示消息时间。</string>
     <string name="settings_mobile_status_enabled">已开启</string>
@@ -2399,6 +2397,8 @@
     <string name="settings_developer_route_launcher_detail">打开 Kuikly 路由启动器和图标对比。</string>
     <string name="settings_developer_text_input_trace">文本输入追踪</string>
     <string name="settings_developer_text_input_trace_detail">将输入框的每次键盘编辑和文本同步记录到应用日志（只记长度，不记内容），用于排查输入法问题。</string>
+    <string name="settings_developer_http_transport">HTTP 网络栈</string>
+    <string name="settings_developer_http_transport_detail">显示应用请求使用的网络栈。打开后新请求改走旧的 curl 网络栈，用于对比排查，仅供诊断。</string>
     <string name="settings_developer_presets">预设</string>
     <string name="settings_developer_presets_detail">选择预设填充环境表单，然后保存应用。</string>
     <string name="settings_developer_presets_empty">此宿主没有可用预设。</string>

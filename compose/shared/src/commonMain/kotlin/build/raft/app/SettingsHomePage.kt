@@ -53,6 +53,8 @@ import build.raft.app.data.hasVisibleDetailBackHistory
 import build.raft.app.data.NetworkRaftThreadApi
 import build.raft.app.base.Utils
 import build.raft.app.network.raftNetworkKmmRecoveryEnvironmentId
+import build.raft.app.network.RaftHttpTransportPolicy
+import build.raft.app.network.currentRaftNetworkTransportController
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalCard
 import build.raft.app.components.RaftBrutalInputField
@@ -112,7 +114,6 @@ import build.raft.app.data.MOBILE_ACTION_MULTI_SHELL_HOST
 import build.raft.app.data.MOBILE_ACTION_SERVER_DRAWER
 import build.raft.app.data.MOBILE_ACTION_HOME_SERVER_AVATAR
 import build.raft.app.data.MOBILE_ACTION_REALTIME_CURL_SOCKETIO
-import build.raft.app.data.MOBILE_ACTION_HTTP3
 import build.raft.app.data.MOBILE_ACTION_THREAD_REVERSE_LAYOUT
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_KEEP_ALIVE
 import build.raft.app.data.RaftBackgroundConnectionControls
@@ -8988,9 +8989,6 @@ private fun SettingsNativeDetailPageContent(
                     onRealtimeCurlSocketIoChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetRealtimeCurlSocketIoEnabled(enabled))
                     },
-                    onHttp3Change = { enabled ->
-                        onSettingsIntent(SharedSettingsIntent.SetHttp3Enabled(enabled))
-                    },
                     onThreadReverseLayoutChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetThreadReverseLayoutEnabled(enabled))
                     },
@@ -10359,7 +10357,6 @@ private fun SettingsMobileContent(
     onServerDrawerChange: (Boolean) -> Unit,
     onHomeServerAvatarChange: (Boolean) -> Unit,
     onRealtimeCurlSocketIoChange: (Boolean) -> Unit = {},
-    onHttp3Change: (Boolean) -> Unit = {},
     onThreadReverseLayoutChange: (Boolean) -> Unit = {},
     diagnosticsLogger: (String) -> Unit = {},
 ) {
@@ -10485,15 +10482,6 @@ private fun SettingsMobileContent(
                         snapshot = snapshot,
                         actionState = actionState,
                         onRealtimeCurlSocketIoChange = onRealtimeCurlSocketIoChange
-                    )
-                }
-            }
-            if (snapshot.http3.available) {
-                item {
-                    SettingsHttp3Card(
-                        snapshot = snapshot,
-                        actionState = actionState,
-                        onHttp3Change = onHttp3Change
                     )
                 }
             }
@@ -10796,51 +10784,6 @@ private fun SettingsThreadReverseLayoutCard(
             RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
         }
         if (actionState?.action == MOBILE_ACTION_THREAD_REVERSE_LAYOUT && actionState.errorCode != null) {
-            SettingsFormErrorText(actionState)
-        }
-    }
-}
-
-@Composable
-private fun SettingsHttp3Card(
-    snapshot: SettingsMobileSnapshot,
-    actionState: SharedSettingsActionState?,
-    onHttp3Change: (Boolean) -> Unit
-) {
-    val busy = actionState?.action == MOBILE_ACTION_HTTP3 && actionState.inProgress
-    val preference = snapshot.http3
-    SettingsFormSectionCard(
-        iconName = RaftLucideIconName.Globe,
-        title = stringResource(MR.strings.settings_mobile_http3)
-    ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .clickable(enabled = preference.available && !busy) {
-                        onHttp3Change(!preference.enabled)
-                    }
-                    .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    preference.localizedToggleStatus(),
-                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                    color = RaftColor.TextMutedGray
-                )
-                Text(
-                    stringResource(MR.strings.settings_mobile_http3_detail),
-                    style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                    color = RaftColor.TextMutedGray,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            RaftSwitchButton(checked = preference.enabled, enabled = preference.available && !busy)
-        }
-        if (actionState?.action == MOBILE_ACTION_HTTP3 && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
         }
     }
@@ -14408,13 +14351,18 @@ internal fun SharedSettingsDeveloperContent(
     onOpenRouter: () -> Unit
 ) {
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
+    var curlTransportOverride by remember { mutableStateOf(RaftHttpTransportPolicy.curlOverrideRequested()) }
+    val httpTransportLabel =
+        remember(curlTransportOverride) { currentRaftNetworkTransportController()?.activeTransportLabel().orEmpty() }
     val payload =
         snapshot.toDeveloperPayload(
             state = state,
             actionState = actionState,
             errorStrings = localizedErrorPresentationStrings(),
             copy = settingsDeveloperPayloadCopy(),
-            textInputTraceEnabled = RaftTextInputDiagnostics.enabled
+            textInputTraceEnabled = RaftTextInputDiagnostics.enabled,
+            httpTransportLabel = httpTransportLabel,
+            curlTransportOverride = curlTransportOverride
         )
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding, onCopyValue = onCopyValue) { action, value ->
         when (action) {
@@ -14422,6 +14370,14 @@ internal fun SharedSettingsDeveloperContent(
             "diagnostics" -> onOpenDiagnostics()
             "router" -> onOpenRouter()
             DEVELOPER_ACTION_TEXT_INPUT_TRACE -> RaftTextInputDiagnostics.setEnabled(value == "true")
+            DEVELOPER_ACTION_HTTP_TRANSPORT_CURL -> {
+                // Developer-only comparison / rollback switch; applies to the next request.
+                if (RaftHttpTransportPolicy.setCurlOverride(value == "true")) {
+                    val applied = currentRaftNetworkTransportController()?.onTransportOverrideChanged()
+                    raftLogInfo("SlockNetworkTransport", applied ?: "network_transport_override controller=unbound")
+                }
+                curlTransportOverride = RaftHttpTransportPolicy.curlOverrideRequested()
+            }
         }
     }
 }
@@ -14701,6 +14657,7 @@ private fun SharedSettingsLocalFeatureOverrideDetailContent(
 }
 
 internal const val DEVELOPER_ACTION_TEXT_INPUT_TRACE = "textInputTrace"
+internal const val DEVELOPER_ACTION_HTTP_TRANSPORT_CURL = "httpTransportCurl"
 private const val LOCAL_FEATURE_OVERRIDES_OPEN_ACTION = "openLocalFeatureOverrides"
 private const val LOCAL_FEATURE_OVERRIDE_OPEN_ACTION_PREFIX = "openLocalFeatureOverride|"
 private const val LOCAL_FEATURE_OVERRIDE_EXPORT_ACTION = "exportLocalFeatureOverrideEvidence"
@@ -17744,6 +17701,8 @@ internal data class SettingsDeveloperPayloadCopy(
     val routeLauncherDetail: String = "Open Kuikly route launcher and icon compare.",
     val textInputTrace: String = "Text input trace",
     val textInputTraceDetail: String = "Log every keyboard edit and text sync in text fields to the app logs.",
+    val httpTransport: String = "HTTP transport",
+    val httpTransportDetail: String = "Shows the network stack app requests use. Turn on to send new requests through the old curl stack instead, to compare. Diagnostic only.",
     val on: String = "On",
     val off: String = "Off"
 )
@@ -17770,6 +17729,8 @@ private fun settingsDeveloperPayloadCopy(): SettingsDeveloperPayloadCopy =
         routeLauncher = stringResource(MR.strings.settings_developer_route_launcher),
         routeLauncherDetail = stringResource(MR.strings.settings_developer_route_launcher_detail),
         textInputTrace = stringResource(MR.strings.settings_developer_text_input_trace),
+        httpTransport = stringResource(MR.strings.settings_developer_http_transport),
+        httpTransportDetail = stringResource(MR.strings.settings_developer_http_transport_detail),
         textInputTraceDetail = stringResource(MR.strings.settings_developer_text_input_trace_detail),
         on = stringResource(MR.strings.settings_state_on),
         off = stringResource(MR.strings.settings_state_off)
@@ -17962,7 +17923,10 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
     actionState: SharedSettingsActionState?,
     errorStrings: ErrorPresentationStrings,
     copy: SettingsDeveloperPayloadCopy = SettingsDeveloperPayloadCopy(),
-    textInputTraceEnabled: Boolean = false
+    textInputTraceEnabled: Boolean = false,
+    /** The stack new app requests use ("Ktor · OkHttp"); blank hides the row (no transport controller). */
+    httpTransportLabel: String = "",
+    curlTransportOverride: Boolean = false
 ): RaftSharedSettingsPayload {
     val environmentDetail =
         when (state) {
@@ -18033,7 +17997,21 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
                                 enabled = true,
                                 toggleValue = textInputTraceEnabled
                             )
-                        )
+                        ) +
+                            listOfNotNull(
+                                httpTransportLabel.takeIf { it.isNotBlank() }?.let { label ->
+                                    RaftSharedSettingsRow(
+                                        key = DEVELOPER_ACTION_HTTP_TRANSPORT_CURL,
+                                        iconName = RaftLucideIconName.Globe,
+                                        title = copy.httpTransport,
+                                        detail = copy.httpTransportDetail,
+                                        value = (!curlTransportOverride).toString(),
+                                        status = label,
+                                        enabled = true,
+                                        toggleValue = curlTransportOverride
+                                    )
+                                }
+                            )
                 )
             )
     )
