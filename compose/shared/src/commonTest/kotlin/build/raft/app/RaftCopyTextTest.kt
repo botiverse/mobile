@@ -42,6 +42,28 @@ class RaftCopyTextTest {
     }
 
     @Test
+    fun joinLinkShowsAndCopiesTheFullUrlAgainstTheActiveEnvironment() {
+        val staging = "https://staging.raft.build"
+        // The row's title and its long-press copy are this one value.
+        assertEquals("https://staging.raft.build/join/abc", settingsServerJoinLinkDisplayUrl("/join/abc", staging))
+        assertEquals("https://staging.raft.build/join/abc", settingsServerJoinLinkDisplayUrl(" join/abc ", "$staging/"))
+        assertEquals("http://localhost:3000/join/abc", settingsServerJoinLinkDisplayUrl("/join/abc", "http://localhost:3000"))
+        // An absolute link stays as it is.
+        assertEquals("https://app.raft.build/join/abc", settingsServerJoinLinkDisplayUrl("https://app.raft.build/join/abc", staging))
+        // Blank: the row shows the label and copies nothing.
+        assertNull(settingsServerJoinLinkDisplayUrl(null, staging))
+        assertNull(settingsServerJoinLinkDisplayUrl(" ", staging))
+    }
+
+    @Test
+    fun joinLinkWithoutAnEnvironmentWebUrlStaysRelative() {
+        // No web URL: the relative path as shown, never resolved against a hardcoded host.
+        assertEquals("/join/abc", settingsServerJoinLinkDisplayUrl("/join/abc", ""))
+        assertEquals("/join/abc", settingsServerJoinLinkDisplayUrl(" /join/abc ", " "))
+        assertEquals("https://app.raft.build/join/abc", settingsServerJoinLinkDisplayUrl("https://app.raft.build/join/abc", ""))
+    }
+
+    @Test
     fun fileDetailHeaderCopiesTheFileNameNotAStandIn() {
         val fallback = "File"
         assertEquals("report.pdf", RaftFilePreviewPayload(name = "report.pdf").raftFilePreviewHeaderCopyText(fallback))
