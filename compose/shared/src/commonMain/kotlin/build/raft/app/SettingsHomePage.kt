@@ -387,6 +387,7 @@ import build.raft.app.data.ACCOUNT_ACTION_AVATAR_UPLOAD
 import build.raft.app.data.ACCOUNT_ACTION_PASSWORD_CHANGE
 import build.raft.app.data.ACCOUNT_ACTION_PROFILE_SAVE
 import build.raft.app.data.ACCOUNT_ACTION_PROVIDER_CONNECT
+import build.raft.app.data.ACCOUNT_ACTION_PROVIDER_DISCONNECT
 import build.raft.app.data.ACCOUNT_ACTION_SHARE_USAGE_DATA
 import build.raft.app.data.SHARE_USAGE_DATA_DEFAULT
 import build.raft.app.data.AgentAvatarUploadRequest
@@ -16368,6 +16369,10 @@ internal fun ScreenLoadState<AccountSettingsSnapshot>.toAccountPayload(
         actionState
             ?.itemId
             ?.takeIf { actionState.action == ACCOUNT_ACTION_PROVIDER_CONNECT }
+    val providerDisconnectId =
+        actionState
+            ?.itemId
+            ?.takeIf { actionState.action == ACCOUNT_ACTION_PROVIDER_DISCONNECT }
     val actionErrorMessage =
         actionState?.userFacingErrorMessage(errorStrings)
     return (account?.toAccountPayload() ?: appShellAccountPayload(session))
@@ -16381,6 +16386,9 @@ internal fun ScreenLoadState<AccountSettingsSnapshot>.toAccountPayload(
             providerConnectingId = providerActionId.takeIf { actionState?.inProgress == true },
             providerErrorId = providerActionId.takeIf { actionErrorMessage != null },
             providerErrorCode = actionErrorMessage.takeIf { providerActionId != null },
+            providerDisconnectingId = providerDisconnectId.takeIf { actionState?.inProgress == true },
+            providerDisconnectErrorId = providerDisconnectId.takeIf { actionErrorMessage != null },
+            providerDisconnectError = actionErrorMessage.takeIf { providerDisconnectId != null },
             usageDataSaving = actionState?.action == ACCOUNT_ACTION_SHARE_USAGE_DATA && actionState.inProgress
         )
 }

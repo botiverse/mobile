@@ -36,6 +36,9 @@ interface SettingsRepository {
     suspend fun changeAccountPassword(request: AccountPasswordChangeRequest): DataResult<AccountSettingsSnapshot>
     suspend fun uploadAccountAvatar(request: AccountAvatarUploadRequest): DataResult<AccountSettingsSnapshot>
     suspend fun startAccountProviderLink(request: AccountProviderLinkStartRequest): DataResult<AccountProviderLinkStartResult>
+    /** `DELETE /api/auth/identities/:provider` (web Disconnect); the content is the account read again. */
+    suspend fun disconnectAccountProvider(providerId: String): DataResult<AccountSettingsSnapshot> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
     /**
      * `PATCH /api/auth/me` `{ shareUsageData }` (RFC-067 "Share usage data"); the content is the choice the
      * server now holds, read back from the returned user.
@@ -719,6 +722,13 @@ data class AccountProviderLinkStartResult(
     val providerId: String,
     /** Null means the platform-owned mobile OAuth flow started successfully. */
     val url: String?
+)
+
+/** `DELETE /api/auth/identities/:provider` response: whether it unlinked, and what is still linked. */
+data class AccountProviderUnlinkResult(
+    val unlinked: Boolean,
+    val linkedProviderIds: List<String>,
+    val passwordConfigured: Boolean
 )
 
 data class SettingsConnectedAppRegisterRequest(

@@ -46,6 +46,13 @@ private suspend fun RaftNetworkClient.startSettingsAccountProviderLink(
 ): HomeNetworkResponse =
     request(priority, "auth/${providerId.sanitizeAccountProviderId()}/link/start", method = "POST", bodyText = bodyText)
 
+/** `DELETE /api/auth/identities/:provider` (slock `packages/server/src/routes/auth.ts`): unlink a social sign-in. */
+private suspend fun RaftNetworkClient.disconnectSettingsAccountProvider(
+    priority: DataRequestPriority,
+    providerId: String
+): HomeNetworkResponse =
+    request(priority, "auth/identities/${providerId.sanitizeAccountProviderId()}", method = "DELETE")
+
 private suspend fun RaftNetworkClient.settingsConnectedAppClients(priority: DataRequestPriority): HomeNetworkResponse =
     request(priority, "integrations/clients")
 
@@ -411,6 +418,33 @@ class RealSettingsRepository(
                     ?: throw IllegalStateException("Account provider link response missing url")
             }
         )
+    }
+
+    /**
+     * Web SettingsPanel `handleDisconnectProvider`: `DELETE /api/auth/identities/:provider`, then the
+     * account is read again so the row shows "Not connected". A 409 `PASSWORD_CREDENTIAL_REQUIRED`
+     * (the last sign-in and no password) comes back as an error carrying the server's sentence.
+     */
+    override suspend fun disconnectAccountProvider(providerId: String): DataResult<AccountSettingsSnapshot> {
+        sessionStore.readSession() ?: return authRequired()
+        val id = providerId.sanitizeAccountProviderId().takeIf { it.isNotBlank() }
+            ?: return DataResult.Error(ScreenError("account_provider_invalid", retryable = false))
+        val unlinked =
+            executeSettings(
+                emptyReason = EmptyReason.NoSettingsAvailable,
+                block = { networkClient.disconnectSettingsAccountProvider(DataRequestPriority.Foreground, id) },
+                errorTextDecoder = HomeNetworkResponse::settingsAccountRouteErrorTextOrNull,
+                mapper = { bodyText ->
+                    parseSharedAccountProviderUnlinkResult(bodyText)
+                        ?: throw IllegalStateException("Account provider unlink response missing identities")
+                }
+            )
+        return when (unlinked) {
+            is DataResult.Content -> getAccount()
+            is DataResult.Empty -> DataResult.Empty(unlinked.reason)
+            is DataResult.Error -> DataResult.Error(unlinked.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(unlinked.blocker)
+        }
     }
 
     private suspend fun DataResult<AccountSettingsSnapshot>.withConnectedAccountProviders(

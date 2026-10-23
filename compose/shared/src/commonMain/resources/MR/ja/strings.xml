@@ -122,10 +122,15 @@
     <string name="settings_account_connected_accounts">連携アカウント</string>
     <string name="settings_account_connected">連携済み</string>
     <string name="settings_account_connect">連携する</string>
-    <string name="settings_account_connecting">連携中</string>
+    <string name="settings_account_connecting">連携中…</string>
     <string name="settings_account_failed">失敗しました</string>
     <string name="settings_account_connected_as">%1$s として連携済み</string>
     <string name="settings_account_not_connected">未連携</string>
+    <string name="settings_account_disconnect">連携を解除</string>
+    <string name="settings_account_disconnect_title">%1$s の連携を解除</string>
+    <string name="settings_account_disconnect_message">この Raft アカウントと %1$s の連携を解除しますか？後で再度連携できます。</string>
+    <string name="settings_account_disconnecting">連携を解除中…</string>
+    <string name="settings_account_unverified">未確認</string>
     <string name="settings_account_no_connected_accounts">連携アカウントはありません</string>
     <string name="settings_account_no_connected_accounts_detail">外部ログインプロバイダーはここに表示されます。</string>
     <string name="settings_account_provider_fallback">アカウント %1$d</string>

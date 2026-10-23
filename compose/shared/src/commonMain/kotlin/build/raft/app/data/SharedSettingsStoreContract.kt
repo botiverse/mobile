@@ -104,6 +104,7 @@ class SharedSettingsStoreContract(
                 SharedSettingsIntent.RequestAccountAvatarUpload -> MviActionKey(ACCOUNT_ACTION_AVATAR_UPLOAD)
                 is SharedSettingsIntent.ChangeAccountPassword -> MviActionKey(ACCOUNT_ACTION_PASSWORD_CHANGE)
                 is SharedSettingsIntent.ConnectAccountProvider -> MviActionKey("${ACCOUNT_ACTION_PROVIDER_CONNECT}:${request.providerId}")
+                is SharedSettingsIntent.DisconnectAccountProvider -> MviActionKey("${ACCOUNT_ACTION_PROVIDER_DISCONNECT}:$providerId")
                 is SharedSettingsIntent.RegisterConnectedApp -> MviActionKey(CONNECTED_APPS_ACTION_REGISTER)
                 is SharedSettingsIntent.UpdateConnectedApp -> MviActionKey("${CONNECTED_APPS_ACTION_UPDATE}:${request.id}")
                 is SharedSettingsIntent.RequestConnectedAppLogoUpload -> MviActionKey("${CONNECTED_APPS_ACTION_LOGO_UPLOAD}:$clientRecordId")

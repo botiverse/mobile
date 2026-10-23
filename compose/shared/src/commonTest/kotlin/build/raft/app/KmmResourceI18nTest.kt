@@ -682,6 +682,9 @@ class KmmResourceI18nTest {
             MR.strings.settings_account_profile_section,
             MR.strings.settings_account_display_name,
             MR.strings.settings_account_verified,
+            MR.strings.settings_account_unverified,
+            MR.strings.settings_account_disconnect,
+            MR.strings.settings_account_disconnecting,
             MR.strings.settings_account_save_profile,
             MR.strings.settings_account_connected_accounts,
             MR.strings.settings_account_change_password,
@@ -697,6 +700,8 @@ class KmmResourceI18nTest {
 
         listOf(
             MR.strings.settings_account_connected_as.format(listOf("artin@example.com")),
+            MR.strings.settings_account_disconnect_title.format(listOf("GitHub")),
+            MR.strings.settings_account_disconnect_message.format(listOf("GitHub")),
             MR.strings.settings_account_provider_fallback.format(listOf(2)),
             MR.strings.settings_account_provider_link_failed.format(listOf("oauth_failed")),
             MR.strings.settings_account_avatar_upload_failed.format(listOf("upload_failed")),
