@@ -408,6 +408,7 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
 
     // MARK: - Probe: can a system UISearchTab be the server button?
 
+    @available(iOS 18.0, *)
     private final class SearchTabProbeDelegate: NSObject, UITabBarControllerDelegate {
         var asked: [String] = []
         func tabBarController(_ tabBarController: UITabBarController, shouldSelectTab tab: UITab) -> Bool {
