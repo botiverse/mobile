@@ -226,11 +226,14 @@ Other checks:
 - Dialog and Sheet open / close animation (dialogs appear and vanish at once; the sheet
   slides up but not down) and swipe-to-dismiss on the sheet. Both are needed before any
   production screen moves to these overlays.
-- **Device check: popup insets.** `Popup` / `Dialog` default to `usePlatformInsets = true`,
-  and `RaftDropdownMenu` / `RaftDialog` / `RaftSheet` also subtract `WindowInsets.safeDrawing`
-  themselves, so the insets may be applied twice (a menu flipped above its anchor, or
-  anything open with the keyboard up, sitting too low or too far in). Verify on an Android
-  and an iOS device.
+- **Device check: popup insets.** `Popup` defaults to `usePlatformInsets = true`, and
+  `RaftDropdownMenu` also subtracts `WindowInsets.safeDrawing` itself, so a menu's insets
+  may be applied twice (flipped above its anchor, or open with the keyboard up, sitting too
+  low or too far in). Dialogs and sheets don't have this: `RaftWindowDialog` opens them edge
+  to edge (Android `decorFitsSystemWindows = false`, iOS `usePlatformInsets = false`) and
+  they pad for `safeDrawing` once. On iOS their window still shrinks for the keyboard
+  (`useSoftwareKeyboardInset`, except `Modal`); check a form in a `RaftDialog` with the
+  keyboard up there. Verify on an Android and an iOS device.
 - **Device check: menu height cap.** `raftMenuHeightCap` and `raftMenuPosition` assume the
   popup's constraints and window size are the whole window and subtract the
   `safeDrawing` insets (bars, keyboard) themselves. On Android, `PopupLayout` may already
