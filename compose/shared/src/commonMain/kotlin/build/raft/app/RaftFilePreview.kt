@@ -60,6 +60,7 @@ import build.raft.kuiklybase.datetime.Clock
 import build.raft.app.downloads.RaftBridgeSaveAttachmentTask
 import build.raft.app.downloads.RaftDownloadCenterProcess
 import build.raft.app.downloads.RaftDownloadDescriptor
+import build.raft.app.downloads.rememberThrottledSpeed
 import build.raft.app.downloads.RaftDownloadOutcome
 import build.raft.app.downloads.RaftDownloadStatus
 import build.raft.app.downloads.raftDownloadCenterEntryId
@@ -9906,9 +9907,10 @@ internal fun raftFilePreviewActiveDownloadStatusLabel(
 internal fun raftFilePreviewLocalizedActiveDownloadStatusLabel(
     progress: BridgeAttachmentDownloadProgress?,
     status: String
-): String =
-    raftFilePreviewActiveDownloadStatusLabel(
-        progress = progress,
+): String {
+    val shownSpeed = rememberThrottledSpeed(progress?.bytesPerSecond)
+    return raftFilePreviewActiveDownloadStatusLabel(
+        progress = progress?.copy(bytesPerSecond = shownSpeed),
         status = status,
         terms =
             RaftFilePreviewDownloadStatusTerms(
@@ -9917,6 +9919,7 @@ internal fun raftFilePreviewLocalizedActiveDownloadStatusLabel(
                 saving = stringResource(MR.strings.file_preview_download_saving)
             )
     )
+}
 
 /**
  * Folds one host sample into the page's own download progress. The host names the download by
