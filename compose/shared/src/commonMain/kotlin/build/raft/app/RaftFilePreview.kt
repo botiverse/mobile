@@ -6961,11 +6961,9 @@ internal fun RaftThreadAttachmentItem.toThreadAttachmentCommentsPreviewPayload(
     commentsEnabled: Boolean
 ): RaftFilePreviewPayload? {
     if (!commentsEnabled) return null
-    if (isPreviewableVideoAttachment()) return null
-    if (isPreviewableAudioAttachment()) return null
+    if (!raftFilePreviewAttachmentSupportsViewerComments(fileName = name, mimeType = mimeType)) return null
     val kind =
         when {
-            isImageAttachment() -> "image"
             isMarkdownAttachment() -> "markdown"
             isTextLikeAttachment() || isHtmlAttachment() -> "text"
             else -> "file"
@@ -6980,8 +6978,23 @@ internal fun RaftFilePreviewPayload.supportsAttachmentComments(): Boolean =
     source == RaftFilePreviewSourceThreadAttachment &&
         attachmentId.isNotBlank() &&
         attachmentCommentsEnabled &&
-        !raftFilePreviewIsPreviewableVideoAttachment(externalFileName, externalMimeType) &&
-        !raftFilePreviewIsAudioAttachment(externalFileName, externalMimeType)
+        raftFilePreviewAttachmentSupportsViewerComments(externalFileName, externalMimeType)
+
+/**
+ * Attachment types whose comments open inside the file viewer, as on web: Markdown, text/code and CSV
+ * (margin comments there), XLSX and HTML (side panel there). Web gives no comments to images
+ * (descoped), PDFs, audio, or files it cannot preview. Video has timestamp comments on web, which the
+ * viewer here does not have, so it is not listed.
+ */
+internal fun raftFilePreviewAttachmentSupportsViewerComments(fileName: String, mimeType: String): Boolean =
+    !raftFilePreviewIsPdfAttachment(fileName, mimeType) &&
+        (
+            raftFilePreviewIsMarkdownAttachment(fileName, mimeType) ||
+                raftFilePreviewIsHtmlAttachment(fileName, mimeType) ||
+                raftFilePreviewIsCsvAttachment(fileName, mimeType) ||
+                raftFilePreviewIsXlsxAttachment(fileName, mimeType) ||
+                raftFilePreviewIsTextLikeAttachment(fileName, mimeType)
+            )
 
 private fun RaftFilePreviewPayload.supportsSaveToPhotos(): Boolean =
     source == RaftFilePreviewSourceThreadAttachment &&
