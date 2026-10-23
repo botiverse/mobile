@@ -145,6 +145,8 @@ must remain separate for the exact being reviewed.
     to both. Before publishing, confirm the run log shows the matching
     `SLOCK_HANDS_CHANNEL`. (1.15.3 shipped a preview-built APK on `main`, so its
     users polled `preview` and received the 1.15.4 preview build.)
+    CI enforces this before every Android publish, and manual publishes run the
+    same check first; see `android-release-sop.md` section 6.1.
 10. Starting a release train requires a Raft **interval reminder**. As soon as
     the first platform draft is dispatched, the operator schedules a recurring
     10-minute reminder on the release thread. Each firing must fresh-read every
