@@ -29,6 +29,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -64,7 +66,7 @@ enum class RaftBannerStatus(internal val glyph: RaftGlyph?) {
 
 /** raft-ui Banner `size`. */
 enum class RaftBannerSize {
-    /** 12/8 padding, 8 gap, 13/18 text, 16dp icon: under a radio list, in a dense form. */
+    /** 12/8 padding, 8 gap, 14/20 text, 16dp icon: under a radio list, in a dense form. */
     Sm,
 
     /** 14/12 padding, 10 gap, 14/20 text, 20dp icon. */
@@ -88,8 +90,8 @@ internal data class RaftBannerMetrics(val paddingX: Dp, val paddingY: Dp, val ga
 
 internal fun raftBannerMetrics(size: RaftBannerSize): RaftBannerMetrics =
     when (size) {
-        // `[&>svg]:mt-px`: the 16dp icon centred on the 18dp first line.
-        RaftBannerSize.Sm -> RaftBannerMetrics(12.dp, 8.dp, 8.dp, 16.dp, 1.dp)
+        // `[&>svg]:mt-[calc((1lh-16px)/2)]`: the 16dp icon centred on the 20dp first line.
+        RaftBannerSize.Sm -> RaftBannerMetrics(12.dp, 8.dp, 8.dp, 16.dp, 2.dp)
         RaftBannerSize.Md -> RaftBannerMetrics(14.dp, 12.dp, 10.dp, 20.dp, 0.dp)
         RaftBannerSize.Lg -> RaftBannerMetrics(16.dp, 14.dp, 10.dp, 20.dp, 0.dp)
     }
@@ -99,11 +101,15 @@ internal fun raftBannerMetrics(size: RaftBannerSize): RaftBannerMetrics =
  * A soft tint of its [status] with a 1dp inset `line-hairline` ring and the container
  * radius; never an ink border. The status icon (20dp, 16dp at [RaftBannerSize.Sm]) leads,
  * in `foreground`; [title] is a bold first line, [description] the message in
- * `text-callout` (`text-footnote` at `Sm`), never capped in lines. [action] holds at most one
+ * `text-callout` at every size (raft-ui 0.22, #718), never capped in lines. [action] holds at most one
  * 32dp `Default` button (never pink), with a ghost Dismiss before it when the banner can be
  * dismissed: at the end of the last line while the text fits beside it in a wide banner,
  * otherwise on its own line under the text, aligned to the end (raft-ui 0.19). [onDismiss]
  * adds the frameless × of a banner with no [action] (raft-ui `BannerClose`).
+ *
+ * [pending] (raft-ui 0.22, #709): while something is still pending, such as a computer that
+ * hasn't connected yet, a spinner takes the icon's place, centred in the icon's column on
+ * the first line. Use it in an [RaftBannerStatus.Info] banner: waiting is not a problem.
  *
  * Destructive banners are announced assertively, the others politely (`role="alert"` /
  * `"status"`). Show at most one banner in one place.
@@ -118,7 +124,8 @@ fun RaftBanner(
     showIcon: Boolean = status.glyph != null,
     action: (@Composable RowScope.() -> Unit)? = null,
     onDismiss: (() -> Unit)? = null,
-) = RaftBanner(AnnotatedString(description), status, modifier, title, size, showIcon, action, onDismiss)
+    pending: Boolean = false,
+) = RaftBanner(AnnotatedString(description), status, modifier, title, size, showIcon, action, onDismiss, pending)
 
 /**
  * [RaftBanner] whose [description] carries a text action inside the sentence: a strong
@@ -135,13 +142,14 @@ fun RaftBanner(
     showIcon: Boolean = status.glyph != null,
     action: (@Composable RowScope.() -> Unit)? = null,
     onDismiss: (() -> Unit)? = null,
+    pending: Boolean = false,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val metrics = raftBannerMetrics(size)
-    val text = if (size == RaftBannerSize.Sm) typography.footnote else typography.callout
+    val text = typography.callout
     val shape = RoundedCornerShape(RaftRadius.Container)
-    val glyph = status.glyph.takeIf { showIcon }
+    val glyph = status.glyph.takeIf { showIcon && !pending }
     Row(
         modifier
             .fillMaxWidth()
@@ -154,7 +162,14 @@ fun RaftBanner(
         horizontalArrangement = Arrangement.spacedBy(metrics.gap),
         verticalAlignment = Alignment.Top,
     ) {
-        if (glyph != null) {
+        if (pending) {
+            // `*:data-[slot=spinner]:h-lh justify-self-center`: the 12dp spinner centred in the
+            // icon's column, one line tall; decorative (`aria-hidden`), the text says what waits.
+            val line = with(LocalDensity.current) { text.lineHeight.toDp() }
+            Box(Modifier.width(metrics.icon).height(line).clearAndSetSemantics {}, contentAlignment = Alignment.Center) {
+                RaftSpinner(color = colors.foreground)
+            }
+        } else if (glyph != null) {
             RaftGlyphIcon(glyph, Modifier.padding(top = metrics.iconTop), size = metrics.icon, color = colors.foreground)
         }
         val actionContent: (@Composable () -> Unit)? =
@@ -279,8 +294,11 @@ private val RaftBannerInlineActionMinWidth = 452.dp
 /**
  * raft-ui PanelNotice: something in one panel failed. A full-width strip directly under
  * the panel header, no radius, no hairline of its own: the panel header's seam is above
- * it and a `line-seam` below. A status pixel leads the one message (semibold
- * `text-callout`, at most [maxLines] lines), 16dp from the sides on a phone; [actions] sit on the right, centred on the first line.
+ * it and a `line-seam` below. The [status]'s icon (16dp, in `foreground`; none for
+ * `Default`) leads the one message, centred on its first line (raft-ui 0.22, #709: a notice
+ * never leads with a status light). The message is semibold `text-callout`, at most
+ * [maxLines] lines, 16dp from the sides on a phone; [actions] sit on the right, centred on
+ * the first line.
  * With [stackActions] the actions move to their own row under the message (aligned with the
  * text), so a long message such as a runtime error keeps the full width.
  * [status] is [RaftBannerStatus.Warning] for something to fix, `Destructive` only for
@@ -297,14 +315,6 @@ fun RaftPanelNotice(
 ) {
     val colors = RaftTheme.colors
     val seam = colors.lineSeam
-    val pixel =
-        when (status) {
-            RaftBannerStatus.Destructive -> RaftStatusVariant.Danger
-            RaftBannerStatus.Info -> RaftStatusVariant.Information
-            RaftBannerStatus.Success -> RaftStatusVariant.Success
-            RaftBannerStatus.Default -> RaftStatusVariant.Default
-            RaftBannerStatus.Warning -> RaftStatusVariant.Warning
-        }
     Row(
         modifier
             .fillMaxWidth()
@@ -319,9 +329,11 @@ fun RaftPanelNotice(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        // The 9dp pixel centred on the 20dp first line.
-        Box(Modifier.width(10.dp).height(20.dp), contentAlignment = Alignment.Center) {
-            RaftStatusDot(variant = pixel)
+        // `[&>svg]:lead-icon`: the 16dp icon centred on the 20dp first line.
+        status.glyph?.let { glyph ->
+            Box(Modifier.height(20.dp), contentAlignment = Alignment.Center) {
+                RaftGlyphIcon(glyph, size = 16.dp, color = colors.foreground)
+            }
         }
         if (stackActions && actions != null) {
             Column(Modifier.weight(1f)) {

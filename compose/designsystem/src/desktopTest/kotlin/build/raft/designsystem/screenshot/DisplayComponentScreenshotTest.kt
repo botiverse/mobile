@@ -661,11 +661,32 @@ class DisplayComponentScreenshotTest {
                 RaftBanner(description = "Your changes are saved.", status = RaftBannerStatus.Success, onDismiss = {})
                 RaftBanner(description = "Reports include the last 200 lines of the log.", status = RaftBannerStatus.Info, size = RaftBannerSize.Sm)
                 RaftBanner(description = "You have used 80% of this month's hours.", status = RaftBannerStatus.Default)
+                Caption("Pending: a spinner leads, md and sm")
+                RaftBanner(
+                    title = "Reconnecting after the upgrade",
+                    description = "Wug's computer is restarting on version 0.42.0. This takes about a minute.",
+                    status = RaftBannerStatus.Info,
+                    pending = true,
+                )
+                RaftBanner(description = "Waiting for the computer to connect.", status = RaftBannerStatus.Info, size = RaftBannerSize.Sm, pending = true)
+                Caption("Sm: warning with a title, success")
+                RaftBanner(
+                    title = "Wug stops while it restarts",
+                    description = "Its open tasks stay where they are.",
+                    status = RaftBannerStatus.Warning,
+                    size = RaftBannerSize.Sm,
+                )
+                RaftBanner(description = "Moved to the new computer.", status = RaftBannerStatus.Success, size = RaftBannerSize.Sm)
                 Caption("Panel notice")
                 RaftPanelNotice(
                     "Wug couldn't start: the runtime is missing.",
                     actions = { RaftButton("View Logs", onClick = {}, variant = RaftButtonVariant.Ghost) },
                 )
+                Caption("Panel notice: info, destructive, success, default")
+                RaftPanelNotice("Refreshing activity…", status = RaftBannerStatus.Info)
+                RaftPanelNotice("Wug's memory was deleted and can't be restored.", status = RaftBannerStatus.Destructive)
+                RaftPanelNotice("Saved.", status = RaftBannerStatus.Success)
+                RaftPanelNotice("This panel shows the last 24 hours.", status = RaftBannerStatus.Default)
                 Caption("Panel notice, stacked actions")
                 RaftPanelNotice(
                     "Wug couldn't start: the runtime exited with code 1 after loading the workspace. Check the computer's log for the missing dependency and restart the agent.",
