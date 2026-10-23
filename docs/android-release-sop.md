@@ -401,6 +401,30 @@ to publish, run the finalizer. It verifies the supplied draft reports the
 expected versionCode, writes the three reviewed locales, activates that draft, and
 requires the public update endpoint to return the exact new versionCode.
 
+### 6.1 The release channel is checked automatically (not waivable)
+
+The upload channel is a compile-time constant (`BuildConfig.HANDS_CHANNEL`, from
+`SLOCK_HANDS_CHANNEL`), so a package built for one channel cannot be published to
+another without making installed clients poll the wrong channel for updates.
+1.15.3 reached `main` that way: a preview package registered by hand, with no
+recorded channel, so every installed 1.15.3 client checked `preview`.
+
+`finalize_android_hands_release.sh` therefore runs
+`scripts/check_android_hands_release_channel.sh` immediately before
+`hands releases publish`. It reads the release's channel from the release record
+and the build's channel from the build's own `build_metadata_json`, which the
+packaging step wrote; the two are independent sources. A missing or empty build
+channel fails the run, as does any mismatch. **CI enforces this**: the
+`Android release contract` workflow runs the guard's test suite.
+
+Publishing by hand with `hands builds publish-android` bypasses that script. Run
+the same guard yourself first:
+
+```bash
+scripts/check_android_hands_release_channel.sh \
+  --app <app-uuid> --build <build-uuid> --channel <target-channel>
+```
+
 ### Authenticate Hands For Finalization
 
 The draft build runs in GitHub Actions with a repository secret, but the local
