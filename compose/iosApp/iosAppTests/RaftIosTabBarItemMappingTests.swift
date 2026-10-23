@@ -435,11 +435,31 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
             print("RAFT_TITLE_PROBE \(name): \(text)")
             window.isHidden = true
         }
-        measure("A tabs=") { $0.tabs = pages() + [server()] }
-        measure("B badge") { c in let p = pages(); p[1].badgeValue = "76"; c.tabs = p + [server()] }
-        measure("C a11y") { c in let p = pages(); p.forEach { $0.accessibilityLabel = $0.title }; c.tabs = p + [server()] }
-        measure("D setTabs") { $0.setTabs(pages() + [server()], animated: false) }
-        measure("E selected") { c in let p = pages(); c.tabs = p + [server()]; c.selectedTab = p[0] }
+        // Mutations after the tabs are installed: before the window shows (pre) or after (post).
+        func mutating(_ name: String, onScreen: Bool, _ mutate: @escaping ([UITab], UISearchTab) -> Void) {
+            let p = pages(), srv = server()
+            if onScreen {
+                measure(name) { c in
+                    c.tabs = p + [srv]
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { mutate(p, srv) }
+                }
+            } else {
+                measure(name) { c in c.tabs = p + [srv]; mutate(p, srv) }
+            }
+        }
+        let avatar = RaftIosServerAvatarImage.circle(
+            RaftIosServerAvatarImage.image(argb: Array(repeating: Int32(bitPattern: 0xFFE04040), count: 16), width: 4, height: 4),
+            fallbackLabel: "B", diameter: RaftIosServerAvatarImage.diameter
+        )
+        for onScreen in [false, true] {
+            let when = onScreen ? "post" : "pre"
+            mutating("M1 badge \(when)", onScreen: onScreen) { p, _ in p[1].badgeValue = "76" }
+            mutating("M2 serverImage \(when)", onScreen: onScreen) { _, s in s.image = avatar }
+            mutating("M3 a11y \(when)", onScreen: onScreen) { p, s in p.forEach { $0.accessibilityLabel = $0.title }; s.accessibilityLabel = "x" }
+            mutating("M4 serverTitle \(when)", onScreen: onScreen) { _, s in s.title = "Raft" }
+            mutating("M5 pageTitle \(when)", onScreen: onScreen) { p, _ in p[0].title = "Home" }
+            mutating("M6 pageImage \(when)", onScreen: onScreen) { p, _ in p[0].image = UIImage(systemName: "house") }
+        }
         measure("F production") { c in
             let tabs = RaftIosSystemTabs()
             let specs = names.map { key, symbol, title in
@@ -447,14 +467,6 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
                                       badgeValue: key == "activity" ? "76" : nil, enabled: true)
             } + [serverSpec()]
             tabs.apply(specs, panelImage: nil, to: c)
-            tabs.select("home", in: c)
-            objc_setAssociatedObject(c, "probeTabs", tabs, .OBJC_ASSOCIATION_RETAIN)
-        }
-        measure("G no search tab") { $0.tabs = pages() }
-        measure("H dark+magenta") { c in
-            c.overrideUserInterfaceStyle = .dark
-            c.view.backgroundColor = UIColor(red: 1, green: 0, blue: 1, alpha: 1)
-            c.tabs = pages() + [server()]
         }
     }
 }
