@@ -1237,7 +1237,7 @@ class KmpVisualScreenshotCaptureTest {
                 var before: Bitmap? = null
                 var after: Bitmap? = null
                 try {
-                    before = captureActivityScreenshot("components.thread.message-body-long-press.before")
+                    before = captureAppWindowsScreenshot("components.thread.message-body-long-press.before")
                     val yellowBefore = before.countThreadOpenProbeYellowSamplesInTopBand()
                     after = captureAfterLongPressRendered(
                         label = "components.thread.message-body-long-press",
@@ -1339,7 +1339,7 @@ class KmpVisualScreenshotCaptureTest {
                     var before: Bitmap? = null
                     var after: Bitmap? = null
                     try {
-                        before = captureActivityScreenshot("$caseId.before")
+                        before = captureAppWindowsScreenshot("$caseId.before")
                         val threadOpenBefore = before.countThreadNewMessageMenuOpenProbeSamples()
                         after = captureAfterLongPressRendered(
                             label = caseId,
@@ -1627,7 +1627,7 @@ class KmpVisualScreenshotCaptureTest {
                 var before: Bitmap? = null
                 var after: Bitmap? = null
                 try {
-                    before = captureActivityScreenshot("components.thread.new-message-menu-compact-tap.before")
+                    before = captureAppWindowsScreenshot("components.thread.new-message-menu-compact-tap.before")
                     val openProbeBefore = before.countThreadNewMessageMenuOpenProbeSamples()
                     // Same flake family as the 2026-08-01 long-press cases: a
                     // fixed post-tap sleep gambles against thread-open render
@@ -1691,7 +1691,7 @@ class KmpVisualScreenshotCaptureTest {
                     var before: Bitmap? = null
                     var after: Bitmap? = null
                     try {
-                        before = captureActivityScreenshot("components.thread.new-message-menu-preference-off.before")
+                        before = captureAppWindowsScreenshot("components.thread.new-message-menu-preference-off.before")
                         after = captureAfterLongPressRendered(
                             label = "components.thread.new-message-menu-preference-off",
                             before = before,
@@ -3119,7 +3119,7 @@ class KmpVisualScreenshotCaptureTest {
                     dismissCompatibilityDialog()
                     waitForIdleBounded()
                     awaitFixtureIsActiveInputWindow("Search fixture")
-                    before = captureActivityScreenshot("$caseId.before")
+                    before = captureAppWindowsScreenshot("$caseId.before")
                     val yellowBefore = before.countThreadOpenProbeYellowSamplesInTopBand()
                     val cyanBefore = before.countThreadChildActionProbeSamples(0x00, 0xE5, 0xFF)
                     val duplicateBefore = before.countThreadChildActionProbeSamples(0xFF, 0x00, 0x00)
@@ -3522,7 +3522,7 @@ class KmpVisualScreenshotCaptureTest {
             field =
                 roots
                     .asSequence()
-                    .flatMap { it.findAccessibilityNodeInfosByText(text).asSequence() }
+                    .flatMap { findComposeNodesWithText(it, text).asSequence() }
                     .mapNotNull { node -> generateSequence(node) { it.parent }.firstOrNull { it.isEditable } }
                     .firstOrNull()
             if (field != null || SystemClock.uptimeMillis() >= deadline) break
@@ -4769,7 +4769,7 @@ class KmpVisualScreenshotCaptureTest {
      * later assert would still fail. Returns the final
      * capture (rendered on success, last poll on timeout so the caller's own
      * asserts still fail with real detail). The caller owns recycling the
-     * returned bitmap; [captureActivityScreenshot] holds no disk state, so the
+     * returned bitmap; [captureAppWindowsScreenshot] holds no disk state, so the
      * intermediate polls are recycled here and never persisted. On timeout the
      * before/last-poll frames plus a bounded view-tree dump ARE persisted as
      * render-fail evidence (wg-nightly task #16): the caller's assert fires
@@ -4793,7 +4793,10 @@ class KmpVisualScreenshotCaptureTest {
             Thread.sleep(pollMs)
             waitForIdleBounded()
             latest?.recycle()
-            latest = captureActivityScreenshot("$label.render-poll")
+            // Long-press menus open in a `Modal`, which on CMP is its own Dialog
+            // window; the activity decor alone never shows them, so poll the
+            // fixture-owned window composite the final capture uses.
+            latest = captureAppWindowsScreenshot("$label.render-poll")
             poll += 1
             val changedRatio = before.fullBitmapChangedPixelRatio(latest!!)
             val ok = rendered(before, latest!!, changedRatio)
@@ -5025,6 +5028,32 @@ class KmpVisualScreenshotCaptureTest {
         Thread.sleep(1_000)
     }
 
+    /**
+     * Nodes under [root] whose text or content description is exactly [text].
+     *
+     * `AccessibilityNodeInfo.findAccessibilityNodeInfosByText` delegates to the
+     * view's `AccessibilityNodeProvider`, and Compose's provider implements only
+     * `createAccessibilityNodeInfo` / `performAction`, not by-text search. Since
+     * the CMP switch every fixture label is a Compose virtual node, so that call
+     * returns nothing even while the label is on screen (the pending-mention
+     * failure listed "View" among the tree's texts). Walk the tree instead.
+     */
+    private fun findComposeNodesWithText(
+        root: android.view.accessibility.AccessibilityNodeInfo?,
+        text: String
+    ): List<android.view.accessibility.AccessibilityNodeInfo> {
+        val matches = mutableListOf<android.view.accessibility.AccessibilityNodeInfo>()
+        fun visit(node: android.view.accessibility.AccessibilityNodeInfo?, depth: Int) {
+            if (node == null || depth > ACCESSIBILITY_TREE_MAX_DEPTH) return
+            if (node.text?.toString()?.trim() == text || node.contentDescription?.toString()?.trim() == text) {
+                matches += node
+            }
+            for (index in 0 until node.childCount) visit(node.getChild(index), depth + 1)
+        }
+        visit(root, 0)
+        return matches
+    }
+
     private fun openPendingMentionDrawer() {
         // The accessibility snapshot can trail the first painted frame on a
         // loaded CI emulator (the partial-batch fixture also composes the
@@ -5034,10 +5063,7 @@ class KmpVisualScreenshotCaptureTest {
         val deadline = SystemClock.uptimeMillis() + PENDING_MENTION_VIEW_ACTION_TIMEOUT_MS
         var viewAction: android.view.accessibility.AccessibilityNodeInfo? = null
         while (viewAction == null) {
-            viewAction =
-                uiAutomation.rootInActiveWindow
-                    ?.findAccessibilityNodeInfosByText("View")
-                    ?.firstOrNull()
+            viewAction = findComposeNodesWithText(uiAutomation.rootInActiveWindow, "View").firstOrNull()
             if (viewAction != null || SystemClock.uptimeMillis() >= deadline) break
             Thread.sleep(250)
         }
@@ -5331,7 +5357,7 @@ class KmpVisualScreenshotCaptureTest {
         }
         val cropped = screenshot.cropDp(crop)
         val stats = cropped.visualStats()
-        val problems = visualValidationProblems(cropped, stats)
+        val problems = visualValidationProblems(cropped, stats, crop)
         if (problems.isEmpty()) {
             if (cropped !== screenshot) {
                 screenshot.recycle()
@@ -5390,7 +5416,7 @@ class KmpVisualScreenshotCaptureTest {
             return null
         }
         val cropped = captured.cropDp(crop)
-        val problems = visualValidationProblems(cropped, cropped.visualStats())
+        val problems = visualValidationProblems(cropped, cropped.visualStats(), crop)
         if (problems.isEmpty()) {
             if (cropped !== captured) captured.recycle()
             return cropped
@@ -5448,7 +5474,7 @@ class KmpVisualScreenshotCaptureTest {
             // android capture and hid sub-dp diffs.
             var normalized = cropped
             var stats = normalized.visualStats()
-            var problems = visualValidationProblems(normalized, stats)
+            var problems = visualValidationProblems(normalized, stats, crop)
             var sourceFrameRecycled = false
             val uiAutomationFallback =
                 if (problems.isNotEmpty() && shouldTryUiAutomationFallback(stats)) {
@@ -5468,7 +5494,7 @@ class KmpVisualScreenshotCaptureTest {
                 lastCaptureMethod = UI_AUTOMATION_CAPTURE_METHOD
                 normalized = uiAutomationFallback
                 stats = normalized.visualStats()
-                problems = visualValidationProblems(normalized, stats)
+                problems = visualValidationProblems(normalized, stats, crop)
             }
             if (problems.isEmpty()) {
                 if (!sourceFrameRecycled && cropped !== screenshot && cropped !== normalized) {
@@ -5946,7 +5972,11 @@ class KmpVisualScreenshotCaptureTest {
         return null
     }
 
-    private fun visualValidationProblems(bitmap: Bitmap, stats: VisualBitmapStats): List<String> {
+    private fun visualValidationProblems(
+        bitmap: Bitmap,
+        stats: VisualBitmapStats,
+        crop: VisualCrop? = null
+    ): List<String> {
         val problems = mutableListOf<String>()
         if (bitmap.width <= 1 || bitmap.height <= 1) {
             problems += "bitmap is too small: ${bitmap.width}x${bitmap.height}"
@@ -5954,10 +5984,40 @@ class KmpVisualScreenshotCaptureTest {
         if (stats.uniqueColors <= 2) {
             problems += "bitmap has only ${stats.uniqueColors} unique color(s)"
         }
-        if (stats.dominantRatio >= 0.985f) {
+        val requiredSolidColors = crop?.minSolidContentColors ?: 0
+        if (requiredSolidColors > 0) {
+            // A case whose web baseline is mostly background declares what its
+            // content must paint instead of relying on the one-colour proxy.
+            val solidColors = bitmap.solidContentColorCount()
+            if (solidColors < requiredSolidColors) {
+                problems += "bitmap paints $solidColors solid content color(s) " +
+                    "(>= $SOLID_CONTENT_COLOR_MIN_PIXELS px each besides the background); " +
+                    "the case declares $requiredSolidColors"
+            }
+        } else if (stats.dominantRatio >= 0.985f) {
             problems += "bitmap is ${"%.2f".format(stats.dominantRatio * 100)}% one color"
         }
         return problems
+    }
+
+    /**
+     * Colours other than the most common one (the background) that each cover at
+     * least [SOLID_CONTENT_COLOR_MIN_PIXELS] pixels: the fills and ink a sparse
+     * component really painted, not anti-aliased edge blends. Counts every pixel,
+     * so it is meant for small component crops only.
+     */
+    private fun Bitmap.solidContentColorCount(): Int {
+        val counts = HashMap<Int, Int>()
+        val row = IntArray(width)
+        for (y in 0 until height) {
+            getPixels(row, 0, width, 0, y, width, 1)
+            for (pixel in row) {
+                val opaque = Color.rgb(Color.red(pixel), Color.green(pixel), Color.blue(pixel))
+                counts[opaque] = (counts[opaque] ?: 0) + 1
+            }
+        }
+        val background = counts.maxByOrNull { it.value }?.key
+        return counts.count { (color, pixels) -> color != background && pixels >= SOLID_CONTENT_COLOR_MIN_PIXELS }
     }
 
     private fun shouldTryUiAutomationFallback(stats: VisualBitmapStats): Boolean =
@@ -6425,7 +6485,11 @@ class KmpVisualScreenshotCaptureTest {
         val widthDp: Int,
         val heightDp: Int,
         val contract: String = "component-bounds",
-        val captureMethod: String = "app-window-root-draw-manual-crop-density-resize"
+        val captureMethod: String = "app-window-root-draw-manual-crop-density-resize",
+        // > 0 for a component whose web case is genuinely mostly background: the
+        // blank-frame check then requires this many solid content colours
+        // instead of rejecting any frame that is >= 98.5% one colour.
+        val minSolidContentColors: Int = 0
     )
 
     private data class VisualBitmapStats(
@@ -6435,6 +6499,11 @@ class KmpVisualScreenshotCaptureTest {
 
     companion object {
         private const val PENDING_MENTION_VIEW_ACTION_TIMEOUT_MS = 10_000L
+        private const val ACCESSIBILITY_TREE_MAX_DEPTH = 60
+        // A 4dp x 4dp solid patch at the pinned 480dpi (3x). Measured on
+        // components.ui.status-dot.states: the smallest dot fill is 196 px and
+        // the largest anti-aliased edge blend 63 px.
+        private const val SOLID_CONTENT_COLOR_MIN_PIXELS = 144
         private const val UI_AUTOMATION_CAPTURE_METHOD =
             "ui-automation-take-screenshot-viewport-crop"
 
@@ -6626,12 +6695,16 @@ class KmpVisualScreenshotCaptureTest {
                 widthDp = 342,
                 heightDp = 80
             )
+        // The web case is four 8-11dp presence dots in a 342x92 frame, so the
+        // frame is ~98.8% canvas by design. Require the sticker ink plus the four
+        // presence fills (online, error, offline, external) instead.
         private val UI_STATUS_DOT_CROP =
             VisualCrop(
                 leftDp = 0,
                 topDp = 0,
                 widthDp = 342,
-                heightDp = 92
+                heightDp = 92,
+                minSolidContentColors = 5
             )
         private val UI_PROGRESS_BAR_CROP =
             VisualCrop(

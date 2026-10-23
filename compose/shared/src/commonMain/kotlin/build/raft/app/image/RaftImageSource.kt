@@ -3,6 +3,7 @@ package build.raft.app.image
 import build.raft.app.data.RaftAvatarContentIdentity
 import build.raft.app.data.RaftAvatarMountedRenderDescriptor
 import build.raft.app.data.parseRaftAvatarMountedRenderModel
+import build.raft.app.data.percentDecodeStrict
 import build.raft.app.data.raftAvatarContentIdentity
 import build.raft.app.raftCanonicalIdentityBytes
 import build.raft.app.raftSha256Hex
@@ -12,8 +13,8 @@ import coil3.request.Options
 
 /**
  * The image sources Raft resolves itself (everything Coil 3 core cannot load on its own). Every
- * other model string (`file://`, `content://`, `data:`, absolute paths) falls through to Coil's
- * built-in fetchers.
+ * other model string (`file://`, `content://`, base64 `data:`, absolute paths) falls through to
+ * Coil's built-in fetchers.
  *
  * This is the CMP replacement of the Kuikly image adapters (Android `SlockKuiklyImageAdapter`,
  * iOS `KuiklyRenderComponentExpandHandler.hr_setImageWithUrl`): same routes, same order —
@@ -73,6 +74,7 @@ internal fun raftImageSourceOf(model: String): RaftImageSource? {
         return if (attachmentId.isEmpty()) null else RaftImageSource.SentAttachment(attachmentId)
     }
     if (raw.startsWith("<svg", ignoreCase = true)) return RaftImageSource.InlineSvg(raw)
+    raftInlineSvgFromTextDataUri(raw)?.let { return RaftImageSource.InlineSvg(it) }
     if (raw.startsWith(RaftAssetsScheme)) {
         val path = raw.removePrefix(RaftAssetsScheme).trimStart('/')
         return if (path.isEmpty()) null else RaftImageSource.BundledAsset(path)
@@ -81,6 +83,23 @@ internal fun raftImageSourceOf(model: String): RaftImageSource? {
     if (lower.startsWith("http://") || lower.startsWith("https://")) return RaftImageSource.Network(raw)
     return null
 }
+
+/**
+ * The SVG document of a textual `data:image/svg+xml[;utf8|;charset=...],<percent-encoded svg>`
+ * URI, or null for anything else. Coil's own `DataUriFetcher` reads only the `;base64,` form and
+ * rejects this one as an invalid data URI, so it rendered as the image placeholder; the Kuikly
+ * adapters (and browsers) decode it. Base64 SVG data URIs stay with Coil.
+ */
+internal fun raftInlineSvgFromTextDataUri(raw: String): String? {
+    if (!raw.startsWith("data:", ignoreCase = true)) return null
+    val comma = raw.indexOf(',')
+    if (comma < 0) return null
+    val parameters = raw.substring("data:".length, comma).split(';').map { it.trim().lowercase() }
+    if (parameters.first() != SVG_DATA_URI_MIME || "base64" in parameters) return null
+    return percentDecodeStrict(raw.substring(comma + 1))?.takeIf { it.isNotBlank() }
+}
+
+private const val SVG_DATA_URI_MIME = "image/svg+xml"
 
 /**
  * task #403 unified key, URL half: the same content identity the managed path derives its
