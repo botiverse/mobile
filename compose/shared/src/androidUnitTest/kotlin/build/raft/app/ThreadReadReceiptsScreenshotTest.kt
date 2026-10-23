@@ -26,10 +26,9 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * read_receipts_v0, light and dark, as the web draws them (slock staging dac70954, task #693):
- *  - channel: the viewer's own message @mentions two agents and a human; @Alpha has read it (raft-ui
- *    MessageReferenceReadMark, a muted check after the name, raft-design #715), @Beta not yet
- *    (nothing shown), @carol is a human (nothing). The agent's own reply carries nothing, and a
- *    channel never shows a "Read" line.
+ *  - channel: the viewer's own message @mentions two agents and a human; @Alpha has read it (lime
+ *    pixel on the mention's corner), @Beta not yet (white pixel), @carol is a human (no pixel). The
+ *    agent's own reply carries nothing, and a channel never shows a "Read" line.
  *  - DM with an agent: the viewer's last message, which the agent's watermark has reached, gets the
  *    right-aligned "Read" line under it; the earlier message does not repeat it.
  * Reports land in `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
