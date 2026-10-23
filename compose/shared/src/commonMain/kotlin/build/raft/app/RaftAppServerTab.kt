@@ -170,6 +170,11 @@ internal fun RaftAppServerMenuOverlay(
      * switcher's grip sends it ([SharedHomeIntent.ReorderServers]).
      */
     onServerOrderChange: (List<String>) -> Unit = {},
+    /**
+     * A server switch is pending (web ServerSwitcherMenu `hostedSwitchPending`): the server list
+     * sits at 60% and its rows take no tap, hold or drag until the switch lands or fails.
+     */
+    switchPending: Boolean = false,
 ) {
     if (!state.open) return
     // The overlay host registers Back as well; the popover names its own handler so Back closes
@@ -221,7 +226,7 @@ internal fun RaftAppServerMenuOverlay(
                             .raftFloatingContentClickTarget(),
                     paneTitle = panelTitle,
                 ) {
-                    RaftMobileNavServerPopoverList(reorderState = reorderState.takeIf { reorderable }) {
+                    RaftMobileNavServerPopoverList(reorderState = reorderState.takeIf { reorderable }, enabled = !switchPending) {
                         // The rows follow the reorder state's order (the lifted row's slot while
                         // dragging); keyed, so a row keeps its gesture as it moves.
                         reorderState.order.forEach { serverId ->
@@ -236,8 +241,9 @@ internal fun RaftAppServerMenuOverlay(
                                             onOrderChange = onServerOrderChange,
                                             moveUpLabel = moveUpLabel,
                                             moveDownLabel = moveDownLabel,
-                                            enabled = reorderable,
+                                            enabled = reorderable && !switchPending,
                                         ),
+                                    enabled = !switchPending,
                                     label = server.name,
                                     description = server.slug.takeIf { it.isNotBlank() }?.let { "/$it" },
                                     onClick = { onPick(RaftServerMenuPick.Server(server.id)) },

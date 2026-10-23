@@ -1723,6 +1723,7 @@
     <string name="home_server_switcher_join_community">Join community server</string>
     <string name="home_server_switcher_switch_or_create">Switch or create server</string>
     <string name="home_server_switcher_invite_human">Invite Human</string>
+    <string name="home_server_switch_failed">Could not switch servers. Please try again.</string>
     <string name="home_error_open_direct_message">Unable to open direct message</string>
     <string name="home_error_open_direct_message_failed">Failed to open direct message</string>
     <string name="home_error_open_direct_message_permission">You do not have permission to open this direct message.</string>

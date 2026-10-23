@@ -242,4 +242,13 @@ class RaftServerMenuModelTest {
         assertNull(raftServerMenuToClose(before = open(panel = true, home = false), now = open(panel = false, home = true)))
         assertNull(raftServerMenuToClose(before = open(panel = false, home = true), now = open(panel = false, home = true)))
     }
+
+    @Test
+    fun aPendingSwitchDimsAndLocksBothServerLists() {
+        // Web ServerSwitcherMenu `hostedSwitchPending`: opacity-60, no taps or drags.
+        assertTrue(homeServerSwitchListPending("server-2"))
+        assertFalse(homeServerSwitchListPending(null))
+        assertFalse(homeServerSwitchListPending(""))
+        assertEquals(0.6f, HomeServerSwitchPendingAlpha)
+    }
 }

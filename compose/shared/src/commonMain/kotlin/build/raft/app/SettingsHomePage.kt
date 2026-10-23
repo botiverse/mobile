@@ -6275,6 +6275,15 @@ private fun RaftAppShellReadyContent(
     // The menu belongs to the bar or the rail it rose from: it closes when they go (a pushed page
     // hides the bar, the window crosses the rail breakpoint).
     LaunchedEffect(showAppShellBottomTabs, navRailActive) { serverMenuState.dismiss() }
+    // artin 10-23: a server switch that ends without the server's Home (dropped load, error,
+    // timeout) says so once (web ServerSwitcherMenu `switchFailed`); the list is already back.
+    val serverSwitchFailedMessage = stringResource(MR.strings.home_server_switch_failed)
+    val serverSwitchFailuresShown = remember { longArrayOf(homeState.serverSwitchState.failureCount) }
+    LaunchedEffect(homeState.serverSwitchState.failureCount) {
+        val failures = homeState.serverSwitchState.failureCount
+        if (failures > serverSwitchFailuresShown[0]) bridge.toast(serverSwitchFailedMessage)
+        serverSwitchFailuresShown[0] = failures
+    }
     // artin 10-23: the Home switcher dropdown and the server panel never show together; the one
     // opened last stays.
     val serverMenusOpenBefore = remember { RaftServerMenusOpen() }
@@ -6740,7 +6749,11 @@ private fun RaftAppShellReadyContent(
 
     fun onServerMenuPick(pick: RaftServerMenuPick) {
         when (pick) {
-            is RaftServerMenuPick.Server -> switchServerFromServerMenu(pick.serverId)
+            // A held press let go over a server while a switch is pending: the list takes none.
+            is RaftServerMenuPick.Server ->
+                if (!homeServerSwitchListPending(homeState.serverSwitchState.pendingServerId)) {
+                    switchServerFromServerMenu(pick.serverId)
+                }
             is RaftServerMenuPick.Page -> openServerMenuEntry(pick.entry)
         }
     }
@@ -6760,6 +6773,7 @@ private fun RaftAppShellReadyContent(
                         guest = serverMenuContent.snapshot.server.role.equals("guest", ignoreCase = true),
                     ),
                 onPick = ::onServerMenuPick,
+                switchPending = homeServerSwitchListPending(homeState.serverSwitchState.pendingServerId),
                 onServerOrderChange = { order ->
                     bridge.log("app_shell_server_menu_reorder count=${order.size}")
                     homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.ReorderServers(order)))

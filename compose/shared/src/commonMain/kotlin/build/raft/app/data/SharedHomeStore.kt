@@ -58,6 +58,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -88,6 +89,11 @@ internal class SharedHomeStore(
     private val scope: CoroutineScope,
     private var diagnosticsLogger: (String) -> Unit = {},
     private val presenceFlushDelayMillis: Long = 250L,
+    /**
+     * A server switch whose Home hasn't loaded by then stops waiting (artin 10-23: a switch spun
+     * forever): the list un-dims and the UI shows the failure; a late load still lands.
+     */
+    private val serverSwitchTimeoutMillis: Long = SERVER_SWITCH_TIMEOUT_MS,
     /**
      * #211: load the current server's sidebar-order snapshot. The store
      * calls this in parallel with the home payload load to populate the
@@ -183,6 +189,11 @@ internal class SharedHomeStore(
     private val conversationIdentityRevisionByServer = linkedMapOf<String, Long>()
 
     private var loadJob: Job? = null
+    /** Home loads running, by the switch request generation they load for. */
+    private val loadsInFlightByGeneration = mutableMapOf<Long, Int>()
+    private val loadsInFlightLock = SynchronizedObject()
+    /** Ends a pending server switch after [serverSwitchTimeoutMillis]. */
+    private var serverSwitchWatchdog: Job? = null
     /** Intent and wall-clock time that launched [loadJob] through [dispatch] (task #60 coalescing). */
     private var loadJobLaunchIntent: SharedHomeIntent? = null
     private var loadJobLaunchedAtMillis: Long = 0L
@@ -698,6 +709,7 @@ internal class SharedHomeStore(
                     } else {
                         _state.value.serverSwitchState.select(intent.serverId)
                     }
+                startServerSwitchWatchdog(nextSwitch.pendingServerId)
                 val nextDrawerIntent = _state.value.serverDrawerCommandIntent.transitionTo(false)
                 nextDrawerIntent.supersededGeneration?.let { generation ->
                     diagnosticsLogger("server_drawer_command_superseded generation=$generation")
@@ -2031,10 +2043,80 @@ internal class SharedHomeStore(
         )
     }
 
+    /**
+     * Loads Home for [request]. A load that ends (not cancelled) while it is still the latest
+     * request and its switch is still pending didn't bring the target's Home — its result was
+     * dropped (the session or auth authority moved, a stale publication) or it threw — so the
+     * switch fails instead of waiting forever (artin 10-23).
+     */
     private suspend fun load(
         request: HomeServerSwitchState,
         showRefreshAffordance: Boolean,
         realtimeUnreadRound: Int = 0,
+    ) {
+        val sessionGeneration = homeSessionGeneration.value
+        val generation = request.requestGeneration
+        synchronized(loadsInFlightLock) {
+            loadsInFlightByGeneration[generation] = (loadsInFlightByGeneration[generation] ?: 0) + 1
+        }
+        var othersInFlight = false
+        try {
+            loadUnsettled(request, showRefreshAffordance, realtimeUnreadRound)
+        } finally {
+            othersInFlight =
+                synchronized(loadsInFlightLock) {
+                    val left = (loadsInFlightByGeneration[generation] ?: 1) - 1
+                    if (left <= 0) loadsInFlightByGeneration.remove(generation) else loadsInFlightByGeneration[generation] = left
+                    left > 0
+                }
+        }
+        if (sessionGeneration != homeSessionGeneration.value) return
+        // Another load of the same request (a foreground refresh beside the switch) may still bring it.
+        if (othersInFlight) return
+        val latest = _state.value.serverSwitchState
+        if (latest.pendingServerId != null && latest.requestGeneration == generation) {
+            failPendingServerSwitch(reason = "load_ended")
+        }
+    }
+
+    private fun startServerSwitchWatchdog(targetServerId: String?) {
+        serverSwitchWatchdog?.cancel()
+        serverSwitchWatchdog = null
+        if (targetServerId == null) return
+        serverSwitchWatchdog =
+            scope.launch {
+                delay(serverSwitchTimeoutMillis)
+                if (_state.value.serverSwitchState.pendingServerId == targetServerId) {
+                    failPendingServerSwitch(reason = "timeout")
+                }
+            }
+    }
+
+    /** The pending switch is over without its Home: stop the spinner, un-dim the list, count it. */
+    private fun failPendingServerSwitch(reason: String) {
+        val latest = _state.value.serverSwitchState
+        val target = latest.pendingServerId ?: return
+        diagnosticsLogger("home_server_switch_failed reason=$reason serverId=$target generation=${latest.requestGeneration}")
+        serverSwitchWatchdog?.cancel()
+        serverSwitchWatchdog = null
+        val content = _state.value.content
+        reduceState(
+            _state.value.copy(
+                serverSwitchState = latest.fail(),
+                content =
+                    when (content) {
+                        is SharedHomeContentState.Content -> content.copy(contentRefreshing = false)
+                        is SharedHomeContentState.Loading -> content.asRefreshFailed("home_network")
+                        else -> content
+                    }
+            )
+        )
+    }
+
+    private suspend fun loadUnsettled(
+        request: HomeServerSwitchState,
+        showRefreshAffordance: Boolean,
+        realtimeUnreadRound: Int,
     ) {
         val sessionGeneration = homeSessionGeneration.value
         diagnosticsLogger("home_ui_load_start refreshAffordance=$showRefreshAffordance")
@@ -2429,10 +2511,16 @@ internal class SharedHomeStore(
                             _state.value.serverDrawer
                         },
                     serverSwitchState =
-                        if (resultServerId != null) {
-                            latestSwitch.complete(request.requestGeneration, resultServerId)
-                        } else {
-                            latestSwitch
+                        when {
+                            resultServerId == null -> latestSwitch
+                            // The switch's own load failed: the switch failed (the UI says so once).
+                            latestSwitch.pendingServerId != null &&
+                                (dataResult is DataResult.Error || dataResult is DataResult.NoPermission) &&
+                                latestSwitch.isCurrent(request.requestGeneration, resultServerId) -> {
+                                diagnosticsLogger("home_server_switch_failed reason=load_error serverId=${latestSwitch.pendingServerId}")
+                                latestSwitch.fail()
+                            }
+                            else -> latestSwitch.complete(request.requestGeneration, resultServerId)
                         },
                     // task #831: keep the prior drawer unread when unread was
                     // unavailable, so a slow/hung unread endpoint can't blank the
@@ -4489,6 +4577,9 @@ private const val BackgroundUnreadSeqBucketLimit = 256
 // fetch before publishing channels alone. Kept short so a slow pinned-order endpoint
 // can't delay the channel list; the sidebar still merges on arrival when it's late.
 private const val SIDEBAR_ORDER_FIRST_PAINT_WAIT_MS = 300L
+
+/** How long a server switch may wait for the target's Home before it fails (web: 5s; phones load slower). */
+internal const val SERVER_SWITCH_TIMEOUT_MS = 15_000L
 
 // Reconcile loads after realtime unread raced a Home load; past this the local counts stand until the next load.
 private const val MAX_REALTIME_UNREAD_RECONCILE_ROUNDS = 3

@@ -39,6 +39,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -135,6 +136,9 @@ object RaftMobileNavDefaults {
 
     /** The server popover is at most this share of the screen tall. */
     const val ServerPopoverMaxHeightFraction: Float = 0.6f
+
+    /** The server list while a switch is pending (web `opacity-60`). */
+    const val ServerPopoverPendingAlpha: Float = 0.6f
 
     /** A server's avatar in a popover row (raft-ui `size-5`). */
     val ServerPopoverAvatarSize: Dp = 20.dp
@@ -518,12 +522,15 @@ fun RaftMobileNavServerPopoverContent(
 /**
  * raft-ui `MobileNavServerPopoverList`: the server list; takes the room left and scrolls (4dp
  * padding). With a [reorderState] its rows can be held and dragged into a new order (give each
- * server row [raftReorderableItem]); a lifted row near the list's edge scrolls it.
+ * server row [raftReorderableItem]); a lifted row near the list's edge scrolls it. While
+ * [enabled] is false (a server switch is pending; web ServerSwitcherMenu `hostedSwitchPending`)
+ * the list sits at 60% — pass `enabled = false` to its rows too, so they take no tap or drag.
  */
 @Composable
 fun ColumnScope.RaftMobileNavServerPopoverList(
     modifier: Modifier = Modifier,
     reorderState: RaftReorderState? = null,
+    enabled: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val scroll = rememberScrollState()
@@ -531,6 +538,7 @@ fun ColumnScope.RaftMobileNavServerPopoverList(
         modifier
             .fillMaxWidth()
             .weight(1f, fill = false)
+            .alpha(if (enabled) 1f else RaftMobileNavDefaults.ServerPopoverPendingAlpha)
             .then(if (reorderState != null) Modifier.raftReorderableViewport(reorderState, scroll) else Modifier)
             .verticalScroll(scroll)
             .padding(4.dp),
@@ -569,10 +577,11 @@ fun RaftMobileNavServerPopoverRow(
     leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
     description: String? = null,
+    enabled: Boolean = true,
 ) {
     val colors = RaftTheme.colors
     val source = remember { MutableInteractionSource() }
-    val held = state != null && key != null && state.highlightedKey == key
+    val held = enabled && state != null && key != null && state.highlightedKey == key
     val highlighted = raftIsPressed(source) || held
     val style = RaftTheme.typography.callout.copy(fontWeight = if (current) FontWeight.Bold else FontWeight.Medium)
     Row(
@@ -581,7 +590,7 @@ fun RaftMobileNavServerPopoverRow(
             .heightIn(min = RaftOptionHeight)
             .then(if (state != null && key != null) Modifier.raftMobileNavServerPopoverTarget(state, key) else Modifier)
             .background(if (highlighted) colors.brandSoft else Color.Transparent, RoundedCornerShape(RaftRadius.Chip))
-            .clickable(source, indication = null, role = Role.Button, onClick = onClick)
+            .clickable(source, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics { if (current) this.selected = true }
             // raft-ui `py-option-inset`: a second line adds its own height and nothing else.
             .padding(horizontal = 10.dp, vertical = raftOptionInset(style)),

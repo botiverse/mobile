@@ -176,6 +176,7 @@ import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.semantics.isTraversalGroup
@@ -1120,7 +1121,6 @@ internal fun HomeTitlebarVisualScreen() {
             ServerSwitcherRow(
                 server = designServer,
                 selected = true,
-                pending = false,
                 onClick = {}
             )
             ServerSwitcherRow(
@@ -1131,7 +1131,6 @@ internal fun HomeTitlebarVisualScreen() {
                         slug = "raft-community"
                     ),
                 selected = false,
-                pending = false,
                 onClick = {}
             )
         }
@@ -4355,6 +4354,12 @@ internal fun shouldDismissHomeServerDrawerOnSwipe(
     thresholdDp: Float = HomeServerDrawerSwipeDismissThreshold.value
 ): Boolean = horizontalDragDp <= -thresholdDp
 
+/** Web ServerSwitcherMenu: `opacity-60` on the server list while a switch is pending. */
+internal const val HomeServerSwitchPendingAlpha = 0.6f
+
+/** Whether the server lists (Home switcher, server panel) wait on a switch: dimmed, no taps or drags. */
+internal fun homeServerSwitchListPending(pendingServerId: String?): Boolean = !pendingServerId.isNullOrBlank()
+
 internal fun List<String>.moveItem(id: String, toIndex: Int): List<String> {
     val fromIndex = indexOf(id)
     if (fromIndex < 0 || toIndex !in indices || fromIndex == toIndex) return this
@@ -5908,6 +5913,9 @@ internal fun ServerSwitcherPanel(
             labels = labels,
             includeChineseCommunity = prefersChineseCommunity
         )
+    // Web ServerSwitcherMenu `hostedSwitchPending`: while a switch is pending the whole list sits
+    // at 60% and takes no tap or drag; it comes back when the switch lands or fails.
+    val switchPending = homeServerSwitchListPending(pendingServerId)
     val incomingOrder = servers.map { it.id }
     var order by remember { mutableStateOf(incomingOrder) }
     var pendingIncomingOrder by remember { mutableStateOf<List<String>?>(null) }
@@ -5987,7 +5995,13 @@ internal fun ServerSwitcherPanel(
                 } else {
                     Modifier.fillMaxSize()
                 }
-            Box(modifier = serverListModifier.clipToBounds()) {
+            Box(
+                modifier =
+                    serverListModifier
+                        .clipToBounds()
+                        .alpha(if (switchPending) HomeServerSwitchPendingAlpha else 1f)
+                        .semantics { if (switchPending) disabled() }
+            ) {
                 LazyColumn(
                     state = listState,
                     modifier = serverLazyListModifier,
@@ -6001,14 +6015,13 @@ internal fun ServerSwitcherPanel(
                             ServerSwitcherRow(
                                 server,
                                 server.id == currentServerId,
-                                server.id == pendingServerId,
                                 dragHandleVisible = order.size > 1,
-                                onClick = if (draggedId == null) ({ onServerSelected(server.id) }) else null
+                                onClick = if (draggedId == null && !switchPending) ({ onServerSelected(server.id) }) else null
                             )
                         }
                     }
                 }
-                if (order.size > 1) {
+                if (order.size > 1 && !switchPending) {
                     // Keep reorder ownership on the visible grip column. A long-press detector on
                     // the full LazyColumn competes with each row's clickable gesture on iOS, so a
                     // normal server tap can be swallowed before SelectServer is dispatched. The
@@ -6090,7 +6103,6 @@ internal fun ServerSwitcherPanel(
                         ServerSwitcherRow(
                             server,
                             server.id == currentServerId,
-                            server.id == pendingServerId,
                             dragHandleVisible = true,
                             pressed = true,
                             onClick = null,
@@ -6145,7 +6157,6 @@ private fun HardShadowPanel(
 private fun ServerSwitcherRow(
     server: RaftServerSwitcherItem,
     selected: Boolean,
-    pending: Boolean,
     dragHandleVisible: Boolean = false,
     pressed: Boolean = false,
     onClick: (() -> Unit)?,
@@ -6171,10 +6182,11 @@ private fun ServerSwitcherRow(
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Box(modifier = Modifier.width(14.dp), contentAlignment = Alignment.Center) {
-            when {
-                pending -> Text("...", style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(lineHeight = 14.sp), color = if (selected) RaftColor.StickerInk else RaftColor.TextBlack, maxLines = 1, textAlign = TextAlign.Center)
-                selected -> RaftLucideIcon(RaftLucideIconName.Check, Modifier.size(14.dp), color = raftArgbHex(RaftColor.StickerInk))
-                else -> Spacer(Modifier.size(14.dp))
+            // No "..." while a switch is pending (web ServerSwitcherMenu): the whole list dims.
+            if (selected) {
+                RaftLucideIcon(RaftLucideIconName.Check, Modifier.size(14.dp), color = raftArgbHex(RaftColor.StickerInk))
+            } else {
+                Spacer(Modifier.size(14.dp))
             }
         }
         ServerSwitcherAvatarTile(server)
