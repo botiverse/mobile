@@ -1,16 +1,11 @@
 package build.raft.app
 
-import build.raft.designsystem.components.RaftFieldLabelSize
-import build.raft.designsystem.components.RaftFieldLabel
-import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalSelectField
-import build.raft.app.components.RaftBrutalSelectOption
-import build.raft.app.components.RaftDisabledActionBorder
-import build.raft.app.components.RaftDisabledActionContent
-import build.raft.app.components.RaftDisabledActionContentArgb
-import build.raft.app.components.RaftDisabledActionShadow
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftComboboxOption
+import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.SegmentedControlOption
-import build.raft.app.components.raftDisabledActionBackgroundFor
 import build.raft.app.data.LANGUAGE_REGION_ACTION_AUTO_TRANSLATION
 import build.raft.app.data.LANGUAGE_REGION_ACTION_LANGUAGE
 import build.raft.app.data.LANGUAGE_REGION_ACTION_SERVER_TRANSLATION
@@ -37,7 +32,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
 import com.tencent.tmm.kmmresource.resource.format
 import kotlinx.coroutines.flow.map
@@ -182,18 +176,12 @@ private fun SettingsLanguagePreferenceCard(
             SettingsFormDetailText(snapshot.translationDisplay.detail)
         }
         if (selectedDisplay != "original") {
-            RaftFieldLabel(
-                text = stringResource(MR.strings.settings_preferred_translation_language_title),
-                size = RaftFieldLabelSize.Sm
-            )
-            SettingsFormDetailText(
-                stringResource(MR.strings.settings_preferred_translation_language_detail)
-            )
-            RaftBrutalSelectField(
-                options = snapshot.browserLanguage.toTranslationTargetSelectOptions(),
-                selectedId = languageDraft.ifBlank { snapshot.browserLanguage.selectedKey },
-                selectedLabel = snapshot.browserLanguage.translationTargetLabelFor(languageDraft),
-                onSelect = { onLanguageDraftChange(it.id) },
+            SettingsComboboxField(
+                label = stringResource(MR.strings.settings_preferred_translation_language_title),
+                description = stringResource(MR.strings.settings_preferred_translation_language_detail),
+                value = languageDraft.ifBlank { snapshot.browserLanguage.selectedKey },
+                options = snapshot.browserLanguage.toTranslationTargetOptions(),
+                onValueChange = onLanguageDraftChange,
                 enabled = snapshot.browserLanguage.available && !busy
             )
         }
@@ -225,16 +213,12 @@ private fun SettingsDateTimePreferenceCard(
     val canSave = dirty && !busy && (snapshot.timezone.available || snapshot.timeFormat.available)
     val saveLabel = actionState.languageRegionSaveLabel(LANGUAGE_REGION_TIME_ACTIONS)
     SettingsFormSectionCard(iconName = RaftLucideIconName.Clock, title = stringResource(MR.strings.settings_date_time_title)) {
-        RaftFieldLabel(
-            text = stringResource(MR.strings.settings_timezone),
-            size = RaftFieldLabelSize.Sm
-        )
-        SettingsFormDetailText(stringResource(MR.strings.settings_timezone_detail))
-        RaftBrutalSelectField(
-            options = snapshot.timezone.toSelectOptions(),
-            selectedId = timezoneDraft.ifBlank { snapshot.timezone.selectedKey },
-            selectedLabel = snapshot.timezone.labelFor(timezoneDraft),
-            onSelect = { onTimezoneDraftChange(it.id) },
+        SettingsComboboxField(
+            label = stringResource(MR.strings.settings_timezone),
+            description = stringResource(MR.strings.settings_timezone_detail),
+            value = timezoneDraft.ifBlank { snapshot.timezone.selectedKey },
+            options = snapshot.timezone.toComboboxOptions(),
+            onValueChange = onTimezoneDraftChange,
             enabled = snapshot.timezone.available && !busy
         )
         SettingsSegmentedControlField(
@@ -307,20 +291,13 @@ private fun build.raft.app.data.SharedSettingsActionState?.languageRegionSaveLab
 
 @Composable
 private fun SettingsLanguageRegionSaveButton(label: String, enabled: Boolean, onClick: () -> Unit) {
-    RaftBrutalActionButton(
-        label = label,
+    RaftButton(
+        text = label,
         onClick = onClick,
         enabled = enabled,
-        leadingIcon = RaftLucideIconName.Save,
-        backgroundColor = RaftColor.AccentPink,
-        disabledBackgroundColor = raftDisabledActionBackgroundFor(RaftColor.AccentPink),
-        disabledBorderColor = RaftDisabledActionBorder,
-        disabledShadowColor = RaftDisabledActionShadow,
-        disabledContentColor = RaftDisabledActionContent,
-        disabledIconColor = RaftDisabledActionContentArgb,
-        minWidth = 0.dp,
-        minHeight = 34.dp,
-        textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = RaftColor.TextBlack)
+        variant = RaftButtonVariant.Primary,
+        size = RaftButtonSize.Md,
+        leadingIcon = { RaftSlotIcon(RaftLucideIconName.Save) }
     )
 }
 
@@ -349,30 +326,17 @@ private fun SettingsServerTranslationPreferenceCard(
     }
 }
 
-private fun SettingsMobileSelectionSnapshot.toSelectOptions(): List<RaftBrutalSelectOption> =
-    options.map { RaftBrutalSelectOption(it.key, it.label) }
-
-private fun SettingsMobileSelectionSnapshot.labelFor(key: String): String =
-    options.firstOrNull { it.key == key }?.label ?: selectedLabel
-
-@Composable
-private fun SettingsMobileSelectionSnapshot.toTranslationTargetSelectOptions(): List<RaftBrutalSelectOption> {
-    val systemLanguageLabel = stringResource(MR.strings.settings_translation_target_follow_display_language)
-    return options.map { option ->
-        RaftBrutalSelectOption(
-            option.key,
-            if (option.key == TranslationTargetLanguages.System) systemLanguageLabel else option.label
-        )
-    }
+private fun SettingsMobileSelectionSnapshot.toComboboxOptions(): List<RaftComboboxOption<String>> {
+    val listed = options.map { RaftComboboxOption(it.key, it.label) }
+    // A saved value the list does not offer still shows under its own label.
+    return if (selectedKey.isBlank() || options.any { it.key == selectedKey }) listed else listed + RaftComboboxOption(selectedKey, selectedLabel.ifBlank { selectedKey })
 }
 
 @Composable
-private fun SettingsMobileSelectionSnapshot.translationTargetLabelFor(key: String): String {
-    val selectedKey = key.ifBlank { this.selectedKey }
-    return if (selectedKey == TranslationTargetLanguages.System) {
-        stringResource(MR.strings.settings_translation_target_follow_display_language)
-    } else {
-        labelFor(selectedKey)
+private fun SettingsMobileSelectionSnapshot.toTranslationTargetOptions(): List<RaftComboboxOption<String>> {
+    val systemLanguageLabel = stringResource(MR.strings.settings_translation_target_follow_display_language)
+    return toComboboxOptions().map { option ->
+        if (option.value == TranslationTargetLanguages.System) option.copy(label = systemLanguageLabel) else option
     }
 }
 

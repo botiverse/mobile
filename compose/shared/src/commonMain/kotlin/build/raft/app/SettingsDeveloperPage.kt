@@ -4,8 +4,6 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.components.RaftSlotIcon
-import build.raft.app.components.RaftBrutalTextField
-import build.raft.app.components.RaftFormFieldSize
 import build.raft.app.components.raftControlSurface
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import build.raft.app.data.SharedSettingsActionState
@@ -148,9 +146,8 @@ internal fun SharedSettingsApiEnvironmentContent(
         item {
             SettingsFormSectionCard(iconName = RaftLucideIconName.Server, title = stringResource(MR.strings.settings_developer_environment_form)) {
                 SettingsFormDetailText(stringResource(MR.strings.settings_developer_environment_save_detail))
-                RaftBrutalTextField(
+                SettingsTextField(
                     label = stringResource(MR.strings.settings_developer_label),
-                    labelSize = RaftFormFieldSize.Compact,
                     value = label,
                     placeholder = customLabel,
                     onValueChange = {
@@ -159,9 +156,8 @@ internal fun SharedSettingsApiEnvironmentContent(
                     },
                     enabled = !busy
                 )
-                RaftBrutalTextField(
+                SettingsTextField(
                     label = stringResource(MR.strings.settings_developer_api_base_url),
-                    labelSize = RaftFormFieldSize.Compact,
                     value = apiBaseUrl,
                     placeholder = "https://api.example.com/api/",
                     onValueChange = {
@@ -171,9 +167,8 @@ internal fun SharedSettingsApiEnvironmentContent(
                     required = true,
                     enabled = !busy
                 )
-                RaftBrutalTextField(
+                SettingsTextField(
                     label = stringResource(MR.strings.settings_developer_socket_base_url),
-                    labelSize = RaftFormFieldSize.Compact,
                     value = socketBaseUrl,
                     placeholder = "https://api.example.com",
                     onValueChange = {
@@ -183,9 +178,8 @@ internal fun SharedSettingsApiEnvironmentContent(
                     required = true,
                     enabled = !busy
                 )
-                RaftBrutalTextField(
+                SettingsTextField(
                     label = stringResource(MR.strings.settings_developer_web_url),
-                    labelSize = RaftFormFieldSize.Compact,
                     value = webUrl,
                     placeholder = "https://app.raft.build",
                     onValueChange = {

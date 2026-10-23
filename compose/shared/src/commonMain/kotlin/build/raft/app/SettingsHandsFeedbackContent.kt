@@ -1,7 +1,9 @@
 package build.raft.app
 
 import build.raft.app.base.Utils
-import build.raft.app.components.RaftBrutalActionButton
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.raftCardSurface
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
@@ -1395,21 +1397,21 @@ private fun SettingsHandsFeedbackConversationRow(
                 }
             }
             entry.shareText?.takeIf { it.isNotBlank() }?.let { shareText ->
-                RaftBrutalActionButton(
-                    label = copy.copyResult,
+                RaftButton(
+                    text = copy.copyResult,
                     onClick = { onCopy(shareText) },
-                    leadingIcon = RaftLucideIconName.Clipboard,
                     modifier = Modifier.fillMaxWidth(),
-                    minWidth = 0.dp
+                    size = RaftButtonSize.Md,
+                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.Clipboard) }
                 )
             }
             entry.retryRequest?.let { retryRequest ->
-                RaftBrutalActionButton(
-                    label = copy.retry,
+                RaftButton(
+                    text = copy.retry,
                     onClick = { onRetry(retryRequest) },
-                    leadingIcon = RaftLucideIconName.RefreshCw,
                     modifier = Modifier.fillMaxWidth(),
-                    minWidth = 0.dp
+                    size = RaftButtonSize.Md,
+                    leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) }
                 )
             }
         }

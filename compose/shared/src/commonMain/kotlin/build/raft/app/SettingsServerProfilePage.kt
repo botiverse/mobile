@@ -7,17 +7,12 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftBackButton
-import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalReadOnlyField
-import build.raft.app.components.RaftBrutalTextField
-import build.raft.app.components.RaftFormFieldSize
-import build.raft.app.components.RaftDisabledActionBorder
-import build.raft.app.components.RaftDisabledActionContent
-import build.raft.app.components.RaftDisabledActionContentArgb
-import build.raft.app.components.RaftDisabledActionShadow
+import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftFieldLabelSize
+import build.raft.designsystem.components.RaftTextField
+import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.RaftSlugInput
 import build.raft.app.components.RaftSwitchButton
-import build.raft.app.components.raftDisabledActionBackgroundFor
 import build.raft.app.components.raftCardSurface
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.SharedSettingsActionState
@@ -208,38 +203,40 @@ private fun SettingsServerProfileFormCard(
     val enabled = canSave && dirty && !busy
     val status = actionState.serverLocalizedStatusFor(SERVER_ACTION_PROFILE_SAVE, if (canSave) stringResource(MR.strings.settings_server_action_save_profile) else stringResource(MR.strings.settings_server_state_read_only))
     SettingsFormSectionCard(iconName = RaftLucideIconName.Building2, title = stringResource(MR.strings.settings_profile_title)) {
-        RaftBrutalTextField(
+        RaftField(
             label = stringResource(MR.strings.settings_server_label_name),
-            labelSize = RaftFormFieldSize.Compact,
-            value = if (canSave) draftName else currentName,
-            placeholder = currentName.ifBlank { stringResource(MR.strings.settings_server_placeholder_name) },
-            onValueChange = onNameChange,
+            modifier = Modifier.fillMaxWidth(),
+            labelSize = RaftFieldLabelSize.Sm,
             required = true,
             enabled = canSave && !busy
-        )
-        RaftBrutalReadOnlyField(
+        ) {
+            RaftTextField(
+                value = if (canSave) draftName else currentName,
+                onValueChange = onNameChange,
+                placeholder = currentName.ifBlank { stringResource(MR.strings.settings_server_placeholder_name) }
+            )
+        }
+        RaftField(
             label = stringResource(MR.strings.settings_server_label_slug),
-            value = currentSlug.ifBlank { stringResource(MR.strings.settings_server_state_not_provided) },
-            copyText = currentSlug.takeIf { it.isNotBlank() }
-        )
+            modifier = Modifier.fillMaxWidth(),
+            labelSize = RaftFieldLabelSize.Sm
+        ) {
+            RaftReadOnlyField(
+                text = currentSlug.ifBlank { stringResource(MR.strings.settings_server_state_not_provided) },
+                copyText = currentSlug.takeIf { it.isNotBlank() }
+            )
+        }
         if (actionState?.action == SERVER_ACTION_PROFILE_SAVE && actionState.errorCode != null) {
             SettingsFormErrorText(actionState)
         }
         if (canSave) {
-            RaftBrutalActionButton(
-                label = status,
+            RaftButton(
+                text = status,
                 onClick = onSubmit,
                 enabled = enabled,
-                leadingIcon = RaftLucideIconName.Save,
-                backgroundColor = RaftColor.AccentPink,
-                disabledBackgroundColor = raftDisabledActionBackgroundFor(RaftColor.AccentPink),
-                disabledBorderColor = RaftDisabledActionBorder,
-                disabledShadowColor = RaftDisabledActionShadow,
-                disabledContentColor = RaftDisabledActionContent,
-                disabledIconColor = RaftDisabledActionContentArgb,
-                minWidth = 0.dp,
-                minHeight = 34.dp,
-                textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = RaftColor.TextBlack)
+                variant = RaftButtonVariant.Primary,
+                size = RaftButtonSize.Md,
+                leadingIcon = { RaftSlotIcon(RaftLucideIconName.Save) }
             )
         }
     }
@@ -277,7 +274,7 @@ private fun SettingsServerDangerZoneCard(
                 detail = MR.strings.settings_server_leave_detail.format(listOf(serverName.ifBlank { stringResource(MR.strings.settings_server_this_server) })).localized(),
                 buttonLabel = actionState.serverLocalizedStatusFor(SERVER_ACTION_LEAVE, stringResource(MR.strings.settings_server_action_leave)),
                 buttonIcon = RaftLucideIconName.LogOut,
-                buttonColor = RaftColor.AccentOrange,
+                buttonVariant = RaftButtonVariant.Warning,
                 enabled = !leaveBusy,
                 onClick = onLeave
             )
@@ -295,7 +292,7 @@ private fun SettingsServerDangerZoneCard(
                 detail = MR.strings.settings_server_delete_detail.format(listOf(serverName.ifBlank { stringResource(MR.strings.settings_server_this_server) })).localized(),
                 buttonLabel = stringResource(MR.strings.settings_server_action_delete),
                 buttonIcon = RaftLucideIconName.Trash2,
-                buttonColor = RaftColor.AccentRed,
+                buttonVariant = RaftButtonVariant.Danger,
                 enabled = !deleteBusy,
                 onClick = { showDeleteModal = true }
             )
@@ -445,20 +442,12 @@ internal fun SettingsServerDeleteConfirmationDialog(
                             modifier = Modifier.widthIn(min = 72.dp),
                             variant = RaftButtonVariant.Ghost
                         )
-                        RaftBrutalActionButton(
-                            label = if (deleteBusy) stringResource(MR.strings.settings_server_action_deleting) else stringResource(MR.strings.settings_server_action_delete),
+                        RaftButton(
+                            text = if (deleteBusy) stringResource(MR.strings.settings_server_action_deleting) else stringResource(MR.strings.settings_server_action_delete),
                             onClick = onDelete,
                             enabled = deleteEnabled,
                             modifier = Modifier.widthIn(min = 112.dp),
-                            backgroundColor = RaftColor.AccentRed,
-                            disabledBackgroundColor = raftDisabledActionBackgroundFor(RaftColor.AccentRed),
-                            disabledBorderColor = RaftDisabledActionBorder,
-                            disabledShadowColor = RaftDisabledActionShadow,
-                            disabledContentColor = RaftDisabledActionContent,
-                            disabledIconColor = RaftDisabledActionContentArgb,
-                            minWidth = 0.dp,
-                            minHeight = 34.dp,
-                            textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
+                            variant = RaftButtonVariant.Danger
                         )
                     }
                 }
@@ -599,11 +588,11 @@ private fun SettingsServerPublicAccessCard(
                         text = publicUrl,
                         modifier = Modifier.weight(1f)
                     )
-                    RaftBrutalActionButton(
-                        label = stringResource(MR.strings.settings_public_visibility_copy_url),
+                    RaftButton(
+                        text = stringResource(MR.strings.settings_public_visibility_copy_url),
                         onClick = { onCopyUrl(publicUrl) },
-                        leadingIcon = RaftLucideIconName.Copy,
-                        minWidth = 72.dp
+                        size = RaftButtonSize.Lg,
+                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.Copy) }
                     )
                 }
             }
@@ -671,10 +660,11 @@ private fun SettingsServerPublicAccessCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                RaftBrutalActionButton(
-                    label = stringResource(MR.strings.common_cancel),
+                RaftButton(
+                    text = stringResource(MR.strings.common_cancel),
                     onClick = { onIntent(ServerPublicVisibilityIntent.DismissConfirm) },
-                    enabled = !state.saving
+                    enabled = !state.saving,
+                    size = RaftButtonSize.Lg
                 )
                 RaftButton(
                     text = if (state.saving) {

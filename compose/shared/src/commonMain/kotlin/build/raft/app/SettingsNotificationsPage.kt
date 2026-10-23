@@ -1,6 +1,8 @@
 package build.raft.app
 
-import build.raft.app.components.RaftBrutalActionButton
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.RaftSwitchButton
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.raftCardSurface
@@ -430,14 +432,12 @@ private fun SettingsNotificationPermissionBanner(
             RaftLucideIcon(RaftLucideIconName.ChevronRight, modifier = Modifier.size(18.dp))
         }
         if (!permissionGranted) {
-            RaftBrutalActionButton(
-                label = stringResource(MR.strings.settings_notifications_request_permission),
+            RaftButton(
+                text = stringResource(MR.strings.settings_notifications_request_permission),
                 onClick = onPermission,
                 enabled = permissionAvailable && !busy,
-                leadingIcon = RaftLucideIconName.Bell,
-                backgroundColor = RaftColor.SurfaceWhite,
-                minWidth = 0.dp,
-                minHeight = 36.dp
+                size = RaftButtonSize.Md,
+                leadingIcon = { RaftSlotIcon(RaftLucideIconName.Bell) }
             )
         }
     }
