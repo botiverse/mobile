@@ -34,11 +34,12 @@ import kotlin.math.roundToInt
 
 /**
  * raft-ui MessageImageGallery (`message-image-gallery.recipe.ts`,
- * `message-image-gallery-rows.ts`) on a phone viewport (< 640px, so the `sm:` / `md:`
- * steps never apply). CSS px map 1:1 to dp.
+ * `message-image-gallery-rows.ts`). Since raft-ui 0.23 the gallery switches on its own
+ * width (`@container/gallery`), not the window's: three images are always two across and
+ * one under them, and only the row heights grow at 360dp. CSS px map 1:1 to dp.
  */
 object RaftMessageImageGalleryDefaults {
-    /** Root `max-w-[min(360px,calc(100vw-112px))]`; the caller's width supplies the second term. */
+    /** Root `max-w-[min(360px,100%)]` (raft-ui 0.23): 360dp, or the caller's width when narrower. */
     val MaxWidth = 360.dp
 
     /** `SINGLE_IMAGE_MAX_WIDTH` x `SINGLE_IMAGE_MAX_HEIGHT`: a lone image's reserved box cap. */
@@ -52,9 +53,22 @@ object RaftMessageImageGalleryDefaults {
     /** `gap-1` between rows and cells. */
     val Gap = 4.dp
 
-    /** `auto-rows-[8rem]` for rows of one or two; `auto-rows-[7rem]` for rows of three. */
+    /**
+     * Below [WideFrom] of the gallery's own width: `auto-rows-[8rem]` for rows of one or two,
+     * `auto-rows-[7rem]` for rows of three.
+     */
     val RowHeight = 128.dp
     val TripleRowHeight = 112.dp
+
+    /**
+     * From [WideFrom] (`@min-[360px]/gallery`, raft-design #721): `auto-rows-[9rem]` for rows
+     * of one or two, `auto-rows-[8rem]` for rows of three.
+     */
+    val WideRowHeight = 144.dp
+    val WideTripleRowHeight = 128.dp
+
+    /** The gallery's own width from which rows take the taller heights (its full [MaxWidth]). */
+    val WideFrom = 360.dp
 
     /** `has-overlay:opacity-70`: an image still uploading. */
     const val PendingAlpha = 0.7f
@@ -204,7 +218,8 @@ fun RaftMessageImageFrame(
  * raft-ui MessageImageGallery: the inline images of a message, laid out by
  * [buildRaftMessageImageGalleryRows] within `min(360dp, available width)`. A lone image
  * reserves its own proportions ([raftMessageImageSingleSize]); rows of one or two are
- * 128dp tall, rows of three 112dp in two columns (the phone grid), all 4dp apart.
+ * 128dp tall, rows of three 112dp in two columns (the phone grid), all 4dp apart. A gallery
+ * at its full 360dp (its own width, not the window's) takes 144dp and 128dp rows.
  * [image] draws one image into its frame, honouring the layout's [RaftMessageImageFit].
  */
 @Composable
@@ -220,6 +235,7 @@ fun RaftMessageImageGallery(
     if (rows.isEmpty()) return
     BoxWithConstraints(modifier) {
         val available = min(RaftMessageImageGalleryDefaults.MaxWidth, maxWidth)
+        val wide = available >= RaftMessageImageGalleryDefaults.WideFrom
         val gap = RaftMessageImageGalleryDefaults.Gap
         Column(verticalArrangement = Arrangement.spacedBy(gap)) {
             rows.forEach { row ->
@@ -234,10 +250,16 @@ fun RaftMessageImageGallery(
                     ) { image(lone) }
                     return@forEach
                 }
-                // Phone grid: one or two columns; a row of three wraps its third into a
-                // second grid row of the same height (`grid-cols-2 md:grid-cols-3`).
+                // One or two columns; a row of three wraps its third into a second grid row of
+                // the same height (`grid-cols-2` at every width).
                 val columns = if (row.items.size == 3) 2 else row.items.size
-                val height = if (row.items.size == 3) RaftMessageImageGalleryDefaults.TripleRowHeight else RaftMessageImageGalleryDefaults.RowHeight
+                val height =
+                    when {
+                        !wide && row.items.size == 3 -> RaftMessageImageGalleryDefaults.TripleRowHeight
+                        !wide -> RaftMessageImageGalleryDefaults.RowHeight
+                        row.items.size == 3 -> RaftMessageImageGalleryDefaults.WideTripleRowHeight
+                        else -> RaftMessageImageGalleryDefaults.WideRowHeight
+                    }
                 val cellWidth = (available - gap * (columns - 1)) / columns
                 row.items.chunked(columns).forEach { line ->
                     Row(horizontalArrangement = Arrangement.spacedBy(gap)) {

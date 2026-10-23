@@ -34,15 +34,19 @@ enum class RaftDescriptionListDirection {
     Vertical,
 
     /**
-     * Two columns, the label on the left, at 640dp and wider. Narrower than that it stacks
-     * into one column on its own, as raft-ui does below 640px (`max-sm`), so on a phone
-     * it is a single column with 2dp between the lines.
+     * Two columns, the label on the left, when the list is 384dp wide or wider. Narrower
+     * than that it stacks into one column on its own, as raft-ui does below 24rem of the
+     * list's own width (`@max-sm/description-list`, raft-design #721): on a phone (about
+     * 358dp of list) each value sits 2dp under its label and 10dp above the next label.
      */
     Horizontal,
 }
 
-/** The width below which [RaftDescriptionListDirection.Horizontal] stacks (Tailwind `sm`). */
-val RaftDescriptionListStackBelow: Dp = 640.dp
+/**
+ * The list's own width below which [RaftDescriptionListDirection.Horizontal] stacks
+ * (raft-ui 0.23 `@container` `sm`, 24rem; not the window's).
+ */
+val RaftDescriptionListStackBelow: Dp = 384.dp
 
 /** Builds the facts of a [RaftDescriptionList]. */
 interface RaftDescriptionListScope {
@@ -73,9 +77,11 @@ interface RaftDescriptionListScope {
 /**
  * raft-ui 0.8.0 DescriptionList: a few facts about one item, each a label and a value.
  * Labels are `text-footnote` medium `foreground-hint`. [RaftDescriptionListDirection.Vertical]
- * puts 8dp between facts and gives each value at least 28dp; `Horizontal` gives values
- * 32dp, 2dp between lines, and at 640dp and wider a label column `minmax(88, max-content)`
- * capped at 160dp, 16dp from the values, label and value on one baseline. With no width
+ * puts 8dp between facts and gives each value at least 28dp; `Horizontal`, from 384dp of
+ * its own width, puts a label column `minmax(88, max-content)` capped at 160dp 16dp before
+ * the values (each at least 32dp, 2dp between rows), label and value on one baseline, and
+ * below that stacks each value 2dp under its label with no minimum height, 10dp from the
+ * next label. With no width
  * limit (in a horizontal scroll) `Horizontal` keeps two columns and sizes the values to
  * their content. A horizontal list measures its labels in a subcomposition first, so it
  * has no intrinsic size: don't put it under `IntrinsicSize`.
@@ -95,9 +101,10 @@ fun RaftDescriptionList(
         RaftDescriptionListDirection.Horizontal -> {
             val slots = remember(content) { HorizontalSlots(content) }
             SubcomposeLayout(modifier) { constraints ->
-                val gapY = 2.dp.roundToPx()
                 val bounded = constraints.hasBoundedWidth
                 val stacked = bounded && constraints.maxWidth < RaftDescriptionListStackBelow.roundToPx()
+                // Stacked, a value is 10dp above the next label: the 2dp row gap plus `mt-2`.
+                val gapY = (if (stacked) 10.dp else 2.dp).roundToPx()
                 // The label column is as wide as the widest label (88..160dp): measure the
                 // labels alone first, then lay out each fact (one node, for screen readers) on it.
                 val column =
@@ -236,7 +243,8 @@ private object TermsScope : RaftDescriptionListScope {
 
 /**
  * One fact of a horizontal list, label and value in one node. Side by side on [column]
- * (label on the value's first baseline, `items-baseline`), or [stacked] 2dp apart.
+ * (label on the value's first baseline, `items-baseline`), or [stacked] 2dp apart with no
+ * minimum value height.
  */
 private class HorizontalScope(private val stacked: Boolean, private val column: Int) : RaftDescriptionListScope {
     @Composable
@@ -244,7 +252,8 @@ private class HorizontalScope(private val stacked: Boolean, private val column: 
         Layout(
             content = {
                 DescriptionTerm(term, termAccessory)
-                DescriptionDetails(32.dp, details)
+                // Stacked, the value has no 32dp row to centre in (`min-h-0`).
+                DescriptionDetails(if (stacked) 0.dp else 32.dp, details)
             },
             modifier = Modifier.semantics(mergeDescendants = true) {},
         ) { measurables, constraints ->
