@@ -50,8 +50,6 @@ import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
-import build.raft.designsystem.components.RaftIconTile
-import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
@@ -195,9 +193,15 @@ internal fun ThreadInlineAudioAttachmentCard(
                 horizontalArrangement = Arrangement.spacedBy(RaftSpacing.Sm),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                RaftIconTile(size = RaftIconTileSize.Md) {
-                    RaftSlotIcon(RaftLucideIconName.FileMusic, size = RaftIconTileSize.Md.icon)
-                }
+                // Web: a 36dp `rounded-chip` tile on `fill-muted` with Music 18 in
+                // `foreground-muted` (not raft-ui IconTile, which is 35dp with the sticker radius).
+                Box(
+                    modifier =
+                        Modifier
+                            .size(ThreadInlineAudioIconTile)
+                            .background(colors.fillMuted, RoundedCornerShape(RaftRadius.Chip)),
+                    contentAlignment = Alignment.Center
+                ) { RaftSlotIcon(RaftLucideIconName.Music, size = 18.dp, color = colors.foregroundMuted) }
                 Column(modifier = Modifier.weight(1f)) {
                     RaftText(
                         text = attachment.name.ifBlank { stringResource(MR.strings.thread_audio_attachment_fallback_name) },
@@ -206,10 +210,9 @@ internal fun ThreadInlineAudioAttachmentCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    val sizeLabel = attachment.displaySizeLabel()
-                    val fileLabel = stringResource(MR.strings.thread_audio_file_label)
+                    // Web: "Audio file" alone, without the size.
                     RaftText(
-                        text = if (sizeLabel.isNotBlank()) "$fileLabel · $sizeLabel" else fileLabel,
+                        text = stringResource(MR.strings.thread_audio_file_label),
                         style = RaftTheme.typography.monoMeta,
                         color = colors.foregroundHint,
                         maxLines = 1,
@@ -238,6 +241,8 @@ internal fun ThreadInlineAudioAttachmentCard(
 
 /** Web `max-w-[min(28rem, …)]`; the message column is narrower on a phone. */
 private val ThreadInlineAudioMaxWidth = 448.dp
+
+private val ThreadInlineAudioIconTile = 36.dp
 
 @Composable
 private fun ThreadInlineAudioSurface(

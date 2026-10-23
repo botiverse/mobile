@@ -212,6 +212,7 @@ LUCIDE_ICONS = [
     "monitor",
     "monitor-x",
     "mosaic",
+    "music",
     "package-check",
     "package",
     "paperclip",
