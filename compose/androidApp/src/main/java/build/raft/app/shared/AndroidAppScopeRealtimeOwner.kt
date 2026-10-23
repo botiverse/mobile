@@ -1180,7 +1180,8 @@ internal object AndroidAppScopeRealtimeOwner {
                 ),
             clockMillis = { System.currentTimeMillis() },
             logger = { message -> RaftAppLog.auth(LOG_TAG, message) },
-            warningLogger = { message -> RaftAppLog.w(LOG_TAG, message) }
+            warningLogger = { message -> RaftAppLog.w(LOG_TAG, message) },
+            criticalLogger = { message -> RaftAppLog.authCritical(LOG_TAG, message) }
         )
     }
 }

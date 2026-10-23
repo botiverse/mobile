@@ -291,7 +291,16 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
             pinnedServerId: ServerId? = null
         ): AndroidAppScopeRealtimeHostContext {
             val appContext = context.applicationContext
-            val sessionStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
+            // The socket refresh path prepares and replays refresh attempts through this store, so
+            // its attempt diagnostics (reuse, age) must reach the logs like the shared store's do.
+            val sessionStore =
+                KeyValueAuthSessionStore(
+                    store = androidMMKVAuthKeyValueStore(appContext),
+                    diagnosticsLogger = { message -> RaftAppLog.w(LOG_TAG, "shared_auth_session $message") },
+                    criticalDiagnosticsLogger = { message ->
+                        RaftAppLog.authCritical(LOG_TAG, "shared_auth_session $message")
+                    }
+                )
             val apiBaseUrl = AndroidAuthApiFactory.currentBaseUrl(appContext)
             val socketUrl = AndroidAuthApiFactory.currentSocketBaseUrl(appContext)
             // Task #154: the Settings switch / `mobile_curl_socketio_v0` pick the Socket.IO stack per connect.
@@ -331,7 +340,8 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                                 ),
                             clockMillis = { System.currentTimeMillis() },
                             logger = { message -> RaftAppLog.auth(LOG_TAG, message) },
-                            warningLogger = { message -> RaftAppLog.w(LOG_TAG, message) }
+                            warningLogger = { message -> RaftAppLog.w(LOG_TAG, message) },
+                            criticalLogger = { message -> RaftAppLog.authCritical(LOG_TAG, message) }
                         )
                 )
             return AndroidAppScopeRealtimeHostContext(

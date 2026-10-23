@@ -1082,6 +1082,7 @@ class KeyValueAuthSessionStore(
         expectedRefreshToken: String,
         candidate: StoredAuthRefreshAttempt,
     ): StoredAuthRefreshAttempt? {
+        var reusedAttemptAgeMillis: Long? = null
         val attempt =
             mutex.withLock {
                 val current = readSessionRecordLocked() ?: return@withLock null
@@ -1094,16 +1095,26 @@ class KeyValueAuthSessionStore(
                 }
                 current.refreshAttempt
                     ?.takeIf { it.matchesAuthority(current, candidate.installationId) }
-                    ?.let { return@withLock it }
+                    ?.let { existing ->
+                        reusedAttemptAgeMillis = existing.refreshAttemptAgeMillis(candidate.createdAtMillis)
+                        return@withLock existing
+                    }
                 require(candidate.matchesAuthority(current, candidate.installationId)) {
                     "refresh attempt authority mismatch"
                 }
                 writeSessionRecordLocked(current.copy(refreshAttempt = candidate))
                 candidate
             }
+        // A reused attempt is replayed under its original id. Its age says whether the server's
+        // replay receipt can still be alive; fingerprints only, never token values.
+        val reuseFields =
+            reusedAttemptAgeMillis?.let { ageMillis ->
+                " reused=true ${refreshReplayAgeDiagnosticsFields(ageMillis)}"
+            } ?: " reused=false"
         diagnosticsLogger(
             "auth_refresh_attempt_prepare applied=${attempt != null} " +
-                "attempt=${attempt?.attemptId.authTokenDiagnosticsFingerprint()}"
+                "attempt=${attempt?.attemptId.authTokenDiagnosticsFingerprint()}" +
+                if (attempt != null) reuseFields else ""
         )
         return attempt
     }
