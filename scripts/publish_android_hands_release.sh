@@ -295,6 +295,15 @@ if [ "${DRY_RUN}" = "1" ]; then
   exit 0
 fi
 
+# A release may only target the channel its package was built for. The channel is a
+# build-time constant (`BuildConfig.HANDS_CHANNEL`), so a package built for one channel
+# cannot be republished to another: doing so makes installed clients check the wrong
+# channel for updates (1.15.3 shipped its preview package to main this way).
+"${ROOT_DIR}/scripts/check_android_hands_channel.sh" \
+  --channel "${CHANNEL}" \
+  --metadata "${METADATA_PATH}" \
+  --apk "${APK_PATH}"
+
 HANDS_ARGS=(
   builds
   publish-android
