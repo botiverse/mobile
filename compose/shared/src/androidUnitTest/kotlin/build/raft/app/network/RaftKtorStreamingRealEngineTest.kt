@@ -76,6 +76,9 @@ class RaftKtorStreamingRealEngineTest {
 
     @Test
     fun aDroppedDownloadIsAnHttp0FailureWithItsKind() = runBlocking {
+        // Content-Length 7, the server writes 3 bytes and closes. Whether Ktor's OkHttp engine surfaces
+        // OkHttp's "unexpected end of stream" or just ends the body channel is timing-dependent; the
+        // short-body check in raftStreamingGet makes both the same transport failure of the same kind.
         server.enqueue(MockResponse.Builder().body("partial").onResponseBody(SocketEffect.CloseSocket()).build())
 
         val failure =
@@ -83,7 +86,7 @@ class RaftKtorStreamingRealEngineTest {
                 SharedBinaryDownloader.fetchBytes(server.url("/broken.bin").toString())
             }
 
-        assertTrue(failure.message.orEmpty().startsWith("Download failed: HTTP 0"), failure.message)
+        assertTrue(failure.message.orEmpty().startsWith("Download failed: HTTP 0 (network_error: "), failure.message)
     }
 
     @Test
