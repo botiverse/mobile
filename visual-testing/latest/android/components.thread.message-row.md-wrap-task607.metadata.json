@@ -7,20 +7,20 @@
               "stringDescLocale": null,
               "route": {"pageName":"compose_thread_message_row_visual","realProductRoute":false},
               "image": "/data/user/0/build.raft.app.connectedtest/files/visual-testing/android/components.thread.message-row.md-wrap-task607.png",
-              "viewport": { "width": 780, "height": 927, "density": 1 },
+              "viewport": { "width": 780, "height": 1056, "density": 1 },
               "systemBars": "hidden",
               "crop": {
                 "mode": "manual-rect",
                 "contract": "component-bounds",
-                "rect": { "x": 0, "y": 0, "width": 260, "height": 309 }
+                "rect": { "x": 0, "y": 0, "width": 260, "height": 352 }
               },
               "capture": {
                 "method": "app-window-root-draw-manual-crop-density-resize",
                 "fullscreen": true,
                 "systemBars": "hidden",
                 "validation": {
-                  "uniqueColors": 1046,
-                  "dominantRatio": 0.84474593
+                  "uniqueColors": 592,
+                  "dominantRatio": 0.848378
                 },
                 "readyTokenObserved": false,
                 "readyTokenRequired": false,
@@ -33,20 +33,20 @@
     "rootWidthPx": 1170,
     "rootHeightPx": 2532,
     "hardwareAccelerated": true,
-    "totalViews": 35,
-    "laidOutViews": 34,
-    "visibleContentLeafViews": 1,
+    "totalViews": 8,
+    "laidOutViews": 7,
+    "visibleContentLeafViews": 0,
     "targetPackage": "build.raft.app.connectedtest",
-    "processId": 4684,
+    "processId": 4714,
     "processUid": 10192
 },
               "captureIdentity": {
                 "attempt": 1,
-                "generation": "742a81ef82711803e0a304244005e7e8",
-                "bootId": "1b8f0d17-3233-4245-9913-f699b998014c",
-                "capturedAtEpochMs": 1792446873797,
-                "capturedAtMonotonicNs": 215486390102
+                "generation": "531bc7f19893dde13c4a86005748f703",
+                "bootId": "8ac69ae2-d7ca-4ac9-9dab-a4fd77794bc3",
+                "capturedAtEpochMs": 1792750891595,
+                "capturedAtMonotonicNs": 100711413108
               },
               "clampedToShortWindow": false,
-              "capturedAt": "1792446873797"
+              "capturedAt": "1792750891595"
             }

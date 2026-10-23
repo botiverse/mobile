@@ -1,31 +1,29 @@
 # Raft Visual Testing
 
-Generated: 2026-10-19 23:37:14 UTC
-Latest run: a52d784-20261019224352
-Latest commit: a52d784-20261019224352
-Commit subject: fix(file-preview): select and copy text in Markdown and text previews (#3193)
-Providers: react vs android, react vs ios, android vs ios
-Summary: total 99, same 0, pass 0, basic-pass 2, different 89, missing 8
-AI analysis: ready 19 / total 99, pending 80
-Visual coverage matrix: active 108 / total 128, pending 17, skipped 3
+Generated: 2026-10-23 10:26:47 UTC
+Latest run: 857e1fe-20261023102553
+Latest commit: 857e1fe-20261023102553
+Commit subject: fix(visual): Android captures see CMP dialog windows, Compose nodes and SVG data URIs (#3583)
+Providers: react vs android
+Summary: total 101, same 0, pass 2, basic-pass 7, different 87, missing 5
+AI analysis: ready 0 / total 101, pending 101
+Visual coverage matrix: active 110 / total 130, pending 17, skipped 3
 Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Comparisons
 
-- react__android: total 99, same 0, pass 0, basic-pass 2, different 89, missing 8
-- react__ios: total 99, same 0, pass 10, basic-pass 21, different 50, missing 18
-- android__ios: total 99, same 0, pass 16, basic-pass 21, different 44, missing 18
+- react__android: total 101, same 0, pass 2, basic-pass 7, different 87, missing 5
 
 ## Capture Type Coverage
 
 - Components Parity (component-fixture): active 90, pending 3, total 95
-- Screens Parity (real-screen): active 18, pending 14, total 33
+- Screens Parity (real-screen): active 20, pending 14, total 35
 
 ## Provider Coverage
 
-- react: active 97, pending 13, unsupported 0
-- android: active 89, pending 19, unsupported 0
-- harmony: active 0, pending 82, unsupported 0
+- react: active 99, pending 13, unsupported 0
+- android: active 91, pending 19, unsupported 0
+- harmony: active 0, pending 84, unsupported 0
 - ios: active 0, pending 1, unsupported 0
 
 ## Pending Coverage Rows
@@ -94,6 +92,8 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 - screens.auth.login: Missing true login route parity; old auth.login inputs are not active in the canonical manifest.
 - screens.auth.login.signing: In-flight sign-in state: email + password filled and Sign In clicked, auth request still pending, so the button reads 'Signing in…' at disabled:opacity-50 while the inputs stay enabled with normal white styling. Paired with screens.home.loading as the Android parity target for the sign-in transition (task #372).
 - screens.home.activity: Existing components.home.activity.results is a connected visual fixture; this tracks the real Home Activity route/screen capture.
+- screens.home.channel-list: Whole phone Home root (top bar, Saved, Pinned / Joint Channels / Channels / Direct Messages, tab bar) from shared/fixtureData.json homeChannelList, light mode.
+- screens.home.channel-list.dark: Whole phone Home root (top bar, Saved, Pinned / Joint Channels / Channels / Direct Messages, tab bar) from shared/fixtureData.json homeChannelList, dark mode.
 - screens.home.index: Missing true Home channel/thread list screen parity with realistic server/channel data.
 - screens.home.loading: Post-sign-in loading transition: MainLayout mounted at the server home with channels/DMs/agents/computers still fetching, so the mobile home surface shows Sidebar skeleton rows. Parity target for replacing the Android app's gray home loading state (task #372).
 - screens.home.saved: Existing components.home.saved.results is a connected visual fixture; this tracks the real Home Saved route/screen capture.
@@ -117,6 +117,7 @@ Capture taxonomy: components use component-fixture; real screens use real-screen
 
 ## Runs
 
+- 857e1fe-20261023102553: react vs android, total 101, pass 2, basic-pass 7, different 87, matrix runs/857e1fe-20261023102553/component-matrix.json, page runs/857e1fe-20261023102553/
 - a52d784-20261019224352: react vs android, total 99, pass 0, basic-pass 2, different 89, matrix runs/a52d784-20261019224352/component-matrix.json, page runs/a52d784-20261019224352/
 - 2c1bc667-20261018063524: react vs android, total 99, pass 0, basic-pass 1, different 90, matrix runs/2c1bc667-20261018063524/component-matrix.json, page runs/2c1bc667-20261018063524/
 - d78af8ed-20260911220901: react vs android, total 99, pass 0, basic-pass 0, different 91, matrix runs/d78af8ed-20260911220901/component-matrix.json, page runs/d78af8ed-20260911220901/

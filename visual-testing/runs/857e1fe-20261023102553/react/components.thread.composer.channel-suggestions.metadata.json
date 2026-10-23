@@ -1,0 +1,30 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.thread.composer.channel-suggestions",
+  "image": "visual-testing-results/react/components.thread.composer.channel-suggestions.png",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "selector": "[data-visual-case='components.thread.composer.channel-suggestions']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "width": 342,
+      "height": 320
+    },
+    "targetRect": {
+      "x": 0,
+      "y": 0,
+      "width": 342,
+      "height": 320
+    },
+    "outset": null
+  },
+  "capturedAt": "2026-10-23T10:17:01.609Z"
+}

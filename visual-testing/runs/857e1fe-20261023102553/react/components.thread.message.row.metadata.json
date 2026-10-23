@@ -1,0 +1,30 @@
+{
+  "provider": "react",
+  "providerType": "react-playwright",
+  "caseId": "components.thread.message.row",
+  "image": "visual-testing-results/react/components.thread.message.row.png",
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "density": 3
+  },
+  "selector": "[data-visual-case='components.thread.message.row']",
+  "crop": {
+    "mode": "element",
+    "contract": "component-bounds",
+    "rect": {
+      "x": 16,
+      "y": 16,
+      "width": 374,
+      "height": 139
+    },
+    "targetRect": {
+      "x": 16,
+      "y": 16,
+      "width": 374,
+      "height": 139
+    },
+    "outset": null
+  },
+  "capturedAt": "2026-10-23T10:17:18.292Z"
+}

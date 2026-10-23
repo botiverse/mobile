@@ -1,36 +1,34 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-10-19T23:37:14.121Z",
-  "latestRunId": "a52d784-20261019224352",
+  "generatedAt": "2026-10-23T10:26:47.271Z",
+  "latestRunId": "857e1fe-20261023102553",
   "latest": {
-    "runId": "a52d784-20261019224352",
-    "commit": "a52d784-20261019224352",
-    "commitSubject": "fix(file-preview): select and copy text in Markdown and text previews (#3193)",
-    "generatedAt": "2026-10-19T23:37:14.121Z",
+    "runId": "857e1fe-20261023102553",
+    "commit": "857e1fe-20261023102553",
+    "commitSubject": "fix(visual): Android captures see CMP dialog windows, Compose nodes and SVG data URIs (#3583)",
+    "generatedAt": "2026-10-23T10:26:47.271Z",
     "baseline": "react",
     "current": "android",
     "summary": {
-      "total": 99,
+      "total": 101,
       "same": 0,
-      "pass": 0,
-      "basic-pass": 2,
-      "different": 89,
-      "missing": 8
+      "pass": 2,
+      "basic-pass": 7,
+      "different": 87,
+      "missing": 5
     },
     "analysisSummary": {
-      "total": 99,
-      "ready": 19,
-      "pending": 80
+      "total": 101,
+      "ready": 0,
+      "pending": 101
     },
     "comparisons": [
-      "react__android",
-      "react__ios",
-      "android__ios"
+      "react__android"
     ],
     "componentMatrixSummary": {
-      "total": 128,
-      "active": 108,
+      "total": 130,
+      "active": 110,
       "pending": 17,
       "skipped": 3,
       "captureTypes": {
@@ -41,30 +39,30 @@
           "skipped": 2
         },
         "real-screen": {
-          "total": 33,
-          "active": 18,
+          "total": 35,
+          "active": 20,
           "pending": 14,
           "skipped": 1
         }
       },
       "providers": {
         "react": {
-          "active": 97,
+          "active": 99,
           "pending": 13,
+          "unsupported": 0,
+          "total": 112
+        },
+        "android": {
+          "active": 91,
+          "pending": 19,
           "unsupported": 0,
           "total": 110
         },
-        "android": {
-          "active": 89,
-          "pending": 19,
-          "unsupported": 0,
-          "total": 108
-        },
         "harmony": {
           "active": 0,
-          "pending": 82,
+          "pending": 84,
           "unsupported": 0,
-          "total": 82
+          "total": 84
         },
         "ios": {
           "active": 0,
@@ -74,13 +72,13 @@
         }
       }
     },
-    "href": "runs/a52d784-20261019224352/",
-    "componentMatrix": "runs/a52d784-20261019224352/component-matrix.json",
-    "llms": "runs/a52d784-20261019224352/metadata.json"
+    "href": "runs/857e1fe-20261023102553/",
+    "componentMatrix": "runs/857e1fe-20261023102553/component-matrix.json",
+    "llms": "runs/857e1fe-20261023102553/metadata.json"
   },
   "componentMatrixSummary": {
-    "total": 128,
-    "active": 108,
+    "total": 130,
+    "active": 110,
     "pending": 17,
     "skipped": 3,
     "captureTypes": {
@@ -91,30 +89,30 @@
         "skipped": 2
       },
       "real-screen": {
-        "total": 33,
-        "active": 18,
+        "total": 35,
+        "active": 20,
         "pending": 14,
         "skipped": 1
       }
     },
     "providers": {
       "react": {
-        "active": 97,
+        "active": 99,
         "pending": 13,
+        "unsupported": 0,
+        "total": 112
+      },
+      "android": {
+        "active": 91,
+        "pending": 19,
         "unsupported": 0,
         "total": 110
       },
-      "android": {
-        "active": 89,
-        "pending": 19,
-        "unsupported": 0,
-        "total": 108
-      },
       "harmony": {
         "active": 0,
-        "pending": 82,
+        "pending": 84,
         "unsupported": 0,
-        "total": 82
+        "total": 84
       },
       "ios": {
         "active": 0,
@@ -125,6 +123,79 @@
     }
   },
   "runs": [
+    {
+      "runId": "857e1fe-20261023102553",
+      "commit": "857e1fe-20261023102553",
+      "commitSubject": "fix(visual): Android captures see CMP dialog windows, Compose nodes and SVG data URIs (#3583)",
+      "generatedAt": "2026-10-23T10:26:47.271Z",
+      "baseline": "react",
+      "current": "android",
+      "summary": {
+        "total": 101,
+        "same": 0,
+        "pass": 2,
+        "basic-pass": 7,
+        "different": 87,
+        "missing": 5
+      },
+      "analysisSummary": {
+        "total": 101,
+        "ready": 0,
+        "pending": 101
+      },
+      "comparisons": [
+        "react__android"
+      ],
+      "componentMatrixSummary": {
+        "total": 130,
+        "active": 110,
+        "pending": 17,
+        "skipped": 3,
+        "captureTypes": {
+          "component-fixture": {
+            "total": 95,
+            "active": 90,
+            "pending": 3,
+            "skipped": 2
+          },
+          "real-screen": {
+            "total": 35,
+            "active": 20,
+            "pending": 14,
+            "skipped": 1
+          }
+        },
+        "providers": {
+          "react": {
+            "active": 99,
+            "pending": 13,
+            "unsupported": 0,
+            "total": 112
+          },
+          "android": {
+            "active": 91,
+            "pending": 19,
+            "unsupported": 0,
+            "total": 110
+          },
+          "harmony": {
+            "active": 0,
+            "pending": 84,
+            "unsupported": 0,
+            "total": 84
+          },
+          "ios": {
+            "active": 0,
+            "pending": 1,
+            "unsupported": 0,
+            "total": 1
+          }
+        }
+      },
+      "href": "runs/857e1fe-20261023102553/",
+      "componentMatrix": "runs/857e1fe-20261023102553/component-matrix.json",
+      "llms": "runs/857e1fe-20261023102553/metadata.json"
+    },
     {
       "runId": "a52d784-20261019224352",
       "commit": "a52d784-20261019224352",
