@@ -56,7 +56,7 @@ fun parseAppLoginCallback(uri: String?): AppLoginCallback? {
 private val APP_LOGIN_CALLBACK_PARAMS = setOf("requestId", "code", "error")
 
 /** `decodeURIComponent`: `%XX` as UTF-8, `+` kept literal; malformed escapes or invalid UTF-8 → null. */
-private fun percentDecodeStrict(raw: String): String? {
+internal fun percentDecodeStrict(raw: String): String? {
     if ('%' !in raw) return raw
     val bytes = ArrayList<Byte>(raw.length)
     var index = 0
