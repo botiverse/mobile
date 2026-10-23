@@ -4,6 +4,7 @@ area: attachments
 platforms:
   - android
   - ios
+pull_request: 3606
 rollout: full
 ---
 
