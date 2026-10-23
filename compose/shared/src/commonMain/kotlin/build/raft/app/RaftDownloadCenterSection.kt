@@ -32,7 +32,6 @@ import build.raft.designsystem.components.RaftSection
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import build.raft.kuiklybase.datetime.Instant
 import com.tencent.tmm.kmmresource.compose.stringResource
 
 /** Intents of the download centre list (Settings › Storage › Downloads). */
@@ -51,6 +50,9 @@ internal sealed interface RaftDownloadCenterAction {
  * The download centre: in-progress downloads (progress, bytes, speed, pause / cancel) and
  * finished ones (state, size, time; open, retry, remove), newest first, with Clear Finished.
  * Design-system only; call inside [RaftDesignSystemTheme] (the section does it itself).
+ * Each row leads with the file's type icon; a long name keeps its end (the extension) and
+ * gives way in the middle. [timeLabel] is the app's relative time ("5 min ago"), read from
+ * [LocalRaftTimeContextProvider].
  *
  * [canRetry] is false for rows restored from a previous app session: their retry needs the
  * message again, which the row says instead of offering a dead button.
@@ -63,7 +65,7 @@ internal fun RaftDownloadCenterSection(
     onClearFinished: () -> Unit,
     modifier: Modifier = Modifier,
     animated: Boolean = true,
-    timeLabel: @Composable (Long) -> String = { millis -> raftRelativeTimestampLabel(Instant.fromEpochMilliseconds(millis).toString()) }
+    timeLabel: @Composable (Long) -> String = { millis -> raftDownloadCenterTimeLabel(millis) }
 ) {
     RaftDesignSystemTheme {
         val colors = RaftTheme.colors
@@ -133,7 +135,7 @@ private fun RaftDownloadCenterRow(
                 size = RaftIconTileSize.Md,
                 variant = if (entry.status == RaftDownloadStatus.Failed) RaftIconTileVariant.Warning else RaftIconTileVariant.Default
             ) {
-                RaftDownloadIcon(raftDownloadCenterIcon(entry), size = RaftIconTileSize.Md.icon)
+                RaftDownloadIcon(raftFileTypeIconName(entry.fileName, entry.mimeType.orEmpty()), size = RaftIconTileSize.Md.icon)
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 RaftText(
@@ -143,7 +145,7 @@ private fun RaftDownloadCenterRow(
                     style = typography.body.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
                     color = colors.foreground,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.MiddleEllipsis
                 )
                 RaftText(
                     text = raftDownloadCenterMeta(entry, timeLabel),
@@ -209,10 +211,11 @@ private fun RaftDownloadCenterTrailing(
                 ) { RaftDownloadIcon(RaftLucideIconName.X) }
             }
             RaftDownloadStatus.Completed -> {
-                RaftButton(
-                    text = stringResource(MR.strings.common_open),
-                    onClick = { onAction(RaftDownloadCenterAction.Open(entry.id)) }
-                )
+                RaftIconButton(
+                    onClick = { onAction(RaftDownloadCenterAction.Open(entry.id)) },
+                    tooltip = stringResource(MR.strings.common_open),
+                    variant = RaftButtonVariant.Ghost
+                ) { RaftDownloadIcon(RaftLucideIconName.ExternalLink) }
                 RaftDownloadCenterRemoveButton(entry, onAction)
             }
             RaftDownloadStatus.Failed, RaftDownloadStatus.Cancelled -> {
@@ -250,7 +253,7 @@ private fun raftDownloadCenterMeta(entry: RaftDownloadEntry, timeLabel: @Composa
             if (entry.status == RaftDownloadStatus.Downloading) raftDownloadSpeedLabel(shownSpeed)?.let(parts::add)
         }
         RaftDownloadStatus.Completed -> {
-            // The check tile already says "downloaded": keep the line for size and time.
+            // The Open button already says "downloaded": keep the line for size and time.
             (entry.totalBytes ?: entry.downloadedBytes.takeIf { it > 0L })?.let { parts += raftDownloadSizeLabel(it) }
             parts += timeLabel(entry.updatedAtMillis)
         }
@@ -273,9 +276,10 @@ private fun raftDownloadCenterMeta(entry: RaftDownloadEntry, timeLabel: @Composa
     return parts.filter { it.isNotBlank() }.joinToString(" · ")
 }
 
-private fun raftDownloadCenterIcon(entry: RaftDownloadEntry): RaftLucideIconName =
-    when (entry.status) {
-        RaftDownloadStatus.Completed -> RaftLucideIconName.CircleCheck
-        RaftDownloadStatus.Failed, RaftDownloadStatus.Cancelled -> RaftLucideIconName.File
-        else -> RaftLucideIconName.Download
-    }
+/**
+ * A download's time as the app's relative time ("5 min ago", Saved and Files use the same
+ * labels). The epoch milliseconds go in as they are: the parser reads a 13-digit epoch.
+ */
+@Composable
+internal fun raftDownloadCenterTimeLabel(epochMillis: Long): String =
+    raftRelativeTimestampLabel(epochMillis.toString(), clampFuture = true)
