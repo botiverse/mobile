@@ -41,7 +41,7 @@ class NavigationRailScreenshotTest {
                     object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
                 }
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
-                RaftNavigationRailTabBar(
+                build.raft.app.components.RaftDesignSystemTheme { RaftNavigationRailTabBar(
                     items =
                         listOf(
                             RaftBottomTabItemPayload(key = "home", label = "Home", iconName = RaftLucideIconName.House, selected = true),
@@ -55,7 +55,7 @@ class NavigationRailScreenshotTest {
                     header = RaftNavigationRailHeader(key = "server:1", label = "Botiverse", unread = true),
                     bottomItems =
                         listOf(RaftBottomTabItemPayload(key = "settings", label = "Settings", iconName = RaftLucideIconName.Settings)),
-                )
+                ) }
             }
         }
 }
