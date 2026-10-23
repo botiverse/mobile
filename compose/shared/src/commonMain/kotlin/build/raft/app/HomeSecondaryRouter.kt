@@ -743,6 +743,18 @@ private fun openActivityAdaptiveMessageRequest(
     return true
 }
 
+/**
+ * The Home snapshot as a candidate source for Search scoped to [serverId]: a snapshot of another
+ * server (the one the user switched away from, still showing while this page's Home reloads)
+ * contributes no rows (AGENTS.md Route/PageData rule: candidate snapshots must match the identity).
+ */
+internal fun SharedHomeState.scopedToSearchServer(serverId: String?): SharedHomeState {
+    val loaded = content as? SharedHomeContentState.Content ?: return this
+    val scope = serverId?.trim()?.takeIf { it.isNotBlank() }
+    if (scope != null && loaded.snapshot.server.id.value == scope) return this
+    return copy(content = SharedHomeContentState.Loading(loaded.session))
+}
+
 @Composable
 private fun HomeSearchRouterContent(
     environment: HomeSecondaryRouteEnvironment,
@@ -820,8 +832,25 @@ private fun HomeSearchRouterContent(
             }
         }
     }
+    // The Search tab stays composed across a server switch, and this page's Home snapshot is its
+    // own: candidate rows (channels, DMs, frequent rows) and opens must come from the server the
+    // search store is scoped to, never from the snapshot of the server the user left.
+    val searchScopeServerId = searchSavedState.search.serverId
+    val loadedHomeServerId =
+        (homeState.content as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
+    LaunchedEffect(homeViewModel, searchScopeServerId, loadedHomeServerId) {
+        if (
+            searchScopeServerId != null &&
+                loadedHomeServerId != null &&
+                searchScopeServerId != loadedHomeServerId
+        ) {
+            homeViewModel.dispatch(SharedHomeIntent.Start)
+        }
+    }
+    val searchHomeState =
+        remember(homeState, searchScopeServerId) { homeState.scopedToSearchServer(searchScopeServerId) }
     val searchServerId =
-        (homeState.content as? SharedHomeContentState.Content)
+        (searchHomeState.content as? SharedHomeContentState.Content)
             ?.snapshot
             ?.server
             ?.id
@@ -896,7 +925,7 @@ private fun HomeSearchRouterContent(
     val chrome = homeSearchPageChrome(tabRoot = environment.tabRoot)
     SharedHomeSearchPanel(
         state = searchSavedState.search,
-        homeState = homeState,
+        homeState = searchHomeState,
         cacheServerId = searchServerId,
         agentStatusResolver = agentStatusResolver,
         memberAvatarResolver = memberAvatarResolver,
@@ -949,6 +978,7 @@ private fun HomeSearchRouterContent(
                                 query = searchSavedState.search.resultQuery.orEmpty(),
                                 entityKind = entityKey?.kind,
                                 entityId = entityKey?.id,
+                                serverId = searchServerId,
                             )
                         )
                     }
@@ -997,6 +1027,7 @@ private fun HomeSearchRouterContent(
                         query = searchSavedState.search.query,
                         entityKind = entityKey?.kind,
                         entityId = entityKey?.id,
+                        serverId = searchServerId,
                     )
                 )
             }
