@@ -938,7 +938,7 @@ object RaftUiPalette {
     val infoHover = Color(0xFF25B9DC)
     /** `--line-frame-active` */
     val lineFrameActive = Color(0xFF141111)
-    /** `--located-fill` */
+    /** `--located-fill`: The jump highlight's resting value (transparent): raft-ui animates it to `info-soft`. Paint `infoSoft` for the highlight, not this. */
     val locatedFill = Color(0x00000000)
     /** `--palette-cream-100` */
     val paletteCream100 = Color(0xFFFFFCF5)

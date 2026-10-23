@@ -168,6 +168,20 @@ NON_COLOUR_NAMESPACES = (
     "--animate-", "--aspect-", "--shadow-", "--inset-shadow-", "--drop-shadow-",
 )
 
+# Extra words for a token's KDoc, for tokens whose generated value misleads on its own.
+TOKEN_NOTES = {
+    # raft-ui animates this @property (transparent at rest, info-soft while a jump is lit),
+    # so its static value is the rest state, not the highlight colour.
+    "--located-fill": "The jump highlight's resting value (transparent): raft-ui animates it to "
+    "`info-soft`. Paint `infoSoft` for the highlight, not this.",
+}
+
+
+def kdoc(name: str) -> str:
+    note = TOKEN_NOTES.get(name)
+    return f"    /** `{name}`: {note} */" if note else f"    /** `{name}` */"
+
+
 PROPERTY_RE = re.compile(r"@property\s+(--[A-Za-z0-9_-]+)")
 
 
@@ -532,7 +546,7 @@ def render(tokens, themed, target: Target) -> str:
         f"{target.visibility}object RaftUiPalette {{",
     ]
     for n in shared:
-        lines.append(f"    /** `{n}` */")
+        lines.append(kdoc(n))
         lines.append(f"    val {kotlin_name(n)} = Color({argb(tokens[BASE_THEME][n])})")
     lines += [
         "}",
@@ -545,7 +559,7 @@ def render(tokens, themed, target: Target) -> str:
         f"{target.visibility}sealed class RaftUiThemeColors {{",
     ]
     for n in theme_only:
-        lines.append(f"    /** `{n}` */")
+        lines.append(kdoc(n))
         lines.append(f"    abstract val {kotlin_name(n)}: Color")
     lines.append("")
     for theme in THEMES:
