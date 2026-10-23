@@ -181,6 +181,9 @@ class SharedActivityStore internal constructor(
     private var tailInFlightJob: Job? = null
     private var tailDrainBarrier: Job? = null
     private var realtimeBackgroundReconcileJob: Job? = null
+    /** Per channel: the in-flight readability check (single-flight) and the latest event generation. */
+    private val channelAccessChecks = mutableMapOf<String, Job>()
+    private val channelAccessGenerations = mutableMapOf<String, Long>()
     private var realtimeBackgroundReconcileDirty = false
     // task #399: DM-parent thread rows whose peer could not be resolved from the
     // last DM list fetch; retried only when a NEW unresolved id appears.
@@ -332,7 +335,7 @@ class SharedActivityStore internal constructor(
     }
 
     /**
-     * Access loss (left or removed from a channel, channel deleted / archived, server left or
+     * Access loss (left or removed from a channel, channel deleted, server left or
      * deleted): the retained rows [matching] cannot stay as "read" rows. Each leaves the list and the
      * retained set at once. A row that was merely read keeps its place (see [withRetainedReadRows]).
      */
@@ -357,6 +360,69 @@ class SharedActivityStore internal constructor(
                     (serverId == null || serverId?.value == current.ownerServerId)
             else -> false
         }
+
+    /**
+     * `channel:updated` / `channel:members-updated` never mean access loss by themselves (web
+     * re-reads the channel on them). For a channel with retained rows, re-read `GET /channels/:id`:
+     * the server answers 404 only when the user can no longer read the channel (removed from a
+     * private channel, deleted, wrong server). Only a 404 drops that channel's retained rows; a 500,
+     * a network failure or any other answer is not access loss. One request per channel at a time;
+     * a later event for the channel bumps its generation, so a result that was in flight over it is
+     * stale and the check runs again (a stale 404 never drops rows after access was regained).
+     */
+    private fun checkRetainedChannelReadableLocked(channelId: String) {
+        val current = _state.value
+        if (!current.hasRetainedRowsFor(channelId)) return
+        channelAccessGenerations[channelId] = (channelAccessGenerations[channelId] ?: 0L) + 1L
+        if (channelAccessChecks[channelId]?.isActive == true) return
+        val ownerServerId = current.ownerServerId
+        val ownerUserId = current.ownerUserId
+        val job =
+            scope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    while (true) {
+                        val generation = synchronized(realtimeOwnerLock) { channelAccessGenerations[channelId] ?: 0L }
+                        val result = conversationRepository.getConversationDetail(ChannelId(channelId), DataRequestPriority.Background)
+                        val lost = result is DataResult.Error && result.error.code == "http_404"
+                        val rerun =
+                            synchronized(realtimeOwnerLock) {
+                                val latest = _state.value
+                                when {
+                                    latest.ownerServerId != ownerServerId || latest.ownerUserId != ownerUserId -> false
+                                    (channelAccessGenerations[channelId] ?: 0L) != generation -> latest.hasRetainedRowsFor(channelId)
+                                    else -> {
+                                        if (lost) {
+                                            dropRetainedRows(SharedActivityIntent.ChannelAccessLost(setOf(channelId))) { item ->
+                                                item.touchesChannel(setOf(channelId))
+                                            }
+                                        }
+                                        false
+                                    }
+                                }
+                            }
+                        if (!rerun) break
+                    }
+                } finally {
+                    synchronized(realtimeOwnerLock) {
+                        if (channelAccessChecks[channelId] === coroutineContext[Job]) channelAccessChecks.remove(channelId)
+                    }
+                }
+            }
+        channelAccessChecks[channelId] = job
+        job.start()
+    }
+
+    private fun SharedActivityState.hasRetainedRowsFor(channelId: String): Boolean =
+        retainedReadRowKeys.isNotEmpty() &&
+            items.any { item -> item.key in retainedReadRowKeys && item.touchesChannel(setOf(channelId)) }
+
+    private fun RealtimeEvent.channelUpdatedId(): String? =
+        (this as? RealtimeRefreshRequired)
+            ?.takeIf { it.scope == RealtimeRefreshScope.Home || it.scope == RealtimeRefreshScope.ChannelMembers }
+            ?.takeIf {
+                it.reason == RealtimeSocketEvents.ChannelUpdated || it.reason == RealtimeSocketEvents.ChannelMembersUpdated
+            }
+            ?.channelId?.value?.takeIf { it.isNotBlank() }
 
     private fun releaseRetainedReadRows(intent: SharedActivityIntent) {
         synchronized(realtimeOwnerLock) {
@@ -388,6 +454,9 @@ class SharedActivityStore internal constructor(
             realtimeBackgroundReconcileJob?.cancel()
             realtimeBackgroundReconcileJob = null
             realtimeBackgroundReconcileDirty = false
+            channelAccessChecks.values.forEach(Job::cancel)
+            channelAccessChecks.clear()
+            channelAccessGenerations.clear()
             realtimeHighWater.clear()
             pendingThreadFollowMutations = emptySet()
             deferredThreadFollows = emptyMap()
@@ -885,6 +954,7 @@ class SharedActivityStore internal constructor(
         if (event.dropsServerAccess(_state.value)) {
             dropRetainedRows(intent) { true }
         }
+        event.channelUpdatedId()?.let(::checkRetainedChannelReadableLocked)
         if (!event.refreshesActivity()) return null
         when (event) {
             is MessageUpdated -> acceptMessageUpdatedFreshness(event.message)
@@ -3161,7 +3231,7 @@ sealed interface SharedActivityIntent {
      */
     data class RowOpened(val item: InboxItem) : SharedActivityIntent
     /**
-     * The user lost access to [channelIds] (left through the app, channel archived or deleted).
+     * The user lost access to [channelIds] (left or deleted through the app; an archived channel is still readable).
      * Retained rows of those channels, their threads, or threads under them leave at once.
      */
     data class ChannelAccessLost(val channelIds: Set<String>) : SharedActivityIntent

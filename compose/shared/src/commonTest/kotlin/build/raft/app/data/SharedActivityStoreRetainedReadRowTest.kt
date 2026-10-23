@@ -12,6 +12,7 @@ import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerDeleted
 import build.raft.app.model.ServerMembershipRemoved
 import build.raft.app.model.MemberId
+import build.raft.app.model.ConversationSummary
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CompletableDeferred
@@ -330,8 +331,144 @@ class SharedActivityStoreRetainedReadRowTest {
         assertEquals(setOf(rowB.key), store.state.value.retainedReadRowKeys)
     }
 
+    private fun channelEvent(reason: String, channelId: String): SharedActivityIntent =
+        SharedActivityIntent.ApplyRealtimeEvent(
+            RealtimeRefreshRequired(
+                scope =
+                    if (reason == RealtimeSocketEvents.ChannelUpdated) RealtimeRefreshScope.Home
+                    else RealtimeRefreshScope.ChannelMembers,
+                reason = reason,
+                serverId = ServerId("server-1"),
+                channelId = ChannelId(channelId)
+            )
+        )
+
+    private val channelEventReasons =
+        listOf(RealtimeSocketEvents.ChannelUpdated, RealtimeSocketEvents.ChannelMembersUpdated)
+
+    private fun http404(): DataResult<ConversationSummary> = DataResult.Error(ScreenError("http_404", retryable = false))
+
+    private fun TestScope.storeWithRetainedAB(conversations: FakeConversationRepository): SharedActivityStore {
+        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(rowA, rowB, rowC))))
+        val store = unreadStore(inbox, conversations = conversations)
+        store.open(rowA, ReadPath.OpenMarksRead, revision = 1L)
+        store.open(rowB, ReadPath.OpenMarksRead, revision = 2L)
+        runCurrent()
+        return store
+    }
+
+    @Test
+    fun aChannelEventDropsTheChannelsRetainedRowsOnlyWhenTheReReadAnswers404() = runTest {
+        channelEventReasons.forEach { reason ->
+            val conversations = FakeConversationRepository().apply { detailResponder = { http404() } }
+            val store = storeWithRetainedAB(conversations)
+
+            store.dispatch(channelEvent(reason, "channel-a"))
+            runCurrent()
+
+            assertEquals(listOf(ChannelId("channel-a") to DataRequestPriority.Background), conversations.detailRequests, reason)
+            assertUnreadList(store, listOf(rowB.key to 0, rowC.key to 1), "404 drops A only, $reason")
+            assertEquals(setOf(rowB.key), store.state.value.retainedReadRowKeys, reason)
+        }
+    }
+
+    @Test
+    fun aFailedReReadIsNotAccessLoss() = runTest {
+        val failures =
+            listOf(
+                DataResult.Error(ScreenError("server_unavailable", retryable = true)),
+                DataResult.Error(ScreenError("network_unavailable", retryable = true)),
+                DataResult.Error(ScreenError("http_403", retryable = false)),
+                DataResult.Empty(EmptyReason.NoMessages)
+            )
+        failures.forEach { failure ->
+            val conversations = FakeConversationRepository().apply { detailResponder = { failure } }
+            val store = storeWithRetainedAB(conversations)
+
+            store.dispatch(channelEvent(RealtimeSocketEvents.ChannelMembersUpdated, "channel-a"))
+            runCurrent()
+
+            assertEquals(1, conversations.detailRequests.size, "$failure")
+            assertUnreadList(store, listOf(rowA.key to 0, rowB.key to 0, rowC.key to 1), "$failure")
+        }
+    }
+
+    @Test
+    fun aChannelWithoutRetainedRowsIsNeverReRead() = runTest {
+        val conversations = FakeConversationRepository().apply { detailResponder = { http404() } }
+        val store = storeWithRetainedAB(conversations)
+
+        // C was never read (not retained); Z is not listed at all.
+        store.dispatch(channelEvent(RealtimeSocketEvents.ChannelUpdated, "channel-c"))
+        store.dispatch(channelEvent(RealtimeSocketEvents.ChannelMembersUpdated, "channel-z"))
+        runCurrent()
+        assertEquals(emptyList(), conversations.detailRequests)
+
+        // After the visit ends nothing is retained either.
+        store.dispatch(SharedActivityIntent.SurfaceHidden)
+        store.dispatch(channelEvent(RealtimeSocketEvents.ChannelMembersUpdated, "channel-a"))
+        runCurrent()
+        assertEquals(emptyList(), conversations.detailRequests)
+    }
+
+    @Test
+    fun aStale404AfterAccessWasRegainedDoesNotDrop() = runTest {
+        val first = CompletableDeferred<DataResult<ConversationSummary>>()
+        val conversations = FakeConversationRepository()
+        var calls = 0
+        conversations.detailResponder = { if (++calls == 1) first.await() else DataResult.Empty(EmptyReason.NoMessages) }
+        val store = storeWithRetainedAB(conversations)
+
+        store.dispatch(channelEvent(RealtimeSocketEvents.ChannelMembersUpdated, "channel-a"))
+        runCurrent()
+        // Single flight: the request is in flight; a later members-updated (the user was added back)
+        // does not start a parallel one.
+        store.dispatch(channelEvent(RealtimeSocketEvents.ChannelMembersUpdated, "channel-a"))
+        runCurrent()
+        assertEquals(1, conversations.detailRequests.size)
+
+        first.complete(http404())
+        runCurrent()
+
+        // The stale 404 is ignored; the check ran again and the channel is readable.
+        assertEquals(2, conversations.detailRequests.size)
+        assertUnreadList(store, listOf(rowA.key to 0, rowB.key to 0, rowC.key to 1), "stale 404")
+    }
+
+    @Test
+    fun a404ForARowThatLeftTheRetainedSetBeforeItArrivedDoesNothing() = runTest {
+        val gate = CompletableDeferred<DataResult<ConversationSummary>>()
+        val conversations = FakeConversationRepository().apply { detailResponder = { gate.await() } }
+        val store = storeWithRetainedAB(conversations)
+        store.dispatch(channelEvent(RealtimeSocketEvents.ChannelUpdated, "channel-a"))
+        runCurrent()
+
+        store.dispatch(SharedActivityIntent.SurfaceHidden)
+        gate.complete(http404())
+        runCurrent()
+
+        assertEquals(1, conversations.detailRequests.size)
+        assertEquals(emptySet(), store.state.value.retainedReadRowKeys)
+    }
+
+    @Test
+    fun a404AfterAServerSwitchIsIgnored() = runTest {
+        val gate = CompletableDeferred<DataResult<ConversationSummary>>()
+        val conversations = FakeConversationRepository().apply { detailResponder = { gate.await() } }
+        val store = storeWithRetainedAB(conversations)
+        store.dispatch(channelEvent(RealtimeSocketEvents.ChannelUpdated, "channel-a"))
+        runCurrent()
+
+        store.clear()
+        gate.complete(http404())
+        runCurrent()
+
+        assertEquals(1, conversations.detailRequests.size)
+    }
+
     private fun TestScope.unreadStore(
         inbox: InboxRepository,
+        conversations: FakeConversationRepository = FakeConversationRepository(),
         authStore: RaftAuthSessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
         refreshIntervalMillis: Long = 60_000L
     ): SharedActivityStore {
@@ -339,6 +476,7 @@ class SharedActivityStoreRetainedReadRowTest {
             activityStore(
                 backgroundScope,
                 inbox,
+                conversationRepository = conversations,
                 authStore = authStore,
                 realtimeBackgroundRefreshIntervalMillis = refreshIntervalMillis,
                 nowMillis = { testScheduler.currentTime }
