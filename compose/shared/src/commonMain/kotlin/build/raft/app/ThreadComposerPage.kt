@@ -4470,7 +4470,7 @@ private fun PendingMentionActionRow(
 }
 
 @Composable
-private fun ComposerAttachmentTray(
+internal fun ComposerAttachmentTray(
     attachments: List<RaftPendingAttachmentItem>,
     enabled: Boolean,
     previewEnabled: Boolean,
