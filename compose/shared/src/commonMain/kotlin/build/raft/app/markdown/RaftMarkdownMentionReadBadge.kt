@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.resources.MR
@@ -59,8 +60,16 @@ private const val MentionReadInlineId = "raft-mention-read:read"
 private val MentionReadBadgeReserve = 10.dp
 private val MentionReadBadgeGap = 2.dp
 
-/** The square's top is 2dp below the text line box's top (not relative to the glyphs). */
-private val MentionReadBadgeTop = 2.dp
+/**
+ * The square's top is 3dp above the name's cap-height top (so its bottom is 5dp below the cap top),
+ * anchored to the glyphs, not the line box. Space Grotesk's OS/2 sCapHeight is 700 / 1000 em.
+ */
+private val MentionReadBadgeAboveCap = 3.dp
+private const val SansCapHeightEm = 0.7f
+
+/** Distance from the baseline up to the mark's top for text of [fontSize] (sp ~ dp at the default scale). */
+internal fun raftMarkdownMentionReadMarkRiseSp(fontSize: TextUnit): Float =
+    fontSize.value * SansCapHeightEm + MentionReadBadgeAboveCap.value
 private val MentionReadCheckSize = 6.5.dp
 private const val MentionReadCheckStroke = 3f
 
@@ -72,21 +81,20 @@ internal fun AnnotatedString.Builder.appendRaftMarkdownMentionReadBadge(read: Bo
 }
 
 /** The read mark placeholder; the colours are mode-invariant (online green, ink edge and check). */
-internal val RaftMarkdownMentionReadInlineContent: Map<String, InlineTextContent> by lazy {
+internal fun raftMarkdownMentionReadInlineContent(fontSize: TextUnit): Map<String, InlineTextContent> =
     mapOf(
         MentionReadInlineId to
             InlineTextContent(
                 placeholder =
                     Placeholder(
                         width = MentionReadBadgeReserve.value.sp,
-                        height = (RaftStatusSize.Sm.edge + MentionReadBadgeTop).value.sp,
-                        placeholderVerticalAlign = PlaceholderVerticalAlign.Top,
+                        height = raftMarkdownMentionReadMarkRiseSp(fontSize).sp,
+                        placeholderVerticalAlign = PlaceholderVerticalAlign.AboveBaseline,
                     ),
             ) {
                 RaftMarkdownMentionReadBadge()
             },
     )
-}
 
 /**
  * The read mark: the online status pixel (`sm`, 8dp, 2dp corners, 1.5dp ink edge, online green)
@@ -96,7 +104,7 @@ internal val RaftMarkdownMentionReadInlineContent: Map<String, InlineTextContent
 internal fun RaftMarkdownMentionReadBadge() {
     val label = stringResource(MR.strings.thread_mention_agent_read)
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopStart) {
-        Box(Modifier.offset(x = MentionReadBadgeGap, y = MentionReadBadgeTop), contentAlignment = Alignment.Center) {
+        Box(Modifier.offset(x = MentionReadBadgeGap), contentAlignment = Alignment.Center) {
             RaftStatusDot(size = RaftStatusSize.Sm, presence = RaftPresence.Online, contentDescription = label)
             RaftGlyphIcon(
                 glyph = RaftGlyph.Check,

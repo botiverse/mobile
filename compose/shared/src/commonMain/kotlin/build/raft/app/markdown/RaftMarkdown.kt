@@ -818,10 +818,11 @@ internal fun raftMarkdownAnnotator(
     capabilities: RaftRichTextCapabilities = RaftMarkdownRendererRichTextCapabilities,
     softLineBreaksAsNewLines: Boolean = true,
     taskStatuses: () -> Map<Int, TaskStatus>? = { null },
-    mentionReadStates: () -> RaftMarkdownMentionReadStates? = { null }
+    mentionReadStates: () -> RaftMarkdownMentionReadStates? = { null },
+    mentionReadFontSize: TextUnit = RaftMarkdownTagFontSize
 ): MarkdownAnnotator {
     val diagnosticsStartedAt = onDiagnostics?.let { TimeSource.Monotonic.markNow() }
-    val rendererInput = RaftRichTextRendererInput(document, capabilities, taskStatuses, mentionReadStates)
+    val rendererInput = RaftRichTextRendererInput(document, capabilities, taskStatuses, mentionReadStates, mentionReadFontSize)
     if (diagnosticsStartedAt != null) {
         onDiagnostics.invoke(
             rendererInput.raftRefTokenCount,
@@ -873,7 +874,8 @@ private data class RaftRichTextRendererInput(
     val document: RaftRichTextDocument,
     val capabilities: RaftRichTextCapabilities,
     val taskStatuses: () -> Map<Int, TaskStatus>? = { null },
-    val mentionReadStates: () -> RaftMarkdownMentionReadStates? = { null }
+    val mentionReadStates: () -> RaftMarkdownMentionReadStates? = { null },
+    val mentionReadFontSize: TextUnit = RaftMarkdownTagFontSize
 ) {
     val raftRefTokens: List<RaftRichTextInlineToken> =
         document.inlineTokens
@@ -918,7 +920,7 @@ private data class RaftRichTextRendererInput(
         if (action.refKind == RaftRichTextRefKind.UserMention) mentionReadStates()?.readStateFor(action.label) else null
 
     fun mentionReadInlineContent(): Map<String, InlineTextContent> =
-        if (hasMentionRefs && mentionReadStates() != null) RaftMarkdownMentionReadInlineContent else emptyMap()
+        if (hasMentionRefs && mentionReadStates() != null) raftMarkdownMentionReadInlineContent(mentionReadFontSize) else emptyMap()
 
     fun raftRefTokensStartingInRange(start: Int, endExclusive: Int): List<RaftRichTextInlineToken> =
         raftRefTokens.filter { token ->
@@ -2393,7 +2395,9 @@ fun RaftMarkdownBody(
                 },
             softLineBreaksAsNewLines = softLineBreaksAsNewLines,
             taskStatuses = { currentTaskStatuses },
-            mentionReadStates = { currentMentionReadStates }
+            mentionReadStates = { currentMentionReadStates },
+            // The mention is set in its own chip size, so the mark follows that, not the body size.
+            mentionReadFontSize = RaftMarkdownTagFontSize
         )
     }
     if (DEBUG_RAFT_MARKDOWN_PERF_LOG && performanceKey != null) {

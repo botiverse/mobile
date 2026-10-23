@@ -2,6 +2,8 @@ package build.raft.app.markdown
 
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.unit.sp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -25,10 +27,18 @@ class RaftMarkdownMentionReadBadgeTest {
     fun readAppendsTheMarkPlaceholder() {
         val text = mention(read = true)
         assertTrue(text.text.length > "@alpha".length)
-        assertEquals(setOf("raft-mention-read:read"), RaftMarkdownMentionReadInlineContent.keys)
-        val placeholder = RaftMarkdownMentionReadInlineContent.getValue("raft-mention-read:read").placeholder
+        val content = raftMarkdownMentionReadInlineContent(14.sp)
+        assertEquals(setOf("raft-mention-read:read"), content.keys)
+        val placeholder = content.getValue("raft-mention-read:read").placeholder
         assertEquals(10f, placeholder.width.value)
-        assertEquals(10f, placeholder.height.value)
+        // Baseline up to the mark's top: cap height (0.7em of 14sp = 9.8) + 3.
+        assertEquals(12.8f, placeholder.height.value, 0.001f)
+        assertEquals(PlaceholderVerticalAlign.AboveBaseline, placeholder.placeholderVerticalAlign)
+    }
+
+    @Test
+    fun markRiseScalesWithFontSize() {
+        assertEquals(17.0f, raftMarkdownMentionReadMarkRiseSp(20.sp), 0.001f)
     }
 
     @Test
