@@ -287,6 +287,48 @@ class InteractiveComponentScreenshotTest {
             }
         }
 
+    /**
+     * raft-ui DialogFooter (#673, #727): a footer whose row fits stays one row at the end; one
+     * that doesn't (a long confirm label in a narrow dialog) stacks full width, the confirm on
+     * top, and the ghost Cancel takes the ink frame. A sheet's actions are always stacked.
+     */
+    @Test
+    fun dialogFooterStacks() =
+        capture("dialog_footer_stacked") {
+            Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.Top) {
+                Box(Modifier.width(300.dp).padding(bottom = 24.dp)) {
+                    RaftDialogSurface(
+                        title = "Leave Channel",
+                        description = "You can join it again from the channel list.",
+                        footer = {
+                            RaftButton("Cancel", {}, variant = RaftButtonVariant.Ghost, size = RaftButtonSize.Lg)
+                            RaftButton("Leave Channel", {}, variant = RaftButtonVariant.Danger, size = RaftButtonSize.Lg)
+                        },
+                    )
+                }
+                Box(Modifier.width(300.dp).padding(bottom = 24.dp)) {
+                    RaftDialogSurface(
+                        title = "Archive Channel",
+                        description = "Nobody can post in it until it is restored.",
+                        footer = {
+                            RaftButton("Keep Channel", {}, variant = RaftButtonVariant.Ghost, size = RaftButtonSize.Lg)
+                            RaftButton("Archive #release-review", {}, variant = RaftButtonVariant.Warning, size = RaftButtonSize.Lg)
+                        },
+                    )
+                }
+                Box(Modifier.width(300.dp).padding(bottom = 24.dp)) {
+                    RaftSheetSurface(
+                        title = "Turn On Notifications",
+                        description = "Get told when an agent needs you.",
+                        actions = {
+                            RaftButton("Turn On", {}, Modifier.fillMaxWidth(), variant = RaftButtonVariant.Primary, size = RaftButtonSize.Lg)
+                            RaftButton("Not Now", {}, Modifier.fillMaxWidth(), variant = RaftButtonVariant.Ghost, size = RaftButtonSize.Lg)
+                        },
+                    )
+                }
+            }
+        }
+
     @Test
     fun checkbox() =
         capture("checkbox") {

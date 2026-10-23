@@ -371,6 +371,13 @@ internal fun Modifier.raftBorderWithoutStartEdge(width: Dp, color: Color, radius
     }
 
 /**
+ * True inside buttons stacked full width (raft-ui `data-stacked`): a dialog footer whose row
+ * didn't fit ([RaftDialogSurface]) and a sheet's actions. A ghost text [RaftButton] there takes
+ * the ink frame of `default`; ghost icon buttons stay frameless.
+ */
+val LocalRaftButtonsStacked = staticCompositionLocalOf { false }
+
+/**
  * raft-ui 0.8.0 Button. Its colour says what kind of action it is ([RaftButtonVariant]),
  * its size where it sits ([RaftButtonSize]). Every button is flat: the ink border or the
  * sticker marks it as a control, never a shadow.
@@ -410,7 +417,15 @@ fun RaftButton(
     trailingIcon: (@Composable () -> Unit)? = null,
     interactionSource: MutableInteractionSource? = null,
 ) {
-    val look = raftButtonLook(variant, enabled, frameless = false, colors = RaftTheme.colors)
+    // raft-ui 0.23 (#727): stacked full width (a dialog footer that didn't fit, a sheet's
+    // actions), a ghost text button takes the ink frame of `default`, so it reads as a button.
+    val look =
+        raftButtonLook(
+            if (variant == RaftButtonVariant.Ghost && LocalRaftButtonsStacked.current) RaftButtonVariant.Default else variant,
+            enabled,
+            frameless = false,
+            colors = RaftTheme.colors,
+        )
     val metrics = raftButtonMetrics(size, variant)
     val textStyle = raftButtonTextStyle(size, variant, RaftTheme.typography)
     // CSS padding sits inside the 1.5dp border.
