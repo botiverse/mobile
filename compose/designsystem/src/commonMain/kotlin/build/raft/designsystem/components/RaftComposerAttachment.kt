@@ -195,16 +195,18 @@ fun BoxScope.RaftComposerAttachmentUploading(
     if (progress != null) {
         val fraction = progress.coerceIn(4, 100) / 100f
         val shape = RoundedCornerShape(ProgressRadius)
-        Box(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .padding(start = ProgressInset, end = ProgressInset, bottom = ProgressInset)
-                .fillMaxWidth()
-                .height(ProgressHeight)
-                .clip(shape)
-                .background(colors.layerCard),
-        ) {
-            Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(RaftUiPalette.info, shape))
+        // Sized by the tile (matchParentSize), so the bar never widens the tile it sits on.
+        Box(Modifier.matchParentSize().padding(start = ProgressInset, end = ProgressInset, bottom = ProgressInset)) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(ProgressHeight)
+                    .clip(shape)
+                    .background(colors.layerCard),
+            ) {
+                Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(RaftUiPalette.info, shape))
+            }
         }
     }
 }
