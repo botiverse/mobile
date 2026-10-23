@@ -85,18 +85,25 @@ enum class AddComputerStep { Type, Waiting, Connected }
 
 enum class AddComputerType { Local, Cloud }
 
-enum class AddComputerCommandTarget { Daemon, Computer }
-
 data class AddComputerDialogState(
     val step: AddComputerStep = AddComputerStep.Type,
     val machineType: AddComputerType = AddComputerType.Local,
     val name: String = "",
     val machineId: String? = null,
     val apiKeyPrefix: String? = null,
-    val daemonRunCommand: String? = null,
-    val computerSetupCommand: String? = null,
-    val copiedCommand: AddComputerCommandTarget? = null,
+    /** The placeholder row the dialog registered; cleaned up when another row connects instead. */
+    val registeredMachineId: String? = null,
+    /** What the `raft-computer` connect commands are written for; null without a server slug. */
+    val commandContext: SettingsComputerCommandContext? = null,
+    /** The machine rows as they stood when the connect command was shown. */
+    val baseline: List<AddComputerBaselineEntry> = emptyList(),
+    /** "hostname — os" of the connected row. */
     val connectedDetail: String? = null,
+    val connectedHostname: String? = null,
+    val connectedRuntimes: List<String> = emptyList(),
+    /** The connected Computer may not be the one just set up: Done waits for [confirmedMatch]. */
+    val requiresConfirmation: Boolean = false,
+    val confirmedMatch: Boolean = false,
     val errorMessage: String? = null,
     val screenError: ScreenError? = null,
     val permissionBlocker: PermissionBlocker? = null,
@@ -111,11 +118,6 @@ internal fun AddComputerDialogState.errorPresentationOrNull(): ErrorPresentation
     screenError?.errorPresentation()
         ?: permissionBlocker?.errorPresentation()
         ?: emptyReason?.errorPresentation()
-
-data class AddComputerSetupCommands(
-    val daemonRunCommand: String? = null,
-    val computerSetupCommand: String? = null
-)
 
 data class SharedSettingsHomeSnapshot(
     val title: String = "Settings",
@@ -479,8 +481,7 @@ sealed interface SharedSettingsIntent {
     data class SetAddComputerRegistration(val machineId: String, val apiKeyPrefix: String) : SharedSettingsIntent
     data class SetAddComputerError(val message: String) : SharedSettingsIntent
     data class PollAddComputerMachineStatus(val machineId: String) : SharedSettingsIntent
-    data class CopyAddComputerCommand(val target: AddComputerCommandTarget) : SharedSettingsIntent
-    data object ClearAddComputerCopiedCommand : SharedSettingsIntent
+    data class SetAddComputerConfirmedMatch(val confirmed: Boolean) : SharedSettingsIntent
     data object CompleteAddComputerDialog : SharedSettingsIntent
     /**
      * #79: realtime event bridge for the Settings surface. Only used for
@@ -974,35 +975,9 @@ class SharedSettingsDataSource(
     suspend fun registerComputer(request: SettingsComputerRegisterRequest): DataResult<SettingsComputerRegistrationResult> =
         settingsRepository?.registerComputer(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
-    suspend fun buildAddComputerSetupCommands(apiKey: String): AddComputerSetupCommands {
-        val cleanApiKey = apiKey.trim()
-        if (cleanApiKey.isBlank()) return AddComputerSetupCommands()
-        val session = sessionStore.readSession()
-        val environment = apiEnvironmentStore?.current() ?: SharedApiEnvironmentStore.Production
-        val server = session.settingsCurrentServer()
-        val serverName = server?.name?.takeIf { it.isNotBlank() } ?: session.currentServerSlugForSettings() ?: "server"
-        val serverUrl = environment.socketBaseUrl.trimEnd('/')
-        val daemonTag = if (environment.key == SharedApiEnvironmentStore.Staging.key) "staging" else "latest"
-        val daemonRunCommand =
-            "npx @botiverse/raft-daemon@$daemonTag --server-url $serverUrl --api-key $cleanApiKey # $serverName"
-        val slug = session.currentServerSlugForSettings()?.trim()?.trimStart('/')
-        val computerSetupCommand =
-            if (!slug.isNullOrBlank() && (slug == "botiverse" || environment.key == SharedApiEnvironmentStore.CustomKey)) {
-                val serverUrlArg =
-                    when (environment.key) {
-                        SharedApiEnvironmentStore.Staging.key -> " --server-url https://slock-server-staging.fly.dev"
-                        SharedApiEnvironmentStore.CustomKey -> " --server-url $serverUrl"
-                        else -> ""
-                    }
-                "npm install -g @botiverse/raft-computer@latest && raft-computer setup /$slug$serverUrlArg"
-            } else {
-                null
-            }
-        return AddComputerSetupCommands(
-            daemonRunCommand = daemonRunCommand,
-            computerSetupCommand = computerSetupCommand
-        )
-    }
+    /** The context of the Add Computer dialog's `raft-computer` connect commands. */
+    suspend fun addComputerCommandContext(): SettingsComputerCommandContext? =
+        computerCommandContext(sessionStore.readSession())
 
     suspend fun loadServer(): DataResult<SettingsServerSnapshot> =
         settingsRepository?.getServerSettings() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -2364,6 +2339,10 @@ class SharedSettingsStore(
             }
             is SharedSettingsIntent.RegisterComputer -> {
                 runAction(COMPUTER_ACTION_REGISTER) {
+                    // The rows as they stand before the user can run the command (web connection baseline).
+                    val baseline =
+                        (_state.value.computers as? ScreenLoadState.Content)?.data?.computers.orEmpty()
+                            .map { it.toAddComputerBaselineEntry() }
                     _state.value = _state.value.copy(
                         addComputerDialog = _state.value.addComputerDialog?.copy(
                             registering = true,
@@ -2371,21 +2350,21 @@ class SharedSettingsStore(
                             screenError = null,
                             permissionBlocker = null,
                             emptyReason = null,
-                            copiedCommand = null
+                            baseline = baseline
                         )
                     )
                     val result = dataSource.registerComputer(intent.request)
                     when (result) {
                         is DataResult.Content -> {
                             val state = _state.value.addComputerDialog
-                            val commands = dataSource.buildAddComputerSetupCommands(result.data.apiKey.orEmpty())
+                            val commandContext = dataSource.addComputerCommandContext()
                             _state.value = _state.value.copy(
                                 addComputerDialog = state?.copy(
                                     step = AddComputerStep.Waiting,
                                     machineId = result.data.machine.id,
+                                    registeredMachineId = result.data.machine.id,
                                     apiKeyPrefix = result.data.apiKeyPrefix,
-                                    daemonRunCommand = commands.daemonRunCommand,
-                                    computerSetupCommand = commands.computerSetupCommand,
+                                    commandContext = commandContext,
                                     registering = false,
                                     errorMessage = null,
                                     screenError = null,
@@ -2473,23 +2452,11 @@ class SharedSettingsStore(
             is SharedSettingsIntent.PollAddComputerMachineStatus ->
                 scope.launch {
                     dataSource.loadComputers(forceComputers = true).applyToComputersListState()
-                    maybeAdvanceAddComputerDialogFromMachines(intent.machineId)
+                    maybeAdvanceAddComputerDialogFromMachines()
                 }
-            is SharedSettingsIntent.CopyAddComputerCommand -> {
-                val dialog = _state.value.addComputerDialog ?: return
-                val command =
-                    when (intent.target) {
-                        AddComputerCommandTarget.Daemon -> dialog.daemonRunCommand
-                        AddComputerCommandTarget.Computer -> dialog.computerSetupCommand
-                    }?.takeIf { it.isNotBlank() } ?: return
+            is SharedSettingsIntent.SetAddComputerConfirmedMatch ->
                 _state.value = _state.value.copy(
-                    addComputerDialog = dialog.copy(copiedCommand = intent.target),
-                    effect = SharedSettingsEffect.CopyText(command)
-                )
-            }
-            SharedSettingsIntent.ClearAddComputerCopiedCommand ->
-                _state.value = _state.value.copy(
-                    addComputerDialog = _state.value.addComputerDialog?.copy(copiedCommand = null)
+                    addComputerDialog = _state.value.addComputerDialog?.copy(confirmedMatch = intent.confirmed)
                 )
             SharedSettingsIntent.CompleteAddComputerDialog ->
                 scope.launch { completeAddComputerDialog() }
@@ -3076,7 +3043,7 @@ class SharedSettingsStore(
                     }
                     SharedSettingsDestination.Computers -> {
                         dataSource.loadComputers(forceComputers = true).applyToComputersListState()
-                        machineIds.forEach(::maybeAdvanceAddComputerDialogFromMachines)
+                        maybeAdvanceAddComputerDialogFromMachines()
                     }
                     else -> Unit
                 }
@@ -3088,10 +3055,13 @@ class SharedSettingsStore(
     }
 
     private fun dismissAddComputerDialog(cleanupPendingMachine: Boolean) {
-        val dialog = _state.value.addComputerDialog
+        val dialog = _state.value.addComputerDialog ?: return
         _state.value = _state.value.copy(addComputerDialog = null)
-        val machineId = dialog?.machineId?.takeIf { it.isNotBlank() } ?: return
-        if (!cleanupPendingMachine || dialog.step == AddComputerStep.Connected) return
+        // Web handleCancel: the placeholder goes unless it is the row that connected (and confirmed).
+        val machineId = (dialog.registeredMachineId ?: dialog.machineId)?.takeIf { it.isNotBlank() } ?: return
+        if (!cleanupPendingMachine) return
+        val connected = dialog.step == AddComputerStep.Connected && (!dialog.requiresConfirmation || dialog.confirmedMatch)
+        if (connected && dialog.machineId == machineId) return
         scope.launch {
             dataSource.deleteComputer(machineId)
             dataSource.loadComputers(forceComputers = true).applyToComputersListState()
@@ -3100,6 +3070,7 @@ class SharedSettingsStore(
 
     private suspend fun completeAddComputerDialog() {
         val dialog = _state.value.addComputerDialog ?: return
+        if (dialog.requiresConfirmation && !dialog.confirmedMatch) return
         val machineId = dialog.machineId?.takeIf { it.isNotBlank() } ?: run {
             dismissAddComputerDialog(cleanupPendingMachine = false)
             return
@@ -3119,6 +3090,8 @@ class SharedSettingsStore(
         if (finalName.isNotBlank() && finalName != "my-computer") {
             dataSource.renameComputer(SettingsComputerRenameRequest(machineId = machineId, name = finalName))
         }
+        // The Computer setup made its own row: the placeholder registered for this dialog goes.
+        dialog.registeredMachineId?.takeIf { it.isNotBlank() && it != machineId }?.let { dataSource.deleteComputer(it) }
         dataSource.loadComputers(forceComputers = true).applyToComputersListState()
         if (standaloneNavigation) {
             // The list page stays the list; the host opens the new machine's own detail page.
@@ -3138,22 +3111,25 @@ class SharedSettingsStore(
         loadComputerDetail(machineId)
     }
 
-    private fun maybeAdvanceAddComputerDialogFromMachines(machineId: String) {
+    private fun maybeAdvanceAddComputerDialogFromMachines() {
         val dialog = _state.value.addComputerDialog ?: return
         if (dialog.step != AddComputerStep.Waiting) return
-        if (dialog.machineId != null && dialog.machineId != machineId) return
         val machines = (_state.value.computers as? ScreenLoadState.Content)?.data ?: return
-        val machine = machines.computers.firstOrNull { it.id == machineId } ?: return
-        if (!machine.online) return
-        val connectedDetail = listOfNotNull(
-            machine.hostname?.takeIf { it.isNotBlank() },
-            machine.platform?.takeIf { it.isNotBlank() } ?: "Unknown OS"
-        ).joinToString(" - ").takeIf { it.isNotBlank() }
+        val match = resolveAddComputerConnectedMachine(machines.computers, dialog.registeredMachineId ?: dialog.machineId, dialog.baseline) ?: return
+        val machine = match.machine
+        val hostname = machine.hostname?.takeIf { it.isNotBlank() }
+        // Web: "hostname — os", only when the computer reported its hostname.
+        val connectedDetail = hostname?.let { "$it — ${machine.platform?.takeIf { os -> os.isNotBlank() } ?: "Unknown OS"}" }
         _state.value = _state.value.copy(
             addComputerDialog = dialog.copy(
                 step = AddComputerStep.Connected,
-                name = machine.hostname?.takeIf { it.isNotBlank() } ?: machine.name.takeIf { it.isNotBlank() } ?: dialog.name,
-                connectedDetail = connectedDetail
+                machineId = machine.id,
+                name = hostname ?: machine.name.takeIf { it.isNotBlank() } ?: dialog.name,
+                connectedDetail = connectedDetail,
+                connectedHostname = hostname,
+                connectedRuntimes = machine.runtimes,
+                requiresConfirmation = match.requiresConfirmation,
+                confirmedMatch = false
             )
         )
     }
@@ -4211,8 +4187,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetAddComputerRegistration,
             is SharedSettingsIntent.SetAddComputerError,
             is SharedSettingsIntent.PollAddComputerMachineStatus,
-            is SharedSettingsIntent.CopyAddComputerCommand,
-            SharedSettingsIntent.ClearAddComputerCopiedCommand,
+            is SharedSettingsIntent.SetAddComputerConfirmedMatch,
             SharedSettingsIntent.CompleteAddComputerDialog,
             is SharedSettingsIntent.DeleteComputer,
             is SharedSettingsIntent.RotateComputerKey,

@@ -1,96 +1,184 @@
 package build.raft.app
 
-import build.raft.designsystem.components.RaftButton
-import build.raft.designsystem.components.RaftButtonVariant
-import build.raft.designsystem.components.RaftButtonSize
-import build.raft.app.components.raftOptionSurface
-import build.raft.app.designtokens.RaftUiPalette
-import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftBrutalIconButton
-import build.raft.app.components.RaftBrutalTextField
-import build.raft.app.data.AddComputerCommandTarget
-import build.raft.app.data.AddComputerDialogState
-import build.raft.app.data.AddComputerStep
-import build.raft.app.data.AddComputerType
-import build.raft.app.data.SettingsComputerRegisterRequest
-import build.raft.app.data.SharedSettingsIntent
-import build.raft.app.resources.MR
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.Text
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import build.raft.app.data.AddComputerDialogState
+import build.raft.app.data.AddComputerStep
+import build.raft.app.data.AddComputerType
+import build.raft.app.data.SettingsComputerRegisterRequest
+import build.raft.app.data.SharedSettingsIntent
+import build.raft.app.resources.MR
+import build.raft.designsystem.components.RaftBadge
+import build.raft.designsystem.components.RaftBadgeAppearance
+import build.raft.designsystem.components.RaftBadgeVariant
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftCheckboxRow
+import build.raft.designsystem.components.RaftCodeBlock
+import build.raft.designsystem.components.RaftDialogSheet
+import build.raft.designsystem.components.RaftDialogSheetSurface
+import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.designsystem.components.RaftField
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
+import build.raft.designsystem.components.RaftSegment
+import build.raft.designsystem.components.RaftSegmentedControl
+import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextLink
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftRadius
+import build.raft.designsystem.tokens.RaftStroke
 import com.tencent.tmm.kmmresource.compose.stringResource
-import androidx.compose.ui.unit.sp
+
+/*
+ * Add Computer, after web AddMachineDialog.tsx and ComputerCommandGuide.tsx (botiverse/slock
+ * staging): on a phone the raft-ui Dialog "On a phone" sheet (`DialogCard narrow="sheet"`), × at
+ * the start of its head and the step's one commit button at the end; on a tablet the centred
+ * dialog. Three steps: the type, the `raft-computer` connect commands while waiting, and naming
+ * the computer that connected.
+ */
+
+/** Web `WAITING_HINT_DELAY_MS`: after this long, point the user at the terminal. */
+private const val AddComputerWaitingHintDelayMs = 45_000L
+
+/** The sheet's head for the current step: its title and its one commit button. */
+private class AddComputerSheetHead(
+    val title: String,
+    val commitLabel: String,
+    val commitEnabled: Boolean,
+    /** Connected (and confirmed when asked): × finishes instead of cancelling, as on the web. */
+    val canFinish: Boolean,
+)
+
+@Composable
+private fun addComputerSheetHead(state: AddComputerDialogState): AddComputerSheetHead {
+    val canFinish = state.step == AddComputerStep.Connected && (!state.requiresConfirmation || state.confirmedMatch)
+    return AddComputerSheetHead(
+        title =
+            when (state.step) {
+                AddComputerStep.Type -> stringResource(MR.strings.settings_computers_add_computer)
+                AddComputerStep.Waiting -> stringResource(MR.strings.settings_computers_dialog_title_connect)
+                AddComputerStep.Connected -> stringResource(MR.strings.settings_computers_dialog_title_connected)
+            },
+        commitLabel =
+            when {
+                state.step == AddComputerStep.Type && state.registering -> stringResource(MR.strings.settings_computers_setting_up)
+                state.step == AddComputerStep.Type -> stringResource(MR.strings.settings_computers_next)
+                state.step == AddComputerStep.Connected && state.saving -> stringResource(MR.strings.settings_computers_action_saving)
+                else -> stringResource(MR.strings.common_done)
+            },
+        commitEnabled =
+            when (state.step) {
+                AddComputerStep.Type -> state.canManage && !state.atLimit && !state.registering
+                // Web: Done waits, disabled, until the computer connects.
+                AddComputerStep.Waiting -> false
+                AddComputerStep.Connected -> canFinish && !state.saving
+            },
+        canFinish = canFinish,
+    )
+}
+
+private fun addComputerCommit(state: AddComputerDialogState, onIntent: (SharedSettingsIntent) -> Unit) {
+    when (state.step) {
+        AddComputerStep.Type -> onIntent(SharedSettingsIntent.RegisterComputer(SettingsComputerRegisterRequest(name = "my-computer")))
+        AddComputerStep.Waiting -> Unit
+        AddComputerStep.Connected -> onIntent(SharedSettingsIntent.CompleteAddComputerDialog)
+    }
+}
 
 @Composable
 internal fun AddComputerDialog(
     state: AddComputerDialogState,
     onIntent: (SharedSettingsIntent) -> Unit
 ) {
-    LaunchedEffect(state.copiedCommand) {
-        if (state.copiedCommand != null) {
-            kotlinx.coroutines.delay(2_000)
-            onIntent(SharedSettingsIntent.ClearAddComputerCopiedCommand)
-        }
-    }
-
-    val title = when (state.step) {
-        AddComputerStep.Type -> stringResource(MR.strings.settings_computers_add_computer)
-        AddComputerStep.Waiting -> stringResource(MR.strings.settings_computers_dialog_title_connect)
-        AddComputerStep.Connected -> stringResource(MR.strings.settings_computers_dialog_title_connected)
-    }
-    val dismissIntent =
-        if (state.step == AddComputerStep.Connected) {
-            SharedSettingsIntent.CompleteAddComputerDialog
-        } else {
-            SharedSettingsIntent.DismissAddComputerDialog
-        }
-    RaftUnifiedDialog(
-        title = title,
-        onDismiss = { onIntent(dismissIntent) },
-        dismissEnabled = !state.registering && !state.saving,
-        maxWidth = 520.dp,
-        contentPadding = 24.dp,
-        titleFontSize = 18,
-        titleLineHeight = 22,
-        contentSpacing = 12.dp,
-        keyboardAvoidanceEnabled = true
-    ) {
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+    // The dialog sits outside the page's design-system theme.
+    RaftDesignSystemTheme {
+        val head = addComputerSheetHead(state)
+        RaftDialogSheet(
+            onDismissRequest = {
+                if (state.registering || state.saving) return@RaftDialogSheet
+                onIntent(if (head.canFinish) SharedSettingsIntent.CompleteAddComputerDialog else SharedSettingsIntent.DismissAddComputerDialog)
+            },
+            title = head.title,
+            commitLabel = head.commitLabel,
+            commitEnabled = head.commitEnabled,
+            onCommit = { addComputerCommit(state, onIntent) },
+            closeLabel = stringResource(MR.strings.common_close),
+            cancelLabel = stringResource(MR.strings.common_cancel),
         ) {
-            item {
-                when (state.step) {
-                    AddComputerStep.Type -> AddComputerTypeStep(state, onIntent)
-                    AddComputerStep.Waiting -> AddComputerWaitingStep(state, onIntent)
-                    AddComputerStep.Connected -> AddComputerConnectedStep(state, onIntent)
-                }
-            }
+            AddComputerSheetBody(state, onIntent)
+        }
+    }
+}
+
+/** The phone sheet's surface without its window, for screenshot fixtures. */
+@Composable
+internal fun AddComputerSheetSurfaceForFixture(state: AddComputerDialogState, modifier: Modifier = Modifier) {
+    val head = addComputerSheetHead(state)
+    RaftDialogSheetSurface(
+        title = head.title,
+        commitLabel = head.commitLabel,
+        commitEnabled = head.commitEnabled,
+        onCommit = {},
+        onClose = {},
+        modifier = modifier,
+        closeLabel = stringResource(MR.strings.common_close),
+    ) {
+        AddComputerSheetBody(state, onIntent = {})
+    }
+}
+
+@Composable
+private fun ColumnScope.AddComputerSheetBody(state: AddComputerDialogState, onIntent: (SharedSettingsIntent) -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .weight(1f, fill = false)
+            .imePadding()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        when (state.step) {
+            AddComputerStep.Type -> AddComputerTypeStep(state, onIntent)
+            AddComputerStep.Waiting -> AddComputerWaitingStep(state, onIntent)
+            AddComputerStep.Connected -> AddComputerConnectedStep(state, onIntent)
         }
     }
 }
@@ -101,70 +189,33 @@ private fun AddComputerTypeStep(
     onIntent: (SharedSettingsIntent) -> Unit
 ) {
     val userFacingError = state.userFacingErrorMessage(localizedErrorPresentationStrings())
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    // Web: one warning Banner for the limit or a failed registration.
+    val warning =
         if (!state.canManage || state.atLimit) {
-            Text(
-                userFacingError ?: stringResource(MR.strings.settings_computers_error_add_permission),
-                style = RaftType.Caption.copy(color = RaftColor.AccentRed),
-                color = RaftColor.AccentRed
-            )
+            userFacingError ?: stringResource(MR.strings.settings_computers_error_add_permission)
+        } else {
+            userFacingError?.takeIf { it.isNotBlank() }
         }
-        Text(
-            stringResource(MR.strings.settings_computers_choose_connection),
-            style = RaftType.Body.copy(fontSize = 14.sp, color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack
+    if (warning != null) RaftBanner(description = warning, status = RaftBannerStatus.Warning)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        AddComputerTypeCard(
+            title = stringResource(MR.strings.settings_computers_your_computer),
+            detail = stringResource(MR.strings.settings_computers_your_computer_hint),
+            iconName = RaftLucideIconName.Monitor,
+            selected = state.machineType == AddComputerType.Local,
+            enabled = true,
+            onClick = { onIntent(SharedSettingsIntent.SetAddComputerType(AddComputerType.Local)) },
+            modifier = Modifier.weight(1f)
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AddComputerTypeCard(
-                title = stringResource(MR.strings.settings_computers_your_computer),
-                detail = stringResource(MR.strings.settings_computers_your_computer_hint),
-                iconName = RaftLucideIconName.Monitor,
-                selected = state.machineType == AddComputerType.Local,
-                enabled = state.canManage && !state.atLimit && !state.registering,
-                onClick = { onIntent(SharedSettingsIntent.SetAddComputerType(AddComputerType.Local)) },
-                modifier = Modifier.weight(1f)
-            )
-            AddComputerTypeCard(
-                title = stringResource(MR.strings.settings_computers_cloud_computer),
-                detail = stringResource(MR.strings.settings_computers_coming_soon),
-                iconName = RaftLucideIconName.Server,
-                selected = state.machineType == AddComputerType.Cloud,
-                enabled = false,
-                onClick = { onIntent(SharedSettingsIntent.SetAddComputerType(AddComputerType.Cloud)) },
-                modifier = Modifier.weight(1f)
-            )
-        }
-        Text(
-            stringResource(MR.strings.settings_computers_install_daemon_hint),
-            style = RaftType.Body.copy(fontSize = 14.sp, color = RaftColor.TextBlack),
-            color = RaftColor.TextBlack
+        AddComputerTypeCard(
+            title = stringResource(MR.strings.settings_computers_cloud_computer),
+            detail = stringResource(MR.strings.settings_computers_coming_soon),
+            iconName = RaftLucideIconName.Server,
+            selected = false,
+            enabled = false,
+            onClick = {},
+            modifier = Modifier.weight(1f)
         )
-        userFacingError?.takeIf { it.isNotBlank() && state.canManage && !state.atLimit }?.let {
-            Text(it, style = RaftType.Caption.copy(color = RaftColor.AccentRed), color = RaftColor.AccentRed)
-        }
-        RaftDialogFooter {
-            RaftButton(
-                text = stringResource(MR.strings.common_cancel),
-                onClick = { onIntent(SharedSettingsIntent.DismissAddComputerDialog) },
-                enabled = !state.registering,
-                variant = RaftButtonVariant.Ghost,
-                size = RaftButtonSize.Lg
-            )
-            RaftBrutalActionButton(
-                label = if (state.registering) {
-                    stringResource(MR.strings.settings_computers_setting_up)
-                } else {
-                    stringResource(MR.strings.settings_computers_next)
-                },
-                onClick = {
-                    onIntent(SharedSettingsIntent.RegisterComputer(SettingsComputerRegisterRequest(name = "my-computer")))
-                },
-                enabled = state.canManage && !state.atLimit && !state.registering,
-                leadingIcon = if (state.registering) RaftLucideIconName.LoaderCircle else RaftLucideIconName.Plus,
-                leadingIconSpinning = state.registering,
-                backgroundColor = RaftColor.AccentPink
-            )
-        }
     }
 }
 
@@ -174,94 +225,119 @@ private fun AddComputerWaitingStep(
     onIntent: (SharedSettingsIntent) -> Unit
 ) {
     val userFacingError = state.userFacingErrorMessage(localizedErrorPresentationStrings())
-    LaunchedEffect(state.step, state.machineId) {
-        val targetId = state.machineId ?: return@LaunchedEffect
-        while (state.step == AddComputerStep.Waiting) {
+    LaunchedEffect(state.step, state.registeredMachineId) {
+        val targetId = state.registeredMachineId ?: state.machineId ?: return@LaunchedEffect
+        while (true) {
             kotlinx.coroutines.delay(3_000)
             onIntent(SharedSettingsIntent.PollAddComputerMachineStatus(targetId))
         }
     }
+    var stalled by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(AddComputerWaitingHintDelayMs)
+        stalled = true
+    }
+    AddComputerCommandGuide(state, onCopy = { onIntent(SharedSettingsIntent.CopyComputerCommand(it)) })
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            RaftLucideIcon(RaftLucideIconName.Terminal, modifier = Modifier.size(16.dp))
-            Text(
-                stringResource(MR.strings.settings_computers_run_command_hint),
-                style = RaftType.Body.copy(fontSize = 14.sp, color = RaftColor.TextBlack)
-                    .withRaftFontWeight(FontWeight.Bold),
-                color = RaftColor.TextBlack
+        // Web: an info Banner whose spinner takes the icon's place while the computer connects.
+        RaftBanner(
+            description = addComputerBold(stringResource(MR.strings.settings_computers_waiting_for_connection)),
+            status = RaftBannerStatus.Info,
+            pending = true,
+        )
+        if (stalled) {
+            RaftText(
+                stringResource(MR.strings.settings_computers_still_waiting_hint),
+                style = RaftTheme.typography.footnote,
+                color = RaftTheme.colors.foregroundMuted,
             )
         }
-        val daemonCommand = state.daemonRunCommand
-        if (!daemonCommand.isNullOrBlank()) {
-            AddComputerCommandRow(
-                command = daemonCommand,
-                copyTarget = AddComputerCommandTarget.Daemon,
-                copied = state.copiedCommand == AddComputerCommandTarget.Daemon,
-                onIntent = onIntent
-            )
+    }
+    userFacingError?.takeIf { it.isNotBlank() }?.let { RaftBanner(description = it, status = RaftBannerStatus.Warning) }
+}
+
+/** Web `ComputerCommandGuide`: the connect command for macOS / Linux or Windows x64. */
+@Composable
+private fun AddComputerCommandGuide(state: AddComputerDialogState, onCopy: (String) -> Unit) {
+    var platform by remember { mutableStateOf(RaftComputerCommandPlatform.MacLinux) }
+    var showConnectOnly by remember { mutableStateOf(false) }
+    val macLinux = raftComputerCommands(state.commandContext, RaftComputerCommandPlatform.MacLinux)
+    val windows = raftComputerCommands(state.commandContext, RaftComputerCommandPlatform.Windows)
+    val commands = if (platform == RaftComputerCommandPlatform.Windows) windows else macLinux
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // On a phone the eyebrow and the platform switch stack (web `flex-col sm:flex-row`).
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                AddComputerIcon(RaftLucideIconName.Terminal, muted = true)
+                RaftText(
+                    stringResource(MR.strings.settings_computers_connect_command),
+                    style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Bold),
+                    color = RaftTheme.colors.foregroundHint,
+                )
+            }
+            RaftSegmentedControl {
+                RaftSegment(
+                    text = stringResource(MR.strings.settings_computers_mac_linux),
+                    selected = platform == RaftComputerCommandPlatform.MacLinux,
+                    onClick = { platform = RaftComputerCommandPlatform.MacLinux },
+                )
+                RaftSegment(
+                    text = stringResource(MR.strings.settings_computers_windows_x64),
+                    selected = platform == RaftComputerCommandPlatform.Windows,
+                    onClick = { platform = RaftComputerCommandPlatform.Windows },
+                )
+            }
+        }
+        RaftText(
+            when {
+                commands == null -> stringResource(MR.strings.settings_computers_generate_fresh_connect)
+                platform == RaftComputerCommandPlatform.Windows -> stringResource(MR.strings.settings_computers_windows_computer_description)
+                else -> stringResource(MR.strings.settings_computers_mac_linux_computer_description)
+            },
+            style = RaftTheme.typography.footnote,
+            color = RaftTheme.colors.foregroundMuted,
+        )
+        if (commands == null) {
+            AddComputerCommandPlaceholder(stringResource(MR.strings.settings_computers_generate_fresh_connect))
+            return@Column
+        }
+        if (platform == RaftComputerCommandPlatform.Windows) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                RaftText(
+                    stringResource(MR.strings.settings_computers_raft_computer_windows_x64),
+                    style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Bold),
+                    color = RaftTheme.colors.foreground,
+                )
+                RaftBadge(text = stringResource(MR.strings.settings_computers_badge_experimental), variant = RaftBadgeVariant.Success)
+            }
+        }
+        // mac/Linux production: one install-then-setup line; otherwise the two steps.
+        val oneLine = commands.installAndSetup.takeIf { platform == RaftComputerCommandPlatform.MacLinux }
+        if (oneLine != null) {
+            AddComputerCommandRow(oneLine, onCopy)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                RaftTextLink(
+                    text = stringResource(MR.strings.settings_computers_already_installed),
+                    onClick = { showConnectOnly = !showConnectOnly },
+                    style = RaftTheme.typography.footnote,
+                )
+                if (showConnectOnly) {
+                    RaftText(
+                        stringResource(MR.strings.settings_computers_connect_only_description),
+                        style = RaftTheme.typography.footnote,
+                        color = RaftTheme.colors.foregroundMuted,
+                    )
+                    AddComputerCommandRow(commands.setup, onCopy)
+                }
+            }
         } else {
-            SettingsComputerCommandFallback(state)
-        }
-        val computerCommand = state.computerSetupCommand
-        if (!computerCommand.isNullOrBlank()) {
-            Text(
-                stringResource(MR.strings.settings_computers_detail_computer),
-                style = RaftType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 14.sp, color = RaftColor.TextMutedGray),
-                color = RaftColor.TextMutedGray
-            )
-            AddComputerCommandRow(
-                command = computerCommand,
-                copyTarget = AddComputerCommandTarget.Computer,
-                copied = state.copiedCommand == AddComputerCommandTarget.Computer,
-                onIntent = onIntent
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth()
-                .background(RaftColor.SurfaceCream)
-                .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            RaftStatusIndicator(color = RaftColor.BrandYellow)
-            Text(
-                stringResource(MR.strings.settings_computers_waiting_for_connection),
-                style = RaftType.Body.copy(fontSize = 14.sp, color = RaftColor.TextBlack)
-                    .withRaftFontWeight(FontWeight.Bold),
-                color = RaftColor.TextBlack
-            )
-        }
-        state.apiKeyPrefix?.takeIf { it.isNotBlank() }?.let {
-            Text(
-                stringResource(MR.strings.settings_computers_api_key_prefix, it),
-                style = RaftType.Caption.copy(fontSize = 12.sp, color = RaftColor.TextMutedGray),
-                color = RaftColor.TextMutedGray
-            )
-        }
-        userFacingError?.takeIf { it.isNotBlank() }?.let {
-            Text(it, style = RaftType.Caption.copy(color = RaftColor.AccentRed), color = RaftColor.AccentRed)
-        }
-        RaftDialogFooter {
-            RaftButton(
-                text = stringResource(MR.strings.common_cancel),
-                onClick = { onIntent(SharedSettingsIntent.DismissAddComputerDialog) },
-                variant = RaftButtonVariant.Ghost,
-                size = RaftButtonSize.Lg
-            )
-            RaftButton(
-                text = stringResource(MR.strings.common_done),
-                onClick = {},
-                enabled = false,
-                size = RaftButtonSize.Lg
-            )
+            AddComputerCommandRow(commands.install, onCopy, label = stringResource(MR.strings.settings_computers_install_step))
+            AddComputerCommandRow(commands.setup, onCopy, label = stringResource(MR.strings.settings_computers_setup_step))
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AddComputerConnectedStep(
     state: AddComputerDialogState,
@@ -275,67 +351,78 @@ private fun AddComputerConnectedStep(
     var nameValue by remember {
         mutableStateOf(TextFieldValue(state.name, selection = TextRange(state.name.length)))
     }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth()
-                .background(RaftColor.AccentLime)
-                .border(RaftAppStroke.Default, RaftColor.StickerInk)
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            RaftLucideIcon(RaftLucideIconName.CircleCheckBig, modifier = Modifier.size(22.dp), color = raftArgbHex(RaftColor.StickerInk))
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    stringResource(MR.strings.settings_computers_connected_success),
-                    style = RaftType.Body.copy(fontSize = 14.sp, color = RaftColor.StickerInk)
-                        .withRaftFontWeight(FontWeight.Bold),
-                    color = RaftColor.StickerInk
-                )
-                state.connectedDetail?.takeIf { it.isNotBlank() }?.let {
-                    // Muted type on the lime sticker stays the light neutral-500 in both modes.
-                    Text(
-                        it,
-                        style = RaftType.Input.copy(
-                            fontSize = 12.sp,
-                            lineHeight = 16.sp,
-                            fontFamily = RaftMonoFamily,
-                            color = RaftUiPalette.neutral500
-                        ),
-                        color = RaftUiPalette.neutral500,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-        RaftBrutalTextField(
-            label = stringResource(MR.strings.settings_computers_label_name),
+    val detail = state.connectedDetail?.takeIf { it.isNotBlank() }
+    val monoMeta = RaftTheme.typography.monoMeta
+    val connectedTitle = stringResource(MR.strings.settings_computers_connected_success)
+    // Web: the success Banner's title, and "hostname — os" in mono under it when reported.
+    if (detail == null) {
+        RaftBanner(description = addComputerBold(connectedTitle), status = RaftBannerStatus.Success)
+    } else {
+        RaftBanner(
+            description = buildAnnotatedString { withStyle(monoMeta.toSpanStyle()) { append(detail) } },
+            title = connectedTitle,
+            status = RaftBannerStatus.Success,
+        )
+    }
+    RaftField(
+        label = stringResource(MR.strings.settings_computers_label_name),
+        description = stringResource(MR.strings.settings_computers_name_hint),
+        enabled = !state.saving,
+    ) {
+        RaftTextField(
             value = nameValue,
-            placeholder = state.connectedDetail?.substringBefore(" - ")
-                ?: stringResource(MR.strings.settings_computers_placeholder_name),
             onValueChange = {
                 nameValue = it
                 onIntent(SharedSettingsIntent.SetAddComputerName(it.text))
             },
-            required = true,
-            enabled = !state.saving
+            placeholder = state.connectedHostname ?: stringResource(MR.strings.settings_computers_placeholder_name),
+            enabled = !state.saving,
         )
-        RaftDialogFooter {
-            RaftButton(
-                text = if (state.saving) {
-                    stringResource(MR.strings.settings_computers_action_saving)
-                } else {
-                    stringResource(MR.strings.common_done)
-                },
-                onClick = { onIntent(SharedSettingsIntent.CompleteAddComputerDialog) },
-                enabled = !state.saving,
-                size = RaftButtonSize.Lg
+    }
+    if (state.connectedRuntimes.isNotEmpty()) {
+        // Web KeyValueRow "Detected Runtimes": every runtime, cyan-soft when detected.
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            RaftText(
+                stringResource(MR.strings.settings_computers_label_runtimes),
+                style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Medium),
+                color = RaftTheme.colors.foregroundMuted,
             )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                raftComputerRuntimeChips(state.connectedRuntimes).forEach { chip -> AddComputerRuntimeBadge(chip) }
+            }
         }
+    }
+    if (state.requiresConfirmation) {
+        val hostname = state.connectedHostname?.let { " ($it)" }.orEmpty()
+        RaftCheckboxRow(
+            label = stringResource(MR.strings.settings_computers_confirm_match, hostname),
+            checked = state.confirmedMatch,
+            onCheckedChange = { onIntent(SharedSettingsIntent.SetAddComputerConfirmedMatch(it)) },
+            enabled = !state.saving,
+        )
     }
 }
 
+@Composable
+private fun AddComputerRuntimeBadge(chip: RaftComputerRuntimeChip) {
+    val suffix =
+        when (chip.availability) {
+            RaftComputerRuntimeAvailability.Detected -> ""
+            RaftComputerRuntimeAvailability.NotInstalled -> stringResource(MR.strings.agent_create_suffix_not_installed)
+            RaftComputerRuntimeAvailability.UpdateComputer -> stringResource(MR.strings.settings_computers_runtime_suffix_update_computer)
+        }
+    RaftBadge(
+        text = chip.name + suffix,
+        appearance = RaftBadgeAppearance.Soft,
+        variant =
+            if (chip.availability == RaftComputerRuntimeAvailability.Detected) RaftBadgeVariant.Information else RaftBadgeVariant.Muted,
+    )
+}
+
+/**
+ * Web Add Machine option card: `rounded-control`, a 1.5dp `line-strong` edge, `info-soft` when
+ * picked; the unavailable option is the disabled surface (`fill-muted`, hairline, disabled ink).
+ */
 @Composable
 private fun AddComputerTypeCard(
     title: String,
@@ -346,105 +433,107 @@ private fun AddComputerTypeCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val colors = RaftTheme.colors
+    val shape = RoundedCornerShape(RaftRadius.Control)
     Row(
         modifier = modifier
-            .raftOptionSurface(selected = selected, enabled = enabled || selected)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(10.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .background(
+                when {
+                    !enabled -> colors.fillMuted
+                    selected -> colors.infoSoft
+                    else -> colors.layerCard
+                },
+                shape,
+            )
+            .border(
+                if (enabled) RaftStroke.Control else RaftStroke.Hairline,
+                if (enabled) colors.lineStrong else colors.lineHairline,
+                shape,
+            )
+            .semantics { this.selected = selected }
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        RaftLucideIcon(
-            iconName,
-            modifier = Modifier.size(18.dp),
-            color = raftArgbHex(if (enabled || selected) RaftColor.TextBlack else RaftColor.ForegroundDisabled)
-        )
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
+        AddComputerIcon(iconName, size = 20, muted = enabled, disabled = !enabled)
+        Column(modifier = Modifier.weight(1f)) {
+            RaftText(
                 title,
-                // Web AddMachineDialog type cards: text-sm title, text-xs detail.
-                style = RaftType.Button.copy(
-                    fontSize = 14.sp,
-                    lineHeight = 18.sp,
-                    color = if (enabled || selected) RaftColor.TextBlack else RaftColor.TextMutedGray
-                ),
-                color = if (enabled || selected) RaftColor.TextBlack else RaftColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
+                color = if (enabled) colors.foreground else colors.foregroundDisabled,
             )
-            Text(
+            RaftText(
                 detail,
-                style = RaftType.Caption.copy(
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp,
-                    color = if (enabled || selected) RaftColor.TextMutedGray else RaftColor.EmptyStateGray
-                ),
-                color = if (enabled || selected) RaftColor.TextMutedGray else RaftColor.EmptyStateGray,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
+                style = RaftTheme.typography.footnote,
+                color = if (enabled) colors.foregroundMuted else colors.foregroundDisabled,
             )
         }
     }
 }
 
+/** Web `CommandRow`: an optional step label over the command and its copy button. */
 @Composable
-private fun AddComputerCommandRow(
-    command: String,
-    copyTarget: AddComputerCommandTarget,
-    copied: Boolean,
-    onIntent: (SharedSettingsIntent) -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier.weight(1f)
-                .background(RaftColor.StickerInk)
-                .border(RaftAppStroke.Default, RaftColor.StickerInk)
-                .padding(10.dp)
-        ) {
-            Text(
-                command,
-                style = RaftType.Input.copy(
-                    fontFamily = RaftMonoFamily,
-                    fontSize = 11.sp,
-                    lineHeight = 15.sp,
-                    color = RaftColor.AccentLime
-                ),
-                color = RaftColor.AccentLime,
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis
+private fun AddComputerCommandRow(command: String, onCopy: (String) -> Unit, label: String? = null) {
+    var copied by remember(command) { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            kotlinx.coroutines.delay(2_000)
+            copied = false
+        }
+    }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (label != null) {
+            RaftText(
+                label,
+                style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.SemiBold),
+                color = RaftTheme.colors.foreground,
             )
         }
-        RaftBrutalIconButton(
-            iconName = if (copied) RaftLucideIconName.Check else RaftLucideIconName.Copy,
-            onClick = { onIntent(SharedSettingsIntent.CopyAddComputerCommand(copyTarget)) },
-            contentDescription = stringResource(if (copied) MR.strings.common_copied else MR.strings.common_copy),
-            size = 30.dp,
-            backgroundColor = RaftColor.SurfaceWhite
+        RaftCodeBlock(
+            text = command,
+            action = {
+                RaftIconButton(
+                    onClick = {
+                        onCopy(command)
+                        copied = true
+                    },
+                    tooltip = stringResource(if (copied) MR.strings.common_copied else MR.strings.settings_computers_copy_command),
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftIconButtonSize.Md,
+                ) {
+                    AddComputerIcon(if (copied) RaftLucideIconName.Check else RaftLucideIconName.Copy)
+                }
+            },
         )
     }
 }
 
+/** Web `COMMAND_PLACEHOLDER_CLASS_NAME`: where the command would be when there is none yet. */
 @Composable
-private fun SettingsComputerCommandFallback(state: AddComputerDialogState) {
-    val pending = stringResource(MR.strings.settings_computers_api_key_pending)
+private fun AddComputerCommandPlaceholder(text: String) {
+    val shape = RoundedCornerShape(RaftRadius.Control)
     Box(
-        modifier = Modifier.fillMaxWidth()
-            .background(RaftColor.SurfaceCream)
-            .border(RaftAppStroke.Default, RaftColor.BorderBlack)
-            .padding(12.dp)
+        Modifier
+            .fillMaxWidth()
+            .border(RaftStroke.Hairline, RaftTheme.colors.lineSeam, shape)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
-        Text(
-            stringResource(MR.strings.settings_computers_api_key_prefix, state.apiKeyPrefix ?: pending),
-            style = RaftType.Input.copy(
-                fontSize = 13.sp,
-                color = RaftColor.TextBlack,
-                fontStyle = FontStyle.Italic
-            ),
-            color = RaftColor.TextBlack
-        )
+        RaftText(text, style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundHint)
     }
+}
+
+private fun addComputerBold(text: String): AnnotatedString =
+    buildAnnotatedString { withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(text) } }
+
+@Composable
+private fun AddComputerIcon(name: RaftLucideIconName, size: Int = 16, muted: Boolean = false, disabled: Boolean = false) {
+    val colors = RaftTheme.colors
+    val ink =
+        when {
+            disabled -> colors.foregroundDisabled
+            muted -> colors.foregroundMuted
+            else -> colors.foreground
+        }
+    RaftLucideIcon(name, modifier = Modifier.size(size.dp), color = raftArgbHex(ink))
 }
