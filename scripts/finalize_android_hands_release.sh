@@ -173,6 +173,42 @@ if int(code) != expected:
     raise SystemExit(f"Hands draft does not report expected versionCode {expected}; saw {code}")
 PY
 
+# Before flipping the release live, check that the build behind it was actually built for
+# this channel. The channel is a compile-time constant, so a package built for another
+# channel cannot be republished here without making installed clients check the wrong
+# channel for updates — that is how 1.15.3 reached main. The build's recorded metadata is
+# written by the packaging step, so it is independent of the release target.
+RELEASE_CHANNEL="$(
+  python3 - "${RELEASE_JSON}" <<'PYCHANNEL'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as source:
+    payload = json.load(source)
+if isinstance(payload, dict) and isinstance(payload.get("release"), dict):
+    print(payload["release"].get("channel") or "")
+PYCHANNEL
+)"
+[ -n "${RELEASE_CHANNEL}" ] || die "Hands release reports no channel; refusing to publish"
+
+RELEASE_BUILD_ID="$(
+  python3 - "${RELEASE_JSON}" <<'PYBUILD'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as source:
+    payload = json.load(source)
+build = payload.get("build") if isinstance(payload, dict) else None
+print(build.get("id") if isinstance(build, dict) else "")
+PYBUILD
+)"
+[ -n "${RELEASE_BUILD_ID}" ] || die "Hands release reports no build id; refusing to publish"
+
+"${ROOT_DIR}/scripts/check_android_hands_release_channel.sh" \
+  --app "${APP_ID}" \
+  --build "${RELEASE_BUILD_ID}" \
+  --channel "${RELEASE_CHANNEL}"
+
 run_hands releases update "${HANDS_APP_SLUG}" "${RELEASE_ID}" \
   --changelog-file "zh-CN=${ZH_NOTES}" \
   --changelog-file "en=${EN_NOTES}" \
