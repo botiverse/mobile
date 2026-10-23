@@ -62,6 +62,11 @@ internal class SharedHomeSearchSavedStore(
     private var personalizationPrewarmedOwner: SearchPersonalizationOwner? = null
     private var readPredictionRevisions: Map<ChannelId, Long> = emptyMap()
     private var savedOwner: SavedStateOwner? = null
+    // Server-scoped Search state (message rows, sender filters, channel/sender selections) belongs
+    // to this owner. The Search tab outlives a server switch, so a change of owner drops all of it.
+    private var searchServerOwner: SearchServerOwner? = null
+    private var searchOpened = false
+    private var authEventsJob: Job? = null
     private val pendingSavedUnsaves = mutableMapOf<MessageId, PendingSavedUnsave>()
     private val savedOrderRanks = mutableMapOf<MessageId, Long>()
     private var nextSavedOrderRank = 0L
@@ -79,24 +84,98 @@ internal class SharedHomeSearchSavedStore(
                 }
             }
         }
-        if (personalizationRepository != null) {
-            (authStore as? RaftAuthSessionEventSource)?.let { authEvents ->
+        runCatching {
+            runBlocking {
+                withTimeout(SearchPersonalizationPrewarmTimeoutMillis) {
+                    adoptSearchServerOwner(SearchServerOwner.from(authStore.readSession()), reload = false)
+                }
+            }
+        }
+        (authStore as? RaftAuthSessionEventSource)?.let { authEvents ->
+            authEventsJob =
                 scope.launch {
                     authEvents.authSessionEvents.collect { event ->
                         if (event !is AuthSessionEvent.TokensRotated) {
+                            reconcileSearchServerOwner()
                             refreshSearchPersonalization()
                         }
                     }
                 }
-            }
+        }
+        if (personalizationRepository != null) {
             prewarmSearchPersonalization()
         }
+    }
+
+    /** Re-reads the session's server and drops server-scoped Search state when it changed. */
+    private suspend fun reconcileSearchServerOwner(): SearchServerOwner? {
+        val owner = SearchServerOwner.from(runCatching { authStore.readSession() }.getOrNull())
+        adoptSearchServerOwner(owner, reload = true)
+        return owner
+    }
+
+    /**
+     * Adopts [owner] as the server Search results belong to. When it replaces a different owner
+     * (a server or account switch), every server-scoped part of the state is dropped and any
+     * in-flight search / sender-filter request is invalidated, so nothing from the previous server
+     * can reach the new one. With [reload], the open Search re-runs against the new server.
+     */
+    private fun adoptSearchServerOwner(owner: SearchServerOwner?, reload: Boolean) {
+        val previous = searchServerOwner
+        if (owner == previous) return
+        searchServerOwner = owner
+        if (previous == null) {
+            _state.value = _state.value.copy(search = _state.value.search.copy(serverId = owner?.serverId?.value))
+            return
+        }
+        diagnosticsLogger(
+            "search_server_owner_changed from=${previous.serverId.value} to=${owner?.serverId?.value ?: "_"}"
+        )
+        searchJob?.cancel()
+        searchJob = null
+        searchDebounceJob?.cancel()
+        searchDebounceJob = null
+        senderFiltersJob?.cancel()
+        senderFiltersJob = null
+        searchRequestToken++
+        senderFiltersRequestToken++
+        senderFiltersOwner = null
+        readPredictionRevisions = emptyMap()
+        _state.value =
+            _state.value.copy(
+                search =
+                    _state.value.search.copy(
+                        serverId = owner?.serverId?.value,
+                        selectedSenderIds = emptyList(),
+                        selectedChannelId = null,
+                        senderFilters = emptyList(),
+                        senderFiltersLoading = false,
+                        senderFiltersErrorCode = null,
+                        items = emptyList(),
+                        totalCount = 0,
+                        searched = false,
+                        loading = false,
+                        refreshing = false,
+                        loadingMore = false,
+                        querySearchPending = false,
+                        empty = false,
+                        hasMore = false,
+                        nextOffset = null,
+                        errorCode = null,
+                        noPermissionCode = null,
+                        resultQuery = null,
+                    )
+            )
+        if (!reload || owner == null) return
+        if (searchOpened) loadSenderFilters()
+        if (_state.value.search.hasMessageSearchIntent()) runSearch(refresh = true)
     }
 
     fun dispatch(intent: SharedHomeSearchSavedIntent) {
         when (intent) {
             SharedHomeSearchSavedIntent.ClearSavedSummary -> clearSavedSummary()
             SharedHomeSearchSavedIntent.OpenSearch -> {
+                searchOpened = true
                 loadSenderFilters()
                 refreshSearchPersonalization()
             }
@@ -262,6 +341,8 @@ internal class SharedHomeSearchSavedStore(
         senderFiltersJob?.cancel()
         personalizationJob?.cancel()
         personalizationWriteJob?.cancel()
+        authEventsJob?.cancel()
+        authEventsJob = null
         savedJob = null
         searchJob = null
         searchDebounceJob = null
@@ -544,8 +625,16 @@ internal class SharedHomeSearchSavedStore(
                 try {
                     val session = authStore.readSession()
                         ?: return@launch setSearchErrorIfActive(requestToken, "unauthenticated")
-                    val serverId = session.currentServerId?.let(::ServerId)
+                    val owner = SearchServerOwner.from(session)
                         ?: return@launch setSearchErrorIfActive(requestToken, "server_missing")
+                    if (owner != searchServerOwner) {
+                        // The server changed before its auth event reached this store: drop the
+                        // previous server's state; that re-runs this search for the new server.
+                        val switched = searchServerOwner != null
+                        adoptSearchServerOwner(owner, reload = true)
+                        if (switched) return@launch
+                    }
+                    val serverId = owner.serverId
                     val bounds = timeRangeBoundsProvider(previous.timeRange)
                     val senderIds =
                         when {
@@ -586,7 +675,15 @@ internal class SharedHomeSearchSavedStore(
                         } else {
                             fetchPage(previous.nextOffset ?: previous.items.size, HomeSearchPageSize)
                         }
-                    if (isActiveSearchRequest(requestToken)) {
+                    val latestOwner = SearchServerOwner.from(authStore.readSession())
+                    if (latestOwner != owner) {
+                        // A response for a server the user has left: never show it.
+                        diagnosticsLogger(
+                            "store_load domain=search result=stale_server serverId=${owner.serverId.value} " +
+                                "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                        )
+                        adoptSearchServerOwner(latestOwner, reload = true)
+                    } else if (isActiveSearchRequest(requestToken)) {
                         applySearchResult(
                             result = result,
                             append = !refresh,
@@ -715,7 +812,7 @@ internal class SharedHomeSearchSavedStore(
             intent.entityKind?.let { kind ->
                 SearchPersonalizationEntityKey.create(kind, intent.entityId)
             }
-        mutateSearchPersonalization { repository, owner, timestamp ->
+        mutateSearchPersonalization(expectedServerId = intent.serverId) { repository, owner, timestamp ->
             repository.recordSuccessfulOpen(
                 owner = owner,
                 rawQuery = intent.query,
@@ -726,6 +823,7 @@ internal class SharedHomeSearchSavedStore(
     }
 
     private fun mutateSearchPersonalization(
+        expectedServerId: String? = null,
         mutation: suspend (
             repository: SearchPersonalizationRepository,
             owner: SearchPersonalizationOwner,
@@ -740,6 +838,10 @@ internal class SharedHomeSearchSavedStore(
                 predecessor?.join()
                 val owner = currentSearchPersonalizationOwner() ?: return@launch
                 if (requestToken != personalizationRequestToken) return@launch
+                if (expectedServerId != null && expectedServerId.trim() != owner.serverId) {
+                    diagnosticsLogger("search_personalization_write_dropped reason=server_mismatch")
+                    return@launch
+                }
                 val snapshot = mutation(repository, owner, nowMillis())
                 if (!personalizationRequestStillActive(requestToken, owner)) return@launch
                 personalizationOwner = owner
@@ -1220,6 +1322,20 @@ private data class SenderFiltersOwner(
     val principalId: String,
 )
 
+/** The server + principal every Search result (messages, sender filters, filters) belongs to. */
+private data class SearchServerOwner(
+    val serverId: ServerId,
+    val principalId: String,
+) {
+    companion object {
+        fun from(session: StoredAuthSession?): SearchServerOwner? {
+            val serverId = session?.currentServerId?.trim()?.takeIf { it.isNotBlank() } ?: return null
+            val principalId = session.user.id.trim().takeIf { it.isNotBlank() } ?: return null
+            return SearchServerOwner(ServerId(serverId), principalId)
+        }
+    }
+}
+
 private data class PendingSavedUnsave(
     val item: InboxItem,
     val owner: SavedStateOwner
@@ -1382,6 +1498,9 @@ data class SharedHomeSavedPanelState(
 )
 
 data class SharedHomeSearchPanelState(
+    // The server the server-scoped parts of this state (message rows, sender filters, channel and
+    // sender selections) belong to. Hosts scope their local candidates (Home channels/DMs) to it.
+    val serverId: String? = null,
     val query: String = "",
     val sort: SearchSort = SearchSort.Relevance,
     val timeRange: SearchTimeRange = SearchTimeRange.Any,
@@ -1469,6 +1588,9 @@ sealed interface SharedHomeSearchSavedIntent {
         val query: String,
         val entityKind: SearchPersonalizationEntityKind? = null,
         val entityId: String? = null,
+        // The server the opened row belongs to. A row from another server (a candidate snapshot
+        // left over from before a switch) must not enter this server's history/frequent usage.
+        val serverId: String? = null,
     ) : SharedHomeSearchSavedIntent
     data class RemoveSearchHistoryEntry(val query: String) : SharedHomeSearchSavedIntent
     data object ClearSearchHistory : SharedHomeSearchSavedIntent
