@@ -396,4 +396,47 @@ class SharedAgentActivityOverviewStoreTest {
         assertEquals(false, store.state.value.refreshing)
     }
 
+    @Test
+    fun catchUpReloadsSilentlyOnceAndKeepsTheTurnsWhenItFails() = runTest {
+        val repository = FakeRepository()
+        val store = openLoaded(repository, page(turn("t1", 300)))
+
+        // Foreground and socket reconnect together: one silent reload, the second coalesced behind it.
+        store.dispatch(AgentActivityOverviewIntent.CatchUp)
+        store.dispatch(AgentActivityOverviewIntent.CatchUp)
+        runCurrent()
+        assertEquals(2, repository.calls.size)
+        assertEquals(DataRequestPriority.Background, repository.calls[1].priority)
+        assertEquals(false, store.state.value.refreshing)
+        repository.calls[1].result.complete(DataResult.Error(ScreenError("network", retryable = true)))
+        runCurrent()
+        // The second catch-up was coalesced behind the first: it runs once, then nothing more.
+        assertEquals(3, repository.calls.size)
+        repository.calls[2].result.complete(page(turn("t0", 400), turn("t1", 300)))
+        passDebounce()
+        assertEquals(3, repository.calls.size)
+        assertEquals(AgentActivityOverviewStatus.Loaded, store.state.value.status)
+        assertEquals(listOf("t0", "t1"), keys(store))
+    }
+
+    @Test
+    fun catchUpRetriesAFailedFirstLoadAndIgnoresALoadInProgress() = runTest {
+        val repository = FakeRepository()
+        val store = store(repository)
+        store.dispatch(AgentActivityOverviewIntent.Open(agent))
+        runCurrent()
+        store.dispatch(AgentActivityOverviewIntent.CatchUp)
+        runCurrent()
+        assertEquals(1, repository.calls.size, "the first load is already the catch-up")
+
+        repository.calls[0].result.complete(DataResult.Error(ScreenError("network", retryable = true)))
+        runCurrent()
+        store.dispatch(AgentActivityOverviewIntent.CatchUp)
+        runCurrent()
+        assertEquals(2, repository.calls.size)
+        assertEquals(AgentActivityOverviewStatus.Loading, store.state.value.status)
+        repository.calls[1].result.complete(page(turn("t1", 300)))
+        runCurrent()
+        assertEquals(listOf("t1"), keys(store))
+    }
 }

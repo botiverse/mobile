@@ -65,6 +65,13 @@ sealed interface AgentActivityOverviewIntent {
      */
     data class LiveActivityObserved(val agentId: MemberId, val activity: String?) : AgentActivityOverviewIntent
 
+    /**
+     * The app returned to the foreground or the realtime socket reconnected: the agent's
+     * activity pushes of that time were missed. A loaded overview reloads its latest page silently
+     * (Background, coalesced with a reload in flight); a failed one retries.
+     */
+    data object CatchUp : AgentActivityOverviewIntent
+
     /** "Show Earlier Turns": the page after `next`. */
     data object LoadMore : AgentActivityOverviewIntent
 
@@ -104,6 +111,7 @@ class SharedAgentActivityOverviewStore(
         when (intent) {
             is AgentActivityOverviewIntent.Open -> open(intent.agentId)
             AgentActivityOverviewIntent.Refresh -> refresh()
+            AgentActivityOverviewIntent.CatchUp -> catchUp()
             is AgentActivityOverviewIntent.LiveActivityObserved -> observeLiveActivity(intent.agentId, intent.activity)
             AgentActivityOverviewIntent.LoadMore -> loadMore()
             is AgentActivityOverviewIntent.LoadReply -> loadReply(intent.messageId)
@@ -143,6 +151,20 @@ class SharedAgentActivityOverviewStore(
         loadLatest(DataRequestPriority.Visible)
         // Replies that failed for a passing reason are asked again.
         _state.value.replies.filterValues { it == AgentActivityReplyState.Failed }.keys.forEach(::loadReply)
+    }
+
+    private fun catchUp() {
+        when (_state.value.status) {
+            AgentActivityOverviewStatus.Loaded -> {
+                // Replaces a pending debounced live reload: this one covers it.
+                liveReloadJob?.cancel()
+                liveReloadJob = null
+                loadLatest(DataRequestPriority.Background)
+            }
+            is AgentActivityOverviewStatus.Error -> refresh()
+            AgentActivityOverviewStatus.Idle,
+            AgentActivityOverviewStatus.Loading -> Unit
+        }
     }
 
     private fun observeLiveActivity(agentId: MemberId, activity: String?) {

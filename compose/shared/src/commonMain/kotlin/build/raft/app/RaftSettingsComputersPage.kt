@@ -272,6 +272,10 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
     val session by rememberRaftComputersSession(environment.authStore, firstFrame.serverId)
     val currentServerId = (session as? RaftComputersSessionRead.Read)?.currentServerId
     RaftComputersRealtimeEffect(pager, environment.storeScope, currentServerId, pageVisible, settingsViewModel::dispatch)
+    // Machine pushes stop in the background and while the socket is down: catch up on return.
+    RaftLiveCatchUpEffect(serverId = currentServerId, visible = pageVisible) {
+        settingsViewModel.dispatch(SharedSettingsIntent.CatchUpComputers)
+    }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     LaunchedEffect(settingsState.effect) {
         // A finished Add Computer dialog lands on the new machine, as the web dialog does.
@@ -486,6 +490,12 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
         visible = pageVisible,
         dispatch = settingsViewModel::dispatch,
     )
+    RaftLiveCatchUpEffect(
+        serverId = currentServerId?.takeIf { target.serverId == null || target.serverId == it },
+        visible = pageVisible,
+    ) {
+        settingsViewModel.dispatch(SharedSettingsIntent.CatchUpComputers)
+    }
     val refreshing = settingsState.isRefreshing(SharedSettingsDestination.ComputerDetail)
     val refreshErrorCode =
         raftComputersRefreshErrorCode(

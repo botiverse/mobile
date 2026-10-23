@@ -54,6 +54,56 @@ class SharedTasksPullRefreshTest {
         }
     }
 
+    @Test
+    fun catchUpReloadsSilentlyAndKeepsTheTasksWhenItFails() = runTest {
+        // Foreground / socket-reconnect catch-up: a forced Background reload of a loaded page.
+        data class Case(val label: String, val answer: DataResult<TaskSnapshot>, val expectedIds: List<String>)
+        val cases =
+            listOf(
+                Case("content", tasks("task-2", "task-1"), listOf("task-2", "task-1")),
+                Case("error", DataResult.Error(ScreenError("tasks_network", retryable = true)), listOf("task-1")),
+            )
+        cases.forEach { (label, answer, expectedIds) ->
+            val remote = GatedChannelTasks(tasks("task-1"))
+            val viewModel = loadedViewModel(remote)
+            val release = CompletableDeferred<Unit>()
+            remote.release = release
+            remote.answers += answer
+
+            viewModel.dispatch(SharedTasksRouteIntent.CatchUp)
+            runCurrent()
+            assertEquals(listOf("task-1"), ids(viewModel), "$label: the loaded tasks stay while it reloads")
+            assertEquals(listOf(DataRequestPriority.Visible, DataRequestPriority.Background), remote.priorities, label)
+
+            release.complete(Unit)
+            runCurrent()
+            assertEquals(false, viewModel.state.value.refreshing, label)
+            assertEquals(expectedIds, ids(viewModel), label)
+        }
+    }
+
+    @Test
+    fun catchUpJoinsAReloadAlreadyInFlight() = runTest {
+        val remote = GatedChannelTasks(tasks("task-1"))
+        val viewModel = loadedViewModel(remote)
+        val release = CompletableDeferred<Unit>()
+        remote.release = release
+        remote.answers += tasks("task-2", "task-1")
+
+        viewModel.dispatch(SharedTasksRouteIntent.Refresh)
+        runCurrent()
+        // Foreground and reconnect both arrive while the reload runs: no extra request.
+        viewModel.dispatch(SharedTasksRouteIntent.CatchUp)
+        viewModel.dispatch(SharedTasksRouteIntent.CatchUp)
+        runCurrent()
+        assertEquals(2, remote.priorities.size)
+
+        release.complete(Unit)
+        runCurrent()
+        assertEquals(listOf("task-2", "task-1"), ids(viewModel))
+        assertEquals(2, remote.priorities.size)
+    }
+
     private fun TestScope.loadedViewModel(remote: GatedChannelTasks): SharedTasksViewModel {
         val authStore = InMemoryRaftAuthSessionStore(authSessionFixture(selectedServerId = "server-1"))
         val scope = SharedTasksScope.Channel(channel)
