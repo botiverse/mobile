@@ -439,4 +439,32 @@ class SharedAgentActivityOverviewStoreTest {
         runCurrent()
         assertEquals(listOf("t1"), keys(store))
     }
+
+    @Test
+    fun theNewestPageCarriesTheRunningTurnAndItsWakeIsNotListedTwice() = runTest {
+        val repository = FakeRepository()
+        val running = turn("wake", 900).copy(running = true, outcome = AgentActivityTurnOutcome.Unknown)
+        val store = openLoaded(
+            repository,
+            DataResult.Content(AgentActivityTurnPage(listOf(turn("wake", 700), turn("t1", 500)), next = "500:t1", current = running)),
+        )
+        assertEquals(running, store.state.value.running)
+        // The empty wake the running work took over (same row id) shows only as the running turn.
+        assertEquals(listOf("t1"), store.state.value.finishedTurns.map { it.key })
+
+        // An older page never touches it.
+        store.dispatch(AgentActivityOverviewIntent.LoadMore)
+        runCurrent()
+        repository.calls.last().result.complete(page(turn("t0", 300)))
+        runCurrent()
+        assertEquals(running, store.state.value.running)
+
+        // The turn finished: the next latest page has no `current`.
+        store.dispatch(AgentActivityOverviewIntent.Refresh)
+        runCurrent()
+        repository.calls.last().result.complete(page(turn("wake", 950), turn("t1", 500), next = "500:t1"))
+        runCurrent()
+        assertEquals(null, store.state.value.running)
+        assertEquals(listOf("wake", "t1", "t0"), store.state.value.finishedTurns.map { it.key })
+    }
 }

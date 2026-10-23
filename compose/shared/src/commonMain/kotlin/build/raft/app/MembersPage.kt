@@ -57,6 +57,9 @@ import build.raft.app.data.canStopAgentTurn
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AgentActivityEntry
 import build.raft.app.data.AgentActivityOverviewIntent
+import build.raft.app.data.agentMemoryLimitExit
+import build.raft.app.data.isAgentBackgroundOomActivityTitle
+import build.raft.app.data.parseAgentBackgroundOomActivityText
 import build.raft.app.data.ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY
 import build.raft.app.data.AgentArchiveWorkspaceChoice
 import build.raft.app.data.AgentIssueReportRepository
@@ -4580,6 +4583,18 @@ internal fun MemberDetailPageContent(
                                     onUnavailableAction = { provider.bridge.toast(it) }
                                 )
                             },
+                            onOpenActivityMessage = { channelId, messageId ->
+                                pager.openMembersMessageTarget(
+                                    target = RaftThreadWebLinkTarget(channelId = channelId, messageId = messageId),
+                                    messageId = messageId,
+                                    server = current.server,
+                                    conversationIdentityProvider = provider.conversationIdentityProvider,
+                                    storeScope = provider.storeScope,
+                                    timeContext = timeContext,
+                                    unavailableMessage = reminderOpenError,
+                                    onUnavailableAction = { provider.bridge.toast(it) }
+                                )
+                            },
                             onUnavailableAction = { bridge.toast(it) }
                         ),
                         agentDetailActions = agentDetailActions,
@@ -5080,6 +5095,29 @@ private fun Pager.openMembersReminderMessage(
         onUnavailableAction(unavailableMessage)
         return
     }
+    openMembersMessageTarget(
+        target = target,
+        messageId = messageId,
+        server = server,
+        conversationIdentityProvider = conversationIdentityProvider,
+        storeScope = storeScope,
+        timeContext = timeContext,
+        unavailableMessage = unavailableMessage,
+        onUnavailableAction = onUnavailableAction
+    )
+}
+
+/** Opens [messageId] in its conversation ([target] names the channel), resolved like a permalink. */
+private fun Pager.openMembersMessageTarget(
+    target: RaftThreadWebLinkTarget,
+    messageId: String,
+    server: ServerSummary,
+    conversationIdentityProvider: build.raft.app.data.SharedConversationIdentityProvider?,
+    storeScope: RaftShellStoreScope,
+    timeContext: RaftTimeContext,
+    unavailableMessage: String,
+    onUnavailableAction: (String) -> Unit
+) {
     val launchPayload =
         target.toMembersReminderThreadLaunchPayload(
             messageId = messageId,
@@ -5854,6 +5892,8 @@ private class MembersDetailActions(
     val onRemoveMember: (() -> Unit)? = null,
     val onOpenUrl: (String) -> Unit,
     val onOpenReminderMessage: (String) -> Unit = {},
+    /** Opens a message the agent Activity overview names, by channel and message id. */
+    val onOpenActivityMessage: (channelId: String, messageId: String) -> Unit = { _, _ -> },
     val onUnavailableAction: (String) -> Unit,
     /** Opens the profile of an agent listed under a human's Created Agents. */
     val onOpenCreatedAgent: ((AgentProfile) -> Unit)? = null
@@ -5933,6 +5973,7 @@ private fun MembersDetailContent(
     val onRemoveMember = actions.onRemoveMember
     val onOpenUrl = actions.onOpenUrl
     val onOpenReminderMessage = actions.onOpenReminderMessage
+    val onOpenActivityMessage = actions.onOpenActivityMessage
     val onUnavailableAction = actions.onUnavailableAction
     val onOpenCreatedAgent = actions.onOpenCreatedAgent
     val pageVisibleTick = presentation.pageVisibleTick
@@ -6536,6 +6577,7 @@ private fun MembersDetailContent(
                             loadState = agentActivityLoadState,
                             overview = activityOverview,
                             onOpenComputer = onOpenComputer,
+                            onOpenMessage = onOpenActivityMessage,
                             diagnosticActionState = effectiveDiagnosticActionState,
                             onCopyDiagnostics = { copyDiagnostics() },
                             timeContext = timeContext,
@@ -13494,6 +13536,7 @@ private fun MembersAgentActivityTab(
     loadState: MembersAgentActivityLoadState,
     overview: MembersAgentActivityOverviewBinding? = null,
     onOpenComputer: (() -> Unit)? = null,
+    onOpenMessage: (channelId: String, messageId: String) -> Unit = { _, _ -> },
     diagnosticActionState: MembersAgentDiagnosticActionState?,
     onCopyDiagnostics: () -> Unit,
     timeContext: RaftTimeContext,
@@ -13578,6 +13621,7 @@ private fun MembersAgentActivityTab(
                 onShowRaw = { activityView = MembersAgentActivityView.Raw },
                 onOpenComputer = onOpenComputer,
                 onOpenUrl = onOpenUrl,
+                onOpenMessage = { channelId, messageId -> onOpenMessage(channelId, messageId.value) },
                 modifier = Modifier.fillMaxWidth().weight(1f)
             )
             return@Column
@@ -13693,7 +13737,8 @@ private fun MembersAgentActivityRow(
 ) {
     val key = activity.activityTimelineKey()
     var expanded by remember(key) { mutableStateOf(false) }
-    val body = activity.activityPrimaryDetail().orEmpty()
+    val memoryLimit = membersActivityRowMemoryLimitText(activity)
+    val body = memoryLimit?.body ?: activity.activityPrimaryDetail().orEmpty()
     val longBody = body.length > 200 || body.count { it == '\n' } > 2
     val displayBody =
         if (!expanded && longBody) {
@@ -13715,7 +13760,7 @@ private fun MembersAgentActivityRow(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 RaftText(
-                    text = activity.title,
+                    text = memoryLimit?.title ?: activity.title,
                     style = raftTimelineMonoTitleStyle(),
                     color = colors.foreground,
                     maxLines = 1,
@@ -13758,6 +13803,42 @@ private fun MembersAgentActivityRow(
             )
         }
     }
+}
+
+private data class MembersActivityRowText(val title: String, val body: String)
+
+/**
+ * Web AgentActivityLog (#10860): a runtime stopped at the Computer's per-agent memory limit reads
+ * as such instead of "Crashed" plus the daemon's English detail, and the background-process notice
+ * (its `system` row and the `system_message` status beside it) gets this locale's copy. Null for
+ * every other row.
+ */
+@Composable
+private fun membersActivityRowMemoryLimitText(activity: AgentActivityEntry): MembersActivityRowText? {
+    if (activity.type == "status") {
+        val exit = if (activity.statusDetailKind == "runtime_crashed") agentMemoryLimitExit(activity.statusDetail, "runtime_crashed") else null
+        if (exit != null) {
+            val title = exit.memoryLimit?.let { stringResource(MR.strings.agent_activity_memory_limit_stopped_with_limit, it) }
+                ?: stringResource(MR.strings.agent_activity_memory_limit_stopped)
+            return MembersActivityRowText(title, "")
+        }
+        if (activity.statusDetailKind == "system_message" && isAgentBackgroundOomActivityTitle(activity.statusDetail)) {
+            // The notice's own system row says it once.
+            return MembersActivityRowText(stringResource(MR.strings.agent_activity_background_oom), "")
+        }
+        return null
+    }
+    if (activity.type == "system" && isAgentBackgroundOomActivityTitle(activity.title)) {
+        val parsed = parseAgentBackgroundOomActivityText(activity.body)
+        val body = when {
+            parsed == null -> activity.body.orEmpty()
+            parsed.memoryLimit != null ->
+                stringResource(MR.strings.agent_activity_log_background_oom_detail_with_limit, parsed.memoryLimit)
+            else -> stringResource(MR.strings.agent_activity_log_background_oom_detail)
+        }
+        return MembersActivityRowText(stringResource(MR.strings.agent_activity_log_background_oom_title), body)
+    }
+    return null
 }
 
 @Composable

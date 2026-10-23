@@ -60,4 +60,14 @@ class MembersAgentActivityOverviewFormatTest {
         // Same label as the positive case; only the live observation is missing.
         assertNull(MembersAgentActivityNow("Working", indicator = null).dotColor())
     }
+
+    @Test
+    fun aNewTurnFollowsTheBottomOnlyForAReaderParkedThere() {
+        // First placement always lands at the bottom (web: first load scrolls to the newest).
+        assertEquals(MembersActivityOverviewNewTurnAction.FollowBottom, membersActivityOverviewNewTurnAction(placed = false, followingBottom = false, scrolling = true))
+        assertEquals(MembersActivityOverviewNewTurnAction.FollowBottom, membersActivityOverviewNewTurnAction(placed = true, followingBottom = true, scrolling = false))
+        // A drag in progress or a reader who left the tail is never moved: the hint shows instead.
+        assertEquals(MembersActivityOverviewNewTurnAction.ShowHint, membersActivityOverviewNewTurnAction(placed = true, followingBottom = true, scrolling = true))
+        assertEquals(MembersActivityOverviewNewTurnAction.ShowHint, membersActivityOverviewNewTurnAction(placed = true, followingBottom = false, scrolling = false))
+    }
 }
