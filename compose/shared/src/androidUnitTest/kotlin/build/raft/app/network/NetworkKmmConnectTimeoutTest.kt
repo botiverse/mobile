@@ -51,7 +51,7 @@ class NetworkKmmConnectTimeoutTest {
             policy.streamTimeouts.connectTimeoutMillis,
             "the factory must never leave connect to the library default"
         )
-        assertEquals(10_000L, RAFT_CONNECT_TIMEOUT_MILLIS, "task #1138 pins 10s (equal to today's library default)")
+        assertEquals(5_000L, RAFT_CONNECT_TIMEOUT_MILLIS, "Ktor switch: NetworkKMM requests (downloads, curl override) share the 5 s Ktor connect budget")
     }
 
     @Test

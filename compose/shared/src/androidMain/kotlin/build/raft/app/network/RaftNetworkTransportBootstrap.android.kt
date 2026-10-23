@@ -77,7 +77,8 @@ fun installAndroidRaftNetworkTransportAtStartup(context: Context): String {
     val environmentObserver = AndroidCurlNetworkEnvironmentObserver.install(appContext)
     // Task #154: the Android realtime host can carry Socket.IO over curl, so Settings shows its switch.
     if (status.configured && native.linked) RaftCurlSocketIoPolicy.markPlatformSupported()
-    return "networkkmm_curl_bootstrap platform=android configured=${status.configured} " +
+    // Curl now serves only the Developer override (and realtime curl Socket.IO while that switch exists).
+    return "networkkmm_curl_bootstrap platform=android role=override_only configured=${status.configured} " +
         "failureReason=${status.failureReason} nativeLinked=${native.linked} " +
         "http3FeatureAvailable=${native.http3FeatureAvailable} " +
         "supportedAbis=$supportedAbis primaryAbi=$primaryAbi " +

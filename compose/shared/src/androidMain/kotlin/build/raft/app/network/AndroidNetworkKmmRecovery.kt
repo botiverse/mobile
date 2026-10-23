@@ -51,6 +51,23 @@ fun installAndroidNetworkKmmReusedHttp2RecoveryAtStartup(
     }
 }
 
+/**
+ * artin 2026-10-23 (Ktor switch): app API calls no longer go through NetworkKMM, and NetworkKMM's own
+ * Ktor engine now carries only binary / attachment downloads. Its reused-HTTP/2 recovery (the 7 s
+ * response-headers watchdog with a 3 s ping) is switched off there; OkHttp's 10 s HTTP/2 ping and
+ * pool health checks detect dead connections instead, as on the API path. The curl override does not
+ * use this policy. The remote kill-switch plumbing above stays until NetworkKMM is removed.
+ */
+internal const val RAFT_NETWORK_KMM_KTOR_PING_INTERVAL_MILLIS = 10_000L
+
+fun installAndroidNetworkKmmDownloadEnginePolicyAtStartup(): String {
+    val policy = raftAndroidNetworkKmmRecoveryPolicy(enabled = false)
+        .copy(pingIntervalMillis = RAFT_NETWORK_KMM_KTOR_PING_INTERVAL_MILLIS)
+    VBTransportAndroidEngine.reusedHttp2Recovery = policy
+    return "networkkmm_reused_h2_recovery scope=downloads_only enabled=false reason=ktor_transport " +
+        "pingIntervalMs=${policy.pingIntervalMillis}"
+}
+
 internal fun raftAndroidNetworkKmmRecoveryPolicy(
     enabled: Boolean = true
 ): VBTransportReusedHttp2Recovery =

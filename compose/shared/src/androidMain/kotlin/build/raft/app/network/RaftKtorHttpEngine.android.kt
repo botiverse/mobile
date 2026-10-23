@@ -14,7 +14,18 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLException
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.MediaType
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.Request
+import okhttp3.RequestBody
+import okhttp3.Response
+import okio.BufferedSink
 import okhttp3.ConnectionPool
 import okhttp3.Dispatcher
 import okhttp3.EventListener
@@ -122,16 +133,98 @@ internal fun raftKtorClientFor(okHttpClient: OkHttpClient): HttpClient =
         }
     }
 
-internal actual fun createPlatformRaftKtorClientProvider(): RaftKtorClientProvider {
-    val base = buildRaftBaseOkHttpClient()
-    val clients =
+/** The process's OkHttp lanes: one base (pool), one Dispatcher per priority, one client per call kind. */
+internal class RaftOkHttpLanes(base: OkHttpClient = buildRaftBaseOkHttpClient()) {
+    private val clients: Map<RaftRequestPriority, Map<RaftKtorCallKind, OkHttpClient>> =
         RaftRequestPriority.entries.associateWith { priority ->
             val dispatcher = raftLaneDispatcher(priority)
-            RaftKtorCallKind.entries.associateWith { kind ->
-                raftKtorClientFor(buildRaftLaneOkHttpClient(base, dispatcher, kind))
-            }
+            RaftKtorCallKind.entries.associateWith { kind -> buildRaftLaneOkHttpClient(base, dispatcher, kind) }
         }
-    return RaftKtorClientProvider { priority, kind -> clients.getValue(priority).getValue(kind) }
+
+    fun okHttp(priority: RaftRequestPriority, kind: RaftKtorCallKind): OkHttpClient =
+        clients.getValue(priority).getValue(kind)
+
+    fun ktorProvider(): RaftKtorClientProvider {
+        val ktor = clients.mapValues { (_, byKind) -> byKind.mapValues { (_, client) -> raftKtorClientFor(client) } }
+        return RaftKtorClientProvider { priority, kind -> ktor.getValue(priority).getValue(kind) }
+    }
+
+    fun streamingUploader(): RaftStreamingUploader = RaftOkHttpStreamingUploader(::okHttp)
+}
+
+private val processLanes: RaftOkHttpLanes by lazy { RaftOkHttpLanes() }
+
+internal actual fun createPlatformRaftKtorClientProvider(): RaftKtorClientProvider = processLanes.ktorProvider()
+
+internal actual fun createPlatformRaftStreamingUploader(): RaftStreamingUploader? = processLanes.streamingUploader()
+
+/**
+ * Streams [RaftChunkedBody] uploads straight into OkHttp (see [RaftStreamingUploader] for why not
+ * through Ktor). Same lane client, same pool; per-request connect / socket / total budgets. The body
+ * is one-shot: OkHttp never replays it, and a failed attempt is reported, not retried.
+ */
+internal class RaftOkHttpStreamingUploader(
+    private val laneClient: (RaftRequestPriority, RaftKtorCallKind) -> OkHttpClient,
+) : RaftStreamingUploader {
+    override suspend fun upload(request: RaftStreamingUploadRequest): RaftStreamingUploadResponse {
+        val client =
+            laneClient(request.priority, request.kind).newBuilder()
+                .connectTimeout(request.connectTimeoutMillis, TimeUnit.MILLISECONDS)
+                .apply {
+                    request.socketTimeoutMillis?.let {
+                        readTimeout(it, TimeUnit.MILLISECONDS)
+                        writeTimeout(it, TimeUnit.MILLISECONDS)
+                    }
+                }
+                .callTimeout(request.totalTimeoutMillis, TimeUnit.MILLISECONDS)
+                .build()
+        val okRequest =
+            Request.Builder()
+                .url(request.url)
+                .apply { request.headers.forEach { (name, value) -> addHeader(name, value) } }
+                .method(request.method, RaftChunkedRequestBody(request.body))
+                .build()
+        val call = client.newCall(okRequest)
+        return suspendCancellableCoroutine { continuation ->
+            continuation.invokeOnCancellation { call.cancel() }
+            call.enqueue(
+                object : Callback {
+                    override fun onFailure(call: Call, e: IOException) {
+                        continuation.resumeWithException(e)
+                    }
+
+                    override fun onResponse(call: Call, response: Response) {
+                        val result =
+                            runCatching {
+                                response.use {
+                                    RaftStreamingUploadResponse(
+                                        status = it.code,
+                                        headers = it.headers.toMultimap(),
+                                        bodyText = if (request.readBody) it.body?.string() else null,
+                                        protocol = it.protocol.toString(),
+                                    )
+                                }
+                            }
+                        result.fold(continuation::resume, continuation::resumeWithException)
+                    }
+                }
+            )
+        }
+    }
+}
+
+/** Writes the chunks on OkHttp's call thread; blocking there is what OkHttp expects of writeTo. */
+internal class RaftChunkedRequestBody(private val body: RaftChunkedBody) : RequestBody() {
+    override fun contentType(): MediaType? = body.contentType?.toString()?.toMediaTypeOrNull()
+
+    override fun contentLength(): Long = body.contentLength ?: -1L
+
+    override fun isOneShot(): Boolean = true
+
+    override fun writeTo(sink: BufferedSink) {
+        runBlocking { body.writeChunks { chunk -> sink.write(chunk) } }
+        sink.flush()
+    }
 }
 
 internal actual fun raftKtorEngineLabel(): String = "ktor_okhttp"
