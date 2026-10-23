@@ -3,7 +3,6 @@ package build.raft.app.data
 import build.raft.app.model.ServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonPrimitive
@@ -51,7 +50,7 @@ class RaftProductEntryEventsRecorderTest {
         }
 
     @Test
-    fun messageActionSelectedIsLongPressAndSetsInThreadOnlyForAThreadReply() =
+    fun messageActionSelectedIsLongPressAndSetsInThreadPerMessage() =
         runTest {
             val reply = recorderWithTransport()
             reply.first.messageActionSelected(RaftMessageAction.OpenMenu, inThread = true)
@@ -63,8 +62,8 @@ class RaftProductEntryEventsRecorderTest {
             val topLevel = recorderWithTransport()
             topLevel.first.messageActionSelected(RaftMessageAction.CopyMarkdown, inThread = false)
             val topLevelEvent = single(topLevel.second, topLevel.first)
-            assertEquals(mapOf("action" to "copy_markdown", "surface" to "long_press"), topLevelEvent.props())
-            assertFalse("in_thread" in topLevelEvent.properties)
+            assertEquals(mapOf("action" to "copy_markdown", "surface" to "long_press", "in_thread" to "false"), topLevelEvent.props())
+            assertEquals(false, topLevelEvent.properties.getValue("in_thread").jsonPrimitive.boolean)
         }
 
     @Test

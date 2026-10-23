@@ -51,7 +51,7 @@ class RaftProductEntryEventsTest {
     }
 
     @Test
-    fun inThreadIsTrueForRepliesOnAReplyThreadPageOnly() {
+    fun inThreadFollowsTheMessageNotThePage() {
         assertTrue(threadMessageIsReplyInThread(replyThreadSurface = true, originMessageId = "origin", messageId = "reply"))
         assertTrue(threadMessageIsReplyInThread(replyThreadSurface = true, originMessageId = null, messageId = "reply"))
         assertFalse(threadMessageIsReplyInThread(replyThreadSurface = true, originMessageId = "origin", messageId = "origin"))

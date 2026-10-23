@@ -232,7 +232,7 @@ data class RaftChannelTabSelectedProperties(
 data class RaftMessageActionSelectedProperties(
     val action: RaftMessageAction,
     val surface: RaftMessageActionSurface,
-    /** Only sent for a thread reply; absent for a top-level message. */
+    /** True for a reply inside a thread, false for any other message (including a thread's parent). */
     @SerialName("in_thread") val inThread: Boolean? = null,
 )
 

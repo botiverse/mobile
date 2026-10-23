@@ -288,14 +288,14 @@ class RaftProductEventsRecorder(
         )
     }
 
-    /** One long-press message menu action; [inThread] is true for a thread reply, null otherwise. */
+    /** One long-press message menu action; [inThread] is true for a thread reply, false for any other message (including a thread's parent). */
     fun messageActionSelected(action: RaftMessageAction, inThread: Boolean) {
         client.track(
             RaftProductEvent.MessageActionSelected(
                 RaftMessageActionSelectedProperties(
                     action = action,
                     surface = RaftMessageActionSurface.LongPress,
-                    inThread = inThread.takeIf { it },
+                    inThread = inThread,
                 )
             )
         )

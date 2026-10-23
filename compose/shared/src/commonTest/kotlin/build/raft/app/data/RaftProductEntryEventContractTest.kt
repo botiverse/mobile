@@ -85,7 +85,7 @@ class RaftProductEntryEventContractTest {
             listOf(true, false).map { RaftProductEvent.ChannelTabSelected(RaftChannelTabSelectedProperties(tab, RaftChannelTabSurface.HeaderTabs, it)) }
         } +
             RaftMessageAction.entries.flatMap { action ->
-                listOf(true, null).map { RaftProductEvent.MessageActionSelected(RaftMessageActionSelectedProperties(action, RaftMessageActionSurface.LongPress, it)) }
+                listOf(true, false).map { RaftProductEvent.MessageActionSelected(RaftMessageActionSelectedProperties(action, RaftMessageActionSurface.LongPress, it)) }
             } +
             RaftActivityItemKind.entries.map { RaftProductEvent.ActivityItemOpen(RaftActivityItemOpenProperties(it)) } +
             RaftActivityMarkAction.entries.map { RaftProductEvent.ActivityMark(RaftActivityMarkProperties(it)) } +
