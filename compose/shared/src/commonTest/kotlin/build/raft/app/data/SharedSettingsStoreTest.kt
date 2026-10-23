@@ -2177,7 +2177,7 @@ class SharedSettingsStoreTest {
     }
 
     @Test
-    fun addComputerRegisterBuildsTransientSetupCommandAndWaitingState() = runBlocking {
+    fun addComputerRegisterKeepsCommandContextAndWaitingState() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val registered =
             SettingsComputerSnapshot(
@@ -2216,8 +2216,10 @@ class SharedSettingsStoreTest {
         assertEquals(AddComputerStep.Waiting, dialog?.step)
         assertEquals("machine-new", dialog?.machineId)
         assertEquals("test-key-ful", dialog?.apiKeyPrefix)
-        assertTrue(dialog?.daemonRunCommand.orEmpty().contains("--api-key test-key-full"))
-        assertTrue(dialog?.daemonRunCommand.orEmpty().contains("@botiverse/raft-daemon@latest"))
+        assertEquals("machine-new", dialog?.registeredMachineId)
+        // The retired daemon command is gone: the dialog writes the `raft-computer` commands.
+        assertEquals("slock", dialog?.commandContext?.serverSlug)
+        assertEquals("production", dialog?.commandContext?.deploymentEnv)
         assertEquals(listOf("computers", "registerComputer:my-computer", "computers"), repository.calls)
         scope.cancel()
     }
@@ -2270,7 +2272,62 @@ class SharedSettingsStoreTest {
         val dialog = store.state.value.addComputerDialog
         assertEquals(AddComputerStep.Connected, dialog?.step)
         assertEquals("builder.local", dialog?.name)
-        assertEquals("builder.local - darwin", dialog?.connectedDetail)
+        assertEquals("builder.local — darwin", dialog?.connectedDetail)
+        assertEquals(false, dialog?.requiresConfirmation)
+        scope.cancel()
+    }
+
+    @Test
+    fun addComputerPivotsToTheComputerTheSetupCommandCreated() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val placeholder = SettingsComputerSnapshot(id = "machine-new", name = "my-computer", daemonVersion = "", online = false)
+        val computer =
+            SettingsComputerSnapshot(
+                id = "computer-1",
+                name = "builder",
+                daemonVersion = "",
+                isComputer = true,
+                attachedByCurrentUser = true,
+                online = true,
+                hostname = "builder.local",
+                platform = "darwin",
+                runtimes = listOf("claude")
+            )
+        val repository =
+            FakeSettingsRepository(
+                computersResult = DataResult.Content(SettingsComputersSnapshot(computers = emptyList())),
+                computerDetailResult = DataResult.Content(computerDetailSnapshot("computer-1")),
+                registerComputerResult =
+                    DataResult.Content(SettingsComputerRegistrationResult(machine = placeholder, apiKey = "test-key-full", apiKeyPrefix = "test-key-ful")),
+                deleteComputerResult = DataResult.Content(SettingsComputerActionResult(machineId = "machine-new", success = true, action = "delete"))
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.Computers))
+        store.accept(SharedSettingsIntent.ShowAddComputerDialog)
+        store.accept(SharedSettingsIntent.RegisterComputer(SettingsComputerRegisterRequest("my-computer")))
+        repository.computersResult = DataResult.Content(SettingsComputersSnapshot(computers = listOf(placeholder, computer)))
+        store.accept(SharedSettingsIntent.PollAddComputerMachineStatus("machine-new"))
+        yield()
+
+        val dialog = store.state.value.addComputerDialog
+        assertEquals(AddComputerStep.Connected, dialog?.step)
+        assertEquals("computer-1", dialog?.machineId)
+        assertEquals(listOf("claude"), dialog?.connectedRuntimes)
+        assertEquals(false, dialog?.requiresConfirmation)
+
+        store.accept(SharedSettingsIntent.CompleteAddComputerDialog)
+        yield()
+        assertTrue(repository.calls.contains("deleteComputer:machine-new"))
+        assertEquals(SharedSettingsEffect.OpenComputer("computer-1"), store.state.value.effect)
         scope.cancel()
     }
 
