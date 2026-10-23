@@ -356,6 +356,18 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
         let capsuleCentre = (c.0 + c.1) / 2 * scale, buttonCentre = (b.0 + b.1) / 2 * scale
         print("RAFT_SYSTEMTAB_CENTRES capsule=\(capsuleCentre)px button=\(buttonCentre)px diff=\(buttonCentre - capsuleCentre)px")
         XCTAssertEqual(buttonCentre, capsuleCentre, accuracy: 2, "pixel centres: \(geometry)")
+        // The page tabs' titles are laid out whole, inside the capsule.
+        func labels(_ view: UIView) -> [UILabel] {
+            view.subviews.flatMap { sub -> [UILabel] in ((sub as? UILabel).map { [$0] } ?? []) + labels(sub) }
+        }
+        let titles = labels(tabBar).filter { !$0.isHidden && $0.window != nil && ($0.text?.isEmpty == false) }
+        print("RAFT_SYSTEMTAB_LABELS " + titles.map { "\($0.text ?? "") \($0.convert($0.bounds, to: bar.window).integral) fit=\($0.intrinsicContentSize.width)" }.joined(separator: " | "))
+        for label in titles {
+            let frame = label.convert(label.bounds, to: bar.window)
+            guard capsule.insetBy(dx: -1, dy: -1).intersects(frame), frame.width > 0 else { continue }
+            XCTAssertGreaterThanOrEqual(frame.width + 0.5, label.intrinsicContentSize.width, "\(label.text ?? "") truncated: \(frame)")
+            XCTAssertLessThanOrEqual(frame.maxY, capsule.maxY + 0.5, "\(label.text ?? "") below the capsule: \(frame)")
+        }
     }
 
     func testTappingTheServerTabAsksTheDelegateAndSelectsNothing() throws {
