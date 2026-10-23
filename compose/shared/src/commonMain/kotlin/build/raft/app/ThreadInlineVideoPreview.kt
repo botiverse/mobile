@@ -313,7 +313,7 @@ private fun ThreadInlineVideoOverlay(
             iconName,
             modifier = Modifier.size(28.dp),
             color = raftArgbHex(RaftColor.StickerPaper),
-            spinning = spinning
+            spinning = false // TEMP: still frame for the before screenshot
         )
         Text(
             text = label,
