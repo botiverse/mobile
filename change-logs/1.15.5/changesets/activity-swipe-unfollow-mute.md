@@ -4,7 +4,7 @@ area: activity
 platforms:
   - android
   - ios
-pull_request: PENDING
+pull_request: 3586
 rollout: full
 ---
 
