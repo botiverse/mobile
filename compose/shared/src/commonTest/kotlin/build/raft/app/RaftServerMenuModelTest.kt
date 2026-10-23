@@ -167,4 +167,41 @@ class RaftServerMenuModelTest {
         assertFalse(state.open)
         assertNull(raftServerMenuPick("bogus"))
     }
+
+    @Test
+    fun serverTabIsAPanelButtonWithItsAvatarAndNoCountOnTheNativeBar() {
+        val pictured = botiverse.copy(avatarUrl = "https://cdn.example/b.png")
+        val loud = RaftServerSwitcherItem(id = "s4", name = "Loud", slug = "loud", activityUnreadCount = 120L)
+        val tabs =
+            appShellPhoneBottomTabs(
+                selectedTab = "home",
+                homeLabel = "h",
+                activityLabel = "a",
+                searchLabel = "s",
+                tasksLabel = "t",
+                moreLabel = "m",
+                serverTab = model(listOf(pictured, acme, loud)),
+                serverTabAccessibilityLabel = "Current server: Botiverse",
+            )
+        val serverTab = tabs.single { it.key == AppShellServerTabKey }
+        // Android's Compose bar keeps the dot; the iOS bar shows no badge (artin 10-23).
+        assertTrue(serverTab.attentionDot)
+        assertTrue(serverTab.opensPanel)
+        assertEquals("Current server: Botiverse", serverTab.accessibilityLabel)
+        assertEquals("https://cdn.example/b.png", serverTab.avatarSource)
+        assertEquals("B", serverTab.avatarFallbackLabel)
+        val native = raftNativeTabBarItem(serverTab)
+        assertNull(native.badgeValue)
+        assertTrue(native.opensPanel)
+        assertEquals("Current server: Botiverse", native.accessibilityLabel)
+        assertEquals("B", native.avatarFallbackLabel)
+        // Only the panel tab carries the decoded avatar.
+        val avatar = RaftNativeTabBarAvatar(1, 1, intArrayOf(0xFF102030.toInt()))
+        val state = raftNativeTabBarState(tabs, visible = true, panelAvatar = avatar)
+        assertTrue(state.items.single { it.key == AppShellServerTabKey }.avatar === avatar)
+        assertTrue(state.items.filter { it.key != AppShellServerTabKey }.all { it.avatar == null && !it.opensPanel })
+        // Without a server loaded, More is a page tab, not a panel button.
+        val plain = appShellPhoneBottomTabs("home", "h", "a", "s", "t", "m").single { it.key == "more" }
+        assertFalse(plain.opensPanel)
+    }
 }

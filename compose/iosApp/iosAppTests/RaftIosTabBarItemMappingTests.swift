@@ -34,47 +34,14 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
         }
     }
 
-    func testAttentionDotIsTheHostsSmallDotNeverAnEmptySystemBadge() {
-        // UIKit draws badgeValue "" as a full-size badge: the dot must never become one.
-        XCTAssertNil(RaftIosTabBarItemMapping.badgeValue(fromShared: nil))
-        XCTAssertTrue(RaftIosTabBarItemMapping.showsDot(fromShared: nil, attentionDot: true))
-        XCTAssertTrue(RaftIosTabBarItemMapping.showsDot(fromShared: "0", attentionDot: true))
-        XCTAssertFalse(RaftIosTabBarItemMapping.showsDot(fromShared: nil, attentionDot: false))
-        // A count wins over the dot.
-        XCTAssertFalse(RaftIosTabBarItemMapping.showsDot(fromShared: "3", attentionDot: true))
-        let dotted = RaftIosTabBarItemSpec(
-            key: "activity",
-            title: "Activity",
-            systemImageName: "waveform.path.ecg.rectangle",
-            selectedSystemImageName: "waveform.path.ecg.rectangle.fill",
-            badgeValue: nil,
-            enabled: true,
-            attentionDot: true
-        )
-        XCTAssertNil(dotted.badgeValue)
-        XCTAssertTrue(dotted.showsDot)
-        let counted = RaftIosTabBarItemSpec(
-            key: "activity",
-            title: "Activity",
-            systemImageName: "bell",
-            selectedSystemImageName: "bell.fill",
-            badgeValue: "99+",
-            enabled: true,
-            attentionDot: true
-        )
-        XCTAssertEqual(counted.badgeValue, "99+")
-        XCTAssertFalse(counted.showsDot)
-        XCTAssertFalse(spec("home").showsDot)
-    }
-
-    func testDotIsAnEightPointSquareOnTheIconsTopRightCorner() {
-        let icon = CGRect(x: 100, y: 10, width: 25, height: 25)
-        let dot = RaftIosTabBarItemMapping.dotFrame(iconFrame: icon)
-        XCTAssertEqual(dot.size, CGSize(width: 8, height: 8))
-        XCTAssertEqual(dot.midX, icon.maxX + 1, accuracy: 0.5)
-        XCTAssertEqual(dot.midY, icon.minY + 1, accuracy: 0.5)
-        XCTAssertEqual(dot.origin.x, dot.origin.x.rounded())
-        XCTAssertEqual(dot.origin.y, dot.origin.y.rounded())
+    func testBadgeIsNeverAnEmptySystemBadge() {
+        // UIKit draws badgeValue "" as a full-size empty badge (the "dots too big" report):
+        // a tab without a count shows no badge; shared sends the count behind a dot.
+        for shared in [nil, "", " ", "0"] as [String?] {
+            XCTAssertNil(spec("activity", badge: shared).badgeValue, "shared=\(String(describing: shared))")
+        }
+        XCTAssertEqual(spec("activity", badge: "3").badgeValue, "3")
+        XCTAssertEqual(spec("more", badge: "99+").badgeValue, "99+")
     }
 
     func testTapGateAdmitsOneActionPerTouchSequence() {
@@ -181,100 +148,121 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
         XCTAssertEqual(RaftIosTabBarItemMapping.bottomBand(containerHeight: 844, tabBarMinY: .nan), 0)
     }
 
-    // MARK: - A real system tab bar (the hosted simulator's iOS)
+    // MARK: - iOS 26 server button
 
-    private final class CountingDelegate: NSObject, UITabBarControllerDelegate {
-        var asked: [String] = []
-        var acted: [String] = []
-        var gate = RaftIosTabTapGate()
-
-        func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {
-            let key = viewController.tabBarItem.accessibilityIdentifier ?? ""
-            asked.append(key)
-            if gate.admit(key: key, now: ProcessInfo.processInfo.systemUptime, touchBeganAt: nil) {
-                acted.append(key)
-            }
-            return false
-        }
+    private func serverSpec() -> RaftIosTabBarItemSpec {
+        RaftIosTabBarItemSpec(
+            key: "more",
+            title: "Botiverse",
+            systemImageName: "server.rack",
+            selectedSystemImageName: "server.rack",
+            badgeValue: nil,
+            enabled: true,
+            opensPanel: true,
+            accessibilityLabel: "Current server: Botiverse",
+            avatarFallbackLabel: "B"
+        )
     }
 
-    private let liveKeys = ["home", "activity", "tasks", "search", "more"]
-
-    private func makeLiveTabBar() -> (UIWindow, UITabBarController) {
-        let window: UIWindow
-        if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first {
-            window = UIWindow(windowScene: scene)
-        } else {
-            window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
-        }
-        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
-        let tabs = UITabBarController()
-        tabs.viewControllers = liveKeys.map { key in
-            let child = UIViewController()
-            child.tabBarItem.title = key == "more" ? "xteam" : key
-            child.tabBarItem.image = UIImage(systemName: key == "more" ? "server.rack" : "house")
-            child.tabBarItem.accessibilityIdentifier = "raft-tab-\(key)"
-            return child
-        }
-        window.rootViewController = tabs
-        window.isHidden = false
-        tabs.view.layoutIfNeeded()
-        tabs.tabBar.layoutIfNeeded()
-        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
-        tabs.tabBar.layoutIfNeeded()
-        return (window, tabs)
+    func testPanelTabLeavesTheBarOnlyWhenTheButtonIsSeparate() {
+        let items = ["home", "activity", "tasks", "search"].map { spec($0) } + [serverSpec()]
+        let separate = RaftIosTabBarItemMapping.splitPanelButton(items, separatePanelButton: true)
+        XCTAssertEqual(separate.tabs.map(\.key), ["home", "activity", "tasks", "search"])
+        XCTAssertEqual(separate.panel?.key, "more")
+        // Before iOS 26 it stays the last tab.
+        let classic = RaftIosTabBarItemMapping.splitPanelButton(items, separatePanelButton: false)
+        XCTAssertEqual(classic.tabs.map(\.key), ["home", "activity", "tasks", "search", "more"])
+        XCTAssertNil(classic.panel)
+        // A plain More tab (no server loaded) is a page tab: it stays in the bar.
+        let plain = RaftIosTabBarItemMapping.splitPanelButton(items.dropLast() + [spec("more")], separatePanelButton: true)
+        XCTAssertEqual(plain.tabs.count, 5)
+        XCTAssertNil(plain.panel)
     }
 
-    func testIconLocatorFindsEveryTabsIconOnTheSystemBar() {
-        let (window, tabs) = makeLiveTabBar()
-        defer { window.isHidden = true }
-        let tabBar = tabs.tabBar
-        var frames: [CGRect] = []
-        for (index, key) in liveKeys.enumerated() {
-            let item = tabs.viewControllers![index].tabBarItem!
-            let frame = RaftIosTabBarIconLocator.iconFrame(identifier: "raft-tab-\(key)", item: item, in: tabBar)
-            XCTAssertNotNil(frame, "icon of \(key) not found on iOS \(UIDevice.current.systemVersion)")
-            guard let frame = frame else { continue }
-            XCTAssertTrue(tabBar.bounds.insetBy(dx: -1, dy: -1).contains(frame), "\(key) icon \(frame) outside bar \(tabBar.bounds)")
-            XCTAssertLessThan(frame.width, 60, "\(key) matched a view larger than an icon: \(frame)")
-            frames.append(frame)
+    func testBarContainerGivesUpTheButtonsWidthSoTheyNeverOverlap() {
+        for width: CGFloat in [320, 375, 402, 440, 744] {
+            let container = RaftIosServerButtonLayout.tabBarContainerWidth(containerWidth: width, showsButton: true)
+            let button = RaftIosServerButtonLayout.buttonFrame(
+                containerWidth: width,
+                safeAreaRight: 0,
+                barFrame: CGRect(x: 0, y: 700, width: container, height: 96),
+                barBottomInset: 34
+            )
+            // The pill lives inside the container; the button starts after it, plus the gap.
+            XCTAssertGreaterThanOrEqual(button.minX, container - RaftIosServerButtonLayout.trailingMargin, "width \(width)")
+            XCTAssertLessThanOrEqual(button.maxX, width - RaftIosServerButtonLayout.trailingMargin, "width \(width)")
+            XCTAssertEqual(button.width, button.height)
+            // Level with the pill: centred in the bar above its bottom safe area.
+            XCTAssertEqual(button.midY, 700 + (96 - 34) / 2, accuracy: 0.5)
         }
-        // Left to right in tab order, the last tab's icon on the trailing side.
-        XCTAssertEqual(frames.map(\.midX), frames.map(\.midX).sorted())
-        if let last = frames.last {
-            let dot = RaftIosTabBarItemMapping.dotFrame(iconFrame: last)
-            XCTAssertTrue(tabBar.bounds.contains(dot.origin), "last tab dot \(dot) off the bar \(tabBar.bounds)")
-        }
+        XCTAssertEqual(RaftIosServerButtonLayout.tabBarContainerWidth(containerWidth: 402, showsButton: false), 402)
+        // Landscape: the right safe area moves the button in.
+        let landscape = RaftIosServerButtonLayout.buttonFrame(
+            containerWidth: 874, safeAreaRight: 62, barFrame: CGRect(x: 0, y: 340, width: 804, height: 62), barBottomInset: 0
+        )
+        XCTAssertEqual(landscape.maxX, 874 - 62 - RaftIosServerButtonLayout.trailingMargin, accuracy: 0.5)
     }
 
-    func testLastTabActivationReachesTheDelegateAndActsOnce() throws {
-        let (window, tabs) = makeLiveTabBar()
-        defer { window.isHidden = true }
-        let delegate = CountingDelegate()
-        tabs.delegate = delegate
-        let lastId = "raft-tab-more"
-        func find(_ root: UIView) -> UIView? {
-            for sub in root.subviews {
-                if sub.accessibilityIdentifier == lastId { return sub }
-                if let found = find(sub) { return found }
-            }
-            return nil
+    private func pixel(_ image: UIImage, _ point: CGPoint) -> (r: Int, g: Int, b: Int, a: Int) {
+        let width = Int(image.size.width), height = Int(image.size.height)
+        var data = [UInt8](repeating: 0, count: width * height * 4)
+        let context = CGContext(
+            data: &data, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        UIGraphicsPushContext(context)
+        context.translateBy(x: 0, y: CGFloat(height))
+        context.scaleBy(x: 1, y: -1)
+        image.draw(in: CGRect(x: 0, y: 0, width: width, height: height))
+        UIGraphicsPopContext()
+        let offset = (Int(point.y) * width + Int(point.x)) * 4
+        return (Int(data[offset]), Int(data[offset + 1]), Int(data[offset + 2]), Int(data[offset + 3]))
+    }
+
+    func testAvatarPixelsBecomeACircleClippedImage() throws {
+        // 2x2 opaque red, as shared publishes it (non-premultiplied ARGB).
+        let red = Int32(bitPattern: 0xFFFF0000)
+        let source = try XCTUnwrap(RaftIosServerAvatarImage.image(argb: [red, red, red, red], width: 2, height: 2))
+        XCTAssertNil(RaftIosServerAvatarImage.image(argb: [red], width: 2, height: 2), "size mismatch")
+        let circle = RaftIosServerAvatarImage.circle(source, fallbackLabel: "B", diameter: 40)
+        XCTAssertEqual(circle.size, CGSize(width: 40, height: 40))
+        XCTAssertEqual(circle.renderingMode, .alwaysOriginal)
+        let center = pixel(circle, CGPoint(x: 20, y: 20))
+        XCTAssertTrue(center.r > 240 && center.g < 15 && center.b < 15 && center.a > 240, "avatar fills the circle: \(center)")
+        XCTAssertLessThan(pixel(circle, CGPoint(x: 1, y: 1)).a, 20, "clipped to a circle")
+    }
+
+    func testNoAvatarDrawsTheInitialTile() {
+        let tile = RaftIosServerAvatarImage.circle(nil, fallbackLabel: "B", diameter: 40)
+        // Ink near the edge of the circle (left of the letter), transparent outside it.
+        let ink = pixel(tile, CGPoint(x: 4, y: 20))
+        XCTAssertTrue(abs(ink.r - 20) < 6 && abs(ink.g - 17) < 6 && abs(ink.b - 17) < 6 && ink.a > 240, "ink: \(ink)")
+        XCTAssertLessThan(pixel(tile, CGPoint(x: 1, y: 1)).a, 20)
+    }
+
+    func testServerButtonIsAnAccessibleGlassButtonWithoutABadge() throws {
+        guard #available(iOS 26.0, *) else {
+            throw XCTSkip("the separate server button is iOS 26 only")
         }
-        guard let button = find(tabs.tabBar) else {
-            throw XCTSkip("no view carries \(lastId) on iOS \(UIDevice.current.systemVersion)")
-        }
-        if let control = button as? UIControl {
-            control.sendActions(for: .touchUpInside)
-        } else {
-            _ = button.accessibilityActivate()
-        }
-        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
-        print("RAFT_TABBAR_PROBE iOS=\(UIDevice.current.systemVersion) asked=\(delegate.asked.count) acted=\(delegate.acted.count)")
-        if delegate.asked.isEmpty {
-            throw XCTSkip("this iOS does not activate a tab from code (asked 0 times)")
-        }
-        XCTAssertTrue(delegate.asked.allSatisfy { $0 == lastId })
-        XCTAssertEqual(delegate.acted, [lastId], "asked \(delegate.asked.count) times for one activation")
-        XCTAssertEqual(tabs.selectedIndex, 0, "the delegate refused the selection")
+        let button = RaftIosServerTabButton.make()
+        button.apply(serverSpec(), avatar: nil)
+        XCTAssertNotNil(button.configuration, "system glass configuration")
+        XCTAssertTrue(button.isAccessibilityElement)
+        XCTAssertTrue(button.accessibilityTraits.contains(.button))
+        XCTAssertEqual(button.accessibilityLabel, "Current server: Botiverse")
+        XCTAssertEqual(button.accessibilityIdentifier, "raft-tab-more")
+        XCTAssertNil(button.accessibilityValue, "no badge on the server button")
+        button.frame = CGRect(x: 0, y: 0, width: RaftIosServerButtonLayout.diameter, height: RaftIosServerButtonLayout.diameter)
+        button.layoutIfNeeded()
+        let avatar = try XCTUnwrap(button.subviews.compactMap { $0 as? UIImageView }.first { $0.image?.size.width == RaftIosServerButtonLayout.avatarDiameter })
+        XCTAssertEqual(avatar.frame.midX, button.bounds.midX, accuracy: 0.5)
+        XCTAssertEqual(avatar.frame.midY, button.bounds.midY, accuracy: 0.5)
+        XCTAssertFalse(avatar.isUserInteractionEnabled)
+        // One tap = one action: a plain button, not a tab.
+        var taps = 0
+        button.addAction(UIAction { _ in taps += 1 }, for: .primaryActionTriggered)
+        button.sendActions(for: .primaryActionTriggered)
+        XCTAssertEqual(taps, 1)
     }
 }
+

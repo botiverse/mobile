@@ -10,16 +10,21 @@ struct RaftIosTabBarItemSpec: Equatable {
     let title: String
     let systemImageName: String
     let selectedSystemImageName: String
-    /// `UITabBarItem.badgeValue`: a count ("3", "99+"), or nil for no system badge.
+    /// `UITabBarItem.badgeValue`: a count ("3", "99+"), or nil for no badge. Never "": UIKit
+    /// has no small-dot badge and draws an empty value as a full-size empty badge. Shared turns
+    /// a tab's attention dot into its count for this bar (`nativeBadgeCount`).
     let badgeValue: String?
-    /// The attention dot (raft-design MobileNav / Badge): the host draws its own small dot on
-    /// the icon's corner, because UIKit draws an empty `badgeValue` as a full-size badge.
-    let showsDot: Bool
     let enabled: Bool
     /// The Search action (never the selected item; a tap opens search over the current tab).
     let searchAction: Bool
     /// Asset-catalog name of the tab's Lucide icon (the web's glyph); nil uses the SF Symbols.
     let imageAssetName: String?
+    /// Opens a panel, never selected (the current-server tab): the iOS 26 server button.
+    let opensPanel: Bool
+    /// Screen-reader label; nil = [title].
+    let accessibilityLabel: String?
+    /// The server's initial for the ink tile when there is no avatar image.
+    let avatarFallbackLabel: String?
 
     init(
         key: String,
@@ -28,19 +33,23 @@ struct RaftIosTabBarItemSpec: Equatable {
         selectedSystemImageName: String,
         badgeValue: String?,
         enabled: Bool,
-        attentionDot: Bool = false,
         searchAction: Bool = false,
-        imageAssetName: String? = nil
+        imageAssetName: String? = nil,
+        opensPanel: Bool = false,
+        accessibilityLabel: String? = nil,
+        avatarFallbackLabel: String? = nil
     ) {
         self.key = key
         self.title = title
         self.systemImageName = systemImageName
         self.selectedSystemImageName = selectedSystemImageName
         self.badgeValue = RaftIosTabBarItemMapping.badgeValue(fromShared: badgeValue)
-        self.showsDot = RaftIosTabBarItemMapping.showsDot(fromShared: badgeValue, attentionDot: attentionDot)
         self.enabled = enabled
         self.searchAction = searchAction
         self.imageAssetName = imageAssetName
+        self.opensPanel = opensPanel
+        self.accessibilityLabel = accessibilityLabel
+        self.avatarFallbackLabel = avatarFallbackLabel
     }
 }
 
@@ -66,32 +75,26 @@ enum RaftIosTabBarItemMapping {
         return trimmed
     }
 
-    /// The attention dot (a dot, never a number; shared never sets it on the selected tab) shows
-    /// only while there is no count; a count wins.
-    static func showsDot(fromShared value: String?, attentionDot: Bool) -> Bool {
-        attentionDot && badgeValue(fromShared: value) == nil
-    }
-
-    /// Edge of the attention dot: raft-ui `Status sm`, the Compose bar's `RaftAttentionPixel`.
-    static let dotEdge: CGFloat = 8
-
-    /// The dot over a tab icon's top-right corner, its centre 1pt out from the corner (raft-design
-    /// #722: the dot sits on the icon's corner). Integral so the 8pt square stays crisp.
-    static func dotFrame(iconFrame: CGRect) -> CGRect {
-        let center = CGPoint(x: iconFrame.maxX + 1, y: iconFrame.minY + 1)
-        return CGRect(
-            x: (center.x - dotEdge / 2).rounded(),
-            y: (center.y - dotEdge / 2).rounded(),
-            width: dotEdge,
-            height: dotEdge
-        )
-    }
-
     /// Tabs in shared order, first occurrence of a key wins, capped at `maximumTabCount`.
     static func displayItems(_ items: [RaftIosTabBarItemSpec]) -> [RaftIosTabBarItemSpec] {
         var seen = Set<String>()
         let unique = items.filter { !$0.key.isEmpty && seen.insert($0.key).inserted }
         return Array(unique.prefix(maximumTabCount))
+    }
+
+    /// The tabs the system bar shows, and the panel tab shown as the separate server button.
+    /// With [separatePanelButton] (iOS 26) the first panel tab leaves the bar, so pressing it
+    /// never moves the bar's Liquid Glass selection; before iOS 26 it stays the last tab.
+    static func splitPanelButton(
+        _ items: [RaftIosTabBarItemSpec],
+        separatePanelButton: Bool
+    ) -> (tabs: [RaftIosTabBarItemSpec], panel: RaftIosTabBarItemSpec?) {
+        guard separatePanelButton, let index = items.firstIndex(where: \.opensPanel) else {
+            return (items, nil)
+        }
+        var tabs = items
+        let panel = tabs.remove(at: index)
+        return (tabs, panel)
     }
 
     /// Index of the shared selection in the displayed keys; nil keeps the current selection
@@ -158,43 +161,132 @@ struct RaftIosTabTapGate {
     }
 }
 
-/// Finds where UIKit draws a tab's icon so the host can put its small dot on the icon's corner.
-/// Only public API: the item's button carries the `accessibilityIdentifier` the host sets on
-/// the `UITabBarItem` (what XCUITest finds it by) on the classic bar and the Liquid Glass bar.
-enum RaftIosTabBarIconLocator {
-    /// The icon frame of the tab [identifier] in [tabBar]'s coordinates, or nil while it is not
-    /// laid out (or this iOS draws it some other way; the host then falls back to a badge).
-    static func iconFrame(identifier: String, item: UITabBarItem, in tabBar: UITabBar) -> CGRect? {
-        guard let button = firstView(in: tabBar, where: { $0.accessibilityIdentifier == identifier && isShown($0) }) else {
-            return nil
-        }
-        let images = descendants(of: button).compactMap { $0 as? UIImageView }.filter { view in
-            view.image != nil && isShown(view) && view.bounds.width > 1 && view.bounds.height > 1
-        }
-        let own = images.filter { $0.image === item.image || $0.image === item.selectedImage }
-        guard let icon = (own.isEmpty ? images : own).max(by: { area($0.bounds) < area($1.bounds) }) else {
-            return nil
-        }
-        let frame = icon.convert(icon.bounds, to: tabBar)
-        guard frame.width.isFinite, frame.height.isFinite, !frame.isEmpty else { return nil }
-        return frame
+/// The iOS 26 server button beside the Liquid Glass tab bar (like Music's separate Search).
+///
+/// Measured, not public: the system's separated circle, spacing and margins are not exposed, so
+/// these follow the iOS 26 iPhone bar (a 62pt-tall pill, about 21pt from the screen edges).
+/// They need a device check.
+enum RaftIosServerButtonLayout {
+    /// The round button: the height of the bar's pill.
+    static let diameter: CGFloat = 62
+    /// Between the bar's pill and the button.
+    static let spacing: CGFloat = 8
+    /// The button's trailing edge from the safe area: the pill's own side margin.
+    static let trailingMargin: CGFloat = 21
+    /// The avatar, clipped to a circle, centred in the glass.
+    static let avatarDiameter: CGFloat = 40
+
+    /// The width left to the system tab bar's container: the bar lays its pill out inside it
+    /// (margins and safe areas included), so the pill and the button can never overlap.
+    static func tabBarContainerWidth(containerWidth: CGFloat, showsButton: Bool) -> CGFloat {
+        guard showsButton else { return max(0, containerWidth) }
+        return max(0, containerWidth - diameter - spacing)
     }
 
-    private static func area(_ rect: CGRect) -> CGFloat { rect.width * rect.height }
-
-    private static func isShown(_ view: UIView) -> Bool {
-        !view.isHidden && view.alpha > 0.01
-    }
-
-    private static func firstView(in root: UIView, where match: (UIView) -> Bool) -> UIView? {
-        for subview in root.subviews where !subview.isHidden {
-            if match(subview) { return subview }
-            if let found = firstView(in: subview, where: match) { return found }
-        }
-        return nil
-    }
-
-    private static func descendants(of root: UIView) -> [UIView] {
-        root.subviews.flatMap { [$0] + descendants(of: $0) }
+    /// The button's frame in the container. [barFrame] is the system tab bar's frame and
+    /// [barBottomInset] its bottom safe-area inset: the pill is centred in the bar above it.
+    static func buttonFrame(
+        containerWidth: CGFloat,
+        safeAreaRight: CGFloat,
+        barFrame: CGRect,
+        barBottomInset: CGFloat
+    ) -> CGRect {
+        let contentHeight = max(0, barFrame.height - barBottomInset)
+        let centerY = barFrame.minY + contentHeight / 2
+        let x = containerWidth - max(0, safeAreaRight) - trailingMargin - diameter
+        return CGRect(x: x.rounded(), y: (centerY - diameter / 2).rounded(), width: diameter, height: diameter)
     }
 }
+
+/// The server's avatar for the button: its image clipped to a circle, or the app's initial tile
+/// (ink with the initial in brand yellow, as the panel and Android draw it).
+enum RaftIosServerAvatarImage {
+    /// raft-ui `sticker-ink` (#141111).
+    static let ink = UIColor(red: 0x14 / 255.0, green: 0x11 / 255.0, blue: 0x11 / 255.0, alpha: 1)
+    /// raft-ui palette yellow (#FFD441), the initial's colour.
+    static let brandYellow = UIColor(red: 1.0, green: 0xD4 / 255.0, blue: 0x41 / 255.0, alpha: 1)
+
+    /// A UIImage from non-premultiplied ARGB pixels (row by row), or nil when they do not fit.
+    static func image(argb: [Int32], width: Int, height: Int) -> UIImage? {
+        guard width > 0, height > 0, argb.count == width * height else { return nil }
+        let data = argb.withUnsafeBufferPointer { Data(buffer: $0) }
+        guard let provider = CGDataProvider(data: data as CFData) else { return nil }
+        let info = CGBitmapInfo(rawValue: CGImageAlphaInfo.first.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        guard let cgImage = CGImage(
+            width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: info, provider: provider,
+            decode: nil, shouldInterpolate: true, intent: .defaultIntent
+        ) else { return nil }
+        return UIImage(cgImage: cgImage)
+    }
+
+    /// [source] (aspect-filled) or, without it, the initial tile, clipped to a [diameter] circle.
+    static func circle(_ source: UIImage?, fallbackLabel: String?, diameter: CGFloat) -> UIImage {
+        let size = CGSize(width: diameter, height: diameter)
+        let bounds = CGRect(origin: .zero, size: size)
+        return UIGraphicsImageRenderer(size: size).image { _ in
+            UIBezierPath(ovalIn: bounds).addClip()
+            if let source = source, source.size.width > 0, source.size.height > 0 {
+                let scale = max(diameter / source.size.width, diameter / source.size.height)
+                let drawn = CGSize(width: source.size.width * scale, height: source.size.height * scale)
+                source.draw(in: CGRect(
+                    x: (diameter - drawn.width) / 2, y: (diameter - drawn.height) / 2,
+                    width: drawn.width, height: drawn.height
+                ))
+                return
+            }
+            ink.setFill()
+            UIRectFill(bounds)
+            let label = (fallbackLabel?.isEmpty == false ? fallbackLabel! : "?") as NSString
+            let font = UIFont.monospacedSystemFont(ofSize: (diameter * 0.45).rounded(), weight: .bold)
+            let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: brandYellow]
+            let textSize = label.size(withAttributes: attributes)
+            label.draw(
+                at: CGPoint(x: (diameter - textSize.width) / 2, y: (diameter - textSize.height) / 2),
+                withAttributes: attributes
+            )
+        }.withRenderingMode(.alwaysOriginal)
+    }
+}
+
+/// The separate round Liquid Glass server button (iOS 26): the system glass button style with
+/// the server's avatar in a circle inside it. No badge (artin 10-23). A tap toggles the server
+/// panel; it is a plain button, so it never takes or moves the tab bar's selection.
+@available(iOS 26.0, *)
+final class RaftIosServerTabButton: UIButton {
+    private let avatarView = UIImageView()
+
+    static func make() -> RaftIosServerTabButton {
+        let button = RaftIosServerTabButton(type: .system)
+        var configuration = UIButton.Configuration.glass()
+        configuration.cornerStyle = .capsule
+        button.configuration = configuration
+        button.avatarView.isUserInteractionEnabled = false
+        button.avatarView.contentMode = .scaleAspectFit
+        button.avatarView.isAccessibilityElement = false
+        button.addSubview(button.avatarView)
+        button.isAccessibilityElement = true
+        button.accessibilityTraits = .button
+        return button
+    }
+
+    /// Label, identifier and avatar from [spec]; [avatar] is the decoded server image, if any.
+    func apply(_ spec: RaftIosTabBarItemSpec, avatar: UIImage?) {
+        accessibilityLabel = spec.accessibilityLabel ?? spec.title
+        accessibilityIdentifier = "raft-tab-\(spec.key)"
+        isEnabled = spec.enabled
+        avatarView.image = RaftIosServerAvatarImage.circle(
+            avatar,
+            fallbackLabel: spec.avatarFallbackLabel,
+            diameter: RaftIosServerButtonLayout.avatarDiameter
+        )
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let edge = RaftIosServerButtonLayout.avatarDiameter
+        avatarView.frame = CGRect(x: (bounds.width - edge) / 2, y: (bounds.height - edge) / 2, width: edge, height: edge)
+        bringSubviewToFront(avatarView)
+    }
+}
+
