@@ -16,6 +16,9 @@ summarizes.
 
 - `raft-designsystem-ui` — adding or changing a page, panel or control with
   `compose/designsystem` (raft-ui source of truth, dark mode, goldens).
+- `raft-ui-follow` — catching `compose/designsystem` up with a new raft-ui
+  release (changelog verdicts, token bump, hand-matched values, RGB golden
+  checks, small PRs).
 - `raft-i18n-strings` — adding or changing user-visible text in en/zh-CN/ja.
 - `raft-api-endpoint` — calling a new/changed server endpoint or DTO field.
 - `raft-realtime-event` — adding a Socket.IO event or `RealtimeEvent` subtype.
