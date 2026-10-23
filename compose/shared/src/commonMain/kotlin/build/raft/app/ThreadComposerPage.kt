@@ -9,6 +9,16 @@ import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.ui.graphics.isSpecified
 import build.raft.designsystem.components.RaftEmbeddedControls
+import build.raft.designsystem.components.RaftComposerAttachment
+import build.raft.designsystem.components.RaftComposerAttachmentFailed
+import build.raft.designsystem.components.RaftComposerAttachmentFile
+import build.raft.designsystem.components.RaftComposerAttachmentGap
+import build.raft.designsystem.components.RaftComposerAttachmentImage
+import build.raft.designsystem.components.RaftComposerAttachmentRemove
+import build.raft.designsystem.components.RaftComposerAttachmentRemoveOverhang
+import build.raft.designsystem.components.RaftComposerAttachmentStatus
+import build.raft.designsystem.components.RaftComposerAttachmentUploading
+import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.base.Utils
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.markdown.traceMarkdownSection
@@ -133,15 +143,15 @@ private val ThreadComposerLeftActionGroupSpacing = 8.dp
 // the toolbar's buttons sit inside the card's outer edge (raft-design Shape > Inside a frame).
 private val ThreadComposerCardPadding = 8.dp
 private val ThreadComposerEmbeddedInset = 6.dp
-private const val ThreadComposerAttachmentTrayMaxWidthDp = 321
+// raft-ui `ComposerAttachments`: the composer's 321dp less the tray's 6dp `pe-1.5`; 64dp image
+// tiles and 176dp file tiles (`size-16`, `w-44`), 8dp apart (`gap-2`).
+private const val ThreadComposerAttachmentTrayMaxWidthDp = 315
 private const val ThreadComposerAttachmentImageTileSizeDp = 64
-private const val ThreadComposerAttachmentFileTileWidthDp = 128
+private const val ThreadComposerAttachmentFileTileWidthDp = 176
 private const val ThreadComposerAttachmentRowGapDp = 8
 private const val ThreadComposerMentionActionNoticeDurationMillis = 1800L
 private const val ThreadComposerSuggestionQueryDebounceMillis = 24L
 private const val ThreadComposerNativeSnapshotTimeoutMillis = 1_000L
-private val ThreadComposerAttachmentTileSize = 64.dp
-private val ThreadComposerAttachmentCloseSize = 22.dp
 private val ThreadComposerDisabledSendBackground = Color(0xFFFFD8E5) // raft-color: legacy disabled-send sticker args, ignored by the themed RaftBrutalIconButton
 private val ThreadComposerDisabledSendBorder = Color(0xFFB3B3B3) // raft-color: legacy disabled-send sticker args, ignored by the themed RaftBrutalIconButton
 private val ThreadComposerDisabledSendShadow = Color(0xFFB8B8B8) // raft-color: legacy disabled-send sticker args, ignored by the themed RaftBrutalIconButton
@@ -4402,36 +4412,47 @@ private fun PendingMentionActionRow(
 }
 
 @Composable
-private fun ComposerAttachmentTray(
+internal fun ComposerAttachmentTray(
     attachments: List<RaftPendingAttachmentItem>,
     enabled: Boolean,
     previewEnabled: Boolean,
     onEvent: (action: String, attachmentId: String) -> Unit
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(ThreadComposerAttachmentRowGapDp.dp)
-    ) {
-        composerAttachmentRows(attachments).forEach { rowAttachments ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(ThreadComposerAttachmentRowGapDp.dp)
-            ) {
-                rowAttachments.forEach { attachment ->
-                    ComposerAttachmentPreviewChip(
-                        attachment = attachment,
-                        enabled = enabled,
-                        previewEnabled = previewEnabled,
-                        onPreview = { onEvent("previewAttachment", attachment.id) },
-                        onRemove = { onEvent("removeAttachment", attachment.id) },
-                        onRetry = { onEvent("retryAttachments", attachment.id) }
-                    )
+    // raft-ui `ComposerAttachments` (`flex-wrap gap-2 pt-1.5 pe-1.5`): the top and end room
+    // keeps each tile's overhanging remove sticker inside the tray.
+    RaftDesignSystemTheme {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = RaftComposerAttachmentRemoveOverhang, end = RaftComposerAttachmentRemoveOverhang),
+            verticalArrangement = Arrangement.spacedBy(RaftComposerAttachmentGap)
+        ) {
+            composerAttachmentRows(attachments).forEach { rowAttachments ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(RaftComposerAttachmentGap)
+                ) {
+                    rowAttachments.forEach { attachment ->
+                        ComposerAttachmentPreviewChip(
+                            attachment = attachment,
+                            enabled = enabled,
+                            previewEnabled = previewEnabled,
+                            onPreview = { onEvent("previewAttachment", attachment.id) },
+                            onRemove = { onEvent("removeAttachment", attachment.id) },
+                            onRetry = { onEvent("retryAttachments", attachment.id) }
+                        )
+                    }
                 }
             }
         }
     }
 }
 
+/**
+ * One tile of the tray on raft-ui `ComposerAttachment` (web MessageInput `SortableAttachmentChip`):
+ * the image or file tile, the uploading or failed overlay, and the remove sticker.
+ */
 @Composable
 private fun ComposerAttachmentPreviewChip(
     attachment: RaftPendingAttachmentItem,
@@ -4443,207 +4464,66 @@ private fun ComposerAttachmentPreviewChip(
 ) {
     val isFailed = attachment.status == "failed"
     val isUploading = attachment.status == "uploading"
-    val isImage = attachment.isComposerImageAttachment()
     val imagePreviewUri = attachment.previewUri?.takeIf { it.isNotBlank() }
-    val canPreview = attachment.canOpenComposerAttachmentPreview(previewEnabled)
-    Box(modifier = Modifier.width(attachment.composerAttachmentPreviewWidthDp().dp).height(ThreadComposerAttachmentTileSize)) {
-        if (isImage) {
-            ComposerImageAttachmentPreview(
-                attachment = attachment,
-                imagePreviewUri = imagePreviewUri,
-                previewEnabled = canPreview,
-                onPreview = onPreview
-            )
-        } else {
-            ComposerFileAttachmentPreview(
-                attachment = attachment,
-                previewEnabled = canPreview,
-                onPreview = onPreview
-            )
-        }
-        if (isUploading) {
-            ComposerAttachmentUploadingOverlay(attachment = attachment)
-        }
-        if (isFailed && enabled) {
-            ComposerAttachmentFailedOverlay(onRetry = onRetry)
-        }
-        if (enabled) {
-            ComposerAttachmentRemoveButton(onRemove = onRemove)
-        }
-    }
-}
-
-@Composable
-private fun ComposerImageAttachmentPreview(
-    attachment: RaftPendingAttachmentItem,
-    imagePreviewUri: String?,
-    previewEnabled: Boolean,
-    onPreview: () -> Unit
-) {
-    Box(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .clickable(enabled = previewEnabled, onClick = onPreview)
-                .raftThemedCorners(RaftAppRadius.Control)
-                .background(RaftColor.Card, RoundedCornerShape(RaftAppRadius.Control))
-                .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Control)),
-        contentAlignment = Alignment.Center
-    ) {
-        if (imagePreviewUri != null) {
-            RaftAspectFitImagePreviewSurface(
-                source = imagePreviewUri,
-                contentDescription = attachment.fileName,
-                modifier = Modifier.fillMaxSize(),
-                borderWidth = 0.dp,
-                contentScale = RaftImageThumbnailContentScale
-            )
-        } else {
-            RaftLucideIcon(RaftLucideIconName.Image, modifier = Modifier.size(20.dp), color = raftArgbHex(RaftColor.TextMuted))
-        }
-    }
-}
-
-@Composable
-private fun ComposerFileAttachmentPreview(
-    attachment: RaftPendingAttachmentItem,
-    previewEnabled: Boolean,
-    onPreview: () -> Unit
-) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .clickable(enabled = previewEnabled, onClick = onPreview)
-                .raftThemedCorners(RaftAppRadius.Control)
-                .background(RaftColor.Card, RoundedCornerShape(RaftAppRadius.Control))
-                .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Control))
-                .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp)
-    ) {
-        RaftLucideIcon(
-            RaftLucideIconName.FileText,
-            modifier = Modifier.size(16.dp),
-            color = raftArgbHex(RaftColor.TextMuted)
-        )
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(1.dp)
-        ) {
-            Text(
-                text = attachment.fileName,
-                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
-                color = RaftColor.TextBlack,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = listOf(
-                    stringResource(MR.strings.thread_composer_attachment_file),
-                    attachment.displaySizeLabel(),
-                ).filter { it.isNotBlank() }.joinToString(" · "),
-                style = RaftType.Caption.copy(fontSize = 9.sp, lineHeight = 10.sp),
-                color = RaftColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-@Composable
-private fun ComposerAttachmentUploadingOverlay(attachment: RaftPendingAttachmentItem) {
+    val onOpen = onPreview.takeIf { attachment.canOpenComposerAttachmentPreview(previewEnabled) }
     val progress = attachment.uploadProgress.coerceIn(0, 100)
-    Box(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .raftThemedCorners(RaftAppRadius.Control)
-                .background(RaftColor.Card.copy(alpha = 0.86f), RoundedCornerShape(RaftAppRadius.Control))
-                .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Control)),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            RaftLucideIcon(RaftLucideIconName.LoaderCircle, modifier = Modifier.size(16.dp), color = RaftColor.TextBlackArgb, spinning = true)
-            Text(
-                text = if (progress > 0) "$progress%" else stringResource(MR.strings.thread_composer_attachment_uploading),
-                style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 11.sp),
-                color = RaftColor.TextBlack,
-                maxLines = 1
-            )
-        }
-        if (progress > 0) {
-            Box(
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .fillMaxWidth()
-                        .height(4.dp)
-                        .raftSquareCorners()
-                        .background(RaftColor.FillMuted)
+    val failedText = stringResource(MR.strings.thread_composer_attachment_upload_failed)
+    val retryLabel = stringResource(MR.strings.common_retry)
+    val showFailed = isFailed && enabled
+    RaftComposerAttachment {
+        if (attachment.isComposerImageAttachment()) {
+            RaftComposerAttachmentImage(onClick = onOpen) {
+                if (imagePreviewUri != null) {
+                    RaftAspectFitImagePreviewSurface(
+                        source = imagePreviewUri,
+                        contentDescription = attachment.fileName,
+                        modifier = Modifier.fillMaxSize(),
+                        borderWidth = 0.dp,
+                        contentScale = RaftImageThumbnailContentScale
+                    )
+                } else if (!isUploading && !showFailed) {
+                    // With no thumbnail, an overlay's spinner or alert stands in for the glyph.
+                    RaftLucideIcon(RaftLucideIconName.Image, modifier = Modifier.size(20.dp), color = raftArgbHex(RaftTheme.colors.foregroundMuted))
+                }
+            }
+            // raft-ui overlays on a thumbnail: the spinner alone until a percentage is known
+            // (a 64dp tile has no room for "Uploading…"); on failure an alert over an underlined Retry.
+            if (isUploading) {
+                RaftComposerAttachmentUploading(label = if (progress > 0) "$progress%" else null, progress = progress)
+            }
+            if (showFailed) {
+                RaftComposerAttachmentFailed(text = failedText, action = retryLabel, onClick = onRetry)
+            }
+        } else {
+            // A file tile keeps its name readable and writes the upload status into its meta line.
+            RaftComposerAttachmentFile(
+                title = attachment.fileName,
+                meta =
+                    listOf(
+                        stringResource(MR.strings.thread_composer_attachment_file),
+                        attachment.displaySizeLabel(),
+                    ).filter { it.isNotBlank() }.joinToString(" · "),
+                status =
+                    when {
+                        isUploading ->
+                            RaftComposerAttachmentStatus.Uploading(
+                                label = if (progress > 0) "$progress%" else stringResource(MR.strings.thread_composer_attachment_uploading),
+                                progress = progress
+                            )
+                        showFailed -> RaftComposerAttachmentStatus.Failed(text = failedText, action = retryLabel)
+                        else -> RaftComposerAttachmentStatus.Ready
+                    },
+                onClick = if (showFailed) onRetry else onOpen
             ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth(progress.coerceAtLeast(4) / 100f)
-                            .height(4.dp)
-                            .raftSquareCorners()
-                            .background(RaftColor.AccentPink)
-                )
+                RaftLucideIcon(RaftLucideIconName.FileText, modifier = Modifier.size(16.dp), color = raftArgbHex(RaftTheme.colors.foregroundMuted))
             }
         }
-    }
-}
-
-@Composable
-private fun ComposerAttachmentFailedOverlay(onRetry: () -> Unit) {
-    Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .clickable(onClick = onRetry)
-                .raftThemedCorners(RaftAppRadius.Control)
-                // deliberate near-opaque failure scrim over the attachment thumbnail; triaged token-audit #1066
-                .background(RaftColor.AccentOrange.copy(alpha = 0.92f), RoundedCornerShape(RaftAppRadius.Control))
-                .border(RaftAppStroke.Thin, RaftColor.BorderHairline, RoundedCornerShape(RaftAppRadius.Control))
-                .padding(horizontal = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            text = stringResource(MR.strings.thread_composer_attachment_upload_failed),
-            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
-            color = RaftColor.StickerInk,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            text = stringResource(MR.strings.thread_composer_attachment_tap_retry),
-            style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
-            color = RaftColor.StickerInk,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}
-
-@Composable
-private fun BoxScope.ComposerAttachmentRemoveButton(onRemove: () -> Unit) {
-    Box(
-        modifier =
-            Modifier
-                .size(ThreadComposerAttachmentCloseSize)
-                .align(Alignment.TopEnd)
-                .offset(x = 5f, y = -5f)
-                .background(RaftColor.StickerInk, RoundedCornerShape(ThreadComposerAttachmentCloseSize / 2))
-                .clickable(onClick = onRemove),
-        contentAlignment = Alignment.Center
-    ) {
-        RaftLucideIcon(RaftLucideIconName.X, modifier = Modifier.size(12.dp), color = raftArgbHex(RaftColor.StickerPaper))
+        if (enabled) {
+            RaftComposerAttachmentRemove(
+                onClick = onRemove,
+                contentDescription = "${stringResource(MR.strings.common_remove)} ${attachment.fileName}"
+            )
+        }
     }
 }
 

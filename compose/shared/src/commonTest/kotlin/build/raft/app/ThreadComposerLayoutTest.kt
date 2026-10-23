@@ -1182,9 +1182,11 @@ class ThreadComposerLayoutTest {
                 )
             )
 
-        assertEquals(listOf(listOf("image", "report"), listOf("logs", "trace")), rows.map { row -> row.map { it.id } })
+        // raft-ui ComposerAttachment: 64dp image tiles, 176dp file tiles, 8dp apart, in the
+        // composer's 315dp tray; two file tiles (360dp) never share a row.
+        assertEquals(listOf(listOf("image", "report"), listOf("logs"), listOf("trace")), rows.map { row -> row.map { it.id } })
         assertEquals(64, rows.first().first().composerAttachmentPreviewWidthDp())
-        assertEquals(128, rows.first()[1].composerAttachmentPreviewWidthDp())
+        assertEquals(176, rows.first()[1].composerAttachmentPreviewWidthDp())
     }
 
     @Test
