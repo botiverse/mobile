@@ -1262,6 +1262,8 @@ internal fun appShellPhoneBottomTabs(
      * Null (no server loaded yet) keeps the plain More tab.
      */
     serverTab: RaftServerMenuModel? = null,
+    /** The server tab's screen-reader label ("Current server: Raft HQ"). */
+    serverTabAccessibilityLabel: String? = null,
 ): List<RaftBottomTabItemPayload> =
     appShellBottomTabs(
         selectedKey = appShellPhoneBottomBarSelectedKey(selectedTab),
@@ -1288,7 +1290,11 @@ internal fun appShellPhoneBottomTabs(
                 // It opens the server panel, not a page: never selected (raft-design #712).
                 selected = false,
                 attentionDot = appShellServerTabShowsAttention(serverTab),
-                nativeBadgeCount = appShellServerTabNativeBadgeCount(serverTab),
+                // No count on iOS (artin 10-23): the panel's rows show other servers' unread.
+                opensPanel = true,
+                accessibilityLabel = serverTabAccessibilityLabel,
+                avatarSource = serverTab.currentServer.toServerSwitcherAvatarPresentation().avatarWireValue,
+                avatarFallbackLabel = serverTab.currentServer.toServerSwitcherAvatarPresentation().fallbackLabel,
             )
         }
     }
@@ -6288,6 +6294,8 @@ private fun RaftAppShellReadyContent(
             serverTabFocusPending = true
         }
     }
+    val serverTabAccessibilityLabel =
+        serverMenuModel?.let { stringResource(MR.strings.server_tab_a11y_label, it.currentServer.name) }
     val appShellBottomTabItems = remember(
         selectedTab,
         homeTabLabel,
@@ -6297,7 +6305,8 @@ private fun RaftAppShellReadyContent(
         moreTabLabel,
         activityTabUnreadCount,
         moreAttention,
-        serverMenuModel
+        serverMenuModel,
+        serverTabAccessibilityLabel
     ) {
         appShellPhoneBottomTabs(
             selectedTab = selectedTab,
@@ -6308,7 +6317,8 @@ private fun RaftAppShellReadyContent(
             moreLabel = moreTabLabel,
             activityUnreadCount = activityTabUnreadCount,
             moreAttention = moreAttention,
-            serverTab = serverMenuModel
+            serverTab = serverMenuModel,
+            serverTabAccessibilityLabel = serverTabAccessibilityLabel
         )
     }
     // The wide rail keeps the web LeftRail entries (Members is a rail root there).
