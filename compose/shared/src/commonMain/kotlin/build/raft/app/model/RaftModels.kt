@@ -752,6 +752,29 @@ data class ScopeReadUpdated(
     val summaryChanged: Boolean = false,
 ) : RealtimeEvent
 
+/** `agent:typing` `state`: a live call (`start`, also its refreshes) or its end. */
+@Serializable
+enum class AgentTypingPhase { Start, End }
+
+/**
+ * `agent:typing` (botiverse/slock `packages/shared/src/agentTyping.ts` `AgentTypingEvent`), emitted
+ * to `channel:<channelId>`: an agent is about to post there. For a thread reply [channelId] is the
+ * parent channel and [parentMessageId] the thread's root message; null means the channel itself.
+ * [taskId] is set only for a task v2 reply. [expiresAtEpochMillis] is the server's clock (0 when
+ * the frame carried none).
+ */
+@Serializable
+data class AgentTypingUpdated(
+    val agentId: MemberId,
+    val serverId: ServerId,
+    val channelId: ChannelId,
+    val parentMessageId: MessageId?,
+    val callId: String,
+    val phase: AgentTypingPhase,
+    val expiresAtEpochMillis: Long,
+    val taskId: String? = null,
+) : RealtimeEvent
+
 @Serializable
 data class ThreadUpdated(
     val parentMessageId: MessageId,

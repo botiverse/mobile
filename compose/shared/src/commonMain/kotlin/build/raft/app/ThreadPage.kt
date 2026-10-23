@@ -11205,10 +11205,20 @@ private fun SharedThreadRouteContentContent(
                 active = active,
                 serverMembersStore = serverMembersStore,
             )
+        // Agent typing line: who is about to post into this conversation (null = nobody).
+        val agentTyping =
+            rememberThreadAgentTyping(
+                payload = renderedThread,
+                sharedStores = sharedStores,
+                storeScope = storeScope,
+                serverId = currentServerId,
+                serverMembersStore = serverMembersStore,
+            )
         val threadProvidedValues = raftMarkdownProvidedValuesWith(
             arrayOf(
                 LocalThreadInPlaceTextSelectionHost provides inPlaceTextSelectionHost,
                 LocalThreadPeerReadReceipts provides peerReadReceipts,
+                LocalThreadAgentTyping provides agentTyping,
                 LocalThreadInlineVideoPreviewHost provides
                     ThreadInlineVideoPreviewHost(
                         states = inlineVideoPreviewStates,
@@ -18498,6 +18508,7 @@ private fun ThreadMessagesListContent(
     val renderPayload = timelineSlice
     val peerReadReceipts = LocalThreadPeerReadReceipts.current
     val dmReadStatusMessageId = renderPayload.dmReadStatusMessageId(peerReadReceipts)
+    val agentTyping = LocalThreadAgentTyping.current
     // Task #1125: offline stand-in chrome (top inset + tip overlay), see threadOfflineLastKnownChrome.
     val offlineLastKnownChrome =
         threadOfflineLastKnownChrome(
@@ -21746,6 +21757,9 @@ private fun ThreadMessagesListContent(
                         .fillMaxWidth()
                         .height(
                             ThreadBottomScrollPaddingHeight +
+                                // The line floats over the list's end: give the end its height, so at
+                                // the bottom it never covers the last message (web AgentTypingListEnd).
+                                (if (agentTyping != null) ThreadAgentTypingListEndHeight else 0.dp) +
                                 (if (shareSelectionCaptureTailPaddingActive) {
                                     ThreadShareCaptureBottomScrollPaddingHeight
                                 } else {
@@ -21950,11 +21964,21 @@ private fun ThreadMessagesListContent(
             )
         }
         val nextUnreadThread = unreadThreadJump?.takeIf { it.direction == ThreadUnreadThreadJumpDirection.Next }
+        if (agentTyping != null && !inlineSearchVisible) {
+            ThreadAgentTypingLine(
+                typing = agentTyping,
+                modifier = Modifier.align(Alignment.BottomCenter).zIndex(ThreadAgentTypingLineZIndex),
+            )
+        }
         if (backToBottomMounted || nextUnreadThread != null) {
             // Kuikly-era rule kept: the native dispatch capture sits on the pills' ancestor path so
             // a tap on a pill never also starts a gesture on the message row underneath.
             RaftMessageListJumpControls(
-                modifier = Modifier.align(Alignment.BottomCenter).zIndex(ThreadJumpControlsZIndex).raftNativeDispatchCapture(),
+                // While the typing line shows, the pills sit above it, not over it (web
+                // `--message-list-bottom-inset`).
+                modifier = Modifier.align(Alignment.BottomCenter)
+                    .padding(bottom = if (agentTyping != null && !inlineSearchVisible) ThreadAgentTypingLineHeight else 0.dp)
+                    .zIndex(ThreadJumpControlsZIndex).raftNativeDispatchCapture(),
             ) {
                 if (backToBottomMounted) {
                     RaftMessageListJumpPill(
@@ -22420,6 +22444,8 @@ private val ThreadNewerMessagesBoundaryHeight = 36.dp
 private val ThreadShareCaptureBottomScrollPaddingHeight = 1200.dp
 private val ThreadInlineSearchBarBottomInset = 58.dp
 private const val ThreadInlineSearchBarZIndex = 2f
+/** Over the messages, under the jump pills and the inline search bar's popups. */
+private const val ThreadAgentTypingLineZIndex = 1.5f
 internal data class ThreadInlineActionSpec(
     val label: StringDesc,
     val event: String? = null,

@@ -737,6 +737,11 @@
     <string name="thread_audio_attachment_fallback_name">Audio attachment</string>
     <string name="thread_audio_file_label">Audio file</string>
     <string name="thread_action_back_to_bottom">Back to Bottom</string>
+    <string name="thread_agent_typing_one">{first} is typing…</string>
+    <string name="thread_agent_typing_two">{first} and {second} are typing…</string>
+    <string name="thread_agent_typing_three">{first}, {second} and {third} are typing…</string>
+    <string name="thread_agent_typing_many">{first}, {second} and {others} other agents are typing…</string>
+    <string name="thread_agent_typing_agent_fallback">Agent</string>
     <string name="thread_jump_new_messages_one">1 new message</string>
     <string name="thread_jump_new_messages_many">%1$d new messages</string>
     <string name="thread_jump_next_unread_thread">Next Unread Thread (%1$d)</string>
