@@ -39,7 +39,6 @@ import kotlinx.serialization.json.Json
 const val SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY: String = "sync_core_messages_v1"
 const val SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY: String = "sync_core_notification_prefs_v0"
 const val SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY: String = "sync_core_read_state_v1"
-const val ATTACHMENT_COMMENTS_FEATURE_FLAG_KEY: String = "attachment_comments_v0"
 const val READ_RECEIPTS_FEATURE_FLAG_KEY: String = "read_receipts_v0"
 const val MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY: String = "mobile_thread_page_size_v0"
 const val MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY: String = "mobile_activity_stable_order_v1"
@@ -149,7 +148,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
     SYNC_CORE_NOTIFICATION_PREFS_FEATURE_FLAG_KEY,
     SYNC_CORE_READ_STATE_V1_FEATURE_FLAG_KEY,
-    ATTACHMENT_COMMENTS_FEATURE_FLAG_KEY,
     READ_RECEIPTS_FEATURE_FLAG_KEY,
     MOBILE_THREAD_PAGE_SIZE_FEATURE_FLAG_KEY,
     MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY,
