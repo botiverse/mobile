@@ -234,6 +234,9 @@ enum RaftIosTabIcon {
 final class RaftIosSystemTabs {
     private var tabsByKey: [String: UITab] = [:]
     private var keys: [String] = []
+    /// What each tab's image was made from; the image is set again only when that changes (a
+    /// new image relays the button out).
+    private var imageSourceByKey: [String: String] = [:]
     /// Content for a tab: an empty, transparent placeholder (the shell draws the page).
     var makeContent: (String) -> UIViewController = { _ in
         let content = UIViewController()
@@ -267,14 +270,17 @@ final class RaftIosSystemTabs {
                     return existing
                 }
                 let key = spec.key
+                // A page tab gets its icon at creation: the bar lays the title out around it.
                 let tab: UITab = spec.opensPanel
                     ? UISearchTab { _ in make(key) }
-                    : UITab(title: spec.title, image: nil, identifier: key) { _ in make(key) }
+                    : UITab(title: spec.title, image: RaftIosTabIcon.images(for: spec).normal, identifier: key) { _ in make(key) }
+                imageSourceByKey[key] = spec.opensPanel ? nil : Self.imageSource(spec)
                 next[spec.key] = tab
                 return tab
             }
             tabsByKey = next
             keys = nextKeys
+            imageSourceByKey = imageSourceByKey.filter { next[$0.key] != nil }
             controller.setTabs(tabs, animated: false)
         }
         for spec in specs {
@@ -283,17 +289,30 @@ final class RaftIosSystemTabs {
             tab.accessibilityLabel = spec.accessibilityLabel ?? spec.title
             if spec.opensPanel {
                 // No badge on the server tab (artin 10-23).
-                tab.image = RaftIosServerAvatarImage.circle(
-                    panelImage,
-                    fallbackLabel: spec.avatarFallbackLabel,
-                    diameter: RaftIosServerAvatarImage.diameter
-                )
+                let source = panelImage.map { "avatar:\(ObjectIdentifier($0).hashValue)" }
+                    ?? "initial:\(spec.avatarFallbackLabel ?? "")"
+                if imageSourceByKey[spec.key] != source {
+                    imageSourceByKey[spec.key] = source
+                    tab.image = RaftIosServerAvatarImage.circle(
+                        panelImage,
+                        fallbackLabel: spec.avatarFallbackLabel,
+                        diameter: RaftIosServerAvatarImage.diameter
+                    )
+                }
                 if tab.badgeValue != nil { tab.badgeValue = nil }
             } else {
-                tab.image = RaftIosTabIcon.images(for: spec).normal
+                let source = Self.imageSource(spec)
+                if imageSourceByKey[spec.key] != source {
+                    imageSourceByKey[spec.key] = source
+                    tab.image = RaftIosTabIcon.images(for: spec).normal
+                }
                 if tab.badgeValue != spec.badgeValue { tab.badgeValue = spec.badgeValue }
             }
         }
+    }
+
+    private static func imageSource(_ spec: RaftIosTabBarItemSpec) -> String {
+        "\(spec.imageAssetName ?? "")|\(spec.systemImageName)"
     }
 
     /// Shows [key] as the selected page tab (programmatic: the delegate is not asked).
