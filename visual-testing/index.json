@@ -1,13 +1,13 @@
 {
   "version": 1,
   "name": "Raft Visual Testing",
-  "generatedAt": "2026-10-23T10:26:47.271Z",
+  "generatedAt": "2026-10-23T11:05:53.141Z",
   "latestRunId": "857e1fe-20261023102553",
   "latest": {
     "runId": "857e1fe-20261023102553",
     "commit": "857e1fe-20261023102553",
     "commitSubject": "fix(visual): Android captures see CMP dialog windows, Compose nodes and SVG data URIs (#3583)",
-    "generatedAt": "2026-10-23T10:26:47.271Z",
+    "generatedAt": "2026-10-23T11:05:53.141Z",
     "baseline": "react",
     "current": "android",
     "summary": {
@@ -20,8 +20,8 @@
     },
     "analysisSummary": {
       "total": 101,
-      "ready": 0,
-      "pending": 101
+      "ready": 31,
+      "pending": 70
     },
     "comparisons": [
       "react__android"
@@ -127,7 +127,7 @@
       "runId": "857e1fe-20261023102553",
       "commit": "857e1fe-20261023102553",
       "commitSubject": "fix(visual): Android captures see CMP dialog windows, Compose nodes and SVG data URIs (#3583)",
-      "generatedAt": "2026-10-23T10:26:47.271Z",
+      "generatedAt": "2026-10-23T11:05:53.141Z",
       "baseline": "react",
       "current": "android",
       "summary": {
@@ -140,8 +140,8 @@
       },
       "analysisSummary": {
         "total": 101,
-        "ready": 0,
-        "pending": 101
+        "ready": 31,
+        "pending": 70
       },
       "comparisons": [
         "react__android"
