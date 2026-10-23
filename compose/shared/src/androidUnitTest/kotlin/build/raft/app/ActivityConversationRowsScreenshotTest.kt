@@ -76,6 +76,16 @@ class ActivityConversationRowsScreenshotTest {
     fun activityRowsSwipeEndLight() =
         capture("screens.activity.rows.swipe-end", RaftAppAppearance.Light) { ActivityRowsSwipeEndVisualContent() }
 
+    /** The same rows before the release threshold: the soft layer (raft-design #775 / #779). */
+    @Test
+    fun activityRowsSwipeEndSoftLight() =
+        capture("screens.activity.rows.swipe-end.soft", RaftAppAppearance.Light) { ActivityRowsSwipeEndVisualContent(reveal = 0.25f) }
+
+    /** Done swipe, soft above and solid below the threshold. */
+    @Test
+    fun activityRowsSwipeDoneLight() =
+        capture("screens.activity.rows.swipe-done", RaftAppAppearance.Light) { ActivityRowsSwipeEndVisualContent(done = true) }
+
     private fun capture(
         name: String,
         appearance: RaftAppAppearance,
@@ -300,11 +310,10 @@ private fun ActivityRowsVisualContent(appearance: RaftAppAppearance) {
                     selected = false,
                     timeContext = timeContext,
                     agentStatusResolver = EmptyRaftAgentStatusResolver,
-                    showDoneAction = true,
+                    canMarkDone = true,
                     openGestureKey = item.key,
                     captureMenuAnchor = false,
                     onOpen = {},
-                    onDone = {},
                     onOpenMenu = {},
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -315,7 +324,7 @@ private fun ActivityRowsVisualContent(appearance: RaftAppAppearance) {
 
 /** Two rows opened toward the end (as while a finger holds them) between two at rest. */
 @Composable
-private fun ActivityRowsSwipeEndVisualContent() {
+private fun ActivityRowsSwipeEndVisualContent(reveal: Float = 0.42f, done: Boolean = false) {
     val timeContext =
         RaftTimeContext(
             localOffsetMinutes = 8 * 60,
@@ -368,10 +377,15 @@ private fun ActivityRowsSwipeEndVisualContent() {
         ActivityConversationListContext(
             channelSymbolsByChannelId = mapOf("release" to "#", "mobile" to "#", "launch-week" to "#"),
         )
-    val rows = listOf(resting to 0f, thread to -0.42f, channel to -0.42f, resting.copy(key = "channel:launch-2") to 0f)
+    val rows =
+        if (done) {
+            listOf(resting to 0f, thread to 0.25f, channel to 0.42f, resting.copy(key = "channel:launch-2") to 0f)
+        } else {
+            listOf(resting to 0f, thread to -reveal, channel to -reveal, resting.copy(key = "channel:launch-2") to 0f)
+        }
     RaftTheme(appearance = RaftAppearance.Light) {
         Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
-            rows.forEachIndexed { index, (item, reveal) ->
+            rows.forEachIndexed { index, (item, rowReveal) ->
                 ActivityConversationListRow(
                     item = item,
                     model = item.activityConversationRowModel(context, InboxFilter.All),
@@ -379,17 +393,16 @@ private fun ActivityRowsSwipeEndVisualContent() {
                     selected = false,
                     timeContext = timeContext,
                     agentStatusResolver = EmptyRaftAgentStatusResolver,
-                    showDoneAction = true,
+                    canMarkDone = true,
                     openGestureKey = item.key,
                     captureMenuAnchor = false,
                     onOpen = {},
-                    onDone = {},
                     onOpenMenu = {},
                     modifier = Modifier.fillMaxWidth(),
                     onSwipeDone = {},
                     swipeEndAction = item.activitySwipeEndAction(mutes),
                     onSwipeEnd = {},
-                    swipePreviewRevealFraction = reveal,
+                    swipePreviewRevealFraction = rowReveal,
                 )
             }
         }

@@ -13,11 +13,8 @@ internal enum class AppShellBottomTabTapAction {
 
 /**
  * The bottom-bar tap at the app-shell interaction boundary (native and shared bars emit the same
- * click callback). Re-tapping the selected tab scrolls its list to the top (Home, Tasks, More and
- * the rail's Members); Activity walks its unread rows instead (ActivityUnreadJump.kt, falling back
- * to the top), and a double re-tap there goes back to the top (ActivityRetapGesture, timed in the
- * Activity panel for both the Compose bar/rail and the iOS UITabBar); re-tapping the selected
- * Search tab focuses its field.
+ * click callback). Re-tapping the selected tab scrolls its list to the top (Home, Tasks, Activity, More and
+ * the rail's Members); re-tapping the selected Search tab focuses its field.
  */
 internal fun appShellBottomTabTapAction(selectedTab: String, tappedTab: String): AppShellBottomTabTapAction {
     val normalizedSelected = retainedAppShellSelectedTab(selectedTab)

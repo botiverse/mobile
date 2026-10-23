@@ -48,6 +48,8 @@ import build.raft.designsystem.gesture.RaftBackSwipeEdgeWidth
 import build.raft.designsystem.gesture.raftBackSwipeRegion
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftUiPalette
+import build.raft.app.components.rememberRaftActivitySwipeHaptic
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -65,8 +67,9 @@ import kotlinx.coroutines.launch
  *   a direct mention), unknown or unjoined channels, an unfollowed thread and an already muted channel
  *   don't move to the end: a swipe never reveals an action that does nothing.
  *
- * The swipes are never the only way: the row's Done button and the press-and-hold menu (Done, Unfollow,
- * Mute Activity) stay, so screen readers and anyone who can't swipe reach the same actions.
+ * The row has no Done button (artin 2026-10-23): Done is reached by the swipe above and the press-and-hold
+ * menu entry. The swipes are never the only way: the menu (Done, Unfollow, Mute Activity) stays, so screen
+ * readers and anyone who can't swipe reach the same actions.
  *
  * Gesture conflicts. The end direction is also the back direction, so the row arbitrates it explicitly:
  *
@@ -81,8 +84,12 @@ import kotlinx.coroutines.launch
  *   [RaftBackSwipeEdgeWidth] strip (`raftBackSwipeRegion(edgeWidth)`, the gesture arbiter the pager and
  *   image gallery use), so the host's pop starts from the leading edge and the row body keeps the drag.
  *   A row with no end action registers nothing and a drag toward the end is released, as before.
- * - Inside the row, the row claims a drag only once it is past the touch slop and horizontal-dominant,
- *   in a direction that has an action. Vertical drags stay with the list.
+ * - Inside the row, the row claims a drag only on clear horizontal intent ([activitySwipeDragDecision]):
+ *   past [activitySwipeClaimThresholdPx] (twice the touch slop, 16-24dp) AND |dx| > [ActivitySwipeDominanceRatio]
+ *   (2) x |dy|, in a direction that has an action, as with iOS table swipe actions. Any movement past the
+ *   touch slop that is not on track for that (vertical-dominant or diagonal) hands the gesture to the list
+ *   and locks the swipe out for the rest of that pointer stream ([ActivitySwipeDragPolicy]): a later
+ *   horizontal wobble in the same stroke never claims. Once claimed, the drag stays horizontal.
  *
  * No Back handler is registered (AGENTS.md Kuikly Back Handling Rule): an open row is not a cancelable
  * transient state. Every release either applies the action (and the row snaps back) or springs closed.
@@ -106,11 +113,25 @@ internal const val ActivitySwipeThresholdFraction = 0.4f
 /** A flick at least this fast applies the revealed action, or (back toward closed) cancels it. */
 internal val ActivitySwipeFlingVelocity = 800.dp
 
-/** How long the undo toast stays (and, for Done, before the swiped Done is committed). */
-internal const val ActivitySwipeDoneUndoWindowMillis = 5_000L
+/** How long the undo toast stays (and, for Done, before the swiped Done is committed): 8 s, both directions (raft-design #775). */
+internal const val ActivitySwipeDoneUndoWindowMillis = 8_000L
 
 /** The least edge zone at either side of a row where no drag is claimed (see the header). */
 internal val ActivitySwipeMinEdgeInset = 24.dp
+
+/** A claim needs |dx| greater than this many times |dy|; with less, the drag is vertical-leaning and scrolls. */
+internal const val ActivitySwipeDominanceRatio = 2f
+
+/** Bounds of the claim distance: twice the touch slop, kept between these (Android 8dp slop -> 16dp). */
+internal val ActivitySwipeMinClaimDistance = 16.dp
+internal val ActivitySwipeMaxClaimDistance = 24.dp
+
+/**
+ * How far a drag must go horizontally before the row may claim it: [2 x the
+ * platform touch slop, clamped to [minPx]..[maxPx] so a large slop (iOS) does not make the swipe stiff.
+ */
+internal fun activitySwipeClaimThresholdPx(touchSlopPx: Float, minPx: Float, maxPx: Float): Float =
+    (touchSlopPx * 2f).coerceIn(minPx, maxPx)
 
 /** Which side of the row a claimed drag reveals. */
 internal enum class ActivitySwipeSide {
@@ -235,6 +256,16 @@ internal enum class ActivitySwipeDragDecision {
     Release,
 }
 
+/**
+ * The decision for a pointer stream that has moved ([dxPx], [dyPx]) since it went down:
+ *
+ * - Past the touch slop vertically while [dxPx] is not more than [ActivitySwipeDominanceRatio] x [dyPx]
+ *   (vertical-dominant or diagonal), or past the slop at all from an edge zone: [ActivitySwipeDragDecision.Release].
+ * - Horizontal past [claimThresholdPx] with |dx| > ratio x |dy|: claim, if that direction has an action.
+ * - Otherwise [ActivitySwipeDragDecision.Undecided].
+ *
+ * Stateless; [ActivitySwipeDragPolicy] adds the lock for the rest of the stream.
+ */
 internal fun activitySwipeDragDecision(
     dxPx: Float,
     dyPx: Float,
@@ -243,16 +274,47 @@ internal fun activitySwipeDragDecision(
     doneEnabled: Boolean = true,
     endEnabled: Boolean = false,
     startsInEdgeZone: Boolean = false,
+    claimThresholdPx: Float = touchSlopPx * 2f,
 ): ActivitySwipeDragDecision {
     val adx = abs(dxPx)
     val ady = abs(dyPx)
-    if (adx < touchSlopPx && ady < touchSlopPx) return ActivitySwipeDragDecision.Undecided
-    if (ady >= adx || startsInEdgeZone) return ActivitySwipeDragDecision.Release
+    if (startsInEdgeZone) {
+        return if (adx >= touchSlopPx || ady >= touchSlopPx) ActivitySwipeDragDecision.Release else ActivitySwipeDragDecision.Undecided
+    }
+    if (ady >= touchSlopPx && adx <= ActivitySwipeDominanceRatio * ady) return ActivitySwipeDragDecision.Release
+    if (adx < claimThresholdPx || adx <= ActivitySwipeDominanceRatio * ady) return ActivitySwipeDragDecision.Undecided
     val towardStart = if (isLtr) dxPx < 0f else dxPx > 0f
     return when {
         towardStart && doneEnabled -> ActivitySwipeDragDecision.ClaimDone
         !towardStart && endEnabled -> ActivitySwipeDragDecision.ClaimEnd
         else -> ActivitySwipeDragDecision.Release
+    }
+}
+
+/**
+ * One pointer stream's arbitration before a claim. The first [ActivitySwipeDragDecision.Release] locks the
+ * stream out: the list keeps the gesture and later horizontal movement never claims. (A claim is final too;
+ * the row then only moves horizontally.)
+ */
+internal class ActivitySwipeDragPolicy(
+    private val touchSlopPx: Float,
+    private val claimThresholdPx: Float,
+    private val isLtr: Boolean,
+    private val doneEnabled: Boolean,
+    private val endEnabled: Boolean,
+    private val startsInEdgeZone: Boolean,
+) {
+    var decision: ActivitySwipeDragDecision = ActivitySwipeDragDecision.Undecided
+        private set
+
+    /** The decision after the pointer moved to a total offset of ([dxPx], [dyPx]) from where it went down. */
+    fun onMove(dxPx: Float, dyPx: Float): ActivitySwipeDragDecision {
+        if (decision != ActivitySwipeDragDecision.Undecided) return decision
+        decision =
+            activitySwipeDragDecision(
+                dxPx, dyPx, touchSlopPx, isLtr, doneEnabled, endEnabled, startsInEdgeZone, claimThresholdPx,
+            )
+        return decision
     }
 }
 
@@ -272,6 +334,31 @@ internal fun activitySwipeRevealPx(
     return when (side) {
         ActivitySwipeSide.Done -> next.coerceIn(0f, width)
         ActivitySwipeSide.End -> next.coerceIn(-width, 0f)
+    }
+}
+
+/**
+ * Whether the revealed layer is in its solid look (raft-design #775 / #779): the drag has reached the
+ * distance where releasing applies the action ([ActivitySwipeThresholdFraction] of the width). Below it the
+ * layer is soft, so a finger coming back under the threshold returns it to soft. A pure function of the
+ * drag, not of its history. [revealPx] is the unsigned distance along the opened side.
+ */
+internal fun activitySwipeLayerSolid(revealPx: Float, widthPx: Float): Boolean =
+    widthPx > 0f && abs(revealPx) >= widthPx * ActivitySwipeThresholdFraction
+
+/**
+ * Fires the layer's solid tick: true exactly once each time the layer turns solid (crossing the threshold
+ * outward). Going back under the threshold re-arms it silently; the next outward crossing ticks again.
+ * One per drag gesture.
+ */
+internal class ActivitySwipeSolidTickGate {
+    private var wasSolid = false
+
+    /** Feeds the drag's new solid state; true when this update is an outward crossing. */
+    fun update(solid: Boolean): Boolean {
+        val crossed = solid && !wasSolid
+        wasSolid = solid
+        return crossed
     }
 }
 
@@ -433,6 +520,8 @@ internal fun ActivitySwipeActionsBox(
             hostBackSwipeEdgePx = if (hostHasBackSwipe) with(density) { RaftBackSwipeEdgeWidth.toPx() } else 0f,
         )
     val reveal = remember(gestureKey) { Animatable(0f) }
+    val solidTick = rememberRaftActivitySwipeHaptic()
+    val currentSolidTick by rememberUpdatedState(solidTick)
     val scope = rememberCoroutineScope()
     val currentOnSwipeDone by rememberUpdatedState(onSwipeDone)
     val currentOnSwipeEnd by rememberUpdatedState(onSwipeEnd)
@@ -454,6 +543,20 @@ internal fun ActivitySwipeActionsBox(
                     val slop = viewConfiguration.touchSlop
                     val startsInEdgeZone =
                         activitySwipeStartsInEdgeZone(down.position.x, size.width.toFloat(), startEdgePx, endEdgePx, isLtr)
+                    val policy =
+                        ActivitySwipeDragPolicy(
+                            touchSlopPx = slop,
+                            claimThresholdPx =
+                                activitySwipeClaimThresholdPx(
+                                    slop,
+                                    ActivitySwipeMinClaimDistance.toPx(),
+                                    ActivitySwipeMaxClaimDistance.toPx(),
+                                ),
+                            isLtr = isLtr,
+                            doneEnabled = doneEnabled,
+                            endEnabled = endEnabled,
+                            startsInEdgeZone = startsInEdgeZone,
+                        )
                     val tracker = VelocityTracker()
                     tracker.addPointerInputChange(down)
                     var side: ActivitySwipeSide? = null
@@ -464,7 +567,7 @@ internal fun ActivitySwipeActionsBox(
                         if (!change.pressed || change.isConsumed) return@awaitEachGesture
                         tracker.addPointerInputChange(change)
                         val total = change.position - down.position
-                        when (activitySwipeDragDecision(total.x, total.y, slop, isLtr, doneEnabled, endEnabled, startsInEdgeZone)) {
+                        when (policy.onMove(total.x, total.y)) {
                             ActivitySwipeDragDecision.Undecided -> Unit
                             ActivitySwipeDragDecision.Release -> return@awaitEachGesture
                             ActivitySwipeDragDecision.ClaimDone -> side = ActivitySwipeSide.Done
@@ -475,6 +578,7 @@ internal fun ActivitySwipeActionsBox(
                     val claimedSide = side ?: return@awaitEachGesture
                     var target = reveal.value
                     var applied = false
+                    val tickGate = ActivitySwipeSolidTickGate()
                     try {
                         while (true) {
                             val event = awaitPointerEvent(PointerEventPass.Main)
@@ -502,6 +606,7 @@ internal fun ActivitySwipeActionsBox(
                                     claimedSide,
                                 )
                             change.consume()
+                            if (tickGate.update(activitySwipeLayerSolid(target, widthPx.toFloat()))) currentSolidTick.tick()
                             scope.launch { reveal.snapTo(target) }
                         }
                     } finally {
@@ -527,29 +632,39 @@ internal fun ActivitySwipeActionsBox(
             }
     ) {
         val shownReveal = reveal.value + previewRevealFraction * widthPx
-        // Behind the row: what releasing does, on the side the row slid away from. Decorative; screen
-        // readers use the row's Done button and its press-and-hold menu.
+        val solid = activitySwipeLayerSolid(shownReveal, widthPx.toFloat())
+        // Behind the row: what releasing does, on the side the row slid away from. Soft until releasing
+        // would apply the action, then solid (raft-design #775 / #779). Decorative; screen readers use
+        // the row's press-and-hold menu.
         if (shownReveal > 0f && doneEnabled) {
+            val foreground = if (solid) colors.ink else colors.successStrong
             ActivitySwipeActionLayer(
-                glyph = { RaftGlyphIcon(RaftGlyph.Check, size = 18.dp, color = colors.successStrong) },
-                label = stringResource(MR.strings.common_done),
-                background = colors.successSoft,
-                foreground = colors.successStrong,
+                glyph = { RaftGlyphIcon(RaftGlyph.Check, size = 18.dp, color = foreground) },
+                label = stringResource(MR.strings.activity_swipe_layer_done),
+                background = if (solid) RaftUiPalette.success else colors.successSoft,
+                foreground = foreground,
                 alignEnd = true,
                 modifier = Modifier.matchParentSize(),
             )
         } else if (shownReveal < 0f && endAction != null) {
+            val foreground = if (solid) colors.foregroundOnHud else colors.foreground
             ActivitySwipeActionLayer(
                 glyph = {
-                    RaftLucideIcon(RaftLucideIconName.BellOff, Modifier.size(18.dp), color = raftArgbHex(colors.warningStrong))
+                    // Each layer uses its action's menu icon, as on web: Unfollow thread is message-circle-off.
+                    val icon =
+                        when (endAction) {
+                            ActivitySwipeEndAction.UnfollowThread -> RaftLucideIconName.MessageCircleOff
+                            ActivitySwipeEndAction.MuteActivity -> RaftLucideIconName.BellOff
+                        }
+                    RaftLucideIcon(icon, Modifier.size(18.dp), color = raftArgbHex(foreground))
                 },
                 label =
                     when (endAction) {
-                        ActivitySwipeEndAction.UnfollowThread -> stringResource(MR.strings.activity_swipe_unfollow)
-                        ActivitySwipeEndAction.MuteActivity -> stringResource(MR.strings.activity_action_mute_activity)
+                        ActivitySwipeEndAction.UnfollowThread -> stringResource(MR.strings.activity_swipe_layer_unfollow)
+                        ActivitySwipeEndAction.MuteActivity -> stringResource(MR.strings.activity_swipe_layer_mute)
                     },
-                background = colors.warningSoft,
-                foreground = colors.warningStrong,
+                background = if (solid) colors.layerHud else colors.fillMuted,
+                foreground = foreground,
                 alignEnd = false,
                 modifier = Modifier.matchParentSize(),
             )
