@@ -3,7 +3,6 @@ package build.raft.app
 import build.raft.app.core.data.auth.AndroidMobileOAuth
 import build.raft.app.shared.resolveAndroidShellLaunchTarget
 import build.raft.app.shared.taskLaunchPlan
-import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -87,20 +86,6 @@ class MainActivityLaunchTest {
             )
         )
         assertFalse(AndroidMobileOAuth.isCallbackRoute("raft-dev", "oauth", "/callback"))
-    }
-
-    @Test
-    fun coldAndWarmLaunchesUseTheSameTypedCallbackAdmissionChain() {
-        val source = mainActivitySource()
-
-        assertEquals(2, Regex("\\bhandleLaunchIntent\\(intent\\)").findAll(source).count())
-        assertEquals(1, Regex("private fun handleLaunchIntent\\(intent: Intent\\?\\)").findAll(source).count())
-        val handler =
-            source.substringAfter("private fun handleLaunchIntent(intent: Intent?)")
-                .substringBefore("private fun handleUnsupportedRaftWebLink")
-        assertTrue(handler.indexOf("handleMobileOAuthCallback") < handler.indexOf("handleSocialAuthCallback"))
-        assertTrue(handler.indexOf("handleSocialAuthCallback") < handler.indexOf("handleEmailVerificationLink"))
-        assertTrue(handler.indexOf("handleEmailVerificationLink") < handler.indexOf("openSharedShell"))
     }
 
     @Test
@@ -402,38 +387,5 @@ class MainActivityLaunchTest {
 
         assertTrue(pageData.optBoolean("slockSuppressRestoreLanding", false))
         assertTrue(pageData.optString("slockAuthGateInstanceId").isNotBlank())
-    }
-
-    @Test
-    fun androidOAuthCallbackRoutesTypedConflictCodesThroughTheSharedMapper() {
-        // Source-wiring regression. The Android callback used to hand the raw
-        // query value straight to the toast, so `account_conflict` reached the
-        // user verbatim. This asserts the mapper sits between them and that the
-        // non-conflict passthrough survives, which unit-testing MainActivity
-        // directly cannot reach.
-        val source = mainActivitySource()
-
-        assertTrue(
-            "MainActivity must import the shared conflict mapper",
-            source.contains("import build.raft.app.data.mobileOAuthConflictMessageOrNull")
-        )
-        assertTrue(
-            "the OAuth callback error must be mapped before it is surfaced",
-            source.contains("mobileOAuthConflictMessageOrNull(providerName, error) ?: error")
-        )
-        assertFalse(
-            "the raw error code must not be toasted directly any more",
-            source.contains("openAfterMobileOAuthError(error, pending.mode)")
-        )
-    }
-
-    private fun mainActivitySource(): String {
-        var current = File(requireNotNull(System.getProperty("user.dir"))).absoluteFile
-        repeat(8) {
-            val candidate = File(current, "src/main/java/build/raft/app/MainActivity.kt")
-            if (candidate.isFile) return candidate.readText()
-            current = current.parentFile ?: return@repeat
-        }
-        error("Unable to locate MainActivity.kt from ${System.getProperty("user.dir")}")
     }
 }

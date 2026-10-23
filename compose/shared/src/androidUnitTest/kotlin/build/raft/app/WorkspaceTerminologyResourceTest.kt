@@ -3,6 +3,7 @@ package build.raft.app
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -13,60 +14,10 @@ import kotlin.test.assertTrue
  * English "workspace" has two distinct meanings in the app:
  * - the Raft server/scope concept (navigation, notifications, auth, connected apps) -> 工作空间
  * - an agent's local files/directories (member workspace tabs, computer workspace scans) -> 工作区
- * The zh-rCN catalog had flattened both to 工作区; this locks the semantic split and protects
- * the agent-filesystem 工作区 copy.
+ * The scan below checks every string in every strings.xml (shared MR and androidApp native) by
+ * the key's domain, so a new key is covered without being listed here.
  */
 class WorkspaceTerminologyResourceTest {
-
-    // Server/scope-semantics keys that must read 工作空间 and carry no 工作区 residue.
-    private val serverScopeKeys =
-        listOf(
-            "settings_navigation_section_workspace",
-            "settings_notifications_subtitle",
-            "auth_server_create_hint",
-            "home_error_timeout_detail",
-            "home_error_network_detail",
-            "search_error_permission_detail",
-            "settings_workspace_translation",
-            "settings_mobile_multi_shell_host_detail",
-            "settings_mobile_home_server_avatar",
-            "settings_mobile_home_server_avatar_detail",
-            "settings_notifications_workspace",
-            "settings_notifications_mute_workspace",
-            "settings_notifications_mode_all_detail",
-            "settings_notifications_mode_none_detail",
-            "settings_computers_install_daemon_hint",
-            "settings_connected_apps_no_installed_marketplace",
-            "settings_connected_apps_unavailable",
-            "settings_connected_apps_uninstall_detail",
-            "settings_server_profile_subtitle",
-            "settings_server_placeholder_name"
-        )
-
-    // Agent local-filesystem keys that must keep 工作区 and never become 工作空间.
-    private val agentFilesystemKeys =
-        listOf(
-            // task #374: settings_computers_subtitle removed — AngLee's 2026-09-01 ruling
-            // (已连接计算机和守护进程状态) drops the workspace concept entirely.
-
-            "member_state_loading_workspace",
-            "member_tab_workspace",
-            "member_section_workspace",
-            "member_state_no_workspace_skills",
-            "member_state_workspace_loading",
-            "member_dialog_full_reset_warning",
-            "member_dialog_restart_description",
-            "member_dialog_reset_session_description",
-            "member_dialog_full_reset_description",
-            "member_error_workspace_hidden",
-            "settings_computers_error_load_workspaces",
-            "settings_computers_empty_workspaces",
-            "settings_computers_empty_workspaces_detail",
-            "settings_computers_error_offline",
-            "settings_computers_section_workspaces",
-            "settings_computers_workspace_scan_title",
-            "settings_computers_workspace_scan_detail"
-        )
 
     // Workspace keys that carry placeholders, for base/zh token parity (one per side).
     private val placeholderParityKeys =
@@ -75,66 +26,45 @@ class WorkspaceTerminologyResourceTest {
             "member_error_workspace_hidden"
         )
 
-    // Android native catalog (compose/androidApp values-zh-rCN): server/scope keys that must
-    // read 工作空间. The native catalog is a SEPARATE copy from the shared MR catalog and was
-    // caught by review (task #267) — both copies must stay aligned.
-    private val nativeServerScopeKeys =
-        listOf(
-            "auth_create_description",
-            "settings_billing_trial_detail",
-            "settings_billing_subtitle"
-            // task #374: the two widget descriptions were removed — AngLee's ruled copy
-            // (未读动态和收藏计数 / 实时 Agent 动态) drops the 选中的 Raft 工作空间的 prefix.
+    @Test
+    fun everyCatalogKeepsTheWorkspaceTermSplit() {
+        val catalogs = allStringCatalogs()
+        val zhCatalogs = catalogs.keys.filter(::isZhCatalog)
+        assertTrue(zhCatalogs.size >= 2, "expected the shared MR and androidApp zh-rCN catalogs, found: $zhCatalogs")
+        assertTrue(catalogs.size > zhCatalogs.size, "expected base/ja catalogs as well, found: ${catalogs.keys}")
+        val violations =
+            catalogs.flatMap { (name, strings) ->
+                workspaceTermViolations(strings, zh = isZhCatalog(name)).map { "$name: $it" }
+            }
+        assertEquals(emptyList(), violations, "workspace term split (工作空间 = server, 工作区 = agent files)")
+    }
+
+    @Test
+    fun workspaceTermScanFlagsEveryKindOfViolation() {
+        val clean =
+            mapOf(
+                "settings_notifications_workspace" to "工作空间通知",
+                "member_tab_workspace" to "工作区",
+                "settings_computers_section_workspaces" to "工作区",
+                "settings_computers_install_daemon_hint" to "将其连接到此工作空间。"
+            )
+        assertEquals(emptyList(), workspaceTermViolations(clean, zh = true))
+
+        val brokenZh =
+            mapOf(
+                "settings_notifications_workspace" to "工作区通知",
+                "member_tab_workspace" to "工作空间",
+                "agent_migration_note" to "工作空间和工作区",
+                "auth_hint" to "workspace"
+            )
+        assertEquals(
+            listOf("settings_notifications_workspace", "member_tab_workspace", "agent_migration_note"),
+            workspaceTermViolations(brokenZh, zh = true).map { it.substringBefore(" ") }
         )
-
-    // Android native catalog keys whose workspaces are the agent-local directories on a
-    // computer; they keep 工作区.
-    private val nativeAgentFilesystemKeys =
-        listOf(
-            "settings_computer_detail_workspaces_section",
-            "settings_computer_detail_no_workspaces",
-            "settings_computer_detail_no_workspaces_detail",
-            "settings_computer_detail_workspaces_error_title"
+        assertEquals(
+            listOf("auth_hint"),
+            workspaceTermViolations(mapOf("auth_hint" to "工作空间"), zh = false).map { it.substringBefore(" ") }
         )
-
-    @Test
-    fun zhServerScopeKeysUseWorkspaceConceptTerm() {
-        val zh = readStrings("zh-rCN")
-        serverScopeKeys.forEach { key ->
-            val value = zh.getValue(key)
-            assertTrue(value.contains("工作空间"), "zh-rCN $key (server/scope) must use 工作空间, got: $value")
-            assertTrue(!value.contains("工作区"), "zh-rCN $key (server/scope) must not contain 工作区, got: $value")
-        }
-    }
-
-    @Test
-    fun zhAgentFilesystemKeysKeepWorkspaceDirTerm() {
-        val zh = readStrings("zh-rCN")
-        agentFilesystemKeys.forEach { key ->
-            val value = zh.getValue(key)
-            assertTrue(value.contains("工作区"), "zh-rCN $key (agent filesystem) must keep 工作区, got: $value")
-            assertTrue(!value.contains("工作空间"), "zh-rCN $key (agent filesystem) must not become 工作空间, got: $value")
-        }
-    }
-
-    @Test
-    fun androidNativeServerScopeKeysUseWorkspaceConceptTerm() {
-        val zh = readAndroidNativeStrings()
-        nativeServerScopeKeys.forEach { key ->
-            val value = zh.getValue(key)
-            assertTrue(value.contains("工作空间"), "androidApp zh-rCN $key (server/scope) must use 工作空间, got: $value")
-            assertTrue(!value.contains("工作区"), "androidApp zh-rCN $key (server/scope) must not contain 工作区, got: $value")
-        }
-    }
-
-    @Test
-    fun androidNativeAgentFilesystemKeysKeepWorkspaceDirTerm() {
-        val zh = readAndroidNativeStrings()
-        nativeAgentFilesystemKeys.forEach { key ->
-            val value = zh.getValue(key)
-            assertTrue(value.contains("工作区"), "androidApp zh-rCN $key (agent filesystem) must keep 工作区, got: $value")
-            assertTrue(!value.contains("工作空间"), "androidApp zh-rCN $key (agent filesystem) must not become 工作空间, got: $value")
-        }
     }
 
     @Test
@@ -191,19 +121,63 @@ class WorkspaceTerminologyResourceTest {
             String(Files.readAllBytes(resourcesRoot().resolve(locale).resolve("strings.xml")), Charsets.UTF_8)
         ).associate { it.groupValues[1] to it.groupValues[2] }
 
-    private fun readAndroidNativeStrings(): Map<String, String> {
+    /**
+     * The zh rule: a key in an agent-filesystem domain (an agent's local files and directories)
+     * says 工作区; every other key means the Raft server/scope and says 工作空间. No value uses
+     * both. Other locales carry neither Chinese term.
+     */
+    private fun workspaceTermViolations(strings: Map<String, String>, zh: Boolean): List<String> =
+        strings.mapNotNull { (key, value) ->
+            val server = value.contains(SERVER_TERM)
+            val files = value.contains(FILES_TERM)
+            when {
+                !zh && (server || files) -> "$key has a zh workspace term in a non-zh catalog: $value"
+                server && files -> "$key mixes 工作空间 and 工作区: $value"
+                isAgentFilesystemKey(key) && server -> "$key (agent files) must use 工作区, got: $value"
+                !isAgentFilesystemKey(key) && files -> "$key (server/scope) must use 工作空间, got: $value"
+                else -> null
+            }
+        }
+
+    private fun isAgentFilesystemKey(key: String): Boolean =
+        key !in SERVER_SCOPE_KEYS_IN_AGENT_DOMAINS && AGENT_FILESYSTEM_KEY_PREFIXES.any(key::startsWith)
+
+    private fun isZhCatalog(name: String): Boolean =
+        name.substringAfterLast('/').let { it.startsWith("zh") || it.startsWith("values-zh") }
+
+    // Every strings.xml in the shared moko-resources catalog (base and each locale dir) and the
+    // androidApp native res catalog (values and each values-* dir), keyed "<root>/<dir>".
+    private fun allStringCatalogs(): Map<String, Map<String, String>> {
+        val roots = mapOf("MR" to resourcesRoot(), "androidApp/res" to androidResRoot())
+        return roots.flatMap { (rootName, root) ->
+            Files.list(root).use { dirs ->
+                dirs.toList()
+                    .map { it.resolve("strings.xml") }
+                    .filter(Files::isRegularFile)
+                    .map { file -> "$rootName/${file.parent.fileName}" to parseStrings(file) }
+            }
+        }.toMap()
+    }
+
+    private fun parseStrings(file: Path): Map<String, String> {
+        val nodes = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(file.toFile())
+            .getElementsByTagName("string")
+        return (0 until nodes.length).associate { index ->
+            val node = nodes.item(index)
+            node.attributes.getNamedItem("name").nodeValue to node.textContent
+        }
+    }
+
+    private fun androidResRoot(): Path {
         val workingDirectory = Paths.get(System.getProperty("user.dir")).toAbsolutePath().normalize()
         val candidates =
             listOf(
-                workingDirectory.resolve("../androidApp/src/main/res/values-zh-rCN/strings.xml"),
-                workingDirectory.resolve("androidApp/src/main/res/values-zh-rCN/strings.xml"),
-                workingDirectory.resolve("compose/androidApp/src/main/res/values-zh-rCN/strings.xml")
+                workingDirectory.resolve("../androidApp/src/main/res"),
+                workingDirectory.resolve("androidApp/src/main/res"),
+                workingDirectory.resolve("compose/androidApp/src/main/res")
             )
-        val path =
-            candidates.firstOrNull(Files::isRegularFile)
-                ?: error("Unable to locate androidApp values-zh-rCN/strings.xml from $workingDirectory")
-        return STRING_ENTRY.findAll(String(Files.readAllBytes(path), Charsets.UTF_8))
-            .associate { it.groupValues[1] to it.groupValues[2] }
+        return candidates.firstOrNull(Files::isDirectory)?.normalize()
+            ?: error("Unable to locate androidApp res from $workingDirectory")
     }
 
     private fun resourcesRoot(): Path {
@@ -221,5 +195,21 @@ class WorkspaceTerminologyResourceTest {
     private companion object {
         val STRING_ENTRY = Regex("<string\\s+name=\"([^\"]+)\">([^<]*)</string>")
         val PLACEHOLDER = Regex("%\\d+\\$[a-zA-Z]")
+        const val SERVER_TERM = "工作空间"
+        const val FILES_TERM = "工作区"
+
+        // Key domains about an agent's local files: member pages, agent migration, and computers.
+        val AGENT_FILESYSTEM_KEY_PREFIXES =
+            listOf(
+                "member_",
+                "agent_migration_",
+                "raft_pro_migration_",
+                "settings_computers_",
+                "settings_computer_detail_"
+            )
+
+        // Keys inside those domains that still mean the Raft server ("connect the daemon to this
+        // workspace").
+        val SERVER_SCOPE_KEYS_IN_AGENT_DOMAINS = setOf("settings_computers_install_daemon_hint")
     }
 }

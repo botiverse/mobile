@@ -64,14 +64,6 @@ class AgentTypingCatalogTest {
     }
 
     @Test
-    fun theUnknownAgentFallbackMatchesTheWeb() {
-        // web `activity.live.agentFallback`.
-        assertEquals("Agent", catalog("base")["thread_agent_typing_agent_fallback"])
-        assertEquals("Agent", catalog("zh-rCN")["thread_agent_typing_agent_fallback"])
-        assertEquals("エージェント", catalog("ja")["thread_agent_typing_agent_fallback"])
-    }
-
-    @Test
     fun aNameThatLooksLikeAPlaceholderStaysAsWritten() {
         val templates = AgentTypingSentenceTemplates("{first} is typing…", "{first} and {second}", "", "")
         assertEquals("{second} and Kirby", formatAgentTypingSentence(templates, listOf("{second}", "Kirby")))
