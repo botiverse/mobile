@@ -1288,6 +1288,7 @@ internal fun appShellPhoneBottomTabs(
                 // It opens the server panel, not a page: never selected (raft-design #712).
                 selected = false,
                 attentionDot = appShellServerTabShowsAttention(serverTab),
+                nativeBadgeCount = appShellServerTabNativeBadgeCount(serverTab),
             )
         }
     }
@@ -1323,7 +1324,13 @@ internal fun appShellBottomTabs(
                     "activity" -> appShellActivityTabShowsDot(activityUnreadCount, selected)
                     "more" -> appShellMoreTabShowsDot(moreAttention, selected)
                     else -> false
-                }
+                },
+            nativeBadgeCount =
+                if (key == "activity" && appShellActivityTabShowsDot(activityUnreadCount, selected)) {
+                    activityUnreadCount
+                } else {
+                    0
+                },
         )
     }
 

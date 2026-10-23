@@ -1,6 +1,5 @@
 import CoreGraphics
 import Foundation
-import UIKit
 
 /// One tab as `RaftIosTabBarController` puts it on a `UITabBarItem`. Built from the shared
 /// `RaftNativeTabBarItem`; kept free of the `shared` framework so iosAppTests can exercise the
@@ -10,11 +9,10 @@ struct RaftIosTabBarItemSpec: Equatable {
     let title: String
     let systemImageName: String
     let selectedSystemImageName: String
-    /// `UITabBarItem.badgeValue`: a count ("3", "99+"), or nil for no system badge.
+    /// `UITabBarItem.badgeValue`: a count ("3", "99+"), or nil for no badge. Never "": UIKit
+    /// has no small-dot badge and draws an empty value as a full-size empty badge. Shared turns
+    /// a tab's attention dot into its count for this bar (`nativeBadgeCount`).
     let badgeValue: String?
-    /// The attention dot (raft-design MobileNav / Badge): the host draws its own small dot on
-    /// the icon's corner, because UIKit draws an empty `badgeValue` as a full-size badge.
-    let showsDot: Bool
     let enabled: Bool
     /// The Search action (never the selected item; a tap opens search over the current tab).
     let searchAction: Bool
@@ -28,7 +26,6 @@ struct RaftIosTabBarItemSpec: Equatable {
         selectedSystemImageName: String,
         badgeValue: String?,
         enabled: Bool,
-        attentionDot: Bool = false,
         searchAction: Bool = false,
         imageAssetName: String? = nil
     ) {
@@ -37,7 +34,6 @@ struct RaftIosTabBarItemSpec: Equatable {
         self.systemImageName = systemImageName
         self.selectedSystemImageName = selectedSystemImageName
         self.badgeValue = RaftIosTabBarItemMapping.badgeValue(fromShared: badgeValue)
-        self.showsDot = RaftIosTabBarItemMapping.showsDot(fromShared: badgeValue, attentionDot: attentionDot)
         self.enabled = enabled
         self.searchAction = searchAction
         self.imageAssetName = imageAssetName
@@ -64,27 +60,6 @@ enum RaftIosTabBarItemMapping {
             return nil
         }
         return trimmed
-    }
-
-    /// The attention dot (a dot, never a number; shared never sets it on the selected tab) shows
-    /// only while there is no count; a count wins.
-    static func showsDot(fromShared value: String?, attentionDot: Bool) -> Bool {
-        attentionDot && badgeValue(fromShared: value) == nil
-    }
-
-    /// Edge of the attention dot: raft-ui `Status sm`, the Compose bar's `RaftAttentionPixel`.
-    static let dotEdge: CGFloat = 8
-
-    /// The dot over a tab icon's top-right corner, its centre 1pt out from the corner (raft-design
-    /// #722: the dot sits on the icon's corner). Integral so the 8pt square stays crisp.
-    static func dotFrame(iconFrame: CGRect) -> CGRect {
-        let center = CGPoint(x: iconFrame.maxX + 1, y: iconFrame.minY + 1)
-        return CGRect(
-            x: (center.x - dotEdge / 2).rounded(),
-            y: (center.y - dotEdge / 2).rounded(),
-            width: dotEdge,
-            height: dotEdge
-        )
     }
 
     /// Tabs in shared order, first occurrence of a key wins, capped at `maximumTabCount`.
@@ -155,46 +130,5 @@ struct RaftIosTabTapGate {
         lastAt = now
         lastTouch = touchBeganAt
         return true
-    }
-}
-
-/// Finds where UIKit draws a tab's icon so the host can put its small dot on the icon's corner.
-/// Only public API: the item's button carries the `accessibilityIdentifier` the host sets on
-/// the `UITabBarItem` (what XCUITest finds it by) on the classic bar and the Liquid Glass bar.
-enum RaftIosTabBarIconLocator {
-    /// The icon frame of the tab [identifier] in [tabBar]'s coordinates, or nil while it is not
-    /// laid out (or this iOS draws it some other way; the host then falls back to a badge).
-    static func iconFrame(identifier: String, item: UITabBarItem, in tabBar: UITabBar) -> CGRect? {
-        guard let button = firstView(in: tabBar, where: { $0.accessibilityIdentifier == identifier && isShown($0) }) else {
-            return nil
-        }
-        let images = descendants(of: button).compactMap { $0 as? UIImageView }.filter { view in
-            view.image != nil && isShown(view) && view.bounds.width > 1 && view.bounds.height > 1
-        }
-        let own = images.filter { $0.image === item.image || $0.image === item.selectedImage }
-        guard let icon = (own.isEmpty ? images : own).max(by: { area($0.bounds) < area($1.bounds) }) else {
-            return nil
-        }
-        let frame = icon.convert(icon.bounds, to: tabBar)
-        guard frame.width.isFinite, frame.height.isFinite, !frame.isEmpty else { return nil }
-        return frame
-    }
-
-    private static func area(_ rect: CGRect) -> CGFloat { rect.width * rect.height }
-
-    private static func isShown(_ view: UIView) -> Bool {
-        !view.isHidden && view.alpha > 0.01
-    }
-
-    private static func firstView(in root: UIView, where match: (UIView) -> Bool) -> UIView? {
-        for subview in root.subviews where !subview.isHidden {
-            if match(subview) { return subview }
-            if let found = firstView(in: subview, where: match) { return found }
-        }
-        return nil
-    }
-
-    private static func descendants(of root: UIView) -> [UIView] {
-        root.subviews.flatMap { [$0] + descendants(of: $0) }
     }
 }

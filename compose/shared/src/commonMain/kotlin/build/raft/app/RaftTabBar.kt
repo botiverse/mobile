@@ -84,6 +84,13 @@ internal data class RaftBottomTabItemPayload(
      * never a number). The shell never sets it on the selected tab.
      */
     val attentionDot: Boolean = false,
+    /**
+     * The count behind [attentionDot], for the host-drawn iOS system bar only: UIKit has no
+     * small-dot badge (an empty `badgeValue` draws a full-size badge), so that bar shows this
+     * count the native way, as Mail does. 0 = no count known: no badge there. The Compose bar
+     * ignores it and keeps the dot.
+     */
+    val nativeBadgeCount: Int = 0,
 )
 
 internal enum class RaftTabBarPresentation {

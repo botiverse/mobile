@@ -258,7 +258,8 @@ internal fun raftNativeTabBarState(
 
 internal fun raftNativeTabBarItem(item: RaftBottomTabItemPayload): RaftNativeTabBarItem {
     val symbol = raftNativeTabBarSymbol(item.iconName)
-    val badgeCount = item.badgeCount.coerceAtLeast(0)
+    // UIKit has no small-dot badge: a dot with a known count shows the count, the native way.
+    val badgeCount = item.badgeCount.takeIf { it > 0 } ?: item.nativeBadgeCount.coerceAtLeast(0)
     return RaftNativeTabBarItem(
         key = item.key,
         title = item.label,

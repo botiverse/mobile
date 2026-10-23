@@ -272,6 +272,22 @@ internal fun raftServerMenuUnreadLabel(server: RaftServerSwitcherItem): String? 
  */
 internal fun appShellServerTabShowsAttention(model: RaftServerMenuModel): Boolean = model.otherServersUnread
 
+/**
+ * The count the iOS system bar shows on the server tab in place of its dot: the unread counts
+ * the server panel shows on the other servers' rows, muted servers left out. 0 when the dot
+ * comes only from muted servers (no badge there; the panel still shows them).
+ */
+internal fun appShellServerTabNativeBadgeCount(model: RaftServerMenuModel): Int {
+    if (!appShellServerTabShowsAttention(model)) return 0
+    val total =
+        model.servers
+            .filter { it.id != model.currentServer.id }
+            .sumOf { server ->
+                raftServerMenuUnreadCount(server)?.takeIf { (_, muted) -> !muted }?.first?.toLong() ?: 0L
+            }
+    return total.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+}
+
 /** A server switch picked in the server menu: the server to select and the tab to stay on. */
 internal data class AppShellServerSwitchPlan(val serverId: String, val tab: String)
 

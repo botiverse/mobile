@@ -43,10 +43,6 @@ final class RaftIosTabBarController: UIViewController {
     private var tabBarVisible: Bool?
     private var reportedBottomBand: CGFloat = -1
     private var tapGate = RaftIosTabTapGate()
-    /// Our attention dots, over the bar (never hit-testable). Keyed by tab key.
-    private let dotsView = RaftIosTabBarDotsView()
-    private var dotViews: [String: UIView] = [:]
-    private var dotKeys: Set<String> = []
 
     /// [bridge] must already be registered under [hostId]; this controller unregisters it.
     init(content: UIViewController, bridge: RaftNativeTabBarBridge, hostId: String) {
@@ -82,10 +78,7 @@ final class RaftIosTabBarController: UIViewController {
 
         let tabs = systemTabBarController
         tabs.delegate = self
-        tabs.onLayout = { [weak self] in
-            self?.reportBottomBand()
-            self?.layoutDots()
-        }
+        tabs.onLayout = { [weak self] in self?.reportBottomBand() }
         addChild(tabs)
         // Always a bottom bar: iPadOS 18+ would otherwise move regular-width tabs to the top.
         if #available(iOS 17.0, *) {
@@ -99,9 +92,6 @@ final class RaftIosTabBarController: UIViewController {
         overlayView.addSubview(tabs.view)
         tabs.didMove(toParent: self)
         overlayView.tabBar = tabs.tabBar
-        dotsView.frame = tabs.tabBar.bounds
-        dotsView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        tabs.tabBar.addSubview(dotsView)
         tabs.tabBar.tintColor = .label
         applyAppearance()
         NotificationCenter.default.addObserver(
@@ -160,10 +150,6 @@ final class RaftIosTabBarController: UIViewController {
         for spec in specs {
             slotsByKey[spec.key]?.apply(spec)
         }
-        dotKeys = Set(specs.filter(\.showsDot).map(\.key))
-        layoutDots()
-        // UIKit lays the bar's buttons out after this pass (new items, new titles): place again.
-        DispatchQueue.main.async { [weak self] in self?.layoutDots() }
         if let index = RaftIosTabBarItemMapping.selectedIndex(of: state.selectedKey, in: keys),
            systemTabBarController.selectedIndex != index {
             systemTabBarController.selectedIndex = index
@@ -183,48 +169,6 @@ final class RaftIosTabBarController: UIViewController {
         }
         if visible {
             view.setNeedsLayout()
-        }
-    }
-
-    /// Puts each dotted tab's small dot on its icon's top-right corner. A tab whose icon cannot
-    /// be found once the bar is laid out falls back to UIKit's own (larger) badge rather than
-    /// losing the signal.
-    private func layoutDots() {
-        let tabBar = systemTabBarController.tabBar
-        for (key, dot) in dotViews where !dotKeys.contains(key) {
-            dot.removeFromSuperview()
-            dotViews[key] = nil
-        }
-        for (key, slot) in slotsByKey where !dotKeys.contains(key) {
-            slot.setDotFallback(false)
-        }
-        guard !dotKeys.isEmpty else { return }
-        let laidOut = tabBar.window != nil && !tabBar.isHidden && tabBar.bounds.width > 0
-        guard laidOut else { return }
-        tabBar.layoutIfNeeded()
-        dotsView.frame = tabBar.bounds
-        tabBar.bringSubviewToFront(dotsView)
-        for key in dotKeys {
-            guard let slot = slotsByKey[key] else { continue }
-            let iconFrame = RaftIosTabBarIconLocator.iconFrame(
-                identifier: RaftIosTabSlotViewController.tabIdentifier(forKey: key),
-                item: slot.tabBarItem,
-                in: tabBar
-            )
-            guard let iconFrame = iconFrame else {
-                dotViews[key]?.removeFromSuperview()
-                dotViews[key] = nil
-                if !slot.dotFallback {
-                    RaftIosDiagnosticsRecord("warn", "RaftIosTabBar", "tab_dot_icon_not_found key=\(key)")
-                }
-                slot.setDotFallback(true)
-                continue
-            }
-            slot.setDotFallback(false)
-            let dot = dotViews[key] ?? RaftIosTabBarDotsView.makeDot()
-            if dot.superview !== dotsView { dotsView.addSubview(dot) }
-            dotViews[key] = dot
-            dot.frame = dotsView.convert(RaftIosTabBarItemMapping.dotFrame(iconFrame: iconFrame), from: tabBar)
         }
     }
 
@@ -285,7 +229,6 @@ private extension RaftIosTabBarItemSpec {
             selectedSystemImageName: item.selectedSystemImageName,
             badgeValue: item.badgeValue,
             enabled: item.enabled,
-            attentionDot: item.attentionDot,
             searchAction: item.searchAction,
             imageAssetName: item.imageAssetName
         )
@@ -350,45 +293,11 @@ private final class RaftIosTabBarOverlayView: UIView {
     }
 }
 
-/// Holds the attention dots over the tab bar; never takes a touch or an accessibility focus.
-private final class RaftIosTabBarDotsView: UIView {
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        backgroundColor = .clear
-        isUserInteractionEnabled = false
-        accessibilityElementsHidden = true
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not supported")
-    }
-
-    /// raft-ui `Status sm` attention pixel, as the Compose bar draws it: 8pt, 2pt corners,
-    /// `attention` (#FF99C3) with a 1.5pt `sticker-ink` (#141111) edge, the same in Light and Dark.
-    static func makeDot() -> UIView {
-        let dot = UIView(frame: CGRect(x: 0, y: 0, width: RaftIosTabBarItemMapping.dotEdge, height: RaftIosTabBarItemMapping.dotEdge))
-        dot.isUserInteractionEnabled = false
-        dot.backgroundColor = UIColor(red: 1.0, green: 0x99 / 255.0, blue: 0xC3 / 255.0, alpha: 1)
-        dot.layer.cornerRadius = 2
-        dot.layer.borderWidth = 1.5
-        dot.layer.borderColor = UIColor(red: 0x14 / 255.0, green: 0x11 / 255.0, blue: 0x11 / 255.0, alpha: 1).cgColor
-        return dot
-    }
-}
-
 /// Empty, non-interactive tab child: it only carries the `UITabBarItem` for one shared tab.
 private final class RaftIosTabSlotViewController: UIViewController {
     let tabKey: String
     /// The Search action slot: tapping it opens search, it never becomes the selection.
     private(set) var searchAction = false
-    /// The dot's icon could not be found: UIKit's own badge stands in for it.
-    private(set) var dotFallback = false
-    private var badgeValue: String?
-
-    static func tabIdentifier(forKey key: String) -> String {
-        "raft-tab-\(key)"
-    }
 
     init(tabKey: String) {
         self.tabKey = tabKey
@@ -415,7 +324,7 @@ private final class RaftIosTabSlotViewController: UIViewController {
             item.title = spec.title
         }
         item.accessibilityLabel = spec.title
-        item.accessibilityIdentifier = Self.tabIdentifier(forKey: spec.key)
+        item.accessibilityIdentifier = "raft-tab-\(spec.key)"
         // The web's Lucide glyph (template asset, tinted by the bar) when the app ships it;
         // Lucide has no filled variants, so selection is the tint alone. SF Symbols otherwise.
         if let assetName = spec.imageAssetName,
@@ -431,24 +340,12 @@ private final class RaftIosTabSlotViewController: UIViewController {
                 )
             )
         }
-        badgeValue = spec.badgeValue
-        if !spec.showsDot { dotFallback = false }
-        applyBadge()
+        // The system badge, counts only (a dot's count comes from shared; see the spec).
+        if item.badgeValue != spec.badgeValue {
+            item.badgeValue = spec.badgeValue
+        }
         if item.isEnabled != spec.enabled {
             item.isEnabled = spec.enabled
-        }
-    }
-
-    func setDotFallback(_ fallback: Bool) {
-        guard dotFallback != fallback else { return }
-        dotFallback = fallback
-        applyBadge()
-    }
-
-    private func applyBadge() {
-        let value = badgeValue ?? (dotFallback ? "" : nil)
-        if tabBarItem.badgeValue != value {
-            tabBarItem.badgeValue = value
         }
     }
 
