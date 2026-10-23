@@ -1189,6 +1189,32 @@ internal class SharedThreadPayloadStore(
             }
     }
 
+    /**
+     * Hands 4b6ccb0d: the committed entry whose generation a later content fact (an Activity summary,
+     * a message mutation, a resume) has advanced, i.e. exactly what [get] refuses. Owner, account and
+     * server boundaries never leave such an entry behind ([retireOwner] / [retireAccount] re-token it,
+     * [dropServer] / [evictConversation] / [remove] drop it), so this is still this owner's content,
+     * only no longer known to be the newest. It is a first-frame stand-in candidate and nothing else:
+     * the caller must compare it with the durable frame and always refresh afterwards. `null` when the
+     * entry is missing or current (then [get] answers).
+     */
+    fun getSuperseded(
+        serverId: String,
+        threadId: String,
+        environmentId: String,
+        principalId: String,
+        ownerScopeId: String
+    ): RaftThreadScreenPayload? {
+        val generation = freshnessLedger.capture(serverId, threadId, ownerScopeId)
+        val key = sharedThreadOwnedPayloadCacheKey(ownerScopeId, serverId, threadId)
+        return payloads.value[key]
+            ?.takeIf { entry -> entry.generation !== generation }
+            ?.payload
+            ?.let { payload ->
+                freshnessLedger.applyReplyCountFacts(serverId, threadId, environmentId, principalId, payload)
+            }
+    }
+
     fun put(
         serverId: String,
         threadId: String,
@@ -2430,6 +2456,52 @@ internal class SharedThreadDataSource(
                 ownerScopeId
             )
         }
+
+    /** Hands 4b6ccb0d: [SharedThreadPayloadCache.getSuperseded] under the same provenance gate as [cachedPayloadIfCurrent]. */
+    internal fun supersededCachedPayloadIfCurrent(
+        threadId: String,
+        expectedProvenance: ReplyCacheProvenance
+    ): RaftThreadScreenPayload? =
+        synchronized(replyCacheProvenanceLock) {
+            if (replyCacheProvenance.value != expectedProvenance) return@synchronized null
+            val ownerScopeId = expectedProvenance.threadPayloadOwnerScopeId ?: return@synchronized null
+            payloadCache.getSuperseded(
+                expectedProvenance.serverId,
+                threadId,
+                expectedProvenance.environmentId,
+                expectedProvenance.principalId,
+                ownerScopeId
+            )
+        }
+
+    /**
+     * Hands 4b6ccb0d: whether the durable frame of this route's scope already stores every one of
+     * [messageIds]. `null` = no answer (no reader, no admitted scope, no frame on disk, identity moved),
+     * which callers must treat as "do nothing".
+     */
+    internal suspend fun durableFrameStoresAllIfCurrent(
+        routeIdentity: ThreadRouteIdentity,
+        context: ReplyCacheProducerContext,
+        replyParent: ThreadDurableReplyParent?,
+        messageIds: Set<String>,
+    ): Boolean? {
+        val reader = durableLastKnownReader ?: return null
+        if (!routeIdentity.canRenderTimelineCandidates) return null
+        val admission = durableScopeAdmission(routeIdentity, replyParent) ?: return null
+        val channelId = routeIdentity.timelineChannelId ?: return null
+        val partition =
+            context.provenance.durableMessagePartitionOrNull(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+                ?: return null
+        if (!isCurrentReplyCacheProvenance(context.provenance)) return null
+        val frame =
+            when (admission) {
+                DurableScopeAdmission.TopLevel -> reader.read(partition, channelId)
+                is DurableScopeAdmission.ReplyThread -> reader.readReplyThread(partition, channelId, admission.parent)
+            } ?: return null
+        if (!isCurrentReplyCacheProvenance(context.provenance)) return null
+        val stored = frame.envelopes.mapTo(mutableSetOf()) { envelope -> envelope.fact.id }
+        return stored.containsAll(messageIds)
+    }
 
     /**
      * Durable last-known first frame for a top-level route (channel / DM) or, task #168 step 3, a
@@ -6470,6 +6542,12 @@ internal fun ServerFeatureFlagSnapshot.mobileThreadPageSize(): Int? =
 private const val SharedThreadFirstFrameDelayMillis = 16L
 
 /**
+ * Hands 4b6ccb0d: how long after a confirmed send the durable frame is checked for it. Long enough for the
+ * realtime echo to reach a continuous window (then nothing is fetched), short enough to land before a page close.
+ */
+internal const val SharedThreadOwnSendDurableCheckDelayMillis = 1_500L
+
+/**
  * Task #390: on a memory-miss entry the store waits at most this long for the entered-scope
  * baseline load ([SharedThreadStore.start] step 4) to finish before asking the durable
  * last-known reader for the first frame. When the load committed inside the window the disk
@@ -7353,6 +7431,25 @@ internal class SharedThreadStore(
             } else {
                 null
             }
+        // Hands 4b6ccb0d: an Activity summary (or any other content fact) arriving after the last commit
+        // advances the memory entry's generation, so `cached` above misses even though the entry may hold
+        // the newest content this process has seen (artin's own confirmed send). Keep it as a candidate
+        // for the first frame; it is weighed against the durable frame below and the refresh still runs.
+        val supersededMemory =
+            if (cached == null && current == null) {
+                threadId
+                    ?.let { candidateThreadId ->
+                        producerContext?.let { context ->
+                            dataSource.supersededCachedPayloadIfCurrent(candidateThreadId, context.provenance)
+                        }
+                    }
+                    ?.takeIf { routeIdentity.canRenderTimelineCandidates }
+                    ?.takeIf { it.isUsableCachedPayloadForRoute(routeContextPayload) && it.hasRenderableThreadContent() }
+                    ?.withRouteContext(routeContextPayload)
+                    ?.withStoreResolvedReplyOriginFrom(routeContextPayload)
+            } else {
+                null
+            }
         // Offline cache write entry (task #1124): every entry of a channel / DM refreshes that one
         // channel's durable baseline in the background. Task #390 moves the launch ahead of the
         // offline read below so that on a memory miss the load and the read overlap: the durable
@@ -7391,11 +7488,40 @@ internal class SharedThreadStore(
                         routePayload = routeContextPayload,
                         routeIdentity = routeIdentity,
                         context = context,
-                    ) ?: awaitBaselineThenReadDurable(threadId, routeContextPayload, routeIdentity, context, entryBaselineJob)
+                    ) ?: if (supersededMemory != null) {
+                        // A memory candidate already stands in: no reason to hold the first frame for the baseline.
+                        null
+                    } else {
+                        awaitBaselineThenReadDurable(threadId, routeContextPayload, routeIdentity, context, entryBaselineJob)
+                    }
                 }
             } else {
                 null
             }
+        // Hands 4b6ccb0d: the superseded memory copy wins only when it holds a newer server message than the
+        // durable frame (or there is no durable frame). An equal or older copy loses: the disk is at least as new.
+        val supersededFirstFrame =
+            supersededMemory?.takeIf { memory ->
+                durableLastKnown == null ||
+                    (memory.newestServerSeqOrNull() ?: Long.MIN_VALUE) >
+                    (durableLastKnown.newestServerSeqOrNull() ?: Long.MIN_VALUE)
+            }
+        if (supersededMemory != null) {
+            diagnosticsLogger?.invoke(
+                "thread_start_superseded_memory threadId=${threadId.orEmpty()} " +
+                    "memoryMessages=${supersededMemory.messages.size} " +
+                    "memorySeq=${supersededMemory.newestServerSeqOrNull()} " +
+                    "durableSeq=${durableLastKnown?.newestServerSeqOrNull()} " +
+                    "chosen=${if (supersededFirstFrame != null) "memory" else "durable"}"
+            )
+        }
+        supersededFirstFrame?.let { accepted ->
+            dataSource.seedThreadAuthorProfiles(
+                serverId = session?.currentServerId,
+                payload = accepted,
+                source = "superseded_cache"
+            )
+        }
         // Hands dd79da45: with no in-memory candidate (cold start), seed the reply-preview windows
         // persisted by the last session. The durable frame shows them on its first frame, and the
         // first network commit re-reads them from the sync host until the summaries confirm them.
@@ -7430,6 +7556,7 @@ internal class SharedThreadStore(
         val visiblePayload =
             (cached
                 ?: current
+                ?: supersededFirstFrame
                 ?: durableLastKnownWithReplies
                 ?: if (threadId == null) {
                     routeContextPayload
@@ -8042,6 +8169,42 @@ internal class SharedThreadStore(
                     !basePayload.needsReplyThreadStreamResolution(),
             launchMembersHydration = nextPayload.hasRenderableThreadContent()
         )
+    }
+
+    /**
+     * Hands 4b6ccb0d: the user's own confirmed send must survive into the durable frame. A continuous window
+     * writes it from the realtime echo; a discontinuous one (e.g. a reply thread under a DM / private parent the
+     * user does not follow, `reason=thread_non_member`) never does, so a later open from disk showed the thread
+     * without the message just sent. Shortly after the send succeeds, the durable frame is checked: when it does
+     * not store every sent message, the scope's enter snapshot is fetched again. That is the authoritative page
+     * write the entry itself uses (the canary's enter rules decide continuity), never a hand-written fact that
+     * could claim a range it did not load. Sends in quick succession coalesce into one check; the job shares
+     * [enteredScopeSnapshotJob] with the entry so two enters of one scope never run at once.
+     */
+    private fun launchOwnSendDurableCatchUp(
+        routePayload: RaftThreadScreenPayload,
+        expectedRoute: ThreadRouteIdentity,
+        sentMessageIds: Set<String>,
+    ) {
+        if (sentMessageIds.isEmpty()) return
+        val routeIdentity = routePayload.resolveThreadRouteIdentity()
+        if (!routeIdentity.isPendingSendEquivalentTo(expectedRoute)) return
+        if (routeIdentity.timelineChannelId == null) return
+        val replyParent = routePayload.durableReplyParentOrNull()
+        enteredScopeSnapshotJob?.cancel()
+        enteredScopeSnapshotJob =
+            scope.launch {
+                delay(SharedThreadOwnSendDurableCheckDelayMillis)
+                val context = dataSource.captureReplyCacheProducerContext() ?: return@launch
+                val stored =
+                    dataSource.durableFrameStoresAllIfCurrent(routeIdentity, context, replyParent, sentMessageIds)
+                if (stored == true) return@launch
+                val requested = dataSource.loadEnteredScopeSnapshotIfCurrent(routeIdentity, context, replyParent)
+                diagnosticsLogger?.invoke(
+                    "thread_own_send_durable_catchup route=${routeIdentity.instanceKey} " +
+                        "sent=${sentMessageIds.size} stored=${stored ?: "unknown"} requested=$requested"
+                )
+            }
     }
 
     /**
@@ -10931,6 +11094,11 @@ internal class SharedThreadStore(
                     "serverId=${currentProvenance.serverId} route=${expectedRoute.instanceKey}"
                 )
             }
+            launchOwnSendDurableCatchUp(
+                routePayload = _state.value.payload,
+                expectedRoute = expectedRoute,
+                sentMessageIds = page.messages.mapNotNullTo(mutableSetOf()) { sent -> sent.id.takeIf(String::isNotBlank) },
+            )
         }
         // Realtime may have consumed the row first. The durable send is still terminal after the
         // HTTP success, so journal cleanup is independent of the optional payload-cache commit
@@ -13307,6 +13475,13 @@ internal fun RaftThreadScreenPayload.gapCatchUpAnchorMessageId(): String? =
             message.pendingSendContext == null &&
             !message.isTransientLocalSendingMessage()
     }?.id
+
+/** Hands 4b6ccb0d: the highest server seq on the timeline (local sends and their shadows excluded). */
+internal fun RaftThreadScreenPayload.newestServerSeqOrNull(): Long? =
+    messages
+        .filter { message -> message.pendingSendContext == null && !message.isTransientLocalSendingMessage() }
+        .mapNotNull { message -> message.seq }
+        .maxOrNull()
 
 /** Task #168 step 1: the gap catch-up page size — the enter snapshot's page, the server maximum. */
 internal const val SharedThreadGapCatchUpPageLimit: Int = 200
