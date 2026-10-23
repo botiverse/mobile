@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -377,7 +376,7 @@ private fun ThreadInlineAudioFailedWell(
 
 /**
  * Web `InlineAudioPlayer`, in the muted well (`p-2`, gap 8): a 32dp outline play button, the
- * seek rail, and a fixed-width (4.75rem) "current / total" in mono-meta hint.
+ * seek rail, and a "current / total" (at least 4.75rem) in mono-meta hint.
  */
 @Composable
 internal fun ThreadInlineAudioControls(
@@ -430,7 +429,9 @@ internal fun ThreadInlineAudioControls(
                 color = RaftTheme.colors.foregroundHint,
                 textAlign = TextAlign.End,
                 maxLines = 1,
-                modifier = Modifier.width(76.dp)
+                softWrap = false,
+                // At least the web's 4.75rem, and wide enough for "12:34 / 56:07" in mono.
+                modifier = Modifier.widthIn(min = 76.dp)
             )
         }
     }
