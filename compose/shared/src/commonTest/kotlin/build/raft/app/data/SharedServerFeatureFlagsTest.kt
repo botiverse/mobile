@@ -165,6 +165,9 @@ class SharedServerFeatureFlagsTest {
         assertFalse("activity_conversation_list_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         // mobile_curl_transport_v1 is no longer read: new requests always use curl over HTTP/2.
         assertFalse("mobile_curl_transport_v1" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        // attachment_comments_v0 is no longer read or prefetched; the server keeps its record for older clients.
+        assertFalse("attachment_comments_v0" in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertFalse("attachment_comments_v0" in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
         assertEquals("activity_overview_web_v0", ACTIVITY_OVERVIEW_FEATURE_FLAG_KEY)
         // slock serverFeatureFlags.ts THREAD_UNREAD_BADGE_FLAG_KEY (staging 259f9fe0), default off.
         assertEquals("thread_unread_badge_v0", THREAD_UNREAD_BADGE_FEATURE_FLAG_KEY)
