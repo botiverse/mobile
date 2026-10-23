@@ -221,7 +221,8 @@ class ThreadInlineRepliesTest {
     @Test
     fun multilineReplyPreviewUsesTheAvailableSingleLineWidth() {
         assertEquals(
-            "New activity - 14:10 final Android carrier is ready",
+            // The list marker is Markdown syntax, not content.
+            "New activity 14:10 final Android carrier is ready",
             threadInlineReplyPreviewText(
                 """
                 New activity

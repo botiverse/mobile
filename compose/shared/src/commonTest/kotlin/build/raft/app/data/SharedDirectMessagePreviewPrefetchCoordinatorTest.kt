@@ -56,15 +56,11 @@ class SharedDirectMessagePreviewPrefetchCoordinatorTest {
         )
 
     @Test
-    fun normalizeMessagePreviewCollapsesWhitespaceAndBoundsTo140() {
+    fun normalizeMessagePreviewKeepsMarkdownForTheRowToFlatten() {
         assertNull(normalizeMessagePreview("   \n\t  "))
-        assertEquals("hello world", normalizeMessagePreview("  hello \n\t world  "))
-        val longString = "a".repeat(150)
-        val normalized = normalizeMessagePreview(longString)
-        requireNotNull(normalized)
-        assertEquals(141, normalized.length)
-        assertTrue(normalized.endsWith("…"))
-        assertEquals("a".repeat(140) + "…", normalized)
+        // Cutting Markdown at 140 could split `**`; the row flattens, then truncates.
+        assertEquals("**hello**\n\t world", normalizeMessagePreview("  **hello**\n\t world  "))
+        assertEquals(2_048, normalizeMessagePreview("a".repeat(3_000))?.length)
     }
 
     @Test

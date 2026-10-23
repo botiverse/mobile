@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.components.RaftPickerTriggerButton
 import build.raft.designsystem.components.rememberRaftMobileNavServerPopoverState
 import build.raft.designsystem.components.RaftFieldLabelSize
@@ -22513,6 +22514,12 @@ internal fun sharedHomeSavedPermalink(
     return "$cleanWebBaseUrl/s/$cleanServerSlug/$routeKind/${channelForLink.value}?$params"
 }
 
+/** Saved and search rows: the item's message Markdown read as one line; null when nothing is left. */
+private fun InboxItem.previewMarkdownText(): String? =
+    (latestActivityPreview ?: lastMessagePreview ?: parentMessagePreview)
+        ?.let(::markdownToPreviewText)
+        ?.takeIf { it.isNotBlank() }
+
 internal fun InboxItem.sharedHomeSavedMarkdownContent(): String =
     latestActivityPreview ?: lastMessagePreview ?: parentMessagePreview ?: ""
 
@@ -22889,8 +22896,7 @@ private fun SharedHomeSavedResultCard(
 ) {
     val avatarCacheIdentity =
         remember(item, cacheServerId) { item.previewSenderAvatarCacheIdentity(cacheServerId) }
-    val preview = item.latestActivityPreview ?: item.lastMessagePreview ?: item.parentMessagePreview
-        ?: stringResource(MR.strings.saved_state_no_preview)
+    val preview = item.previewMarkdownText() ?: stringResource(MR.strings.saved_state_no_preview)
     val sender = item.latestActivitySenderName ?: item.lastMessageSenderName
     val time = item.latestActivityAt ?: item.lastMessageAt
     val openGestureKey = remember(item) { item.inboxItemOpenGestureKey() }
@@ -23622,8 +23628,7 @@ private fun SharedHomeSearchMessageResultRow(
 ) {
     val avatarCacheIdentity =
         remember(item, cacheServerId) { item.previewSenderAvatarCacheIdentity(cacheServerId) }
-    val preview = item.latestActivityPreview ?: item.lastMessagePreview ?: item.parentMessagePreview
-        ?: stringResource(MR.strings.search_state_no_preview)
+    val preview = item.previewMarkdownText() ?: stringResource(MR.strings.search_state_no_preview)
     // RFC 077 (web MessageHitRow): "Alice (sent by Friday)", text only.
     val sender = (item.latestActivitySenderName ?: item.lastMessageSenderName)?.let { delegatedPreviewSender(it, item.latestDelegatedBy) }
     val time = item.latestActivityAt ?: item.lastMessageAt
@@ -24136,7 +24141,11 @@ private fun groupHomeSearchResults(
         }
         val existing = threadGroups.getOrPut(threadKey) {
             mutableListOf<InboxItem>().also {
-                groups += HomeSearchResultGroup.Thread(threadKey, item.parentMessagePreview ?: threadDiscussionLabel, it)
+                groups += HomeSearchResultGroup.Thread(
+                    threadKey,
+                    item.parentMessagePreview?.let(::markdownToPreviewText)?.takeIf { it.isNotBlank() } ?: threadDiscussionLabel,
+                    it
+                )
             }
         }
         existing += item

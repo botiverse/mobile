@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.markdown.markdownToPreviewText
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.SharedConversationDirectoryProjection
@@ -526,7 +527,7 @@ internal fun raftForegroundMessageBannerProjectionResult(
     val threadContext = projection.resolveForegroundBannerThreadContext(conversation)
     val iconKind = projection.resolveForegroundBannerIconKind(conversation)
     val iconName = projection.resolveForegroundBannerIconName(conversation)
-    val body = message.body.toForegroundBannerPreview().ifBlank { "Sent a new message." }
+    val body = markdownToPreviewText(message.body, ForegroundBannerPreviewMaxLength).ifBlank { "Sent a new message." }
     val senderMemberId =
         projection.resolveForegroundBannerSenderMemberId(message)
             ?: message.author.id.value.takeIf { it.isNotBlank() }
@@ -577,7 +578,8 @@ private fun SharedConversationDirectoryProjection?.resolveForegroundBannerThread
         this?.surfaceKind == RaftThreadSurfaceKind.ReplyThread ||
             conversation.kind == ConversationKind.Thread
     if (!isReplyThread) return null
-    return this?.subtitle?.takeIf { it.isNotBlank() }
+    // A reply thread's subtitle is its root message's Markdown.
+    return this?.subtitle?.let(::markdownToPreviewText)?.takeIf { it.isNotBlank() }
 }
 
 @Composable
@@ -830,17 +832,6 @@ private fun ThreadRouteIdentity.foregroundRouteMatchKeys(threadId: String): Set<
         parentKey?.takeIf { it.isNotBlank() }?.let(::add)
         instanceKey.takeIf { it.isNotBlank() }?.let(::add)
     }
-
-private fun String.toForegroundBannerPreview(maxLength: Int = ForegroundBannerPreviewMaxLength): String =
-    trim()
-        .replace(Regex("\\s+"), " ")
-        .let { value ->
-            if (value.length <= maxLength) {
-                value
-            } else {
-                value.take(maxLength - 1).trimEnd() + "…"
-            }
-        }
 
 /**
  * task #459: foreground banner from the server-qualified notification stream

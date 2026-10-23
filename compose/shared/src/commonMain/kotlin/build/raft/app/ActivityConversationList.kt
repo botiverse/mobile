@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.markdown.RaftMarkdownPreview
+import build.raft.app.markdown.markdownToPreview
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -306,8 +308,11 @@ internal data class ActivityConversationRowModel(
      * (web `threadDmChannel`). Null: not a DM, or the DM is not loaded yet (the kind tile instead).
      */
     val dmPeer: ActivityConversationDmPeer?,
-    /** Thread: the root message preview; else the place name without its `#`/`@` prefix. Null: fallback. */
-    val title: String?,
+    /**
+     * Thread: the root message's Markdown read as one line, inline styles kept (web `InlineMarkdownPreview`);
+     * else the place name without its `#`/`@` prefix. Null: fallback.
+     */
+    val title: RaftMarkdownPreview?,
     /**
      * Thread rows only: "#channel" / "@peer", written before the preview as "#channel ·". Always in the
      * row's accessibility text; shown only when [threadChannelLabelVisible].
@@ -326,8 +331,8 @@ internal data class ActivityConversationRowModel(
      */
     val channelSymbol: String = "#",
     val sender: ActivityConversationSender?,
-    /** Null: the localized kind fallback. */
-    val preview: String?,
+    /** The latest message's Markdown read as one line ([markdownToPreview]). Null: the localized kind fallback. */
+    val preview: RaftMarkdownPreview?,
     val muted: Boolean,
     /** Bold title and a full-ink preview: unread and not muted. */
     val strong: Boolean,
@@ -434,11 +439,13 @@ internal fun InboxItem.activityConversationRowModel(
     val dmPeer = if (directMessage) context.dmPeersByChannelId[channelId.value] else threadDmPeer
     val title =
         when {
-            kind == InboxItemKind.Thread -> parentMessagePreview?.takeIf { it.isNotBlank() }
+            kind == InboxItemKind.Thread -> parentMessagePreview?.let(::markdownToPreview)?.takeIf { it.text.isNotBlank() }
             kind == InboxItemKind.DirectMessage ->
-                (dmPeer?.displayName ?: dmPeerNames[channelId.value] ?: channelName.ifBlank { channelId.value })
-                    .stripActivityTitlePrefix()
-            else -> channelName.ifBlank { channelId.value }.stripActivityTitlePrefix()
+                RaftMarkdownPreview(
+                    (dmPeer?.displayName ?: dmPeerNames[channelId.value] ?: channelName.ifBlank { channelId.value })
+                        .stripActivityTitlePrefix()
+                )
+            else -> RaftMarkdownPreview(channelName.ifBlank { channelId.value }.stripActivityTitlePrefix())
         }
     val systemSender = hasActivitySystemSender()
     val senderName = senderDisplayName(senderProfiles)?.takeIf { it.isNotBlank() }
@@ -493,7 +500,7 @@ internal fun InboxItem.activityConversationRowModel(
         channelSymbol =
             if (leadingKind == ActivityConversationLeadingKind.DirectMessage || threadInDirectMessage) "#" else activityChannelSymbol(context.channelSymbolsByChannelId),
         sender = sender,
-        preview = preview?.takeIf { it.isNotBlank() },
+        preview = preview?.let(::markdownToPreview)?.takeIf { it.text.isNotBlank() },
         muted = muted,
         strong = unread > 0 && !muted,
         showMentionMarker = selectedFilter != InboxFilter.Mentions && hasMention && unread > 0,
@@ -732,7 +739,7 @@ internal fun ActivityConversationListRow(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             RaftText(
-                                text = model.title ?: fallback,
+                                text = model.title?.toAnnotatedString() ?: AnnotatedString(fallback),
                                 modifier = Modifier.weight(1f, fill = false),
                                 style = typography.subhead.copy(fontWeight = if (model.strong) FontWeight.Bold else FontWeight.SemiBold),
                                 color = titleColor,
@@ -791,7 +798,7 @@ internal fun ActivityConversationListRow(
                         activityConversationBodyText(
                             channelLabel = visibleThreadChannelText,
                             sender = senderText,
-                            preview = model.preview ?: fallback,
+                            preview = model.preview?.toAnnotatedString() ?: AnnotatedString(fallback),
                             senderStyle = SpanStyle(fontWeight = FontWeight.SemiBold, color = colors.foreground),
                             senderAvatar = senderAvatar != null,
                         )
@@ -799,7 +806,7 @@ internal fun ActivityConversationListRow(
                         text = bodyText,
                         accessibilityText =
                             if (threadChannelText != null && visibleThreadChannelText == null) {
-                                activityConversationAccessibilityBody(threadChannelText, senderText, model.preview ?: fallback)
+                                activityConversationAccessibilityBody(threadChannelText, senderText, model.preview?.text ?: fallback)
                             } else {
                                 null
                             },
@@ -841,7 +848,7 @@ internal const val ActivityConversationSenderAvatarInlineId = "activity-conversa
  */
 internal fun activityConversationBodyText(
     sender: String?,
-    preview: String,
+    preview: AnnotatedString,
     senderStyle: SpanStyle = SpanStyle(fontWeight = FontWeight.SemiBold),
     channelLabel: String? = null,
     senderAvatar: Boolean = false,
@@ -862,7 +869,7 @@ internal fun activityConversationBodyText(
  * the row hides it (web `sr-only`), so the row still names the DM it belongs to.
  */
 internal fun activityConversationAccessibilityBody(channelLabel: String?, sender: String?, preview: String): String =
-    activityConversationBodyText(sender = sender, preview = preview, channelLabel = channelLabel).text
+    activityConversationBodyText(sender = sender, preview = AnnotatedString(preview), channelLabel = channelLabel).text
 
 @Composable
 private fun ActivityConversationLeading(
