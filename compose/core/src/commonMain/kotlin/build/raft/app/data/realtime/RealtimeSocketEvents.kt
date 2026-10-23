@@ -24,6 +24,11 @@ object RealtimeSocketEvents {
     const val ChannelJoined = GeneratedRealtimeContract.SocketEvent.ChannelJoined
     const val ChannelJoinDenied = GeneratedRealtimeContract.SocketEvent.ChannelJoinDenied
     const val SyncResume = GeneratedRealtimeContract.SocketEvent.SyncResume
+    /**
+     * Client-emitted with an ack (botiverse/slock #10982 `socket/syncResume.ts`): the ack answers
+     * `{ horizon }` (or `{ error }`). Never a server frame, never in [ServerWireEvents].
+     */
+    const val SyncHorizon = GeneratedRealtimeContract.SocketEvent.SyncHorizon
     const val SyncResumeResponse = GeneratedRealtimeContract.SocketEvent.SyncResumeResponse
     const val JoinChannel = GeneratedRealtimeContract.SocketEvent.JoinChannel
     const val LeaveChannel = GeneratedRealtimeContract.SocketEvent.LeaveChannel

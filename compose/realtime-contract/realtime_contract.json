@@ -39,6 +39,7 @@
     "channelJoined": "channel:joined",
     "channelJoinDenied": "channel:join_denied",
     "syncResume": "sync:resume",
+    "syncHorizon": "sync:horizon",
     "syncResumeResponse": "sync:resume:response",
     "joinChannel": "join:channel",
     "leaveChannel": "leave:channel",

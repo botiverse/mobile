@@ -47,6 +47,11 @@ internal class SelectableRealtimeSocketTransport(
         fence.linearize { active?.emit(eventName, payload) }
     }
 
+    override fun emitWithAck(
+        eventName: String,
+        onAck: (RealtimeSocketConnectionContext, Any?) -> Unit,
+    ): Boolean = fence.linearize { active?.emitWithAck(eventName, onAck) ?: false }
+
     override fun on(
         eventName: String,
         listener: (RealtimeSocketConnectionContext, Any?) -> Unit,

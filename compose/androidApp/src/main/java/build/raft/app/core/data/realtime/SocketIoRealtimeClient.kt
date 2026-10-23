@@ -3,6 +3,8 @@ package build.raft.app.core.data.realtime
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.RAFT_SOCKET_BASE_URL
 import build.raft.app.data.realtime.RealtimeAuth
+import build.raft.app.data.realtime.RealtimeBaselineHistoryRequests
+import build.raft.app.data.realtime.RealtimeSyncHorizon
 import build.raft.app.data.realtime.RealtimeConnectRequest
 import build.raft.app.data.realtime.RealtimeSocketConnectionContext
 import build.raft.app.data.realtime.RealtimeConnectionState
@@ -72,6 +74,9 @@ class SocketIoRealtimeClient(
     // do a network token refresh (4s per attempt, one retry). Running it there made onResume's
     // setReconnectAllowed wait on the lock long enough to ANR, so the provider runs here instead.
     private val authRefreshRunner: (task: () -> Unit) -> Unit = ::runOnRealtimeAuthRefreshThread,
+    // Sync horizon (slock #10982): whether a baseline history read of this server was already sent, which
+    // makes a starting horizon unusable (see RealtimeSyncHorizon).
+    private val baselineHistorySent: (serverId: String) -> Boolean = RealtimeBaselineHistoryRequests::anySent,
 ) {
     private val listeners = mutableSetOf<(RealtimeEvent) -> Unit>()
     private val rawListeners = mutableSetOf<(RealtimeSocketConnectionContext, String, Any?) -> Unit>()
@@ -122,14 +127,15 @@ class SocketIoRealtimeClient(
 
     fun connect(request: RealtimeConnectRequest) {
         transport.linearize {
-            if (connectedServerId != request.auth.serverId.value) {
+            val sameServer = connectedServerId == request.auth.serverId.value
+            if (!sameServer) {
                 joinedChannels.clear()
                 connectedServerId = request.auth.serverId.value
             }
             currentAuth = request.auth
             val connectionContext = RealtimeSocketConnectionContext(request.auth.serverId, request.witness)
             currentConnectionContext = connectionContext
-            cursor = RealtimeCursorPolicy.fromAppliedSeq(request.lastSeq)
+            cursor = RealtimeCursorPolicy.connect(cursor, request.lastSeq, sameServer)
             resumeProjectionRetryLastSeq = null
             pendingCatchUpReason = null
             if (!reconnectAllowed) {
@@ -301,6 +307,7 @@ class SocketIoRealtimeClient(
                 "client_connected serverId=${capturedContext.serverId.value} joinedRooms=${joinedChannels.size} " +
                     "appliedSeq=${cursor.appliedLastSeq} serverMaxSeq=${cursor.serverMaxSeq}"
             )
+            requestStartingHorizon(capturedContext)
             rejoinChannels(reason = "connect")
         }
         transportSubscriptions += transport.on(RealtimeSocketEvents.RoomsJoined) { capturedContext, _ ->
@@ -430,9 +437,21 @@ class SocketIoRealtimeClient(
                 if (eventName == RealtimeSocketEvents.SyncResumeResponse && event is Heartbeat) {
                     requestResumeAfterProjectionRejection(capturedContext)
                 }
+                if (event is SyncResumeResponse) {
+                    logger(
+                        "sync_resume_response serverId=$capturedServerId currentSeq=${event.currentSeq} " +
+                            "messages=${event.messages.size} hasMore=${event.hasMore} " +
+                            "horizon=${event.horizon != null} horizonReset=${event.horizonReset}"
+                    )
+                }
                 val shouldFanOutRaw = shouldFanOutRawEvent(eventName, cursorUpdate.serverAhead)
                 if (shouldFanOutRaw) {
                     rawListeners.toList().forEach { it(capturedContext, eventName, payload) }
+                }
+                if (event is SyncResumeResponse && event.horizonReset) {
+                    // Too many late messages to send: the rows above were applied, the late ones were not.
+                    // Home/Activity re-fetch and the open thread re-reads its latest page.
+                    requestCatchUp(capturedContext, reason = RealtimeSyncHorizon.ResetReason)
                 }
                 successDiagnostics.record(
                     eventName = eventName,
@@ -521,8 +540,48 @@ class SocketIoRealtimeClient(
     private fun emitSyncResume(reason: String) {
         val resumeLastSeq = cursor.resumeLastSeq
         if (resumeLastSeq <= 0) return
-        logger("sync_resume_emit serverId=${connectedServerId.orEmpty()} lastSeq=$resumeLastSeq reason=$reason")
-        transport.emit(RealtimeSocketEvents.SyncResume, RealtimeResumeRequest(resumeLastSeq).toWireMap())
+        // The held horizon (see RealtimeCursorState.horizon for its invariant) starts this round; the
+        // response's horizon starts the next one. Without one the resume is exactly the pre-horizon one.
+        val sinceHorizon = cursor.horizon
+        logger(
+            "sync_resume_emit serverId=${connectedServerId.orEmpty()} lastSeq=$resumeLastSeq " +
+                "sinceHorizon=${sinceHorizon != null} reason=$reason"
+        )
+        transport.emit(
+            RealtimeSocketEvents.SyncResume,
+            RealtimeResumeRequest(resumeLastSeq, sinceHorizon = sinceHorizon).toWireMap(),
+        )
+    }
+
+    /**
+     * Asks the new socket for a starting horizon while none is held. Never waited for: the ack is used
+     * only if it arrives before any baseline history request of this server was sent
+     * ([RealtimeCursorPolicy.acceptStartingHorizon]); a late, missing (older server) or error ack
+     * leaves no horizon, so the first resume runs as before and its response provides the next one.
+     */
+    private fun requestStartingHorizon(capturedContext: RealtimeSocketConnectionContext) {
+        if (cursor.horizon != null) return
+        val sent =
+            transport.emitWithAck(RealtimeSocketEvents.SyncHorizon) { ackContext, payload ->
+                transport.linearize { onStartingHorizonAck(ackContext, payload) }
+            }
+        logger(
+            "sync_horizon_request serverId=${capturedContext.serverId.value} " +
+                "result=${if (sent) "sent" else "unsupported_transport"}"
+        )
+    }
+
+    private fun onStartingHorizonAck(capturedContext: RealtimeSocketConnectionContext, payload: Any?) {
+        if (!acceptConnectionCallback(capturedContext, RealtimeSocketEvents.SyncHorizon)) return
+        val serverId = capturedContext.serverId.value
+        val decision =
+            RealtimeCursorPolicy.acceptStartingHorizon(
+                state = cursor,
+                horizon = payload.syncHorizonAckOrNull(),
+                baselineHistorySent = baselineHistorySent(serverId),
+            )
+        cursor = decision.state
+        logger("sync_horizon_ack serverId=$serverId accepted=${decision.accepted} reason=${decision.reason}")
     }
 
     private fun requestResumeAfterProjectionRejection(capturedContext: RealtimeSocketConnectionContext) {
@@ -699,6 +758,18 @@ class SocketIoRealtimeClient(
                 ?.asString
                 ?.takeIf(String::isNotBlank)
         is Map<*, *> -> (this["serverId"] as? String)?.takeIf(String::isNotBlank)
+        else -> null
+    }
+
+    /** `sync:horizon` ack `{ horizon }`: only a string horizon counts (never a number). */
+    private fun Any?.syncHorizonAckOrNull(): String? = when (this) {
+        is JSONObject -> RealtimeSyncHorizon.parse(opt(RealtimeSyncHorizon.HorizonKey) as? String)
+        is JsonObject ->
+            get(RealtimeSyncHorizon.HorizonKey)
+                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                ?.asString
+                ?.let(RealtimeSyncHorizon::parse)
+        is Map<*, *> -> RealtimeSyncHorizon.parse(this[RealtimeSyncHorizon.HorizonKey] as? String)
         else -> null
     }
 

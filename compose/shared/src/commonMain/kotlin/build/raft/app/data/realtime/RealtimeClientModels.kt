@@ -41,11 +41,14 @@ data class RealtimeChannelGap(
 
 data class RealtimeResumeRequest(
     val lastSeq: Long,
-    val channelGaps: List<RealtimeChannelGap> = emptyList()
+    val channelGaps: List<RealtimeChannelGap> = emptyList(),
+    /** The held sync horizon, as text ([RealtimeSyncHorizon]); omitted when none is held. */
+    val sinceHorizon: String? = null,
 ) {
     fun toWireMap(): Map<String, Any> =
         buildMap {
             put("lastSeq", lastSeq)
+            sinceHorizon?.let { put(RealtimeSyncHorizon.SinceHorizonKey, it) }
             if (channelGaps.isNotEmpty()) {
                 put(
                     "channelGaps",

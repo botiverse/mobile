@@ -13,6 +13,23 @@ data class RealtimeCursorState(
     val appliedLastSeq: Long = 0L,
     val serverMaxSeq: Long = 0L,
     val epoch: String = DefaultMessageSeqEpoch,
+    /**
+     * The sync horizon the next `sync:resume` sends as `sinceHorizon` ([RealtimeSyncHorizon]); null =
+     * none held, the resume runs exactly as before the horizon existed. Same server and lifetime as
+     * [appliedLastSeq]: dropped whenever that watermark is rebaselined or belongs to another server.
+     *
+     * Invariant: the horizon held must have been computed before every later read that raises
+     * `lastSeq`. The starting horizon guarantees this because its ack arrives before any history
+     * request is sent. Each later round uses the horizon from the `sync:resume` response, which is
+     * also computed before any later history load.
+     *
+     * Only socket frames raise this watermark (`message:new` / `message:updated` as they are
+     * delivered, and `sync:resume:response`, whose horizon comes from the same read); no HTTP history
+     * load does, so a history read already in flight when a resume horizon arrives cannot raise it.
+     * A `connect` keeps the horizon only for the same server and a `lastSeq` not above the watermark
+     * it already holds ([RealtimeCursorPolicy.connect]).
+     */
+    val horizon: String? = null,
 ) {
     val resumeLastSeq: Long
         get() = appliedLastSeq
@@ -22,6 +39,13 @@ data class RealtimeCursorUpdate(
     val state: RealtimeCursorState,
     val serverAhead: Boolean = false,
     val rebaselineRequired: Boolean = false,
+)
+
+/** See [RealtimeCursorPolicy.acceptStartingHorizon]; [reason] is for logs. */
+data class RealtimeStartingHorizonDecision(
+    val state: RealtimeCursorState,
+    val accepted: Boolean,
+    val reason: String,
 )
 
 /** See [RealtimeCursorPolicy.reconnect]. */
@@ -49,13 +73,55 @@ object RealtimeLocalEvents {
 object RealtimeCursorPolicy {
     fun fromAppliedSeq(
         lastSeq: Long,
-        epoch: String = DefaultMessageSeqEpoch
+        epoch: String = DefaultMessageSeqEpoch,
+        horizon: String? = null,
     ): RealtimeCursorState =
         RealtimeCursorState(
             appliedLastSeq = lastSeq.coerceAtLeast(0L),
             serverMaxSeq = lastSeq.coerceAtLeast(0L),
             epoch = epoch.ifBlank { DefaultMessageSeqEpoch },
+            horizon = horizon?.takeIf { lastSeq > 0L },
         )
+
+    /**
+     * Cursor for an explicit `connect` request. The held horizon survives only on the same server with
+     * a watermark that does not move above the one it was paired with: a lower or equal `lastSeq`
+     * only asks the server for more rows, while a higher one came from somewhere this horizon does not
+     * cover (see [RealtimeCursorState.horizon]).
+     */
+    fun connect(
+        previous: RealtimeCursorState,
+        lastSeq: Long,
+        sameServer: Boolean,
+    ): RealtimeCursorState {
+        val keepHorizon = sameServer && lastSeq > 0L && lastSeq <= previous.appliedLastSeq
+        return fromAppliedSeq(lastSeq, horizon = previous.horizon.takeIf { keepHorizon })
+    }
+
+    /**
+     * The `sync:horizon` ack of the current socket. Used only while no horizon is held and no baseline
+     * history request of this server has been sent yet ([RealtimeBaselineHistoryRequests]): then the
+     * server's snapshot predates every history read the client holds. Otherwise the ack is discarded and
+     * the next resume runs without a horizon, as before; its response starts the next round.
+     */
+    fun acceptStartingHorizon(
+        state: RealtimeCursorState,
+        horizon: String?,
+        baselineHistorySent: Boolean,
+    ): RealtimeStartingHorizonDecision {
+        val reason =
+            when {
+                horizon == null -> "no_horizon"
+                state.horizon != null -> "horizon_held"
+                baselineHistorySent -> "history_request_sent_first"
+                else -> null
+            }
+        return if (reason == null) {
+            RealtimeStartingHorizonDecision(state.copy(horizon = horizon), accepted = true, reason = "accepted")
+        } else {
+            RealtimeStartingHorizonDecision(state, accepted = false, reason = reason)
+        }
+    }
 
     fun rebaseline(
         state: RealtimeCursorState,
@@ -88,7 +154,7 @@ object RealtimeCursorPolicy {
         val resumeLastSeq = state.appliedLastSeq.takeIf { sameServer && it > 0L } ?: 0L
         if (resumeLastSeq > 0L) {
             return RealtimeCursorReconnect(
-                state = fromAppliedSeq(lastSeq = resumeLastSeq, epoch = nextEpoch),
+                state = fromAppliedSeq(lastSeq = resumeLastSeq, epoch = nextEpoch, horizon = state.horizon),
                 resumeLastSeq = resumeLastSeq,
                 catchUpRequired = false,
             )
@@ -113,7 +179,11 @@ object RealtimeCursorPolicy {
                 is MessageUpdated ->
                     state.updateAppliedSeq(event.message.seq)
                 is SyncResumeResponse ->
-                    state.updateAppliedSeq(event.currentSeq)
+                    // Every resume is a round's first page: its horizon starts the next round. A server
+                    // without horizons answers none, and the held one (if any) stays.
+                    state.updateAppliedSeq(event.currentSeq).let { next ->
+                        event.horizon?.let { next.copy(horizon = it) } ?: next
+                    }
                 else -> state
             }
         return RealtimeCursorUpdate(

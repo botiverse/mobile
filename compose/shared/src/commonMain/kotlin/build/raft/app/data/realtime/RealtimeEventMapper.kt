@@ -661,6 +661,9 @@ private data class SyncResumeResponseDto(
     val messages: List<MessageWireDto> = emptyList(),
     val currentSeq: Long = 0L,
     val hasMore: Boolean = false,
+    // slock #10982 (`socket/syncResume.ts`): additive; kept as raw JSON so only a JSON string is a horizon.
+    val horizon: JsonElement? = null,
+    val horizonReset: Boolean = false,
 )
 
 @Serializable
@@ -1436,6 +1439,8 @@ private fun SyncResumeResponseDto.toDomainOrRecovery(diagnostics: (String) -> Un
         messages = projectedMessages,
         currentSeq = currentSeq,
         hasMore = hasMore,
+        horizon = RealtimeSyncHorizon.parseJson(horizon),
+        horizonReset = horizonReset,
     )
 }
 

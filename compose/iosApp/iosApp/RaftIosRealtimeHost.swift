@@ -60,6 +60,18 @@ final class RaftIosRealtimeHost: NSObject {
         var authRefreshInFlight = false
         var generation: UInt64 = 0
         var resumeLastSeq: Int64 = 0
+        /// Sync horizon (botiverse/slock #10982; shared `RealtimeSyncHorizon`): decimal xid8 text, never a
+        /// number. The next `sync:resume` sends it as `sinceHorizon`; nil = resume exactly as before.
+        ///
+        /// Invariant: the horizon held must have been computed before every later read that raises
+        /// `lastSeq`. The starting horizon guarantees this because its ack arrives before any history
+        /// request is sent. Each later round uses the horizon from the `sync:resume` response, which is
+        /// also computed before any later history load.
+        ///
+        /// [resumeLastSeq] is raised only from socket frames (shared's `cursorAdvance` after it applied a
+        /// `message:new` / `sync:resume:response`), never by an HTTP history load; a connect that would
+        /// move it up from elsewhere drops the horizon (connectRuntimeLocked).
+        var horizon: String?
         var presenceTransportEpoch: Int64 = 0
 
         init(serverId: String) {
@@ -262,12 +274,18 @@ final class RaftIosRealtimeHost: NSObject {
             log("connect_skip reason=same_session state=\(stateLabel(runtime.state)) serverId=\(params.serverId)")
             return
         }
+        let previousResumeLastSeq = runtime.resumeLastSeq
         if !sameSession {
             runtime.joinedChannels.removeAll()
             runtime.roomEngine.resetRoomStateForHost()
             runtime.resumeLastSeq = max(0, params.lastSeq)
         } else {
             runtime.resumeLastSeq = max(runtime.resumeLastSeq, params.lastSeq)
+        }
+        // The horizon stays paired with the watermark it was taken with: a lower one only asks for more
+        // rows, a higher one (or none) is not covered by it.
+        if runtime.resumeLastSeq <= 0 || runtime.resumeLastSeq > previousResumeLastSeq {
+            runtime.horizon = nil
         }
         runtime.connectParams = params
         runtime.authRefreshInFlight = false
@@ -404,7 +422,45 @@ final class RaftIosRealtimeHost: NSObject {
                 "presenceEpoch=\(runtime.presenceTransportEpoch)"
         )
         postPresenceTransportConnected(runtime: runtime)
+        requestStartingHorizon(runtime: runtime, generation: generation)
         rejoinChannels(runtime: runtime, reason: "connect")
+    }
+
+    /// Asks this socket for a starting horizon while none is held. Never waited for: the ack is used only
+    /// if it arrives before any baseline history request of this server was sent (shared
+    /// `RealtimeBaselineHistoryRequests`); a late, missing (older server) or error ack leaves none, so the
+    /// first resume runs as before and its response provides the next one. The curl stack has no acks.
+    private func requestStartingHorizon(runtime: Runtime, generation: UInt64) {
+        guard runtime.horizon == nil else { return }
+        guard runtime.curlSession == nil, let socket = runtime.socket else {
+            log("sync_horizon_request serverId=\(runtime.serverId) result=unsupported_transport")
+            return
+        }
+        let serverId = runtime.serverId
+        socket.emitWithAck(GeneratedRealtimeContract.SocketEvent.syncHorizon).timingOut(after: 10) { [weak self] data in
+            self?.queue.async {
+                guard let self, let runtime = self.currentRuntime(serverId: serverId, generation: generation) else { return }
+                self.acceptStartingHorizonLocked(runtime: runtime, ack: data.first)
+            }
+        }
+        log("sync_horizon_request serverId=\(serverId) result=sent")
+    }
+
+    private func acceptStartingHorizonLocked(runtime: Runtime, ack: Any?) {
+        let horizon = ((ack as? [String: Any])?[Self.syncHorizonKey] as? String)
+            .flatMap { RealtimeSyncHorizon.shared.parse(value: $0) }
+        let reason: String
+        if horizon == nil {
+            reason = "no_horizon"
+        } else if runtime.horizon != nil {
+            reason = "horizon_held"
+        } else if RealtimeBaselineHistoryRequests.shared.anySent(serverId: runtime.serverId) {
+            reason = "history_request_sent_first"
+        } else {
+            runtime.horizon = horizon
+            reason = "accepted"
+        }
+        log("sync_horizon_ack serverId=\(runtime.serverId) accepted=\(reason == "accepted") reason=\(reason)")
     }
 
     private func installSocketHandlers(_ socket: SocketIOClient, serverId: String, generation: UInt64) {
@@ -461,10 +517,16 @@ final class RaftIosRealtimeHost: NSObject {
             // Task #168: shared learns this socket is subscribed to all of its rooms, with the socket's epoch.
             postTransportSignal(runtime: runtime, action: "realtimeRoomsJoined")
             if runtime.resumeLastSeq > 0 {
+                var payload: [String: Any] = ["lastSeq": runtime.resumeLastSeq]
+                // See Runtime.horizon for the invariant; the response's horizon starts the next round.
+                if let horizon = runtime.horizon {
+                    payload[Self.syncSinceHorizonKey] = horizon
+                }
+                log("sync_resume_emit serverId=\(runtime.serverId) lastSeq=\(runtime.resumeLastSeq) sinceHorizon=\(runtime.horizon != nil)")
                 emit(
                     runtime: runtime,
                     eventName: GeneratedRealtimeContract.SocketEvent.syncResume,
-                    payload: ["lastSeq": runtime.resumeLastSeq]
+                    payload: payload
                 )
             }
             return
@@ -493,6 +555,13 @@ final class RaftIosRealtimeHost: NSObject {
             )
             return
         }
+        postRawEvent(runtime: runtime, params: params, eventName: eventName, rawPayload: rawPayload)
+        if eventName == GeneratedRealtimeContract.SocketEvent.syncResumeResponse {
+            applySyncResumeHorizonLocked(runtime: runtime, params: params, rawPayload: rawPayload)
+        }
+    }
+
+    private func postRawEvent(runtime: Runtime, params: ConnectParams, eventName: String, rawPayload: String) {
         NotificationCenter.default.post(
             name: Notification.Name(GeneratedRealtimeContract.Notify.eventName),
             object: nil,
@@ -506,6 +575,34 @@ final class RaftIosRealtimeHost: NSObject {
                 "authorityConnectionFamilyId": params.authorityConnectionFamilyId,
                 "presenceTransportEpoch": runtime.presenceTransportEpoch,
             ]
+        )
+    }
+
+    /// Every resume is a round's first (and only) page: its `horizon` starts the next round; an older
+    /// server sends none and nothing changes. `horizonReset: true` (too many late messages to send) asks
+    /// shared for the Home/Activity re-fetch, after the response's own rows were posted above; shared
+    /// maps the mobile-local frame to `RealtimeRefreshRequired(Home)` and the open thread re-reads its
+    /// latest page.
+    private func applySyncResumeHorizonLocked(runtime: Runtime, params: ConnectParams, rawPayload: String) {
+        guard
+            let data = rawPayload.data(using: .utf8),
+            let payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        else { return }
+        if let horizon = (payload[Self.syncHorizonKey] as? String)
+            .flatMap({ RealtimeSyncHorizon.shared.parse(value: $0) }) {
+            runtime.horizon = horizon
+        }
+        let reset = (payload["horizonReset"] as? Bool) ?? false
+        log("sync_resume_response serverId=\(runtime.serverId) horizon=\(runtime.horizon != nil) horizonReset=\(reset)")
+        guard reset else { return }
+        postRawEvent(
+            runtime: runtime,
+            params: params,
+            eventName: Self.catchUpRequiredEvent,
+            rawPayload: jsonString([
+                GeneratedRealtimeContract.PayloadKey.serverId: params.serverId,
+                "reason": Self.syncHorizonResetReason,
+            ])
         )
     }
 
@@ -919,6 +1016,13 @@ final class RaftIosRealtimeHost: NSObject {
         "process_teardown",
         "api_environment_changed",
     ]
+
+    // Shared `RealtimeSyncHorizon.HorizonKey` / `SinceHorizonKey` / `ResetReason` and
+    // `RealtimeLocalEvents.CatchUpRequired` (mobile-local frame mapped to `RealtimeRefreshRequired(Home)`).
+    private static let syncHorizonKey = "horizon"
+    private static let syncSinceHorizonKey = "sinceHorizon"
+    private static let syncHorizonResetReason = "sync_resume_horizon_reset"
+    private static let catchUpRequiredEvent = "raft:realtime:catch_up_required"
 
     private static let serverWireEvents: [String] = [
         GeneratedRealtimeContract.SocketEvent.roomsJoined,
