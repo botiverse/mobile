@@ -915,7 +915,9 @@
     <string name="activity_list_unread_count_description">%1$d new</string>
     <string name="activity_list_draft_description">Thread has an unsent draft</string>
     <string name="activity_list_marked_done">Marked as done</string>
-    <string name="activity_swipe_unfollow">Unfollow</string>
+    <string name="activity_swipe_layer_done">Done</string>
+    <string name="activity_swipe_layer_unfollow">Unfollow</string>
+    <string name="activity_swipe_layer_mute">Mute</string>
     <string name="activity_swipe_unfollowed_thread">Unfollowed thread in %1$s</string>
     <string name="activity_swipe_muted_activity">Muted activity in %1$s</string>
     <string name="activity_fallback_thread_update">Thread update</string>

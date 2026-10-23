@@ -48,6 +48,8 @@ import build.raft.designsystem.gesture.RaftBackSwipeEdgeWidth
 import build.raft.designsystem.gesture.raftBackSwipeRegion
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftUiPalette
+import build.raft.app.components.rememberRaftActivitySwipeHaptic
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -111,8 +113,8 @@ internal const val ActivitySwipeThresholdFraction = 0.4f
 /** A flick at least this fast applies the revealed action, or (back toward closed) cancels it. */
 internal val ActivitySwipeFlingVelocity = 800.dp
 
-/** How long the undo toast stays (and, for Done, before the swiped Done is committed). */
-internal const val ActivitySwipeDoneUndoWindowMillis = 5_000L
+/** How long the undo toast stays (and, for Done, before the swiped Done is committed): 8 s, both directions (raft-design #775). */
+internal const val ActivitySwipeDoneUndoWindowMillis = 8_000L
 
 /** The least edge zone at either side of a row where no drag is claimed (see the header). */
 internal val ActivitySwipeMinEdgeInset = 24.dp
@@ -336,6 +338,31 @@ internal fun activitySwipeRevealPx(
 }
 
 /**
+ * Whether the revealed layer is in its solid look (raft-design #775 / #779): the drag has reached the
+ * distance where releasing applies the action ([ActivitySwipeThresholdFraction] of the width). Below it the
+ * layer is soft, so a finger coming back under the threshold returns it to soft. A pure function of the
+ * drag, not of its history. [revealPx] is the unsigned distance along the opened side.
+ */
+internal fun activitySwipeLayerSolid(revealPx: Float, widthPx: Float): Boolean =
+    widthPx > 0f && abs(revealPx) >= widthPx * ActivitySwipeThresholdFraction
+
+/**
+ * Fires the layer's solid tick: true exactly once each time the layer turns solid (crossing the threshold
+ * outward). Going back under the threshold re-arms it silently; the next outward crossing ticks again.
+ * One per drag gesture.
+ */
+internal class ActivitySwipeSolidTickGate {
+    private var wasSolid = false
+
+    /** Feeds the drag's new solid state; true when this update is an outward crossing. */
+    fun update(solid: Boolean): Boolean {
+        val crossed = solid && !wasSolid
+        wasSolid = solid
+        return crossed
+    }
+}
+
+/**
  * Whether releasing at [revealPx] with [revealVelocityPx] (both measured along the opened side, positive
  * = further open) applies the action: past the threshold unless flicked back, or a fast flick further
  * open past half the threshold.
@@ -493,6 +520,8 @@ internal fun ActivitySwipeActionsBox(
             hostBackSwipeEdgePx = if (hostHasBackSwipe) with(density) { RaftBackSwipeEdgeWidth.toPx() } else 0f,
         )
     val reveal = remember(gestureKey) { Animatable(0f) }
+    val solidTick = rememberRaftActivitySwipeHaptic()
+    val currentSolidTick by rememberUpdatedState(solidTick)
     val scope = rememberCoroutineScope()
     val currentOnSwipeDone by rememberUpdatedState(onSwipeDone)
     val currentOnSwipeEnd by rememberUpdatedState(onSwipeEnd)
@@ -549,6 +578,7 @@ internal fun ActivitySwipeActionsBox(
                     val claimedSide = side ?: return@awaitEachGesture
                     var target = reveal.value
                     var applied = false
+                    val tickGate = ActivitySwipeSolidTickGate()
                     try {
                         while (true) {
                             val event = awaitPointerEvent(PointerEventPass.Main)
@@ -576,6 +606,7 @@ internal fun ActivitySwipeActionsBox(
                                     claimedSide,
                                 )
                             change.consume()
+                            if (tickGate.update(activitySwipeLayerSolid(target, widthPx.toFloat()))) currentSolidTick.tick()
                             scope.launch { reveal.snapTo(target) }
                         }
                     } finally {
@@ -601,29 +632,33 @@ internal fun ActivitySwipeActionsBox(
             }
     ) {
         val shownReveal = reveal.value + previewRevealFraction * widthPx
-        // Behind the row: what releasing does, on the side the row slid away from. Decorative; screen
-        // readers use the row's Done button and its press-and-hold menu.
+        val solid = activitySwipeLayerSolid(shownReveal, widthPx.toFloat())
+        // Behind the row: what releasing does, on the side the row slid away from. Soft until releasing
+        // would apply the action, then solid (raft-design #775 / #779). Decorative; screen readers use
+        // the row's press-and-hold menu.
         if (shownReveal > 0f && doneEnabled) {
+            val foreground = if (solid) colors.ink else colors.successStrong
             ActivitySwipeActionLayer(
-                glyph = { RaftGlyphIcon(RaftGlyph.Check, size = 18.dp, color = colors.successStrong) },
-                label = stringResource(MR.strings.common_done),
-                background = colors.successSoft,
-                foreground = colors.successStrong,
+                glyph = { RaftGlyphIcon(RaftGlyph.Check, size = 18.dp, color = foreground) },
+                label = stringResource(MR.strings.activity_swipe_layer_done),
+                background = if (solid) RaftUiPalette.success else colors.successSoft,
+                foreground = foreground,
                 alignEnd = true,
                 modifier = Modifier.matchParentSize(),
             )
         } else if (shownReveal < 0f && endAction != null) {
+            val foreground = if (solid) colors.foregroundOnHud else colors.foreground
             ActivitySwipeActionLayer(
                 glyph = {
-                    RaftLucideIcon(RaftLucideIconName.BellOff, Modifier.size(18.dp), color = raftArgbHex(colors.warningStrong))
+                    RaftLucideIcon(RaftLucideIconName.BellOff, Modifier.size(18.dp), color = raftArgbHex(foreground))
                 },
                 label =
                     when (endAction) {
-                        ActivitySwipeEndAction.UnfollowThread -> stringResource(MR.strings.activity_swipe_unfollow)
-                        ActivitySwipeEndAction.MuteActivity -> stringResource(MR.strings.activity_action_mute_activity)
+                        ActivitySwipeEndAction.UnfollowThread -> stringResource(MR.strings.activity_swipe_layer_unfollow)
+                        ActivitySwipeEndAction.MuteActivity -> stringResource(MR.strings.activity_swipe_layer_mute)
                     },
-                background = colors.warningSoft,
-                foreground = colors.warningStrong,
+                background = if (solid) colors.layerHud else colors.fillMuted,
+                foreground = foreground,
                 alignEnd = false,
                 modifier = Modifier.matchParentSize(),
             )

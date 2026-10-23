@@ -427,3 +427,52 @@ class ActivityConversationSwipeTest {
         assertEquals("@Lagoon", dmThread.activitySwipeConversationLabel())
     }
 }
+
+/** raft-design #775 / #779: the revealed layer's soft and solid looks, the solid tick, the 8 s undo. */
+class ActivitySwipeLayerSpecTest {
+    private val width = 400f
+
+    @Test
+    fun layerIsSoftUnderTheThresholdAndSolidFromIt() {
+        assertFalse(activitySwipeLayerSolid(0f, width))
+        assertFalse(activitySwipeLayerSolid(159f, width))
+        assertTrue(activitySwipeLayerSolid(160f, width))
+        assertTrue(activitySwipeLayerSolid(400f, width))
+        // Both sides: the end side reveals with a negative offset.
+        assertFalse(activitySwipeLayerSolid(-159f, width))
+        assertTrue(activitySwipeLayerSolid(-160f, width))
+        assertFalse(activitySwipeLayerSolid(100f, 0f))
+    }
+
+    @Test
+    fun layerReturnsToSoftWhenTheFingerComesBackUnderTheThreshold() {
+        val path = listOf(50f, 150f, 200f, 170f, 120f, 180f)
+        assertEquals(listOf(false, false, true, true, false, true), path.map { activitySwipeLayerSolid(it, width) })
+    }
+
+    @Test
+    fun solidMatchesWhereReleaseAppliesWithoutAFling() {
+        listOf(0f, 100f, 159f, 160f, 300f).forEach { reveal ->
+            assertEquals(
+                activitySwipeLayerSolid(reveal, width),
+                activitySwipeReleaseAppliesDone(reveal, 0f, width, 800f),
+                "reveal $reveal",
+            )
+        }
+    }
+
+    @Test
+    fun tickFiresOncePerOutwardCrossingOnly() {
+        val gate = ActivitySwipeSolidTickGate()
+        val path = listOf(50f, 150f, 170f, 200f, 300f, 150f, 100f, 170f, 180f, 50f)
+        val ticks = path.map { gate.update(activitySwipeLayerSolid(it, width)) }
+        // Crosses out at 170 and again at the second 170; coming back under and staying solid never ticks.
+        assertEquals(listOf(false, false, true, false, false, false, false, true, false, false), ticks)
+        assertEquals(2, ticks.count { it })
+    }
+
+    @Test
+    fun undoWindowIsEightSecondsForBothDirections() {
+        assertEquals(8_000L, ActivitySwipeDoneUndoWindowMillis)
+    }
+}
