@@ -4152,7 +4152,11 @@ class SharedHomeStoreTest {
             sessionStore = sessionStore,
             api = api,
             serverMembersStore = serverMembersStore,
-            parseHome = { _, _ -> DataResult.Content(snapshot) }
+            parseHome = { _, _ -> DataResult.Content(snapshot) },
+            // Decode inline. On the real JSON lane (Dispatchers.Default) a load launched by
+            // dispatch() (e.g. the read-state reconcile) resumes on a parse worker and commits
+            // its state concurrently with the test thread's own accept()/assert calls.
+            parseDispatcher = Dispatchers.Unconfined
         )
 
     private class RecordingHomeApi : RaftHomeApi {
@@ -6958,7 +6962,13 @@ class SharedHomeStoreTest {
                     )
             )
         )
-        awaitCondition { api.calls.count { it == "channels:server-1" } == 2 }
+        // The reconcile load decodes inline (sourceWithSnapshot), so it has committed by the
+        // time accept() returns; no concurrent load commit can race the reads below.
+        assertEquals(
+            2,
+            api.calls.count { it == "channels:server-1" },
+            "the accepted partial read state must reconcile Home once: ${api.calls}"
+        )
 
         val partial = (store.state.value.content as SharedHomeContentState.Content).snapshot
         assertEquals(4, partial.channels.single().unreadCount)
@@ -6982,14 +6992,11 @@ class SharedHomeStoreTest {
                     )
             )
         )
-        awaitCondition {
-            api.calls.count { it == "channels:server-1" } == 3 &&
-                (store.state.value.content as? SharedHomeContentState.Content)
-                    ?.snapshot
-                    ?.channels
-                    ?.single()
-                    ?.readStateMaxReadSeq == 5L
-        }
+        assertEquals(
+            3,
+            api.calls.count { it == "channels:server-1" },
+            "the accepted rewind must reconcile Home again: ${api.calls}"
+        )
 
         val rewound = (store.state.value.content as SharedHomeContentState.Content).snapshot
         assertEquals(4, rewound.channels.single().unreadCount)
@@ -7087,10 +7094,11 @@ class SharedHomeStoreTest {
                     )
             )
         )
-        awaitCondition {
-            api.calls.count { it == "summary:server-1" } == 2 &&
-                store.state.value.serverUnreadCounts["server-2"] == 3
-        }
+        assertEquals(
+            2,
+            api.calls.count { it == "summary:server-1" },
+            "the accepted background read state must reconcile canonically: ${api.calls}"
+        )
         // The accepted fact removes only the provably covered optimistic
         // bucket, then canonical unread-summary reconciliation replaces the
         // count-only background aggregate.
@@ -7116,7 +7124,15 @@ class SharedHomeStoreTest {
                     )
             )
         )
-        awaitCondition { api.calls.count { it == "summary:server-1" } == 3 }
+        // The reconcile load decodes inline (sourceWithSnapshot), so it has committed before the
+        // next event; on a parse worker it could land after the channel-c increment below and
+        // overwrite it with the canonical 3.
+        assertEquals(
+            3,
+            api.calls.count { it == "summary:server-1" },
+            "the accepted rewind must reconcile canonically: ${api.calls}"
+        )
+        assertEquals(3, store.state.value.serverUnreadCounts["server-2"])
         store.accept(
             SharedHomeIntent.ApplyBackgroundServerUnreadEvent(
                 serverId = "server-2",
@@ -7174,10 +7190,11 @@ class SharedHomeStoreTest {
                     )
             )
         )
-        awaitCondition {
-            api.calls.count { it == "summary:server-1" } == 4 &&
-                store.state.value.serverUnreadCounts["server-2"] == 3
-        }
+        assertEquals(
+            4,
+            api.calls.count { it == "summary:server-1" },
+            "clearing channel-b must reconcile canonically: ${api.calls}"
+        )
         assertEquals(3, store.state.value.serverUnreadCounts["server-2"])
 
         // seq=null is not provably covered by any watermark. Keep it until
@@ -7216,10 +7233,11 @@ class SharedHomeStoreTest {
                     )
             )
         )
-        awaitCondition {
-            api.calls.count { it == "summary:server-1" } == 5 &&
-                store.state.value.serverUnreadCounts["server-2"] == 3
-        }
+        assertEquals(
+            5,
+            api.calls.count { it == "summary:server-1" },
+            "an accepted channel-d watermark must reconcile canonically: ${api.calls}"
+        )
         assertEquals(3, store.state.value.serverUnreadCounts["server-2"])
 
         // A canonical unread-summary refresh replaces the count-only delta.

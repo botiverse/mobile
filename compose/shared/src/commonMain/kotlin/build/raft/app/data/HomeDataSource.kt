@@ -26,6 +26,7 @@ import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import com.tencent.tmm.kmmresource.resource.desc.desc
 import com.tencent.tmm.kmmresource.resource.format
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.supervisorScope
@@ -50,9 +51,15 @@ class SharedHomeDataSource(
     private val memberRepository: MemberRepository? = null,
     private val serverMembersStore: SharedServerMembersStore? = null,
     private val parseHome: (HomeNetworkPayload, StoredAuthSession) -> DataResult<HomeSnapshot>,
-    private val diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger
+    private val diagnosticsLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
+    /**
+     * Where Home response bodies are decoded. Production keeps them off the store thread on the
+     * shared JSON lane; tests pass an inline dispatcher so a launched Home load does not resume
+     * on a parse worker thread and race the test's own store writes.
+     */
+    parseDispatcher: CoroutineDispatcher = RaftJsonParseDispatcher
 ) {
-    private val typedApi = RaftHomeApiClient(api, diagnosticsLogger)
+    private val typedApi = RaftHomeApiClient(api, diagnosticsLogger, parseDispatcher)
     private val typedAnnouncementsApi = announcementsApi?.let(::RaftAnnouncementsRemindersApiClient)
     private val typedComputersApi = computersApi?.let(::RaftComputersApiClient)
 
@@ -546,7 +553,8 @@ data class HomeNetworkResponse(
 
 internal class RaftHomeApiClient(
     private val transport: RaftHomeApi,
-    private val diagnosticsLogger: (String) -> Unit = {}
+    private val diagnosticsLogger: (String) -> Unit = {},
+    private val parseDispatcher: CoroutineDispatcher = RaftJsonParseDispatcher
 ) {
     suspend fun homePayload(
         serverId: ServerId,
@@ -735,7 +743,7 @@ internal class RaftHomeApiClient(
                 "dispatcher=$RAFT_JSON_PARSE_DISPATCHER_LABEL"
         )
         val result =
-            withContext(RaftJsonParseDispatcher) {
+            withContext(parseDispatcher) {
                 response.decodeHomeBody(
                     contractCode = contractCode,
                     serializer = serializer,
