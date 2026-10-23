@@ -26,10 +26,6 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.SpanStyle
 import build.raft.designsystem.components.LocalRaftFocusedPreview
 import build.raft.designsystem.components.LocalRaftHoveredPreview
 import build.raft.designsystem.components.LocalRaftPressedPreview
@@ -116,10 +112,6 @@ import build.raft.designsystem.components.RaftMessageImageFit
 import build.raft.designsystem.components.RaftMessageImageFrame
 import build.raft.designsystem.components.RaftMessageImageGallery
 import build.raft.designsystem.components.RaftUnreadCount
-import build.raft.designsystem.components.RaftMessageReferenceReadMark
-import build.raft.designsystem.components.appendRaftMessageReferenceReadMark
-import build.raft.designsystem.components.raftMessageReferenceReadMarkInlineContent
-import build.raft.designsystem.components.raftMessageReferenceSilentReadStateInlineContent
 import build.raft.designsystem.components.raftActiveStickerLook
 import build.raft.designsystem.components.raftInsetFocusOutline
 import build.raft.designsystem.components.raftPressOverlay
@@ -610,44 +602,16 @@ class DisplayComponentScreenshotTest {
             }
         }
 
-    /**
-     * raft-ui MessageReferenceReadMark (raft-design #715): the check after a read mention, on
-     * the desktop body (14) and the phone body (16); an unread mention shows nothing. The last
-     * row puts the check in a row of its own beside 14dp text.
-     */
     @Test
-    fun messageReferenceReadMark() =
-        capture("message_reference_read_mark") {
-            val inline =
-                mapOf(
-                    "read" to raftMessageReferenceReadMarkInlineContent { "Read" },
-                    "unread" to raftMessageReferenceSilentReadStateInlineContent { "Not read yet" },
-                )
-            val sentence =
-                buildAnnotatedString {
-                    append("Ask ")
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("@Atlas") }
-                    appendRaftMessageReferenceReadMark("read")
-                    append(" or ")
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("@Sage") }
-                    appendRaftMessageReferenceReadMark("unread")
-                    append(", then loop in ")
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("@Noah") }
-                    appendRaftMessageReferenceReadMark("read")
-                    append(".")
-                }
-            Column(Modifier.width(360.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                listOf(14 to 22, 16 to 24).forEach { (size, line) ->
-                    Caption("${size}/${line}")
-                    RaftText(
-                        sentence,
-                        style = RaftTheme.typography.body.copy(fontSize = size.sp, lineHeight = line.sp),
-                        inlineContent = inline,
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RaftText("@Atlas", style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.Bold))
-                    RaftMessageReferenceReadMark(label = "Read")
+    fun statusDotWithCheck() =
+        capture("status_dot_check") {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                // The Ik2 read mark: the online sm pixel with a 6.5dp ink check, stroke 3 on the 24 grid.
+                RaftStatusSize.entries.forEach { size ->
+                    Box(contentAlignment = Alignment.Center) {
+                        RaftStatusDot(presence = RaftPresence.Online, size = size)
+                        RaftGlyphIcon(RaftGlyph.Check, size = size.edge * 0.8f, color = RaftUiPalette.stickerInk, strokeWidth = 3f)
+                    }
                 }
             }
         }

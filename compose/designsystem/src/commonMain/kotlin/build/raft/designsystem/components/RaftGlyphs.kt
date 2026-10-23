@@ -86,7 +86,7 @@ private fun circle(cx: Float, cy: Float, r: Float): String =
 
 /**
  * Draws a [RaftGlyph] at [size] in [color], else the current ink
- * ([LocalRaftContentColor], CSS `currentColor`). Decorative: it has no semantics.
+ * ([LocalRaftContentColor], CSS `currentColor`). [strokeWidth] is in the 24 grid (Lucide default 2). Decorative: it has no semantics.
  */
 @Composable
 fun RaftGlyphIcon(
@@ -94,6 +94,7 @@ fun RaftGlyphIcon(
     modifier: Modifier = Modifier,
     size: Dp = 16.dp,
     color: Color = Color.Unspecified,
+    strokeWidth: Float = 2f,
 ) {
     val ink =
         when {
@@ -103,7 +104,7 @@ fun RaftGlyphIcon(
     Canvas(modifier.size(size)) {
         val unit = this.size.minDimension / 24f
         scale(unit, unit, pivot = Offset.Zero) {
-            val stroke = Stroke(width = 2f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+            val stroke = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
             glyph.parsed.forEach { drawPath(it, ink, style = stroke) }
         }
     }
