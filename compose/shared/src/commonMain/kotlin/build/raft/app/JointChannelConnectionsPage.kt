@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import build.raft.app.components.RaftStorePullToRefreshBox
 import build.raft.app.base.Utils
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.module.RouterModule
@@ -173,6 +174,13 @@ private fun JointChannelConnectionsScreen() {
             Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
                 when {
                     state.connections != null ->
+                        RaftStorePullToRefreshBox(
+                            refreshing = state.refreshing,
+                            onRefresh = { store.dispatch(JointChannelConnectionsIntent.Refresh) },
+                            modifier = Modifier.fillMaxSize(),
+                            // The store runs one call at a time: no reload under an invite or resend.
+                            enabled = state.actionInFlight == null,
+                        ) {
                         JointConnectionsContent(
                             state = state,
                             slug = slug,
@@ -197,6 +205,7 @@ private fun JointChannelConnectionsScreen() {
                                 store.dispatch(JointChannelConnectionsIntent.Resend)
                             },
                         )
+                        }
                     state.status == JointChannelConnectionsLoadStatus.Error ->
                         JointConnectionsStateBlock(
                             title = stringResource(MR.strings.joint_connections_load_failed),

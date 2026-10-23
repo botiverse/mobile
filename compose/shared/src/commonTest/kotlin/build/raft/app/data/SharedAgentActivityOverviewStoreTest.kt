@@ -354,4 +354,46 @@ class SharedAgentActivityOverviewStoreTest {
         runCurrent()
         assertEquals(3, repository.replyCalls.size, "a loaded reply is cached")
     }
+
+    @Test
+    fun pullRefreshHoldsRefreshingAndKeepsTheLoadedTurnsWhenItFails() = runTest {
+        // Each case: the reload's answer and the turns left on screen once it lands.
+        val cases =
+            listOf(
+                "content" to (page(turn("t2", 2_000), turn("t1", 1_000)) to listOf("t2", "t1")),
+                "error" to (DataResult.Error(ScreenError("activity_network")) to listOf("t1")),
+            )
+        cases.forEach { (label, case) ->
+            val (answer, expectedKeys) = case
+            val repository = FakeRepository()
+            val store = openLoaded(repository, page(turn("t1", 1_000)))
+
+            store.dispatch(AgentActivityOverviewIntent.Refresh)
+            runCurrent()
+            assertEquals(true, store.state.value.refreshing, label)
+            assertEquals(listOf("t1"), keys(store), label)
+            assertEquals(DataRequestPriority.Visible, repository.calls.last().priority, label)
+            assertEquals(2, repository.calls.size, label)
+
+            repository.calls.last().result.complete(answer)
+            runCurrent()
+            assertEquals(false, store.state.value.refreshing, label)
+            assertEquals(AgentActivityOverviewStatus.Loaded, store.state.value.status, label)
+            assertEquals(expectedKeys, keys(store), label)
+        }
+    }
+
+    @Test
+    fun silentLiveReloadDoesNotReportRefreshing() = runTest {
+        val repository = FakeRepository()
+        val store = openLoaded(repository, page(turn("t1", 1_000)))
+
+        store.dispatch(AgentActivityOverviewIntent.Open(agent))
+        passDebounce()
+
+        assertEquals(2, repository.calls.size)
+        assertEquals(DataRequestPriority.Background, repository.calls.last().priority)
+        assertEquals(false, store.state.value.refreshing)
+    }
+
 }

@@ -73,6 +73,7 @@ import build.raft.app.data.SharedSettingsEffect
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.isRefreshing
+import build.raft.app.components.RaftStorePullToRefreshBox
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.MemberId
 import build.raft.app.model.RaftTimeContext
@@ -293,8 +294,9 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
         title = stringResource(MR.strings.settings_computers_title),
         subtitle = "",
         onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
-        trailingContent = { RaftComputersRefreshAction(refreshing = refreshing, onRefresh = ::refresh) },
     ) {
+        // Mobile refreshes by pull only (no header refresh button): same store refresh as Retry.
+        RaftStorePullToRefreshBox(refreshing = refreshing, onRefresh = ::refresh, modifier = Modifier.fillMaxSize()) {
         RaftComputersTheme {
             RaftSettingsComputersContent(
                 model = model,
@@ -313,6 +315,7 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
                     }
                 },
             )
+        }
         }
     }
     settingsState.addComputerDialog?.let { dialog ->
@@ -500,8 +503,8 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
             ?: stringResource(MR.strings.settings_computers_detail_computer),
         subtitle = "",
         onBack = ::closePage,
-        trailingContent = { RaftComputersRefreshAction(refreshing = refreshing, onRefresh = ::refresh) },
     ) {
+        RaftStorePullToRefreshBox(refreshing = refreshing, onRefresh = ::refresh, modifier = Modifier.fillMaxSize()) {
         RaftComputersTheme {
             RaftSettingsComputerDetailContent(
                 model = model,
@@ -547,6 +550,7 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
                     }
                 },
             )
+        }
         }
     }
 }
@@ -1357,21 +1361,6 @@ private fun RaftComputerUpdateBadge() {
         appearance = RaftBadgeAppearance.Soft,
         variant = RaftBadgeVariant.Warning,
     )
-}
-
-@Composable
-internal fun RaftComputersRefreshAction(refreshing: Boolean, onRefresh: () -> Unit) {
-    // 44dp: the minimum touch target; the glyph stays 16dp.
-    RaftPanelAction(onClick = { if (!refreshing) onRefresh() }, modifier = Modifier.size(44.dp)) {
-        Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-            RaftLucideIcon(
-                RaftLucideIconName.RefreshCw,
-                modifier = Modifier.size(16.dp),
-                color = raftArgbHex(RaftColor.TextMuted),
-                spinning = refreshing,
-            )
-        }
-    }
 }
 
 /** A refresh that failed while the page still shows its last content. */

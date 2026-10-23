@@ -98,6 +98,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.components.RaftStorePullToRefreshBox
 import androidx.compose.ui.unit.sp
 import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.app.compat.pager.Pager
@@ -725,6 +726,13 @@ private fun SharedTasksLoadedBodyContent(
                         onIntent(SharedTasksRouteIntent.EnterBoard)
                     }
                 }
+                // Pull-to-refresh over both views (board columns scroll vertically inside the
+                // horizontal board, so their overscroll reaches this box through the LazyRow).
+                RaftStorePullToRefreshBox(
+                    refreshing = state.refreshing,
+                    onRefresh = { onIntent(SharedTasksRouteIntent.Refresh) },
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                ) {
                 when (presentationState.selectedMode) {
                     TasksViewMode.Board -> {
                         // Horizontal board: each TaskStatus is a fixed-width column the user can
@@ -864,6 +872,7 @@ private fun SharedTasksLoadedBodyContent(
                             }
                         }
                     }
+                }
                 }
             }
 

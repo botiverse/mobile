@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import build.raft.app.components.RaftStorePullToRefreshBox
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.PaddingValues
@@ -181,6 +182,8 @@ internal fun ThreadFilesContent(
     payload: RaftThreadFilesPayload,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     autoLoadRouteListKey: String = payload.instanceId,
+    /** The store's pull-to-refresh is reloading the list (see `SharedThreadFilesIntent.PullRefresh`). */
+    refreshing: Boolean = false,
     onEvent: (action: String, attachmentId: String?) -> Unit
 ) {
     Column(
@@ -203,7 +206,7 @@ internal fun ThreadFilesContent(
                     )
                 }
             "empty" -> ThreadFilesStateMessage(stringResource(MR.strings.thread_files_empty_title), stringResource(MR.strings.thread_files_empty_detail))
-            else -> ThreadFilesList(payload, attachmentOpenStates, autoLoadRouteListKey, onEvent)
+            else -> ThreadFilesList(payload, attachmentOpenStates, autoLoadRouteListKey, refreshing, onEvent)
         }
     }
 }
@@ -213,6 +216,7 @@ private fun ThreadFilesList(
     payload: RaftThreadFilesPayload,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
     autoLoadRouteListKey: String,
+    refreshing: Boolean,
     onEvent: (action: String, attachmentId: String?) -> Unit
 ) {
     if (payload.items.isEmpty()) {
@@ -252,6 +256,11 @@ private fun ThreadFilesList(
                 }
             }
     }
+    RaftStorePullToRefreshBox(
+        refreshing = refreshing,
+        onRefresh = { onEvent("pullRefresh", null) },
+        modifier = Modifier.fillMaxSize(),
+    ) {
     // Web `FilesList`: `gap-2`, `py-3` and the phone's `px-4`.
     LazyColumn(
         state = listState,
@@ -282,6 +291,7 @@ private fun ThreadFilesList(
                 )
             }
         }
+    }
     }
 }
 

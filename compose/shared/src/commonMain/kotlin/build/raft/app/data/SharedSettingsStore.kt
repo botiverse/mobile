@@ -2137,6 +2137,13 @@ class SharedSettingsStore(
     }
 
     fun dispatch(intent: SharedSettingsIntent) {
+        // Single-flight: a refresh (header button, pull-to-refresh) while the same page is already
+        // refreshing joins that refresh instead of cancelling and restarting it.
+        val refreshDestination = intent.refreshDestination()
+        if (refreshDestination != null && _state.value.isRefreshing(refreshDestination)) {
+            diagnosticsLogger("settings_refresh_skip destination=${refreshDestination.name} reason=in_flight")
+            return
+        }
         if (intent.loadsSettingsContent) {
             loadJob?.cancel()
             loadJob =
@@ -2195,8 +2202,10 @@ class SharedSettingsStore(
                 loadHome()
             }
             // An explicit refresh bypasses the computers cache (the in-memory computers slice).
-            SharedSettingsIntent.Refresh -> loadCurrentRoute(forceComputers = true)
-            SharedSettingsIntent.RefreshComputers -> refreshComputers()
+            SharedSettingsIntent.Refresh ->
+                whileRefreshing(_state.value.route.destination) { loadCurrentRoute(forceComputers = true) }
+            SharedSettingsIntent.RefreshComputers ->
+                whileRefreshing(SharedSettingsDestination.Computers) { refreshComputers() }
             is SharedSettingsIntent.ScanComputerWorkspaces -> {
                 runAction(COMPUTER_ACTION_SCAN_WORKSPACES, intent.machineId) {
                     dataSource.scanComputerWorkspaces(intent.machineId)
@@ -2918,6 +2927,27 @@ class SharedSettingsStore(
             SharedSettingsDestination.Diagnostics ->
                 loadDiagnostics()
             SharedSettingsDestination.Router -> loadHome()
+        }
+    }
+
+    private fun SharedSettingsIntent.refreshDestination(): SharedSettingsDestination? =
+        when (this) {
+            SharedSettingsIntent.Refresh -> _state.value.route.destination
+            SharedSettingsIntent.RefreshComputers -> SharedSettingsDestination.Computers
+            else -> null
+        }
+
+    /**
+     * An explicit refresh of a page that already shows content reports `refreshing` for the whole
+     * request (not only once its answer arrives), so the header spinner and pull-to-refresh hold
+     * while it runs and a second refresh is skipped as in flight. Cancellation clears it too.
+     */
+    private suspend fun whileRefreshing(destination: SharedSettingsDestination, block: suspend () -> Unit) {
+        _state.value = _state.value.markRefreshing(destination)
+        try {
+            block()
+        } finally {
+            _state.value = _state.value.finishRefreshing(destination)
         }
     }
 

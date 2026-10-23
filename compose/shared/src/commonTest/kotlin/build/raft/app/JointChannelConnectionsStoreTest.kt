@@ -195,6 +195,29 @@ class JointChannelConnectionsStoreTest {
     }
 
     @Test
+    fun pullRefreshReloadsInPlaceSingleFlight() = runTest {
+        val dataSource = FakeJointConnectionsDataSource()
+        val store = loadedStore(dataSource)
+        val gate = CompletableDeferred<Unit>()
+        dataSource.loadGate = gate
+        dataSource.loadResult = DataResult.Content(JointChannelConnectionsSnapshot(jointTestConnections(serverCount = 3), canFederate = true))
+
+        store.dispatch(JointChannelConnectionsIntent.Refresh)
+        runCurrent()
+        store.dispatch(JointChannelConnectionsIntent.Refresh)
+        runCurrent()
+        assertTrue(store.state.value.refreshing)
+        assertEquals(2, store.state.value.connections?.servers?.size, "the loaded list stays while it reloads")
+        assertEquals(2, dataSource.loadCalls, "a refresh in flight is not asked again")
+
+        gate.complete(Unit)
+        runCurrent()
+        assertFalse(store.state.value.refreshing)
+        assertEquals(3, store.state.value.connections?.servers?.size)
+        store.clear()
+    }
+
+    @Test
     fun failureCopyFollowsWebPrecedence() {
         val copy = JointFailureCopy(freeServerLimit = "free", serverLimit = "max", hostFreeLimit = "host", fallback = "fallback")
         val pipeline: (JointChannelFailure) -> String = { "pipeline:${it.code}" }
@@ -264,6 +287,8 @@ private class FakeJointConnectionsDataSource(
     private val inviteGate: CompletableDeferred<DataResult<JointChannelConnections>>? = null,
     private val resendResult: DataResult<Int> = DataResult.Content(1),
 ) : JointChannelConnectionsDataSource {
+    /** When set, each load waits for it (pull-to-refresh in flight). */
+    var loadGate: CompletableDeferred<Unit>? = null
     var loadCalls = 0
     var inviteCalls = 0
     var resendCalls = 0
@@ -271,6 +296,7 @@ private class FakeJointConnectionsDataSource(
 
     override suspend fun load(): DataResult<JointChannelConnectionsSnapshot> {
         loadCalls += 1
+        loadGate?.await()
         return loadResult
     }
 

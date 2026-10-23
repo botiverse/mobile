@@ -163,7 +163,15 @@ data class TasksBoardColumn(
 
 sealed interface SharedTasksIntent {
     data object StartLoadingCurrentFilter : SharedTasksIntent
-    data class SetResult(val result: DataResult<TaskSnapshot>, val selectedFilter: TaskStatus? = null) : SharedTasksIntent
+    /**
+     * A snapshot to show. [endsRefresh] marks the answer of the network refresh; a projection or
+     * cache replay leaves `refreshing` as it is.
+     */
+    data class SetResult(
+        val result: DataResult<TaskSnapshot>,
+        val selectedFilter: TaskStatus? = null,
+        val endsRefresh: Boolean = false
+    ) : SharedTasksIntent
     data class MergeRefreshResult(val result: DataResult<TaskSnapshot>, val selectedFilter: TaskStatus? = null) : SharedTasksIntent
     data class SetContent(val snapshot: TaskSnapshot, val selectedFilter: TaskStatus? = null) : SharedTasksIntent
     data class SeedContent(val snapshot: TaskSnapshot, val selectedFilter: TaskStatus? = null) : SharedTasksIntent
@@ -832,13 +840,13 @@ internal class SharedTasksViewModel(
             }
             if (result is DataResult.Content) {
                 if (usesSharedSnapshotLoad) {
-                    if (store.accept(SharedTasksIntent.SetResult(result, selectedFilter))) {
+                    if (store.accept(SharedTasksIntent.SetResult(result, selectedFilter, endsRefresh = true))) {
                         diagnosticsLogger(
                             "tasks_snapshot_commit source=shared_load_result ${result.tasksDiagnosticsSummary()}"
                         )
                     }
                 } else {
-                    if (store.accept(SharedTasksIntent.SetResult(result, selectedFilter))) {
+                    if (store.accept(SharedTasksIntent.SetResult(result, selectedFilter, endsRefresh = true))) {
                         diagnosticsLogger(
                             "tasks_snapshot_commit source=refresh_result ${result.tasksDiagnosticsSummary()}"
                         )
@@ -867,7 +875,7 @@ internal class SharedTasksViewModel(
                     if (mergeResult || state.value.loadState is ScreenLoadState.Content) {
                         SharedTasksIntent.MergeRefreshResult(result, selectedFilter)
                     } else {
-                        SharedTasksIntent.SetResult(result, selectedFilter)
+                        SharedTasksIntent.SetResult(result, selectedFilter, endsRefresh = true)
                     }
                 )
             }
@@ -1362,7 +1370,11 @@ fun TasksUiState.reduce(intent: SharedTasksIntent): TasksUiState =
                 // Pagination position is owned by the walk (LoadMore), not by a
                 // snapshot/projection emission: preserve it so a shared
                 // projectionFlow emission does not silently reset the cursor.
-                .copy(nextCursor = nextCursor, hasMore = hasMore, loadingMore = loadingMore)
+                // Likewise `refreshing` belongs to the network refresh: every load re-subscribes
+                // the projection, which replays the cached snapshot at once, and that replay must
+                // not end the refresh it started (header spinner, pull-to-refresh indicator).
+                // MergeRefreshResult / RefreshFailed end it.
+                .copy(nextCursor = nextCursor, hasMore = hasMore, loadingMore = loadingMore, refreshing = refreshing && !intent.endsRefresh)
         is SharedTasksIntent.MergeRefreshResult -> mergeTasksRefreshResult(intent.result, intent.selectedFilter)
         is SharedTasksIntent.SetContent ->
             copy(
