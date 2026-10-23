@@ -89,6 +89,7 @@ class RaftReorderState(initialOrder: List<String> = emptyList()) {
     private val heights = mutableMapOf<String, Int>()
     private var orderAtLift: List<String> = initialOrder
     private var pendingOrder: List<String>? = null
+    private var committedFrom: List<String>? = null
 
     val dragging: Boolean get() = liftedKey != null
 
@@ -97,10 +98,21 @@ class RaftReorderState(initialOrder: List<String> = emptyList()) {
      * order waits for the drop, so the rows don't jump under the finger.
      */
     fun sync(incoming: List<String>) {
-        if (dragging) {
-            pendingOrder = incoming
-        } else if (incoming != order) {
-            order = incoming
+        // The order this list committed hasn't reached the app yet: the app's old order is
+        // stale, not a revert (a failed save comes back after the app took the new one).
+        val committed = committedFrom
+        if (committed != null) {
+            if (incoming == committed) return
+            committedFrom = null
+        }
+        when {
+            // A server came or went under the finger: the lifted row's slots are gone.
+            dragging && incoming.toSet() != order.toSet() -> {
+                cancel()
+                order = incoming
+            }
+            dragging -> pendingOrder = incoming
+            incoming != order -> order = incoming
         }
     }
 
@@ -149,6 +161,7 @@ class RaftReorderState(initialOrder: List<String> = emptyList()) {
     fun drop(): List<String>? {
         if (!dragging) return null
         val moved = order.takeIf { it != orderAtLift }
+        if (moved != null) committedFrom = orderAtLift
         finish(keepOrder = moved != null)
         return moved
     }
@@ -170,6 +183,7 @@ class RaftReorderState(initialOrder: List<String> = emptyList()) {
         val to = from + by
         if (from < 0 || to !in order.indices || by == 0) return null
         val next = order.toMutableList().apply { add(to, removeAt(from)) }
+        committedFrom = order
         order = next
         return next
     }
@@ -314,13 +328,17 @@ fun Modifier.raftReorderableItem(
         .onGloballyPositioned { coordinates[0] = it }
         .pointerInput(state, key) {
             val slop = RaftReorderDefaults.HoldSlop.toPx()
-            fun rootY(local: Offset): Float? =
-                coordinates[0]?.takeIf { it.isAttached }?.localToRoot(local)?.y
+            fun root(local: Offset): Offset? = coordinates[0]?.takeIf { it.isAttached }?.localToRoot(local)
+
+            fun rootY(local: Offset): Float? = root(local)?.y
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
                 if (state.dragging) return@awaitEachGesture
+                // The slop is measured on the screen: once the list scrolls, the row moves with
+                // the finger, so the finger barely moves on the row.
+                val downRoot = root(down.position) ?: down.position
                 // The hold: a lift, a move past the slop, a second finger or a consumed event
-                // (the list scrolling) ends it; nothing here is consumed, so taps and scrolls
+                // ends it; nothing here is consumed, so taps and scrolls
                 // stay the row's and the list's.
                 var held = false
                 try {
@@ -330,7 +348,8 @@ fun Modifier.raftReorderableItem(
                             if (event.changes.count { it.pressed } > 1) break
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
                             if (change.isConsumed || !change.pressed) break
-                            if ((change.position - down.position).getDistance() > slop) break
+                            val at = root(change.position) ?: change.position
+                            if ((at - downRoot).getDistance() > slop) break
                         }
                     }
                 } catch (_: PointerEventTimeoutCancellationException) {

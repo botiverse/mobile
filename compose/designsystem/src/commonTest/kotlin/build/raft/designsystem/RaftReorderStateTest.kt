@@ -80,6 +80,34 @@ class RaftReorderStateTest {
     }
 
     @Test
+    fun aServerComingOrGoingMidDragDropsTheDrag() {
+        val s = state("a", "b", "c")
+        s.lift("a")
+        s.dragBy(30f)
+        s.sync(listOf("a", "c"))
+        assertFalse(s.dragging)
+        assertEquals(listOf("a", "c"), s.order)
+        assertNull(s.drop())
+    }
+
+    @Test
+    fun theAppsOldOrderAfterACommitIsStaleUntilTheEcho() {
+        val s = state("a", "b", "c")
+        s.lift("a")
+        s.dragBy(30f)
+        assertEquals(listOf("b", "a", "c"), s.drop())
+        s.sync(listOf("a", "b", "c"))
+        assertEquals(listOf("b", "a", "c"), s.order, "the app hasn't taken the drop yet: no flicker back")
+        s.sync(listOf("b", "a", "c"))
+        s.sync(listOf("a", "b", "c"))
+        assertEquals(listOf("a", "b", "c"), s.order, "after the echo, the app's order rules again (a failed save)")
+
+        assertEquals(listOf("b", "a", "c"), s.moveBy("b", -1))
+        s.sync(listOf("a", "b", "c"))
+        assertEquals(listOf("b", "a", "c"), s.order, "a screen-reader move too")
+    }
+
+    @Test
     fun oneRowAtATimeAndOnlyKnownRows() {
         val s = state("a", "b")
         assertFalse(s.lift("z"))
