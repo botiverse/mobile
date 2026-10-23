@@ -2,3 +2,6 @@
 # trailing whitespace, so repository whitespace checks must not rewrite or
 # reject this vendored subtree.
 third_party/markdown-parser/** -whitespace
+
+# PDF files are binary (xref entries end in a required space).
+*.pdf binary

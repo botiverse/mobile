@@ -511,6 +511,11 @@ internal class BridgeModule : Module() {
         requirePublicDownload: Boolean = false,
         /** Hand the file to the system share sheet instead of a viewer (Android ACTION_SEND). */
         share: Boolean = false,
+        /**
+         * Only materialize the private cached copy for an in-app viewer (PDF preview): the host
+         * launches nothing and answers `{status: "ready", path}` or a terminal failure status.
+         */
+        prepareOnly: Boolean = false,
         onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)? = null
     ): JSONObject? =
         suspendCancellableCoroutine { continuation ->
@@ -524,6 +529,7 @@ internal class BridgeModule : Module() {
             methodArgs.put("downloadId", resolvedDownloadId)
             methodArgs.put("requirePublicDownload", requirePublicDownload)
             if (share) methodArgs.put("share", true)
+            if (prepareOnly) methodArgs.put("prepareOnly", true)
             methodArgs.putAttachmentOwner(owner)
             mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
             var callbackRef: CallbackRef? = null

@@ -7036,6 +7036,22 @@ internal class RaftBridgeModule(
             val request = JSONObject(params ?: "{}")
             val startedAt = System.currentTimeMillis()
             val trackProgress = request.optBoolean("trackProgress", false)
+            if (request.optBoolean("prepareOnly", false)) {
+                // In-app preview (PDF): materialize the private cached copy and hand back its
+                // path; nothing is launched.
+                callback?.invoke(
+                        prepareAttachmentForPreview(
+                                request = request,
+                                progressCallback =
+                                        if (trackProgress) {
+                                            { progress -> callback?.invoke(progress) }
+                                        } else {
+                                            null
+                                        }
+                        )
+                )
+                return@execute
+            }
             val dispatch =
                     runCatching {
                         downloadAndOpenAttachment(
@@ -7689,6 +7705,43 @@ internal class RaftBridgeModule(
                 owner = owner,
                 attachmentId = identity.attachmentId
         )
+    }
+
+    /**
+     * Downloads an attachment into the same private open cache that Open uses (or reuses the
+     * cached copy) and returns `{status: "ready", path}` for an in-app viewer, or the terminal
+     * payload (`cancelled`, `download_failed`, `storage_failed`, ...).
+     */
+    private fun prepareAttachmentForPreview(
+            request: JSONObject,
+            progressCallback: ((Map<String, Any>) -> Unit)?
+    ): Map<String, Any> {
+        val startedAt = System.currentTimeMillis()
+        return runCatching {
+                    when (
+                            val preparation =
+                                    prepareAttachment(
+                                            request = request,
+                                            cacheDir = attachmentOpenCacheDir(),
+                                            progressCallback = progressCallback
+                                    )
+                    ) {
+                        is AttachmentPreparationResult.Terminal -> preparation.payload
+                        is AttachmentPreparationResult.Ready ->
+                                mapOf(
+                                        "status" to "ready",
+                                        "path" to preparation.targetFile.absolutePath,
+                                        "cached" to preparation.wasCached
+                                )
+                    }
+                }
+                .getOrElse { throwable ->
+                    RaftAppLog.record(
+                            "SlockAttachmentOpen",
+                            "attachmentId=${request.optString("attachmentId").take(8)} phase=prepare_preview status=failed type=${throwable::class.java.simpleName} durationMs=${System.currentTimeMillis() - startedAt}"
+                    )
+                    mapOf("status" to "failed", "message" to "Unable to prepare attachment")
+                }
     }
 
     private fun AttachmentPreparationResult.Ready.toPrivateAttachmentOpenSource(): AndroidAttachmentContentUriSource? {
