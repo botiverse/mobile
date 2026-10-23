@@ -349,10 +349,10 @@ final class RaftIosRealtimeHost: NSObject {
     /// Asks this socket for a starting horizon while none is held. Never waited for: the ack is used only
     /// if it arrives before any baseline history request of this server was sent (shared
     /// `RealtimeBaselineHistoryRequests`); a late, missing (older server) or error ack leaves none, so the
-    /// first resume runs as before and its response provides the next one. The curl stack has no acks.
+    /// first resume runs as before and its response provides the next one.
     private func requestStartingHorizon(runtime: Runtime, generation: UInt64) {
         guard runtime.horizon == nil else { return }
-        guard runtime.curlSession == nil, let socket = runtime.socket else {
+        guard let socket = runtime.socket else {
             log("sync_horizon_request serverId=\(runtime.serverId) result=unsupported_transport")
             return
         }
