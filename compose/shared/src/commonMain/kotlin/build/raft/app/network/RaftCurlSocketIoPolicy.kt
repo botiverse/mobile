@@ -13,8 +13,8 @@ const val REALTIME_CURL_SOCKETIO_PREFERENCE_KEY: String = "network:realtime_curl
 /**
  * Task #154: whether a realtime connection to a server uses NetworkKMM's curl Socket.IO client.
  *
- * artin 2026-10-10: the Settings switch decides; while the user has not touched it, it follows the
- * `mobile_curl_socketio_v0` server flag (default off). So the effective value is the user's choice
+ * artin 2026-10-10: the Settings switch decides; while the user has not touched it, it followed the
+ * `mobile_curl_socketio_v0` server flag. Since 2026-10-23 an untouched switch means off (see [isEnabledFor]). So the effective value is the user's choice
  * when there is one, otherwise the server flag. A later server flag change does not override a choice
  * the user made. The platform realtime transport asks at every connect and reconnect, so a change of
  * either applies from the next connection.
@@ -65,7 +65,13 @@ object RaftCurlSocketIoPolicy {
         return runCatching { read() }.getOrNull()
     }
 
-    fun isEnabledFor(serverId: String?): Boolean = userChoice() ?: serverDefaultFor(serverId)
+    /**
+     * artin 2026-10-23 (Ktor switch): realtime runs on the platform Socket.IO stack (socket.io-client-java
+     * over OkHttp on Android, Socket.IO-Client-Swift on iOS) unless the user explicitly turned curl on.
+     * The `mobile_curl_socketio_v0` server flag no longer selects curl; [serverDefaultFor] is kept only
+     * for diagnostics until curl Socket.IO is removed.
+     */
+    fun isEnabledFor(@Suppress("UNUSED_PARAMETER") serverId: String?): Boolean = userChoice() ?: false
 
     /** Parses the stored preference: "true" / "false", anything else (or absent) is "no choice". */
     fun parseUserChoice(stored: String?): Boolean? =
