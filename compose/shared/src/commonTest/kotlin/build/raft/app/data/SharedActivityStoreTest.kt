@@ -1474,7 +1474,7 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun unreadFilterMarkReadRemovesRowAndCallsReadAll() = runBlocking {
+    fun unreadFilterMarkReadKeepsTheRowShownReadAndCallsReadAll() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1", unreadCount = 2)), totalUnreadCount = 2)))
         val read = FakeReadReceiptRepository()
@@ -1490,7 +1490,8 @@ class SharedActivityStoreTest {
         store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Unread))
         store.dispatch(SharedActivityIntent.MarkRead(store.state.value.items.single()))
 
-        assertEquals(emptyList(), store.state.value.items)
+        // The row just read stays listed, read, until the user moves on (RetainedReadRowTest).
+        assertEquals(listOf("channel:channel-1" to 0), store.state.value.items.map { it.key to it.unreadCount })
         assertEquals(0, store.state.value.totalUnreadCount)
         assertEquals(listOf(ChannelId("channel-1")), read.readAllChannelIds)
         assertEquals(2, localStore.readHome(ServerId("server-1"))?.channels?.single()?.unreadCount)
@@ -1519,7 +1520,7 @@ class SharedActivityStoreTest {
     }
 
     @Test
-    fun staleUnreadFilterRefreshAfterMarkReadDoesNotRestoreRow() = runBlocking {
+    fun staleUnreadFilterRefreshAfterMarkReadKeepsTheRetainedRowRead() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = DeferredInboxRepository()
         val store = activityStore(scope, inbox)
@@ -1531,7 +1532,8 @@ class SharedActivityStoreTest {
         store.dispatch(SharedActivityIntent.MarkRead(store.state.value.items.single()))
         inbox.completeNextSnapshot(snapshot(listOf(unreadRow), totalCount = 1, totalUnreadCount = 2))
 
-        assertEquals(emptyList(), store.state.value.items)
+        // The lagging copy cannot bring the unread state back; the row stays only as the retained read row.
+        assertEquals(listOf("channel:channel-1" to 0), store.state.value.items.map { it.key to it.unreadCount })
         assertEquals(0, store.state.value.totalCount)
         assertEquals(0, store.state.value.totalUnreadCount)
         scope.cancel()

@@ -17,11 +17,14 @@ class SharedActivityStoreMentionsReadTest {
 
     @Test
     fun singleReadKeepsTheRowInMentionsAndAllButDropsItFromUnread() = runTest {
+        val both = listOf("channel:channel-1", "channel:channel-2")
+        // Unread keeps the row just read (shown read) until the user moves on; the pull-to-refresh
+        // below is moving on, so only then does it leave (SharedActivityStoreRetainedReadRowTest).
         listOf(
-            InboxFilter.All to listOf("channel:channel-1", "channel:channel-2"),
-            InboxFilter.Mentions to listOf("channel:channel-1", "channel:channel-2"),
-            InboxFilter.Unread to listOf("channel:channel-2")
-        ).forEach { (filter, expectedKeys) ->
+            Triple(InboxFilter.All, both, both),
+            Triple(InboxFilter.Mentions, both, both),
+            Triple(InboxFilter.Unread, both, listOf("channel:channel-2"))
+        ).forEach { (filter, keysAfterRead, expectedKeys) ->
             val read = activityItem("channel-1", unreadCount = 2).copy(hasMention = true, readStateLatestActivitySeq = "10")
             val other = activityItem("channel-2", unreadCount = 1).copy(hasMention = true, readStateLatestActivitySeq = "7")
             val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(read, other))))
@@ -31,7 +34,7 @@ class SharedActivityStoreMentionsReadTest {
 
             store.dispatch(SharedActivityIntent.MarkRead(store.state.value.items.first()))
             runCurrent()
-            assertEquals(expectedKeys, store.state.value.items.map { it.key }, "filter=$filter")
+            assertEquals(keysAfterRead, store.state.value.items.map { it.key }, "filter=$filter")
             assertEquals(1, store.state.value.totalUnreadCount, "filter=$filter")
 
             // A lagging copy that still carries the pre-read state stays read and
