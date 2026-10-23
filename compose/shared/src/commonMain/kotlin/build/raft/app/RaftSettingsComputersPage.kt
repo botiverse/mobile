@@ -714,7 +714,10 @@ private fun RaftComputerDetailBody(
                     Item(stringResource(MR.strings.settings_computers_label_version), raftComputerVersionLine(computer), mono = true)
                     // Web: the runtimes as chips, cyan-soft when detected, muted with why not otherwise.
                     Item(stringResource(MR.strings.settings_computers_label_runtimes)) {
-                        raftComputerRuntimeChips(computer.runtimes).forEach { chip -> RaftComputerRuntimeBadge(chip) }
+                        // Usage runtimes open their account usage (web RuntimeAccountUsageGateChip).
+                        ComputerRuntimeUsageChips(raftComputerRuntimeChips(computer.runtimes), machineId, enabled = canEdit) { chip ->
+                            RaftComputerRuntimeBadge(chip)
+                        }
                     }
                     // Web: the date it was created ("Oct 22, 2026"), as on an agent's page.
                     Item(stringResource(MR.strings.settings_computers_label_created), raftComputerCreatedDate(model.createdAt), mono = true)

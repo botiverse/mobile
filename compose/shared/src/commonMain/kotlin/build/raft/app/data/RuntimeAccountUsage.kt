@@ -9,12 +9,13 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 
 /**
- * Read-only runtime account usage (task #137, Web `runtime_account_usage_v0`).
+ * Runtime account usage (task #137, Web `runtime_account_usage_v0`; refresh: artin task #18).
  *
  * Wire contract: slock `packages/shared/src/runtimeAccountUsage.ts` (protocol 2), served by
  * `GET /servers/:id/machines/:machineId/runtime-account-usage/:provider`. The server answers
  * `{state: "missing", snapshot: null}` or `{state: "fresh" | "stale", snapshot}`; access is
- * decided server-side (attaching human or `editMachines`, otherwise 403).
+ * decided server-side (attaching human or `editMachines`, otherwise 403). A refresh is asked for
+ * with `POST …/runtime-account-usage/:provider/refresh` ([RuntimeAccountUsageRefresh]).
  *
  * Parsing is deliberately per-account and per-window: an unknown health/status value or a
  * malformed window degrades that item to "unavailable" instead of failing the whole read,
@@ -124,6 +125,59 @@ internal fun JsonElement.toRuntimeAccountUsageRead(): RuntimeAccountUsageRead? {
         }
         else -> null
     }
+}
+
+/** Why a refresh is asked for: the person tapped Refresh, or the chip found no fresh snapshot. */
+internal enum class RuntimeAccountUsageRefreshReason(val wire: String) {
+    Manual("manual"),
+    StaleOrMissing("stale_or_missing")
+}
+
+/** `state` of `POST …/runtime-account-usage/:provider/refresh`. */
+internal enum class RuntimeAccountUsageRefreshState(val wire: String) {
+    /** Sent to the Computer; the snapshot arrives later through the read path (background refresh). */
+    Requested("requested"),
+
+    /** A refresh for this Computer and provider is already running or ran in the last window. */
+    Cooldown("cooldown"),
+    ComputerOffline("computer_offline"),
+
+    /** A manual refresh the Computer answered in time; [RuntimeAccountUsageRefresh.snapshot] carries it. */
+    Fresh("fresh"),
+
+    /** A manual refresh the Computer did not answer in time. */
+    Timeout("timeout");
+
+    companion object {
+        fun fromWire(value: String?): RuntimeAccountUsageRefreshState? = entries.firstOrNull { it.wire == value }
+    }
+}
+
+/**
+ * `POST /servers/:id/machines/:machineId/runtime-account-usage/:provider/refresh` (slock
+ * `packages/server/src/routes/servers.ts`; Web `RuntimeAccountUsageRefreshResult` in
+ * `packages/web/src/utils/runtimeAccountUsageClient.ts`): `{accepted, state, snapshot?}`, 200 or 202.
+ */
+internal data class RuntimeAccountUsageRefresh(
+    val accepted: Boolean,
+    val state: RuntimeAccountUsageRefreshState,
+    /** Only for [RuntimeAccountUsageRefreshState.Fresh]; null when it carried none we can use. */
+    val snapshot: RuntimeAccountUsageSnapshot? = null
+)
+
+/** Returns null when the envelope is unusable (no boolean `accepted` or an unknown `state`). */
+internal fun JsonElement.toRuntimeAccountUsageRefresh(): RuntimeAccountUsageRefresh? {
+    val envelope = this as? JsonObject ?: return null
+    val accepted = (envelope["accepted"] as? JsonPrimitive)?.takeUnless { it.isString }?.contentOrNull?.toBooleanStrictOrNull()
+        ?: return null
+    val state = RuntimeAccountUsageRefreshState.fromWire(envelope.stringOrNull("state")) ?: return null
+    val snapshot =
+        if (state == RuntimeAccountUsageRefreshState.Fresh) {
+            (envelope["snapshot"] as? JsonObject)?.toRuntimeAccountUsageSnapshot()
+        } else {
+            null
+        }
+    return RuntimeAccountUsageRefresh(accepted = accepted, state = state, snapshot = snapshot)
 }
 
 private fun JsonObject.toRuntimeAccountUsageSnapshot(): RuntimeAccountUsageSnapshot? {

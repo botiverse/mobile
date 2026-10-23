@@ -88,12 +88,23 @@ interface RaftComputersApi {
         formRevision: String? = null
     ): HomeNetworkResponse = error("runtimeFormV2OptionSource is not implemented")
     suspend fun runtimeModels(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse
-    /** Read-only `GET …/runtime-account-usage/:provider` (task #137); refresh is not exposed. */
+    /** `GET …/runtime-account-usage/:provider` (task #137). */
     suspend fun runtimeAccountUsage(
         serverId: ServerId,
         machineId: String,
         provider: String
     ): HomeNetworkResponse = error("runtimeAccountUsage is not implemented")
+    /**
+     * `POST …/runtime-account-usage/:provider/refresh` with body `{reason}` (`manual` or
+     * `stale_or_missing`); slock packages/server/src/routes/servers.ts.
+     */
+    suspend fun refreshRuntimeAccountUsage(
+        serverId: ServerId,
+        machineId: String,
+        provider: String,
+        body: String,
+        priority: DataRequestPriority
+    ): HomeNetworkResponse = error("refreshRuntimeAccountUsage is not implemented")
     suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse
     /**
      * `POST servers/:id/machines/:machineId/computer/:action` with `action` `restart` (body `{}`) or
@@ -251,6 +262,21 @@ internal class RaftComputersNetworkApi(
             serverIdOverride = serverId
         )
 
+    override suspend fun refreshRuntimeAccountUsage(
+        serverId: ServerId,
+        machineId: String,
+        provider: String,
+        body: String,
+        priority: DataRequestPriority
+    ): HomeNetworkResponse =
+        networkClient.request(
+            priority = priority,
+            path = "servers/${serverId.value}/machines/${machineId.trim()}/runtime-account-usage/${provider.trim()}/refresh",
+            method = "POST",
+            serverIdOverride = serverId,
+            bodyText = body
+        )
+
     override suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse =
         networkClient.request(
             priority = DataRequestPriority.Foreground,
@@ -379,6 +405,32 @@ internal class RaftComputersApiClient(
             "computer_runtime_account_usage_contract_mismatch",
             JsonElement.serializer()
         ) { wire -> wire.toRuntimeAccountUsageRead() }
+
+    /**
+     * Asks the Computer for a new snapshot. A manual refresh waits for the Computer's answer
+     * (Foreground: the person is waiting); a background one is fire-and-forget.
+     */
+    suspend fun refreshRuntimeAccountUsage(
+        serverId: ServerId,
+        machineId: String,
+        provider: RuntimeAccountUsageProvider,
+        reason: RuntimeAccountUsageRefreshReason
+    ): DataResult<RuntimeAccountUsageRefresh> =
+        transport.refreshRuntimeAccountUsage(
+            serverId = serverId,
+            machineId = machineId,
+            provider = provider.wire,
+            body = buildRuntimeAccountUsageRefreshBody(reason),
+            priority =
+                if (reason == RuntimeAccountUsageRefreshReason.Manual) {
+                    DataRequestPriority.Foreground
+                } else {
+                    DataRequestPriority.Background
+                }
+        ).mapComputersBody(
+            "computer_runtime_account_usage_refresh_contract_mismatch",
+            JsonElement.serializer()
+        ) { wire -> wire.toRuntimeAccountUsageRefresh() }
 
     suspend fun runtimeOptions(
         serverId: ServerId,
@@ -1528,6 +1580,12 @@ private fun <T> HomeNetworkResponse.toComputerControlError(): DataResult<T> {
 
 @Serializable
 internal data class RegisterComputerBody(val name: String)
+
+@Serializable
+private data class RuntimeAccountUsageRefreshBody(val reason: String)
+
+internal fun buildRuntimeAccountUsageRefreshBody(reason: RuntimeAccountUsageRefreshReason): String =
+    computersApiJson.encodeToString(RuntimeAccountUsageRefreshBody(reason = reason.wire))
 
 internal fun buildRegisterComputerBody(name: String): String =
     computersApiJson.encodeToString(RegisterComputerBody(name = name))

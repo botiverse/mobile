@@ -169,6 +169,8 @@ internal fun raftBadgeLook(
  * [enabled] = false is the look of a disabled badge button (`fill-muted`,
  * `foreground-disabled`, no inset edge). [icon] is drawn at the badge's icon size
  * (13dp solid, 14dp otherwise) with [LocalRaftContentColor] set to the badge ink.
+ * [trailing] follows the label 4dp further out (web `ml-1`), at its own size: a runtime
+ * label's account-usage [RaftStatusDot] (`sm`).
  */
 @Composable
 fun RaftBadge(
@@ -178,6 +180,7 @@ fun RaftBadge(
     variant: RaftBadgeVariant = RaftBadgeVariant.Default,
     enabled: Boolean = true,
     icon: (@Composable () -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val look = raftBadgeLook(appearance, variant, enabled, RaftTheme.colors)
     val typography = RaftTheme.typography
@@ -214,6 +217,11 @@ fun RaftBadge(
                 // instead of cutting a glyph in half.
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+        if (trailing != null) {
+            CompositionLocalProvider(LocalRaftContentColor provides look.ink) {
+                Box(Modifier.padding(start = 4.dp), contentAlignment = Alignment.Center) { trailing() }
+            }
         }
     }
 }
