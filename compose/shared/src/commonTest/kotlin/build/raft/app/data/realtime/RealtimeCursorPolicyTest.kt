@@ -14,6 +14,7 @@ import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class RealtimeCursorPolicyTest {
@@ -156,6 +157,39 @@ class RealtimeCursorPolicyTest {
         assertEquals(0L, update.state.serverMaxSeq)
         assertEquals("epoch-b", update.state.epoch)
         assertTrue(update.rebaselineRequired)
+    }
+
+    @Test
+    fun sameServerReconnectKeepsTheAppliedSeqAsResumeCursorInANewEpoch() {
+        val state =
+            RealtimeCursorPolicy.updateFromEvent(
+                RealtimeCursorPolicy.fromAppliedSeq(89, epoch = "epoch-a"),
+                Heartbeat(seq = 95),
+            ).state
+
+        val plan = RealtimeCursorPolicy.reconnect(state, nextEpoch = "epoch-b", sameServer = true)
+
+        assertEquals(89L, plan.resumeLastSeq)
+        assertEquals(89L, plan.state.resumeLastSeq)
+        assertEquals("epoch-b", plan.state.epoch)
+        assertFalse(plan.catchUpRequired)
+    }
+
+    @Test
+    fun reconnectWithoutAResumableSeqRebaselinesAndRequiresCatchUp() {
+        data class Case(val name: String, val appliedSeq: Long, val sameServer: Boolean)
+        listOf(
+            Case("other server: its seqs below 89 would be skipped", appliedSeq = 89, sameServer = false),
+            Case("same server, nothing applied yet", appliedSeq = 0, sameServer = true),
+        ).forEach { case ->
+            val state = RealtimeCursorPolicy.fromAppliedSeq(case.appliedSeq, epoch = "epoch-a")
+
+            val plan = RealtimeCursorPolicy.reconnect(state, nextEpoch = "epoch-b", sameServer = case.sameServer)
+
+            assertEquals(0L, plan.resumeLastSeq, case.name)
+            assertEquals(RealtimeCursorPolicy.fromAppliedSeq(0L, epoch = "epoch-b"), plan.state, case.name)
+            assertTrue(plan.catchUpRequired, case.name)
+        }
     }
 
     private fun message(seq: Long): Message =

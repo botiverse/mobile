@@ -24,6 +24,28 @@ data class RealtimeCursorUpdate(
     val rebaselineRequired: Boolean = false,
 )
 
+/** See [RealtimeCursorPolicy.reconnect]. */
+data class RealtimeCursorReconnect(
+    val state: RealtimeCursorState,
+    /** > 0: send `sync:resume` from this seq once the new socket's rooms are joined. */
+    val resumeLastSeq: Long,
+    /** The gap cannot be replayed: Home and Activity must re-fetch once the rooms are joined. */
+    val catchUpRequired: Boolean,
+)
+
+/**
+ * Mobile-local frames a native realtime host fans out on the raw realtime path next to the server's
+ * frames. Never sent by the server, never emitted on the socket.
+ */
+object RealtimeLocalEvents {
+    /**
+     * A socket reconnected and could not replay what it missed (`sync:resume` impossible, or its
+     * answer could not be applied). Payload `{ serverId, reason }`; mapped to
+     * `RealtimeRefreshRequired(Home)`, which reloads Home and Activity.
+     */
+    const val CatchUpRequired = "raft:realtime:catch_up_required"
+}
+
 object RealtimeCursorPolicy {
     fun fromAppliedSeq(
         lastSeq: Long,
@@ -43,6 +65,40 @@ object RealtimeCursorPolicy {
             state = fromAppliedSeq(lastSeq = 0L, epoch = nextEpoch),
             rebaselineRequired = state.appliedLastSeq > 0L || state.serverMaxSeq > 0L || state.epoch != nextEpoch
         )
+
+    /**
+     * Cursor plan for a new socket that replaces a dropped one without a new `connect` request: the
+     * transport's own auto-reconnect, or the client's heartbeat-silence reconnect.
+     *
+     * The epoch always rotates (#255), so the logs and any epoch-scoped state see a new connection.
+     * The applied watermark survives only when the seq domain is unchanged ([sameServer]): message `seq`
+     * is the server database's global `bigserial` (slock `messages.seq`), it does not restart with a
+     * socket, a server process or a replica, and `sync:resume` replays `seq > lastSeq` for the
+     * socket's server and viewer. A watermark from another server is never resumed: it would skip
+     * that server's lower seqs.
+     *
+     * When nothing can be resumed, [RealtimeCursorReconnect.catchUpRequired] is set: events sent while
+     * the socket was down cannot be replayed, so the stores must re-fetch.
+     */
+    fun reconnect(
+        state: RealtimeCursorState,
+        nextEpoch: String,
+        sameServer: Boolean,
+    ): RealtimeCursorReconnect {
+        val resumeLastSeq = state.appliedLastSeq.takeIf { sameServer && it > 0L } ?: 0L
+        if (resumeLastSeq > 0L) {
+            return RealtimeCursorReconnect(
+                state = fromAppliedSeq(lastSeq = resumeLastSeq, epoch = nextEpoch),
+                resumeLastSeq = resumeLastSeq,
+                catchUpRequired = false,
+            )
+        }
+        return RealtimeCursorReconnect(
+            state = rebaseline(state, nextEpoch).state,
+            resumeLastSeq = 0L,
+            catchUpRequired = true,
+        )
+    }
 
     fun updateFromEvent(
         state: RealtimeCursorState,

@@ -217,6 +217,13 @@ class RealtimeEventMapper(
                 decodeChannelRefresh(element, RealtimeRefreshScope.Home, RealtimeSocketEvents.ChannelUpdated)
             RealtimeSocketEvents.ChannelMembersUpdated ->
                 decodeChannelRefresh(element, RealtimeRefreshScope.ChannelMembers, RealtimeSocketEvents.ChannelMembersUpdated)
+            // Mobile-local: the native host could not replay a reconnect gap (see RealtimeLocalEvents).
+            RealtimeLocalEvents.CatchUpRequired ->
+                RealtimeRefreshRequired(
+                    scope = RealtimeRefreshScope.Home,
+                    reason = stringField(element, "reason") ?: RealtimeLocalEvents.CatchUpRequired,
+                    serverId = stringField(element, "serverId")?.let(::ServerId),
+                )
             RealtimeSocketEvents.TaskCreated ->
                 decodeOrNull(TaskCreatedDto.serializer(), element)?.toDomain(diagnosticsLogger)
             RealtimeSocketEvents.TaskUpdated ->
