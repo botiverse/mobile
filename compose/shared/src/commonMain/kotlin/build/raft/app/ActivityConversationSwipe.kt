@@ -650,7 +650,13 @@ internal fun ActivitySwipeActionsBox(
             val foreground = if (solid) colors.foregroundOnHud else colors.foreground
             ActivitySwipeActionLayer(
                 glyph = {
-                    RaftLucideIcon(RaftLucideIconName.BellOff, Modifier.size(18.dp), color = raftArgbHex(foreground))
+                    // Each layer uses its action's menu icon, as on web: Unfollow thread is message-circle-off.
+                    val icon =
+                        when (endAction) {
+                            ActivitySwipeEndAction.UnfollowThread -> RaftLucideIconName.MessageCircleOff
+                            ActivitySwipeEndAction.MuteActivity -> RaftLucideIconName.BellOff
+                        }
+                    RaftLucideIcon(icon, Modifier.size(18.dp), color = raftArgbHex(foreground))
                 },
                 label =
                     when (endAction) {
