@@ -30,9 +30,9 @@ import org.json.JSONObject
 internal object AndroidUnreadNotificationPoster {
     const val SHARED_NOTIFICATION_CHANNEL_ID = "shared-system-notifications-v1"
 
-    private const val UNREAD_GENERAL_NOTIFICATION_CHANNEL_ID = "slock-unread-general-v1"
-    private const val UNREAD_CHANNEL_NOTIFICATION_CHANNEL_ID = "slock-unread-channel-v1"
-    private const val UNREAD_DM_NOTIFICATION_CHANNEL_ID = "slock-unread-dm-v1"
+    internal const val UNREAD_GENERAL_NOTIFICATION_CHANNEL_ID = "slock-unread-general-v1"
+    internal const val UNREAD_CHANNEL_NOTIFICATION_CHANNEL_ID = "slock-unread-channel-v1"
+    internal const val UNREAD_DM_NOTIFICATION_CHANNEL_ID = "slock-unread-dm-v1"
     // Also used by the Settings test notification so the test exercises the
     // same HIGH-importance channel real mentions ride on.
     const val UNREAD_MENTION_NOTIFICATION_CHANNEL_ID = "slock-unread-mention-v1"
@@ -50,10 +50,10 @@ internal object AndroidUnreadNotificationPoster {
         if (!serverGate.shouldPost) {
             return mapOf("status" to "error", "code" to serverGate.code)
         }
+        ensureSharedNotificationChannels(appContext)
         if (!hasNotificationPermission(appContext)) {
             return mapOf("status" to "error", "code" to "permission_denied")
         }
-        ensureSharedNotificationChannels(appContext)
         if (!NotificationManagerCompat.from(appContext).areNotificationsEnabled()) {
             return mapOf("status" to "error", "code" to "notifications_disabled")
         }
