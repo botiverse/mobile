@@ -16284,6 +16284,7 @@ internal fun ScreenLoadState<SharedSettingsStorageSnapshot>.toStoragePayload(
         refreshLabel = stringResource(MR.strings.settings_storage_refresh),
         safeClearNote = stringResource(MR.strings.settings_storage_safe_clear_note),
         feedback = localizedSettingsStorageFeedback(statusText),
+        refreshing = refreshing,
         rows =
             storage?.rows?.map { row ->
                 row.toStoragePayloadRow(

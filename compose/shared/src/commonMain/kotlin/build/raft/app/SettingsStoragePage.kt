@@ -1,27 +1,6 @@
 package build.raft.app
 
-import build.raft.app.base.Utils
-import build.raft.app.data.RaftShellStoreScope
-import build.raft.app.downloads.RaftDownloadCenterProcess
-import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.data.SharedSettingsDestination
-import build.raft.app.data.SharedSettingsIntent
-import build.raft.app.data.SharedSettingsViewModel
-import build.raft.app.data.isRefreshing
-import build.raft.app.resources.MR
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,19 +8,49 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import build.raft.app.compat.pager.LocalActivity
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import build.raft.app.compat.pager.Page
-import build.raft.app.compat.module.RouterModule
-import build.raft.app.compat.pager.Pager
-import com.tencent.tmm.kmmresource.compose.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
+import build.raft.app.base.Utils
+import build.raft.app.compat.module.RouterModule
+import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.Page
+import build.raft.app.compat.pager.Pager
+import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
+import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.SharedSettingsDestination
+import build.raft.app.data.SharedSettingsIntent
+import build.raft.app.data.SharedSettingsViewModel
+import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.isRefreshing
+import build.raft.app.downloads.RaftDownloadCenterProcess
+import build.raft.app.model.RaftTimeFormat24Hour
+import build.raft.app.resources.MR
+import build.raft.designsystem.components.RaftBanner
+import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconTile
+import build.raft.designsystem.components.RaftIconTileSize
+import build.raft.designsystem.components.RaftListRow
+import build.raft.designsystem.components.RaftListRowGroup
+import build.raft.designsystem.components.RaftListRowText
+import build.raft.designsystem.components.RaftListRowValue
+import build.raft.designsystem.components.RaftSection
+import build.raft.designsystem.components.raftCopyable
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftTheme
+import com.tencent.tmm.kmmresource.compose.stringResource
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 const val SETTINGS_STORAGE_PAGE = "compose_settings_storage"
@@ -62,7 +71,9 @@ internal data class RaftSettingsStoragePayload(
     val refreshLabel: String = "Refresh",
     val safeClearNote: String = "Clearing cache never removes your account or server data.",
     val feedback: String = "",
-    val rows: List<RaftSettingsStorageRow> = emptyList()
+    val rows: List<RaftSettingsStorageRow> = emptyList(),
+    /** A refresh is running: the refresh button shows its spinner. */
+    val refreshing: Boolean = false
 )
 
 @Serializable
@@ -185,38 +196,52 @@ private fun SettingsStorageScreen() {
             is RaftDownloadCenterAction.Delete -> downloadCenter.delete(action.id)
         }
     }
-    SettingsDetailShell(
-        title = stringResource(MR.strings.settings_storage_title),
-        subtitle = "",
-        onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
-    ) {
-        SettingsStorageContent(
-            // task #177: standalone page outside the app shell.
-            bottomContentPadding = raftBottomSafeAreaPadding() + RaftAppSpacing.Lg,
-            payload =
-                settingsState.storage.toStoragePayload(
-                    actionState = settingsState.actionState,
-                    refreshing = settingsState.isRefreshing(SharedSettingsDestination.Storage)
-                ),
-            onEvent = { action, target ->
-                when (action) {
-                    "refreshStorage" -> settingsViewModel.dispatch(SharedSettingsIntent.RefreshStorage)
-                    "clearStorage" ->
-                        target
-                            ?.takeIf { it.isNotBlank() }
-                            ?.let { settingsViewModel.dispatch(SharedSettingsIntent.ClearStorage(it)) }
-                    else -> bridge.log("settings_storage_unsupported_action action=$action target=${target.orEmpty()}")
-                }
-            },
-            downloads = {
-                RaftDownloadCenterSection(
-                    entries = downloadEntries,
-                    canRetry = downloadCenter::canRetry,
-                    onAction = ::onDownloadAction,
-                    onClearFinished = { ownerKey?.let(downloadCenter::clearFinished) }
-                )
-            }
+    // The download dates are relative times ("5 min ago"); this page sits outside the app shell's
+    // time context, so it keeps its own live one in the device zone.
+    val timeCapabilities = remember {
+        RaftTimeCapabilities(
+            localOffsetMinutes = ProcessRaftDatetimeFoundationOwner.localOffsetMinutesAt(defaultNowMillis(), 0),
+            timeFormat = RaftTimeFormat24Hour
         )
+    }
+    val inheritedTimeContextProvider = LocalRaftTimeContextProvider.current
+    val ownTimeContextProvider =
+        rememberLiveRaftTimeContext(capabilities = timeCapabilities, active = inheritedTimeContextProvider == null)
+    val timeContextProvider = inheritedTimeContextProvider ?: ownTimeContextProvider
+    CompositionLocalProvider(LocalRaftTimeContextProvider provides timeContextProvider) {
+        SettingsDetailShell(
+            title = stringResource(MR.strings.settings_storage_title),
+            subtitle = "",
+            onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
+        ) {
+            SettingsStorageContent(
+                // task #177: standalone page outside the app shell.
+                bottomContentPadding = raftBottomSafeAreaPadding() + RaftAppSpacing.Lg,
+                payload =
+                    settingsState.storage.toStoragePayload(
+                        actionState = settingsState.actionState,
+                        refreshing = settingsState.isRefreshing(SharedSettingsDestination.Storage)
+                    ),
+                onEvent = { action, target ->
+                    when (action) {
+                        "refreshStorage" -> settingsViewModel.dispatch(SharedSettingsIntent.RefreshStorage)
+                        "clearStorage" ->
+                            target
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { settingsViewModel.dispatch(SharedSettingsIntent.ClearStorage(it)) }
+                        else -> bridge.log("settings_storage_unsupported_action action=$action target=${target.orEmpty()}")
+                    }
+                },
+                downloads = {
+                    RaftDownloadCenterSection(
+                        entries = downloadEntries,
+                        canRetry = downloadCenter::canRetry,
+                        onAction = ::onDownloadAction,
+                        onClearFinished = { ownerKey?.let(downloadCenter::clearFinished) }
+                    )
+                }
+            )
+        }
     }
 }
 
@@ -230,6 +255,18 @@ private fun rememberStoragePayload(
         parseSettingsStoragePayload(payload, fallbackPageData, instanceId)
     }
 
+/**
+ * Settings › Storage as the grouped settings list of the redesigned settings pages (Channel
+ * settings): [RaftSection]s on the canvas, each with an inset [RaftListRowGroup].
+ *
+ * - Downloads (the download centre, [downloads]) first, as before.
+ * - Storage used: the total under the section heading, refreshed by a ghost icon button in the
+ *   heading (the page also loads on open); one row per category — tile, title, a one-line hint
+ *   description, the size at the end and, where it can be cleared, a ghost trash icon button
+ *   named by the clear label ("Clear image cache"), as the download rows' Remove. Clearing a
+ *   cache cannot remove account or server data, so it acts at once, as before.
+ * - The safe-clear note under the group, and the last result as an info [RaftBanner].
+ */
 @Composable
 internal fun SettingsStorageContent(
     payload: RaftSettingsStoragePayload,
@@ -238,136 +275,106 @@ internal fun SettingsStorageContent(
     /** Settings › Storage › Downloads (the download centre), above the storage rows. */
     downloads: (@Composable () -> Unit)? = null
 ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+    RaftDesignSystemTheme {
+        LazyColumn(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
+            if (downloads != null) {
+                item(key = "download-center") { downloads() }
+            }
+            item(key = "storage-used") {
+                SettingsStorageUsedSection(
+                    payload = payload,
+                    separator = downloads != null,
+                    onRefresh = { onEvent("refreshStorage", null) },
+                    onClear = { target -> onEvent("clearStorage", target) }
+                )
+            }
+            item(key = "bottom") { Spacer(Modifier.height(bottomContentPadding)) }
+        }
+    }
+}
+
+@Composable
+private fun SettingsStorageUsedSection(
+    payload: RaftSettingsStoragePayload,
+    separator: Boolean,
+    onRefresh: () -> Unit,
+    onClear: (String) -> Unit
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    RaftSection(
+        title = payload.totalTitle,
+        separator = separator,
+        action = {
+            RaftIconButton(
+                onClick = onRefresh,
+                tooltip = payload.refreshLabel,
+                variant = RaftButtonVariant.Ghost,
+                enabled = !payload.refreshing,
+                loading = payload.refreshing
+            ) { RaftDownloadIcon(RaftLucideIconName.RefreshCw) }
+        }
     ) {
-        if (downloads != null) {
-            item(key = "download-center") { downloads() }
-        }
-        item {
-            SettingsStorageSummary(
-                title = payload.totalTitle,
-                size = payload.totalSize,
-                refreshLabel = payload.refreshLabel,
-                onRefresh = { onEvent("refreshStorage", null) }
-            )
-        }
-        payload.rows.forEach { row ->
-            item {
-                SettingsStorageRow(row) {
-                    onEvent("clearStorage", row.target)
+        RaftText(
+            text = payload.totalSize,
+            modifier = Modifier.padding(bottom = 12.dp).raftCopyable(payload.totalSize),
+            style = typography.title,
+            color = colors.foreground,
+            maxLines = 1
+        )
+        if (payload.rows.isNotEmpty()) {
+            // Rows without a clear action keep the button's place, so the sizes line up.
+            val actionSlot = payload.rows.any { it.clearLabel.isNotBlank() }
+            RaftListRowGroup(Modifier.fillMaxWidth()) {
+                payload.rows.forEachIndexed { index, row ->
+                    SettingsStorageRow(row = row, divider = index > 0, actionSlot = actionSlot, onClear = { onClear(row.target) })
                 }
             }
         }
-        item {
-            Text(
-                payload.safeClearNote,
-                style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                color = RaftColor.TextMutedGray
-            )
-        }
+        RaftText(
+            text = payload.safeClearNote,
+            modifier = Modifier.padding(top = 12.dp),
+            style = typography.footnote,
+            color = colors.foregroundHint
+        )
         payload.feedback.takeIf { it.isNotBlank() }?.let { feedback ->
-            item { SettingsStorageFeedback(feedback) }
-        }
-        item { Spacer(Modifier.height(bottomContentPadding)) }
-    }
-}
-
-@Composable
-private fun SettingsStorageSummary(
-    title: String,
-    size: String,
-    refreshLabel: String,
-    onRefresh: () -> Unit
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth().background(RaftColor.BrandYellow).border(RaftAppStroke.Default, RaftColor.StickerInk).padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Text(title.raftDisplayUppercase(), style = RaftType.SectionLabel.copy(color = RaftColor.StickerInk), color = RaftColor.StickerInk)
-        Text(size, style = RaftType.PageTitle.copy(color = RaftColor.StickerInk), color = RaftColor.StickerInk)
-        SettingsStorageButton(refreshLabel, iconName = RaftLucideIconName.RefreshCw, enabled = true, loading = false, onClick = onRefresh)
-    }
-}
-
-@Composable
-private fun SettingsStorageRow(row: RaftSettingsStorageRow, onClear: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxWidth().background(RaftColor.SurfaceWhite).border(RaftAppStroke.Default, RaftColor.BorderBlack).padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            IconBox(row.iconName)
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(row.title, style = RaftType.Body.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(row.detail, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
-            }
-            Text(row.size, style = RaftType.Body.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        if (row.clearLabel.isNotBlank()) {
-            SettingsStorageButton(
-                text = row.clearLabel,
-                iconName = RaftLucideIconName.Trash,
-                enabled = row.clearEnabled,
-                loading = row.clearInProgress,
-                onClick = onClear
+            RaftBanner(
+                description = feedback,
+                status = RaftBannerStatus.Info,
+                modifier = Modifier.padding(top = 12.dp)
             )
         }
     }
 }
 
 @Composable
-private fun SettingsStorageButton(
-    text: String,
-    iconName: RaftLucideIconName,
-    enabled: Boolean,
-    loading: Boolean,
-    onClick: () -> Unit
-) {
-    RaftBrutalActionButton(
-        label = if (loading) "$text..." else text,
-        leadingIcon = if (loading) RaftLucideIconName.LoaderCircle else iconName,
-        leadingIconSpinning = loading,
-        onClick = onClick,
-        enabled = enabled && !loading,
-        modifier = Modifier.fillMaxWidth(),
-        backgroundColor = RaftColor.SurfaceWhite,
-        disabledBackgroundColor = RaftColor.EmptyStateGray,
-        minWidth = 0.dp,
-        minHeight = 44.dp,
-        textStyle = RaftType.ButtonBold.copy(color = RaftColor.TextBlack)
+private fun SettingsStorageRow(row: RaftSettingsStorageRow, divider: Boolean, actionSlot: Boolean, onClear: () -> Unit) {
+    RaftListRow(
+        title = row.title,
+        divider = divider,
+        text = RaftListRowText.Member,
+        subtitle = row.detail.takeIf { it.isNotBlank() },
+        leading = {
+            RaftIconTile(size = RaftIconTileSize.Md) {
+                RaftDownloadIcon(row.iconName, size = RaftIconTileSize.Md.icon)
+            }
+        },
+        trailing = {
+            RaftListRowValue(row.size, maxWidth = 96.dp)
+            if (row.clearLabel.isNotBlank()) {
+                RaftIconButton(
+                    onClick = onClear,
+                    tooltip = row.clearLabel,
+                    variant = RaftButtonVariant.Ghost,
+                    enabled = row.clearEnabled,
+                    loading = row.clearInProgress
+                ) { RaftDownloadIcon(RaftLucideIconName.Trash2) }
+            } else if (actionSlot) {
+                Spacer(Modifier.size(RaftStorageRowActionSize))
+            }
+        }
     )
 }
 
-@Composable
-private fun SettingsStorageFeedback(text: String) {
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .background(RaftColor.AccentCyan)
-                .border(RaftAppStroke.Default, RaftColor.StickerInk)
-                .padding(14.dp)
-    ) {
-        Text(
-            text,
-            style = RaftType.Body.copy(color = RaftColor.StickerInk),
-            color = RaftColor.StickerInk
-        )
-    }
-}
-
-@Composable
-private fun IconBox(iconName: RaftLucideIconName) {
-    Box(
-        modifier = Modifier.size(42.dp).background(RaftColor.EmptyStateGray).border(RaftAppStroke.Default, RaftColor.BorderBlack),
-        contentAlignment = Alignment.Center
-    ) {
-        RaftLucideIcon(iconName, modifier = Modifier.size(22.dp))
-    }
-}
+/** The ghost icon button's box (raft-ui `icon-md`). */
+private val RaftStorageRowActionSize = 32.dp

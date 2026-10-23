@@ -10024,13 +10024,17 @@ internal fun raftFilePreviewOverflowActionLabel(
         else -> terms.openWith
     }
 
-internal fun raftFilePreviewFileIconName(payload: RaftFilePreviewPayload): RaftLucideIconName {
-    val mime = payload.externalMimeType.substringBefore(';').trim().lowercase()
-    val fileName = payload.attachmentCacheFileName().substringBefore('?').substringBefore('#')
-    val extension = fileName.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+internal fun raftFilePreviewFileIconName(payload: RaftFilePreviewPayload): RaftLucideIconName =
+    raftFileTypeIconName(fileName = payload.attachmentCacheFileName(), mimeType = payload.externalMimeType)
+
+/** The type icon of a file by its MIME type and name (file preview, download centre). */
+internal fun raftFileTypeIconName(fileName: String, mimeType: String): RaftLucideIconName {
+    val mime = mimeType.substringBefore(';').trim().lowercase()
+    val name = fileName.substringBefore('?').substringBefore('#')
+    val extension = name.substringAfterLast('.', missingDelimiterValue = "").lowercase()
     return when {
-        payload.isAndroidPackageArchive() -> RaftLucideIconName.Package
-        raftFilePreviewIsImageAttachment(fileName = fileName, mimeType = mime) ->
+        mime == "application/vnd.android.package-archive" || extension == "apk" -> RaftLucideIconName.Package
+        raftFilePreviewIsImageAttachment(fileName = name, mimeType = mime) ->
             RaftLucideIconName.FileImage
         mime.startsWith("video/") || extension in RaftFilePreviewVideoExtensions ->
             RaftLucideIconName.FileVideoCamera
