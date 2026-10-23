@@ -8624,7 +8624,8 @@ private fun SharedThreadRouteContentContent(
                 }
             }
         }
-    val attachmentCommentsEnabled = currentServerSlug.attachmentCommentsEnabledForThread()
+    // Attachment comments are on for every server (web, end of June); the server still decides who may comment.
+    val attachmentCommentsEnabled = true
     fun threadWritesEnabledNow(): Boolean = threadViewModel.state.value.writeActionsEnabled
 
     fun setAttachmentCommentsState(next: ThreadAttachmentCommentsDialogState) {
@@ -8684,6 +8685,7 @@ private fun SharedThreadRouteContentContent(
             bridge.toast(commentsUnavailableLabel)
             return
         }
+        if (!target.attachment.supportsThreadAttachmentComments()) return
         target.attachment.toThreadAttachmentCommentsPreviewPayload(attachmentCommentsEnabled)?.let { previewPayload ->
             pager.openRaftFilePreviewPage(previewPayload)
             return
@@ -31273,8 +31275,15 @@ private fun ThreadAttachmentCommentComposer(
 internal fun ThreadAttachmentCommentItem.isThreadAttachmentCommentResolved(): Boolean =
     reactions.any { reaction -> reaction.emoji == "✅" || reaction.emoji == "☑️" }
 
-private fun String?.attachmentCommentsEnabledForThread(): Boolean =
-    this?.trim()?.equals("botiverse", ignoreCase = true) == true
+/**
+ * Which attachments get a comment entry point, matching web (`MessageItem.handleOpenAttachmentCard`
+ * and `attachmentPreviewSurfaces`): Markdown, text/code, CSV, XLSX and HTML open their comments, and
+ * video keeps its comments dialog. Images (web: "image comments descoped"), PDFs, audio and files
+ * without a preview have none.
+ */
+internal fun RaftThreadAttachmentItem.supportsThreadAttachmentComments(): Boolean =
+    isPreviewableVideoAttachment() ||
+        raftFilePreviewAttachmentSupportsViewerComments(fileName = name, mimeType = mimeType)
 
 private fun RaftThreadScreenPayload.findAttachmentCommentTarget(attachmentId: String): ThreadAttachmentCommentTarget? {
     val cleanAttachmentId = attachmentId.trim()

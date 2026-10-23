@@ -176,7 +176,7 @@ class RaftFilePreviewCommentsTest {
     }
 
     @Test
-    fun nonVideoAttachmentCommentsOpenInsideFilePreview() {
+    fun commentableAttachmentCommentsOpenInsideFilePreview() {
         val payload =
             RaftThreadAttachmentItem(
                 id = "attachment-markdown",
@@ -229,5 +229,46 @@ class RaftFilePreviewCommentsTest {
                 mimeType = "text/markdown"
             ).toThreadAttachmentCommentsPreviewPayload(commentsEnabled = false)
         )
+    }
+
+    // Per-type entry points, matching web (MessageItem.handleOpenAttachmentCard + attachmentPreviewSurfaces).
+    private fun item(name: String, mime: String) =
+        RaftThreadAttachmentItem(id = "attachment-1", name = name, mimeType = mime)
+
+    @Test
+    fun viewerCommentsFollowWebPerAttachmentType() {
+        val commentable =
+            listOf(
+                "runbook.md" to "text/markdown",
+                "main.kt" to "text/plain",
+                "data.csv" to "text/csv",
+                "sheet.xlsx" to "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "page.html" to "text/html"
+            )
+        commentable.forEach { (name, mime) ->
+            val payload = item(name, mime).toThreadAttachmentCommentsPreviewPayload(commentsEnabled = true)
+            assertNotNull(payload, "web offers comments on $name")
+            assertTrue(payload.supportsAttachmentComments(), name)
+            assertTrue(item(name, mime).supportsThreadAttachmentComments(), name)
+        }
+        val notCommentable =
+            listOf(
+                "photo.png" to "image/png",
+                "paper.pdf" to "application/pdf",
+                "song.mp3" to "audio/mpeg",
+                "archive.zip" to "application/zip",
+                "blob.bin" to "application/octet-stream"
+            )
+        notCommentable.forEach { (name, mime) ->
+            assertNull(item(name, mime).toThreadAttachmentCommentsPreviewPayload(commentsEnabled = true), name)
+            assertFalse(item(name, mime).supportsThreadAttachmentComments(), name)
+            assertFalse(
+                item(name, mime).toThreadAttachmentLazyPreviewPayload(kind = "file", attachmentCommentsEnabled = true)
+                    .supportsAttachmentComments(),
+                name
+            )
+        }
+        // Video keeps its comments dialog (web has timestamp comments, a follow-up here), never the viewer.
+        assertTrue(item("demo.mp4", "video/mp4").supportsThreadAttachmentComments())
     }
 }
