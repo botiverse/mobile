@@ -16,6 +16,11 @@
 #   INSTRUMENTATION_MAX_ATTEMPTS         total attempts incl. the first (default 3)
 #   INSTRUMENTATION_RETRY_BACKOFF_SECONDS  sleep before each retry (default 10),
 #                                          letting a crashed emulator/ADB recover
+#   INSTRUMENTATION_RETRY_RESET_CMD      optional shell command run before every retry (never
+#                                        before the first attempt), e.g. clearing the target
+#                                        app's data so a retry starts from the same state as
+#                                        attempt 1 instead of what the aborted attempt left
+#                                        (a persisted composer draft turned "sent" into "sentsent").
 #   INSTRUMENTATION_LOGCAT_DUMP_CMD      prints this attempt's logcat; default reads the
 #                                        device log since the attempt started
 #                                        (`adb logcat -d -T <device time>`). Logcat is
@@ -111,6 +116,13 @@ for ((attempt = 1; attempt <= attempts; attempt++)); do
   echo "::warning::infra-abort on attempt ${attempt}/${attempts} for ${file} (cmd_rc=${cmd_rc}); evidence at ${file}.attempt-${attempt}" >&2
   if [[ "$attempt" -lt "$attempts" && "$backoff" -gt 0 ]]; then
     sleep "$backoff"
+  fi
+  if [[ "$attempt" -lt "$attempts" && -n "${INSTRUMENTATION_RETRY_RESET_CMD:-}" ]]; then
+    # The aborted attempt may have died mid-test with app state persisted; reset it so the
+    # retry is the same test, not a continuation. A failed reset is reported, not fatal.
+    if ! bash -c "$INSTRUMENTATION_RETRY_RESET_CMD" >&2; then
+      echo "::warning::retry reset command failed before attempt $((attempt + 1)) for ${file}" >&2
+    fi
   fi
 done
 
