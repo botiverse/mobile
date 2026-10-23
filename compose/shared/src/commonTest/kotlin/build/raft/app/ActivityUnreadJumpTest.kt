@@ -200,14 +200,12 @@ class ActivityUnreadJumpTest {
 
     @Test
     fun unreadIsTheStateTheRowDisplays() {
-        // Card rows: any unread count.
-        assertTrue(item("a", unread = 2).activityRowDisplaysUnread(conversationListContext = null))
-        assertFalse(item("a", unread = 0).activityRowDisplaysUnread(conversationListContext = null))
-        // Conversation-list rows: a muted conversation shows no count, so it is not a target.
+        assertTrue(item("a", unread = 2).activityRowDisplaysUnread(ActivityConversationListContext.Empty))
+        assertFalse(item("a", unread = 0).activityRowDisplaysUnread(ActivityConversationListContext.Empty))
+        // A muted conversation shows no count, so it is not a target.
         val muted = ActivityConversationListContext(mutedChannelIds = setOf("quiet"))
         assertFalse(item("q", unread = 3, channel = "quiet").activityRowDisplaysUnread(muted))
         assertTrue(item("loud", unread = 3).activityRowDisplaysUnread(muted))
-        assertTrue(item("muted-card", unread = 3, channel = "quiet").activityRowDisplaysUnread(null))
     }
 
     @Test

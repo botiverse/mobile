@@ -3267,32 +3267,8 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureHomeActivityAvatarOn() {
-        // #65: dedicated sender-avatar fixture. Read + unread rows on one
-        // narrow screen, covering human placeholder / agent pixel / app "SY"
-        // placeholder and the full badge run + Done. Additive Android evidence
-        // for a Mobile-only appearance experiment.
-        captureKmpComponentCase(
-            caseId = "components.home.activity.avatar.on",
-            pageName = "compose_home_activity_avatar_visual",
-            crop = HOME_ACTIVITY_AVATAR_CROP,
-            settleMs = 4_500
-        )
-    }
-
-    @Test
-    fun captureHomeActivityAvatarOff() {
-        captureKmpComponentCase(
-            caseId = "components.home.activity.avatar.off",
-            pageName = "compose_home_activity_avatar_off_visual",
-            crop = HOME_ACTIVITY_AVATAR_CROP,
-            settleMs = 4_500
-        )
-    }
-
-    @Test
     fun captureHomeActivityConversationList() {
-        // activity_conversation_list_v0 ON: the web ThreadsInbox list layout (one compact row per
+        // Activity as the web ThreadsInbox list layout (one compact row per
         // conversation, avatar/tile, one-line preview, time, unread count, @ marker, muted bell)
         // with sidebar pins, so the Pinned / All conversations sections render. The web has no
         // matching react case yet; this is Android evidence until the React case lands.
@@ -3312,36 +3288,6 @@ class KmpVisualScreenshotCaptureTest {
             pageName = "compose_home_activity_conversation_list_unpinned_visual",
             crop = HOME_ACTIVITY_RESULTS_CROP,
             settleMs = 4_500
-        )
-    }
-
-    @Test
-    fun captureHomeActivityBottomHitTarget() {
-        val openedMarker = "ACTIVITY_HIT_TARGET_OPENED:activity-thread-visual-parity"
-        captureKmpComponentCase(
-            caseId = "components.home.activity.bottom-hit-target",
-            pageName = "compose_home_activity_hit_target_visual",
-            crop = HOME_ACTIVITY_RESULTS_CROP,
-            settleMs = 4_500,
-            beforeScreenshot = {
-                // The first row's bordered surface currently ends at y=274dp
-                // in this fixed 342x620 fixture. Keep the probe in the dedicated
-                // bottom 12dp spacer instead of the footer chips above it; the
-                // old y=251dp point moved into footer content as the row grew.
-                tapDp(xDp = 170f, yDp = 268f)
-                val markerDeadline = SystemClock.uptimeMillis() + ACCESSIBILITY_MARKER_TIMEOUT_MS
-                var markerVisible = false
-                while (!markerVisible && SystemClock.uptimeMillis() < markerDeadline) {
-                    markerVisible =
-                        InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow
-                            ?.findAccessibilityNodeInfosByText(openedMarker)
-                            ?.isNotEmpty() == true
-                    if (!markerVisible) Thread.sleep(ACCESSIBILITY_MARKER_POLL_MS)
-                }
-                require(markerVisible) {
-                    "Activity row bottom padding did not open the inbox item"
-                }
-            }
         )
     }
 
@@ -6603,13 +6549,6 @@ class KmpVisualScreenshotCaptureTest {
                 widthDp = 342,
                 heightDp = 620
             )
-        private val HOME_ACTIVITY_AVATAR_CROP =
-            VisualCrop(
-                leftDp = 0,
-                topDp = 0,
-                widthDp = 342,
-                heightDp = 800
-            )
         private val TOKEN_PALETTE_CROP =
             VisualCrop(
                 leftDp = 0,
@@ -7360,8 +7299,6 @@ class KmpVisualScreenshotCaptureTest {
         // unbounded waitForIdleSync). Normal close is sub-second.
         private const val SCENARIO_CLOSE_TIMEOUT_MS = 5_000L
         private const val TAP_DWELL_MS = 80L
-        private const val ACCESSIBILITY_MARKER_TIMEOUT_MS = 2_000L
-        private const val ACCESSIBILITY_MARKER_POLL_MS = 100L
         private const val ACTIVE_INPUT_WINDOW_TIMEOUT_MS = 10_000L
         private const val ACTIVE_INPUT_WINDOW_POLL_MS = 250L
         // After this many failed BACK dismisses (~2s at 250ms poll) a system

@@ -399,7 +399,6 @@
     <string name="thread_error_copy_link">无法复制链接</string>
     <string name="thread_error_no_text_select">没有可选择的文本</string>
     <string name="thread_feedback_followed">已关注消息列</string>
-    <string name="thread_row_unfollowed">已取消关注</string>
     <string name="thread_error_follow">无法关注消息列</string>
     <string name="thread_feedback_unfollowed">已取消关注消息列</string>
     <string name="thread_error_unfollow">无法取消关注消息列</string>
@@ -894,10 +893,6 @@
     <string name="activity_filter_mentions">提及</string>
     <string name="activity_updates_one">↑ %1$d 条新更新</string>
     <string name="activity_updates_many">↑ %1$d 条新更新</string>
-    <string name="activity_replies_one">%1$d 条回复</string>
-    <string name="activity_replies_many">%1$d 条回复</string>
-    <string name="activity_mention_you">你</string>
-    <string name="activity_new_count">%1$d 条新动态</string>
     <string name="activity_list_pinned">已置顶</string>
     <string name="activity_list_all_conversations">全部会话</string>
     <string name="activity_list_system_sender">系统</string>

@@ -2,9 +2,6 @@ package build.raft.app.data
 
 import build.raft.app.SharedThreadFreshnessLedger
 import build.raft.app.FakeChannelRepository
-import build.raft.app.SharedActivityFooterSlot
-import build.raft.app.activityFooterSlots
-import build.raft.app.activityTaskBadgeText
 import build.raft.app.toConversationSummary
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
@@ -3620,11 +3617,6 @@ class SharedActivityStoreTest {
         assertEquals(177, item.taskNumber)
         assertEquals(TaskStatus.InReview, item.taskStatus)
         assertEquals("Claude Assistant", item.taskClaimedByName)
-        assertEquals("#177 @Claude Assistant", item.activityTaskBadgeText())
-        assertEquals(
-            listOf(SharedActivityFooterSlot.Task, SharedActivityFooterSlot.Replies),
-            item.activityFooterSlots()
-        )
         scope.cancel()
     }
 

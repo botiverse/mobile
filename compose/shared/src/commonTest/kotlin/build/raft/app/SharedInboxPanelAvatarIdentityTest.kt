@@ -4,7 +4,6 @@ import build.raft.app.data.SharedActivitySenderProfile
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.agentAvatarFallbackWireValue
-import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -169,18 +168,6 @@ class SharedInboxPanelAvatarIdentityTest {
 
         assertEquals("Agent Seven", thread.activitySenderAvatarIdentity(profiles).label)
         assertEquals("agent-fallback-name", thread.activitySenderAvatarIdentity(emptyMap()).label)
-    }
-
-    @Test
-    fun preferenceDefaultsToExactNoAvatarLayout() {
-        assertEquals(
-            ActivitySenderAvatarPresentation(visible = false, contentStartPadding = 12.dp),
-            activitySenderAvatarPresentation(enabled = false)
-        )
-        assertEquals(
-            ActivitySenderAvatarPresentation(visible = true, contentStartPadding = 0.dp),
-            activitySenderAvatarPresentation(enabled = true)
-        )
     }
 
     @Test

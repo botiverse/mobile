@@ -399,7 +399,6 @@
     <string name="thread_error_copy_link">Unable to copy link</string>
     <string name="thread_error_no_text_select">No text to select</string>
     <string name="thread_feedback_followed">Followed thread</string>
-    <string name="thread_row_unfollowed">Unfollowed</string>
     <string name="thread_error_follow">Unable to follow thread</string>
     <string name="thread_feedback_unfollowed">Unfollowed thread</string>
     <string name="thread_error_unfollow">Unable to unfollow thread</string>
@@ -896,10 +895,6 @@
     <string name="activity_filter_mentions">Mentions</string>
     <string name="activity_updates_one">↑ %1$d new update</string>
     <string name="activity_updates_many">↑ %1$d new updates</string>
-    <string name="activity_replies_one">%1$d reply</string>
-    <string name="activity_replies_many">%1$d replies</string>
-    <string name="activity_mention_you">you</string>
-    <string name="activity_new_count">%1$d new</string>
     <string name="activity_list_pinned">Pinned</string>
     <string name="activity_list_all_conversations">All conversations</string>
     <string name="activity_list_system_sender">System</string>

@@ -24,7 +24,6 @@ import build.raft.app.data.hasUnopenableInternalJointParentSource
 import build.raft.app.data.isUnfollowedActivityThread
 import build.raft.app.data.isFollowedActivityThread
 import build.raft.app.data.MOBILE_ACTIVITY_STABLE_ORDER_FEATURE_FLAG_KEY
-import build.raft.app.data.ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RealInboxRepository
 import build.raft.app.data.RealChannelRepository
@@ -169,7 +168,6 @@ internal fun SharedHomeActivityScreen(
     shellScope: RaftAppShellScope = rememberRaftAppShellScope(),
     storeScope: RaftShellStoreScope = RaftShellStoreScope.Legacy,
     activityTaskStatusBadgesEnabled: Boolean = DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED,
-    activitySenderAvatarsEnabled: Boolean = false,
     // task #383: secondary-route pages (ComposeHomeActivityPage) never see a
     // Kuikly pageDidAppear on app foreground, so they opt into refreshing on
     // the app-scope appLifecycle resume/show broadcast. Shell surfaces leave
@@ -357,54 +355,13 @@ internal fun SharedHomeActivityScreen(
     val sharedHomeStore = remember(sharedStores, storeScope) {
         sharedStores.sharedHomeStore(storeScope)
     }
-    // activity_conversation_list_v0 (web ThreadsInbox `layout="list"`): read per server like the web
-    // `useServerFeatureFlag`, and follow the evaluation live when it lands after the page opened.
-    val featureFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
-    val conversationListOverrideRevision by
-        ProcessDiagnosticFeatureFlagOverrides.registry
-            .revisionFor(ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY)
-            .collectAsState()
-    val conversationListEnabled =
-        remember(activitySummaryServerId, featureFlagRevision, conversationListOverrideRevision) {
-            activitySummaryServerId.value.isNotBlank() &&
-                sharedStores.serverFeatureFlags.isEnabled(
-                    activitySummaryServerId,
-                    ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY
-                )
-        }
-    // Cold start: until this server's flag has a decision (an evaluation of this process, or the value
-    // remembered from the last session), Activity keeps its loading state instead of painting card rows
-    // and switching to the list when the evaluation lands. A failed evaluation ends the wait (flag off).
-    val conversationListFlagPending =
-        remember(activitySummaryServerId, featureFlagRevision) {
-            activitySummaryServerId.value.isNotBlank() &&
-                sharedStores.serverFeatureFlags.isDecisionPending(
-                    activitySummaryServerId,
-                    ACTIVITY_CONVERSATION_LIST_FEATURE_FLAG_KEY
-                )
-        }
-    LaunchedEffect(sharedStores.serverFeatureFlags, activitySummaryServerId, conversationListFlagPending) {
-        if (conversationListFlagPending) {
-            // Joins the selected-server evaluation when one is in flight; otherwise starts the one the
-            // wait is bounded by.
-            try {
-                sharedStores.serverFeatureFlags.prefetch(activitySummaryServerId)
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (error: Throwable) {
-                bridge.logWarn(
-                    "activity_conversation_list_flag_prefetch_failed reason=${error::class.simpleName ?: "unknown"}"
-                )
-            }
-        }
-    }
     // Selector over the Home content: only the pins, mutes and DM peers of this server reach the list.
     // Null while Home has not produced them yet (see nextActivityConversationListContext): pins and
     // section labels never apply after the rows have painted.
     val conversationListContextSource =
-        remember(sharedHomeStore, conversationListEnabled, activitySummaryServerId) {
+        remember(sharedHomeStore, activitySummaryServerId) {
             val serverId = activitySummaryServerId.value
-            if (!conversationListEnabled) {
+            if (serverId.isBlank()) {
                 ActivityConversationListContext.Empty to flowOf(ActivityConversationListContext.Empty)
             } else if (sharedHomeStore == null) {
                 val unavailable = nextActivityConversationListContext(null, null, serverId)
@@ -423,8 +380,7 @@ internal fun SharedHomeActivityScreen(
         }
     val conversationListContext by
         conversationListContextSource.second.collectAsState(conversationListContextSource.first)
-    val conversationListPending =
-        conversationListFlagPending || (conversationListEnabled && conversationListContext == null)
+    val conversationListPending = conversationListContext == null
     val conversationListAgentStatusResolver =
         remember(sharedStores.serverMembersStore, activitySummaryServerId) {
             raftScopedAgentStatusResolver(sharedStores.serverMembersStore, activitySummaryServerId.value)
@@ -440,7 +396,7 @@ internal fun SharedHomeActivityScreen(
         }
     // Web InboxContextMenu: a channel row's menu mutes or unmutes that channel's activity, read
     // from and written through the Home sidebar state of this server (the same intent as Home's
-    // long-press), in both Activity layouts.
+    // long-press).
     val activityMuteSource =
         remember(sharedHomeStore, activitySummaryServerId) {
             val serverId = activitySummaryServerId.value
@@ -450,17 +406,6 @@ internal fun SharedHomeActivityScreen(
                 ?: flowOf(emptyMap())
         }
     val activityMuteByChannelId by activityMuteSource.collectAsState(emptyMap())
-    // The Home sidebar's channel glyphs (lock, joint branch, public-page globe) for card rows; the
-    // list layout reads the same projection from its conversation-list context.
-    val activityChannelSymbolSource =
-        remember(sharedHomeStore, activitySummaryServerId) {
-            val serverId = activitySummaryServerId.value
-            sharedHomeStore?.state
-                ?.map { homeState -> homeState.content.activityChannelSymbolsByChannelId(serverId) }
-                ?.distinctUntilChanged()
-                ?: flowOf(emptyMap())
-        }
-    val activityChannelSymbols by activityChannelSymbolSource.collectAsState(emptyMap())
     val channelMute =
         remember(sharedHomeStore, activityMuteByChannelId) {
             sharedHomeStore?.let { store ->
@@ -470,16 +415,11 @@ internal fun SharedHomeActivityScreen(
             }
         }
     val conversationList =
-        remember(conversationListEnabled, conversationListContext, conversationListAgentStatusResolver) {
-            val context = conversationListContext
-            if (conversationListEnabled && context != null) {
-                ActivityConversationListPresentation(
-                    context = context,
-                    agentStatusResolver = conversationListAgentStatusResolver
-                )
-            } else {
-                null
-            }
+        remember(conversationListContext, conversationListAgentStatusResolver) {
+            ActivityConversationListPresentation(
+                context = conversationListContext ?: ActivityConversationListContext.Empty,
+                agentStatusResolver = conversationListAgentStatusResolver
+            )
         }
     // t5/#419 A3: user-initiated opens resolve against the real conversation directory
     // (flow-based single source, #240) with the snapshot's real server id — the resolver is
@@ -577,7 +517,6 @@ internal fun SharedHomeActivityScreen(
     }
     CompositionLocalProvider(
         LocalActivityAvatarSource provides activityAvatarSource,
-        LocalActivityChannelSymbols provides activityChannelSymbols,
     ) {
     SharedActivityPanelContent(
         state = safeOpenProjectedState,
@@ -609,7 +548,6 @@ internal fun SharedHomeActivityScreen(
         topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
         timeContext = timeContext,
         activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
-        activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
         draftProjection = draftProjection,
         stableOrderEnabled = stableOrderEnabledAtRouteEntry,
         stableOrderDecisionRevision = diagnosticOverrideRevision,
@@ -820,7 +758,6 @@ internal fun SharedHomeActivityScreen(
     timeContext: RaftTimeContext? = null,
     shellScope: RaftAppShellScope = rememberRaftAppShellScope(),
     activityTaskStatusBadgesEnabled: Boolean = DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED,
-    activitySenderAvatarsEnabled: Boolean = false,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     stableOrderEnabled: Boolean = true,
     stableOrderDecisionRevision: Long = 0L,
@@ -835,7 +772,7 @@ internal fun SharedHomeActivityScreen(
      */
     externalSelectionOwned: Boolean = false,
     mainTab: Boolean = false,
-    conversationList: ActivityConversationListPresentation? = null,
+    conversationList: ActivityConversationListPresentation = ActivityConversationListPresentation(),
     channelMute: ActivityChannelMuteControl? = null
 ) {
     SharedActivityPanelContent(
@@ -847,7 +784,6 @@ internal fun SharedHomeActivityScreen(
         topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
         timeContext = timeContext,
         activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
-        activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
         draftProjection = draftProjection,
         stableOrderEnabled = stableOrderEnabled,
         stableOrderDecisionRevision = stableOrderDecisionRevision,
@@ -874,7 +810,6 @@ internal fun SharedHomeActivityPanel(
     timeContext: RaftTimeContext? = null,
     shellScope: RaftAppShellScope = rememberRaftAppShellScope(),
     activityTaskStatusBadgesEnabled: Boolean = DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED,
-    activitySenderAvatarsEnabled: Boolean = false,
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     stableOrderEnabled: Boolean = true,
     stableOrderDecisionRevision: Long = 0L,
@@ -888,7 +823,7 @@ internal fun SharedHomeActivityPanel(
      * clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
      */
     externalSelectionOwned: Boolean = false,
-    conversationList: ActivityConversationListPresentation? = null,
+    conversationList: ActivityConversationListPresentation = ActivityConversationListPresentation(),
     channelMute: ActivityChannelMuteControl? = null
 ) {
     // #192 trace scope extension: wrap the Inbox panel render. The Inbox is
@@ -911,7 +846,6 @@ internal fun SharedHomeActivityPanel(
             topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
             timeContext = timeContext,
             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
-            activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
             draftProjection = draftProjection,
             stableOrderEnabled = stableOrderEnabled,
             stableOrderDecisionRevision = stableOrderDecisionRevision,
@@ -950,7 +884,6 @@ private fun SharedActivityPanelContent(
     topSafeAreaPadding: Dp,
     timeContext: RaftTimeContext?,
     activityTaskStatusBadgesEnabled: Boolean,
-    activitySenderAvatarsEnabled: Boolean,
     draftProjection: SharedThreadComposerDraftProjection,
     stableOrderEnabled: Boolean,
     stableOrderDecisionRevision: Long,
@@ -965,7 +898,7 @@ private fun SharedActivityPanelContent(
      */
     externalSelectionOwned: Boolean = false,
     mainTab: Boolean = false,
-    conversationList: ActivityConversationListPresentation? = null,
+    conversationList: ActivityConversationListPresentation = ActivityConversationListPresentation(),
     channelMute: ActivityChannelMuteControl? = null,
     /** The list layout's flag or Home context is not decided yet: keep the loading state, paint nothing. */
     conversationListPending: Boolean = false,
@@ -1069,7 +1002,6 @@ private fun SharedActivityPanelContent(
                     timeContext = timeContext,
                     listState = pageListStates[page],
                     activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
-                    activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
                     draftProjection = draftProjection,
                     presentationAccountId = state.ownerUserId.orEmpty(),
                     stableOrderEnabled = stableOrderEnabled,
@@ -1124,7 +1056,6 @@ private fun SharedActivityBodyContent(
     timeContext: RaftTimeContext?,
     listState: LazyListState,
     activityTaskStatusBadgesEnabled: Boolean,
-    activitySenderAvatarsEnabled: Boolean,
     draftProjection: SharedThreadComposerDraftProjection,
     presentationAccountId: String,
     stableOrderEnabled: Boolean,
@@ -1138,7 +1069,7 @@ private fun SharedActivityBodyContent(
      * clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
      */
     externalSelectionOwned: Boolean = false,
-    conversationList: ActivityConversationListPresentation? = null,
+    conversationList: ActivityConversationListPresentation = ActivityConversationListPresentation(),
     channelMute: ActivityChannelMuteControl? = null,
     unreadJumpRequest: ActivityUnreadJumpRequest = ActivityUnreadJumpRequest(),
     modifier: Modifier = Modifier
@@ -1212,7 +1143,6 @@ private fun SharedActivityBodyContent(
                     timeContext = timeContext,
                     listState = listState,
                     activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
-                    activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
                     presentationAccountId = presentationAccountId,
                     stableOrderEnabled = stableOrderEnabled,
                     stableOrderDecisionRevision = stableOrderDecisionRevision,
@@ -1360,7 +1290,6 @@ private fun SharedActivityList(
     timeContext: RaftTimeContext?,
     listState: LazyListState = rememberLazyListState(),
     activityTaskStatusBadgesEnabled: Boolean,
-    activitySenderAvatarsEnabled: Boolean,
     presentationAccountId: String,
     stableOrderEnabled: Boolean,
     stableOrderDecisionRevision: Long,
@@ -1373,7 +1302,7 @@ private fun SharedActivityList(
      * clears with it (the detail closed by Back or ×). On a phone the panel keeps its own.
      */
     externalSelectionOwned: Boolean = false,
-    conversationList: ActivityConversationListPresentation? = null,
+    conversationList: ActivityConversationListPresentation = ActivityConversationListPresentation(),
     channelMute: ActivityChannelMuteControl? = null,
     unreadJumpRequest: ActivityUnreadJumpRequest = ActivityUnreadJumpRequest()
 ) {
@@ -1758,16 +1687,14 @@ private fun SharedActivityList(
     var swipeDoneUndo by remember { mutableStateOf(ActivitySwipeDoneUndoState()) }
     val swipeDoneHiddenKey = swipeDoneUndo.hiddenKey
     val conversationListEntries =
-        remember(renderedItems, conversationList?.context, swipeDoneHiddenKey) {
-            conversationList?.let {
-                val listed = if (swipeDoneHiddenKey == null) renderedItems else renderedItems.filterNot { item -> item.key == swipeDoneHiddenKey }
-                activityConversationListEntries(listed, it.context)
-            }
+        remember(renderedItems, conversationList.context, swipeDoneHiddenKey) {
+            val listed = if (swipeDoneHiddenKey == null) renderedItems else renderedItems.filterNot { item -> item.key == swipeDoneHiddenKey }
+            activityConversationListEntries(listed, conversationList.context)
         }
     // LazyColumn key order as laid out (section labels and pinned rows first), for the pill.
     val lazyItemKeys =
-        remember(conversationListEntries, renderedItems) {
-            conversationListEntries?.map(ActivityConversationListEntry::key) ?: renderedItems.map(InboxItem::key)
+        remember(conversationListEntries) {
+            conversationListEntries.map(ActivityConversationListEntry::key)
         }
     val lazyItemKeysState = rememberUpdatedState(lazyItemKeys)
     // Unread-row walk (ActivityUnreadJump.kt). Intent owner: the user's head tap / tab re-tap
@@ -1783,8 +1710,8 @@ private fun SharedActivityList(
         }
     val unreadJumpHighlight = remember { HomeSearchReturnHighlight() }
     // Read at decision time (also after a page the walk requested has landed).
-    val unreadJumpRows by rememberUpdatedState(conversationListEntries to renderedItems)
-    val unreadJumpListContext by rememberUpdatedState(conversationList?.context)
+    val unreadJumpRows by rememberUpdatedState(conversationListEntries)
+    val unreadJumpListContext by rememberUpdatedState(conversationList.context)
     val unreadJumpPagingState =
         rememberUpdatedState(
             ActivityUnreadJumpPaging(
@@ -1795,15 +1722,14 @@ private fun SharedActivityList(
             )
         )
     fun unreadJumpEntries(): List<ActivityUnreadJumpEntry> {
-        val (entries, items) = unreadJumpRows
         val listContext = unreadJumpListContext
-        return entries?.map { entry ->
+        return unreadJumpRows.map { entry ->
             when (entry) {
                 is ActivityConversationListEntry.Section -> ActivityUnreadJumpEntry(entry.key, unread = false)
                 is ActivityConversationListEntry.Row ->
                     ActivityUnreadJumpEntry(entry.key, unread = entry.item.activityRowDisplaysUnread(listContext))
             }
-        } ?: items.map { item -> ActivityUnreadJumpEntry(item.key, unread = item.activityRowDisplaysUnread(null)) }
+        }
     }
     fun unreadJumpViewport(): ActivityUnreadJumpViewport =
         ActivityUnreadJumpViewport(
@@ -1881,8 +1807,7 @@ private fun SharedActivityList(
                 if (unseen != newActivityAboveKeys) newActivityAboveKeys = unseen
             }
     }
-    // Row gestures resolve the committed item at commit time (see activityItemForCommittedGesture);
-    // the card rows and the conversation-list rows share these exact handlers.
+    // Row gestures resolve the committed item at commit time (see activityItemForCommittedGesture).
     fun committedRowItem(renderedItemKey: String): InboxItem? =
         activityItemForCommittedGesture(
             renderedItemKey = renderedItemKey,
@@ -1899,7 +1824,7 @@ private fun SharedActivityList(
             SharedActivityIntent.PrewarmActivityTail(
                 activityReplyThreadPrewarmNextAfterClick(
                     // The next row the person sees: pins float first in the list layout.
-                    items = activityRowsInDisplayOrder(renderedItems, conversationListEntries),
+                    items = activityRowsInDisplayOrder(conversationListEntries),
                     clickedKey = currentItem.key,
                     serverId = snapshot.server.id.value
                 )
@@ -1956,74 +1881,51 @@ private fun SharedActivityList(
                         // web inbox scroller `py-1`; rows sit edge to edge, split by their own hairline.
                         .padding(top = 4.dp)
             ) {
-                if (conversationListEntries != null) {
-                    // activity_conversation_list_v0: one compact row per conversation, pinned first.
-                    // TODO(dark-mode): these rows paint with RaftTheme.colors (foreground, lineHairline, infoSoft)
-                    // over the panel's fixed RaftColor.SurfaceWhite background; migrate the panel surface to a
-                    // theme token with the rest of Activity's dark-mode pass.
-                    items(items = conversationListEntries, key = { entry -> entry.key }) { entry ->
-                        when (entry) {
-                            is ActivityConversationListEntry.Section ->
-                                ActivityConversationListSectionLabel(section = entry.section, first = entry.first)
-                            is ActivityConversationListEntry.Row -> {
-                                val item = entry.item
-                                val model =
-                                    remember(item, conversationList, selectedFilter, senderProfiles, dmPeerNames, activityTaskStatusBadgesEnabled) {
-                                        item.activityConversationRowModel(
-                                            context = conversationList?.context ?: ActivityConversationListContext.Empty,
-                                            selectedFilter = selectedFilter,
-                                            senderProfiles = senderProfiles,
-                                            dmPeerNames = dmPeerNames,
-                                            activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                // One compact row per conversation, pinned first (web ThreadsInbox `layout="list"`).
+                // TODO(dark-mode): these rows paint with RaftTheme.colors (foreground, lineHairline, infoSoft)
+                // over the panel's fixed RaftColor.SurfaceWhite background; migrate the panel surface to a
+                // theme token with the rest of Activity's dark-mode pass.
+                items(items = conversationListEntries, key = { entry -> entry.key }) { entry ->
+                    when (entry) {
+                        is ActivityConversationListEntry.Section ->
+                            ActivityConversationListSectionLabel(section = entry.section, first = entry.first)
+                        is ActivityConversationListEntry.Row -> {
+                            val item = entry.item
+                            val model =
+                                remember(item, conversationList, selectedFilter, senderProfiles, dmPeerNames, activityTaskStatusBadgesEnabled) {
+                                    item.activityConversationRowModel(
+                                        context = conversationList.context,
+                                        selectedFilter = selectedFilter,
+                                        senderProfiles = senderProfiles,
+                                        dmPeerNames = dmPeerNames,
+                                        activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                                    )
+                                }
+                            ActivityConversationListRow(
+                                item = item,
+                                model = model,
+                                contentModifier = Modifier.homeSearchReturnHighlight(unreadJumpHighlight, item.key),
+                                divider = entry.divider,
+                                selected = selectedItemKey == item.key,
+                                menuOpen = activeMenuItem?.key == item.key,
+                                timeContext = timeContext,
+                                agentStatusResolver = conversationList.agentStatusResolver,
+                                showDoneAction = item.activityShowsDoneAction(),
+                                openGestureKey =
+                                    remember(item, renderedPresentationGeneration, renderedPresentationOwnerIdentity) {
+                                        item.activityOpenGestureKey(
+                                            presentationGeneration = renderedPresentationGeneration,
+                                            presentationOwnerIdentity = renderedPresentationOwnerIdentity,
                                         )
-                                    }
-                                ActivityConversationListRow(
-                                    item = item,
-                                    model = model,
-                                    contentModifier = Modifier.homeSearchReturnHighlight(unreadJumpHighlight, item.key),
-                                    divider = entry.divider,
-                                    selected = selectedItemKey == item.key,
-                                    menuOpen = activeMenuItem?.key == item.key,
-                                    timeContext = timeContext,
-                                    agentStatusResolver = conversationList?.agentStatusResolver ?: EmptyRaftAgentStatusResolver,
-                                    showDoneAction = item.activityShowsDoneAction(),
-                                    openGestureKey =
-                                        remember(item, renderedPresentationGeneration, renderedPresentationOwnerIdentity) {
-                                            item.activityOpenGestureKey(
-                                                presentationGeneration = renderedPresentationGeneration,
-                                                presentationOwnerIdentity = renderedPresentationOwnerIdentity,
-                                            )
-                                        },
-                                    captureMenuAnchor = !listState.isScrollInProgress,
-                                    onOpen = { openRow(item.key) },
-                                    onDone = { markRowDone(item.key) },
-                                    onOpenMenu = { anchor -> openRowMenu(item.key, anchor) },
-                                    onSwipeDone = { swipeRowDone(item.key) },
-                                )
-                            }
+                                    },
+                                captureMenuAnchor = !listState.isScrollInProgress,
+                                onOpen = { openRow(item.key) },
+                                onDone = { markRowDone(item.key) },
+                                onOpenMenu = { anchor -> openRowMenu(item.key, anchor) },
+                                onSwipeDone = { swipeRowDone(item.key) },
+                            )
                         }
                     }
-                } else {
-                itemsIndexed(items = renderedItems, key = { _, item -> item.key }) { index, item ->
-                    SharedActivityRow(
-                        item = item,
-                        modifier = Modifier.homeSearchReturnHighlight(unreadJumpHighlight, item.key),
-                        senderProfiles = senderProfiles,
-                        dmPeerNames = dmPeerNames,
-                        selected = selectedItemKey == item.key,
-                        menuOpen = activeMenuItem?.key == item.key,
-                        divider = index > 0,
-                        timeContext = timeContext,
-                        activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
-                        activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
-                        captureMenuAnchor = !listState.isScrollInProgress,
-                        presentationGeneration = renderedPresentationGeneration,
-                        presentationOwnerIdentity = renderedPresentationOwnerIdentity,
-                        onOpen = { openRow(item.key) },
-                        onDone = { markRowDone(item.key) },
-                        onOpenMenu = { anchor -> openRowMenu(item.key, anchor) }
-                    )
-                }
                 }
                 if (showLoadMoreFooter) {
                     item(key = ACTIVITY_LOAD_MORE_ROW_KEY) {
@@ -2253,13 +2155,6 @@ internal data class ActivityChannelMuteControl(
     val onToggle: (channelId: String, muted: Boolean) -> Unit,
 )
 
-/** The joined channels of [activityServerId] from the Home content; empty for another server. */
-internal fun SharedHomeContentState?.activityChannelSymbolsByChannelId(activityServerId: String): Map<String, String> {
-    val content = this as? SharedHomeContentState.Content ?: return emptyMap()
-    if (activityServerId.isBlank() || content.snapshot.server.id.value != activityServerId) return emptyMap()
-    return content.snapshot.activityChannelSymbolsByChannelId()
-}
-
 internal fun SharedHomeContentState?.activityMuteByChannelId(activityServerId: String): Map<String, Boolean> {
     val content = this as? SharedHomeContentState.Content ?: return emptyMap()
     if (activityServerId.isBlank() || content.snapshot.server.id.value != activityServerId) return emptyMap()
@@ -2306,321 +2201,12 @@ internal fun InboxItem.toReplyThreadPrewarmMarker(serverId: String): ActivityRep
     )
 }
 
-/**
- * raft-ui InboxItem at its card density, as web ThreadsInbox draws an Activity row: edge to
- * edge on the canvas, 16/12dp padding, a hairline from 16dp above every row but the first,
- * the `info-soft` wash while selected. Its grid is content | trailing: a thread's context line
- * and title (a channel or DM row's title and body) sit beside the trailing timestamp; the rest
- * of the content runs the full width. On touch the Done button rests at the trailing top
- * (raft-ui `pointer-coarse`), and the timestamp steps 44dp aside for it.
- */
-@Composable
-private fun SharedActivityRow(
-    item: InboxItem,
-    senderProfiles: Map<String, SharedActivitySenderProfile>,
-    dmPeerNames: Map<String, String> = emptyMap(),
-    selected: Boolean,
-    /** Its long-press menu is open: web `fill-row-open` (raft-ui 0.13), under selection. */
-    menuOpen: Boolean = false,
-    divider: Boolean = false,
-    modifier: Modifier = Modifier,
-    timeContext: RaftTimeContext?,
-    activityTaskStatusBadgesEnabled: Boolean,
-    activitySenderAvatarsEnabled: Boolean,
-    captureMenuAnchor: Boolean = true,
-    presentationGeneration: Int = 0,
-    presentationOwnerIdentity: String = "",
-    onOpen: () -> Unit,
-    onDone: () -> Unit,
-    onOpenMenu: (RaftPopoverAnchor) -> Unit
-) {
-    val openGestureKey =
-        remember(item, presentationGeneration, presentationOwnerIdentity) {
-            item.activityOpenGestureKey(
-                presentationGeneration = presentationGeneration,
-                presentationOwnerIdentity = presentationOwnerIdentity,
-            )
-        }
-    val threadFallback = stringResource(MR.strings.activity_fallback_thread_update)
-    val actionFallback = stringResource(MR.strings.activity_fallback_action_required)
-    val conversationFallback = stringResource(MR.strings.activity_fallback_conversation_update)
-    val avatarPresentation = activitySenderAvatarPresentation(activitySenderAvatarsEnabled)
-    val openLabel = stringResource(MR.strings.common_open)
-    val homeChannelSymbols = LocalActivityChannelSymbols.current
-    val card = remember(item, senderProfiles, dmPeerNames, homeChannelSymbols, threadFallback, actionFallback, conversationFallback) {
-        item.activityCardModel(
-            senderProfiles = senderProfiles,
-            dmPeerNames = dmPeerNames,
-            homeChannelSymbols = homeChannelSymbols,
-            threadFallback = threadFallback,
-            actionFallback = actionFallback,
-            conversationFallback = conversationFallback
-        )
-    }
-    val showDone = item.activityShowsDoneAction()
-    var pressed by remember(item.key) { mutableStateOf(false) }
-    Box(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .background(
-                    when {
-                        selected -> RaftColor.InfoSoft
-                        menuOpen -> RaftTheme.colors.fillRowOpen
-                        // raft-ui 0.20: an inbox row presses with the medium tier.
-                        pressed -> RaftTheme.colors.fillPressed
-                        else -> Color.Transparent
-                    }
-                )
-    ) {
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .activityRowGestures(
-                        openGestureKey,
-                        captureMenuAnchor,
-                        onOpen,
-                        onOpenMenu,
-                        onPressedChange = { pressed = it },
-                    )
-                    // The row reads as one button; the accessibility click opens it like a tap.
-                    // The Done button stays its own control.
-                    .semantics(mergeDescendants = true) {
-                        role = Role.Button
-                        onClick(label = openLabel) {
-                            onOpen()
-                            true
-                        }
-                    }
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-        ) {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                // Optional latest-activity sender avatar (Mobile-only appearance experiment).
-                if (avatarPresentation.visible) {
-                    SharedActivitySenderAvatar(
-                        item = item,
-                        senderProfiles = senderProfiles,
-                        modifier = Modifier.padding(end = 12.dp)
-                    )
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    card.context?.let { context ->
-                        Text(
-                            text = context,
-                            style = RaftType.Caption,
-                            color = RaftColor.ForegroundHint,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(bottom = 2.dp)
-                        )
-                    }
-                    SharedActivityCardTitle(card = card, unread = item.unreadCount > 0)
-                    if (card.context == null) {
-                        SharedActivityCardBody(card = card, unread = item.unreadCount > 0)
-                    }
-                }
-                Spacer(Modifier.width(12.dp))
-                RaftRelativeTimestampText(
-                    value = item.latestActivityAt ?: item.lastMessageAt,
-                    timeContext = timeContext,
-                    style = RaftType.Caption.copy(fontFamily = RaftMonoFamily),
-                    color = RaftColor.ForegroundHint,
-                    maxLines = 1,
-                    softWrap = false,
-                    clampFuture = true,
-                    // Web InboxItemTimestamp is plain text: a tap near the time opens the row.
-                    toggleEnabled = false,
-                    modifier = Modifier.padding(top = 1.dp, end = if (showDone) 44.dp else 0.dp)
-                )
-            }
-            if (card.context != null) {
-                SharedActivityCardBody(card = card, unread = item.unreadCount > 0)
-            }
-            SharedActivityFooter(
-                item = item,
-                activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled
-            )
-        }
-        if (divider) {
-            Box(
-                modifier =
-                    Modifier
-                        .padding(start = 16.dp)
-                        .fillMaxWidth()
-                        .height(RaftAppStroke.Thin)
-                        .background(RaftColor.BorderHairline)
-            )
-        }
-        if (showDone) {
-            Box(modifier = Modifier.align(Alignment.TopEnd).padding(top = 12.dp, end = 16.dp)) {
-                SharedActivityDoneButton(
-                    clickIdentity =
-                        item.activityDoneClickIdentity(
-                            presentationGeneration = presentationGeneration,
-                            presentationOwnerIdentity = presentationOwnerIdentity,
-                        ),
-                    onClick = onDone
-                )
-            }
-        }
-    }
-}
-
-internal enum class ActivityCardTitleGlyph { Thread, DirectMessage, Channel }
-
-/** What one Activity card says, per web `InboxRow` (card layout). Pure. */
-internal data class ActivityCardModel(
-    /** Thread rows: the parent conversation ("#design" / "@peer"); null otherwise. */
-    val context: String?,
-    val titleGlyph: ActivityCardTitleGlyph,
-    /** [ActivityCardTitleGlyph.Channel]: the channel's own glyph ([activityChannelSymbol]). */
-    val channelSymbol: String = "#",
-    /** Thread: the root message preview; else the place name without its `#`/`@`. */
-    val title: String,
-    /** "sender: preview": the sender is drawn in full ink. */
-    val body: ActivityPreviewText
-)
-
-internal fun InboxItem.activityCardModel(
-    senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap(),
-    dmPeerNames: Map<String, String> = emptyMap(),
-    /** The Home sidebar's glyph per channel id ([LocalActivityChannelSymbols]). */
-    homeChannelSymbols: Map<String, String> = emptyMap(),
-    threadFallback: String = "Thread update",
-    actionFallback: String = "Action required",
-    conversationFallback: String = "Conversation update"
-): ActivityCardModel {
-    val thread = kind == InboxItemKind.Thread
-    val directMessage =
-        kind == InboxItemKind.DirectMessage ||
-            (kind == InboxItemKind.MentionAction && channelKind == ConversationKind.DirectMessage)
-    val title =
-        when {
-            thread -> parentMessagePreview?.takeIf { it.isNotBlank() } ?: threadFallback
-            kind == InboxItemKind.DirectMessage ->
-                (dmPeerNames[channelId.value] ?: channelName.ifBlank { channelId.value }).trimStart('@', '#')
-            else -> channelName.ifBlank { channelId.value }.trimStart('@', '#')
-        }
-    val preview =
-        when (kind) {
-            InboxItemKind.Thread -> latestActivityPreview ?: lastMessagePreview ?: threadFallback
-            InboxItemKind.MentionAction -> lastMessagePreview ?: latestActivityPreview ?: actionFallback
-            else -> lastMessagePreview ?: latestActivityPreview ?: conversationFallback
-        }
-    return ActivityCardModel(
-        context = if (thread) channelLabel(dmPeerNames) else null,
-        titleGlyph =
-            when {
-                thread -> ActivityCardTitleGlyph.Thread
-                directMessage -> ActivityCardTitleGlyph.DirectMessage
-                else -> ActivityCardTitleGlyph.Channel
-            },
-        channelSymbol = if (thread || directMessage) "#" else activityChannelSymbol(homeChannelSymbols),
-        title = title,
-        body =
-            ActivityPreviewText(
-                senderName = senderDisplayName(senderProfiles),
-                body = preview,
-                delegatedBy = previewDelegatedBy()
-            )
-    )
-}
-
 /** RFC 077: the assistant named next to this row's sender; never on system or mention-action rows. */
 internal fun InboxItem.previewDelegatedBy(): MessageDelegatedBy? =
     latestDelegatedBy.takeIf { kind != InboxItemKind.MentionAction && !hasActivitySystemSender() }
 
-/** raft-ui InboxItemTitle: `text-subhead`, two lines, an 18dp hanging indent for the 14dp kind glyph. */
-@Composable
-private fun SharedActivityCardTitle(card: ActivityCardModel, unread: Boolean) {
-    Box(modifier = Modifier.fillMaxWidth()) {
-        val glyphModifier = Modifier.padding(top = 3.dp).size(14.dp)
-        when (card.titleGlyph) {
-            ActivityCardTitleGlyph.Thread ->
-                RaftConversationKindIcon(RaftConversationKindGlyph.Thread, modifier = glyphModifier, color = RaftColor.ForegroundHint)
-            ActivityCardTitleGlyph.DirectMessage ->
-                RaftConversationKindIcon(RaftConversationKindGlyph.DirectMessage, modifier = glyphModifier, color = RaftColor.ForegroundHint)
-            // The channel's own icon, as on its Home row (web ChannelKindGlyph).
-            ActivityCardTitleGlyph.Channel ->
-                CompositionLocalProvider(LocalRaftContentColor provides RaftColor.ForegroundHint) {
-                    HomeSidebarChannelGlyph(card.channelSymbol, size = 14.dp, modifier = Modifier.padding(top = 3.dp))
-                }
-        }
-        Text(
-            text = card.title,
-            style = RaftType.ButtonBold.withRaftFontWeight(if (unread) FontWeight.Bold else FontWeight.SemiBold).withRaftUserContentLocale(),
-            color = if (unread) RaftColor.TextBlack else RaftColor.TextMuted,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(start = 18.dp)
-        )
-    }
-}
-
-/** raft-ui InboxItemBody: `text-callout`, two lines, muted unless the row is unread; the sender in full ink. */
-@Composable
-private fun SharedActivityCardBody(card: ActivityCardModel, unread: Boolean) {
-    val body = card.body
-    val senderName = body.senderName?.takeIf { it.isNotBlank() }?.let { delegatedPreviewSender(it, body.delegatedBy) }
-    Text(
-        text =
-            buildAnnotatedString {
-                if (senderName != null) {
-                    withStyle(raftSpanStyleForWeight(FontWeight.SemiBold).copy(color = RaftColor.TextBlack)) {
-                        append(senderName)
-                        append(": ")
-                    }
-                }
-                append(body.body)
-            },
-        style = RaftType.Button.withRaftFontWeight(FontWeight.Normal).withRaftUserContentLocale(),
-        color = if (unread) RaftColor.TextBlack else RaftColor.TextMuted,
-        maxLines = 2,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
-    )
-}
-
-/**
- * web Done: an outline `icon-md` button (32dp) with an 18dp check. Keyed by the row's click
- * identity so a recycled lazy slot never fires the previous row's Done.
- */
-@Composable
-private fun SharedActivityDoneButton(clickIdentity: Any, onClick: () -> Unit) {
-    key(clickIdentity) {
-        RaftIconButton(
-            onClick = onClick,
-            tooltip = stringResource(MR.strings.thread_action_mark_done),
-        ) {
-            RaftGlyphIcon(RaftGlyph.Check, size = 18.dp)
-        }
-    }
-}
-
 internal fun InboxItem.activityPrimaryContentMuted(): Boolean =
     kind != InboxItemKind.System && unreadCount == 0
-
-// Activity sender avatar for the Mobile-only appearance experiment. The outer frame is
-// 32dp with a 2dp black border; the fill is keyed by sender kind: agent /
-// human reuse the canonical RaftAppAvatar wire-value pipeline (pixel avatar,
-// uploaded image, Gravatar, then User-icon placeholder), while system /
-// unknown render the app "SY" initials placeholder.
-internal val ActivitySenderAvatarSize = 32.dp
-// raft-ui Avatar edge: 1.5dp sticker ink at every size.
-private val ActivitySenderAvatarBorder = RaftAppStroke.Control
-private const val ActivitySenderAppInitials = "SY"
-
-internal data class ActivitySenderAvatarPresentation(
-    val visible: Boolean,
-    val contentStartPadding: Dp
-)
-
-internal fun activitySenderAvatarPresentation(enabled: Boolean): ActivitySenderAvatarPresentation =
-    ActivitySenderAvatarPresentation(
-        visible = enabled,
-        contentStartPadding = if (enabled) 0.dp else 12.dp
-    )
 
 /**
  * Resolved sender identity for an Activity row's leading avatar.
@@ -2669,57 +2255,6 @@ internal fun InboxItem.activitySenderAvatarIdentity(
         senderId = senderId
     )
 }
-
-@Composable
-private fun SharedActivitySenderAvatar(
-    item: InboxItem,
-    senderProfiles: Map<String, SharedActivitySenderProfile>,
-    modifier: Modifier = Modifier
-) {
-    val identity = remember(item, senderProfiles) { item.activitySenderAvatarIdentity(senderProfiles) }
-    Box(
-        modifier = modifier.size(ActivitySenderAvatarSize),
-        contentAlignment = Alignment.Center
-    ) {
-        when (identity.senderKind) {
-            MemberKind.Agent,
-            MemberKind.Human,
-            // External senders render their wire avatar; the cache subject stays
-            // null because external ids are never member-cache identities.
-            MemberKind.External ->
-                ActivityMemberFace(identity = identity, avatarSize = ActivitySenderAvatarSize)
-            MemberKind.System,
-            null -> SharedActivityAppAvatar()
-        }
-    }
-}
-
-@Composable
-private fun SharedActivityAppAvatar(modifier: Modifier = Modifier) {
-    // The same raft-ui sticker frame as the member avatars beside it (ink edge, dark-mode
-    // sticker-edge ring), on the system's soft-signal fill.
-    RaftAppAvatarFrame(
-        modifier = modifier,
-        avatarSize = ActivitySenderAvatarSize,
-        borderWidth = ActivitySenderAvatarBorder,
-        fill = RaftColor.SoftSignal
-    ) {
-        Text(
-            text = ActivitySenderAppInitials,
-            style =
-                RaftType.Caption
-                    .withRaftFontWeight(FontWeight.Black)
-                    .copy(fontSize = 12.sp, lineHeight = 12.sp),
-            color = RaftColor.StickerInk,
-            maxLines = 1
-        )
-    }
-}
-
-internal fun InboxItem.activityDoneClickIdentity(
-    presentationGeneration: Int = 0,
-    presentationOwnerIdentity: String = "",
-): String = "activity-done:$key|owner:$presentationOwnerIdentity|presentation:$presentationGeneration"
 
 /**
  * Web always offers Done, including on an unfollowed thread row (slock
@@ -2813,80 +2348,6 @@ internal fun InboxItem.activityOpenGestureKey(
     // change may cancel a DOWN→UP gesture that started on this slot.
     "activity-open:$key|owner:$presentationOwnerIdentity|presentation:$presentationGeneration"
 
-/**
- * raft-ui InboxItemMetadata: 8dp under the body, a wrapping run (6dp gaps, 20dp minimum) of
- * raft-ui Badges as web ThreadsInbox draws them: the task StatusBadge, "N replies" (outline),
- * Unfollowed (outline), "@ you" (primary sticker), "N new" (accent sticker), the draft pencil
- * (outline).
- */
-@Composable
-@OptIn(ExperimentalLayoutApi::class)
-private fun SharedActivityFooter(
-    item: InboxItem,
-    activityTaskStatusBadgesEnabled: Boolean
-) {
-    val slots = item.activityFooterSlots(activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled)
-    if (slots.isEmpty()) return
-    FlowRow(
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).heightIn(min = 20.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        slots.forEach { slot ->
-            val centered = Modifier.align(Alignment.CenterVertically)
-            when (slot) {
-                SharedActivityFooterSlot.Task ->
-                    SharedActivityFooterBadge(
-                        label = item.activityTaskBadgeText(),
-                        slot = slot,
-                        taskStatus = item.taskStatus,
-                        modifier = Modifier.widthIn(max = 260.dp).align(Alignment.CenterVertically)
-                    )
-                SharedActivityFooterSlot.Replies ->
-                    RaftBadge(
-                        text =
-                            stringResource(
-                                if (item.replyCount == 1) MR.strings.activity_replies_one else MR.strings.activity_replies_many,
-                                item.replyCount
-                            ),
-                        appearance = RaftBadgeAppearance.Outline,
-                        variant = RaftBadgeVariant.Muted,
-                        modifier = centered
-                    )
-                SharedActivityFooterSlot.Mention ->
-                    RaftBadge(
-                        text = stringResource(MR.strings.activity_mention_you),
-                        variant = RaftBadgeVariant.Primary,
-                        icon = { RaftGlyphIcon(RaftGlyph.AtSign, size = 13.dp) },
-                        modifier = centered
-                    )
-                SharedActivityFooterSlot.New ->
-                    RaftBadge(
-                        text = stringResource(MR.strings.activity_new_count, item.unreadCount),
-                        variant = RaftBadgeVariant.Accent,
-                        modifier = centered
-                    )
-                SharedActivityFooterSlot.Unfollowed ->
-                    RaftBadge(
-                        text = stringResource(MR.strings.thread_row_unfollowed),
-                        appearance = RaftBadgeAppearance.Outline,
-                        variant = RaftBadgeVariant.Muted,
-                        icon = { RaftContentLucideIcon(RaftLucideIconName.BellOff, size = 10.dp) },
-                        modifier = centered
-                    )
-                SharedActivityFooterSlot.Draft ->
-                    RaftBadge(
-                        text = "",
-                        appearance = RaftBadgeAppearance.Outline,
-                        variant = RaftBadgeVariant.Muted,
-                        icon = { RaftContentLucideIcon(RaftLucideIconName.Pencil, size = 12.dp) },
-                        modifier = centered
-                    )
-            }
-        }
-    }
-}
-
 @Composable
 internal fun SharedActivityFooterBadge(
     label: String,
@@ -2903,12 +2364,6 @@ internal fun SharedActivityFooterBadge(
         leadingIcon = visual.leadingIcon
     )
 }
-
-internal fun InboxItem.activityTaskBadgeText(): String =
-    "#${taskNumber}" + taskClaimedByName
-        ?.takeIf { it.isNotBlank() }
-        ?.let { " @$it" }
-        .orEmpty()
 
 @Composable
 private fun SharedActivityLoadingMoreRow() {
@@ -3132,7 +2587,7 @@ internal fun InboxItem.secondaryPreviewText(
 internal data class ActivityPreviewText(
     val senderName: String?,
     val body: String,
-    /** RFC 077: rendered as "Alice (sent by Friday)" by the composable card ([delegatedPreviewSender]). */
+    /** RFC 077: rendered as "Alice (sent by Friday)" by the row ([delegatedPreviewSender]). */
     val delegatedBy: MessageDelegatedBy? = null
 ) {
     val fullText: String =
@@ -3230,31 +2685,6 @@ internal fun SharedActivityFooterSlot.badgeVisual(taskStatus: TaskStatus? = null
             SharedActivityFooterBadgeVisual(RaftBrutalTone.Stone, RaftLucideIconName.BellOff)
         SharedActivityFooterSlot.Draft -> SharedActivityFooterBadgeVisual(RaftBrutalTone.White, RaftLucideIconName.Pencil)
     }
-
-internal fun InboxItem.activityFooterSlots(
-    activityTaskStatusBadgesEnabled: Boolean = true
-): List<SharedActivityFooterSlot> {
-    val slots = mutableListOf<SharedActivityFooterSlot>()
-    if (activityTaskStatusBadgesEnabled && taskNumber != null && taskStatus != null) {
-        slots += SharedActivityFooterSlot.Task
-    }
-    if (kind == InboxItemKind.Thread) {
-        slots += SharedActivityFooterSlot.Replies
-    }
-    if (!isUnfollowedActivityThread && hasMention && unreadCount > 0) {
-        slots += SharedActivityFooterSlot.Mention
-    }
-    if (!isUnfollowedActivityThread && unreadCount > 0) {
-        slots += SharedActivityFooterSlot.New
-    }
-    if (isUnfollowedActivityThread) {
-        slots += SharedActivityFooterSlot.Unfollowed
-    }
-    if (hasDraft) {
-        slots += SharedActivityFooterSlot.Draft
-    }
-    return slots
-}
 
 internal fun activityShouldRequestLoadMore(
     hasMore: Boolean,

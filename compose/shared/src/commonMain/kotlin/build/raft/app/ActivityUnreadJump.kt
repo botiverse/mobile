@@ -142,11 +142,11 @@ internal data class ActivityUnreadJumpPaging(
 }
 
 /**
- * The unread state each Activity row already displays: the card rows bold any unread row; the
- * conversation-list rows show the count only when the conversation is not muted.
+ * The unread state each Activity row already displays: the count shows only when the conversation is not
+ * muted.
  */
-internal fun InboxItem.activityRowDisplaysUnread(conversationListContext: ActivityConversationListContext?): Boolean =
-    unreadCount > 0 && (conversationListContext == null || !activityConversationMuted(conversationListContext))
+internal fun InboxItem.activityRowDisplaysUnread(conversationListContext: ActivityConversationListContext): Boolean =
+    unreadCount > 0 && !activityConversationMuted(conversationListContext)
 
 /** What one Activity tab re-tap / head tap does. */
 internal enum class ActivityRetapAction {

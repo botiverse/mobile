@@ -108,7 +108,6 @@ private data class HomeSecondaryRouteEnvironment(
     val compactConsecutiveMessages: Boolean,
     val foregroundMessageBannersEnabled: Boolean,
     val activityTaskStatusBadgesEnabled: Boolean,
-    val activitySenderAvatarsEnabled: Boolean,
     val storeScope: RaftShellStoreScope,
     val hasExplicitShellScope: Boolean,
     val adaptivePane: RaftAdaptivePaneState,
@@ -181,14 +180,12 @@ private fun rememberHomeSecondaryRouteEnvironment(
     var compactConsecutiveMessages by remember { mutableStateOf(false) }
     var foregroundMessageBannersEnabled by remember { mutableStateOf(false) }
     var activityTaskStatusBadgesEnabled by remember { mutableStateOf(DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED) }
-    var activitySenderAvatarsEnabled by remember { mutableStateOf(false) }
     LaunchedEffect(chatLayoutPreferenceRepository) {
         val chatLayout = chatLayoutPreferenceRepository.getChatLayoutPreference()
         myMessageAlignment = chatLayout.myMessageAlignment
         compactConsecutiveMessages = chatLayout.compactConsecutiveMessages
         foregroundMessageBannersEnabled = chatLayout.foregroundMessageBannersEnabled
         activityTaskStatusBadgesEnabled = chatLayout.activityTaskStatusBadgesEnabled
-        activitySenderAvatarsEnabled = chatLayout.activitySenderAvatarsEnabled
     }
     val timeCapabilities =
         remember(pager.pageData.params.toString()) {
@@ -225,7 +222,6 @@ private fun rememberHomeSecondaryRouteEnvironment(
         compactConsecutiveMessages,
         foregroundMessageBannersEnabled,
         activityTaskStatusBadgesEnabled,
-        activitySenderAvatarsEnabled,
         storeScope,
         hasExplicitShellScope,
         adaptivePane,
@@ -251,7 +247,6 @@ private fun rememberHomeSecondaryRouteEnvironment(
             compactConsecutiveMessages = compactConsecutiveMessages,
             foregroundMessageBannersEnabled = foregroundMessageBannersEnabled,
             activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
-            activitySenderAvatarsEnabled = activitySenderAvatarsEnabled,
             storeScope = storeScope,
             hasExplicitShellScope = hasExplicitShellScope,
             adaptivePane = adaptivePane,
@@ -454,7 +449,6 @@ private fun HomeActivityRouterContent(
             timeContext = environment.timeContext,
             shellScope = environment.shellScope,
             activityTaskStatusBadgesEnabled = environment.activityTaskStatusBadgesEnabled,
-            activitySenderAvatarsEnabled = environment.activitySenderAvatarsEnabled,
             refreshOnAppLifecycleResume = true,
             externalSelectedThreadId = activityWorkspace?.selection?.identity?.threadId,
             storeScope = environment.storeScope
