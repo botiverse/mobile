@@ -370,9 +370,10 @@ fun Modifier.raftBackSwipeRegion(consumesBackSwipe: () -> Boolean): Modifier =
 /**
  * [raftBackSwipeRegion] whose reported bounds leave out the element's leading [edgeWidth] strip, so
  * a back drag starting there still reaches the host's back swipe (swipe-paged content: a gallery
- * past its first image pages back from its body but pops the page from its leading edge).
+ * past its first image pages back from its body but pops the page from its leading edge; an
+ * Activity row whose own swipe toward the end keeps the drag everywhere but its leading edge).
  */
-internal fun Modifier.raftBackSwipeRegion(edgeWidth: Dp, consumesBackSwipe: () -> Boolean): Modifier =
+fun Modifier.raftBackSwipeRegion(edgeWidth: Dp, consumesBackSwipe: () -> Boolean): Modifier =
     this then RaftBackSwipeRegionElement(consumesBackSwipe, leadingEdgeExclusion = edgeWidth)
 
 /**

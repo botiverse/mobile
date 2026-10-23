@@ -1,8 +1,23 @@
 package build.raft.app
 
+import build.raft.app.data.HomeChannelRow
+import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InboxItem
+import build.raft.app.data.SharedActivityIntent
+import build.raft.app.data.SharedHomeContentState
+import build.raft.app.data.session
+import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.MessageId
+import build.raft.app.model.Presence
+import build.raft.app.model.ServerId
+import build.raft.app.model.ServerSummary
+import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -10,7 +25,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
-/** Rule L (raft-design #562) swipe-to-Done on the Activity conversation list: drag policy and undo. */
+/** Rule L (raft-design #562, touch.md#swipe) swipes on the Activity conversation list: policy, eligibility, undo. */
 class ActivityConversationSwipeTest {
 
     private fun row(key: String, seq: String = "41", at: String = "2026-10-20T10:00:00Z") =
@@ -38,25 +53,63 @@ class ActivityConversationSwipeTest {
     }
 
     @Test
-    fun dragIsClaimedOnlyWhenHorizontalAndTowardTheRowStart() {
+    fun dragIsClaimedOnlyWhenHorizontalAndTowardASideWithAnAction() {
         val slop = 10f
-        // (dx, dy, isLtr) to the expected decision.
+        data class Case(val dx: Float, val dy: Float, val isLtr: Boolean, val end: Boolean, val expected: ActivitySwipeDragDecision)
         val cases =
             listOf(
-                Triple(-4f, 3f, true) to ActivitySwipeDragDecision.Undecided,
-                Triple(-30f, 5f, true) to ActivitySwipeDragDecision.Claim,
-                // Toward the end is the back-swipe direction: left to the host.
-                Triple(30f, 5f, true) to ActivitySwipeDragDecision.Release,
+                Case(-4f, 3f, true, end = true, ActivitySwipeDragDecision.Undecided),
+                Case(-30f, 5f, true, end = false, ActivitySwipeDragDecision.ClaimDone),
+                // Toward the end: the row's end action when it has one, else left to the host's back swipe.
+                Case(30f, 5f, true, end = true, ActivitySwipeDragDecision.ClaimEnd),
+                Case(30f, 5f, true, end = false, ActivitySwipeDragDecision.Release),
                 // Vertical-dominant (and a tie) belongs to the list.
-                Triple(-12f, 40f, true) to ActivitySwipeDragDecision.Release,
-                Triple(-20f, 20f, true) to ActivitySwipeDragDecision.Release,
-                // RTL mirrors: the row's start is on the right, back is leftward.
-                Triple(30f, 5f, false) to ActivitySwipeDragDecision.Claim,
-                Triple(-30f, 5f, false) to ActivitySwipeDragDecision.Release,
+                Case(-12f, 40f, true, end = true, ActivitySwipeDragDecision.Release),
+                Case(20f, 20f, true, end = true, ActivitySwipeDragDecision.Release),
+                // RTL mirrors: the row's start is on the right, the end (and back) is leftward.
+                Case(30f, 5f, false, end = true, ActivitySwipeDragDecision.ClaimDone),
+                Case(-30f, 5f, false, end = true, ActivitySwipeDragDecision.ClaimEnd),
+                Case(-30f, 5f, false, end = false, ActivitySwipeDragDecision.Release),
             )
-        cases.forEach { (input, expected) ->
-            val (dx, dy, isLtr) = input
-            assertEquals(expected, activitySwipeDragDecision(dx, dy, slop, isLtr), "dx=$dx dy=$dy ltr=$isLtr")
+        cases.forEach { case ->
+            assertEquals(
+                case.expected,
+                activitySwipeDragDecision(case.dx, case.dy, slop, case.isLtr, doneEnabled = true, endEnabled = case.end),
+                "$case",
+            )
+        }
+        // A row without Done (none today) would leave the start direction alone too.
+        assertEquals(ActivitySwipeDragDecision.Release, activitySwipeDragDecision(-30f, 5f, slop, true, doneEnabled = false, endEnabled = true))
+    }
+
+    @Test
+    fun aDragFromAnEdgeZoneIsNeverClaimed() {
+        // Zones: the largest of 24dp, the system-gesture inset and (start only) the host's pop edge.
+        assertEquals(24f to 24f, activitySwipeEdgeZonesPx(24f, 0f, 0f, 0f))
+        assertEquals(40f to 30f, activitySwipeEdgeZonesPx(24f, 30f, 30f, 40f))
+        assertEquals(48f to 24f, activitySwipeEdgeZonesPx(24f, 48f, 0f, 40f))
+
+        val width = 400f
+        val (start, end) = 40f to 24f
+        data class Case(val downX: Float, val isLtr: Boolean, val inZone: Boolean)
+        listOf(
+            Case(10f, true, true), // leading edge: iOS pop / Android back
+            Case(39f, true, true),
+            Case(40f, true, false),
+            Case(200f, true, false),
+            Case(377f, true, true), // trailing edge: Android back from the right
+            Case(390f, false, true), // RTL: the leading edge is on the right
+            Case(10f, false, true),
+            Case(30f, false, false),
+        ).forEach { case ->
+            assertEquals(case.inZone, activitySwipeStartsInEdgeZone(case.downX, width, start, end, case.isLtr), "$case")
+        }
+        // In the zone, even a clear horizontal drag either way is left to the system / host.
+        listOf(30f, -30f).forEach { dx ->
+            assertEquals(
+                ActivitySwipeDragDecision.Release,
+                activitySwipeDragDecision(dx, 2f, 10f, isLtr = true, endEnabled = true, startsInEdgeZone = true),
+            )
         }
     }
 
@@ -67,6 +120,46 @@ class ActivityConversationSwipeTest {
         // Back past closed stops at 0; past the row width stops at the width.
         assertEquals(0f, activitySwipeRevealPx(20f, 50f, 300f, isLtr = true))
         assertEquals(300f, activitySwipeRevealPx(280f, -50f, 300f, isLtr = true))
+    }
+
+    @Test
+    fun revealStaysOnTheClaimedSide() {
+        val end = ActivitySwipeSide.End
+        assertEquals(-30f, activitySwipeRevealPx(0f, 30f, 300f, isLtr = true, side = end))
+        assertEquals(-30f, activitySwipeRevealPx(0f, -30f, 300f, isLtr = false, side = end))
+        // Dragging back past closed stops at 0 rather than opening Done; past the width stops at -width.
+        assertEquals(0f, activitySwipeRevealPx(-20f, -50f, 300f, isLtr = true, side = end))
+        assertEquals(-300f, activitySwipeRevealPx(-280f, 50f, 300f, isLtr = true, side = end))
+    }
+
+    @Test
+    fun releaseThresholdHoldsInBothDirections() {
+        val width = 400f // threshold 160
+        val fling = 800f
+        data class Case(val side: ActivitySwipeSide, val signedReveal: Float, val fingerVelocityX: Float, val isLtr: Boolean, val applies: Boolean)
+        listOf(
+            // Done (toward the start, positive reveal); LTR finger moving left is negative x.
+            Case(ActivitySwipeSide.Done, 159f, 0f, true, false),
+            Case(ActivitySwipeSide.Done, 160f, 0f, true, true),
+            Case(ActivitySwipeSide.Done, 300f, fling, true, false), // flicked back toward closed
+            Case(ActivitySwipeSide.Done, 80f, -fling, true, true), // fast flick further open
+            // End (toward the end, negative reveal); LTR finger moving right is positive x.
+            Case(ActivitySwipeSide.End, -159f, 0f, true, false),
+            Case(ActivitySwipeSide.End, -160f, 0f, true, true),
+            Case(ActivitySwipeSide.End, -300f, -fling, true, false),
+            Case(ActivitySwipeSide.End, -80f, fling, true, true),
+            Case(ActivitySwipeSide.End, -79f, fling, true, false),
+            // RTL: the end is leftward, so a further-open flick is negative x.
+            Case(ActivitySwipeSide.End, -80f, -fling, false, true),
+            Case(ActivitySwipeSide.End, -300f, fling, false, false),
+            Case(ActivitySwipeSide.End, 0f, fling, true, false),
+        ).forEach { case ->
+            assertEquals(
+                case.applies,
+                activitySwipeReleaseApplies(case.side, case.signedReveal, case.fingerVelocityX, width, fling, case.isLtr),
+                "$case",
+            )
+        }
     }
 
     @Test
@@ -147,5 +240,121 @@ class ActivityConversationSwipeTest {
         assertNull(activitySwipeDoneCommitItem(swiped, swiped.copy(latestActivityAt = "2026-10-20T10:00:05Z")))
         // No longer presented: still sent; the store decides from the rows it holds.
         assertSame(swiped, activitySwipeDoneCommitItem(swiped, null))
+    }
+
+    private fun thread(key: String, following: Boolean?) =
+        InboxItem(
+            key = "thread:$key",
+            kind = InboxItemKind.Thread,
+            channelId = ChannelId(key),
+            channelName = "thread",
+            threadChannelId = ChannelId(key),
+            parentChannelId = ChannelId("mobile"),
+            parentChannelName = "mobile",
+            parentChannelKind = ConversationKind.Channel,
+            parentMessageId = MessageId("parent-$key"),
+            isFollowing = following,
+        )
+
+    @Test
+    fun endSwipeEligibilityMatchesWebInboxContextMenu() {
+        // Joined channels with a reachable Activity mute, as [activityMuteByChannelId] lists them.
+        val mutes = mapOf("general" to false, "random" to true)
+        data class Case(val name: String, val item: InboxItem, val expected: ActivitySwipeEndAction?)
+        listOf(
+            Case("followed thread", thread("a", following = true), ActivitySwipeEndAction.UnfollowThread),
+            Case("legacy thread (no follow field)", thread("b", following = null), ActivitySwipeEndAction.UnfollowThread),
+            Case("unfollowed thread", thread("c", following = false), null),
+            Case("joined unmuted channel", row("general").copy(channelId = ChannelId("general")), ActivitySwipeEndAction.MuteActivity),
+            Case("already muted channel", row("random").copy(channelId = ChannelId("random")), null),
+            Case("unknown or unjoined channel", row("browse").copy(channelId = ChannelId("browse")), null),
+            Case("DM", row("dm").copy(kind = InboxItemKind.DirectMessage, channelId = ChannelId("general")), null),
+            Case("mention", row("m").copy(kind = InboxItemKind.MentionAction, channelId = ChannelId("general")), null),
+            Case("system", row("s").copy(kind = InboxItemKind.System, channelId = ChannelId("general")), null),
+        ).forEach { case ->
+            val action = case.item.activitySwipeEndAction(mutes)
+            assertEquals(case.expected, action, case.name)
+            // The swipe is never the only way: the press-and-hold menu has the same item.
+            action?.let { assertTrue(it.menuActionId in activityContextMenuActionIds(case.item, mutes), "menu for ${case.name}") }
+        }
+    }
+
+    @Test
+    fun muteEligibilityListsOnlyJoinedChannelsWithAReachableMute() {
+        fun channel(id: String, joined: Boolean, supported: Boolean, muted: Boolean = false) =
+            HomeChannelRow(
+                threadId = ThreadId(id),
+                channelId = ChannelId(id),
+                name = id,
+                joined = joined,
+                activityNotificationPreference = ChannelActivityNotificationPreference(activityMuted = muted, activityMuteSupported = supported),
+            )
+        val home =
+            SharedHomeContentState.Content(
+                snapshot =
+                    HomeSnapshot(
+                        server = ServerSummary(id = ServerId("server-1"), name = "Raft"),
+                        currentMember = MemberProfile(id = MemberId("me"), displayName = "Me", handle = "me", kind = MemberKind.Human, presence = Presence.Active),
+                        channels =
+                            listOf(
+                                channel("general", joined = true, supported = true),
+                                channel("random", joined = true, supported = true, muted = true),
+                                channel("browse", joined = false, supported = true),
+                                channel("legacy", joined = true, supported = false),
+                            ),
+                        directMessages = emptyList(),
+                        unreadTotal = 0,
+                    ),
+                session = session(),
+            )
+        assertEquals(mapOf("general" to false, "random" to true), home.activityMuteByChannelId("server-1"))
+        assertEquals(emptyMap(), home.activityMuteByChannelId("server-2"))
+    }
+
+    @Test
+    fun endSwipeWritesWhatTheMenuDoesAndUndoWritesTheReverse() {
+        val followed = thread("a", following = true)
+        assertEquals(
+            ActivitySwipeEndCommand.Activity(SharedActivityIntent.UnfollowThread(followed)),
+            activitySwipeEndApplyCommand(followed, ActivitySwipeEndAction.UnfollowThread),
+        )
+        assertEquals(
+            ActivitySwipeEndCommand.Activity(SharedActivityIntent.FollowThread(followed.copy(isFollowing = false))),
+            activitySwipeEndUndoCommand(followed, ActivitySwipeEndAction.UnfollowThread),
+        )
+        val channel = row("general").copy(channelId = ChannelId("general"))
+        assertEquals(ActivitySwipeEndCommand.ChannelMute("general", muted = true), activitySwipeEndApplyCommand(channel, ActivitySwipeEndAction.MuteActivity))
+        assertEquals(ActivitySwipeEndCommand.ChannelMute("general", muted = false), activitySwipeEndUndoCommand(channel, ActivitySwipeEndAction.MuteActivity))
+    }
+
+    @Test
+    fun endUndoReversesOnlyTheCurrentToast() {
+        val a = thread("a", following = true)
+        val first = ActivitySwipeEndUndoState().swipe(a, ActivitySwipeEndAction.UnfollowThread)
+        val staleToken = first.pending!!.token
+        val second = first.swipe(row("general"), ActivitySwipeEndAction.MuteActivity)
+        // The older toast is gone; its Undo does nothing (its write stands).
+        assertNull(second.undo(staleToken).reverse)
+        assertSame(second, second.expire(staleToken))
+
+        val undone = second.undo(second.pending!!.token)
+        assertEquals(ActivitySwipeEndAction.MuteActivity, undone.reverse?.action)
+        assertNull(undone.state.pending)
+        // Undo twice (a double tap) reverses once.
+        assertNull(undone.state.undo(second.pending!!.token).reverse)
+
+        // The window running out, or the owner leaving, drops the toast without a write.
+        assertNull(first.expire(staleToken).pending)
+        assertNull(first.dismiss().pending)
+        val idle = ActivitySwipeEndUndoState()
+        assertSame(idle, idle.dismiss())
+    }
+
+    @Test
+    fun theToastNamesTheConversation() {
+        assertEquals("#mobile", thread("a", following = true).activitySwipeConversationLabel())
+        assertEquals("#launch-week", row("x").copy(channelName = "#launch-week").activitySwipeConversationLabel())
+        val dmThread = thread("d", following = true).copy(parentChannelName = "Lagoon", parentChannelKind = ConversationKind.DirectMessage)
+        assertEquals("@Lagoon", dmThread.activitySwipeConversationLabel())
     }
 }

@@ -94,7 +94,8 @@ import com.tencent.tmm.kmmresource.compose.stringResource
  *
  * This file is presentation only. Opening, Done, read/unread and the press-and-hold menu stay the
  * Activity list's own intents (SharedActivityList); this layout never changes how Done is applied. The
- * touch rules (Rule L: persistent Done, swipe-to-Done with undo) are in ActivityConversationSwipe.kt.
+ * touch rules (Rule L: persistent Done; swipe left for Done, right for Unfollow / Mute Activity, with undo)
+ * are in ActivityConversationSwipe.kt.
  */
 
 /** The Home sidebar facts a conversation row needs: who a DM is with, and whether the place is muted. */
@@ -565,8 +566,13 @@ internal fun ActivityConversationListRow(
     onDone: () -> Unit,
     onOpenMenu: (RaftPopoverAnchor) -> Unit,
     modifier: Modifier = Modifier,
-    /** Rule L swipe shortcut (ActivitySwipeToDoneBox); null: no swipe. */
+    /** Rule L swipe toward the start (ActivitySwipeActionsBox); null: no Done swipe. */
     onSwipeDone: (() -> Unit)? = null,
+    /** Rule L swipe toward the end ([activitySwipeEndAction]); null action or callback: no end swipe. */
+    swipeEndAction: ActivitySwipeEndAction? = null,
+    onSwipeEnd: (() -> Unit)? = null,
+    /** Screenshots only: the row opened by this share of its width (positive toward the start). */
+    swipePreviewRevealFraction: Float = 0f,
     /** On the row surface above the swipe box's opaque layer (e.g. the unread-walk mark). */
     contentModifier: Modifier = Modifier,
 ) {
@@ -597,10 +603,13 @@ internal fun ActivityConversationListRow(
             else -> conversationFallback
         }
     var pressed by remember(item.key) { mutableStateOf(false) }
-    ActivitySwipeToDoneBox(
+    ActivitySwipeActionsBox(
         gestureKey = openGestureKey,
         onSwipeDone = onSwipeDone.takeIf { showDoneAction },
         modifier = modifier.fillMaxWidth(),
+        endAction = swipeEndAction,
+        onSwipeEnd = onSwipeEnd,
+        previewRevealFraction = swipePreviewRevealFraction,
     ) {
         Row(
             modifier =

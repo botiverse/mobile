@@ -71,7 +71,16 @@ class ActivityConversationRowsScreenshotTest {
     @Test
     fun activityRowsDark() = capture("screens.activity.rows.dark", RaftAppAppearance.Dark)
 
-    private fun capture(name: String, appearance: RaftAppAppearance) {
+    /** Rule L swipe toward the end, held open: Unfollow behind a thread row, Mute Activity behind a channel row. */
+    @Test
+    fun activityRowsSwipeEndLight() =
+        capture("screens.activity.rows.swipe-end", RaftAppAppearance.Light) { ActivityRowsSwipeEndVisualContent() }
+
+    private fun capture(
+        name: String,
+        appearance: RaftAppAppearance,
+        content: @Composable () -> Unit = { ActivityRowsVisualContent(appearance) },
+    ) {
         RaftAppThemeState.apply(appearance)
         val activity = activities.launch()
         // Moko string resources read the app context through the shared SQLDelight holder.
@@ -81,7 +90,7 @@ class ActivityConversationRowsScreenshotTest {
                 pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) })
             }
         activity.setContent {
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { ActivityRowsVisualContent(appearance) }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { content() }
         }
         settle()
         val composeView = findComposeRoot(activity.window.decorView)
@@ -298,6 +307,89 @@ private fun ActivityRowsVisualContent(appearance: RaftAppAppearance) {
                     onDone = {},
                     onOpenMenu = {},
                     modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
+
+/** Two rows opened toward the end (as while a finger holds them) between two at rest. */
+@Composable
+private fun ActivityRowsSwipeEndVisualContent() {
+    val timeContext =
+        RaftTimeContext(
+            localOffsetMinutes = 8 * 60,
+            todayEpochDay = raftEpochDayForDate(2026, 10, 22),
+            nowEpochMillis = 1_792_635_000_000L,
+        )
+    val thread =
+        InboxItem(
+            key = "thread:channel",
+            kind = InboxItemKind.Thread,
+            channelId = ChannelId("thread-channel"),
+            channelName = "thread",
+            unreadCount = 2,
+            parentChannelId = ChannelId("mobile"),
+            parentChannelName = "mobile",
+            parentChannelKind = ConversationKind.Channel,
+            parentMessagePreview = "Activity 里私聊的 thread 怎么显示",
+            latestActivityPreview = "按 Jasper 的规则来，头像跟着会话走。",
+            latestActivitySenderName = "Scout",
+            latestActivitySenderId = "agent-scout",
+            latestActivitySenderKind = MemberKind.Agent,
+            latestActivityAt = "2026-10-21T15:40:00Z",
+            isFollowing = true,
+        )
+    val channel =
+        InboxItem(
+            key = "channel:release",
+            kind = InboxItemKind.Channel,
+            channelId = ChannelId("release"),
+            channelName = "release",
+            unreadCount = 1,
+            lastMessageSenderName = "Volta",
+            lastMessageSenderKind = MemberKind.Agent,
+            lastMessagePreview = "部署了，而且刚又测了一遍确认现在还生效。",
+            lastMessageAt = "2026-10-21T16:17:00Z",
+        )
+    val resting =
+        InboxItem(
+            key = "channel:launch",
+            kind = InboxItemKind.Channel,
+            channelId = ChannelId("launch-week"),
+            channelName = "launch-week",
+            lastMessageSenderName = "Lagoon",
+            lastMessageSenderKind = MemberKind.Agent,
+            lastMessagePreview = "Swipe right to unfollow or mute.",
+            lastMessageAt = "2026-10-21T14:02:00Z",
+        )
+    val mutes = mapOf("release" to false, "launch-week" to false)
+    val context =
+        ActivityConversationListContext(
+            channelSymbolsByChannelId = mapOf("release" to "#", "mobile" to "#", "launch-week" to "#"),
+        )
+    val rows = listOf(resting to 0f, thread to -0.42f, channel to -0.42f, resting.copy(key = "channel:launch-2") to 0f)
+    RaftTheme(appearance = RaftAppearance.Light) {
+        Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
+            rows.forEachIndexed { index, (item, reveal) ->
+                ActivityConversationListRow(
+                    item = item,
+                    model = item.activityConversationRowModel(context, InboxFilter.All),
+                    divider = index > 0,
+                    selected = false,
+                    timeContext = timeContext,
+                    agentStatusResolver = EmptyRaftAgentStatusResolver,
+                    showDoneAction = true,
+                    openGestureKey = item.key,
+                    captureMenuAnchor = false,
+                    onOpen = {},
+                    onDone = {},
+                    onOpenMenu = {},
+                    modifier = Modifier.fillMaxWidth(),
+                    onSwipeDone = {},
+                    swipeEndAction = item.activitySwipeEndAction(mutes),
+                    onSwipeEnd = {},
+                    swipePreviewRevealFraction = reveal,
                 )
             }
         }
