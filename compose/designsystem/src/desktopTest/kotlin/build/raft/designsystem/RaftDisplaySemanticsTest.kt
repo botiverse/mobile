@@ -84,6 +84,11 @@ import build.raft.designsystem.theme.RaftTypography
 import build.raft.designsystem.tokens.RaftUiThemeColors
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import build.raft.designsystem.text.RaftText
+import androidx.compose.ui.text.font.FontWeight
+import build.raft.designsystem.components.appendRaftMessageReferenceReadMark
+import build.raft.designsystem.components.raftMessageReferenceReadMarkInlineContent
+import build.raft.designsystem.components.raftMessageReferenceSilentReadStateInlineContent
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -748,5 +753,39 @@ class RaftDisplaySemanticsTest {
             assertEquals(160f, boundsOf("button").width / d, 0.5f)
             assertEquals(27f, boundsOf("avatar").width / d, 0.5f)
             assertEquals(31.5f, (boundsOf("button").right - textBounds(long).right) / d, 0.5f)
+        }
+
+    @Test
+    fun aMentionSaysWhetherItWasReadAndOnlyAReadOneShowsTheCheck() =
+        runComposeUiTest {
+            setContent(
+                themed {
+                    RaftText(
+                        buildAnnotatedString {
+                            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("@Atlas") }
+                            appendRaftMessageReferenceReadMark("read")
+                            append(" and ")
+                            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append("@Sage") }
+                            appendRaftMessageReferenceReadMark("unread")
+                        },
+                        style = RaftTheme.typography.body,
+                        modifier = Modifier.testTag("sentence"),
+                        inlineContent =
+                            mapOf(
+                                "read" to raftMessageReferenceReadMarkInlineContent { "Read" },
+                                "unread" to
+                                    raftMessageReferenceSilentReadStateInlineContent { "Not read yet" },
+                            ),
+                    )
+                },
+            )
+            val d = density.density
+            val read = onNodeWithContentDescription("Read", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            val unread = onNodeWithContentDescription("Not read yet", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+            // Body 16: the check's box is 0.857em tall, 0.786em wide (its end trimmed by 2/24), to the pixel.
+            assertEquals(16f * 0.857f, read.height / d, 1f)
+            assertEquals(16f * (0.857f - 0.857f * 2f / 24f), read.width / d, 1f)
+            // Unread draws nothing and takes no room on the line.
+            assertEquals(0f, unread.width, 0.01f)
         }
 }
