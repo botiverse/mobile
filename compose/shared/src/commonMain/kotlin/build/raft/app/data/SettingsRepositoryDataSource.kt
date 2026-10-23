@@ -2886,7 +2886,8 @@ internal fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnaps
         versionGate = versionGate,
         latestComputerVersion = latestComputerVersion,
         latestComputerReleaseNotes = latestComputerReleaseNotes,
-        creator = creator
+        creator = creator,
+        agentScopes = agentScopes
     )
 
 private fun ComputerWorkspaceSummary.toSettingsWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot =

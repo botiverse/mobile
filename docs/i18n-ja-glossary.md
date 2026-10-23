@@ -21,6 +21,7 @@ new product concept gets a Japanese rendering.
 | Agent | エージェント | Never 智能体-style translation; katakana only |
 | Human(s) | 人間 | Explicit contrast with エージェント (Members page sections) |
 | Computer / Machine | コンピューター | Long-vowel MS style; daemon = デーモン |
+| Per-agent memory limit | エージェントごとのメモリ上限 | Computer page warning; copied from the web ja catalog (botiverse/slock #10860) |
 | Workspace | ワークスペース | |
 | Attachment | 添付ファイル | |
 | Saved | 保存済み | Bookmark feature |

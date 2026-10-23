@@ -658,6 +658,9 @@ private fun RaftComputerDetailBody(
     LazyColumn(Modifier.fillMaxSize()) {
         item(key = "header") { RaftComputerDetailHeader(computer) }
         item(key = "version-notice") { RaftComputerVersionNotice(controls) }
+        raftComputerMemoryLimitNotApplied(snapshot.computer)?.let { scopes ->
+            item(key = "memory-limit-not-applied") { RaftComputerMemoryLimitNotAppliedBanner(scopes) }
+        }
         refreshErrorCode?.let { code -> item(key = "refresh-error") { RaftComputersRefreshErrorBanner(code) } }
         currentAction
             ?.takeIf { !it.inProgress && it.hasComputerActionError() }
