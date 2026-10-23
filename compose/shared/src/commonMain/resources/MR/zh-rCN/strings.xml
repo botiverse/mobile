@@ -2923,7 +2923,6 @@
     <string name="agent_migration_step_done">已完成</string>
     <string name="agent_migration_step_failed">失败</string>
     <string name="agent_migration_section_description_with_last">%1$s%2$s</string>
-    <string name="agent_migration_detail_target_computer_search">搜索计算机</string>
     <string name="agent_migration_hosted_review_more_paths">还有 %1$d 个</string>
     <string name="agent_migration_cancel_dialog_title">取消迁移？</string>
     <string name="agent_migration_cancel_dialog_confirm">取消迁移</string>

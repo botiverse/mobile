@@ -72,8 +72,8 @@ class AgentMigrationSectionScreenshotTest {
 
 /**
  * The start dialog's body on the phone sheet (web AgentMigrationDialog `narrow="sheet"`): × and
- * the commit in the head, the target computer as a Select (a dropdown, not a list of radios) and
- * the notes, light and dark. The sheet window itself is the design system's (`RaftDialogSheet`).
+ * the commit in the head, the target computer as a radio list (Jasper's picker rule,
+ * #triage:5ecc9db0) and the notes, light and dark. The sheet window itself is the design system's (`RaftDialogSheet`).
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)

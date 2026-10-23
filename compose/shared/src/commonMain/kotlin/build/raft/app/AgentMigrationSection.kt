@@ -60,17 +60,16 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCard
-import build.raft.designsystem.components.RaftCombobox
-import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftDescriptionList
 import build.raft.designsystem.components.RaftDescriptionValue
 import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftDialogSheet
 import build.raft.designsystem.components.RaftDialogSize
-import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftRadioGroup
+import build.raft.designsystem.components.RaftRadioRow
 import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftSpinner
@@ -900,8 +899,7 @@ internal fun agentMigrationStartCommitLabel(state: AgentMigrationState, inputs: 
     )
 
 /**
- * The dialog's body: the target picked from a raft-ui ComboboxSelect (the Select's list for a
- * few computers, the search sheet for more), then what happens next.
+ * The dialog's body: the target picked from a radio list, then what happens next.
  */
 @Composable
 internal fun ColumnScope.AgentMigrationStartForm(
@@ -915,13 +913,6 @@ internal fun ColumnScope.AgentMigrationStartForm(
     val typography = RaftTheme.typography
     val hostedSelected = selected == HOSTED_TARGET_CHOICE
     val source = agentMigrationComputerLabel(inputs, inputs.sourceMachineId)
-    val cloudLabel = stringResource(MR.strings.agent_migration_hosted_option)
-    val options =
-        remember(targets, inputs.hostedAvailable, cloudLabel) {
-            targets.map { RaftComboboxOption(it.id, it.name) } +
-                listOfNotNull(RaftComboboxOption(HOSTED_TARGET_CHOICE, cloudLabel).takeIf { inputs.hostedAvailable })
-        }
-    val noMatches = stringResource(MR.strings.common_no_matches)
     Column(
         modifier =
             Modifier
@@ -931,27 +922,41 @@ internal fun ColumnScope.AgentMigrationStartForm(
                 .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        RaftField(
-            label =
+        RaftText(
+            text =
                 stringResource(
                     if (inputs.hostedAvailable) MR.strings.agent_migration_hosted_target_label
                     else MR.strings.agent_migration_detail_target_computer
-                )
-        ) {
-            RaftCombobox(
-                value = selected,
-                options = options,
-                onValueChange = onSelect,
-                emptyText = { noMatches },
-                // The sheet's search row asks for a search; the empty text is only for when there is nothing to pick.
-                placeholder =
-                    stringResource(
-                        if (options.isEmpty()) MR.strings.agent_migration_detail_no_other_attached_computer
-                        else MR.strings.agent_migration_detail_target_computer_search
-                    ),
-                searchPlaceholder = stringResource(MR.strings.agent_migration_detail_target_computer_search),
-                enabled = !state.starting && options.isNotEmpty()
+                ),
+            style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.foreground
+        )
+        // The target stays a radio list (Jasper's picker rule, #triage:5ecc9db0).
+        if (targets.isEmpty() && !inputs.hostedAvailable) {
+            RaftText(
+                text = stringResource(MR.strings.agent_migration_detail_no_other_attached_computer),
+                style = typography.callout,
+                color = colors.foregroundHint
             )
+        } else {
+            RaftRadioGroup {
+                targets.forEach { computer ->
+                    RaftRadioRow(
+                        label = computer.name,
+                        selected = selected == computer.id,
+                        enabled = !state.starting,
+                        onClick = { onSelect(computer.id) }
+                    )
+                }
+                if (inputs.hostedAvailable) {
+                    RaftRadioRow(
+                        label = stringResource(MR.strings.agent_migration_hosted_option),
+                        selected = hostedSelected,
+                        enabled = !state.starting,
+                        onClick = { onSelect(HOSTED_TARGET_CHOICE) }
+                    )
+                }
+            }
         }
         // The one choice first; what happens next follows as the dialog's body text.
         if (hostedSelected) {
