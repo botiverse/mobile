@@ -3859,6 +3859,7 @@ internal fun MemberDetailPageContent(
         return
     }
     val provider = rememberMemberDetailRouteProvider(pager, bridge, storeScopeOverride)
+    val activityWebAuthEvents = remember(bridge) { build.raft.app.data.RaftSharedStoreRegistry.get(bridge).authStore }
     val closeDetail = onClose ?: { provider.bridge.closePage() }
     val routeScope = rememberCoroutineScope()
     val agentTurnStopStore =
@@ -4466,6 +4467,31 @@ internal fun MemberDetailPageContent(
                                     provider.updateAgentProfile(current.server.id, request)
                             }
                         }
+                    val activityWebBaseUrl = provider.apiEnvironmentStore.current().webUrl
+                    val membersAgentActivityWebBinding =
+                        remember(provider, current.server, activityWebBaseUrl, timeContext) {
+                            MembersAgentActivityWebBinding(
+                                authStore = provider.authStore,
+                                processAuthEvents = activityWebAuthEvents,
+                                webBaseUrl = activityWebBaseUrl,
+                                serverSlug = current.server.slug,
+                                onOpenMessagePermalink = { permalink ->
+                                    pager.openMembersReminderMessage(
+                                        permalink = permalink,
+                                        server = current.server,
+                                        conversationIdentityProvider = provider.conversationIdentityProvider,
+                                        storeScope = provider.storeScope,
+                                        timeContext = timeContext,
+                                        onOpenExternal = { linkNavigator.open(it) },
+                                        unavailableMessage = reminderOpenError,
+                                        onUnavailableAction = { provider.bridge.toast(it) },
+                                        configuredWebUrl = activityWebBaseUrl
+                                    )
+                                },
+                                onOpenUrl = { linkNavigator.open(it) },
+                                log = { message -> bridge.log("member_detail_$message") }
+                            )
+                        }
                     MembersDetailContent(
                         member = member,
                         currentUserId = current.currentUserId,
@@ -4473,6 +4499,7 @@ internal fun MemberDetailPageContent(
                         serverMembersState = serverMembersState,
                         agentDetailState = agentDetailState,
                         agentActivityLoadState = agentActivityLoadState,
+                        activityWebView = membersAgentActivityWebBinding,
                         activityOverview =
                             membersAgentActivityOverviewBindingOrNull(
                                 store = activityOverviewStore,
@@ -5068,9 +5095,11 @@ private fun Pager.openMembersReminderMessage(
     timeContext: RaftTimeContext,
     onOpenExternal: (String) -> Unit,
     unavailableMessage: String,
-    onUnavailableAction: (String) -> Unit
+    onUnavailableAction: (String) -> Unit,
+    /** The active environment's web origin, accepted as a permalink host (staging, local). */
+    configuredWebUrl: String? = null
 ) {
-    val target = permalink.toRaftThreadWebLinkTarget()
+    val target = permalink.toRaftThreadWebLinkTarget(configuredWebUrl)
     if (target == null) {
         onOpenExternal(permalink)
         return
@@ -5881,6 +5910,11 @@ private fun MembersDetailContent(
     agentActivityLoadState: MembersAgentActivityLoadState = MembersAgentActivityLoadState.Idle,
     /** Activity tab per-turn Overview; null (flag off or no access) keeps the raw log only. */
     activityOverview: MembersAgentActivityOverviewBinding? = null,
+    /**
+     * Non-null: the Activity tab is web's activity-only page in a WebView (production profile).
+     * Null keeps the native Activity tab (visual fixtures and other hosts).
+     */
+    activityWebView: MembersAgentActivityWebBinding? = null,
     runtimeModels: MembersAgentRuntimeModelInputs = MembersAgentRuntimeModelInputs(),
     createAgentFormStore: SharedCreateAgentFormStore? = null,
     agentProfileEditAuthority: MembersAgentProfileEditAuthority? = null,
@@ -6524,7 +6558,17 @@ private fun MembersDetailContent(
                         .weight(1f)
                 ) { page, active ->
                     val pageTab = membersAgentDetailPageTab(visibleTabs, page)
-                    if (pageTab == null || !active || !membersAgentDetailShouldComposeTab(pageTab, selectedTab, visitedAgentTabs)) {
+                    if (pageTab == MembersAgentDetailTab.Activity && activityWebView != null) {
+                        // The web Activity tab is composed whether or not it is the current page:
+                        // the pager keeps every page alive, so the WebView starts loading when the
+                        // profile opens and keeps its document across tab switches. No native
+                        // pull-to-refresh: the page updates itself in realtime.
+                        MembersAgentActivityWebView(
+                            binding = activityWebView,
+                            agentId = member.id.value,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else if (pageTab == null || !active || !membersAgentDetailShouldComposeTab(pageTab, selectedTab, visitedAgentTabs)) {
                         // RaftCenteredLoading renders common_loading when message
                         // is null — only shown for tabs that have not been visited yet.
                         RaftCenteredLoading(modifier = Modifier.fillMaxSize())

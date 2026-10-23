@@ -19,6 +19,16 @@ internal data class RaftWebViewConfig(
     val injectedJavaScript: String,
     val allowedNavigationSchemes: Set<String>,
     val hostEventsEnabled: Boolean,
+    /**
+     * Embedded product surfaces (agent Activity tab) that must not offer the WebView's own
+     * long-press text selection, link preview or context menu.
+     */
+    val suppressLongPress: Boolean = false,
+    /**
+     * ARGB painted by the native WebView before the document's first paint; null keeps the
+     * platform default (white). Lets a dark host avoid a white flash.
+     */
+    val backgroundArgb: Int? = null,
 )
 
 /**
