@@ -26067,10 +26067,6 @@ internal fun shouldShowThreadMessageSavedBadge(
         !hasLocalSendState &&
         isSaved
 
-// deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1041
-internal val ThreadMessageSavedBadgeColor = RaftColor.AccentOrange.copy(alpha = 0.15f)
-internal const val ThreadMessageSavedBadgeIconColorArgb = RaftColor.AccentOrangeArgb
-
 @Composable
 private fun ThreadMessageSelectionToggle(
     checked: Boolean,
@@ -26846,30 +26842,20 @@ private fun ThreadReactionChip(
     onClick: (() -> Unit)? = null,
     onLongPress: ((RaftPopoverAnchor) -> Unit)? = null
 ) {
+    // raft-ui MessageReactionChip (gap 6): the design-system chip draws; the gestures stay here.
     val hoverInteractionSource = remember(interactionIdentity) { MutableInteractionSource() }
-    val isHovered by hoverInteractionSource.collectIsHoveredAsState()
-    val background = threadReactionChipBackground(reaction.selected, emphasized = isHovered)
-    val chipModifier =
-        Modifier
-            .hoverable(hoverInteractionSource)
-            .background(background, RoundedCornerShape(RaftAppRadius.Sm))
-            .padding(horizontal = 6.dp, vertical = 3.dp)
     val chipContent: @Composable () -> Unit = {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            ThreadQuickReactionGlyph(threadDisplayReactionEmoji(reaction.emoji), modifier = Modifier.size(15.dp))
-            if (reaction.count > 0) {
-                Text(
-                    text = reaction.count.toString(),
-                    style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+        build.raft.designsystem.components.RaftMessageReaction(
+            count = reaction.count,
+            mine = reaction.selected,
+            glyph = {
+                ThreadQuickReactionGlyph(
+                    threadDisplayReactionEmoji(reaction.emoji),
+                    modifier = Modifier.size(build.raft.designsystem.components.RaftMessageReactionGlyphSize)
                 )
-            }
-        }
+            },
+            interactionSource = hoverInteractionSource
+        )
     }
     if (onLongPress != null) {
         // task #569: tap keeps toggling the reaction; long-press surfaces the
@@ -26905,28 +26891,17 @@ private fun ThreadReactionChip(
                             }
                         }
                     )
-                }
-                .then(chipModifier),
+                },
             contentAlignment = Alignment.Center
         ) {
             chipContent()
         }
     } else if (onClick != null) {
         Button(onClick = onClick, pressFeedback = false) {
-            Box(
-                modifier = chipModifier,
-                contentAlignment = Alignment.Center
-            ) {
-                chipContent()
-            }
-        }
-    } else {
-        Box(
-            modifier = chipModifier,
-            contentAlignment = Alignment.Center
-        ) {
             chipContent()
         }
+    } else {
+        chipContent()
     }
 }
 
@@ -26935,22 +26910,6 @@ private data class ThreadReactionChipGestureCallbacks(
     val onLongPress: ((RaftPopoverAnchor) -> Unit)?,
     val rootAnchor: RaftLiveRootAnchorRef
 )
-
-internal fun threadNeutralMessageSurfaceColor(emphasized: Boolean): Color =
-    RaftColor.TextBlack.copy(alpha = if (emphasized) 0.08f else 0.03f)
-
-internal fun threadReactionChipBackground(
-    selected: Boolean,
-    emphasized: Boolean = false
-): Color =
-    if (selected) {
-        RaftColor.AccentPink.copy(alpha = 0.2f)
-    } else {
-        threadNeutralMessageSurfaceColor(emphasized)
-    }
-
-internal fun threadReactionAddChipBackground(emphasized: Boolean = false): Color =
-    threadNeutralMessageSurfaceColor(emphasized)
 
 // task #569: everything the tooltip needs, captured at long-press time.
 internal data class ThreadReactionDetailsRequest(
@@ -26985,17 +26944,14 @@ private fun ThreadReactionAddChip(
     messageId: String,
     onClick: (RaftPopoverAnchor) -> Unit
 ) {
-    val addReactionDescription = stringResource(MR.strings.common_add)
+    val addReactionDescription = stringResource(MR.strings.thread_action_add_reaction)
     Button(
         onClick2 = onClick,
         clickIdentity = "thread_reaction_add:$messageId",
         anchorOwnerIdentity = threadMessageMenuOwnerIdentity(messageId),
-        modifier =
-            Modifier
-                .semantics { contentDescription = addReactionDescription }
-                .background(Color.Transparent)
+        modifier = Modifier.background(Color.Transparent)
     ) {
-        ThreadReactionAddChipChrome()
+        ThreadReactionAddChipChrome(addReactionDescription)
     }
 }
 
@@ -27154,23 +27110,10 @@ private fun ThreadAuthorDescriptionPopover(
     }
 }
 
+// raft-ui MessageReactionAddButton (gap 6): the design-system chip draws; the anchored tap stays on the host Button.
 @Composable
-private fun ThreadReactionAddChipChrome() {
-    val hoverInteractionSource = remember { MutableInteractionSource() }
-    val isHovered by hoverInteractionSource.collectIsHoveredAsState()
-    Box(
-        modifier = Modifier
-            .hoverable(hoverInteractionSource)
-            .height(20.dp)
-            .background(
-                threadReactionAddChipBackground(emphasized = isHovered),
-                RoundedCornerShape(RaftAppRadius.Sm),
-            )
-            .padding(horizontal = 6.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        RaftLucideIcon(RaftLucideIconName.Plus, modifier = Modifier.size(13.dp), color = RaftColor.TextBlackArgb)
-    }
+private fun ThreadReactionAddChipChrome(label: String) {
+    build.raft.designsystem.components.RaftMessageReactionAdd(label = label)
 }
 
 private fun Modifier.threadMessageContentWidth(maxWidthFraction: Float): Modifier =
@@ -28233,8 +28176,6 @@ private fun ThreadInlineRepliesSurface(
     onOpenThread: () -> Unit,
 ) {
     val replyRowHeight = threadInlineReplyRowHeightDp(LocalDensity.current.fontScale).dp
-    val hoverInteractionSource = remember { MutableInteractionSource() }
-    val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val countLabelSpec = presentation.countLabel()
     val countLabel =
         when (countLabelSpec.kind) {
@@ -28248,40 +28189,16 @@ private fun ThreadInlineRepliesSurface(
             stringResource(MR.strings.thread_inline_new_replies, count)
         }
     val draftLabel = stringResource(MR.strings.thread_inline_draft)
-    Column(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(top = 6.dp)
-                // raft-ui MessageReplies: `rounded-container` face.
-                .clip(RoundedCornerShape(RaftAppRadius.Container))
-                .hoverable(hoverInteractionSource)
-                .background(threadNeutralMessageSurfaceColor(emphasized = isHovered))
-                .clickable(onClick = onOpenThread)
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp),
+    // raft-ui MessageReplies (gap 7): `fill-muted` block, the pink new-reply sticker, a pencil
+    // before Draft and no chevron, as the web's InlineThreadReplies draws it.
+    build.raft.designsystem.components.RaftMessageReplies(
+        countLabel = countLabel,
+        onClick = onOpenThread,
+        modifier = Modifier.padding(top = build.raft.designsystem.components.RaftMessageRepliesDefaults.TopSpacing),
+        newCount = presentation.unreadCount,
+        newCountLabel = unreadLabel,
+        draftLabel = draftLabel.takeIf { presentation.hasDraft },
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = buildString {
-                    append(countLabel)
-                    unreadLabel?.let { append(" · ").append(it) }
-                    if (presentation.hasDraft) append(" · ✎ ").append(draftLabel)
-                    append(" ›")
-                },
-                modifier = Modifier.weight(1f),
-                style =
-                    RaftType.Caption
-                        .copy(fontSize = 12.5.sp, lineHeight = 16.sp, color = RaftColor.TextBlack.copy(alpha = 0.58f))
-                        .withRaftFontWeight(FontWeight.Bold),
-                color = RaftColor.TextBlack.copy(alpha = 0.58f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
         presentation.replies.forEach { reply ->
             key("inline-reply:${reply.messageId}") {
                 ThreadInlineReplyRow(
@@ -28310,71 +28227,52 @@ private fun ThreadInlineReplyRow(
             ?: reply.senderName.trim().ifBlank { reply.senderId }
     val avatarWireValue =
         resolveThreadRowAvatarWireValue(resolvedAvatar)
-    Row(
+    val senderKind = participant?.kind?.parsedMemberKindOrNull()
+    build.raft.designsystem.components.RaftMessageRepliesItem(
+        sender = displayName,
+        content = threadInlineReplyPreviewText(reply.content),
         modifier =
             Modifier
                 .fillMaxWidth()
                 .height(rowHeight),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        val senderKind = participant?.kind?.parsedMemberKindOrNull()
-        RaftAppAvatar(
-            avatarWireValue = avatarWireValue,
-            // The name, never the sender id: no name shows the placeholder icon.
-            label = if (displayName == reply.senderId) "" else displayName,
-            avatarSize = 20.dp,
-            cacheSubject = raftMemberAvatarCacheSubject(senderKind, reply.senderId),
-            fallbackFill = raftAvatarFallbackFill(senderKind),
-        )
-        Text(
-            text = displayName,
-            style =
-                RaftType.Caption
-                    .copy(
-                        fontSize = 12.5.sp,
-                        lineHeight = ThreadInlineReplyContentLineHeightSp.sp,
-                        color = RaftColor.TextBlack.copy(alpha = 0.72f),
-                    )
-                    .withRaftFontWeight(FontWeight.Bold),
-            color = RaftColor.TextBlack.copy(alpha = 0.72f),
-            maxLines = 1,
-        )
-        Text(
-            text = threadInlineReplyPreviewText(reply.content),
-            modifier = Modifier.weight(1f),
-            style =
-                RaftType.Caption.copy(
-                    fontSize = 12.5.sp,
-                    lineHeight = ThreadInlineReplyContentLineHeightSp.sp,
-                ),
-            color = RaftColor.TextBlack.copy(alpha = 0.62f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (reply.createdAt.isNotBlank()) {
-            RaftRelativeTimestampText(
-                value = reply.createdAt,
-                modifier =
-                    if (timestampPositionReporter == null) {
-                        Modifier
-                    } else {
-                        Modifier.onGloballyPositioned { coordinates ->
-                            timestampPositionReporter(
-                                reply.messageId,
-                                coordinates.positionInRoot(),
-                                coordinates.size,
-                            )
-                        }
-                    },
-                displayGroup = RaftTimestampDisplayGroup.Conversation,
-                style = ThreadInlineReplyTimestampStyle,
-                color = RaftColor.TextBlack.copy(alpha = 0.42f),
-                maxLines = 1,
-                toggleEnabled = false,
+        avatar = {
+            RaftAppAvatar(
+                avatarWireValue = avatarWireValue,
+                // The name, never the sender id: no name shows the placeholder icon.
+                label = if (displayName == reply.senderId) "" else displayName,
+                avatarSize = 20.dp,
+                cacheSubject = raftMemberAvatarCacheSubject(senderKind, reply.senderId),
+                fallbackFill = raftAvatarFallbackFill(senderKind),
             )
-        }
-    }
+        },
+        time =
+            if (reply.createdAt.isNotBlank()) {
+                {
+                    RaftRelativeTimestampText(
+                        value = reply.createdAt,
+                        modifier =
+                            if (timestampPositionReporter == null) {
+                                Modifier
+                            } else {
+                                Modifier.onGloballyPositioned { coordinates ->
+                                    timestampPositionReporter(
+                                        reply.messageId,
+                                        coordinates.positionInRoot(),
+                                        coordinates.size,
+                                    )
+                                }
+                            },
+                        displayGroup = RaftTimestampDisplayGroup.Conversation,
+                        style = build.raft.designsystem.components.RaftMessageRepliesDefaults.TimeStyle,
+                        color = build.raft.designsystem.components.RaftMessageRepliesDefaults.TimeInk,
+                        maxLines = 1,
+                        toggleEnabled = false,
+                    )
+                }
+            } else {
+                null
+            },
+    )
 }
 
 internal fun threadInlineReplyPreviewText(content: String): String = markdownToPreviewText(content)
@@ -28394,15 +28292,6 @@ internal fun threadInlineReplyRowHeightDp(fontScale: Float): Float {
 private const val ThreadInlineReplyContentLineHeightSp = 16f
 private const val ThreadInlineReplyRowMinHeightDp = 20f
 private const val ThreadInlineReplyRowVerticalAllowanceDp = 4f
-
-internal val ThreadInlineReplyTimestampStyle: TextStyle
-    // Getter: the UI-text locale and rendering defaults can change at runtime.
-    get() =
-        RaftType.Caption.copy(
-            fontFamily = RaftMonoFamily,
-            fontSize = 11.5.sp,
-            lineHeight = 15.sp,
-        )
 
 @Composable
 internal fun ThreadMessageFooterMeta(
@@ -28473,17 +28362,10 @@ internal fun ThreadMessageFooterMeta(
             )
         }
         if (showSavedBadge) {
-            RaftAnchoredMetaChip(
+            // raft-ui MessageItemSavedIndicator (gap 23): `fill-muted`, an ink bookmark, muted label.
+            build.raft.designsystem.components.RaftMessageSavedIndicator(
                 label = stringResource(MR.strings.thread_label_saved),
-                iconName = RaftLucideIconName.Bookmark,
-                iconSize = 11.dp,
-                iconColorArgb = ThreadMessageSavedBadgeIconColorArgb,
-                iconFillArgb = ThreadMessageSavedBadgeIconColorArgb,
-                color = ThreadMessageSavedBadgeColor,
-                modifier = Modifier.widthIn(max = 96.dp),
-                pressFeedback = false,
-                clickIdentity = "thread-saved:${message.id}",
-                onClick = null
+                modifier = Modifier.widthIn(max = 96.dp)
             )
         }
         if (hasReactions) {
