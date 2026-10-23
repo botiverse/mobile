@@ -82,6 +82,20 @@ check "retry: infra-abort then OK -> 0" 0 $?
 check "retry: infra-abort then OK ran twice" 2 "$(<"$counter")"
 if [[ -f "$tmp/flaky.txt.attempt-1" ]]; then echo "ok: retry: prior-attempt evidence archived"; else echo "FAIL: retry: prior-attempt evidence archived (missing)" >&2; fail=1; fi
 
+# retry reset hook: runs once before the retry, never before attempt 1 or after success.
+echo 0 > "$counter"
+resets="$tmp/resets"
+: > "$resets"
+INSTRUMENTATION_RETRY_RESET_CMD="echo reset >> '$resets'" INSTRUMENTATION_MAX_ATTEMPTS=3 \
+  "$retry" "$tmp/flaky-reset.txt" 1 -- bash -c gen_flaky
+check "retry reset: infra-abort then OK -> 0" 0 $?
+check "retry reset: ran exactly once (before the retry only)" 1 "$(wc -l < "$resets")"
+: > "$resets"
+INSTRUMENTATION_RETRY_RESET_CMD="echo reset >> '$resets'" INSTRUMENTATION_MAX_ATTEMPTS=3 \
+  "$retry" "$tmp/ok-reset.txt" 1 -- bash -c 'echo "OK (1 tests)"'
+check "retry reset: first-attempt success -> 0" 0 $?
+check "retry reset: never runs without a retry" 0 "$(wc -l < "$resets")"
+
 # real failure -> fail fast, exactly one attempt (no retry).
 echo 0 > "$counter"
 gen_realfail() {

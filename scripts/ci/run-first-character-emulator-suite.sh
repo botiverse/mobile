@@ -511,7 +511,13 @@ main() {
     start_time=$(date +%s)
 
     local run_rc=0
-    "$HERE/run-instrumentation-with-retry.sh" \
+    # A retry after an infra-abort must start from attempt 1's state: clear the connected
+    # target app's data (persisted composer drafts, caches) the aborted attempt left behind.
+    local retry_reset=""
+    if [[ "${TEST_RUNNER[$id]}" == "$RUNNER_CONNECTED" ]]; then
+      retry_reset="adb shell pm clear build.raft.app.connectedtest"
+    fi
+    INSTRUMENTATION_RETRY_RESET_CMD="$retry_reset" "$HERE/run-instrumentation-with-retry.sh" \
       "${TEST_OUTPUT[$id]}" \
       "${TEST_RETRIES[$id]}" \
       -- adb shell am instrument -w -r -e class "${TEST_CLASS[$id]}" "${TEST_RUNNER[$id]}" || run_rc=$?
