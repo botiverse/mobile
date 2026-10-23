@@ -241,6 +241,63 @@ class RuntimeAccountUsageTest {
     }
 
     /** The identity the fake session currently authenticates as. */
+    // Shapes of slock packages/server/src/routes/servers.ts POST …/runtime-account-usage/:provider/refresh
+    // (staging 2026-10-23): 202 {accepted:false,state:"cooldown"}, 202 {accepted,state:"requested"|"computer_offline"},
+    // 200 {accepted:true,state:"fresh",snapshot}, 200 {accepted:true,state:"timeout"}.
+    @Test
+    fun refreshEnvelopesParseAndUnknownStatesAreRejected() {
+        val fresh = parseRefresh(FRESH_REFRESH_BODY)
+        assertEquals(RuntimeAccountUsageRefreshState.Fresh, fresh?.state)
+        assertEquals(true, fresh?.accepted)
+        assertEquals("acct-1", fresh?.snapshot?.accounts?.single()?.accountKey)
+        assertEquals(RuntimeAccountUsageRefreshState.Cooldown, parseRefresh("""{"accepted":false,"state":"cooldown"}""")?.state)
+        assertEquals(RuntimeAccountUsageRefreshState.Requested, parseRefresh("""{"accepted":true,"state":"requested"}""")?.state)
+        assertEquals(false, parseRefresh("""{"accepted":false,"state":"computer_offline"}""")?.accepted)
+        val timeout = parseRefresh("""{"accepted":true,"state":"timeout"}""")
+        assertEquals(RuntimeAccountUsageRefreshState.Timeout, timeout?.state)
+        assertNull(timeout?.snapshot)
+        assertNull(parseRefresh("""{"accepted":true,"state":"queued"}"""))
+        assertNull(parseRefresh("""{"accepted":"yes","state":"requested"}"""))
+        assertNull(parseRefresh("""{"data":{"accepted":true,"state":"requested"}}"""))
+    }
+
+    @Test
+    fun manualRefreshPostsTheReasonCachesAFreshSnapshotAndOpensTheWindow() = runPortableCoroutineTest<Unit> {
+        var now = 5_000L
+        val api = FakeUsageApi(refreshRespond = { ok(FRESH_REFRESH_BODY) }) { ok(FRESH_BODY) }
+        val store = store(api, clock = { now })
+        val done = assertIs<RuntimeAccountUsageRefreshLoad.Done>(store.refresh(key(), RuntimeAccountUsageRefreshReason.Manual))
+        assertEquals(RuntimeAccountUsageRefreshState.Fresh, done.refresh.state)
+        assertEquals(
+            listOf("POST servers/s1/machines/m1/runtime-account-usage/claude/refresh {\"reason\":\"manual\"} Foreground"),
+            api.calls
+        )
+        val cached = assertIs<RuntimeAccountUsageLoad.Loaded>(store.peek(key()))
+        assertIs<RuntimeAccountUsageRead.Available>(cached.read)
+        assertEquals(RUNTIME_ACCOUNT_USAGE_REFRESH_COOLDOWN_MILLIS, store.refreshCooldownRemainingMillis(key()))
+        // Inside the window: cooldown without asking the server.
+        now += RUNTIME_ACCOUNT_USAGE_REFRESH_COOLDOWN_MILLIS - 1
+        val cooled = assertIs<RuntimeAccountUsageRefreshLoad.Done>(store.refresh(key(), RuntimeAccountUsageRefreshReason.Manual))
+        assertEquals(RuntimeAccountUsageRefreshState.Cooldown, cooled.refresh.state)
+        assertEquals(1, api.calls.size)
+        now += 1
+        assertEquals(0L, store.refreshCooldownRemainingMillis(key()))
+        store.refresh(key(), RuntimeAccountUsageRefreshReason.StaleOrMissing)
+        assertEquals(
+            "POST servers/s1/machines/m1/runtime-account-usage/claude/refresh {\"reason\":\"stale_or_missing\"} Background",
+            api.calls.last()
+        )
+    }
+
+    @Test
+    fun refreshMaps403ToForbidden() = runPortableCoroutineTest<Unit> {
+        val store = store(FakeUsageApi(refreshRespond = { status(403) }) { ok(FRESH_BODY) })
+        assertSame(RuntimeAccountUsageRefreshLoad.Forbidden, store.refresh(key(), RuntimeAccountUsageRefreshReason.Manual))
+    }
+
+    private fun parseRefresh(body: String): RuntimeAccountUsageRefresh? =
+        Json.parseToJsonElement(body).toRuntimeAccountUsageRefresh()
+
     private var signedIn: SharedComputersOwner? = key().owner
 
     private fun store(api: FakeUsageApi, clock: RaftEpochMillisSource = RaftEpochMillisSource { 0L }) =
@@ -263,9 +320,22 @@ class RuntimeAccountUsageTest {
 
     private class FakeUsageApi(
         private val beforeRespond: suspend () -> Unit = {},
+        private val refreshRespond: (String) -> HomeNetworkResponse = { error("no refresh expected") },
         private val respond: (String) -> HomeNetworkResponse
     ) : RaftComputersApi {
         val calls = mutableListOf<String>()
+
+        override suspend fun refreshRuntimeAccountUsage(
+            serverId: ServerId,
+            machineId: String,
+            provider: String,
+            body: String,
+            priority: DataRequestPriority
+        ): HomeNetworkResponse {
+            val request = "POST servers/${serverId.value}/machines/$machineId/runtime-account-usage/$provider/refresh $body $priority"
+            calls += request
+            return refreshRespond(request)
+        }
 
         override suspend fun runtimeAccountUsage(serverId: ServerId, machineId: String, provider: String): HomeNetworkResponse {
             val request = "GET servers/${serverId.value}/machines/$machineId/runtime-account-usage/$provider"
@@ -291,6 +361,9 @@ class RuntimeAccountUsageTest {
         fun ok(body: String) = HomeNetworkResponse(code = 200, bodyText = body)
 
         fun status(code: Int) = HomeNetworkResponse(code = code, bodyText = """{"error":"x"}""")
+
+        const val FRESH_REFRESH_BODY =
+            """{"accepted":true,"state":"fresh","snapshot":{"protocolVersion":2,"provider":"claude","collectedAt":"2026-10-09T04:00:00.000Z","accounts":[{"accountKey":"acct-1","planLabel":"Max","health":"ok","windows":[{"id":"five_hour","label":"5h","status":"ok","usedRatio":0.5,"resetsAt":"2026-10-09T09:00:00.000Z"}]}]}}"""
 
         const val FRESH_BODY =
             """{"state":"fresh","futureField":1,"snapshot":{"protocolVersion":2,"provider":"claude","collectedAt":"2026-10-09T04:00:00.000Z","staleAfter":"2026-10-09T04:10:00.000Z","collectorVersion":"1","accounts":[{"accountKey":"acct-1","maskedLabel":"a***@example.com","planLabel":"Max","health":"ok","extra":true,"windows":[{"id":"five_hour","label":"5h","status":"ok","usedRatio":0.42,"resetsAt":"2026-10-09T09:00:00.000Z","extra":"y"}]}]}}"""

@@ -449,6 +449,7 @@ internal class RaftSharedStoreProvider private constructor(
     private val realtimeAuthorityRegistrations = RaftShellScopedStoreCache<String>()
     private val shellAgentDetailStores = RaftShellScopedStoreCache<SharedAgentDetailStore>()
     private val shellComputersStores = RaftShellScopedStoreCache<SharedComputersStore>()
+    private val shellRuntimeAccountUsageStores = RaftShellScopedStoreCache<SharedRuntimeAccountUsageStore>()
 
     /** Durable machine lists shared by every shell's computers store (data-layer plan step 5). */
     private val computersDurableStore by lazy {
@@ -1369,6 +1370,18 @@ internal class RaftSharedStoreProvider private constructor(
             sharedComputersOwner(session, apiEnvironmentStore.current().apiBaseUrl, authLoginGeneration(scope).current())
         }
 
+    /**
+     * Runtime account usage reads and refreshes for this shell (the computer detail's runtime
+     * chips): one cache and one refresh window per shell, whichever page asks.
+     */
+    internal fun runtimeAccountUsageStore(scope: RaftShellStoreScope): SharedRuntimeAccountUsageStore =
+        shellRuntimeAccountUsageStores.getOrPut(scope) {
+            SharedRuntimeAccountUsageStore(
+                client = RaftComputersApiClient(RaftComputersNetworkApi(networkClient(scope))),
+                currentIdentity = { computersOwner(scope) }
+            )
+        }
+
     fun computersStore(scope: RaftShellStoreScope): SharedComputersStore =
         shellComputersStores.getOrPut(scope) {
             SharedComputersStore(
@@ -1944,6 +1957,7 @@ internal class RaftSharedStoreProvider private constructor(
         shellAgentTypingStores.remove(scope)?.close()
         shellAgentDetailStores.remove(scope)
         shellComputersStores.remove(scope)?.dispatch(SharedComputersIntent.Clear)
+        shellRuntimeAccountUsageStores.remove(scope)
         shellCreateAgentFormOwnerJobs.remove(scope)?.cancel()
         shellAuthLoginGenerationJobs.remove(scope)?.cancel()
         shellAuthLoginGenerations.remove(scope)
