@@ -34,6 +34,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.Measured
+import androidx.compose.ui.layout.HorizontalAlignmentLine
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Constraints
@@ -73,7 +76,9 @@ enum class RaftDialogSize(internal val maxWidth: Dp) {
  * - Body: [description] (`text-subhead` `foreground-muted`) then [content], 20dp at the
  *   sides and bottom, 6dp under the header. It scrolls when the dialog reaches the window.
  * - [footer]: at most two buttons at the end, 8dp apart: a ghost Cancel that says what
- *   stays, then the confirm button (`Lg`).
+ *   stays, then the confirm button (`Lg`). They stay in one row at every width and stack
+ *   full width, the confirm on top, only when they don't fit (raft-ui 0.22 #673); stacked, a
+ *   ghost Cancel takes the ink frame of `default` (0.23 #727, [LocalRaftButtonsStacked]).
  */
 @Composable
 fun RaftDialogSurface(
@@ -110,11 +115,9 @@ fun RaftDialogSurface(
                 }
             }
             if (footer != null) {
-                Row(
+                RaftDialogFooter(
                     Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 20.dp, top = if (hasBody) 0.dp else 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                    verticalAlignment = Alignment.CenterVertically,
-                    content = footer,
+                    footer,
                 )
             } else if (!hasBody) {
                 Box(Modifier.padding(bottom = 20.dp))
@@ -323,11 +326,14 @@ internal fun RaftSheetSurfaceImpl(
             if (actions != null) {
                 // Pushes the actions to the bottom of a short sheet; filling content already does.
                 if (!fillContent) Box(Modifier.weight(1f, fill = false))
-                Column(
-                    Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    content = actions,
-                )
+                // raft-ui DrawerActions in a bottom sheet: always stacked, so a ghost is framed (#727).
+                CompositionLocalProvider(LocalRaftButtonsStacked provides true) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        content = actions,
+                    )
+                }
             }
         }
     }
@@ -432,3 +438,65 @@ internal fun raftSheetConstraints(constraints: Constraints): Constraints =
     } else {
         constraints.copy(maxHeight = (constraints.maxHeight * 0.82f).toInt().coerceAtLeast(constraints.minHeight))
     }
+
+/**
+ * raft-ui DialogFooter (#673): the buttons in one row at the end, 8dp apart, in markup order
+ * (Cancel, then the confirm). The row is measured, never guessed from the window: only when
+ * it doesn't fit does the footer stack, each button full width and 8dp apart, the confirm (the
+ * last one) on top, with [LocalRaftButtonsStacked] set so a ghost Cancel is framed.
+ */
+@Composable
+private fun RaftDialogFooter(modifier: Modifier, footer: @Composable RowScope.() -> Unit) {
+    SubcomposeLayout(modifier) { constraints ->
+        val gap = 8.dp.roundToPx()
+        val rowItems =
+            subcompose("row") {
+                CompositionLocalProvider(LocalRaftButtonsStacked provides false) { RaftFooterRowScope.footer() }
+            }
+        val loose = Constraints(maxHeight = constraints.maxHeight)
+        val inRow = rowItems.map { it.measure(loose) }
+        val rowWidth = inRow.sumOf { it.width } + gap * (inRow.size - 1).coerceAtLeast(0)
+        if (rowWidth <= constraints.maxWidth) {
+            val height = inRow.maxOfOrNull { it.height } ?: 0
+            layout(constraints.maxWidth, height) {
+                var x = constraints.maxWidth - rowWidth
+                inRow.forEach { placeable ->
+                    placeable.placeRelative(x, (height - placeable.height) / 2)
+                    x += placeable.width + gap
+                }
+            }
+        } else {
+            val stacked =
+                subcompose("stacked") {
+                    CompositionLocalProvider(LocalRaftButtonsStacked provides true) { RaftFooterRowScope.footer() }
+                }
+            val full = Constraints(minWidth = constraints.maxWidth, maxWidth = constraints.maxWidth, maxHeight = constraints.maxHeight)
+            // The confirm, written last, goes on top.
+            val column = stacked.map { it.measure(full) }.asReversed()
+            val height = column.sumOf { it.height } + gap * (column.size - 1).coerceAtLeast(0)
+            layout(constraints.maxWidth, height) {
+                var y = 0
+                column.forEach { placeable ->
+                    placeable.placeRelative(0, y)
+                    y += placeable.height + gap
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The [RowScope] the footer's buttons are written in. The footer lays them out itself, so the
+ * row modifiers (`weight`, `align`) have nothing to act on.
+ */
+private object RaftFooterRowScope : RowScope {
+    override fun Modifier.weight(weight: Float, fill: Boolean): Modifier = this
+
+    override fun Modifier.align(alignment: Alignment.Vertical): Modifier = this
+
+    override fun Modifier.alignBy(alignmentLine: HorizontalAlignmentLine): Modifier = this
+
+    override fun Modifier.alignByBaseline(): Modifier = this
+
+    override fun Modifier.alignBy(alignmentLineBlock: (Measured) -> Int): Modifier = this
+}
