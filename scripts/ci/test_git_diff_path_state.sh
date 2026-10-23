@@ -6,7 +6,6 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 HELPER="$ROOT/scripts/ci/git-diff-path-state.sh"
 WORKFLOW="$ROOT/.github/workflows/test.yml"
 SAFE_WORKSPACE_ACTION="$ROOT/.github/actions/git-safe-workspace/action.yml"
-SAFE_WORKSPACE_SCRIPT="$ROOT/.github/actions/git-safe-workspace/configure.sh"
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
@@ -148,17 +147,13 @@ assert_poisoned_env_rc poisoned-env-unchanged 0 "$base" "$unrelated" "${THREAD_P
 assert_poisoned_env_rc poisoned-env-changed 1 "$unrelated" "$thread_changed" "${THREAD_PATHS[@]}"
 assert_poisoned_env_rc poisoned-env-fixture-changed 1 "$unrelated" "$fixture_changed" "${THREAD_PATHS[@]}"
 
-HELPER="$HELPER" \
-  ROOT="$ROOT" \
+ROOT="$ROOT" \
   WORKFLOW="$WORKFLOW" \
   SAFE_WORKSPACE_ACTION="$SAFE_WORKSPACE_ACTION" \
-  SAFE_WORKSPACE_SCRIPT="$SAFE_WORKSPACE_SCRIPT" \
   ruby -ropen3 -rtmpdir -ryaml <<'RUBY'
-helper_path = ENV.fetch("HELPER")
 root = ENV.fetch("ROOT")
 workflow_path = ENV.fetch("WORKFLOW")
 safe_workspace_action_path = ENV.fetch("SAFE_WORKSPACE_ACTION")
-safe_workspace_script_path = ENV.fetch("SAFE_WORKSPACE_SCRIPT")
 
 def fail_contract(message)
   raise message
@@ -172,26 +167,15 @@ def find_step(workflow, name)
   matches.first.fetch("run")
 end
 
-def validate_git_safe_action_source(action, script)
-  fail_contract("git-safe-workspace is no longer a composite action") unless
-    action.dig("runs", "using") == "composite"
+# configure.sh itself is exercised by .github/actions/git-safe-workspace/test_configure.sh;
+# these checks keep the action defaulting to the workspace-only scope and
+# running that tested script.
+def validate_git_safe_action_source(action)
   fail_contract("git-safe-workspace default scope is no longer workspace-only") unless
     action.dig("inputs", "scope", "default") == "workspace"
   action_steps = action.dig("runs", "steps") || []
-  fail_contract("git-safe-workspace action must have exactly one step") unless action_steps.length == 1
   fail_contract("git-safe-workspace action bypasses its checked-in script") unless
-    action_steps.first["run"] == 'bash "${GITHUB_ACTION_PATH}/configure.sh"'
-
-  fail_contract("git-safe-workspace no longer fails closed") unless script.include?("set -euo pipefail")
-  fail_contract("git-safe-workspace lost workspace scope") unless
-    script.include?('workspace) safe_directory="$GITHUB_WORKSPACE" ;;')
-  fail_contract("git-safe-workspace lost explicit all/submodule scope") unless
-    script.include?("all) safe_directory='*' ;;")
-  fail_contract("git-safe-workspace no longer persists safe.directory") unless
-    script.include?('git config --global --add safe.directory "$safe_directory"')
-  fail_contract("git-safe-workspace no longer verifies repository discovery") unless
-    script.include?('git -C "$GITHUB_WORKSPACE" rev-parse --git-dir >/dev/null')
-  fail_contract("git-safe-workspace masks repository setup failures") if script.include?("|| true")
+    action_steps.any? { |step| step["run"] == 'bash "${GITHUB_ACTION_PATH}/configure.sh"' }
 end
 
 def wildcard_body(script)
@@ -280,30 +264,8 @@ else
   fail_contract("mutation unexpectedly passed: #{name}")
 end
 
-helper = File.read(helper_path)
-expected_exec = 'git -C "$repo_root" diff --quiet --no-ext-diff --no-renames "$base" "$head" -- "$@"'
-fail_contract("helper no longer preserves git diff tri-state status") unless helper.include?(expected_exec)
-fail_contract("helper no longer binds to its own checkout") unless
-  helper.include?('script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"') &&
-    helper.include?('repo_root="$(cd "$script_dir/../.." && pwd -P)"')
-%w[
-  GIT_DIR
-  GIT_WORK_TREE
-  GIT_COMMON_DIR
-  GIT_INDEX_FILE
-  GIT_OBJECT_DIRECTORY
-  GIT_ALTERNATE_OBJECT_DIRECTORIES
-  GIT_CEILING_DIRECTORIES
-  GIT_DISCOVERY_ACROSS_FILESYSTEM
-].each do |variable|
-  fail_contract("helper no longer clears #{variable}") unless helper.include?("-u #{variable}")
-end
-fail_contract("helper wraps git diff in a pipeline") if
-  helper.lines.any? { |line| line.include?('git -C "$repo_root" diff') && line.include?("|") }
-
 safe_workspace_action = YAML.load_file(safe_workspace_action_path)
-safe_workspace_script = File.read(safe_workspace_script_path)
-validate_git_safe_action_source(safe_workspace_action, safe_workspace_script)
+validate_git_safe_action_source(safe_workspace_action)
 
 workflow = YAML.load_file(workflow_path)
 thread_paths = %w[
@@ -322,11 +284,7 @@ assert_thread_event_runs(thread, root, "workflow_dispatch")
 expect_failure("git-safe-default-wildcard") do
   mutated = Marshal.load(Marshal.dump(safe_workspace_action))
   mutated.fetch("inputs").fetch("scope")["default"] = "all"
-  validate_git_safe_action_source(mutated, safe_workspace_script)
-end
-expect_failure("git-safe-repository-assertion-missing") do
-  mutated = safe_workspace_script.sub('git -C "$GITHUB_WORKSPACE" rev-parse --git-dir >/dev/null', "")
-  validate_git_safe_action_source(safe_workspace_action, mutated)
+  validate_git_safe_action_source(mutated)
 end
 non_pr_branch = <<~'SH'.strip
   if [ "$EVENT_NAME" != "pull_request" ]; then

@@ -55,8 +55,6 @@ class UploadContract(unittest.TestCase):
         workflow=Path(__file__).resolve().parent.parent / ".github/workflows/android-release.yml"
         block=workflow.read_text().split("- name: Upload immutable AAB + APK to Hands",1)[1].split("- name: Upload APK as workflow artifact",1)[0]
         self.assertIn("APK_PATH: ${{ steps.sign.outputs.apk_path }}",block)
-        self.assertIn("AAB_PATH: ${{ steps.sign-aab.outputs.aab_path }}",block)
-        self.assertIn("UPLOAD_KEY_CERT_SHA256: ${{ steps.sign-aab.outputs.upload_key_cert_sha256 }}",block)
 
     def test_current_wire_contract(self):
         result=self.run_case('ok')

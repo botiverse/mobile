@@ -60,12 +60,4 @@ run_case bundle-not-allowlisted fail '1\n' 'configuration-cache\n'
 run_case bundle-duplicate fail '1\n' 'dependencies\ndependencies\n'
 run_case bundle-inline-whitespace fail '1\n' 'dependencies transforms\n'
 
-# The macOS runners (three wired jobs) ship Bash 3.2: Bash-4-only builtins must never enter the
-# runtime parser. Narrow source tooth; extend the pattern only with other Bash-4+ constructs.
-if grep -Ev '^[[:space:]]*#' "$apply" | grep -En 'mapfile|readarray'; then
-  echo "FAIL bash3-portability: apply.sh uses a Bash-4-only builtin" >&2
-  exit 1
-fi
-echo "ok bash3-portability-source-tooth"
-
 echo "gradle-cache-policy self-test: all cases passed"

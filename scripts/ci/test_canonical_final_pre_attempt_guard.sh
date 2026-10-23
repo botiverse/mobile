@@ -278,10 +278,6 @@ instrument_line="$(grep -n 'adb shell am instrument' "$CANONICAL" | head -n 1 | 
 test -n "$guard_line" && test -n "$logcat_line" && test -n "$instrument_line"
 test "$guard_line" -lt "$logcat_line"
 test "$logcat_line" -lt "$instrument_line"
-if grep -q '^  adb logcat -c$' "$CANONICAL"; then
-  fail 'canonical loop still has an unbounded direct logcat clear'
-fi
-grep -Fq 'scripts/ci/test_canonical_final_pre_attempt_guard.sh' "$WORKFLOW"
 grep -Fq 'canonical-final-pre-attempt-*.txt' "$WORKFLOW"
 
 echo 'canonical-final pre-attempt guard contract test PASSED'

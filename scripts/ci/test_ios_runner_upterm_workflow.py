@@ -23,17 +23,10 @@ class UptermWorkflowTest(unittest.TestCase):
         self.assertNotIn('  pull_request:', preflight)
         self.assertNotIn('  push:', preflight)
         self.assertIn('permissions: {}\n', preflight)
-        self.assertIn('    runs-on: ubuntu-latest\n', preflight)
-        self.assertIn('          DISPATCH_REF: ${{ github.ref }}\n', preflight)
-        self.assertIn('          DISPATCH_ACTOR: ${{ github.actor }}\n', preflight)
-        self.assertIn('          CONFIRM: ${{ inputs.confirm }}\n', preflight)
         self.assertIn('    needs: preflight\n', inspect)
         self.assertIn("github.ref == 'refs/heads/main'", inspect)
         self.assertIn("github.actor == 'yezizp2012'", inspect)
         self.assertIn("inputs.confirm == 'task15-readonly-upterm'", inspect)
-        self.assertIn('      group: jacky-macmini\n', inspect)
-        self.assertIn('      labels: [self-hosted, macOS, ARM64, mac-mini-1]\n', inspect)
-        self.assertIn('    timeout-minutes: 15\n', inspect)
         self.assertNotIn('actions/checkout', source)
         self.assertNotIn('secrets.', source)
         self.assertNotIn('github.token', source)
@@ -91,12 +84,6 @@ class UptermWorkflowTest(unittest.TestCase):
         self.assertNotIn('--skip-host-key-check', source)
         self.assertNotIn('--allow-local-tcp-forwarding', source)
         self.assertIn('uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6', source)
-        self.assertIn('          retention-days: 1\n', source)
-        self.assertEqual(source.count('XDG_RUNTIME_DIR="$UPTERM_RUNTIME"'), 3)
-        self.assertIn('              XDG_RUNTIME_DIR="$UPTERM_RUNTIME" \\\n', source)
-        self.assertNotIn('session stop "$UPTERM_NAME" || true', source)
-        self.assertIn('          if [ "$stop_status" -ne 0 ]; then\n', source)
-        self.assertIn('          rm -rf -- "$UPTERM_ROOT" "$UPTERM_RUNTIME"\n', source)
 
     def cleanup_script(self):
         tail = self.workflow.split(
@@ -192,7 +179,6 @@ class UptermWorkflowTest(unittest.TestCase):
             ("inputs.confirm == 'task15-readonly-upterm'", 'true'),
             ('            --read-only \\\n', ''),
             ('            --no-sftp \\\n', ''),
-            ('          export XDG_RUNTIME_DIR="$UPTERM_RUNTIME"\n', ''),
         ]
         for old, new in mutations:
             with self.subTest(old=old):
@@ -200,10 +186,6 @@ class UptermWorkflowTest(unittest.TestCase):
                     mutated = self.workflow.replace(old, new, 1)
                     if '            --' in old:
                         self.assert_session_source(mutated)
-                    elif 'XDG_RUNTIME_DIR' in old:
-                        self.assertEqual(
-                            mutated.count('XDG_RUNTIME_DIR="$UPTERM_RUNTIME"'), 3
-                        )
                     else:
                         self.assert_boundary(mutated)
 

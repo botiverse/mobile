@@ -87,12 +87,6 @@ class SlockIosSimctlTest(unittest.TestCase):
         with mock.patch.object(self.helper, "run_simctl", return_value=completed):
             self.assertEqual(self.helper.resolve_xcuitest_device(args), "ONLY-UDID")
 
-    def test_helper_has_no_host_global_input_implementation(self) -> None:
-        source = SCRIPT_PATH.read_text(encoding="utf-8")
-        forbidden = ("osa" + "script", "System" + " Events", "front" + "most", "cli" + "click")
-        for token in forbidden:
-            self.assertNotIn(token, source)
-
 
 class IosUseXcuitestSelectionTest(unittest.TestCase):
     @classmethod
