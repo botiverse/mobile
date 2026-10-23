@@ -2693,6 +2693,8 @@
     <string name="agent_activity_log_background_oom_title">后台进程已停止：超出内存上限</string>
     <string name="agent_activity_log_background_oom_detail">该 Agent 启动的一个后台进程因内存用量超出这台计算机为每个 Agent 设置的上限而被停止。Agent 本身仍在运行。</string>
     <string name="agent_activity_log_background_oom_detail_with_limit">该 Agent 启动的一个后台进程因内存用量超出这台计算机为每个 Agent 设置的上限（%1$s）而被停止。Agent 本身仍在运行。</string>
+    <string name="agent_activity_wake_crash_loop_blocked">自动唤醒已暂停——请手动启动</string>
+    <string name="agent_activity_wake_crash_loop_memory_limit_detail">连续 %1$d 次因内存用量超出这台计算机为每个 Agent 设置的上限而被停止；在有人手动启动前，Raft 不会再自动唤醒该 Agent。可以让它少开后台进程和浏览器，或请这台计算机的管理员调高上限。</string>
     <string name="member_activity_overview_load_error">概览加载失败。</string>
     <string name="invite_human_agent_reach_hint">被邀请的成员可以私信并指挥这个服务器里的所有 Agent。个人 Agent 请放在你自己单独的服务器里。</string>
     <string name="invite_human_tab_email">邮箱邀请</string>
@@ -2922,7 +2924,6 @@
     <string name="agent_migration_reference_copied">迁移编号已复制</string>
     <string name="agent_migration_step_done">已完成</string>
     <string name="agent_migration_step_failed">失败</string>
-    <string name="agent_migration_section_description_with_last">%1$s%2$s</string>
     <string name="agent_migration_hosted_review_more_paths">还有 %1$d 个</string>
     <string name="agent_migration_cancel_dialog_title">取消迁移？</string>
     <string name="agent_migration_cancel_dialog_confirm">取消迁移</string>
@@ -2945,10 +2946,13 @@
     <string name="agent_migration_hosted_confirm">确认迁移</string>
     <string name="agent_migration_hosted_confirming">正在迁移…</string>
     <string name="agent_migration_hosted_skip_other">其他原因</string>
-    <string name="agent_migration_last_moved">上次迁移：%1$s → %2$s</string>
-    <string name="agent_migration_last_moved_with_time">上次迁移：%1$s → %2$s（%3$s）</string>
-    <string name="agent_migration_last_failed">上次迁移失败：%1$s → %2$s</string>
-    <string name="agent_migration_last_failed_with_time">上次迁移失败：%1$s → %2$s（%3$s）</string>
+    <string name="agent_migration_last_title">上次迁移</string>
+    <string name="agent_migration_last_route">%1$s → %2$s</string>
+    <string name="agent_migration_last_source">来源计算机</string>
+    <string name="agent_migration_last_started_by">发起人</string>
+    <string name="agent_migration_last_finished_at">完成时间</string>
+    <string name="agent_migration_last_completed">已完成</string>
+    <string name="agent_migration_last_failed_outcome">失败</string>
     <string name="agent_migration_hosted_review_file_count_one">1 个文件（%2$s）</string>
     <string name="agent_migration_hosted_review_file_count_other">%1$d 个文件（%2$s）</string>
     <string name="agent_migration_generic_error">迁移请求没能完成，请重试。</string>

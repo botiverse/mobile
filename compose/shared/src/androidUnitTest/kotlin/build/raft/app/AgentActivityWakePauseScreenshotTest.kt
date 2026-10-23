@@ -14,6 +14,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.model.AgentStatus
+import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.Presence
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
@@ -65,6 +66,8 @@ class AgentActivityWakePauseScreenshotTest {
 private const val WakePauseDetail =
     "Automatic wake paused: stopped 3 times in a row at this Computer's per-agent memory limit"
 
+private val WakePause = AgentWakeCrashLoop(earlyExitCount = 3, lastExitReason = "memory_limit")
+
 @Composable
 private fun AgentActivityWakePauseVisualContent() {
     val timeContext =
@@ -88,11 +91,11 @@ private fun AgentActivityWakePauseVisualContent() {
             presence = Presence.Offline,
             statusLabel = WakePauseDetail,
             external = false,
-        ).copy(detailKind = "wake_crash_loop_blocked")
+        ).copy(detailKind = "wake_crash_loop_blocked", wakeCrashLoop = WakePause)
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         MembersAgentActivityOverview(
             binding = binding,
-            now = MembersAgentActivityNow(label = WakePauseDetail, indicator = indicator),
+            now = MembersAgentActivityNow(label = WakePauseDetail, indicator = indicator, wakeCrashLoop = WakePause),
             hasRawActivity = true,
             hasComputer = true,
             timeContext = timeContext,

@@ -81,8 +81,22 @@ internal data class AgentMigrationNotice(
     val cancelErrorCode: String? = null,
     val createdAt: String? = null,
     val updatedAt: String? = null,
+    /** Who started it, while they are still a member of this server (botiverse/slock #10951); null otherwise. */
+    val initiatedBy: AgentMigrationInitiator? = null,
     val hosted: AgentMigrationHostedReview? = null
 )
+
+/** `GET /agents/:id/migration` `migration.initiatedBy` (routes/agents.ts at botiverse/slock 24873fd5be37). */
+@Serializable
+internal data class AgentMigrationInitiator(
+    val id: String,
+    val name: String,
+    val displayName: String? = null
+) {
+    /** Web `lastMigrationFacts`: the display name, else the name. */
+    val label: String
+        get() = displayName?.takeIf { it.isNotBlank() } ?: name
+}
 
 @Serializable
 private data class AgentMigrationStatusResponseDto(val migration: AgentMigrationNotice? = null)

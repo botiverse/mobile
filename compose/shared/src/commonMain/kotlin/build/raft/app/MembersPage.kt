@@ -13617,7 +13617,13 @@ private fun MembersAgentActivityTab(
                         summaryActivityDetail = summary?.activityDetail,
                         fallback = MembersUnknownAgentStatusLabel
                     ),
-                    indicator = agentStatusIndicatorState
+                    indicator = agentStatusIndicatorState,
+                    wakeCrashLoop =
+                        membersAgentActivityWakeCrashLoop(
+                            indicator = agentStatusIndicatorState,
+                            summaryDetailKind = summary?.activityDetailKind,
+                            summaryWakeCrashLoop = summary?.wakeCrashLoop
+                        )
                 ),
                 hasRawActivity = detail?.activity?.isNotEmpty() == true,
                 hasComputer = !summary?.machineId.isNullOrBlank(),

@@ -845,8 +845,29 @@ data class MemberPresenceUpdated(
      * [ProcessMemberPresenceRegistry]): it updates presence to Active and
      * this field, never displacing a seq-carrying fact.
      */
-    val lastSeenAt: String? = null
+    val lastSeenAt: String? = null,
+    /**
+     * Why automatic wakes are paused, with [detailKind] `wake_crash_loop_blocked` (the
+     * `wakeCrashLoop` carrier of `agent:activity`); null for every other status.
+     */
+    val wakeCrashLoop: AgentWakeCrashLoop? = null
 ) : RealtimeEvent
+
+/**
+ * The server paused automatic wakes after the agent stopped several times in a row (shared
+ * `WakeCrashLoopActivityDiagnostic`, botiverse/slock 24873fd5be37 packages/shared/src/index.ts):
+ * the fields the client shows. [lastExitReason] is `memory_limit` when the last counted stop was
+ * at the Computer's per-agent memory limit (#10860); absent from older servers.
+ */
+@Serializable
+data class AgentWakeCrashLoop(
+    val earlyExitCount: Int,
+    val lastExitReason: String? = null
+) {
+    /** Web AgentStatusBadge: paused after repeated stops at the per-agent memory limit. */
+    val pausedAtMemoryLimit: Boolean
+        get() = lastExitReason == "memory_limit"
+}
 
 @Serializable
 data class RealtimeRefreshRequired(

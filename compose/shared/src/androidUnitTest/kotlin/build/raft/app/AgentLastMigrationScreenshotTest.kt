@@ -14,6 +14,7 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.AgentMigrationInitiator
 import build.raft.app.data.AgentMigrationNotice
 import build.raft.app.data.AgentMigrationState
 import build.raft.app.data.RaftProGateDecision
@@ -91,6 +92,7 @@ internal fun lastMigrationCompletedNotice(): AgentMigrationNotice =
         arrivedAt = "2026-10-21T06:04:30.000Z",
         completedAt = "2026-10-21T06:05:00.000Z",
         updatedAt = "2026-10-21T06:05:00.000Z",
+        initiatedBy = AgentMigrationInitiator(id = "user-1", name = "artin", displayName = "Artin"),
     )
 
 internal fun lastMigrationFailedNotice(): AgentMigrationNotice =

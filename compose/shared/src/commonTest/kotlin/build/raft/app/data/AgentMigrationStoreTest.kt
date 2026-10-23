@@ -65,6 +65,24 @@ class AgentMigrationStoreTest {
     }
 
     @Test
+    fun parsesWhoStartedTheMigration() {
+        // routes/agents.ts at botiverse/slock 24873fd5be37 (#10951): `initiatedBy` while they are a member, else null.
+        val initiated =
+            parseSharedAgentMigrationStatus(
+                notice("completed", extra = ""","initiatedBy":{"id":"user-1","name":"artin","displayName":"Artin"}""")
+            )!!.migration!!
+        assertEquals(AgentMigrationInitiator(id = "user-1", name = "artin", displayName = "Artin"), initiated.initiatedBy)
+        assertEquals("Artin", initiated.initiatedBy?.label)
+        val noDisplayName =
+            parseSharedAgentMigrationStatus(
+                notice("completed", extra = ""","initiatedBy":{"id":"user-1","name":"artin","displayName":null}""")
+            )!!.migration!!
+        assertEquals("artin", noDisplayName.initiatedBy?.label)
+        assertNull(parseSharedAgentMigrationStatus(notice("completed", extra = ""","initiatedBy":null"""))!!.migration!!.initiatedBy)
+        assertNull(parseSharedAgentMigrationStatus(notice("completed"))!!.migration!!.initiatedBy)
+    }
+
+    @Test
     fun stateMachineMatchesWebForEndingsAndCancel() {
         val switched = parseSharedAgentMigrationStatus(
             notice("arriving", targetKind = "hosted").replace("\"flippedAt\":null", "\"flippedAt\":\"2026-10-21T08:10:00.000Z\"")

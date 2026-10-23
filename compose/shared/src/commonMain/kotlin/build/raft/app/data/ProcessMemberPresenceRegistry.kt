@@ -463,7 +463,8 @@ internal class ProcessMemberPresenceRegistry {
                         statusLabel = event.statusLabel ?: previous.statusLabel,
                         detailKind = if (event.statusLabel != null) event.detailKind else previous.detailKind,
                         activityToolName =
-                            if (event.statusLabel != null) event.activityToolName else previous.activityToolName
+                            if (event.statusLabel != null) event.activityToolName else previous.activityToolName,
+                        wakeCrashLoop = if (event.statusLabel != null) event.wakeCrashLoop else previous.wakeCrashLoop
                     )
                 } else {
                     event
@@ -921,5 +922,6 @@ internal fun MemberPresenceUpdated.hasSameVisibleRegisteredPresenceAs(
         statusLabel == previous.statusLabel &&
         detailKind == previous.detailKind &&
         activityToolName == previous.activityToolName &&
+        wakeCrashLoop == previous.wakeCrashLoop &&
         kind == previous.kind &&
         lastSeenAt == previous.lastSeenAt

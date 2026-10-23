@@ -6,6 +6,7 @@ import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.ServerPushMode
 import build.raft.app.data.PushPreviewMode
+import build.raft.app.data.AgentActivityDetailKindWakeCrashLoopBlocked
 import build.raft.app.data.AgentActivityStatusProjection
 import build.raft.app.commentHostTypeOrNull
 import build.raft.app.commentHostRouteKindOrNull
@@ -17,6 +18,7 @@ import build.raft.app.strictTaskStatusOrNull
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.AgentCreated
 import build.raft.app.model.AgentStatus
+import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.Attachment
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelActivityNotificationPreference
@@ -620,7 +622,26 @@ private data class AgentActivityDto(
     val entries: List<JsonObject> = emptyList(),
     val timestamp: JsonElement? = null,
     val serverSeq: Long? = null,
+    /** Shared `WakeCrashLoopActivityDiagnostic`, sent with detailKind `wake_crash_loop_blocked`. */
+    val wakeCrashLoop: WakeCrashLoopDto? = null,
 )
+
+/**
+ * The fields of shared `WakeCrashLoopActivityDiagnostic` the client shows (botiverse/slock
+ * 24873fd5be37 packages/shared/src/index.ts; `lastExitReason` from #10860, absent on older servers).
+ */
+@Serializable
+internal data class WakeCrashLoopDto(
+    val earlyExitCount: Int? = null,
+    val lastExitReason: String? = null,
+)
+
+/** The pause carrier of a `wake_crash_loop_blocked` status; null for any other kind or without a count. */
+internal fun WakeCrashLoopDto?.toAgentWakeCrashLoop(detailKind: String?): AgentWakeCrashLoop? {
+    if (this == null || detailKind?.trim() != AgentActivityDetailKindWakeCrashLoopBlocked) return null
+    val count = earlyExitCount?.takeIf { it > 0 } ?: return null
+    return AgentWakeCrashLoop(earlyExitCount = count, lastExitReason = lastExitReason?.trim()?.takeIf { it.isNotEmpty() })
+}
 
 @Serializable
 private data class ServerMembershipRemovedDto(
@@ -1060,6 +1081,7 @@ private fun AgentActivityDto.toDomain(): MemberPresenceUpdated? {
         detailKind = projectedActivity.detailKind,
         activityToolName = projectedActivity.toolName,
         serverSeq = serverSeq,
+        wakeCrashLoop = wakeCrashLoop.toAgentWakeCrashLoop(projectedActivity.detailKind),
         activityEntries = entries.toRealtimeAgentActivityEntries(
             agentId = agentId,
             timestamp = timestamp,

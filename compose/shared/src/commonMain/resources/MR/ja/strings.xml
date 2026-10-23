@@ -2693,6 +2693,8 @@
     <string name="agent_activity_log_background_oom_title">バックグラウンドプロセスを停止：メモリ上限</string>
     <string name="agent_activity_log_background_oom_detail">このエージェントが起動したバックグラウンドプロセスが、このコンピューターのエージェントごとのメモリ上限を超えたため停止されました。エージェント自体は動作を続けています。</string>
     <string name="agent_activity_log_background_oom_detail_with_limit">このエージェントが起動したバックグラウンドプロセスが、このコンピューターのエージェントごとのメモリ上限（%1$s）を超えたため停止されました。エージェント自体は動作を続けています。</string>
+    <string name="agent_activity_wake_crash_loop_blocked">自動起動を一時停止中：手動で起動してください</string>
+    <string name="agent_activity_wake_crash_loop_memory_limit_detail">このコンピューターのエージェントごとのメモリ上限を超えたため、%1$d 回連続で停止されました。誰かが起動するまで、Raft はこのエージェントを自動起動しません。バックグラウンドプロセスやブラウザーを減らすよう指示するか、このコンピューターの管理者に上限の引き上げを依頼してください。</string>
     <string name="member_activity_overview_load_error">概要を読み込めませんでした。</string>
     <string name="invite_human_agent_reach_hint">招待したメンバーは、このサーバー内のすべてのエージェントに DM を送ったり指示を出したりできます。個人用のエージェントは、自分専用の別のサーバーに置いてください。</string>
     <string name="invite_human_tab_email">メールで招待</string>
@@ -2922,7 +2924,6 @@
     <string name="agent_migration_reference_copied">移行 ID をコピーしました</string>
     <string name="agent_migration_step_done">完了</string>
     <string name="agent_migration_step_failed">失敗</string>
-    <string name="agent_migration_section_description_with_last">%1$s%2$s</string>
     <string name="agent_migration_hosted_review_more_paths">ほか %1$d 件</string>
     <string name="agent_migration_cancel_dialog_title">移行をキャンセルしますか？</string>
     <string name="agent_migration_cancel_dialog_confirm">移行をキャンセル</string>
@@ -2945,10 +2946,13 @@
     <string name="agent_migration_hosted_confirm">確定して移行</string>
     <string name="agent_migration_hosted_confirming">移行中…</string>
     <string name="agent_migration_hosted_skip_other">その他の理由</string>
-    <string name="agent_migration_last_moved">前回の移行：%1$s → %2$s</string>
-    <string name="agent_migration_last_moved_with_time">前回の移行：%1$s → %2$s（%3$s）</string>
-    <string name="agent_migration_last_failed">前回の移行は失敗しました：%1$s → %2$s</string>
-    <string name="agent_migration_last_failed_with_time">前回の移行は失敗しました：%1$s → %2$s（%3$s）</string>
+    <string name="agent_migration_last_title">前回の移行</string>
+    <string name="agent_migration_last_route">%1$s → %2$s</string>
+    <string name="agent_migration_last_source">移行元のコンピューター</string>
+    <string name="agent_migration_last_started_by">開始した人</string>
+    <string name="agent_migration_last_finished_at">完了日時</string>
+    <string name="agent_migration_last_completed">完了</string>
+    <string name="agent_migration_last_failed_outcome">失敗</string>
     <string name="agent_migration_hosted_review_file_count_one">ファイル 1 件（%2$s）</string>
     <string name="agent_migration_hosted_review_file_count_other">ファイル %1$d 件（%2$s）</string>
     <string name="agent_migration_generic_error">移行リクエストを完了できませんでした。もう一度お試しください。</string>

@@ -2693,6 +2693,8 @@
     <string name="agent_activity_log_background_oom_title">Background process stopped: memory limit</string>
     <string name="agent_activity_log_background_oom_detail">A background process this agent started was stopped for using more than this Computer\'s per-agent memory limit. The agent kept running.</string>
     <string name="agent_activity_log_background_oom_detail_with_limit">A background process this agent started was stopped for using more than this Computer\'s per-agent memory limit (%1$s). The agent kept running.</string>
+    <string name="agent_activity_wake_crash_loop_blocked">Automatic wake paused — start manually</string>
+    <string name="agent_activity_wake_crash_loop_memory_limit_detail">Stopped %1$d times in a row for using more than this Computer\'s per-agent memory limit; Raft stopped waking this agent until someone starts it. Ask it to run fewer background processes and browsers, or ask whoever manages this Computer to raise the limit.</string>
     <string name="member_activity_overview_load_error">Couldn\'t load the overview.</string>
     <string name="invite_human_agent_reach_hint">Members you invite can DM and give instructions to every agent in this server. Keep personal agents in a separate server of your own.</string>
     <string name="invite_human_tab_email">By Email</string>
@@ -2922,7 +2924,6 @@
     <string name="agent_migration_reference_copied">Migration ID copied</string>
     <string name="agent_migration_step_done">done</string>
     <string name="agent_migration_step_failed">failed</string>
-    <string name="agent_migration_section_description_with_last">%1$s %2$s</string>
     <string name="agent_migration_hosted_review_more_paths">and %1$d more</string>
     <string name="agent_migration_cancel_dialog_title">Cancel migration?</string>
     <string name="agent_migration_cancel_dialog_confirm">Cancel Migration</string>
@@ -2945,10 +2946,13 @@
     <string name="agent_migration_hosted_confirm">Confirm and Move</string>
     <string name="agent_migration_hosted_confirming">Moving…</string>
     <string name="agent_migration_hosted_skip_other">Other reasons</string>
-    <string name="agent_migration_last_moved">Last migration: %1$s → %2$s</string>
-    <string name="agent_migration_last_moved_with_time">Last migration: %1$s → %2$s (%3$s)</string>
-    <string name="agent_migration_last_failed">Last migration failed: %1$s → %2$s</string>
-    <string name="agent_migration_last_failed_with_time">Last migration failed: %1$s → %2$s (%3$s)</string>
+    <string name="agent_migration_last_title">Last migration</string>
+    <string name="agent_migration_last_route">%1$s → %2$s</string>
+    <string name="agent_migration_last_source">Source computer</string>
+    <string name="agent_migration_last_started_by">Started by</string>
+    <string name="agent_migration_last_finished_at">Finished</string>
+    <string name="agent_migration_last_completed">Completed</string>
+    <string name="agent_migration_last_failed_outcome">Failed</string>
     <string name="agent_migration_hosted_review_file_count_one">1 file (%2$s)</string>
     <string name="agent_migration_hosted_review_file_count_other">%1$d files (%2$s)</string>
     <string name="agent_migration_generic_error">Couldn\'t complete the migration request. Try again.</string>
