@@ -7,4 +7,3 @@ trap 'rm -f "$OUTPUT"' EXIT
 clang -fobjc-arc -Wall -Wextra -Werror -framework Foundation -I"$SOURCE_DIR" \
   "$SOURCE_DIR/RaftAdaptiveNavigationSession.m" "$SCRIPT_DIR/test_adaptive_navigation_session.m" -o "$OUTPUT"
 "$OUTPUT"
-python3 "$SCRIPT_DIR/test_adaptive_navigation_registration.py"

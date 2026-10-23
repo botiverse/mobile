@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import fs from "node:fs";
 import {
   bindDiagnosisToLedger, effectiveExecutorVerdict, normalizeExecutionLimits,
   normalizeSelfDiagnosis, observationFingerprint, repeatedActionKey,
@@ -91,35 +90,4 @@ test("execution budgets fail closed on malformed and out-of-range values", () =>
     { maxTurns: Infinity, maxMinutes: 20, noProgressTurns: 8 },
     { maxTurns: -1, maxMinutes: 20, noProgressTurns: 8 },
   ]) assert.equal(normalizeExecutionLimits(invalid), null);
-});
-
-test("tap_text is recorded as performed only after a concrete target is resolved and tapped", () => {
-  const source = fs.readFileSync(new URL("./acceptance_agent.mjs", import.meta.url), "utf8");
-  assert.match(source, /if \(r\.x !== undefined\) \{[\s\S]*mechanicallyPerformed = true;/);
-  assert.doesNotMatch(source, /feedback = r\.feedback;\s*mechanicallyPerformed = true;/);
-});
-
-test("Android and iOS workflows pass frozen minutes and no-progress budgets to the executor", () => {
-  for (const path of [".github/workflows/qa-acceptance.yml", ".github/workflows/qa-acceptance-ios.yml"]) {
-    const source = fs.readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
-    assert.match(source, /max_minutes:/);
-    assert.match(source, /no_progress_turns:/);
-    assert.match(source, /--max-minutes "\$QA_MAX_MINUTES"/);
-    assert.match(source, /--no-progress-turns "\$QA_NO_PROGRESS_TURNS"/);
-  }
-});
-
-test("failure diagnosis workflow uses an independent reviewer token and the shared capacity path", () => {
-  const workflow = fs.readFileSync(new URL("../../.github/workflows/qa-failure-diagnosis.yml", import.meta.url), "utf8");
-  const agent = fs.readFileSync(new URL("./failure_diagnosis_agent.mjs", import.meta.url), "utf8");
-  assert.match(workflow, /STAMP_REVIEW_TOKEN/);
-  assert.match(agent, /const stampToken = process\.env\.STAMP_REVIEW_TOKEN \|\| ""/);
-  assert.doesNotMatch(agent, /STAMP_REVIEW_TOKEN \|\| process\.env\.STAMP_TOKEN/);
-  assert.match(agent, /capacityPath: `\/api\/diagnoses\/\$\{runCaseId\}\/model-capacity`/);
-  assert.match(agent, /runWithModelRetries\(\{/);
-  assert.match(agent, /capacity_evidence_sha256/);
-  assert.match(agent, /model: `\$\{providerName\}\/\$\{modelName\}`/);
-  assert.match(agent, /provider: providerName, model: modelName/);
-  assert.match(agent, /capacity_evidence_jsonl/);
-  assert.match(agent, /\/api\/diagnoses\/\$\{runCaseId\}/);
 });

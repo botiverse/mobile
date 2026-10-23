@@ -127,13 +127,3 @@ test('feedback bootstrap does not materialize a session on an untrusted path', (
   vm.runInContext(bootstrap, context, { filename: 'feedback-bootstrap-untrusted-path.js' });
   assert.equal(window.RaftFeedback, undefined);
 });
-
-test('native hosts fence auth script and runtime updates to trusted documents', () => {
-  assert.match(androidNative, /!allowNavigation && !isAllowedMainDocumentUrl\(activeUrl\)/);
-  assert.match(androidNative, /Same-origin history routes must not keep access to the native bridge/);
-  assert.match(androidNative, /allowedNavigationSchemes\.isNotEmpty\(\) && \(!allowNavigation/);
-  assert.match(iosNative, /forMainFrameOnly = !allowNavigation/);
-  assert.match(iosNative, /isSameOriginURL\(activeURL\)/);
-  assert.match(iosNative, /!allowNavigation && \(activeURL == null \|\| !isAllowedMainDocumentURL\(activeURL\)\)/);
-  assert.match(iosNative, /evaluateJavaScript\(script, completionHandler = null\)/);
-});

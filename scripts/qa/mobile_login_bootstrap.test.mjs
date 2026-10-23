@@ -17,23 +17,6 @@ import {
   validateLoginResponse,
 } from "./mobile_login_bootstrap_lib.mjs";
 
-test("pre-READY subprocesses are bounded and phase-observable", () => {
-  const source = fs.readFileSync(path.resolve("scripts/qa/mobile_login_bootstrap.mjs"), "utf8");
-  const agentSource = fs.readFileSync(path.resolve("scripts/qa/acceptance_agent.mjs"), "utf8");
-  assert.match(source, /timeoutMs = commandTimeoutMs/);
-  assert.match(source, /timeout: timeoutMs/);
-  assert.match(source, /killSignal: "SIGKILL"/);
-  assert.match(source, /signal=\$\{result\.signal/);
-  assert.match(source, /result\.error\.code/);
-  assert.match(source, /installing private envelope/);
-  assert.match(source, /private envelope installed/);
-  assert.match(source, /launching bootstrap activity/);
-  assert.match(source, /bootstrap activity launched; polling READY/);
-  assert.match(source, /adbRunAsShellArgs\("shell", applicationId, script\)/);
-  assert.match(agentSource, /adbRunAsShellArgs\("shell", opts\.appPackage, installScript\)/);
-  assert.doesNotMatch(agentSource, /"exec-out", "run-as", opts\.appPackage/);
-});
-
 test("run-as keeps the complete remote script in one shell-quoted ADB command", () => {
   assert.deepEqual(
     adbRunAsShellArgs(

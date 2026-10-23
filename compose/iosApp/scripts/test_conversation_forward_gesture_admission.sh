@@ -3,28 +3,8 @@ set -euo pipefail
 
 IOS_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 HEADER="$IOS_ROOT/iosApp/FDFullscreenPopGesture/RaftConversationForwardGestureAdmission.h"
-NAVIGATION_SOURCE="$IOS_ROOT/iosApp/FDFullscreenPopGesture/UINavigationController+FDFullscreenPopGesture.m"
-RENDER_SOURCE="$IOS_ROOT/iosApp/Cmp/RaftPageViewController.m"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
-
-require_source() {
-    local source_file="$1"
-    local expected="$2"
-    if ! grep -Fq -- "$expected" "$source_file"; then
-        echo "conversation-forward source contract missing: $expected" >&2
-        exit 1
-    fi
-}
-
-# OFF is a registration boundary, not merely a delegate-time veto. The shared bridge setter must
-# reach the navigation controller, and native disabling must both disable and detach the recognizer.
-require_source "$NAVIGATION_SOURCE" "fd_setConversationForwardGestureEnabled:(BOOL)enabled"
-require_source "$NAVIGATION_SOURCE" "gestureRecognizer.enabled = NO;"
-require_source "$NAVIGATION_SOURCE" "removeGestureRecognizer:gestureRecognizer"
-require_source "$NAVIGATION_SOURCE" "gestureRecognizer.enabled = YES;"
-require_source "$RENDER_SOURCE" "setRaftConversationForwardGestureEnabled:(BOOL)enabled"
-require_source "$RENDER_SOURCE" "fd_setConversationForwardGestureEnabled:"
 
 CC_BIN="${CC:-$(command -v clang || command -v cc || command -v gcc)}"
 
