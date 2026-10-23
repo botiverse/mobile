@@ -405,5 +405,112 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
         XCTAssertEqual(button.frame.height, capsule.height, accuracy: 1, geometry)
         XCTAssertGreaterThanOrEqual(button.frame.minX - capsule.maxX, RaftIosServerButtonLayout.spacing - 1, geometry)
     }
+
+    // MARK: - Probe: can a system UISearchTab be the server button?
+
+    private final class SearchTabProbeDelegate: NSObject, UITabBarControllerDelegate {
+        var asked: [String] = []
+        func tabBarController(_ tabBarController: UITabBarController, shouldSelectTab tab: UITab) -> Bool {
+            asked.append(tab.identifier)
+            return tab.identifier != "server"
+        }
+    }
+
+    private func pngLines(_ image: UIImage, tag: String) {
+        guard let png = image.pngData() else { return }
+        let b64 = png.base64EncodedString()
+        stride(from: 0, to: b64.count, by: 2000).forEach { start in
+            let a = b64.index(b64.startIndex, offsetBy: start)
+            let b = b64.index(a, offsetBy: min(2000, b64.count - start))
+            print("\(tag) \(b64[a..<b])")
+        }
+    }
+
+    func testProbeSearchTabAsServerButton() throws {
+        guard #available(iOS 26.0, *) else { throw XCTSkip("iOS 26 only") }
+        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        let window = scene.map { UIWindow(windowScene: $0) } ?? UIWindow(frame: UIScreen.main.bounds)
+        window.frame = scene?.screen.bounds ?? UIScreen.main.bounds
+        window.overrideUserInterfaceStyle = .dark
+        defer { window.isHidden = true }
+        let tabs = UITabBarController()
+        tabs.traitOverrides.horizontalSizeClass = .compact
+        tabs.view.backgroundColor = UIColor(red: 1, green: 0, blue: 1, alpha: 1)
+        let pages: [UITab] = ["house", "waveform.path.ecg", "checkmark.square", "magnifyingglass"].map { name in
+            UITab(title: String(name.prefix(4)).capitalized, image: UIImage(systemName: name), identifier: name) { _ in
+                let child = UIViewController()
+                child.view.backgroundColor = UIColor(red: 1, green: 0, blue: 1, alpha: 1)
+                return child
+            }
+        }
+        let red = Int32(bitPattern: 0xFFE04040)
+        let avatarSource = RaftIosServerAvatarImage.image(argb: Array(repeating: red, count: 16), width: 4, height: 4)
+        let avatar = RaftIosServerAvatarImage.circle(avatarSource, fallbackLabel: "B", diameter: 40)
+        let server = UISearchTab { _ in UIViewController() }
+        server.title = "Botiverse"
+        server.image = avatar
+        server.accessibilityLabel = "Current server: Botiverse"
+        let identifier = "server"
+        _ = identifier
+        let serverTab = UITab(title: "Botiverse", image: avatar, identifier: "server-plain") { _ in UIViewController() }
+        _ = serverTab
+        tabs.tabs = pages + [server]
+        let delegate = SearchTabProbeDelegate()
+        tabs.delegate = delegate
+        window.rootViewController = tabs
+        window.isHidden = false
+        tabs.view.layoutIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        func shot() -> UIImage {
+            UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+        }
+        func crop(_ image: UIImage) -> UIImage {
+            let top = tabs.tabBar.frame.minY - 40
+            let size = CGSize(width: window.bounds.width, height: window.bounds.height - top)
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 2
+            return UIGraphicsImageRenderer(size: size, format: format).image { _ in image.draw(at: CGPoint(x: 0, y: -top)) }
+        }
+        pngLines(crop(shot()), tag: "RAFT_SEARCHTAB_PNG_BEFORE")
+        // The tree: which views carry the search tab, and the platter.
+        var lines: [String] = []
+        func walk(_ view: UIView, _ depth: Int) {
+            guard lines.count < 60 else { return }
+            let f = view.convert(view.bounds, to: window)
+            var line = String(repeating: " ", count: depth) + "\(type(of: view)) \(f.integral)"
+            if let id = view.accessibilityIdentifier { line += " id=\(id)" }
+            if let label = view.accessibilityLabel { line += " label=\(label)" }
+            if view is UIControl { line += " control" }
+            if view.isAccessibilityElement { line += " ax traits=\(view.accessibilityTraits.rawValue)" }
+            if (view as? UIImageView)?.image != nil { line += " image" }
+            lines.append(line)
+            view.subviews.forEach { walk($0, depth + 1) }
+        }
+        walk(tabs.tabBar, 0)
+        lines.forEach { print("RAFT_SEARCHTAB_TREE \($0)") }
+        print("RAFT_SEARCHTAB_GEOM bar=\(tabs.tabBar.frame) selected=\(tabs.selectedTab?.identifier ?? "nil")")
+        // Activate the search tab the way VoiceOver does, then see what the delegate and bar did.
+        var activated = false
+        func find(_ view: UIView) -> UIView? {
+            for sub in view.subviews {
+                if sub.isAccessibilityElement, sub.accessibilityLabel?.contains("Botiverse") == true { return sub }
+                if let f = find(sub) { return f }
+            }
+            return nil
+        }
+        if let element = find(tabs.tabBar) {
+            if let control = element as? UIControl {
+                control.sendActions(for: .touchUpInside)
+                control.sendActions(for: .primaryActionTriggered)
+            }
+            activated = element.accessibilityActivate()
+            print("RAFT_SEARCHTAB_ELEMENT \(type(of: element)) traits=\(element.accessibilityTraits.rawValue) label=\(element.accessibilityLabel ?? "-") value=\(element.accessibilityValue ?? "-") hint=\(element.accessibilityHint ?? "-")")
+        }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        print("RAFT_SEARCHTAB_AFTER activated=\(activated) asked=\(delegate.asked) selected=\(tabs.selectedTab?.identifier ?? "nil")")
+        pngLines(crop(shot()), tag: "RAFT_SEARCHTAB_PNG_AFTER")
+    }
 }
 
