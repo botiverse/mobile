@@ -540,6 +540,28 @@ class ChannelSettingsStoreTest {
     }
 
     @Test
+    fun leaveAndDeleteLoseAccessButArchiveKeepsTheChannelReadable() = runTest {
+        // An archived channel is still readable, so Activity keeps its rows; leave / delete lose it.
+        listOf(
+            ChannelSettingsIntent.Leave to true,
+            ChannelSettingsIntent.Delete to true,
+            ChannelSettingsIntent.Archive to false,
+        ).forEach { (intent, accessLost) ->
+            val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))
+            val store = store(dataSource)
+            store.dispatch(ChannelSettingsIntent.Load)
+            runCurrent()
+
+            store.dispatch(intent)
+            runCurrent()
+
+            assertEquals(ChannelSettingsEffect.Close, store.state.value.effect, "$intent")
+            assertEquals(accessLost, store.state.value.closedWithAccessLost, "$intent")
+            store.clear()
+        }
+    }
+
+    @Test
     fun leaveClosesSettingsAndIsRefusedForAllArchivedOrNotJoined() = runTest {
         val cache = ChannelSettingsSnapshotCache()
         val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(snapshot()))

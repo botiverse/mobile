@@ -229,6 +229,19 @@ internal class FakeConversationRepository : ConversationRepository {
     /** When set, `unfollowThread` waits for it: an Unfollow still on the network. */
     var unfollowGate: CompletableDeferred<Unit>? = null
 
+    /** `GET /channels/:id` calls (the access check) with their priority, and how each answers. */
+    val detailRequests = mutableListOf<Pair<ChannelId, DataRequestPriority>>()
+    var detailResponder: suspend (ChannelId) -> DataResult<ConversationSummary> =
+        { DataResult.Empty(EmptyReason.NoMessages) }
+
+    override suspend fun getConversationDetail(
+        channelId: ChannelId,
+        priority: DataRequestPriority
+    ): DataResult<ConversationSummary> {
+        detailRequests += channelId to priority
+        return detailResponder(channelId)
+    }
+
     override suspend fun getThread(threadId: ThreadId, includeFollowedSummaries: Boolean, limit: Int): DataResult<ThreadSnapshot> =
         error("unused")
 
