@@ -408,16 +408,18 @@ class RaftThreadNewerAutoPaginationConnectedTest {
     private fun retryRevealState(instrumentation: Instrumentation): RetryRevealState {
         val root = instrumentation.uiAutomation.rootInActiveWindow
             ?: return RetryRevealState(retryBounds = null, viewportBounds = null, backToBottomBounds = emptyList())
-        val retryNode = root.raftFindNodesByText(RetryLabel).firstOrNull()
+        // Re-read matches so their bounds are not served from a stale
+        // accessibility cache (see visibleFixtureMarkers).
+        val retryNode = root.raftFindNodesByText(RetryLabel).firstOrNull { node -> node.refresh() }
         val backToBottomBounds =
             root.raftFindNodesByText(BackToBottomLabel)
-                .filter { node -> node.isVisibleToUser }
+                .filter { node -> node.refresh() && node.isVisibleToUser }
                 .map { node -> Rect().also(node::getBoundsInScreen) }
                 .filter { bounds -> bounds.width() > 0 && bounds.height() > 0 }
         if (retryNode == null) {
             return RetryRevealState(retryBounds = null, viewportBounds = null, backToBottomBounds = backToBottomBounds)
         }
-        val target = clickableAncestorOrSelf(retryNode) ?: retryNode
+        val target = clickableAncestorOrSelf(retryNode)?.takeIf { node -> node.refresh() } ?: retryNode
         return RetryRevealState(
             retryBounds = Rect().also(target::getBoundsInScreen),
             viewportBounds = viewportBounds(target),
@@ -497,26 +499,37 @@ class RaftThreadNewerAutoPaginationConnectedTest {
         var previous: VisibleMarker? = null
         var stableSamples = 0
         var latest: VisibleMarker? = null
-        waitUntil(AccessibilityTimeoutMs, "stable visible initial message anchor") {
-            latest = visibleFixtureMarkers(instrumentation, 1L..16L).minByOrNull { it.bounds.top }
-            val current = latest
-            val prior = previous
-            stableSamples =
-                if (
-                    current != null &&
-                    prior != null &&
-                    current.seq == prior.seq &&
-                    abs(current.bounds.top - prior.bounds.top) <= StablePixelTolerance
-                ) {
-                    stableSamples + 1
-                } else {
-                    0
+        try {
+            waitUntil(AccessibilityTimeoutMs, "stable visible initial message anchor") {
+                latest =
+                    visibleFixtureMarkers(instrumentation, 1L..16L)
+                        .filter { marker -> marker.fullyVisible }
+                        .minByOrNull { marker -> marker.bounds.top }
+                val current = latest
+                val prior = previous
+                stableSamples =
+                    if (
+                        current != null &&
+                        prior != null &&
+                        current.seq == prior.seq &&
+                        abs(current.bounds.top - prior.bounds.top) <= StablePixelTolerance
+                    ) {
+                        stableSamples + 1
+                    } else {
+                        0
+                    }
+                previous = current
+                if (stableSamples < StableSamplesRequired) {
+                    SystemClock.sleep(StableSampleIntervalMs)
                 }
-            previous = current
-            if (stableSamples < StableSamplesRequired) {
-                SystemClock.sleep(StableSampleIntervalMs)
+                stableSamples >= StableSamplesRequired
             }
-            stableSamples >= StableSamplesRequired
+        } catch (failure: AssertionError) {
+            throw AssertionError(
+                "${failure.message}; latest=$latest stableSamples=$stableSamples; " +
+                    "visibleMarkers=${visibleFixtureMarkers(instrumentation, 1L..80L)}",
+                failure,
+            )
         }
         return requireNotNull(latest)
     }
@@ -525,25 +538,34 @@ class RaftThreadNewerAutoPaginationConnectedTest {
         var previous: VisibleMarker? = null
         var stableSamples = 0
         var latest: VisibleMarker? = null
-        waitUntil(AccessibilityTimeoutMs, "stable retained message ${threadNewerAutoMessageLabel(seq)}") {
-            latest = visibleFixtureMarker(instrumentation, seq)
-            val current = latest
-            val prior = previous
-            stableSamples =
-                if (
-                    current != null &&
-                    prior != null &&
-                    abs(current.bounds.top - prior.bounds.top) <= StablePixelTolerance
-                ) {
-                    stableSamples + 1
-                } else {
-                    0
+        try {
+            waitUntil(AccessibilityTimeoutMs, "stable retained message ${threadNewerAutoMessageLabel(seq)}") {
+                latest = visibleFixtureMarker(instrumentation, seq)
+                val current = latest
+                val prior = previous
+                stableSamples =
+                    if (
+                        current != null &&
+                        prior != null &&
+                        abs(current.bounds.top - prior.bounds.top) <= StablePixelTolerance
+                    ) {
+                        stableSamples + 1
+                    } else {
+                        0
+                    }
+                previous = current
+                if (stableSamples < StableSamplesRequired) {
+                    SystemClock.sleep(StableSampleIntervalMs)
                 }
-            previous = current
-            if (stableSamples < StableSamplesRequired) {
-                SystemClock.sleep(StableSampleIntervalMs)
+                stableSamples >= StableSamplesRequired
             }
-            stableSamples >= StableSamplesRequired
+        } catch (failure: AssertionError) {
+            throw AssertionError(
+                "${failure.message}; latest=$latest stableSamples=$stableSamples; " +
+                    "visibleMarkers=${visibleFixtureMarkers(instrumentation, 1L..80L)}; " +
+                    "accessibility=${accessibilityTreeSummary(instrumentation)}",
+                failure,
+            )
         }
         return requireNotNull(latest)
     }
@@ -551,23 +573,44 @@ class RaftThreadNewerAutoPaginationConnectedTest {
     private fun visibleFixtureMarkers(
         instrumentation: Instrumentation,
         seqRange: LongRange,
-    ): List<VisibleMarker> = seqRange.mapNotNull { seq -> visibleFixtureMarker(instrumentation, seq) }
-
-    private fun visibleFixtureMarker(instrumentation: Instrumentation, seq: Long): VisibleMarker? {
-        val label = threadNewerAutoMessageLabel(seq)
-        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return null
-        return root.raftFindNodesByText(label)
-            .mapNotNull { node ->
-                val bounds = Rect()
-                node.getBoundsInScreen(bounds)
-                if (bounds.width() <= 0 || bounds.height() <= 0) {
-                    null
-                } else {
-                    VisibleMarker(seq = seq, bounds = bounds)
+    ): List<VisibleMarker> {
+        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return emptyList()
+        val smallestBySeq = mutableMapOf<Long, Pair<AccessibilityNodeInfo, Rect>>()
+        val queue = ArrayDeque<Pair<AccessibilityNodeInfo, Int>>()
+        queue.addLast(root to 0)
+        while (queue.isNotEmpty()) {
+            val (node, depth) = queue.removeFirst()
+            // UiAutomation answers from its accessibility cache, which Compose
+            // only invalidates through throttled content-change events. Right
+            // after a scroll, cached rows can still report their pre-scroll
+            // bounds (a local run read AUTO-MSG-0010..0013 at their
+            // pre-gesture positions, overlapping the scrolled-in 0014/0015).
+            // Re-read every node from the app; a node that no longer exists
+            // is dropped with its subtree.
+            if (!node.refresh()) continue
+            val text = "${node.text ?: ""} ${node.contentDescription ?: ""}"
+            FixtureLabelPattern.findAll(text).forEach { match ->
+                val seq = match.groupValues[1].toLong()
+                val bounds = Rect().also(node::getBoundsInScreen)
+                if (seq in seqRange && bounds.width() > 0 && bounds.height() > 0) {
+                    val previous = smallestBySeq[seq]?.second
+                    if (previous == null || bounds.area < previous.area) smallestBySeq[seq] = node to bounds
                 }
             }
-            .minByOrNull { marker -> marker.bounds.width() * marker.bounds.height() }
+            if (depth < MaxAccessibilityTreeDepth) {
+                repeat(node.childCount) { index -> node.getChild(index)?.let { child -> queue.addLast(child to depth + 1) } }
+            }
+        }
+        return smallestBySeq.entries
+            .sortedBy { (seq, _) -> seq }
+            .map { (seq, match) ->
+                val (node, bounds) = match
+                VisibleMarker(seq = seq, bounds = bounds, fullyVisible = isFullyInside(bounds, viewportBounds(node)))
+            }
     }
+
+    private fun visibleFixtureMarker(instrumentation: Instrumentation, seq: Long): VisibleMarker? =
+        visibleFixtureMarkers(instrumentation, seq..seq).singleOrNull()
 
     private fun waitForAccessibilityText(
         instrumentation: Instrumentation,
@@ -833,6 +876,9 @@ class RaftThreadNewerAutoPaginationConnectedTest {
     private data class VisibleMarker(
         val seq: Long,
         val bounds: Rect,
+        // False when the list viewport clips the row's text: a clipped
+        // marker's top is pinned to the viewport edge and hides displacement.
+        val fullyVisible: Boolean,
     )
 
     private data class RetryRevealState(
@@ -914,8 +960,13 @@ class RaftThreadNewerAutoPaginationConnectedTest {
         private const val MaxStalledRetryRevealGestures = 3
         private const val RetryRevealStableSamplesRequired = 2
         private const val EvidenceStatusCode = 2
+        private val FixtureLabelPattern =
+            Regex(Regex.escape(threadNewerAutoMessageLabel(0L).substringBeforeLast('-') + "-") + "(\\d{4})")
     }
 }
+
+private val Rect.area: Int
+    get() = width() * height()
 
 /**
  * Accessibility bounds are intersected with the clipping viewport, so a node
