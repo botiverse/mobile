@@ -56,6 +56,11 @@ private data class WireInboxItem(
     val lastMessageSenderType: String? = null,
     val lastMessageSenderId: String? = null,
     val lastMessageSenderName: String? = null,
+    // The avatar of the sender this row shows (channel/dm: the last message's sender; thread: the
+    // latest replier), so a joint channel's sender from another server still has a face when this
+    // server's member directory doesn't know them. Pending server PR (botiverse/slock, Activity row
+    // `senderAvatarUrl`); absent from older servers.
+    val senderAvatarUrl: String? = null,
     // thread
     val threadChannelId: String? = null,
     val parentMessageId: String? = null,
@@ -270,6 +275,10 @@ private fun WireInboxItem.toDomain(diagnostics: (String) -> Unit): InboxItem? = 
     else -> null
 }
 
+/** The row's `senderAvatarUrl`, as ThreadPage takes a reply's `senderAvatarUrl`: trimmed, blank → none. */
+private fun WireInboxItem.senderAvatarWireValueOrNull(): String? =
+    senderAvatarUrl?.trim()?.takeIf { it.isNotBlank() }
+
 private fun WireInboxItem.toChannelOrDmDomain(diagnostics: (String) -> Unit): InboxItem? {
     val id = channelId ?: return null
     val name = channelName ?: id
@@ -299,6 +308,7 @@ private fun WireInboxItem.toChannelOrDmDomain(diagnostics: (String) -> Unit): In
         lastMessageAt = lastMessageAt,
         lastMessageSenderName = lastMessageSenderName,
         lastMessageSenderId = lastMessageSenderId,
+        lastMessageSenderAvatarWireValue = senderAvatarWireValueOrNull(),
         lastMessageSenderKind =
             lastMessageSenderType.toSenderKind(
                 source = "inbox_last_message_sender",
@@ -343,6 +353,7 @@ private fun WireInboxItem.toThreadDomain(diagnostics: (String) -> Unit): InboxIt
         latestActivityAt = lastActivityAt ?: lastReplyAt,
         latestActivitySenderName = latestActivitySenderName,
         latestActivitySenderId = latestActivitySenderId,
+        latestActivitySenderAvatarWireValue = senderAvatarWireValueOrNull(),
         latestDelegatedBy = latestDelegatedBy.toMessageDelegatedBy(),
         latestActivitySenderKind =
             latestActivitySenderType.toSenderKind(
