@@ -70,16 +70,29 @@ fi
 
 [ -n "${BODY}" ] || die "Hands returned an empty body for build ${BUILD}"
 
-# `build_metadata_json` is a JSON *string* nested inside the response, so it arrives
-# escaped: "build_metadata_json":"{\"channel\": \"preview\"}". Pull `channel` out of the
-# innermost object without needing jq. Prints nothing when the field is absent or null.
+# `build_metadata_json` is a JSON *string* nested inside the response. Parse both layers
+# with a real JSON reader rather than pattern-matching the escaped text: the outer object
+# also carries its own `channel`, and a regex can pick the wrong one.
 recorded_channel() {
-  printf '%s' "${BODY}" |
-    tr -d '\n' |
-    sed -n 's/.*build_metadata_json"[[:space:]]*:[[:space:]]*"\(.*\)".*/\1/p' |
-    sed 's/\\"/"/g' |
-    sed -n 's/.*"channel"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' |
-    head -n 1
+  printf '%s' "${BODY}" | python3 -c '
+import json
+import sys
+
+try:
+    response = json.load(sys.stdin)
+except Exception:
+    raise SystemExit(0)
+raw = response.get("build_metadata_json") if isinstance(response, dict) else None
+if isinstance(raw, str):
+    try:
+        raw = json.loads(raw)
+    except Exception:
+        raise SystemExit(0)
+if isinstance(raw, dict):
+    value = raw.get("channel")
+    if isinstance(value, str):
+        print(value)
+'
 }
 
 RECORDED="$(recorded_channel)"
