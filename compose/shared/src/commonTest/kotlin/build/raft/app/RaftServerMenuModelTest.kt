@@ -167,4 +167,34 @@ class RaftServerMenuModelTest {
         assertFalse(state.open)
         assertNull(raftServerMenuPick("bogus"))
     }
+
+    @Test
+    fun serverTabShowsTheOtherServersUnmutedCountOnTheNativeBar() {
+        val loud = RaftServerSwitcherItem(id = "s4", name = "Loud", slug = "loud", activityUnreadCount = 120L)
+        val muted = RaftServerSwitcherItem(id = "s5", name = "Muted", slug = "muted", activityUnreadCount = 9L, serverPushMuted = true)
+        // Acme 3 + Loud 120; the current server and muted servers are left out.
+        assertEquals(123, appShellServerTabNativeBadgeCount(model(listOf(botiverse, acme, loud, muted))))
+        assertEquals(0, appShellServerTabNativeBadgeCount(model(listOf(botiverse, acme), current = "s2")))
+        // Only a muted server has unread: the dot shows, the native bar shows no badge.
+        val mutedOnly = model(listOf(botiverse, muted))
+        assertTrue(appShellServerTabShowsAttention(mutedOnly))
+        assertEquals(0, appShellServerTabNativeBadgeCount(mutedOnly))
+
+        val tabs =
+            appShellPhoneBottomTabs(
+                selectedTab = "home",
+                homeLabel = "h",
+                activityLabel = "a",
+                searchLabel = "s",
+                tasksLabel = "t",
+                moreLabel = "m",
+                serverTab = model(listOf(botiverse, acme, loud)),
+            )
+        val serverTab = tabs.single { it.key == AppShellServerTabKey }
+        assertTrue(serverTab.attentionDot)
+        assertEquals(0, serverTab.badgeCount)
+        val native = raftNativeTabBarItem(serverTab)
+        assertEquals("99+", native.badgeValue)
+        assertFalse(native.attentionDot)
+    }
 }

@@ -92,9 +92,10 @@ class RaftNativeTabBarTest {
             )
         assertEquals(listOf("home", "activity", "tasks", AppShellSearchTabKey, "more"), state.items.map { it.key })
         val byKey = state.items.associateBy { it.key }
-        assertTrue(byKey.getValue("activity").attentionDot)
-        assertEquals(0, byKey.getValue("activity").badgeCount)
-        assertNull(byKey.getValue("activity").badgeValue)
+        // UIKit has no small dot: the iOS bar shows Activity's unread count, capped like the app.
+        assertEquals(120, byKey.getValue("activity").badgeCount)
+        assertEquals("99+", byKey.getValue("activity").badgeValue)
+        assertFalse(byKey.getValue("activity").attentionDot)
         assertFalse(byKey.getValue("tasks").attentionDot)
         // Search sits directly left of More as an ordinary tab (stdrc option B).
         val search = state.items[3]
@@ -114,6 +115,27 @@ class RaftNativeTabBarTest {
         // The selected Activity tab never carries the dot.
         val onActivity = raftNativeTabBarState(fiveTabs(selectedKey = "activity", activityUnreadCount = 3), visible = true)
         assertFalse(onActivity.items.single { it.key == "activity" }.attentionDot)
+        assertNull(onActivity.items.single { it.key == "activity" }.badgeValue)
+    }
+
+    @Test
+    fun activityDotCarriesItsCountForTheNativeBarOnly() {
+        val activity = fiveTabs(selectedKey = "home", activityUnreadCount = 7).single { it.key == "activity" }
+        // The Compose bar keeps the dot and no number (raft-design MobileNav).
+        assertTrue(activity.attentionDot)
+        assertEquals(0, activity.badgeCount)
+        assertEquals(7, activity.nativeBadgeCount)
+        val native = raftNativeTabBarItem(activity)
+        assertEquals("7", native.badgeValue)
+        assertFalse(native.attentionDot)
+        // No unread: no dot, no count.
+        val quiet = fiveTabs(selectedKey = "home").single { it.key == "activity" }
+        assertEquals(0, quiet.nativeBadgeCount)
+        assertNull(raftNativeTabBarItem(quiet).badgeValue)
+        // A dot without a known count keeps no badge on the native bar (never an empty badge).
+        val flagOnly = raftNativeTabBarItem(RaftBottomTabItemPayload(key = "more", attentionDot = true))
+        assertNull(flagOnly.badgeValue)
+        assertTrue(flagOnly.attentionDot)
     }
 
     @Test
