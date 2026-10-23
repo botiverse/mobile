@@ -11,6 +11,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.resources.MR
@@ -50,6 +51,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 import build.raft.app.compat.ui.PlayState
+import build.raft.app.compat.ui.VideoPlayControl
 
 internal enum class ThreadInlineAudioPreviewStatus {
     Loading,
@@ -97,6 +99,32 @@ internal data class ThreadInlineAudioPreviewHost(
 
 internal val LocalThreadInlineAudioPreviewHost =
     compositionLocalOf<ThreadInlineAudioPreviewHost?> { null }
+
+/** Plays the inline audio off screen: the platform player, or a scripted one in screenshot fixtures. */
+internal typealias ThreadInlineAudioPlayer =
+    @Composable (
+        source: String,
+        playControl: VideoPlayControl,
+        seekRequest: RaftFilePreviewVideoSeekRequest?,
+        onPlayStateChanged: (PlayState) -> Unit,
+        onPlayTimeChanged: (currentMs: Int, totalMs: Int) -> Unit,
+        modifier: Modifier
+    ) -> Unit
+
+internal val LocalThreadInlineAudioPlayer =
+    staticCompositionLocalOf<ThreadInlineAudioPlayer> {
+        { source, playControl, seekRequest, onPlayStateChanged, onPlayTimeChanged, modifier ->
+            RaftFilePreviewKuiklyVideo(
+                source = source,
+                playControl = playControl,
+                seekRequest = seekRequest,
+                onPlayStateChanged = onPlayStateChanged,
+                onPlayTimeChanged = onPlayTimeChanged,
+                onFirstFrame = {},
+                modifier = modifier
+            )
+        }
+    }
 
 internal fun formatAudioDuration(ms: Int): String {
     val totalSeconds = (ms.coerceAtLeast(0) / 1000)
@@ -276,18 +304,13 @@ private fun ThreadInlineAudioSurface(
 
             key(source, playerGeneration) {
                 Box(modifier = Modifier.size(1.dp).alpha(0f)) {
-                    RaftFilePreviewKuiklyVideo(
-                        source = source,
-                        playControl = playback.control,
-                        seekRequest = playback.seekRequest,
-                        onPlayStateChanged = {
-                            playback = playback.withState(playerGeneration, it)
-                        },
-                        onPlayTimeChanged = { current, total ->
-                            playback = playback.withTime(playerGeneration, current, total)
-                        },
-                        onFirstFrame = {},
-                        modifier = Modifier.fillMaxSize()
+                    LocalThreadInlineAudioPlayer.current(
+                        source,
+                        playback.control,
+                        playback.seekRequest,
+                        { playback = playback.withState(playerGeneration, it) },
+                        { current, total -> playback = playback.withTime(playerGeneration, current, total) },
+                        Modifier.fillMaxSize()
                     )
                 }
             }
