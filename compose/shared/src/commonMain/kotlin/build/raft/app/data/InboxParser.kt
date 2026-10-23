@@ -550,15 +550,29 @@ private data class WireSearchResult(
     val delegatedBy: WireDelegatedBy? = null,
 )
 
+/**
+ * `GET /messages/search` page (botiverse/slock searchService.ts `MessageSearchPage` plus the
+ * route's `historyLimited`). `nextCursor` and `incomplete` come only from the recent-sort text
+ * walk: `nextCursor` is set when `hasMore` or `incomplete`, and continues below this page.
+ */
 @Serializable
 private data class WireSearchResponse(
     val results: List<WireSearchResult> = emptyList(),
     val hasMore: Boolean = false,
+    val nextCursor: String? = null,
+    val incomplete: Boolean = false,
 )
 
 data class SharedSearchItems(
     val items: List<InboxItem>,
+    /**
+     * More results can be loaded: the server's `hasMore`, or a walk that stopped at its scan
+     * budget (`incomplete`) with a cursor to continue from (web `hasMore || searchIncomplete`).
+     */
     val hasMore: Boolean,
+    /** Rows the server sent, before dropping unknown kinds or duplicates: what an offset advances by. */
+    val rawResultCount: Int = items.size,
+    val nextCursor: String? = null,
 )
 
 fun parseSharedSearchItems(
@@ -567,7 +581,13 @@ fun parseSharedSearchItems(
 ): SharedSearchItems? = runCatching {
     val decoded = inboxJson.decodeFromString(WireSearchResponse.serializer(), bodyText)
     val items = decoded.results.mapNotNull { it.toInboxItem(diagnostics) }.distinctBy { it.key }
-    SharedSearchItems(items = items, hasMore = decoded.hasMore)
+    val nextCursor = decoded.nextCursor?.takeIf { it.isNotEmpty() }
+    SharedSearchItems(
+        items = items,
+        hasMore = decoded.hasMore || (decoded.incomplete && nextCursor != null),
+        rawResultCount = decoded.results.size,
+        nextCursor = nextCursor,
+    )
 }.getOrNull()
 
 private fun WireSearchResult.toInboxItem(diagnostics: (String) -> Unit): InboxItem? {

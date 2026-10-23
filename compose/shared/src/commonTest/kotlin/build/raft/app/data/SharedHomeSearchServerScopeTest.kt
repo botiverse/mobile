@@ -1,8 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.model.ChannelId
-import build.raft.app.model.InboxItemKind
-import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import kotlinx.coroutines.CompletableDeferred
@@ -175,20 +172,6 @@ class SharedHomeSearchServerScopeTest {
         }
     }
 
-    private object EmptySavedRepository : SavedRepository {
-        override suspend fun loadInitial(serverId: ServerId, limit: Int): DataResult<SavedSnapshot> =
-            DataResult.Empty(EmptyReason.NoInboxItems)
-
-        override suspend fun loadMore(serverId: ServerId, offset: Int, limit: Int): DataResult<SavedSnapshot> =
-            DataResult.Empty(EmptyReason.NoInboxItems)
-
-        override suspend fun saveMessage(serverId: ServerId, messageId: MessageId): DataResult<SavedMessageMutationResult> =
-            DataResult.Content(SavedMessageMutationResult(messageId))
-
-        override suspend fun unsaveMessage(serverId: ServerId, messageId: MessageId): DataResult<SavedMessageMutationResult> =
-            DataResult.Content(SavedMessageMutationResult(messageId))
-    }
-
     private class ServerTaggedSearchRepository : SearchRepository {
         val calls = mutableListOf<Pair<String, SearchQueryOptions>>()
 
@@ -198,13 +181,14 @@ class SharedHomeSearchServerScopeTest {
             offset: Int,
             limit: Int,
             options: SearchQueryOptions,
+            cursor: String?
         ): DataResult<SearchSnapshot> {
             calls += serverId.value to options
             return DataResult.Content(
                 SearchSnapshot(
                     server = ServerSummary(serverId, serverId.value),
                     query = query,
-                    items = listOf(row("${serverId.value}:$query")),
+                    items = listOf(searchHitRow("${serverId.value}:$query")),
                 )
             )
         }
@@ -220,6 +204,7 @@ class SharedHomeSearchServerScopeTest {
             offset: Int,
             limit: Int,
             options: SearchQueryOptions,
+            cursor: String?
         ): DataResult<SearchSnapshot> {
             requestedServers += serverId.value
             withContext(NonCancellable) { results.getOrPut(serverId.value) { CompletableDeferred() }.await() }
@@ -227,7 +212,7 @@ class SharedHomeSearchServerScopeTest {
                 SearchSnapshot(
                     server = ServerSummary(serverId, serverId.value),
                     query = query,
-                    items = listOf(row("${serverId.value}:$query")),
+                    items = listOf(searchHitRow("${serverId.value}:$query")),
                 )
             )
         }
@@ -237,13 +222,3 @@ class SharedHomeSearchServerScopeTest {
         }
     }
 }
-
-private fun row(key: String): InboxItem =
-    InboxItem(
-        key = key,
-        kind = InboxItemKind.Channel,
-        channelId = ChannelId("channel-1"),
-        channelName = "general",
-        latestActivityMessageId = MessageId(key),
-        lastMessageId = MessageId(key),
-    )

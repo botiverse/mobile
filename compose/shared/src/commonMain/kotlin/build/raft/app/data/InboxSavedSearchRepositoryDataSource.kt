@@ -145,32 +145,48 @@ private suspend fun RaftNetworkClient.searchMessages(
     query: String,
     limit: Int,
     offset: Int,
+    cursor: String?,
     options: SearchQueryOptions,
     serverId: ServerId
 ): HomeNetworkResponse =
     request(
         priority,
         "messages/search",
-        query =
-            listOfNotNull(
-                "q" to query,
-                "limit" to limit.toString(),
-                "offset" to offset.toString(),
-                options.sort.wireValue?.let { "sort" to it },
-                options.scopes
-                    .takeIf { SearchScope.Mentioned in it }
-                    ?.let { "mentionTarget" to "self" },
-                options.scopes.exclusiveSenderTypeWireValue()?.let { "senderType" to it },
-                options.channelId?.value?.let { "channelId" to it },
-                options.afterIso?.takeIf { it.isNotBlank() }?.let { "after" to it },
-                options.beforeIso?.takeIf { it.isNotBlank() }?.let { "before" to it }
-            ) + options.senderIds
-                .map { it.trim() }
-                .filter { it.isNotBlank() }
-                .distinct()
-                .map { "senderId" to it },
+        query = searchRequestQuery(query, limit, offset, cursor, options),
         serverIdOverride = serverId
     )
+
+/**
+ * `GET /messages/search` query (botiverse/slock routes/messages.ts `messageRouter.get("/search")`),
+ * built like the web's `buildMessageSearchParams` + `loadMoreResults`:
+ * - one `senderId` at most: the route reads it only as a single string, so a repeated one would
+ *   drop the sender filter;
+ * - a walk `cursor` replaces `offset` when [searchWalkCursorApplies] (the route rejects a cursor
+ *   without a query or with another sort); otherwise the page starts at `offset`.
+ */
+internal fun searchRequestQuery(
+    query: String,
+    limit: Int,
+    offset: Int,
+    cursor: String?,
+    options: SearchQueryOptions
+): List<Pair<String, String>> {
+    val walkCursor = cursor?.takeIf { it.isNotEmpty() && searchWalkCursorApplies(query, options.sort) }
+    return listOfNotNull(
+        "q" to query,
+        "limit" to limit.toString(),
+        if (walkCursor != null) "cursor" to walkCursor else "offset" to offset.toString(),
+        options.sort.wireValue?.let { "sort" to it },
+        options.senderId?.trim()?.takeIf { it.isNotBlank() }?.let { "senderId" to it },
+        options.scopes
+            .takeIf { SearchScope.Mentioned in it }
+            ?.let { "mentionTarget" to "self" },
+        options.scopes.exclusiveSenderTypeWireValue()?.let { "senderType" to it },
+        options.channelId?.value?.let { "channelId" to it },
+        options.afterIso?.takeIf { it.isNotBlank() }?.let { "after" to it },
+        options.beforeIso?.takeIf { it.isNotBlank() }?.let { "before" to it }
+    )
+}
 
 class RealInboxRepository(
     private val sessionStore: RaftAuthSessionStore,
@@ -416,7 +432,8 @@ class RealSearchRepository(
         query: String,
         offset: Int,
         limit: Int,
-        options: SearchQueryOptions
+        options: SearchQueryOptions,
+        cursor: String?
     ): DataResult<SearchSnapshot> {
         val trimmedQuery = query.trim()
         if (trimmedQuery.isBlank() && !options.hasMeaningfulFilter()) {
@@ -431,6 +448,7 @@ class RealSearchRepository(
                     trimmedQuery,
                     limit,
                     offset,
+                    cursor,
                     options,
                     serverId
                 )
@@ -449,7 +467,15 @@ class RealSearchRepository(
                     items = parsed.items,
                     totalCount = parsed.items.size,
                     hasMore = parsed.hasMore,
-                    nextOffset = offset + parsed.items.size
+                    // Like the web, the next offset counts the rows the server sent; a cursor
+                    // page continues from its own cursor, not from an offset.
+                    nextOffset =
+                        if (cursor != null && searchWalkCursorApplies(trimmedQuery, options.sort)) {
+                            null
+                        } else {
+                            offset + parsed.rawResultCount
+                        },
+                    nextCursor = parsed.nextCursor?.takeIf { searchWalkCursorApplies(trimmedQuery, options.sort) }
                 )
             }
         )

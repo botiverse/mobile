@@ -1207,7 +1207,9 @@ data class SearchSnapshot(
     val items: List<InboxItem>,
     val totalCount: Int = items.size,
     val hasMore: Boolean = false,
-    val nextOffset: Int? = null
+    val nextOffset: Int? = null,
+    /** Server walk cursor for the next page; when set it is used instead of [nextOffset]. */
+    val nextCursor: String? = null
 )
 
 data class SettingsSnapshot(

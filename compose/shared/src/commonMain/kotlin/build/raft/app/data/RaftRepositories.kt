@@ -625,13 +625,22 @@ interface SearchRepository {
         query: String,
         offset: Int = 0,
         limit: Int = DEFAULT_PAGE_LIMIT,
-        options: SearchQueryOptions = SearchQueryOptions()
+        options: SearchQueryOptions = SearchQueryOptions(),
+        /**
+         * The previous page's [SearchSnapshot.nextCursor]. Sent instead of [offset] only when
+         * [searchWalkCursorApplies] (a query with sort=recent), as on the web.
+         */
+        cursor: String? = null
     ): DataResult<SearchSnapshot>
 }
 
 data class SearchQueryOptions(
     val sort: SearchSort = SearchSort.Relevance,
-    val senderIds: List<String> = emptyList(),
+    /**
+     * At most one sender, like the web (`MessageSearchPage` `senderId` param): the server reads
+     * `senderId` only as a single string and drops a repeated one.
+     */
+    val senderId: String? = null,
     val scopes: List<SearchScope> = emptyList(),
     val channelId: ChannelId? = null,
     val afterIso: String? = null,
@@ -639,11 +648,18 @@ data class SearchQueryOptions(
 )
 
 fun SearchQueryOptions.hasMeaningfulFilter(): Boolean =
-    senderIds.any { it.isNotBlank() } ||
+    !senderId.isNullOrBlank() ||
         scopes.isNotEmpty() ||
         (channelId?.value?.isNotBlank() == true) ||
         !afterIso.isNullOrBlank() ||
         !beforeIso.isNullOrBlank()
+
+/**
+ * The server's walk cursor pages only a text query with sort=recent (routes/messages.ts rejects a
+ * cursor otherwise); every other search pages by offset.
+ */
+fun searchWalkCursorApplies(query: String, sort: SearchSort): Boolean =
+    query.isNotBlank() && sort == SearchSort.Recent
 
 enum class SearchScope(val key: String, val label: String) {
     Mentioned("mentioned", "@ Me"),

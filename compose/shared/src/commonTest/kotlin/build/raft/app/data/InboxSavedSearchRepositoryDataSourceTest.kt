@@ -750,7 +750,7 @@ class InboxSavedSearchRepositoryDataSourceTest {
                 query = " ",
                 options =
                     SearchQueryOptions(
-                        senderIds = listOf("user-1"),
+                        senderId = "user-1",
                         channelId = ChannelId("channel-1"),
                         afterIso = "2026-05-14T16:00:00.000Z"
                     )
@@ -787,7 +787,7 @@ class InboxSavedSearchRepositoryDataSourceTest {
             options =
                 SearchQueryOptions(
                     sort = SearchSort.Recent,
-                    senderIds = listOf("user-1", "agent-1", "user-1"),
+                    senderId = " agent-1 ",
                     channelId = ChannelId("channel-1"),
                     afterIso = "2026-05-14T16:00:00.000Z",
                     beforeIso = "2026-05-15T15:04:43.904Z"
@@ -801,7 +801,8 @@ class InboxSavedSearchRepositoryDataSourceTest {
                     limit = 20,
                     offset = 20,
                     sort = "recent",
-                    senderIds = listOf("user-1", "agent-1"),
+                    // One senderId at most: the route drops a repeated one.
+                    senderIds = listOf("agent-1"),
                     channelId = "channel-1",
                     after = "2026-05-14T16:00:00.000Z",
                     before = "2026-05-15T15:04:43.904Z"
@@ -809,6 +810,66 @@ class InboxSavedSearchRepositoryDataSourceTest {
             ),
             network.searchCalls
         )
+    }
+
+    @Test
+    fun searchPagesByServerCursorOnlyForRecentTextSearchElseByOffset() = runBlocking {
+        val cases =
+            listOf(
+                // query + sort=recent: the cursor replaces the offset (web loadMoreResults).
+                Triple("release", SearchQueryOptions(sort = SearchSort.Recent), (null as Int?) to SearchWalkCursorVector),
+                // The route rejects a cursor without a query or with relevance sort: offset.
+                Triple(" ", SearchQueryOptions(sort = SearchSort.Recent, channelId = ChannelId("channel-1")), 30 to null),
+                Triple("release", SearchQueryOptions(sort = SearchSort.Relevance), 30 to null),
+            )
+        for ((query, options, expected) in cases) {
+            val network = FakeInboxNetworkClient(searchJson = """{"results":[]}""")
+            RealSearchRepository(sampleStore(), network)
+                .search(ServerId("server-1"), query, offset = 30, options = options, cursor = SearchWalkCursorVector)
+            val call = network.searchCalls.single()
+            assertEquals(expected, call.offset to call.cursor, "query='$query' sort=${options.sort}")
+        }
+    }
+
+    @Test
+    fun searchKeepsTheNextCursorOnlyWhereItCanBeSent() = runBlocking {
+        val hit =
+            """{"id":"message-1","seq":1,"channelId":"channel-1","channelName":"general","channelType":"channel","parentChannelId":"channel-1","parentChannelName":"general","parentChannelType":"channel","senderId":"user-1","senderType":"user","senderName":"Artin","content":"release","snippet":"release","createdAt":"2026-10-01T00:00:00.123Z"}"""
+        // searchService.ts MessageSearchPage: a walk stopped at its row budget is `incomplete`
+        // with a cursor even when `hasMore` is false; the web still offers more (hasMore || incomplete).
+        val network =
+            FakeInboxNetworkClient(
+                searchJson = """{"results":[$hit],"hasMore":false,"incomplete":true,"nextCursor":"$SearchWalkCursorVector","searchedThrough":"2026-10-01T00:00:00.123Z","searchedMessages":10000,"historyLimited":false}"""
+            )
+        val repository = RealSearchRepository(sampleStore(), network)
+
+        val recent = repository.search(ServerId("server-1"), "release", options = SearchQueryOptions(sort = SearchSort.Recent))
+        val relevance = repository.search(ServerId("server-1"), "release", options = SearchQueryOptions())
+
+        assertTrue(recent is DataResult.Content)
+        assertEquals(Triple(true, SearchWalkCursorVector, 1), Triple(recent.data.hasMore, recent.data.nextCursor, recent.data.nextOffset))
+        assertTrue(relevance is DataResult.Content)
+        assertEquals(null to 1, relevance.data.nextCursor to relevance.data.nextOffset)
+    }
+
+    @Test
+    fun searchOffsetAdvancesByRowsTheServerSentNotRowsKept() = runBlocking {
+        // Two server rows, one an unknown channel type the client drops: the next offset still
+        // skips both, or the next page would start on a row already returned (web: results.length).
+        val network =
+            FakeInboxNetworkClient(
+                searchJson = """
+                    {"results":[
+                      {"id":"message-1","seq":1,"channelId":"channel-1","channelName":"general","channelType":"channel","parentChannelId":"channel-1","parentChannelName":"general","parentChannelType":"channel","senderId":"user-1","senderType":"user","senderName":"Artin","content":"a","snippet":"a","createdAt":"2026-10-01T00:00:00Z"},
+                      {"id":"message-2","seq":2,"channelId":"weird-1","channelName":"Mystery","channelType":"mystery","parentChannelId":"weird-1","parentChannelName":"Mystery","parentChannelType":"mystery","senderId":"user-1","senderType":"user","senderName":"Artin","content":"b","snippet":"b","createdAt":"2026-10-01T00:00:00Z"}
+                    ],"hasMore":true}
+                """.trimIndent()
+            )
+
+        val page = RealSearchRepository(sampleStore(), network).search(ServerId("server-1"), "release", offset = 30)
+
+        assertTrue(page is DataResult.Content)
+        assertEquals(1 to 32, page.data.items.size to page.data.nextOffset)
     }
 
     @Test
@@ -964,7 +1025,9 @@ class InboxSavedSearchRepositoryDataSourceTest {
                         SearchCall(
                             query = query.firstValue("q").orEmpty(),
                             limit = query.firstValue("limit")?.toIntOrNull() ?: 30,
-                            offset = query.firstValue("offset")?.toIntOrNull() ?: 0,
+                            // Absent when the page continues from a cursor.
+                            offset = query.firstValue("offset")?.toIntOrNull(),
+                            cursor = query.firstValue("cursor"),
                             sort = query.firstValue("sort"),
                             senderIds = query.values("senderId"),
                             mentionTarget = query.firstValue("mentionTarget"),
@@ -995,7 +1058,8 @@ class InboxSavedSearchRepositoryDataSourceTest {
     private data class SearchCall(
         val query: String,
         val limit: Int,
-        val offset: Int,
+        val offset: Int?,
+        val cursor: String? = null,
         val sort: String?,
         val senderIds: List<String>,
         val mentionTarget: String? = null,
@@ -1011,3 +1075,10 @@ private fun List<Pair<String, String>>.firstValue(name: String): String? =
 
 private fun List<Pair<String, String>>.values(name: String): List<String> =
     filter { it.first == name }.map { it.second }
+
+/**
+ * A walk cursor in the server's shape (searchService.ts `encodeMessageSearchWalkCursor`:
+ * base64url of `{"t":"<UTC micros>","i":"<message uuid>"}`); the client passes it back opaquely.
+ */
+private const val SearchWalkCursorVector =
+    "eyJ0IjoiMjAyNi0xMC0wMVQwMDowMDowMC4xMjM0NTZaIiwiaSI6IjBiOGYzYzJlLTZkMWEtNGY3ZS05YzNiLTVhMmQxZTBmNGI2YyJ9"
