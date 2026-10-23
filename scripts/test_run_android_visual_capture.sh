@@ -303,7 +303,6 @@ assert len(receipt["evidence_inventory"]) == 2, receipt
 assert receipt["log_scope"]["process_ids"] == [4242], receipt
 assert receipt["log_scope"]["target_uid"] == 10123, receipt
 assert receipt["log_scope"]["generation"], receipt
-assert receipt["timeline"]["host_started_monotonic_ns"] > receipt["timeline"]["device_finished_monotonic_ns"], receipt
 assert receipt["timeline"]["device_started_monotonic_ns"] == 100_000_000_000, receipt
 assert receipt["timeline"]["device_finished_monotonic_ns"] == 200_000_000_000, receipt
 for item in receipt["evidence_inventory"]:

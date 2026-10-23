@@ -4,10 +4,7 @@ package build.raft.app
 
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.NSURL
-import platform.Foundation.NSURLRequest
 import platform.UIKit.UIView
-import platform.WebKit.WKFrameInfo
-import platform.WebKit.WKNavigationAction
 import platform.WebKit.WKWebView
 import platform.WebKit.WKWebViewConfiguration
 import kotlin.test.AfterTest
@@ -18,8 +15,8 @@ import kotlin.test.assertTrue
 
 /**
  * iOS counterpart of `RaftAndroidSandboxWebViewNavigationFenceTest`: drives the real
- * [RaftIosSandboxWebView] navigation policy (the code its WKNavigationDelegate calls) with
- * WKNavigationAction stand-ins. A fenced document (allowNavigation = false) may only stay on its
+ * [RaftIosSandboxWebView] navigation fence (what its WKNavigationDelegate decides with) against
+ * the host's own WKWebView. A fenced document (allowNavigation = false) may only stay on its
  * exact main document; disallowed schemes are blocked in every frame; callbacks from a WebView
  * that is not the host's current one are ignored.
  */
@@ -59,7 +56,7 @@ class RaftSandboxWebViewNavigationFenceIosTest {
 
     /** True when the host lets the navigation proceed (WKNavigationActionPolicyAllow). */
     private fun Pair<RaftIosSandboxWebView, WKWebView>.allows(url: String, mainFrame: Boolean = true): Boolean =
-        first.decidePolicy(second, FakeNavigationAction(url, mainFrame))
+        first.decideNavigationPolicy(second, NSURL.URLWithString(url), mainFrame)
 
     @Test
     fun fencedHostBlocksMainFrameNavigationAwayFromTheTrustedDocument() {
@@ -108,7 +105,7 @@ class RaftSandboxWebViewNavigationFenceIosTest {
         val stranger = WKWebView(frame = CGRectMake(0.0, 0.0, 1.0, 1.0), configuration = WKWebViewConfiguration())
 
         // A stale/foreign WebView is cancelled silently, even for the trusted URL.
-        assertFalse(host.decidePolicy(stranger, FakeNavigationAction(trusted, mainFrame = true)))
+        assertFalse(host.decideNavigationPolicy(stranger, NSURL.URLWithString(trusted), isMainFrame = true))
         assertEquals(emptyList<String>(), blocked)
 
         // The WebView read back from the view hierarchy is a freshly bridged reference to the
@@ -116,22 +113,6 @@ class RaftSandboxWebViewNavigationFenceIosTest {
         assertTrue(raftIsSameObjCObject(webView, webView.superview!!.subviews.single()))
         assertFalse(raftIsSameObjCObject(webView, stranger))
         assertFalse(raftIsSameObjCObject(webView, null))
-        assertTrue(host.decidePolicy(webView, FakeNavigationAction(trusted, mainFrame = true)))
+        assertTrue(host.decideNavigationPolicy(webView, NSURL.URLWithString(trusted), isMainFrame = true))
     }
-}
-
-private class FakeFrameInfo(private val isMain: Boolean) : WKFrameInfo() {
-    override val mainFrame: Boolean
-        get() = isMain
-}
-
-private class FakeNavigationAction(url: String, mainFrame: Boolean) : WKNavigationAction() {
-    private val fakeRequest = NSURLRequest.requestWithURL(NSURL.URLWithString(url)!!)
-    private val fakeFrame = FakeFrameInfo(mainFrame)
-
-    override val request: NSURLRequest
-        get() = fakeRequest
-
-    override val targetFrame: WKFrameInfo?
-        get() = fakeFrame
 }

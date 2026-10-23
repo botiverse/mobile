@@ -430,10 +430,15 @@ internal class RaftIosSandboxWebView(
 
     // ---- delegate callbacks ----------------------------------------------------------------
 
-    internal fun decidePolicy(source: WKWebView, action: WKNavigationAction): Boolean {
+    internal fun decidePolicy(source: WKWebView, action: WKNavigationAction): Boolean =
+        decideNavigationPolicy(source, action.request.URL, isMainFrame = action.targetFrame?.mainFrame ?: true)
+
+    /**
+     * The navigation fence. Split from [decidePolicy] because Kotlin/Native imports the
+     * WKNavigationAction properties as final, so tests cannot stand one in; they call this.
+     */
+    internal fun decideNavigationPolicy(source: WKWebView, targetURL: NSURL?, isMainFrame: Boolean): Boolean {
         if (!raftIsSameObjCObject(source, webView)) return false
-        val targetURL = action.request.URL
-        val isMainFrame = action.targetFrame?.mainFrame ?: true
         if (isMainFrame) {
             if (targetURL == null || !isNavigationSchemeAllowed(targetURL) ||
                 (!allowNavigation && !isAllowedMainDocumentURL(targetURL))
