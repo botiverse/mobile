@@ -772,7 +772,9 @@ class RealConversationRepository private constructor(
                     canLoadMoreAfter = payload.hasNewer,
                     highlightedMessageId = payload.targetMessageId ?: messageId,
                     diagnostics = warningLogger,
-                )
+                    // Task #14 part C: the anchor context page is persisted too. The endpoint takes no limit
+                    // (its edges are the response's own `hasOlder` / `hasNewer`), so none is recorded.
+                ).copy(rawMessagePage = rawMessagePageWitness(bodyText, requestedLimit = 0))
             }
         )
         val snapshot = (result as? DataResult.Content)?.data ?: return result

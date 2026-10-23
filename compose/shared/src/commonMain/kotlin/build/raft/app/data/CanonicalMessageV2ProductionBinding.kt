@@ -1171,6 +1171,147 @@ internal class CanonicalMessageV2AdjacentPageWriter(
             }
         }
     }
+
+    /**
+     * Task #14 part C: the anchor context page (see [ThreadDurablePageExtender.persistContextPage]). Gates 1–4 are
+     * [extendWithAdjacentPage]'s (flag, page, scope family / `no_window`, stored parent, whole-page conversion,
+     * foreign scope, duplicate ids) plus: the anchor must be on the page (`anchor_not_on_page`). Under the scope
+     * writer (`stillCurrent()` and flag rechecked, the stored scope restored):
+     * - join FACT: a fact stored inside the window (`oldestLoadedSeq..newestLoadedSeq`, on disk) is one of the
+     *   page's ids — otherwise `not_joined`, nothing written (no islands; see the interface);
+     * - only the page's facts outside the window's range are written, insert-only (`inside_window` when none);
+     * - the edges move only where the page reaches past them, each with the page's own edge fact
+     *   (`hasLoadedOldest = !hasOlder`, `hasLoadedNewest = !hasNewer`);
+     * - retention: an older reach past the cap is refused (`at_capacity`, it would be pruned straight back
+     *   out); a newer reach moves the oldest edge to the oldest fact that survives, like a newer page;
+     * - after a commit the realtime canary is told exactly as for an adjacent page: only the oldest edge
+     *   moved ⇒ continuity kept ([CanonicalMessageV2ProductionCanary.onOlderPageCommitted]); the newest edge
+     *   moved ⇒ display only until the next enter ([CanonicalMessageV2ProductionCanary.onExternalCommit]).
+     * One `canonical_v2_context_page ... outcome=committed|skipped reason=... facts=N` line per call.
+     */
+    override suspend fun persistContextPage(
+        partition: DurablePartitionKey,
+        channelId: SyncScopeId,
+        anchorMessageId: String,
+        rawMessages: JsonArray,
+        hasOlder: Boolean,
+        hasNewer: Boolean,
+        replyParent: ThreadDurableReplyParent?,
+        stillCurrent: () -> Boolean,
+    ) {
+        require(partition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID)
+        val kindLabel = if (replyParent != null) " scopeKind=thread" else ""
+        fun log(outcome: String, reason: String, facts: Int = 0) {
+            logger(
+                "canonical_v2_context_page server=${partition.serverId} scope=$channelId$kindLabel " +
+                    "anchor=$anchorMessageId outcome=$outcome reason=$reason facts=$facts",
+            )
+        }
+        fun skip(reason: String) = log("skipped", reason)
+        if (channelId.isBlank() || channelId != channelId.trim()) return skip("invalid_channel_id")
+        if (!isEnabledForServer(partition.serverId)) return skip("flag_off")
+        if (rawMessages.isEmpty()) return skip("empty_page")
+        if (replyParent != null && replyParent.parentChannelId == channelId) return skip("parent_mismatch")
+
+        val allowedKinds =
+            if (replyParent == null) CANONICAL_MESSAGE_V2_TOP_LEVEL_SCOPE_KINDS else CANONICAL_MESSAGE_V2_REPLY_THREAD_SCOPE_KINDS
+        val kinds = generationEngine.baselinedScopeKinds(partition, channelId).filter { it in allowedKinds }
+        val scopeKind = when (kinds.size) {
+            0 -> return skip("no_window")
+            1 -> kinds.single()
+            else -> return skip("ambiguous_scope_kind")
+        }
+        val scope = SyncScopeKey(partition = partition, scopeId = channelId, scopeKind = scopeKind)
+        val storedParent = if (replyParent == null) {
+            null
+        } else {
+            storedReplyParentOrNull(generationEngine.storedCursor(scope), replyParent)
+                ?: return skip("parent_mismatch")
+        }
+
+        val expectedGeneration = generationEngine.partitionGeneration(partition)
+        val envelopes = when (
+            val converted = fetcher.convertPage(partition, channelId, scopeKind, rawMessages, storedParent)
+        ) {
+            is CanonicalMessageV2PageConversion.Converted -> converted.envelopes
+            is CanonicalMessageV2PageConversion.Refused -> return skip(converted.diagnostic)
+        }
+        val foreign = envelopes.any { envelope ->
+            val envelopeScopeId = when (val context = envelope.context) {
+                is CanonicalConversationContextV2.TopLevel -> context.scope.scopeId.takeIf { replyParent == null }
+                is CanonicalConversationContextV2.Thread -> context.replyScope.scopeId.takeIf { replyParent != null }
+            }
+            envelopeScopeId != channelId
+        }
+        if (foreign) return skip("foreign_scope")
+        if (envelopes.map { it.fact.id }.distinct().size != envelopes.size) return skip("duplicate_fact")
+        if (envelopes.none { it.fact.id == anchorMessageId }) return skip("anchor_not_on_page")
+
+        generationEngine.withScopeWriter(scope) {
+            if (!stillCurrent()) return@withScopeWriter skip("identity_changed")
+            if (!isEnabledForServer(partition.serverId)) return@withScopeWriter skip("flag_revoked")
+            try {
+                val restored = generationEngine.restore(scope)
+                val stored = restored.cursor ?: return@withScopeWriter skip("no_window")
+                if (replyParent != null && storedReplyParentOrNull(stored, replyParent) != storedParent) {
+                    return@withScopeWriter skip("parent_mismatch")
+                }
+                val storedOldest = stored.oldestLoadedSeq ?: return@withScopeWriter skip("not_joined")
+                val storedNewest = stored.newestLoadedSeq ?: return@withScopeWriter skip("not_joined")
+                val pageIds = envelopes.mapTo(mutableSetOf()) { it.fact.id }
+                val joined = restored.envelopes.any { it.fact.id in pageIds && it.fact.seq in storedOldest..storedNewest }
+                if (!joined) return@withScopeWriter skip("not_joined")
+                // Inside the range the window is already the complete record (a missing message there was
+                // deleted); a stored fact outside it (a pinned root) is left as it is too.
+                val storedIds = restored.envelopes.mapTo(mutableSetOf()) { it.fact.id }
+                val added = envelopes.filter { it.fact.seq !in storedOldest..storedNewest && it.fact.id !in storedIds }
+                if (added.isEmpty()) return@withScopeWriter skip("inside_window")
+                val addedSeqs = added.map { it.fact.seq }
+                val addedMin = addedSeqs.min()
+                val addedMax = addedSeqs.max()
+                val extendsOlder = addedMin < storedOldest
+                val extendsNewer = addedMax > storedNewest
+                var cursor = stored
+                if (extendsOlder) cursor = cursor.copy(oldestLoadedSeq = addedMin, hasLoadedOldest = !hasOlder)
+                if (extendsNewer) {
+                    cursor = cursor.copy(
+                        latestSeq = maxOf(stored.latestSeq ?: addedMax, addedMax),
+                        newestLoadedSeq = addedMax,
+                        hasLoadedNewest = !hasNewer,
+                    )
+                }
+                if (restored.envelopes.size + added.size > maxFactsPerScope) {
+                    if (extendsOlder) return@withScopeWriter skip("at_capacity")
+                    // Counted over every stored fact (pinned thread roots included), so the edge is
+                    // conservative: pruning never removes a fact at or above it.
+                    val survivingOldest = (restored.envelopes.map { it.fact.seq } + addedSeqs)
+                        .sortedDescending()
+                        .take(maxFactsPerScope)
+                        .min()
+                    if (survivingOldest > storedOldest) {
+                        cursor = cursor.copy(oldestLoadedSeq = survivingOldest, hasLoadedOldest = false)
+                    }
+                }
+                val result = generationEngine.applyIncremental(
+                    CanonicalMessageV2IncrementalFrame(scope = scope, envelopes = added, cursor = cursor, insertOnly = true),
+                    expectedGeneration,
+                )
+                val reason = when {
+                    extendsOlder && extendsNewer -> "window_extended_both"
+                    extendsOlder -> "window_extended_older"
+                    else -> "window_extended_newer"
+                }
+                if (result == CanonicalMessageV2CommitResult.Committed) {
+                    log("committed", reason, added.size)
+                    if (extendsNewer) canary.onExternalCommit(scope) else canary.onOlderPageCommitted(scope)
+                } else {
+                    skip(result.wireOutcome(added.size))
+                }
+            } catch (poisoned: CanonicalMessageV2ScopePoisoned) {
+                skip("poisoned fact=${poisoned.factId.orEmpty()}")
+            }
+        }
+    }
 }
 
 /**

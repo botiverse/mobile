@@ -1,6 +1,22 @@
 package build.raft.app
 
+import build.raft.app.data.ConversationRepository
+import build.raft.app.data.DataResult
 import build.raft.app.data.InMemoryRaftAuthSessionStore
+import build.raft.app.data.ScreenError
+import build.raft.app.data.ThreadSnapshot
+import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
+import build.raft.app.model.ConversationPermissions
+import build.raft.app.model.ConversationSummary
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
+import build.raft.app.model.Message
+import build.raft.app.model.MessageId
+import build.raft.app.model.Presence
+import build.raft.app.model.ThreadId
+import build.raft.app.model.MessageNew
 import build.raft.app.data.PresenceNoopMemberRepository
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.StoredAuthSession
@@ -28,8 +44,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -405,6 +423,296 @@ class SharedThreadStoreDurableLastKnownTest {
     }
 
     @Test
+    fun anchoredOpenWhoseWindowHoldsTheAnchorStandsInWithThePageAroundItBeforeTheNetwork() = runBlocking {
+        // Task #14 part C. 45 stored facts, anchor = seq 20: the first frame (captured before the network
+        // fetch runs) is the 30 facts around it (5..34), focused on it, with older paging open.
+        val logs = mutableListOf<String>()
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+        val loadingStateApplied = CompletableDeferred<RaftThreadScreenPayload>()
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource(
+                    api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
+                    reader = FakeReader(frames = mapOf(partition(ownerA) to largeFrame(count = 45))),
+                    identity = { ownerA },
+                    diagnosticsLogger = logs::add,
+                ),
+                scope = scope,
+                afterRefreshLoadingStateApplied = { payload -> loadingStateApplied.complete(payload) },
+            )
+        try {
+            store.accept(SharedThreadIntent.Start(basePayload().copy(focusedMessageId = "v2-20")))
+            val firstFrame = loadingStateApplied.await()
+            assertTrue(firstFrame.durableLastKnown)
+            assertEquals((5..34).map { "body $it" }, firstFrame.messages.map { it.body })
+            assertEquals("v2-20", firstFrame.focusedMessageId)
+            assertTrue(firstFrame.canLoadMoreBefore, "facts 1..4 are stored below the page")
+            assertTrue(firstFrame.canLoadMoreAfter, "facts 35..45 are stored above the page: it is not the newest")
+            assertTrue(
+                logs.any { it == "thread_anchor_open source=durable_window threadId=channel-1 anchor=v2-20 found=true" },
+                logs.toString(),
+            )
+            assertTrue(logs.any { "outcome=frame" in it && "messages=30" in it && "anchored=true" in it }, logs.toString())
+            // The network failed: the anchored stand-in stays.
+            assertEquals((5..34).map { "body $it" }, store.state.value.payload.messages.map { it.body })
+        } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun anchoredStandInInTheMiddleOfTheWindowPagesNewerFromDisk() = runBlocking {
+        val logs = mutableListOf<String>()
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource(
+                    api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
+                    reader = FakeReader(frames = mapOf(partition(ownerA) to largeFrame(count = 45))),
+                    identity = { ownerA },
+                    diagnosticsLogger = logs::add,
+                ),
+                scope = scope,
+            )
+        try {
+            store.accept(SharedThreadIntent.Start(basePayload().copy(focusedMessageId = "v2-20")))
+            assertEquals((5..34).map { "body $it" }, store.state.value.payload.messages.map { it.body })
+            assertTrue(store.state.value.payload.canLoadMoreAfter)
+
+
+            // Offline (network fails): the next stored page comes from disk.
+            val outcome = store.loadNewer()
+            assertEquals(ThreadNewerPageLoadOutcome.Applied((35..45).map { "v2-$it" }), outcome)
+            val paged = store.state.value.payload
+            assertEquals((5..45).map { "body $it" }, paged.messages.map { it.body })
+            assertTrue(paged.durableLastKnown)
+            assertFalse(paged.canLoadMoreAfter, "the window's newest fact is shown and the cursor reaches the newest")
+            assertTrue(
+                logs.any { "thread_durable_newer_page threadId=channel-1 served=11 reason=reached_newest afterSeq=34" in it },
+                logs.toString(),
+            )
+            assertEquals("v2-20", paged.focusedMessageId)
+        } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun realtimeMessageIsNotAppendedDirectlyAfterAMiddleAnchorPage() = runBlocking {
+        // Positive control (same wiring, tail page): `anchoredStandInThatIsTheWindowTailIsTheNewestAsToday`.
+        val logs = mutableListOf<String>()
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource(
+                    api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
+                    reader = FakeReader(frames = mapOf(partition(ownerA) to largeFrame(count = 45))),
+                    identity = { ownerA },
+                    diagnosticsLogger = logs::add,
+                ),
+                scope = scope,
+                diagnosticsLogger = logs::add,
+            )
+        try {
+            store.accept(SharedThreadIntent.Start(basePayload().copy(focusedMessageId = "v2-20")))
+            store.accept(SharedThreadIntent.ApplyRealtimeEvent(MessageNew(realtimeMessage(id = "rt-46", seq = 46))))
+            // The gap catch-up's latest page ("newer body") SUCCEEDS here (it parses off this thread: wait for its
+            // decision); the anchor page is detached from the tail, not replaced by that latest page.
+            withTimeoutOrNull(5_000L) {
+                // The catch-up logs from its parse dispatcher: read a snapshot, retry on a concurrent append.
+                while (runCatching { logs.toList() }.getOrDefault(emptyList()).none { it.startsWith("thread_gap_catchup threadId=channel-1 decision=") }) {
+                    kotlinx.coroutines.delay(10L)
+                }
+            }
+            assertTrue(logs.toList().any { it.startsWith("thread_gap_catchup threadId=channel-1 decision=detach") }, logs.toList().toString())
+            val payload = store.state.value.payload
+            assertFalse(payload.messages.any { it.id == "rt-46" }, logs.toString())
+            assertEquals((5..34).map { "body $it" }, payload.messages.map { it.body })
+        } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun cancelledNetworkNewerFetchOnAStandInNeverCachesTheStandIn() = runBlocking {
+        // Tail anchor page of a window that does not reach the newest message: nothing newer on disk, so the
+        // newer page goes to the network, which suspends; the page leaves (the load is cancelled).
+        val logs = mutableListOf<String>()
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+        val api = SharedThreadStoreTest.FakeThreadApi(channelMessagesResponseCode = 500)
+        api.releaseAfterMessages = CompletableDeferred()
+        api.afterMessagesStarted = CompletableDeferred()
+        val dataSource = dataSource(
+            api = api,
+            reader = FakeReader(frames = mapOf(partition(ownerA) to largeFrame(count = 45, hasLoadedNewest = false))),
+            identity = { ownerA },
+            diagnosticsLogger = logs::add,
+        )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        try {
+            store.accept(SharedThreadIntent.Start(basePayload().copy(focusedMessageId = "v2-44")))
+            assertTrue(store.state.value.payload.durableLastKnown)
+            assertTrue(store.state.value.payload.canLoadMoreAfter)
+            assertNull(dataSource.cachedPayload("channel-1"))
+            val loading = scope.launch { store.loadNewer() }
+            api.afterMessagesStarted!!.await()
+            assertTrue(logs.any { "thread_durable_newer_page threadId=channel-1 served=0 reason=exhausted" in it }, logs.toString())
+            loading.cancelAndJoin()
+            assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+            assertNull(dataSource.cachedPayload("channel-1"), "a stand-in is never committed to the memory cache")
+        } finally {
+            api.releaseAfterMessages?.complete(Unit)
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun cancelledNetworkNewerFetchOnACanonicalPageCachesAsToday() = runBlocking {
+        // Twin of the test above: identical cancelled newer fetch, on a network page instead of a stand-in.
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+        val api = SharedThreadStoreTest.FakeThreadApi()
+        val dataSource = dataSource(api = api, reader = FakeReader(frames = emptyMap()), identity = { ownerA })
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        try {
+            store.accept(SharedThreadIntent.Start(basePayload()))
+            assertFalse(store.state.value.payload.durableLastKnown)
+            assertEquals(false, assertNotNull(dataSource.cachedPayload("channel-1")).canLoadMoreAfter)
+            store.accept(SharedThreadIntent.SetPagingAvailability(canLoadMoreBefore = false, canLoadMoreAfter = true))
+            api.releaseAfterMessages = CompletableDeferred()
+            api.afterMessagesStarted = CompletableDeferred()
+            val loading = scope.launch { store.loadNewer() }
+            api.afterMessagesStarted!!.await()
+            loading.cancelAndJoin()
+            assertEquals("idle", store.state.value.payload.newerMessagesStatus)
+            val cached = assertNotNull(dataSource.cachedPayload("channel-1"))
+            assertTrue(cached.canLoadMoreAfter, "the canonical page's newer-load state is committed as before")
+            assertEquals("idle", cached.newerMessagesStatus)
+        } finally {
+            api.releaseAfterMessages?.complete(Unit)
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun anchoredStandInThatIsTheWindowTailIsTheNewestAsToday() = runBlocking {
+        // Twin of the test above: identical frame and wiring, the anchor (seq 44) puts the page at the tail.
+        val logs = mutableListOf<String>()
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource(
+                    api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
+                    reader = FakeReader(frames = mapOf(partition(ownerA) to largeFrame(count = 45))),
+                    identity = { ownerA },
+                    diagnosticsLogger = logs::add,
+                ),
+                scope = scope,
+            )
+        try {
+            store.accept(SharedThreadIntent.Start(basePayload().copy(focusedMessageId = "v2-44")))
+            val payload = store.state.value.payload
+            assertEquals((16..45).map { "body $it" }, payload.messages.map { it.body })
+            assertFalse(payload.canLoadMoreAfter)
+            assertEquals(ThreadNewerPageLoadOutcome.Ignored, store.loadNewer())
+            assertTrue(logs.none { "thread_durable_newer_page" in it }, logs.toString())
+            // Positive control for the realtime hold above (same wiring): at the tail, the next message is appended.
+            store.accept(SharedThreadIntent.ApplyRealtimeEvent(MessageNew(realtimeMessage(id = "rt-46", seq = 46))))
+            assertEquals("rt-46", store.state.value.payload.messages.last().id, logs.toString())
+        } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun anchoredStandInIsReplacedByTheNetworkFocusedPageAndKeepsItsFocus() = runBlocking {
+        val logs = mutableListOf<String>()
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+        val loadingStateApplied = CompletableDeferred<RaftThreadScreenPayload>()
+        val repository =
+            ReplyThreadAccessConversationRepositoryRecorder(
+                replyResult = DataResult.Error(ScreenError(code = "unused", retryable = false)),
+                parentResult = DataResult.Content(networkContext("v2-19", "v2-20", "v2-21")),
+            )
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource(
+                    reader = FakeReader(frames = mapOf(partition(ownerA) to largeFrame(count = 45))),
+                    identity = { ownerA },
+                    diagnosticsLogger = logs::add,
+                    conversationRepository = repository,
+                ),
+                scope = scope,
+                afterRefreshLoadingStateApplied = { payload -> loadingStateApplied.complete(payload) },
+            )
+        try {
+            store.accept(SharedThreadIntent.Start(basePayload().copy(focusedMessageId = "v2-20")))
+            val standIn = loadingStateApplied.await()
+            assertTrue(standIn.durableLastKnown)
+            assertEquals(30, standIn.messages.size)
+            val settled = withTimeout(5_000L) { store.state.first { !it.payload.backgroundRefreshing }.payload }
+            assertFalse(settled.durableLastKnown)
+            assertEquals(listOf("network v2-19", "network v2-20", "network v2-21"), settled.messages.map { it.body })
+            assertEquals("v2-20", settled.focusedMessageId)
+            assertEquals(standIn.focusedMessageRequestNonce, settled.focusedMessageRequestNonce, "no second anchor request")
+            assertEquals(listOf(MessageId("v2-20")), repository.parentRequests.map { it.first })
+            assertTrue(logs.any { it.startsWith("thread_anchor_open source=network threadId=channel-1 anchor=v2-20 found=true") }, logs.toString())
+        } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun anchoredOpenWhoseWindowLacksTheAnchorKeepsTheNewestPage() = runBlocking {
+        // Twin of the test above: identical frame and wiring, the anchor is not a stored fact.
+        val logs = mutableListOf<String>()
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
+        val loadingStateApplied = CompletableDeferred<RaftThreadScreenPayload>()
+        val store =
+            SharedThreadStore(
+                dataSource = dataSource(
+                    api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = true),
+                    reader = FakeReader(frames = mapOf(partition(ownerA) to largeFrame(count = 45))),
+                    identity = { ownerA },
+                    diagnosticsLogger = logs::add,
+                ),
+                scope = scope,
+                afterRefreshLoadingStateApplied = { payload -> loadingStateApplied.complete(payload) },
+            )
+        try {
+            store.accept(SharedThreadIntent.Start(basePayload().copy(focusedMessageId = "v2-missing")))
+            val firstFrame = loadingStateApplied.await()
+            assertTrue(firstFrame.durableLastKnown)
+            assertEquals((16..45).map { "body $it" }, firstFrame.messages.map { it.body })
+            assertEquals("v2-missing", firstFrame.focusedMessageId)
+            assertTrue(
+                logs.any { it == "thread_anchor_open source=durable_window threadId=channel-1 anchor=v2-missing found=false" },
+                logs.toString(),
+            )
+            assertTrue(logs.any { "outcome=frame" in it && "anchored=false" in it }, logs.toString())
+        } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    @Test
+    fun standInRangeCentersTheAnchorAndStaysFullAtTheWindowEdges() {
+        assertEquals(15 until 45, durableStandInRange(windowSize = 45, anchorIndex = -1, pageSize = 30))
+        assertEquals(4 until 34, durableStandInRange(windowSize = 45, anchorIndex = 19, pageSize = 30))
+        assertEquals(0 until 30, durableStandInRange(windowSize = 45, anchorIndex = 2, pageSize = 30))
+        assertEquals(15 until 45, durableStandInRange(windowSize = 45, anchorIndex = 44, pageSize = 30))
+        assertEquals(0 until 12, durableStandInRange(windowSize = 12, anchorIndex = 5, pageSize = 30))
+        assertTrue(durableStandInRange(windowSize = 0, anchorIndex = -1, pageSize = 30).isEmpty())
+    }
+
+    @Test
     fun frameOfAnotherSurfaceKindIsRefusedAndLogged() = runBlocking {
         // Positive control: a "channel" frame renders on the channel route (same logger wiring).
         val controlLogs = mutableListOf<String>()
@@ -488,9 +796,11 @@ class SharedThreadStoreDurableLastKnownTest {
         identity: () -> ThreadReplyCacheIdentitySnapshot,
         diagnosticsLogger: (String) -> Unit = {},
         serverMembersStore: SharedServerMembersStore? = null,
+        conversationRepository: ConversationRepository? = null,
     ): SharedThreadDataSource =
         SharedThreadDataSource(
             networkApi = api,
+            conversationRepository = conversationRepository,
             sessionStore = InMemoryRaftAuthSessionStore(identity().session),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             replyCacheIdentityAuthority = { identity() },
@@ -515,7 +825,7 @@ class SharedThreadStoreDurableLastKnownTest {
         )
 
     /** Facts seq 1..[count], stored newest-first so the stand-in must order and trim by seq itself. */
-    private fun largeFrame(count: Int): ThreadDurableLastKnownFrame =
+    private fun largeFrame(count: Int, hasLoadedNewest: Boolean = true): ThreadDurableLastKnownFrame =
         ThreadDurableLastKnownFrame(
             scope = SyncScopeKey(partition(ownerA), "channel-1", "channel"),
             envelopes = (count downTo 1).map { index ->
@@ -533,7 +843,9 @@ class SharedThreadStoreDurableLastKnownTest {
                     context = CanonicalConversationContextV2.TopLevel(TopLevelScopeRefV2.Channel("server-1", "channel-1")),
                 )
             },
-            cursor = PersistedCursor(count.toLong(), 1, count.toLong(), hasLoadedOldest = true, epoch = "epoch-v2"),
+            cursor = PersistedCursor(
+                count.toLong(), 1, count.toLong(), hasLoadedOldest = true, hasLoadedNewest = hasLoadedNewest, epoch = "epoch-v2",
+            ),
         )
 
     private fun frame(body: String, scopeKind: String = "channel"): ThreadDurableLastKnownFrame {
@@ -605,6 +917,52 @@ class SharedThreadStoreDurableLastKnownTest {
             parentMessageId = "parent-1",
             originParentMessageId = "parent-1",
             originStatus = "loading",
+        )
+
+    private fun author() =
+        MemberProfile(
+            id = MemberId("u-a"),
+            displayName = "Owner A",
+            handle = "owner-a",
+            kind = MemberKind.Human,
+            presence = Presence.Active,
+        )
+
+    private fun realtimeMessage(id: String, seq: Long) =
+        Message(
+            id = MessageId(id),
+            threadId = ThreadId("channel-1"),
+            channelId = ChannelId("channel-1"),
+            author = author(),
+            timestampLabel = "2026-05-19T17:00:00Z",
+            body = "realtime $id",
+            seq = seq,
+        )
+
+    /** The `messages/context` answer around the anchor, as the repository maps it. */
+    private fun networkContext(vararg ids: String): ThreadSnapshot =
+        ThreadSnapshot(
+            conversation = ConversationSummary(
+                threadId = ThreadId("channel-1"),
+                channelId = ChannelId("channel-1"),
+                kind = ConversationKind.Channel,
+                name = "general",
+                joined = true,
+                permissions = ConversationPermissions(canRead = true, canSend = true),
+            ),
+            messages = ids.map { id ->
+                Message(
+                    id = MessageId(id),
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
+                    author = author(),
+                    timestampLabel = "2026-05-19T16:00:00Z",
+                    body = "network $id",
+                    seq = id.removePrefix("v2-").toLong(),
+                )
+            },
+            canLoadMoreBefore = true,
+            canLoadMoreAfter = true,
         )
 
     private fun contentPayload(body: String): RaftThreadScreenPayload =

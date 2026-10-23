@@ -594,7 +594,9 @@ data class ThreadSnapshot(
     val canonicalConversationDetail: ConversationSummary? = null,
     /**
      * Raw `messages` array of the REST page this snapshot was mapped from (task #168). Set ONLY by
-     * the older / newer paging fetches; every other path leaves it [RawMessagePageWitness.None]. It
+     * the older / newer paging fetches, the reply page a prewarm asks for (task #14b) and the
+     * `messages/context` page (task #14 part C, `requestedLimit = 0`: that endpoint takes no limit);
+     * every other path leaves it [RawMessagePageWitness.None]. It
      * exists so a paging page can also be persisted into the durable V2 window; see
      * [RawMessagePageWitness] for why it never takes part in equality.
      */
