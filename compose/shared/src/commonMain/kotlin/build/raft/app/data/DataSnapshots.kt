@@ -1887,7 +1887,7 @@ data class SettingsMobileSnapshot(
             statusLabel = "Unsupported",
             detail = "The bottom-up message list is not available on this build."
         ),
-    /** Task #3: effective value (user choice, else the server-sent transport variant); see RaftHttp3Policy. */
+    /** Task #3: effective value (user choice, else off); see RaftHttp3Policy. */
     val http3: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
             enabled = false,

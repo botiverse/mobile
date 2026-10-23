@@ -743,8 +743,6 @@ internal class RaftSharedStoreProvider private constructor(
                 "environment_update_failed reason=${error::class.simpleName ?: "unknown"}"
             )
         }
-        networkTransportController.updateRemoteEnvironment(environmentId)
-            ?.let { sharedInfoLogger("SlockNetworkTransport", "remote_config")(it) }
         return environmentId
     }
 
@@ -1078,10 +1076,6 @@ internal class RaftSharedStoreProvider private constructor(
                             "active_selection_failed reason=${error::class.simpleName ?: "unknown"}"
                         )
                     }
-                    networkTransportController.updateRemoteActiveSelection(
-                        scopeId = scope.shellInstanceId,
-                        serverId = serverId
-                    )?.let { sharedInfoLogger("SlockNetworkTransport", "remote_config")(it) }
                     dohFallbackPolicy.updateActiveSelection(
                         scopeId = scope.shellInstanceId,
                         serverId = serverId
@@ -2042,8 +2036,8 @@ internal class RaftSharedStoreProvider private constructor(
             RaftCurlSocketIoPolicy.bindUserChoice {
                 realtimeTransportPreferenceStore.readCurlSocketIoUserChoiceSync()
             }
-            // Task #3: the HTTP/3 switch's explicit choice (absent = follow the server-sent transport
-            // variant). Bound before the transport controller exists so its first snapshot honours it.
+            // Task #3: the HTTP/3 switch's explicit choice (absent = HTTP/3 off). Bound before the
+            // transport controller exists so its first snapshot honours it.
             val http3PreferenceStore = KeyValueHttp3PreferenceStore(sharedPreferenceStore)
             RaftHttp3Policy.bindUserChoice { http3PreferenceStore.readHttp3UserChoiceSync() }
             logSharedAuthDiagnostic(
@@ -2399,7 +2393,7 @@ internal class RaftSharedStoreProvider private constructor(
                         }
                     },
                     lastKnown = serverFeatureFlagLastKnown,
-                    onEvaluation = { serverId, key, enabled, reason, variant, environmentId, evaluationGeneration ->
+                    onEvaluation = { serverId, key, enabled, reason, _, environmentId, evaluationGeneration ->
                         if (key == ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY && environmentId != null) {
                             RaftNetworkKmmRecoveryRemoteFlagBridge
                                 .apply(
@@ -2414,15 +2408,6 @@ internal class RaftSharedStoreProvider private constructor(
                         if (key == MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY) {
                             dohFallbackPolicy.reevaluate("evaluation")
                                 ?.let { sharedInfoLogger("SlockNetworkTransport", "doh_fallback")(it) }
-                        }
-                        if (key == MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY && environmentId != null) {
-                            networkTransportController.applyRemoteEvaluation(
-                                environmentId = environmentId,
-                                evaluationGeneration = evaluationGeneration,
-                                serverId = serverId.value,
-                                enabled = enabled,
-                                variant = variant
-                            )?.let { sharedInfoLogger("SlockNetworkTransport", "remote_config")(it) }
                         }
                     },
                 )

@@ -50,28 +50,16 @@ fun NetworkRequest.isHttp1Only(): Boolean =
 @RaftCoreInternalApi
 expect fun raftNetworkTransportPlatformPolicy(): RaftNetworkTransportPlatformPolicy
 
-/** Mirrors the process-global remote policy into non-NetworkClient platform consumers. */
+/** Mirrors the process-global transport policy into non-NetworkClient platform consumers. */
 @RaftCoreInternalApi
 expect fun raftApplyPlatformHttp3Preference(
     enabled: Boolean,
     generation: Long
 ): Boolean
 
-@RaftCoreInternalApi
-enum class RaftRemoteTransportVariant(val wireValue: String) {
-    Ktor("ktor"),
-    CurlH2("curl_h2"),
-    CurlH3("curl_h3");
-
-    companion object {
-        fun fromWire(value: String?): RaftRemoteTransportVariant? =
-            entries.firstOrNull { it.wireValue == value?.trim()?.lowercase() }
-    }
-}
-
 /**
- * Process-owned transport policy. Remote variants are reconciled across every active server selection;
- * each new request reads the committed snapshot without reconstructing NetworkClient instances.
+ * Process-owned transport policy: curl over HTTP/2 for new requests, HTTP/3 only when the user turns it on
+ * in Settings. Each new request reads the committed snapshot without reconstructing NetworkClient instances.
  */
 @RaftCoreInternalApi
 class RaftNetworkTransportController(
@@ -87,49 +75,11 @@ class RaftNetworkTransportController(
     private val platformPolicyPublicationLock = SynchronizedObject()
     private val policyGeneration = atomic(0L)
     private val publishedPlatformPolicy = atomic<PublishedPlatformPolicy?>(null)
-    private var remoteState = RemoteTransportState()
 
     fun getPreferenceSync(): NetworkTransportPreferenceSnapshot =
         synchronized(platformPolicyPublicationLock) {
             committedSnapshotLocked().also { publishPlatformPolicyLocked(it) }
         }
-
-    fun updateRemoteEnvironment(environmentId: String): String? =
-        mutateRemoteState("environment") { state ->
-            val normalized = environmentId.trim().trimEnd('/')
-            if (state.currentEnvironmentId == normalized) state else state.copy(currentEnvironmentId = normalized)
-        }
-
-    fun updateRemoteActiveSelection(scopeId: String, serverId: String?): String? =
-        mutateRemoteState("selection") { state ->
-            // A shell scope id is required (RaftShellStoreScope rejects blank ids). Two anonymous
-            // callers must not share one "legacy" slot and overwrite each other's active server.
-            val normalizedScope = scopeId.trim()
-            if (normalizedScope.isBlank()) return@mutateRemoteState state
-            val normalizedServer = serverId?.trim()?.takeIf(String::isNotBlank)
-            val next = state.activeServerByScope.toMutableMap()
-            if (normalizedServer == null) next.remove(normalizedScope) else next[normalizedScope] = normalizedServer
-            if (next == state.activeServerByScope) state else state.copy(activeServerByScope = next.toMap())
-        }
-
-    fun applyRemoteEvaluation(
-        environmentId: String,
-        evaluationGeneration: Long,
-        serverId: String,
-        enabled: Boolean,
-        variant: String?
-    ): String? = mutateRemoteState("evaluation") { state ->
-        val normalizedEnvironment = environmentId.trim().trimEnd('/')
-        val normalizedServer = serverId.trim()
-        if (normalizedEnvironment.isBlank() || normalizedServer.isBlank()) return@mutateRemoteState state
-        val key = RemoteEvaluationKey(normalizedEnvironment, normalizedServer)
-        val current = state.evaluations[key]
-        if (current != null && evaluationGeneration <= current.generation) return@mutateRemoteState state
-        state.copy(
-            evaluations = state.evaluations +
-                (key to RemoteTransportEvaluation(evaluationGeneration, enabled, variant?.trim()?.lowercase()))
-        )
-    }
 
     fun selectionFor(request: NetworkRequest): NetworkEngineSelection {
         val snapshot = getPreferenceSync()
@@ -137,8 +87,8 @@ class RaftNetworkTransportController(
         // Request-owned and copied by NetworkKMM. A later Settings change does
         // not mutate this call, including auth/retry attempts owned by it.
         // Presigned direct-upload PUTs are pinned to HTTP/1.1: their R2 S3
-        // endpoints must not attempt an HTTP/3 upgrade even when the remote
-        // transport policy pins a request to curl_h3.
+        // endpoints must not attempt an HTTP/3 upgrade even when the user
+        // turned HTTP/3 on.
         request.setCurlHttp3Enabled(if (http1Only) false else snapshot.effectiveHttp3Enabled)
         return NetworkEngineSelection(
             requestedEngine =
@@ -173,78 +123,22 @@ class RaftNetworkTransportController(
     }
 
     private fun committedSnapshotLocked(): NetworkTransportPreferenceSnapshot {
-        return snapshot(transportIntent(remotePolicyLocked()), policyGeneration.value)
+        return snapshot(transportIntent(), policyGeneration.value)
     }
 
-    private fun mutateRemoteState(
-        source: String,
-        transform: (RemoteTransportState) -> RemoteTransportState
-    ): String? = synchronized(platformPolicyPublicationLock) {
-        val currentState = remoteState
-        val targetState = transform(currentState)
-        if (targetState == currentState) return@synchronized null
-        val currentGeneration = policyGeneration.value
-        val currentSnapshot = snapshot(transportIntent(remotePolicyLocked(currentState)), currentGeneration)
-        publishPlatformPolicyLocked(currentSnapshot)
-        val nextGeneration = currentGeneration + 1L
-        val targetPolicy = remotePolicyLocked(targetState)
-        val targetSnapshot = snapshot(transportIntent(targetPolicy), nextGeneration)
-        if (!publishPlatformPolicyLocked(targetSnapshot)) {
-            if (!publishPlatformPolicyLocked(currentSnapshot, force = true)) {
-                publishedPlatformPolicy.value = null
-            }
-            return@synchronized "network_transport_remote source=$source applied=false"
-        }
-        remoteState = targetState
-        policyGeneration.value = nextGeneration
-        "network_transport_remote source=$source applied=true variant=${targetPolicy.variant.wireValue} " +
-            "resolved=${targetPolicy.resolved} conflict=${targetPolicy.conflicting} generation=$nextGeneration"
-    }
-
-    private fun remotePolicyLocked(state: RemoteTransportState = remoteState): RemoteTransportPolicy {
-        val environmentId = state.currentEnvironmentId
-        val activeServers = state.activeServerByScope.values.toSet()
-        if (environmentId.isBlank() || activeServers.isEmpty()) return RemoteTransportPolicy.Default
-        val evaluations = activeServers.map { serverId ->
-            state.evaluations[RemoteEvaluationKey(environmentId, serverId)] ?: return RemoteTransportPolicy.Default
-        }
-        val variants = evaluations.map { evaluation ->
-            if (!evaluation.enabled) {
-                RaftRemoteTransportVariant.CurlH2
-            } else {
-                RaftRemoteTransportVariant.fromWire(evaluation.variant) ?: RaftRemoteTransportVariant.CurlH2
-            }
-        }.toSet()
-        return if (variants.size == 1) {
-            RemoteTransportPolicy(resolved = true, variant = variants.single(), conflicting = false)
-        } else {
-            RemoteTransportPolicy(resolved = true, variant = RaftRemoteTransportVariant.Ktor, conflicting = true)
-        }
-    }
-
-    // Task #3: the server variant supplies the HTTP/3 default (curl_h3 asks for it); the
-    // Settings switch, when the user has touched it, overrides that bit. HTTP/3 always implies
-    // curl, so a user turning it on also requests the curl engine where the platform allows it.
-    private fun transportIntent(policy: RemoteTransportPolicy): TransportIntent {
-        val serverRequestsHttp3 = policy.variant == RaftRemoteTransportVariant.CurlH3
-        val http3 = RaftHttp3Policy.resolve(serverRequestsHttp3)
-        return when (policy.variant) {
-            RaftRemoteTransportVariant.Ktor ->
-                TransportIntent(curlRequested = platformPolicy.curlRequired || http3, http3Requested = http3)
-            RaftRemoteTransportVariant.CurlH2,
-            RaftRemoteTransportVariant.CurlH3 ->
-                TransportIntent(curlRequested = true, http3Requested = http3)
-        }
-    }
+    // Task #3: HTTP/3 is off unless the user turns it on in Settings. Curl is always the requested
+    // engine; [snapshot] still falls back to Ktor where the platform allows it and curl is not ready.
+    private fun transportIntent(): TransportIntent =
+        TransportIntent(curlRequested = true, http3Requested = RaftHttp3Policy.resolve())
 
     /**
      * Task #3: called after the user flips the HTTP/3 switch. The choice is read live through
      * [RaftHttp3Policy], so this only advances the generation and republishes the platform
-     * policy; the remote state is unchanged.
+     * policy.
      */
     fun onHttp3UserChoiceChanged(): String? = synchronized(platformPolicyPublicationLock) {
         val nextGeneration = policyGeneration.value + 1L
-        val targetSnapshot = snapshot(transportIntent(remotePolicyLocked()), nextGeneration)
+        val targetSnapshot = snapshot(transportIntent(), nextGeneration)
         if (!publishPlatformPolicyLocked(targetSnapshot, force = true)) {
             return@synchronized "network_transport_http3_choice applied=false"
         }
@@ -259,7 +153,7 @@ class RaftNetworkTransportController(
     ): Boolean {
         val current = publishedPlatformPolicy.value
         if (!force && current != null && snapshot.generation < current.generation) {
-            // A request that read the old remote generation while a mutation was committing must not
+            // A request that read the old generation while a mutation was committing must not
             // overwrite the newer host policy.
             return true
         }
@@ -327,37 +221,6 @@ private data class PublishedPlatformPolicy(
     val enabled: Boolean
 )
 
-private data class RemoteEvaluationKey(
-    val environmentId: String,
-    val serverId: String
-)
-
-private data class RemoteTransportEvaluation(
-    val generation: Long,
-    val enabled: Boolean,
-    val variant: String?
-)
-
-private data class RemoteTransportState(
-    val currentEnvironmentId: String = "",
-    val activeServerByScope: Map<String, String> = emptyMap(),
-    val evaluations: Map<RemoteEvaluationKey, RemoteTransportEvaluation> = emptyMap()
-)
-
-private data class RemoteTransportPolicy(
-    val resolved: Boolean,
-    val variant: RaftRemoteTransportVariant,
-    val conflicting: Boolean
-) {
-    companion object {
-        val Default = RemoteTransportPolicy(
-            resolved = false,
-            variant = RaftRemoteTransportVariant.CurlH2,
-            conflicting = false
-        )
-    }
-}
-
 private data class TransportIntent(
     val curlRequested: Boolean,
     val http3Requested: Boolean
@@ -399,9 +262,8 @@ fun raftNetworkClientConfig(
                 controller.selectionFor(request)
             } else {
                 val policy = raftNetworkTransportPlatformPolicy()
-                // Task #3: before the controller exists there is no server variant yet, so only an
-                // explicit user choice can turn HTTP/3 on; the old per-platform default is gone.
-                val http3 = RaftHttp3Policy.resolve(serverRequestsHttp3 = false)
+                // Task #3: only an explicit user choice turns HTTP/3 on.
+                val http3 = RaftHttp3Policy.resolve()
                 request.setCurlHttp3Enabled(http3)
                 NetworkEngineSelection(
                     requestedEngine =

@@ -67,8 +67,6 @@ const val MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY: String = "mobile_thread
  * transport-off latch. Operators must provision it with `enabled=true` and `defaultEnabled=true`.
  */
 const val ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY: String = "android_reused_h2_recovery_v0"
-/** Process-wide mobile transport variant. Missing/disabled/invalid evaluates to the product default curl_h2. */
-const val MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY: String = "mobile_curl_transport_v1"
 
 /**
  * Task #153 DNS-over-HTTPS fallback for the curl transport (see RaftDohFallbackPolicy). Default ON
@@ -160,7 +158,6 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY,
     MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY,
     ANDROID_REUSED_H2_RECOVERY_FEATURE_FLAG_KEY,
-    MOBILE_CURL_TRANSPORT_FEATURE_FLAG_KEY,
     MOBILE_DOH_FALLBACK_FEATURE_FLAG_KEY,
     MOBILE_CURL_SOCKETIO_FEATURE_FLAG_KEY,
     RUNTIME_FORM_V2_FEATURE_FLAG_KEY,

@@ -1453,8 +1453,7 @@ class SharedSettingsDataSource(
 
     /**
      * Task #3: the switch shows the effective value: the user's explicit choice when there is one,
-     * otherwise what the server-sent transport variant implies (curl_h3 = on). Read from this data
-     * source's own store so the row reflects a save immediately.
+     * otherwise off. Read from this data source's own store so the row reflects a save immediately.
      */
     private fun SettingsMobileSnapshot.withHttp3Preference(): SettingsMobileSnapshot {
         val store = http3PreferenceStore ?: return this
