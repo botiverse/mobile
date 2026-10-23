@@ -32,6 +32,7 @@ THREAD_COMPOSER_PAGE = (
 SHARED_TASKS_PAGE = "compose/shared/src/commonMain/kotlin/build/raft/app/SharedTasksPage.kt"
 SHARED_INBOX_PANEL = "compose/shared/src/commonMain/kotlin/build/raft/app/SharedInboxPanel.kt"
 SETTINGS_HOME_PAGE = "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsHomePage.kt"
+SETTINGS_FORM_PARTS = "compose/shared/src/commonMain/kotlin/build/raft/app/SettingsFormParts.kt"
 BRUTAL_DROPDOWN = "compose/shared/src/commonMain/kotlin/build/raft/app/RaftBrutalDropdownMenu.kt"
 FOREGROUND_BANNER = "compose/shared/src/commonMain/kotlin/build/raft/app/RaftForegroundBannerHost.kt"
 GESTURE_OWNER = "compose/shared/src/commonMain/kotlin/build/raft/app/RaftGestureOwner.kt"
@@ -103,7 +104,7 @@ GESTURE_OWNER_REGIONS = (
     (BASIC_WIDGET, "internal fun Button(", "internal class Border(", "button"),
     (SHARED_TASKS_PAGE, "private fun SharedTaskCard(", "internal fun tasksStatusChipClickIdentity(", "tasks-card"),
     (SHARED_INBOX_PANEL, "internal fun Modifier.activityRowGestures(", "internal fun InboxItem.inboxItemOpenGestureKey(", "activity-row"),
-    (SETTINGS_HOME_PAGE, "private fun SharedSettingsRow(", "internal fun SharedSettingsAboutContent(", "settings-row"),
+    (SETTINGS_FORM_PARTS, "private fun SharedSettingsRow(", "private data class SharedSettingsRowGestureCallbacks(", "settings-row"),
     (SETTINGS_HOME_PAGE, "private fun SharedHomeSavedResultCard(", "private fun SharedHomeSavedUnsaveButton(", "home-saved-result"),
     (SETTINGS_HOME_PAGE, "private fun SharedHomeSearchEntityRow(", "internal data class SearchEntityPinTarget(", "home-search-entity"),
     (THREAD_PAGE, "private fun ThreadReactionChip(", "internal fun threadNeutralMessageSurfaceColor(", "thread-reaction-chip"),

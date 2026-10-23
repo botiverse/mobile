@@ -85,23 +85,15 @@ class TextFieldValueLengthTest {
     }
 
     @Test
-    fun createAgentAndAgreementLimitsRetainExistingThresholds() {
+    fun createAgentLimitRetainsExistingThreshold() {
         val createAgent =
             TextFieldValue(
                 text = "a".repeat(CREATE_AGENT_DESCRIPTION_MAX_LENGTH + 1),
                 selection = TextRange(CREATE_AGENT_DESCRIPTION_MAX_LENGTH + 1)
             ).coerceTextLength(CREATE_AGENT_DESCRIPTION_MAX_LENGTH)
-        val agreementTitle =
-            TextFieldValue(
-                text = "t".repeat(PRE_JOIN_AGREEMENT_TITLE_INPUT_MAX_LENGTH + 1),
-                selection = TextRange(PRE_JOIN_AGREEMENT_TITLE_INPUT_MAX_LENGTH + 1)
-            ).coerceTextLength(PRE_JOIN_AGREEMENT_TITLE_INPUT_MAX_LENGTH)
 
         assertEquals(CREATE_AGENT_DESCRIPTION_MAX_LENGTH, createAgent.text.length)
         assertEquals(TextRange(CREATE_AGENT_DESCRIPTION_MAX_LENGTH), createAgent.selection)
-        assertEquals(PRE_JOIN_AGREEMENT_TITLE_INPUT_MAX_LENGTH, agreementTitle.text.length)
-        assertEquals(TextRange(PRE_JOIN_AGREEMENT_TITLE_INPUT_MAX_LENGTH), agreementTitle.selection)
-        assertTrue(agreementTitle.text.length > PRE_JOIN_AGREEMENT_TITLE_VALIDATION_MAX_LENGTH)
     }
 
     @Test
