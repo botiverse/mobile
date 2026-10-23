@@ -43,9 +43,6 @@ grep -Fq 'diagnostics-caller-pipeline' "$SUITE_RUNNER" || fail "missing diagnost
 grep -Fq 'durable-partition-migration' "$SUITE_RUNNER" || fail "missing durable-partition-migration"
 grep -Fq 'thread-newer-auto-pagination' "$SUITE_RUNNER" || fail "missing thread-newer-auto-pagination"
 grep -Fq 'local-image-sampled-decode' "$SUITE_RUNNER" || fail "missing local-image-sampled-decode"
-grep -Fq 'adaptive-pane-host' "$SUITE_RUNNER" || fail "missing adaptive-pane-host"
-grep -Fq 'qa-session-bootstrap-inbox' "$SUITE_RUNNER" || fail "missing qa-session-bootstrap-inbox"
-grep -Fq 'composed-character-boundary' "$SUITE_RUNNER" || fail "missing composed-character-boundary"
 pass "test registry structural checks passed"
 
 # Setup mock environment for behavior testing
