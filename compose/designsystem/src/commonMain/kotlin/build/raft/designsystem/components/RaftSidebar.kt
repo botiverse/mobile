@@ -600,6 +600,17 @@ fun RaftSidebarItemMeta(text: String, modifier: Modifier = Modifier) {
 }
 
 /**
+ * raft-ui SidebarGroupLabel: a plain group heading that doesn't collapse (the web settings
+ * hub's Personal / Workspace / Resources, `SettingsSidebarList`). `px-2 pt-4 pb-1.5`, the
+ * [title] in `text-footnote` 700 `foreground-hint`, sentence case as written; a heading in
+ * semantics. It is [RaftSectionEyebrow] with the sidebar's padding.
+ */
+@Composable
+fun RaftSidebarGroupLabel(title: String, modifier: Modifier = Modifier) {
+    RaftSectionEyebrow(title, modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 16.dp, bottom = 6.dp))
+}
+
+/**
  * raft-ui SidebarSectionHeader with its SidebarSectionDisclosure: the heading of a
  * collapsible group of rows (Pinned, Channels, a custom group).
  *

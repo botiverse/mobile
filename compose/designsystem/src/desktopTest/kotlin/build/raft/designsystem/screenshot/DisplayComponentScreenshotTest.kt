@@ -89,6 +89,9 @@ import build.raft.designsystem.components.RaftRadio
 import build.raft.designsystem.components.RaftReadOnlyField
 import build.raft.designsystem.components.RaftRowTone
 import build.raft.designsystem.components.RaftSection
+import build.raft.designsystem.components.RaftSectionEyebrow
+import build.raft.designsystem.components.RaftSectionEyebrowIcon
+import build.raft.designsystem.components.RaftSidebarGroupLabel
 import build.raft.designsystem.components.RaftSidebarChannelItem
 import build.raft.designsystem.components.RaftSidebarItem
 import build.raft.designsystem.components.RaftSidebarItemIcon
@@ -1158,6 +1161,70 @@ class DisplayComponentScreenshotTest {
                         RaftStickerTile(RaftUiPalette.brand) { Glyph(RaftGlyph.CircleCheck, 18.dp) }
                         RaftStickerTile(RaftUiPalette.attention400, size = RaftIconTileSize.Lg) { Glyph(RaftGlyph.Plus, 22.dp) }
                     }
+                }
+            }
+        }
+
+    /**
+     * The section heading (web `SectionHeader`): the eyebrow alone, with a count, with a
+     * 16dp hint icon, with both; and a [RaftSection] with an icon and an action.
+     */
+    @Test
+    fun sectionHeading() =
+        capture("section_heading") {
+            Column(Modifier.width(360.dp).background(RaftTheme.colors.layerPanel)) {
+                Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    RaftSectionEyebrow("Profile")
+                    RaftSectionEyebrow("Created agents", count = "3")
+                    RaftSectionEyebrow("Notifications", icon = { RaftSectionEyebrowIcon(RaftGlyph.Info) })
+                    RaftSectionEyebrow("Computers", count = "12", icon = { RaftSectionEyebrowIcon(RaftGlyph.Hash) })
+                }
+                RaftSection(
+                    "Danger zone",
+                    icon = { RaftSectionEyebrowIcon(RaftGlyph.TriangleAlert) },
+                    action = { RaftButton("Edit", onClick = {}, size = RaftButtonSize.Md) },
+                ) {
+                    RaftReadOnlyField("Leave or delete this server")
+                }
+            }
+        }
+
+    /**
+     * The settings parts the web builds from raft-ui: the hub (S-1, `SettingsSidebarList`:
+     * `SidebarGroupLabel` over `SidebarItem` rows at the phone size, one selected, one with
+     * an attention dot) and a group of setting rows (S-16, `ListRowGroup` > plain
+     * `ListRow` + `Switch`).
+     */
+    @Test
+    fun settingsParts() =
+        capture("settings_parts") {
+            Column(Modifier.width(360.dp)) {
+                Column(Modifier.padding(horizontal = 8.dp)) {
+                    RaftSidebarGroupLabel("Personal")
+                    RaftSidebarItem("Account", onClick = {}, selected = true, leading = { RaftSidebarItemIcon(RaftGlyph.AtSign) })
+                    RaftSidebarItem("Notifications", onClick = {}, leading = { RaftSidebarItemIcon(RaftGlyph.Info) })
+                    RaftSidebarGroupLabel("Resources")
+                    RaftSidebarItem(
+                        "Feedback",
+                        onClick = {},
+                        leading = { RaftSidebarItemIcon(RaftGlyph.Copy) },
+                        trailing = { RaftStatusDot(variant = RaftStatusVariant.Accent) },
+                    )
+                }
+                RaftListRowGroup(Modifier.padding(16.dp).fillMaxWidth()) {
+                    RaftListRow(
+                        title = "Desktop notifications",
+                        variant = RaftListRowVariant.Plain,
+                        description = "Show a notification when a message arrives while Raft is in the background.",
+                        wrapDescription = true,
+                        trailing = { RaftSwitch(checked = true, onCheckedChange = {}, label = "Desktop notifications") },
+                    )
+                    RaftListRow(
+                        title = "Sound",
+                        variant = RaftListRowVariant.Plain,
+                        divider = true,
+                        trailing = { RaftSwitch(checked = false, onCheckedChange = {}, label = "Sound") },
+                    )
                 }
             }
         }
