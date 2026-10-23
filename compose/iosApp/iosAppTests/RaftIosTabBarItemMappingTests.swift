@@ -164,45 +164,6 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
         )
     }
 
-    func testPanelTabLeavesTheBarOnlyWhenTheButtonIsSeparate() {
-        let items = ["home", "activity", "tasks", "search"].map { spec($0) } + [serverSpec()]
-        let separate = RaftIosTabBarItemMapping.splitPanelButton(items, separatePanelButton: true)
-        XCTAssertEqual(separate.tabs.map(\.key), ["home", "activity", "tasks", "search"])
-        XCTAssertEqual(separate.panel?.key, "more")
-        // Before iOS 26 it stays the last tab.
-        let classic = RaftIosTabBarItemMapping.splitPanelButton(items, separatePanelButton: false)
-        XCTAssertEqual(classic.tabs.map(\.key), ["home", "activity", "tasks", "search", "more"])
-        XCTAssertNil(classic.panel)
-        // A plain More tab (no server loaded) is a page tab: it stays in the bar.
-        let plain = RaftIosTabBarItemMapping.splitPanelButton(items.dropLast() + [spec("more")], separatePanelButton: true)
-        XCTAssertEqual(plain.tabs.count, 5)
-        XCTAssertNil(plain.panel)
-    }
-
-    func testBarContainerGivesUpTheButtonsWidthSoTheyNeverOverlap() {
-        for width: CGFloat in [320, 375, 402, 440, 744] {
-            let container = RaftIosServerButtonLayout.tabBarContainerWidth(containerWidth: width, showsButton: true)
-            let button = RaftIosServerButtonLayout.buttonFrame(
-                containerWidth: width,
-                safeAreaRight: 0,
-                barFrame: CGRect(x: 0, y: 700, width: container, height: 96),
-                barBottomInset: 34
-            )
-            // The pill lives inside the container; the button starts after it, plus the gap.
-            XCTAssertGreaterThanOrEqual(button.minX, container - RaftIosServerButtonLayout.trailingMargin, "width \(width)")
-            XCTAssertLessThanOrEqual(button.maxX, width - RaftIosServerButtonLayout.trailingMargin, "width \(width)")
-            XCTAssertEqual(button.width, button.height)
-            // Level with the pill: centred in the bar above its bottom safe area.
-            XCTAssertEqual(button.midY, 700 + (96 - 34) / 2, accuracy: 0.5)
-        }
-        XCTAssertEqual(RaftIosServerButtonLayout.tabBarContainerWidth(containerWidth: 402, showsButton: false), 402)
-        // Landscape: the right safe area moves the button in.
-        let landscape = RaftIosServerButtonLayout.buttonFrame(
-            containerWidth: 874, safeAreaRight: 62, barFrame: CGRect(x: 0, y: 340, width: 804, height: 62), barBottomInset: 0
-        )
-        XCTAssertEqual(landscape.maxX, 874 - 62 - RaftIosServerButtonLayout.trailingMargin, accuracy: 0.5)
-    }
-
     private func pixel(_ image: UIImage, _ point: CGPoint) -> (r: Int, g: Int, b: Int, a: Int) {
         let width = Int(image.size.width), height = Int(image.size.height)
         var data = [UInt8](repeating: 0, count: width * height * 4)
@@ -240,29 +201,188 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
         XCTAssertLessThan(pixel(tile, CGPoint(x: 1, y: 1)).a, 20)
     }
 
-    func testServerButtonIsAnAccessibleGlassButtonWithoutABadge() throws {
-        guard #available(iOS 26.0, *) else {
-            throw XCTSkip("the separate server button is iOS 26 only")
+    // MARK: - iOS 26: the server tab is the system's own round glass button
+
+    @available(iOS 26.0, *)
+    private final class SystemTabsDelegate: NSObject, UITabBarControllerDelegate {
+        let tabs: RaftIosSystemTabs
+        var asked: [String] = []
+        init(tabs: RaftIosSystemTabs) { self.tabs = tabs }
+        func tabBarController(_ tabBarController: UITabBarController, shouldSelectTab tab: UITab) -> Bool {
+            asked.append(tabs.key(for: tab) ?? "?")
+            return false
         }
-        let button = RaftIosServerTabButton.make()
-        button.apply(serverSpec(), avatar: nil)
-        XCTAssertNotNil(button.configuration, "system glass configuration")
-        XCTAssertTrue(button.isAccessibilityElement)
-        XCTAssertTrue(button.accessibilityTraits.contains(.button))
-        XCTAssertEqual(button.accessibilityLabel, "Current server: Botiverse")
-        XCTAssertEqual(button.accessibilityIdentifier, "raft-tab-more")
-        XCTAssertNil(button.accessibilityValue, "no badge on the server button")
-        button.frame = CGRect(x: 0, y: 0, width: RaftIosServerButtonLayout.diameter, height: RaftIosServerButtonLayout.diameter)
-        button.layoutIfNeeded()
-        let avatar = try XCTUnwrap(button.subviews.compactMap { $0 as? UIImageView }.first { $0.image?.size.width == RaftIosServerButtonLayout.avatarDiameter })
-        XCTAssertEqual(avatar.frame.midX, button.bounds.midX, accuracy: 0.5)
-        XCTAssertEqual(avatar.frame.midY, button.bounds.midY, accuracy: 0.5)
-        XCTAssertFalse(avatar.isUserInteractionEnabled)
-        // One tap = one action: a plain button, not a tab.
-        var taps = 0
-        button.addAction(UIAction { _ in taps += 1 }, for: .primaryActionTriggered)
-        button.sendActions(for: .primaryActionTriggered)
-        XCTAssertEqual(taps, 1)
+    }
+
+    @available(iOS 26.0, *)
+    private struct LiveBar {
+        let window: UIWindow
+        let controller: UITabBarController
+        let tabs: RaftIosSystemTabs
+        let delegate: SystemTabsDelegate
+    }
+
+    @available(iOS 26.0, *)
+    private func makeSystemBar() -> LiveBar {
+        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+        let window = scene.map { UIWindow(windowScene: $0) } ?? UIWindow(frame: UIScreen.main.bounds)
+        window.frame = scene?.screen.bounds ?? UIScreen.main.bounds
+        window.overrideUserInterfaceStyle = .dark
+        let controller = UITabBarController()
+        controller.traitOverrides.horizontalSizeClass = .compact
+        controller.view.backgroundColor = UIColor(red: 1, green: 0, blue: 1, alpha: 1)
+        let tabs = RaftIosSystemTabs()
+        tabs.makeContent = { _ in
+            let content = UIViewController()
+            content.view.backgroundColor = UIColor(red: 1, green: 0, blue: 1, alpha: 1)
+            return content
+        }
+        let pages = [
+            ("home", "house"), ("activity", "waveform.path.ecg"), ("tasks", "checkmark.square"), ("search", "magnifyingglass"),
+        ].map { key, symbol in
+            RaftIosTabBarItemSpec(
+                key: key, title: key.capitalized, systemImageName: symbol, selectedSystemImageName: symbol,
+                badgeValue: key == "activity" ? "76" : nil, enabled: true
+            )
+        }
+        let red = Int32(bitPattern: 0xFFE04040)
+        let avatar = RaftIosServerAvatarImage.image(argb: Array(repeating: red, count: 16), width: 4, height: 4)
+        tabs.apply(pages + [serverSpec()], panelImage: avatar, to: controller)
+        tabs.select("home", in: controller)
+        let delegate = SystemTabsDelegate(tabs: tabs)
+        controller.delegate = delegate
+        window.rootViewController = controller
+        window.isHidden = false
+        controller.view.layoutIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        return LiveBar(window: window, controller: controller, tabs: tabs, delegate: delegate)
+    }
+
+    /// Test-only: the bar's glass platters (the capsule and the round button) from its view tree.
+    private func platters(in tabBar: UIView, to target: UIView) -> [CGRect] {
+        var frames: [CGRect] = []
+        func walk(_ view: UIView) {
+            for sub in view.subviews where !sub.isHidden {
+                if String(describing: type(of: sub)).contains("Platter") {
+                    frames.append(sub.convert(sub.bounds, to: target))
+                } else {
+                    walk(sub)
+                }
+            }
+        }
+        walk(tabBar)
+        return frames.sorted { $0.minX < $1.minX }
+    }
+
+    private func controls(in view: UIView) -> [UIControl] {
+        view.subviews.flatMap { sub -> [UIControl] in ((sub as? UIControl).map { [$0] } ?? []) + controls(in: sub) }
+    }
+
+    private func screenshot(_ window: UIWindow) -> UIImage {
+        UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+    }
+
+    /// Rows of [column] (points) whose pixels differ from magenta, from [top] down.
+    private func span(_ image: UIImage, column x: CGFloat, from top: CGFloat) -> (CGFloat, CGFloat)? {
+        guard let cg = image.cgImage else { return nil }
+        let scale = image.scale, width = cg.width, height = cg.height
+        var data = [UInt8](repeating: 0, count: width * height * 4)
+        let context = CGContext(
+            data: &data, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        context.draw(cg, in: CGRect(x: 0, y: 0, width: width, height: height))
+        let px = min(width - 1, max(0, Int(x * scale)))
+        var first: Int?, last: Int?
+        for row in Int(top * scale)..<height {
+            let o = (row * width + px) * 4
+            let d = abs(Int(data[o]) - 255) + Int(data[o + 1]) + abs(Int(data[o + 2]) - 255)
+            if d > 60 {
+                if first == nil { first = row }
+                last = row
+            }
+        }
+        guard let f = first, let l = last else { return nil }
+        return (CGFloat(f) / scale, CGFloat(l + 1) / scale)
+    }
+
+    private func printPNG(_ image: UIImage, top: CGFloat, tag: String) {
+        let size = CGSize(width: image.size.width, height: image.size.height - top)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 2
+        let crop = UIGraphicsImageRenderer(size: size, format: format).image { _ in image.draw(at: CGPoint(x: 0, y: -top)) }
+        guard let b64 = crop.pngData()?.base64EncodedString() else { return }
+        stride(from: 0, to: b64.count, by: 2000).forEach { start in
+            let a = b64.index(b64.startIndex, offsetBy: start)
+            let b = b64.index(a, offsetBy: min(2000, b64.count - start))
+            print("\(tag) \(b64[a..<b])")
+        }
+    }
+
+    func testServerTabIsTheSystemsRoundButtonLevelWithTheBar() throws {
+        guard #available(iOS 26.0, *) else { throw XCTSkip("the separate server button is iOS 26 only") }
+        let bar = makeSystemBar()
+        defer { bar.window.isHidden = true }
+        let tabBar = bar.controller.tabBar
+        // The server tab is the system search tab, with the avatar in colour and no badge.
+        let server = try XCTUnwrap(bar.tabs.tab(for: "more"))
+        XCTAssertTrue(server is UISearchTab)
+        XCTAssertNil(server.badgeValue)
+        XCTAssertEqual(server.accessibilityLabel, "Current server: Botiverse")
+        XCTAssertEqual(server.image?.renderingMode, .alwaysOriginal)
+        XCTAssertEqual(bar.tabs.tab(for: "activity")?.badgeValue, "76")
+        XCTAssertEqual(bar.controller.selectedTab?.identifier, "home")
+        // UIKit lays the round button out beside the capsule: same top, same height.
+        let frames = platters(in: tabBar, to: bar.window)
+        XCTAssertEqual(frames.count, 2, "capsule + round button: \(frames)")
+        guard frames.count == 2 else { return }
+        let capsule = frames[0], button = frames[1]
+        let image = screenshot(bar.window)
+        let top = max(0, tabBar.frame.minY - 40)
+        let capsuleSpan = span(image, column: capsule.minX + 30, from: top)
+        let buttonSpan = span(image, column: button.midX, from: top)
+        let scale = image.scale
+        let geometry =
+            "iOS \(UIDevice.current.systemVersion) scale=\(scale) bar=\(tabBar.frame) capsule=\(capsule) button=\(button) " +
+            "pixelCapsule=\(String(describing: capsuleSpan)) pixelButton=\(String(describing: buttonSpan))"
+        print("RAFT_SYSTEMTAB_GEOM \(geometry)")
+        printPNG(image, top: top, tag: "RAFT_SYSTEMTAB_PNG")
+        XCTAssertEqual(button.midY, capsule.midY, accuracy: 0.5, geometry)
+        XCTAssertEqual(button.height, capsule.height, accuracy: 0.5, geometry)
+        XCTAssertGreaterThan(button.minX, capsule.maxX, geometry)
+        let c = try XCTUnwrap(capsuleSpan, geometry), b = try XCTUnwrap(buttonSpan, geometry)
+        let capsuleCentre = (c.0 + c.1) / 2 * scale, buttonCentre = (b.0 + b.1) / 2 * scale
+        print("RAFT_SYSTEMTAB_CENTRES capsule=\(capsuleCentre)px button=\(buttonCentre)px diff=\(buttonCentre - capsuleCentre)px")
+        XCTAssertEqual(buttonCentre, capsuleCentre, accuracy: 2, "pixel centres: \(geometry)")
+    }
+
+    func testTappingTheServerTabAsksTheDelegateAndSelectsNothing() throws {
+        guard #available(iOS 26.0, *) else { throw XCTSkip("the separate server button is iOS 26 only") }
+        let bar = makeSystemBar()
+        defer { bar.window.isHidden = true }
+        let tabBar = bar.controller.tabBar
+        let before = platters(in: tabBar, to: bar.window)
+        let round = try XCTUnwrap(before.last, "no round button")
+        // Test-only: the system's control for the round button (the control filling its platter).
+        let control = try XCTUnwrap(
+            controls(in: tabBar).first { $0.convert($0.bounds, to: bar.window).midX > round.minX },
+            "no control in the round button"
+        )
+        control.sendActions(for: .touchUpInside)
+        if bar.delegate.asked.isEmpty { control.sendActions(for: .primaryActionTriggered) }
+        if bar.delegate.asked.isEmpty { _ = control.accessibilityActivate() }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        print("RAFT_SYSTEMTAB_TAP control=\(type(of: control)) asked=\(bar.delegate.asked) selected=\(bar.controller.selectedTab?.identifier ?? "nil")")
+        let image = screenshot(bar.window)
+        printPNG(image, top: max(0, tabBar.frame.minY - 40), tag: "RAFT_SYSTEMTAB_TAP_PNG")
+        // The server tab's tap reached the delegate (which runs the shell's handler: the panel).
+        XCTAssertEqual(bar.delegate.asked.first, "more", "asked=\(bar.delegate.asked)")
+        // Nothing moved: Home is still selected, no search UI took over the bar.
+        XCTAssertEqual(bar.controller.selectedTab?.identifier, "home")
+        XCTAssertNil(bar.controller.presentedViewController)
+        XCTAssertEqual(platters(in: tabBar, to: bar.window), before)
     }
 }
 
