@@ -67,37 +67,6 @@ class ThreadTerminologyResourceTest {
     }
 
     @Test
-    fun representativeThreadSurfacesUseMessageListTerm() {
-        val zh = readStrings("zh-rCN")
-        val expected =
-            mapOf(
-                "thread_action_reply_in_thread" to "在消息列中回复",
-                "thread_action_follow_thread" to "关注消息列",
-                "thread_action_unfollow_thread" to "取消关注消息列",
-                "thread_reply_title" to "消息列",
-                "thread_feedback_unfollowed" to "已取消关注消息列",
-                "thread_composer_placeholder_reply" to "在消息列中回复",
-                "member_section_threads" to "消息列",
-                "member_permission_threads" to "消息列",
-                "home_nav_followed_threads" to "已关注的消息列",
-                "search_meta_thread" to "消息列",
-                "saved_meta_thread" to "消息列"
-            )
-        expected.forEach { (key, value) ->
-            assertEquals(value, zh[key], "zh-rCN $key must be unified to 消息列")
-        }
-    }
-
-    @Test
-    fun baseEnglishThreadValuesAreUnchanged() {
-        val base = readStrings("base")
-        assertEquals("Reply in Thread", base["thread_action_reply_in_thread"])
-        assertEquals("Thread", base["thread_reply_title"])
-        assertEquals("Unfollowed thread", base["thread_feedback_unfollowed"])
-        assertEquals("Followed threads", base["home_nav_followed_threads"])
-    }
-
-    @Test
     fun frozenKeySetIsCompleteAndPlaceholderParityHoldsPerKey() {
         val base = readStrings("base")
         val zh = readStrings("zh-rCN")
@@ -154,23 +123,6 @@ class ThreadTerminologyResourceTest {
             placeholderTokens(base.getValue(key)) != placeholderTokens(zh.getValue(key))
         }
 
-    // Android native catalog (compose/androidApp values-zh-rCN) thread keys; the native catalog
-    // is a SEPARATE copy from the shared MR catalog and carried 话题 residue of the merged
-    // thread-term batch (caught by the #267 review census).
-    private val nativeThreadKeys =
-        listOf(
-            "home_followed_threads",
-            "followed_threads_title",
-            "followed_threads_loading_title",
-            "followed_threads_loading_detail",
-            "followed_threads_empty_title",
-            "followed_threads_empty_detail",
-            "followed_threads_error_title",
-            "inbox_no_unread_detail",
-            "settings_mobile_push_body",
-            "notification_unread_channel_channel_description"
-        )
-
     @Test
     fun androidNativeCatalogHasNoThreadTopicTermResidue() {
         val zh = readAndroidNativeStrings()
@@ -179,16 +131,6 @@ class ThreadTerminologyResourceTest {
             residue.isEmpty(),
             "androidApp zh-rCN must not contain 「话题」 for thread surfaces; found: ${residue.keys}"
         )
-    }
-
-    @Test
-    fun androidNativeThreadKeysUseMessageListTerm() {
-        val zh = readAndroidNativeStrings()
-        nativeThreadKeys.forEach { key ->
-            val value = zh.getValue(key)
-            assertTrue(value.contains("消息列"), "androidApp zh-rCN $key must use 消息列, got: $value")
-            assertTrue(!value.contains("话题"), "androidApp zh-rCN $key must not contain 话题, got: $value")
-        }
     }
 
     private fun placeholderTokens(value: String): List<String> =

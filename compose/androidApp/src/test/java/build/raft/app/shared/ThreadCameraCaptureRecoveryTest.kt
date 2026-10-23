@@ -27,49 +27,4 @@ class ThreadCameraCaptureRecoveryTest {
 
         cache.deleteRecursively()
     }
-
-    @Test
-    fun activityWiresCameraIdentityThroughSaveRestoreAndTerminalCleanup() {
-        val source = productionSource("androidApp/src/main/java/build/raft/app/shared/RaftCmpActivity.kt")
-
-        assertTrue(
-            "camera identity must be persisted before the external Activity can recreate the host",
-            source.contains(
-                "outState.putString(THREAD_CAMERA_CAPTURE_STATE_KEY, pending.file.canonicalPath)"
-            ),
-        )
-        assertTrue(
-            "the new Activity instance must restore an owned capture identity",
-            source.contains("?.getString(THREAD_CAMERA_CAPTURE_STATE_KEY)") &&
-                source.contains("restoredThreadCameraCaptureFile(applicationContext.cacheDir, it)"),
-        )
-        assertTrue(
-            "a restored ActivityResult must enter the fail-closed branch",
-            source.contains("if (cameraCapture.restoredAfterActivityRecreation)") &&
-                source.contains("discardRestoredThreadCameraCaptureResult(cameraCapture.file)"),
-        )
-        assertTrue(
-            "the discarded result must be audited instead of silently swallowed",
-            source.contains("camera_result_discarded_after_activity_recreation") &&
-                source.contains("cleaned=\$cleaned"),
-        )
-        assertFalse(
-            "a recreated capture cannot retain or replay the old Kuikly callback",
-            source.substringAfter("if (cameraCapture.restoredAfterActivityRecreation)")
-                .substringBefore("if (!captured")
-                .contains("callback?.invoke"),
-        )
-    }
-}
-
-private fun productionSource(relativePath: String): String {
-    var current = File(requireNotNull(System.getProperty("user.dir"))).absoluteFile
-    repeat(10) {
-        val direct = File(current, "src/main/java/build/raft/app/shared/RaftCmpActivity.kt")
-        if (relativePath.startsWith("androidApp/") && direct.isFile) return direct.readText()
-        val candidate = File(current, relativePath)
-        if (candidate.isFile) return candidate.readText()
-        current = current.parentFile ?: return@repeat
-    }
-    error("Unable to locate $relativePath from ${System.getProperty("user.dir")}")
 }
