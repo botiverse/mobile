@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.uikit.LocalUIViewController
 import androidx.compose.ui.uikit.OnFocusBehavior
 import androidx.compose.ui.window.ComposeUIViewController
+import build.raft.app.cmp.ProvideRaftTextToolbarGuard
 import build.raft.app.cmp.RaftCmpRoot
 import build.raft.app.cmp.RaftCmpRouter
 import build.raft.app.cmp.host.BridgeWireHostCapabilities
@@ -202,13 +203,17 @@ object RaftCmpIos {
                 // Read from composition, not captured in this lambda: a Kotlin closure holding the
                 // controller that holds this content would be an ObjC/Kotlin retain cycle.
                 val controller = LocalUIViewController.current
-                RaftCmpRoot(
-                    args = args,
-                    host = host,
-                    onDarkThemeResolved = onDarkThemeResolved,
-                    onCanvasColorResolved = { color -> controller.raftPaintHostCanvas(color) },
-                    backSwipeRegions = backSwipeRegions,
-                )
+                // Text fields hide their edit menu through the guard, so an empty caret menu
+                // cannot come back as a lone "Select All" once text arrives (RaftTextToolbarGuard).
+                ProvideRaftTextToolbarGuard {
+                    RaftCmpRoot(
+                        args = args,
+                        host = host,
+                        onDarkThemeResolved = onDarkThemeResolved,
+                        onCanvasColorResolved = { color -> controller.raftPaintHostCanvas(color) },
+                        backSwipeRegions = backSwipeRegions,
+                    )
+                }
                 // Runs after the first composition is applied, i.e. after RaftPagerHost subscribed.
                 LaunchedEffect(Unit) { page.replayStickyEvents() }
             }
