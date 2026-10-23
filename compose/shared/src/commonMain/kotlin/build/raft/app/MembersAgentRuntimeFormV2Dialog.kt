@@ -88,6 +88,8 @@ internal fun MembersAgentRuntimeFormV2Dialog(
     val errors = current?.let { validateRuntimeFormV2(it.form, it.sources, values, editing = true) }.orEmpty()
     val changed = form != null && values != initialValues
 
+    // Read here: dialog content is hosted at the page root, outside the route's usage access.
+    val quotaMachine = RuntimeQuotaMachine(machineId, access = LocalMembersRuntimeAccountUsageAccess.current)
     RaftUnifiedDialog(
         title = stringResource(MR.strings.member_dialog_edit_runtime_config),
         dismissEnabled = !saving,
@@ -107,7 +109,8 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                         },
                         machineRuntimeIds = machineRuntimeIds,
                         runtimeAvailabilityError = null,
-                        enabled = !saving
+                        enabled = !saving,
+                        quotaMachine = quotaMachine
                     ) {
                         if (form == null) {
                             Text(

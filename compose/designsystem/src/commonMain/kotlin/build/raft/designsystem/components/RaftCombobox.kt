@@ -839,6 +839,9 @@ internal fun <T> RaftComboboxMenuRows(
  * [inWindow]: in a [RaftSheetWindow], so the content clears the home indicator and the
  * keyboard, and, when [raftComboboxFocusesSearch] (with [onCreate]), the search row takes
  * focus once it is laid out.
+ *
+ * [searchable] = false drops the search row: a Select's list in a sheet, for a phone's
+ * picker of up to [RaftComboboxSheetThreshold] values ([RaftChoicePicker]).
  */
 @Composable
 internal fun <T> RaftComboboxSheetSurface(
@@ -860,9 +863,10 @@ internal fun <T> RaftComboboxSheetSurface(
     takenLabels: List<String> = emptyList(),
     optionLeading: (@Composable (RaftComboboxOption<T>) -> Unit)? = null,
     inWindow: Boolean = false,
+    searchable: Boolean = true,
 ) {
     val search = remember { FocusRequester() }
-    if (inWindow && raftComboboxFocusesSearch(creates = onCreate != null)) {
+    if (searchable && inWindow && raftComboboxFocusesSearch(creates = onCreate != null)) {
         LaunchedEffect(Unit) {
             // The input attaches its focus target in the first frame.
             withFrameNanos { }
@@ -906,15 +910,20 @@ internal fun <T> RaftComboboxSheetSurface(
                 )
             },
             headerAction = if (onClear != null) { { RaftComboboxClear(clearLabel, onClear) } } else null,
-            pinned = {
-                RaftSearchRow(
-                    value = query,
-                    onValueChange = onQueryChange,
-                    placeholder = searchPlaceholder,
-                    inset = 16.dp,
-                    focusRequester = search,
-                )
-            },
+            pinned =
+                if (searchable) {
+                    {
+                        RaftSearchRow(
+                            value = query,
+                            onValueChange = onQueryChange,
+                            placeholder = searchPlaceholder,
+                            inset = 16.dp,
+                            focusRequester = search,
+                        )
+                    }
+                } else {
+                    null
+                },
             fillContent = true,
         )
     }

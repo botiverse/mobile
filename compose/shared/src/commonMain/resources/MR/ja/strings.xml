@@ -2599,6 +2599,14 @@
     <string name="member_runtime_usage_health_unsupported">非対応</string>
     <string name="member_runtime_usage_health_error">エラー</string>
     <string name="member_runtime_usage_health_unknown">利用不可</string>
+    <string name="runtime_quota_window_five_hour">5 時間</string>
+    <string name="runtime_quota_window_week">今週</string>
+    <string name="runtime_quota_left">%1$s 残り %2$s</string>
+    <string name="runtime_quota_used_up">%1$s 上限に達しました（%2$sにリセット）</string>
+    <string name="runtime_quota_used_up_no_reset">%1$s 上限に達しました</string>
+    <string name="runtime_quota_attention">%1$s · 対応が必要</string>
+    <string name="runtime_picker_search">検索</string>
+    <string name="runtime_picker_no_matches">「%1$s」に一致する項目はありません</string>
     <string name="auth_private_deployment_title">プライベートデプロイ</string>
     <string name="auth_private_deployment_hint">セルフホストの Raft のアドレスを入力してください。サーバーはバージョン 1.13.0 以降が必要です。</string>
     <string name="auth_private_deployment_web_label">Web アドレス</string>

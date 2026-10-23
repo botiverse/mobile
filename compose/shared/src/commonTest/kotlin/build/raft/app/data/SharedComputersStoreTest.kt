@@ -35,7 +35,8 @@ class SharedComputersStoreTest {
                             id = "machine-1",
                             name = "Maria Laptop",
                             status = "online",
-                            runtimes = listOf("claude", "codex")
+                            runtimes = listOf("claude", "codex"),
+                            usageFactsKnown = true
                         )
                 ),
                 status = SharedComputersLoadStatus.Loaded,

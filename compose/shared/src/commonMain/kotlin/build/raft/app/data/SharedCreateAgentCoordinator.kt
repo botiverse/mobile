@@ -108,7 +108,10 @@ internal class SharedCreateAgentCoordinator(
                             ComputerStatus.Offline -> "offline"
                             ComputerStatus.Unknown -> "unknown"
                         },
-                        runtimes = m.runtimes
+                        runtimes = m.runtimes,
+                        attachedByCurrentUser = m.attachedByCurrentUser,
+                        creatorId = m.creator?.id,
+                        usageFactsKnown = true
                     )
                 }
                 DataResult.Content(opts)
