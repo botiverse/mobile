@@ -962,35 +962,6 @@ jobs:
             --console=plain \
             --stacktrace
 
-      # compose/shared/src/iosTest used to be compiled only. Run the iOS-specific classes
-      # (*IosTest / *IosSmokeTest) on a simulator; commonTest already runs on the JVM in the
-      # android job. Gradle fails if the filters match no test, and the report check below
-      # fails on zero executed cases.
-      - name: Run shared iosTest on the simulator
-        working-directory: compose
-        run: |
-          set -euo pipefail
-          device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k,vs in sorted(d.items(), reverse=True) if "iOS" in k for v in vs if "iPhone" in v["name"]))')
-          ./gradlew :shared:iosSimulatorArm64Test \
-            -Praft.iosSimulatorTestDevice="$device_id" \
-            --tests '*IosTest' \
-            --tests '*IosSmokeTest' \
-            --no-daemon \
-            --console=plain \
-            --stacktrace
-          python3 - <<'PY'
-          import pathlib, sys, xml.etree.ElementTree as ET
-          reports = sorted(pathlib.Path("shared/build/test-results/iosSimulatorArm64Test").glob("*.xml"))
-          total = 0
-          for report in reports:
-              suite = ET.parse(report).getroot()
-              count = int(suite.get("tests", "0"))
-              total += count
-              print(f"{suite.get('name')}: {count} tests, {suite.get('failures')} failures, {suite.get('skipped')} skipped")
-          print(f"iosTest total: {total} tests in {len(reports)} classes")
-          sys.exit(0 if total > 0 else 1)
-          PY
-
       - name: Test adaptive navigation transaction fences
         run: bash compose/iosApp/scripts/test_adaptive_navigation_session.sh
 
@@ -1138,6 +1109,46 @@ jobs:
           fi
           exit "$status"
 
+      # compose/shared/src/iosTest used to be compiled only. Run the iOS-specific classes
+      # (*IosTest / *IosSmokeTest) on a simulator; commonTest already runs on the JVM in the
+      # android job. Gradle fails if the filters match no test, and the report check below
+      # fails on zero executed cases. It runs after the XCTest steps so a red iosTest does not
+      # hide their results.
+      - name: Run shared iosTest on the simulator
+        working-directory: compose
+        if: ${{ !cancelled() }}
+        run: |
+          set -uo pipefail
+          device_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(v["udid"] for k,vs in sorted(d.items(), reverse=True) if "iOS" in k for v in vs if "iPhone" in v["name"]))')
+          # The XCTest steps above leave this simulator booted; the Kotlin test task boots it itself.
+          xcrun simctl shutdown "$device_id" 2>/dev/null || true
+          gradle_rc=0
+          ./gradlew :shared:iosSimulatorArm64Test \
+            -Praft.iosSimulatorTestDevice="$device_id" \
+            --tests '*IosTest' \
+            --tests '*IosSmokeTest' \
+            --no-daemon \
+            --console=plain \
+            --stacktrace || gradle_rc=$?
+          python3 - <<'PY'
+          import pathlib, sys, xml.etree.ElementTree as ET
+          reports = sorted(pathlib.Path("shared/build/test-results/iosSimulatorArm64Test").glob("*.xml"))
+          total = 0
+          for report in reports:
+              suite = ET.parse(report).getroot()
+              count = int(suite.get("tests", "0"))
+              total += count
+              print(f"{suite.get('name')}: {count} tests, {suite.get('failures')} failures, {suite.get('skipped')} skipped")
+              for case in suite.iter("testcase"):
+                  for problem in list(case.iter("failure")) + list(case.iter("error")):
+                      print(f"  FAILED {case.get('name')}: {problem.get('message')}")
+                      print("    " + (problem.text or "").strip()[:2000].replace("\n", "\n    "))
+          print(f"iosTest total: {total} tests in {len(reports)} classes")
+          sys.exit(0 if total > 0 else 1)
+          PY
+          summary_rc=$?
+          [ "$gradle_rc" -eq 0 ] && [ "$summary_rc" -eq 0 ]
+
       - name: Upload xcodebuild log
         if: ${{ always() }}
         uses: actions/upload-artifact@v6
@@ -1147,6 +1158,8 @@ jobs:
             xcodebuild-ios.log
             xcodebuild-adaptive-editor-tests.log
             xcodebuild-login-router-tests.log
+            compose/shared/build/test-results/iosSimulatorArm64Test/
+            compose/shared/build/reports/tests/iosSimulatorArm64Test/
           if-no-files-found: ignore
           retention-days: 7
 
