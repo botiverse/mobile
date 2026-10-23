@@ -16,13 +16,25 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.Text
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftTheme
 import com.tencent.tmm.kmmresource.compose.stringResource
-import androidx.compose.ui.unit.sp
 
 /**
  * Per-message translation render model, aligned with the React `MessageItem`
@@ -167,14 +179,22 @@ private fun SharedMessageTranslationEntry.toTranslationIndicatorUi(
         SharedMessageTranslationStatus.NotFound -> null
     }
 
+/**
+ * The translation status line under a message body, on raft-ui `MessageItemTranslationStatus`
+ * / `MessageItemTranslationFailedStatus` (web MessageItem `TranslationIndicator`): one line of
+ * Space Mono meta in `foreground-hint` (`warning-strong` when it failed) with a 12dp icon 6dp
+ * before the words, a "·" between the words and the action, and the action
+ * (`MessageItemTranslationAction` / `RetryAction`) in caption 12/16 semibold `foreground`.
+ * While translating, the icon pulses as the web's `animate-pulse`; [stillPulse] holds it at
+ * rest (screenshots, where an endless animation never lets the clock idle).
+ */
 @Composable
 internal fun ThreadMessageTranslationIndicator(
     indicator: ThreadMessageTranslationIndicatorUi,
     onToggleOriginal: () -> Unit,
     onRetry: () -> Unit,
+    stillPulse: Boolean = false,
 ) {
-    val tint = if (indicator.failed) RaftColor.AccentOrange else RaftColor.TextMutedGray
-    val tintArgb = if (indicator.failed) RaftColor.AccentOrangeArgb else RaftColor.TextMutedGrayArgb
     val localizedMessage =
         when {
             indicator.pending -> stringResource(MR.strings.translation_state_in_progress)
@@ -192,41 +212,60 @@ internal fun ThreadMessageTranslationIndicator(
                 }
             ThreadMessageTranslationIndicatorAction.None -> indicator.actionLabel
         }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        RaftLucideIcon(
-            name = if (indicator.failed) RaftLucideIconName.TriangleAlert else RaftLucideIconName.Languages,
-            modifier = Modifier.size(12.dp),
-            color = tintArgb,
-            spinning = indicator.pending
-        )
-        if (localizedMessage.isNotBlank()) {
-            Text(
-                text = localizedMessage,
-                style = RaftType.Caption.copy(fontSize = 11.sp, color = tint),
-                color = tint
+    RaftDesignSystemTheme {
+        val colors = RaftTheme.colors
+        val typography = RaftTheme.typography
+        val tint = if (indicator.failed) colors.warningStrong else colors.foregroundHint
+        val iconAlpha =
+            if (indicator.pending && !stillPulse) {
+                rememberInfiniteTransition(label = "translation-pulse").animateFloat(
+                    initialValue = 1f,
+                    targetValue = 0.5f,
+                    animationSpec =
+                        infiniteRepeatable(
+                            animation = tween(durationMillis = 1000, easing = CubicBezierEasing(0.4f, 0f, 0.6f, 1f)),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                    label = "translation-pulse-alpha"
+                ).value
+            } else {
+                1f
+            }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            RaftLucideIcon(
+                name = if (indicator.failed) RaftLucideIconName.TriangleAlert else RaftLucideIconName.Languages,
+                modifier = Modifier.size(12.dp).alpha(iconAlpha),
+                color = raftArgbHex(tint)
             )
-        }
-        if (localizedActionLabel.isNotBlank()) {
-            val onAction =
-                when (indicator.action) {
-                    ThreadMessageTranslationIndicatorAction.Retry -> onRetry
-                    ThreadMessageTranslationIndicatorAction.ToggleOriginal -> onToggleOriginal
-                    ThreadMessageTranslationIndicatorAction.None -> null
+            if (localizedMessage.isNotBlank()) {
+                RaftText(text = localizedMessage, style = typography.monoMeta, color = tint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (localizedActionLabel.isNotBlank()) {
+                if (localizedMessage.isNotBlank()) {
+                    RaftText(text = "·", style = typography.monoMeta, color = tint, modifier = Modifier.clearAndSetSemantics {})
                 }
-            Text(
-                text = localizedActionLabel,
-                style = RaftType.Caption.copy(fontSize = 11.sp, color = tint),
-                color = tint,
-                modifier =
-                    if (onAction != null) {
-                        Modifier.clickable { onAction() }
-                    } else {
-                        Modifier
+                val onAction =
+                    when (indicator.action) {
+                        ThreadMessageTranslationIndicatorAction.Retry -> onRetry
+                        ThreadMessageTranslationIndicatorAction.ToggleOriginal -> onToggleOriginal
+                        ThreadMessageTranslationIndicatorAction.None -> null
                     }
-            )
+                RaftText(
+                    text = localizedActionLabel,
+                    style = typography.caption.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.foreground,
+                    maxLines = 1,
+                    modifier =
+                        if (onAction != null) {
+                            Modifier.clickable(role = Role.Button, onClick = onAction)
+                        } else {
+                            Modifier
+                        }
+                )
+            }
         }
     }
 }
