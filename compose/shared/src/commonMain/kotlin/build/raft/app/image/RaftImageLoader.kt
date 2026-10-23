@@ -52,7 +52,8 @@ fun raftInstallImageLoader() {
 }
 
 /**
- * The Raft image loader: Coil 3 core + SVG decoding, with Raft's own fetchers for http(s)
+ * The Raft image loader: Coil 3 core + SVG decoding (+ opt-in animated GIF/WebP, see
+ * [raftAnimatedImage]), with Raft's own fetchers for http(s)
  * (NetworkKMM), `assets://`, inline SVG and managed avatar models (see [RaftImageSource]).
  * Memory cache keys are the task #403 content fingerprints plus Coil's render params (size).
  */
@@ -72,6 +73,8 @@ fun raftBuildImageLoader(context: PlatformContext): ImageLoader {
             add(RaftImageSourceMapper)
             add(RaftImageSourceKeyer)
             add(RaftImageFetcherFactory())
+            // Ahead of the static decoders, but only for requests that opted in (the image viewer).
+            raftPlatformAnimatedImageDecoderFactory()?.let { add(RaftAnimatedImageDecoderFactory(it)) }
             add(SvgDecoder.Factory())
         }
         .build()

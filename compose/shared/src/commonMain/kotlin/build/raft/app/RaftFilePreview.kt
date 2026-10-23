@@ -7831,7 +7831,10 @@ internal fun RaftFilePreviewPayloadContent(
                             backgroundColor = RaftColor.SurfaceWhite,
                             borderWidth = 0.dp,
                             zoomable = true,
-                            zoomState = zoomState
+                            zoomState = zoomState,
+                            animated = pagePayload.raftFilePreviewImageMayAnimate(),
+                            // Only the page on screen plays; its neighbours hold their frame.
+                            animationActive = selected
                         )
                     }
                 pagePayload.kind == "image" ->
@@ -10444,7 +10447,10 @@ internal fun RaftFilePreviewImagePanel(
     backgroundColor: androidx.compose.ui.graphics.Color = RaftColor.SurfaceWhite,
     borderWidth: androidx.compose.ui.unit.Dp = RaftAppStroke.Default,
     zoomable: Boolean = true,
-    zoomState: RaftZoomableImageState? = null
+    zoomState: RaftZoomableImageState? = null,
+    /** Play [source] when it turns out to be an animated GIF / WebP. */
+    animated: Boolean = false,
+    animationActive: Boolean = true
 ) {
     RaftAspectFitImagePreviewSurface(
         source = source,
@@ -10456,9 +10462,26 @@ internal fun RaftFilePreviewImagePanel(
         borderWidth = borderWidth,
         zoomable = zoomable,
         zoomState = zoomState,
-        showLoadingIndicator = true
+        showLoadingIndicator = true,
+        animateSource = animated,
+        animationActive = animationActive
     )
 }
+
+/**
+ * Whether the viewer asks for this page's image to animate: a resolved full-size image (never
+ * the loading page's thumbnail, a server still) whose metadata says GIF or WebP.
+ */
+internal fun RaftFilePreviewPayload.raftFilePreviewImageMayAnimate(): Boolean =
+    kind == "image" &&
+        !imageUrl.isNullOrBlank() &&
+        build.raft.app.image.raftImageMayBeAnimated(
+            externalMimeType.ifBlank { composerImageMimeType },
+            externalFileName,
+            name,
+            path,
+            imageUrl
+        )
 
 /** Whether the viewer draws this payload as an image (a resolved image, or a thumbnail while it loads). */
 internal fun RaftFilePreviewPayload.raftFilePreviewShowsImage(): Boolean =

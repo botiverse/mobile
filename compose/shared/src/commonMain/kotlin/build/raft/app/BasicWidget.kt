@@ -31,6 +31,11 @@ import build.raft.app.compat.ui.rememberAsyncImageBitmap
 import build.raft.app.compat.ui.keyboardHeightChange
 import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import coil3.compose.rememberAsyncImagePainter
+import coil3.compose.LocalPlatformContext
+import coil3.request.ImageRequest
+import build.raft.app.image.RaftImageAnimationEffect
+import build.raft.app.image.rememberRaftAppInForeground
+import build.raft.app.image.raftAnimatedImage
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.ColorFilter
@@ -265,14 +270,39 @@ fun RaftCachedImage(
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Fit,
     colorFilter: ColorFilter? = null,
+    /**
+     * Ask for animated decoding (GIF / animated WebP; the image viewer only). False keeps the
+     * plain static request, byte-for-byte today's path.
+     */
+    animated: Boolean = false,
+    /** With [animated]: whether it plays now (the selected pager page); it also pauses in the background. */
+    animationActive: Boolean = true,
     onImageStateChange: ((AsyncImagePainter.State) -> Unit)? = null
 ) {
-    val painter = rememberAsyncImagePainter(source)
-    if (onImageStateChange != null) {
+    val platformContext = LocalPlatformContext.current
+    val model: Any? =
+        remember(source, animated, platformContext) {
+            if (animated && source != null) {
+                ImageRequest.Builder(platformContext).data(source).raftAnimatedImage().build()
+            } else {
+                source
+            }
+        }
+    val painter = rememberAsyncImagePainter(model)
+    if (onImageStateChange != null || animated) {
         val imageState by painter.state.collectAsState()
-        val stateCallback by rememberUpdatedState(onImageStateChange)
-        LaunchedEffect(imageState) {
-            stateCallback.invoke(imageState)
+        if (onImageStateChange != null) {
+            val stateCallback by rememberUpdatedState(onImageStateChange)
+            LaunchedEffect(imageState) {
+                stateCallback.invoke(imageState)
+            }
+        }
+        if (animated) {
+            val foreground = rememberRaftAppInForeground()
+            RaftImageAnimationEffect(
+                image = (imageState as? AsyncImagePainter.State.Success)?.result?.image,
+                running = animationActive && foreground
+            )
         }
     }
     Image(
@@ -298,6 +328,10 @@ internal fun RaftAspectFitImagePreviewSurface(
     /** Zoom state hoisted by the page and keyed by image identity; null keeps it per source. */
     zoomState: RaftZoomableImageState? = null,
     showLoadingIndicator: Boolean = false,
+    /** Play [source] if it is an animated GIF / WebP (never the fallback / underlay thumbnail). */
+    animateSource: Boolean = false,
+    /** With [animateSource]: whether the animation runs now (the selected pager page). */
+    animationActive: Boolean = true,
     onImageStateChange: ((AsyncImagePainter.State) -> Unit)? = null
 ) {
     val normalizedSource = source?.trim()?.takeIf { it.isNotBlank() }
@@ -395,6 +429,7 @@ internal fun RaftAspectFitImagePreviewSurface(
                             .then(if (underlayZoom != null) Modifier.raftZoomableImageLayer(underlayZoom) else Modifier)
                 )
             }
+            val animateActive = animateSource && activeSource == normalizedSource
             RaftImagePreviewRenderSlot(renderIdentity) {
                 if (zoomable) {
                     RaftZoomableCachedImage(
@@ -402,6 +437,8 @@ internal fun RaftAspectFitImagePreviewSurface(
                         contentDescription = contentDescription,
                         modifier = Modifier.fillMaxSize(),
                         zoomState = zoomState,
+                        animated = animateActive,
+                        animationActive = animationActive,
                         onImageStateChange = { state ->
                             imageState = state
                             onImageStateChange?.invoke(state)
@@ -422,6 +459,8 @@ internal fun RaftAspectFitImagePreviewSurface(
                         contentDescription = contentDescription,
                         contentScale = contentScale,
                         modifier = Modifier.fillMaxSize(),
+                        animated = animateActive,
+                        animationActive = animationActive,
                         onImageStateChange = { state ->
                             imageState = state
                             onImageStateChange?.invoke(state)
@@ -487,6 +526,8 @@ private fun RaftZoomableCachedImage(
     contentDescription: String?,
     modifier: Modifier = Modifier,
     zoomState: RaftZoomableImageState? = null,
+    animated: Boolean = false,
+    animationActive: Boolean = true,
     onImageStateChange: ((AsyncImagePainter.State) -> Unit)? = null
 ) {
     // Hoisted state survives the render slot re-keying on a source swap (thumbnail -> full size).
@@ -510,6 +551,10 @@ private fun RaftZoomableCachedImage(
             source = source,
             contentDescription = contentDescription,
             contentScale = ContentScale.Fit,
+            // Same composable as a still: zoom, pan, double tap and the pager / dismiss drags
+            // stay on this Box; only the painter's frames change.
+            animated = animated,
+            animationActive = animationActive,
             onImageStateChange = { imageState ->
                 // Pan is bounded by the image as fitted into the viewport, so it needs the image size.
                 // The thumbnail and the full-size image share an aspect ratio, so either one will do.
