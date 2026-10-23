@@ -19,6 +19,10 @@ import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftMenuLabel
 import build.raft.designsystem.components.RaftSelectTrigger
 
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftComboboxOption with RaftCombobox (raft-ui ComboboxSelect) or RaftChoicePicker. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal data class RaftBrutalSelectOption(
     val id: String,
     val label: String,
@@ -48,6 +52,10 @@ internal fun raftSelectMenuWidth(
  */
 @Suppress("UNUSED_PARAMETER")
 @Composable
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftCombobox (raft-ui ComboboxSelect) or RaftChoicePicker, which apply the picker-count rule. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal fun RaftBrutalSelectField(
     options: List<RaftBrutalSelectOption>,
     selectedId: String,

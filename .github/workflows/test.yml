@@ -280,6 +280,12 @@ jobs:
           scripts/check_raft_window_dialog.sh --self-test
           scripts/check_raft_window_dialog.sh
 
+      - name: Guard deprecated RaftBrutal* / legacy accent uses (no file may grow; docs/raftbrutal-migration.md)
+        shell: bash
+        run: |
+          scripts/check_raftbrutal_usage.sh --self-test
+          scripts/check_raftbrutal_usage.sh
+
       - name: Guard SlockMarkdownSpike println gate (task #20)
         shell: bash
         run: |

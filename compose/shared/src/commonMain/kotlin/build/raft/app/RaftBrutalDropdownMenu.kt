@@ -46,6 +46,10 @@ private const val RaftBrutalDropdownMenuRowHeightValue = 40f
  * identity returned via `onSelect`. `destructive` marks a "Delete" style action; it is drawn
  * like any other item (raft-ui: no red menu items, the confirm dialog carries the deletion).
  */
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftMenuItem. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal data class RaftBrutalDropdownMenuItem(
     val id: String,
     val label: String,
@@ -73,6 +77,10 @@ internal data class RaftBrutalDropdownMenuItem(
  * to the id.
  */
 @Composable
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftDropdownMenu. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal fun RaftBrutalDropdownMenu(
     anchor: RaftPopoverAnchor,
     items: List<RaftBrutalDropdownMenuItem>,
@@ -136,6 +144,10 @@ internal fun RaftBrutalDropdownMenu(
 
 @Suppress("UNUSED_PARAMETER")
 @Composable
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftMenuSurface. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal fun RaftBrutalDropdownMenuSurface(
     items: List<RaftBrutalDropdownMenuItem>,
     onSelect: (String) -> Unit,
@@ -230,6 +242,10 @@ private fun RaftDropdownMenuSurface(
  * only) sets the label bold, the Select / status-menu treatment of the selected row.
  */
 @Composable
+@Deprecated(
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftMenuItem. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    level = DeprecationLevel.WARNING,
+)
 internal fun RaftBrutalDropdownMenuRow(
     item: RaftBrutalDropdownMenuItem,
     rowHeight: Dp,
