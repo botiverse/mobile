@@ -8,6 +8,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -209,8 +210,6 @@ class SharedHomeStoreServerSwitchTest {
         fun close() = scope.cancel()
     }
 
-    // Virtual time jumps whenever the test waits on an idle scheduler, so only the timeout case
-    // runs with a reachable timeout; the others are about how loads end.
     private suspend fun TestScope.harness(timeoutMillis: Long = 3_600_000L): Harness {
         val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val servers = authServerFixtures() + StoredAuthServer(id = "server-3", name = "Three", slug = "three")
@@ -224,6 +223,8 @@ class SharedHomeStoreServerSwitchTest {
                     SharedHomeDataSource(
                         sessionStore = auth,
                         api = api,
+                        // No real parse thread: an idle test scheduler would skip virtual time ahead.
+                        parseDispatcher = Dispatchers.Unconfined,
                         parseHome = { payload, _ ->
                             if (api.outcomes[payload.serverId.value] == Outcome.Error) {
                                 DataResult.Error(ScreenError(code = "home_network", retryable = true))
