@@ -149,6 +149,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import build.raft.app.components.RaftPullToRefreshBox
+import build.raft.app.components.raftHeaderRefreshIndicatorVisible
 // #192 trace scope extension: reuse the markdown trace helper for avatar phase
 // attribution (process-wide `expect/actual` infrastructure; one `traceMarkdownSection`
 // overload set covers both `markdown.*` and `avatar.*` / future `composer.*` /
@@ -709,8 +710,9 @@ private const val HomePullToRefreshEnabled = true
 internal fun homePullToRefreshEnabled(contentRefreshEnabled: Boolean): Boolean =
     contentRefreshEnabled && HomePullToRefreshEnabled
 
+/** artin task #22: during a user pull the pull indicator is the only refresh chrome. */
 internal fun homeHeaderRefreshIndicatorVisible(contentRefreshing: Boolean, pullRefreshing: Boolean): Boolean =
-    contentRefreshing || pullRefreshing
+    raftHeaderRefreshIndicatorVisible(refreshing = contentRefreshing, pullRefreshing = pullRefreshing)
 
 @Composable
 private fun RaftHomePageContent(routeVisibleTick: Int = 0) {

@@ -7,6 +7,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.pullToRefresh
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
@@ -65,6 +66,33 @@ internal fun RaftPullToRefreshBox(
 }
 
 /**
+ * Whether a page header's refresh spinner shows (artin task #22). While the user's pull owns the
+ * refresh, the pull indicator is the only refresh chrome: the header spinner would duplicate it.
+ * Refreshes the user did not pull keep the header spinner.
+ */
+internal fun raftHeaderRefreshIndicatorVisible(refreshing: Boolean, pullRefreshing: Boolean): Boolean =
+    refreshing && !pullRefreshing
+
+/**
+ * Hoistable pull state of [RaftStorePullToRefreshBox], so a page header can tell a pulled refresh
+ * from any other refresh of the same store flag ([raftHeaderRefreshIndicatorVisible]).
+ */
+internal class RaftStorePullRefreshState {
+    var pulled by mutableStateOf(false)
+        internal set
+
+    /** The store is refreshing because of a pull on this box. */
+    fun pullRefreshing(refreshing: Boolean): Boolean = refreshing && pulled
+
+    /** The header spinner for the same [refreshing] flag: hidden while the pull indicator shows. */
+    fun headerRefreshing(refreshing: Boolean): Boolean =
+        raftHeaderRefreshIndicatorVisible(refreshing, pullRefreshing(refreshing))
+}
+
+@Composable
+internal fun rememberRaftStorePullRefreshState(): RaftStorePullRefreshState = remember { RaftStorePullRefreshState() }
+
+/**
  * [RaftPullToRefreshBox] over a store whose [refreshing] flag also covers refreshes the user did
  * not pull (open, resume, realtime, retry). The indicator follows only a refresh this box asked
  * for; a pull while the store is already refreshing joins that refresh instead of starting
@@ -77,17 +105,22 @@ internal fun RaftStorePullToRefreshBox(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     contentAlignment: Alignment = Alignment.TopStart,
+    pullState: RaftStorePullRefreshState = rememberRaftStorePullRefreshState(),
     content: @Composable BoxScope.() -> Unit,
 ) {
-    var pulled by remember { mutableStateOf(false) }
     LaunchedEffect(refreshing) {
-        if (!refreshing) pulled = false
+        if (!refreshing) pullState.pulled = false
+    }
+    // A hoisted state outlives this box: if the box leaves mid-refresh, nothing would clear the
+    // pull, and a later refresh the user did not pull would read as pulled.
+    DisposableEffect(pullState) {
+        onDispose { pullState.pulled = false }
     }
     val latestRefreshing by rememberUpdatedState(refreshing)
     RaftPullToRefreshBox(
-        isRefreshing = refreshing && pulled,
+        isRefreshing = pullState.pullRefreshing(refreshing),
         onRefresh = {
-            pulled = true
+            pullState.pulled = true
             if (!latestRefreshing) onRefresh()
         },
         modifier = modifier,

@@ -734,8 +734,9 @@ internal fun activityRefreshPresentation(
     ActivityRefreshPresentation(
         // Background/re-entry baselines preserve loaded content and must not
         // present as a continuously refreshing page. Only the user's explicit
-        // pull gesture owns visible refresh chrome.
-        headerRefreshing = pullRefreshing,
+        // pull gesture owns visible refresh chrome, and that chrome is the pull
+        // indicator alone: the header spinner would show it twice (artin task #22).
+        headerRefreshing = false,
         pullRefreshing = pullRefreshing
     )
 
