@@ -172,6 +172,18 @@ class RaftPdfRenderWindowTest {
     }
 
     @Test
+    fun bottomPaddingLetsTheLastPageScrollClearOfTheNavigationBar() {
+        val pages = List(3) { 1000 to 1000 }
+        val plain = raftPdfPageLayout(pages, viewportWidth = 1000f, sideMargin = 0f, gap = 0f)
+        val padded = raftPdfPageLayout(pages, viewportWidth = 1000f, sideMargin = 0f, gap = 0f, bottomPadding = 126f)
+
+        assertEquals(plain.contentHeight + 126f, padded.contentHeight)
+        assertEquals(plain.maxOffsets(2000f, 1f).second + 126f, padded.maxOffsets(2000f, 1f).second)
+        // Zoomed, the padding scales with the content: the last page still ends above the bar.
+        assertEquals((3000f + 126f) * 2f - 2000f, padded.maxOffsets(2000f, 2f).second)
+    }
+
+    @Test
     fun budgetComesFromTheHeapWithinBounds() {
         assertEquals(24L shl 20, raftPdfBitmapBudgetBytes(64L shl 20))
         assertEquals(64L shl 20, raftPdfBitmapBudgetBytes(512L shl 20))

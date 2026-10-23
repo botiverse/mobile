@@ -2987,8 +2987,10 @@ private fun RaftFilePreviewStandalonePageContent() {
         if (!traceRaftFilePreviewExternalOpenAdmission(rejectionReason, policy, bridge::log)) return
         val owner = attachmentOwner ?: return
         val admittedPolicy = policy ?: return
-        // Share hands over the file already on the device; it never starts a download.
-        if (share && !admittedPolicy.requirePublicDownload) return
+        // Share hands over the file already on the device; it never starts a download. A shown
+        // PDF is on the device already: its cached copy is shared.
+        val sharesPdfPreviewCopy = payload.kind == RaftFilePreviewPdfKind && pdfState is RaftFilePreviewPdfState.Ready
+        if (share && !admittedPolicy.requirePublicDownload && !sharesPdfPreviewCopy) return
         externalOperation = "open"
         downloadMessage = ""
         nextDownloadGeneration += 1L
@@ -3977,7 +3979,7 @@ private fun RaftFilePreviewStandalonePageContent() {
                 } else {
                     null
                 },
-                if (payload.kind == RaftFilePreviewPdfKind && raftFilePreviewShowsShareAction(canOpenWith, downloadUiState)) {
+                if (payload.kind == RaftFilePreviewPdfKind && raftFilePreviewPdfShowsShareAction(canOpenWith, downloadUiState, pdfState)) {
                     RaftUiMenuItem(
                         id = RaftFilePreviewShareActionId,
                         label = stringResource(MR.strings.common_share),

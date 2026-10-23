@@ -8,7 +8,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.viewinterop.UIKitView
 import platform.CoreGraphics.CGRectMake
 import kotlinx.cinterop.ByteVar
@@ -42,6 +44,7 @@ internal actual fun RaftPdfDocumentView(
     onPageChanged: (currentPage: Int, pageCount: Int) -> Unit,
     onError: (RaftPdfDocumentError) -> Unit,
     modifier: Modifier,
+    bottomInset: Dp,
 ) {
     val pageCallback by rememberUpdatedState(onPageChanged)
     val errorCallback by rememberUpdatedState(onError)
@@ -53,7 +56,8 @@ internal actual fun RaftPdfDocumentView(
         }
         UIKitView(
             factory = { host.view },
-            modifier = modifier,
+            // The native view stops above the home indicator, so the last page scrolls clear of it.
+            modifier = modifier.padding(bottom = bottomInset),
             update = {},
             onRelease = { host.dispose() },
         )
@@ -88,6 +92,8 @@ private class RaftIosPdfViewHost(
             pdfView.displayDirection = kPDFDisplayDirectionVertical
             pdfView.displaysPageBreaks = true
             pdfView.autoScales = true
+            // Pages scrolled past the top must not paint over the page header.
+            pdfView.clipsToBounds = true
             if (openError == null) pdfView.document = document
         }
 

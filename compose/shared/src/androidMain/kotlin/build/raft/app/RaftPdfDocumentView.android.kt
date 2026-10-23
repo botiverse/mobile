@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -47,6 +48,7 @@ import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import java.io.File
@@ -84,6 +86,7 @@ internal actual fun RaftPdfDocumentView(
     onPageChanged: (currentPage: Int, pageCount: Int) -> Unit,
     onError: (RaftPdfDocumentError) -> Unit,
     modifier: Modifier,
+    bottomInset: Dp,
 ) {
     val pageCallback by rememberUpdatedState(onPageChanged)
     val errorCallback by rememberUpdatedState(onError)
@@ -103,6 +106,7 @@ internal actual fun RaftPdfDocumentView(
                     document = document,
                     pageSizes = sizes,
                     onPageChanged = { current, count -> pageCallback(current, count) },
+                    bottomInset = bottomInset,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -110,23 +114,43 @@ internal actual fun RaftPdfDocumentView(
     }
 }
 
+/** Renders page bitmaps for [RaftAndroidPdfPages]; PdfRenderer in production, fakes in tests. */
+internal interface RaftPdfPageSource {
+    /** Page [index] scaled to fill a [width] x [height] bitmap; null when it cannot be rendered. */
+    suspend fun renderPage(index: Int, width: Int, height: Int): Bitmap?
+
+    /** The part of a page in [region] (content px) at zoom [scale], one bitmap pixel per screen pixel. */
+    suspend fun renderRegion(layout: RaftPdfPageLayout, region: RaftPdfDetailRegion, scale: Float): Bitmap?
+}
+
+/**
+ * The page column of the viewer over [source]. [initialOffsetY] (screen px at zoom 1) is only the
+ * starting scroll position, used by screenshot tests; afterwards only gestures move it.
+ */
 @Composable
-private fun RaftAndroidPdfPages(
-    document: RaftAndroidPdfDocument,
+internal fun RaftAndroidPdfPages(
+    document: RaftPdfPageSource,
     pageSizes: List<Pair<Int, Int>>,
     onPageChanged: (Int, Int) -> Unit,
+    bottomInset: Dp,
     modifier: Modifier,
+    initialOffsetY: Float = 0f,
 ) {
     val density = LocalDensity.current
     val sideMargin = with(density) { 8.dp.toPx() }
     val gap = with(density) { 8.dp.toPx() }
+    val bottomPadding = with(density) { bottomInset.toPx() }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
     var scale by remember { mutableFloatStateOf(1f) }
     var offsetX by remember { mutableFloatStateOf(0f) }
-    var offsetY by remember { mutableFloatStateOf(0f) }
+    var offsetY by remember { mutableFloatStateOf(initialOffsetY) }
     val layout =
-        remember(pageSizes, viewport.width, sideMargin, gap) {
-            if (viewport.width <= 0) null else raftPdfPageLayout(pageSizes, viewport.width.toFloat(), sideMargin, gap)
+        remember(pageSizes, viewport.width, sideMargin, gap, bottomPadding) {
+            if (viewport.width <= 0) {
+                null
+            } else {
+                raftPdfPageLayout(pageSizes, viewport.width.toFloat(), sideMargin, gap, bottomPadding)
+            }
         }
     val scope = rememberCoroutineScope()
     val store = remember { RaftPdfBitmapStore() }
@@ -222,6 +246,8 @@ private fun RaftAndroidPdfPages(
 
     Canvas(
         modifier
+            // Pages scrolled past the top must not paint over the page header.
+            .clipToBounds()
             .onSizeChanged { size -> if (viewport != size) viewport = size }
             .pointerInput(layout) {
                 detectTapGestures(
@@ -430,7 +456,7 @@ private sealed interface RaftAndroidPdfOpenResult {
 }
 
 /** The renderer of one file, confined to its own render thread. */
-private class RaftAndroidPdfDocument(private val path: String) {
+private class RaftAndroidPdfDocument(private val path: String) : RaftPdfPageSource {
     private val executor =
         Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "raft-pdf-render").apply { isDaemon = true } }
     private val dispatcher = executor.asCoroutineDispatcher()
@@ -491,8 +517,7 @@ private class RaftAndroidPdfDocument(private val path: String) {
             }
         }
 
-    /** Page [index] scaled to fill a [width] x [height] bitmap; null when it cannot be rendered. */
-    suspend fun renderPage(index: Int, width: Int, height: Int): Bitmap? =
+    override suspend fun renderPage(index: Int, width: Int, height: Int): Bitmap? =
         render { pdf ->
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             bitmap.eraseColor(android.graphics.Color.WHITE)
@@ -505,8 +530,7 @@ private class RaftAndroidPdfDocument(private val path: String) {
             bitmap
         }
 
-    /** The part of a page in [region] (content px) at zoom [scale], one bitmap pixel per screen pixel. */
-    suspend fun renderRegion(layout: RaftPdfPageLayout, region: RaftPdfDetailRegion, scale: Float): Bitmap? =
+    override suspend fun renderRegion(layout: RaftPdfPageLayout, region: RaftPdfDetailRegion, scale: Float): Bitmap? =
         render { pdf ->
             val (width, height) = region.bitmapSize(scale)
             val widthPt = pageWidthsPt.getOrNull(region.pageIndex)?.takeIf { it > 0 } ?: return@render null

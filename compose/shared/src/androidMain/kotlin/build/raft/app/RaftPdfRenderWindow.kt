@@ -22,11 +22,13 @@ internal class RaftPdfPageLayout(
     val pageTops: FloatArray,
     /** Height of each page, in content pixels. */
     val pageHeights: FloatArray,
+    /** Extra space after the last page (the navigation bar the viewer is drawn under). */
+    val bottomPadding: Float = 0f,
 ) {
     val pageCount: Int get() = pageTops.size
     val pageWidth: Float get() = (viewportWidth - 2f * sideMargin).coerceAtLeast(1f)
     val contentHeight: Float =
-        if (pageTops.isEmpty()) 0f else pageTops.last() + pageHeights.last() + gap
+        if (pageTops.isEmpty()) 0f else pageTops.last() + pageHeights.last() + gap + bottomPadding
 
     fun pageBottom(index: Int): Float = pageTops[index] + pageHeights[index]
 }
@@ -40,6 +42,7 @@ internal fun raftPdfPageLayout(
     viewportWidth: Float,
     sideMargin: Float,
     gap: Float,
+    bottomPadding: Float = 0f,
 ): RaftPdfPageLayout {
     val pageWidth = (viewportWidth - 2f * sideMargin).coerceAtLeast(1f)
     val tops = FloatArray(pageSizes.size)
@@ -51,7 +54,7 @@ internal fun raftPdfPageLayout(
         heights[index] = pageWidth * ratio
         y += heights[index] + gap
     }
-    return RaftPdfPageLayout(viewportWidth, sideMargin, gap, tops, heights)
+    return RaftPdfPageLayout(viewportWidth, sideMargin, gap, tops, heights, bottomPadding)
 }
 
 private const val RaftPdfA4Ratio = 297f / 210f

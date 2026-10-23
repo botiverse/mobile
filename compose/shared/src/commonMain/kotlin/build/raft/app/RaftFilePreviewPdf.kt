@@ -4,6 +4,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -19,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.components.RaftDesignSystemTheme
@@ -138,6 +144,19 @@ internal fun RaftFilePreviewPdfState.onPdfRenderError(error: RaftPdfDocumentErro
 internal val RaftFilePreviewPdfState.canRetry: Boolean
     get() = this is RaftFilePreviewPdfState.Failed && reason == RaftFilePreviewPdfFailure.Download
 
+/**
+ * Share in the PDF preview menu: once the file is on the device, either saved to Downloads or
+ * as the cached copy the viewer shows.
+ */
+internal fun raftFilePreviewPdfShowsShareAction(
+    canOpenWith: Boolean,
+    downloadState: RaftFilePreviewDownloadUiState?,
+    pdfState: RaftFilePreviewPdfState
+): Boolean =
+    canOpenWith &&
+        downloadState != RaftFilePreviewDownloadUiState.Downloading &&
+        (downloadState == RaftFilePreviewDownloadUiState.Downloaded || pdfState is RaftFilePreviewPdfState.Ready)
+
 /** "3 / 12" for a zero-based [currentPage], or null before the page count is known. */
 internal fun raftFilePreviewPdfPageIndicatorArgs(currentPage: Int, pageCount: Int): Pair<String, String>? =
     if (pageCount <= 0) null else ((currentPage.coerceIn(0, pageCount - 1) + 1).toString() to pageCount.toString())
@@ -162,7 +181,16 @@ internal fun RaftFilePreviewPdfPanel(
         val colors = RaftTheme.colors
         if (state is RaftFilePreviewPdfState.Ready) {
             var page by remember(state.path) { mutableStateOf(0 to 0) }
-            Box(modifier.background(colors.layerCanvasMuted)) {
+            // The preview page is drawn edge to edge: keep the indicator and the last page clear
+            // of the navigation bar (Android) / home indicator (iOS).
+            val bottomInset =
+                WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom).asPaddingValues().calculateBottomPadding()
+            RaftFilePreviewPdfViewerFrame(
+                currentPage = page.first,
+                pageCount = page.second,
+                bottomInset = bottomInset,
+                modifier = modifier
+            ) { viewerModifier ->
                 RaftPdfDocumentView(
                     path = state.path,
                     onPageChanged = { current, count ->
@@ -170,16 +198,9 @@ internal fun RaftFilePreviewPdfPanel(
                         if (page != next) page = next
                     },
                     onError = onRenderError,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = viewerModifier,
+                    bottomInset = bottomInset
                 )
-                raftFilePreviewPdfPageIndicatorArgs(page.first, page.second)?.let { (current, count) ->
-                    RaftBadge(
-                        text = stringResource(MR.strings.file_preview_pdf_page_indicator, current, count),
-                        appearance = RaftBadgeAppearance.Solid,
-                        variant = RaftBadgeVariant.Default,
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp)
-                    )
-                }
             }
             return@RaftDesignSystemTheme
         }
@@ -192,6 +213,32 @@ internal fun RaftFilePreviewPdfPanel(
             openInOtherAppEnabled = openInOtherAppEnabled,
             modifier = modifier
         )
+    }
+}
+
+/**
+ * The shown document: [viewer] fills the frame (drawn under the system bar; it keeps its own last
+ * page clear of [bottomInset]) and the page indicator floats above the bar.
+ * Call inside [RaftDesignSystemTheme].
+ */
+@Composable
+internal fun RaftFilePreviewPdfViewerFrame(
+    currentPage: Int,
+    pageCount: Int,
+    bottomInset: Dp,
+    modifier: Modifier = Modifier,
+    viewer: @Composable (Modifier) -> Unit
+) {
+    Box(modifier.background(RaftTheme.colors.layerCanvasMuted)) {
+        viewer(Modifier.fillMaxSize())
+        raftFilePreviewPdfPageIndicatorArgs(currentPage, pageCount)?.let { (current, count) ->
+            RaftBadge(
+                text = stringResource(MR.strings.file_preview_pdf_page_indicator, current, count),
+                appearance = RaftBadgeAppearance.Solid,
+                variant = RaftBadgeVariant.Default,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp + bottomInset)
+            )
+        }
     }
 }
 

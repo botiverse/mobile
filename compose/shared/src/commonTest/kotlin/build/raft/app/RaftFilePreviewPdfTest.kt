@@ -108,6 +108,23 @@ class RaftFilePreviewPdfTest {
     }
 
     @Test
+    fun shareIsOfferedOnceThePdfIsOnTheDevice() {
+        val ready = RaftFilePreviewPdfState.Ready("/cache/att/spec.pdf")
+        val downloading = RaftFilePreviewPdfState.Downloading()
+        // (canOpenWith, public download state, preview state) -> Share shown.
+        listOf(
+            Triple(true, RaftFilePreviewDownloadUiState.NotDownloaded, ready) to true, // the cached copy on screen
+            Triple(true, RaftFilePreviewDownloadUiState.Downloaded, downloading) to true, // saved to Downloads
+            Triple(true, RaftFilePreviewDownloadUiState.NotDownloaded, downloading) to false, // nothing on the device yet
+            Triple(true, RaftFilePreviewDownloadUiState.Downloading, ready) to false, // a save is running
+            Triple(false, RaftFilePreviewDownloadUiState.Downloaded, ready) to false, // not an attachment
+        ).forEach { (input, expected) ->
+            val (canOpenWith, downloadState, pdfState) = input
+            assertEquals(expected, raftFilePreviewPdfShowsShareAction(canOpenWith, downloadState, pdfState), "$input")
+        }
+    }
+
+    @Test
     fun pageIndicatorIsOneBasedAndWaitsForThePageCount() {
         assertNull(raftFilePreviewPdfPageIndicatorArgs(currentPage = 0, pageCount = 0))
         assertEquals("3" to "12", raftFilePreviewPdfPageIndicatorArgs(currentPage = 2, pageCount = 12))
