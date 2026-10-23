@@ -1706,6 +1706,10 @@ private fun SharedActivityList(
     // committed when the window ends (ActivityConversationSwipe.kt).
     var swipeDoneUndo by remember { mutableStateOf(ActivitySwipeDoneUndoState()) }
     var swipeEndUndo by remember { mutableStateOf(ActivitySwipeEndUndoState()) }
+    // raft-design #785: one row's swipe buttons open at a time; a tap elsewhere, a scroll, Back, the
+    // long-press menu or opening another row closes it (ActivityConversationSwipe.kt).
+    var swipeOpenRow by remember { mutableStateOf(ActivitySwipeOpenRow()) }
+    val swipeOpenRowGeometry = remember { ActivitySwipeOpenRowGeometry() }
     val swipeDoneHiddenKey = swipeDoneUndo.hiddenKey
     val conversationListEntries =
         remember(renderedItems, swipeDoneHiddenKey) {
@@ -1767,6 +1771,7 @@ private fun SharedActivityList(
     }
     fun openRowMenu(renderedItemKey: String, anchor: RaftPopoverAnchor) {
         val currentItem = committedRowItem(renderedItemKey) ?: return
+        swipeOpenRow = swipeOpenRow.close()
         activeMenuItem = currentItem
         menuAnchor = anchor
     }
@@ -1790,8 +1795,8 @@ private fun SharedActivityList(
             is ActivitySwipeEndCommand.ChannelMute -> channelMute?.onToggle?.invoke(command.channelId, command.muted)
         }
     }
-    // Rule L swipe toward the end: Unfollow / Mute Activity, written on release like the menu item; the
-    // toast's Undo writes the reverse (ActivityConversationSwipe.kt).
+    // The swipe's Unfollow / Mute Activity button: written on tap like the menu item; the toast's Undo
+    // writes the reverse (ActivityConversationSwipe.kt).
     fun swipeRowEnd(renderedItemKey: String) {
         val currentItem = committedRowItem(renderedItemKey) ?: return
         val action = currentItem.activitySwipeEndAction(channelMute?.mutedByChannelId.orEmpty()) ?: return
@@ -1818,17 +1823,45 @@ private fun SharedActivityList(
         swipeEndUndo = swipeEndUndo.expire(token)
     }
     // A new account, server or filter (or leaving Activity) commits a waiting Done instead of losing it,
-    // and drops an end swipe's toast (its write already stands).
+    // drops an Unfollow / Mute toast (its write already stands) and closes an open row.
     DisposableEffect(presentationOwnerIdentity) {
         onDispose {
             applySwipeDone(swipeDoneUndo.flush())
             swipeEndUndo = swipeEndUndo.dismiss()
+            swipeOpenRow = swipeOpenRow.close()
         }
+    }
+    // The open row left the list (Done, a filter, a refresh): nothing stays open, nor holds Back.
+    LaunchedEffect(lazyItemKeys) {
+        val retained = swipeOpenRow.retain(lazyItemKeys)
+        if (retained != swipeOpenRow) swipeOpenRow = retained
+    }
+    // Scrolling the list closes the open row.
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }
+            .distinctUntilChanged()
+            .collect { scrolling ->
+                if (scrolling && swipeOpenRow.key != null) swipeOpenRow = swipeOpenRow.close()
+            }
+    }
+    // System Back closes an open row first (AGENTS.md Kuikly Back Handling Rule); the row menu, composed
+    // later, still wins while it is up.
+    RaftBackHandler(enabled = swipeOpenRow.key != null, label = "activity-swipe-row-open") {
+        swipeOpenRow = swipeOpenRow.close()
     }
     // The pointerInput coroutine deliberately keeps the callback from its DOWN generation. Read
     // the backing MutableState objects at commit time so the old callback sees an order change
     // immediately, even before the next recomposition updates or cancels its pointerInput node.
-    Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
+    Box(
+        modifier =
+            swipeOpenRowGeometry
+                .trackPanel(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite))
+                .activitySwipeCloseOnOutsideDown(
+                    geometry = swipeOpenRowGeometry,
+                    openRow = { swipeOpenRow },
+                    onChange = { swipeOpenRow = it },
+                )
+    ) {
         RaftPullToRefreshBox(
             isRefreshing = refreshPresentation.pullRefreshing,
             onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
@@ -1882,6 +1915,9 @@ private fun SharedActivityList(
                                 onSwipeDone = { swipeRowDone(item.key) },
                                 swipeEndAction = item.activitySwipeEndAction(channelMute?.mutedByChannelId.orEmpty()),
                                 onSwipeEnd = { swipeRowEnd(item.key) },
+                                swipeOpen = swipeOpenRow.isOpen(item.key),
+                                onSwipeOpenChange = { open -> swipeOpenRow = swipeOpenRow.change(item.key, open) },
+                                onSwipeOpenRowPlaced = swipeOpenRowGeometry::onOpenRowPlaced,
                             )
                         }
                     }
@@ -1972,7 +2008,7 @@ private fun SharedActivityList(
             )
         }
         swipeEndUndo.pending?.let { pending ->
-            // raft-design touch.md#swipe: the toast says what the swipe did, naming the conversation.
+            // raft-design responsive.md › Touch screens: the toast says what the button did, naming the conversation.
             val conversation = pending.item.activitySwipeConversationLabel()
             RaftToast(
                 title =

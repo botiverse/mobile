@@ -53,44 +53,46 @@ class ActivityConversationSwipeTest {
     }
 
     @Test
-    fun dragIsClaimedOnlyWhenHorizontalAndTowardASideWithAnAction() {
+    fun dragIsClaimedOnlyWhenHorizontalTowardTheStartOrBackOnAnOpenRow() {
         val slop = 10f
-        data class Case(val dx: Float, val dy: Float, val isLtr: Boolean, val end: Boolean, val expected: ActivitySwipeDragDecision)
+        data class Case(val dx: Float, val dy: Float, val isLtr: Boolean, val open: Boolean, val expected: ActivitySwipeDragDecision)
         val cases =
             listOf(
-                Case(-4f, 3f, true, end = true, ActivitySwipeDragDecision.Undecided),
+                Case(-4f, 3f, true, open = false, ActivitySwipeDragDecision.Undecided),
                 // Under the claim distance (2 x slop = 20): still undecided, horizontal or not.
-                Case(-18f, 9f, true, end = true, ActivitySwipeDragDecision.Undecided),
-                Case(-19f, 0f, true, end = true, ActivitySwipeDragDecision.Undecided),
-                Case(-30f, 5f, true, end = false, ActivitySwipeDragDecision.ClaimDone),
-                // Toward the end: the row's end action when it has one, else left to the host's back swipe.
-                Case(30f, 5f, true, end = true, ActivitySwipeDragDecision.ClaimEnd),
-                Case(30f, 5f, true, end = false, ActivitySwipeDragDecision.Release),
+                Case(-18f, 9f, true, open = false, ActivitySwipeDragDecision.Undecided),
+                Case(-19f, 0f, true, open = false, ActivitySwipeDragDecision.Undecided),
+                Case(-30f, 5f, true, open = false, ActivitySwipeDragDecision.Claim),
+                // No right swipe: toward the end a closed row leaves the drag to the host (back, pager)...
+                Case(30f, 5f, true, open = false, ActivitySwipeDragDecision.Release),
+                // ...and an open row takes it, to close.
+                Case(30f, 5f, true, open = true, ActivitySwipeDragDecision.Claim),
+                Case(-30f, 5f, true, open = true, ActivitySwipeDragDecision.Claim),
                 // Vertical-dominant (and a tie) belongs to the list.
-                Case(-12f, 40f, true, end = true, ActivitySwipeDragDecision.Release),
-                Case(20f, 20f, true, end = true, ActivitySwipeDragDecision.Release),
+                Case(-12f, 40f, true, open = true, ActivitySwipeDragDecision.Release),
+                Case(20f, 20f, true, open = true, ActivitySwipeDragDecision.Release),
                 // Diagonal and mostly vertical: past the slop vertically without 2x horizontal dominance.
-                Case(-40f, 25f, true, end = true, ActivitySwipeDragDecision.Release),
-                Case(-22f, 12f, true, end = true, ActivitySwipeDragDecision.Release),
-                Case(-14f, 10f, true, end = true, ActivitySwipeDragDecision.Release),
-                Case(-24f, 12f, true, end = true, ActivitySwipeDragDecision.Release), // exactly 2x is not more than 2x
+                Case(-40f, 25f, true, open = false, ActivitySwipeDragDecision.Release),
+                Case(-22f, 12f, true, open = false, ActivitySwipeDragDecision.Release),
+                Case(-14f, 10f, true, open = false, ActivitySwipeDragDecision.Release),
+                Case(-24f, 12f, true, open = false, ActivitySwipeDragDecision.Release), // exactly 2x is not more than 2x
                 // Clear horizontal intent claims, even with a little vertical drift.
-                Case(-30f, 14f, true, end = true, ActivitySwipeDragDecision.ClaimDone),
-                Case(-21f, 0f, true, end = true, ActivitySwipeDragDecision.ClaimDone),
+                Case(-30f, 14f, true, open = false, ActivitySwipeDragDecision.Claim),
+                Case(-21f, 0f, true, open = false, ActivitySwipeDragDecision.Claim),
                 // RTL mirrors: the row's start is on the right, the end (and back) is leftward.
-                Case(30f, 5f, false, end = true, ActivitySwipeDragDecision.ClaimDone),
-                Case(-30f, 5f, false, end = true, ActivitySwipeDragDecision.ClaimEnd),
-                Case(-30f, 5f, false, end = false, ActivitySwipeDragDecision.Release),
+                Case(30f, 5f, false, open = false, ActivitySwipeDragDecision.Claim),
+                Case(-30f, 5f, false, open = false, ActivitySwipeDragDecision.Release),
+                Case(-30f, 5f, false, open = true, ActivitySwipeDragDecision.Claim),
             )
         cases.forEach { case ->
             assertEquals(
                 case.expected,
-                activitySwipeDragDecision(case.dx, case.dy, slop, case.isLtr, doneEnabled = true, endEnabled = case.end),
+                activitySwipeDragDecision(case.dx, case.dy, slop, case.isLtr, canOpen = true, canClose = case.open),
                 "$case",
             )
         }
-        // A row without Done (none today) would leave the start direction alone too.
-        assertEquals(ActivitySwipeDragDecision.Release, activitySwipeDragDecision(-30f, 5f, slop, true, doneEnabled = false, endEnabled = true))
+        // A row with no buttons would leave the start direction alone too.
+        assertEquals(ActivitySwipeDragDecision.Release, activitySwipeDragDecision(-30f, 5f, slop, true, canOpen = false))
     }
 
     @Test
@@ -102,13 +104,13 @@ class ActivityConversationSwipeTest {
         assertEquals(2f, ActivitySwipeDominanceRatio)
     }
 
-    private fun policy(isLtr: Boolean = true, edge: Boolean = false, end: Boolean = true) =
+    private fun policy(isLtr: Boolean = true, edge: Boolean = false, open: Boolean = false) =
         ActivitySwipeDragPolicy(
             touchSlopPx = 10f,
             claimThresholdPx = 20f,
             isLtr = isLtr,
-            doneEnabled = true,
-            endEnabled = end,
+            canOpen = true,
+            canClose = open,
             startsInEdgeZone = edge,
         )
 
@@ -127,9 +129,9 @@ class ActivityConversationSwipeTest {
     fun aClearHorizontalStreamClaimsAndStaysClaimedWhenItDriftsVertically() {
         val p = policy()
         assertEquals(ActivitySwipeDragDecision.Undecided, p.onMove(-12f, 1f))
-        assertEquals(ActivitySwipeDragDecision.ClaimDone, p.onMove(-24f, 3f))
+        assertEquals(ActivitySwipeDragDecision.Claim, p.onMove(-24f, 3f))
         // Once claimed, it is horizontal for good: no later release.
-        assertEquals(ActivitySwipeDragDecision.ClaimDone, p.onMove(-30f, 60f))
+        assertEquals(ActivitySwipeDragDecision.Claim, p.onMove(-30f, 60f))
     }
 
     @Test
@@ -142,13 +144,13 @@ class ActivityConversationSwipeTest {
     @Test
     fun edgeZoneStreamsAreNeverClaimedAndMirrorInRtl() {
         listOf(30f, -30f).forEach { dx ->
-            val p = policy(edge = true)
+            val p = policy(edge = true, open = true)
             assertEquals(ActivitySwipeDragDecision.Release, p.onMove(dx, 0f))
             assertEquals(ActivitySwipeDragDecision.Release, p.onMove(dx * 3, 0f))
         }
-        val rtl = policy(isLtr = false)
-        assertEquals(ActivitySwipeDragDecision.ClaimDone, rtl.onMove(30f, 2f))
-        assertEquals(ActivitySwipeDragDecision.ClaimEnd, policy(isLtr = false).onMove(-30f, 2f))
+        assertEquals(ActivitySwipeDragDecision.Claim, policy(isLtr = false).onMove(30f, 2f))
+        assertEquals(ActivitySwipeDragDecision.Release, policy(isLtr = false).onMove(-30f, 2f))
+        assertEquals(ActivitySwipeDragDecision.Claim, policy(isLtr = false, open = true).onMove(-30f, 2f))
     }
 
     @Test
@@ -177,7 +179,7 @@ class ActivityConversationSwipeTest {
         listOf(30f, -30f).forEach { dx ->
             assertEquals(
                 ActivitySwipeDragDecision.Release,
-                activitySwipeDragDecision(dx, 2f, 10f, isLtr = true, endEnabled = true, startsInEdgeZone = true),
+                activitySwipeDragDecision(dx, 2f, 10f, isLtr = true, canClose = true, startsInEdgeZone = true),
             )
         }
     }
@@ -186,65 +188,12 @@ class ActivityConversationSwipeTest {
     fun revealFollowsTheFingerWithinTheRow() {
         assertEquals(30f, activitySwipeRevealPx(0f, -30f, 300f, isLtr = true))
         assertEquals(30f, activitySwipeRevealPx(0f, 30f, 300f, isLtr = false))
-        // Back past closed stops at 0; past the row width stops at the width.
+        // Swiping an open row back closes it, and stops at closed rather than sliding the other way.
+        assertEquals(94f, activitySwipeRevealPx(144f, 50f, 300f, isLtr = true))
         assertEquals(0f, activitySwipeRevealPx(20f, 50f, 300f, isLtr = true))
+        assertEquals(0f, activitySwipeRevealPx(20f, -50f, 300f, isLtr = false))
+        // Past the row width stops at the width.
         assertEquals(300f, activitySwipeRevealPx(280f, -50f, 300f, isLtr = true))
-    }
-
-    @Test
-    fun revealStaysOnTheClaimedSide() {
-        val end = ActivitySwipeSide.End
-        assertEquals(-30f, activitySwipeRevealPx(0f, 30f, 300f, isLtr = true, side = end))
-        assertEquals(-30f, activitySwipeRevealPx(0f, -30f, 300f, isLtr = false, side = end))
-        // Dragging back past closed stops at 0 rather than opening Done; past the width stops at -width.
-        assertEquals(0f, activitySwipeRevealPx(-20f, -50f, 300f, isLtr = true, side = end))
-        assertEquals(-300f, activitySwipeRevealPx(-280f, 50f, 300f, isLtr = true, side = end))
-    }
-
-    @Test
-    fun releaseThresholdHoldsInBothDirections() {
-        val width = 400f // threshold 160
-        val fling = 800f
-        data class Case(val side: ActivitySwipeSide, val signedReveal: Float, val fingerVelocityX: Float, val isLtr: Boolean, val applies: Boolean)
-        listOf(
-            // Done (toward the start, positive reveal); LTR finger moving left is negative x.
-            Case(ActivitySwipeSide.Done, 159f, 0f, true, false),
-            Case(ActivitySwipeSide.Done, 160f, 0f, true, true),
-            Case(ActivitySwipeSide.Done, 300f, fling, true, false), // flicked back toward closed
-            Case(ActivitySwipeSide.Done, 80f, -fling, true, true), // fast flick further open
-            // End (toward the end, negative reveal); LTR finger moving right is positive x.
-            Case(ActivitySwipeSide.End, -159f, 0f, true, false),
-            Case(ActivitySwipeSide.End, -160f, 0f, true, true),
-            Case(ActivitySwipeSide.End, -300f, -fling, true, false),
-            Case(ActivitySwipeSide.End, -80f, fling, true, true),
-            Case(ActivitySwipeSide.End, -79f, fling, true, false),
-            // RTL: the end is leftward, so a further-open flick is negative x.
-            Case(ActivitySwipeSide.End, -80f, -fling, false, true),
-            Case(ActivitySwipeSide.End, -300f, fling, false, false),
-            Case(ActivitySwipeSide.End, 0f, fling, true, false),
-        ).forEach { case ->
-            assertEquals(
-                case.applies,
-                activitySwipeReleaseApplies(case.side, case.signedReveal, case.fingerVelocityX, width, fling, case.isLtr),
-                "$case",
-            )
-        }
-    }
-
-    @Test
-    fun releaseAppliesDonePastTheThresholdOrOnAForwardFlick() {
-        val width = 400f // threshold 160
-        val fling = 800f
-        assertFalse(activitySwipeReleaseAppliesDone(159f, 0f, width, fling))
-        assertTrue(activitySwipeReleaseAppliesDone(160f, 0f, width, fling))
-        // A flick back toward the end cancels even past the threshold.
-        assertFalse(activitySwipeReleaseAppliesDone(300f, -fling, width, fling))
-        // A fast flick toward the start applies from half the threshold, not before.
-        assertTrue(activitySwipeReleaseAppliesDone(80f, fling, width, fling))
-        assertFalse(activitySwipeReleaseAppliesDone(79f, fling, width, fling))
-        // Nothing revealed, or no measured width: never.
-        assertFalse(activitySwipeReleaseAppliesDone(0f, fling, width, fling))
-        assertFalse(activitySwipeReleaseAppliesDone(100f, fling, 0f, fling))
     }
 
     @Test
@@ -428,34 +377,77 @@ class ActivityConversationSwipeTest {
     }
 }
 
-/** raft-design #775 / #779: the revealed layer's soft and solid looks, the solid tick, the 8 s undo. */
-class ActivitySwipeLayerSpecTest {
-    private val width = 400f
+/** raft-design #785: the buttons, their distances, the one open row, the full-Done tick, the 8 s undo. */
+class ActivitySwipeButtonsSpecTest {
+    private val width = 400f // full Done from 240
+    private val button = 72f
 
     @Test
-    fun layerIsSoftUnderTheThresholdAndSolidFromIt() {
-        assertFalse(activitySwipeLayerSolid(0f, width))
-        assertFalse(activitySwipeLayerSolid(159f, width))
-        assertTrue(activitySwipeLayerSolid(160f, width))
-        assertTrue(activitySwipeLayerSolid(400f, width))
-        // Both sides: the end side reveals with a negative offset.
-        assertFalse(activitySwipeLayerSolid(-159f, width))
-        assertTrue(activitySwipeLayerSolid(-160f, width))
-        assertFalse(activitySwipeLayerSolid(100f, 0f))
+    fun buttonsAreDoneAtTheOuterEdgeThenTheRowsOtherActions() {
+        assertEquals(
+            listOf(ActivitySwipeButton.Done, ActivitySwipeButton.Unfollow),
+            activitySwipeButtons(doneEnabled = true, endActions = listOf(ActivitySwipeEndAction.UnfollowThread)),
+        )
+        assertEquals(
+            listOf(ActivitySwipeButton.Done, ActivitySwipeButton.Mute),
+            activitySwipeButtons(doneEnabled = true, endActions = listOf(ActivitySwipeEndAction.MuteActivity)),
+        )
+        // Both, in the spec's order (outer to inner): Done, Unfollow, Mute.
+        assertEquals(
+            listOf(ActivitySwipeButton.Done, ActivitySwipeButton.Unfollow, ActivitySwipeButton.Mute),
+            activitySwipeButtons(
+                doneEnabled = true,
+                endActions = listOf(ActivitySwipeEndAction.MuteActivity, ActivitySwipeEndAction.UnfollowThread),
+            ),
+        )
+        // A DM or mention row: Done only. Nothing at all: no swipe.
+        assertEquals(listOf(ActivitySwipeButton.Done), activitySwipeButtons(doneEnabled = true, endActions = emptyList()))
+        assertEquals(emptyList(), activitySwipeButtons(doneEnabled = false, endActions = emptyList()))
+        // Each non-Done button applies its row action; Done goes through the Done path.
+        assertNull(ActivitySwipeButton.Done.endAction)
+        assertEquals(ActivitySwipeEndAction.UnfollowThread, ActivitySwipeButton.Unfollow.endAction)
+        assertEquals(ActivitySwipeEndAction.MuteActivity, ActivitySwipeButton.Mute.endAction)
+        assertEquals(72f, ActivitySwipeButtonWidth.value)
     }
 
     @Test
-    fun layerReturnsToSoftWhenTheFingerComesBackUnderTheThreshold() {
-        val path = listOf(50f, 150f, 200f, 170f, 120f, 180f)
-        assertEquals(listOf(false, false, true, true, false, true), path.map { activitySwipeLayerSolid(it, width) })
+    fun releaseOpensPastHalfTheButtonsClosesShortOfItAndAppliesDonePastSixtyPercent() {
+        val two = 2 * button // 144: open past 72
+        data class Case(val reveal: Float, val buttons: Float, val expected: ActivitySwipeRelease)
+        listOf(
+            Case(0f, two, ActivitySwipeRelease.Close),
+            Case(40f, two, ActivitySwipeRelease.Close),
+            Case(72f, two, ActivitySwipeRelease.Close), // exactly half is not past it
+            Case(73f, two, ActivitySwipeRelease.Open),
+            Case(144f, two, ActivitySwipeRelease.Open),
+            Case(239f, two, ActivitySwipeRelease.Open),
+            Case(240f, two, ActivitySwipeRelease.Done),
+            Case(400f, two, ActivitySwipeRelease.Done),
+            // One button (Done only): open past 36.
+            Case(36f, button, ActivitySwipeRelease.Close),
+            Case(37f, button, ActivitySwipeRelease.Open),
+            // Three buttons: open past 108.
+            Case(108f, 3 * button, ActivitySwipeRelease.Close),
+            Case(109f, 3 * button, ActivitySwipeRelease.Open),
+        ).forEach { case ->
+            assertEquals(case.expected, activitySwipeReleaseTarget(case.reveal, case.buttons, width), "$case")
+        }
+        // No measured width, or a row without Done: never Done.
+        assertEquals(ActivitySwipeRelease.Close, activitySwipeReleaseTarget(300f, two, 0f))
+        assertEquals(ActivitySwipeRelease.Open, activitySwipeReleaseTarget(300f, two, width, doneEnabled = false))
     }
 
     @Test
-    fun solidMatchesWhereReleaseAppliesWithoutAFling() {
-        listOf(0f, 100f, 159f, 160f, 300f).forEach { reveal ->
+    fun fullDoneIsPastSixtyPercentOfTheRowAndGoesAwayWhenTheFingerComesBack() {
+        assertEquals(0.6f, ActivitySwipeFullDoneFraction)
+        val path = listOf(50f, 150f, 239f, 240f, 300f, 230f, 260f)
+        assertEquals(listOf(false, false, false, true, true, false, true), path.map { activitySwipeFullDone(it, width) })
+        assertFalse(activitySwipeFullDone(100f, 0f))
+        // Full Done and the release agree: what the finger sees is what letting go does.
+        path.forEach { reveal ->
             assertEquals(
-                activitySwipeLayerSolid(reveal, width),
-                activitySwipeReleaseAppliesDone(reveal, 0f, width, 800f),
+                activitySwipeFullDone(reveal, width),
+                activitySwipeReleaseTarget(reveal, 2 * button, width) == ActivitySwipeRelease.Done,
                 "reveal $reveal",
             )
         }
@@ -463,16 +455,64 @@ class ActivitySwipeLayerSpecTest {
 
     @Test
     fun tickFiresOncePerOutwardCrossingOnly() {
-        val gate = ActivitySwipeSolidTickGate()
-        val path = listOf(50f, 150f, 170f, 200f, 300f, 150f, 100f, 170f, 180f, 50f)
-        val ticks = path.map { gate.update(activitySwipeLayerSolid(it, width)) }
-        // Crosses out at 170 and again at the second 170; coming back under and staying solid never ticks.
+        val gate = ActivitySwipeFullDoneTickGate()
+        val path = listOf(50f, 150f, 250f, 300f, 390f, 200f, 100f, 260f, 280f, 50f)
+        val ticks = path.map { gate.update(activitySwipeFullDone(it, width)) }
+        // Crosses out at 250 and again at 260; coming back under and staying past it never ticks.
         assertEquals(listOf(false, false, true, false, false, false, false, true, false, false), ticks)
-        assertEquals(2, ticks.count { it })
     }
 
     @Test
-    fun undoWindowIsEightSecondsForBothDirections() {
+    fun buttonsShareTheUncoveredWidthAndDoneGrowsOverThemPastFullDone() {
+        // Open at rest: exactly 72 each.
+        assertEquals(listOf(72f, 72f), activitySwipeButtonWidthsPx(144f, 2, 0f))
+        assertEquals(listOf(72f, 72f, 72f), activitySwipeButtonWidthsPx(216f, 3, 0f))
+        // Sliding in: narrower, equal shares; pulled further: wider.
+        assertEquals(listOf(30f, 30f), activitySwipeButtonWidthsPx(60f, 2, 0f))
+        assertEquals(listOf(100f, 100f), activitySwipeButtonWidthsPx(200f, 2, 0f))
+        // Full Done: Done (outer) takes the whole uncovered width over the others, and halfway on the way.
+        assertEquals(listOf(260f, 130f), activitySwipeButtonWidthsPx(260f, 2, 1f))
+        assertEquals(listOf(195f, 130f), activitySwipeButtonWidthsPx(260f, 2, 0.5f))
+        assertEquals(emptyList(), activitySwipeButtonWidthsPx(100f, 0, 0f))
+        assertEquals(listOf(0f), activitySwipeButtonWidthsPx(-5f, 1, 0f))
+    }
+
+    @Test
+    fun oneRowIsOpenAtATime() {
+        val none = ActivitySwipeOpenRow()
+        val a = none.change("a", open = true)
+        assertTrue(a.isOpen("a"))
+        // Opening (or starting to swipe) another row closes the first.
+        val b = a.change("b", open = true)
+        assertTrue(b.isOpen("b"))
+        assertFalse(b.isOpen("a"))
+        // The first row settling closed after that does not close the second.
+        assertSame(b, b.change("a", open = false))
+        // The open row swiped back (or a button tapped) closes it.
+        assertNull(b.change("b", open = false).key)
+        // Re-opening the open row keeps the same state.
+        assertSame(b, b.change("b", open = true))
+    }
+
+    @Test
+    fun aTapElsewhereBackOrTheRowLeavingTheListClosesIt() {
+        val open = ActivitySwipeOpenRow("a")
+        // A pointer down on the open row itself is the row's (its buttons, its own tap-to-close, a drag).
+        assertSame(open, open.onPointerDown(insideOpenRow = true))
+        // Anywhere else closes it.
+        assertNull(open.onPointerDown(insideOpenRow = false).key)
+        // Back, a scroll, the long-press menu.
+        assertNull(open.close().key)
+        val idle = ActivitySwipeOpenRow()
+        assertSame(idle, idle.close())
+        assertSame(idle, idle.onPointerDown(insideOpenRow = false))
+        // The open row was Done (hidden) or filtered out: nothing stays open, so Back is not held.
+        assertNull(open.retain(listOf("b", "c")).key)
+        assertSame(open, open.retain(listOf("a", "b")))
+    }
+
+    @Test
+    fun undoWindowIsEightSeconds() {
         assertEquals(8_000L, ActivitySwipeDoneUndoWindowMillis)
     }
 }
