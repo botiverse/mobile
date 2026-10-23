@@ -706,7 +706,7 @@ class SharedHomeSearchSavedStoreTest {
 
         assertEquals("release", search.query)
         assertEquals(SearchSort.Recent, search.options?.sort)
-        assertEquals(listOf("user-1"), search.options?.senderIds)
+        assertEquals("user-1", search.options?.senderId)
         assertEquals(ChannelId("channel-1"), search.options?.channelId)
         assertEquals("2026-05-15T00:00:00Z", search.options?.afterIso)
         assertEquals("2026-05-15T15:04:43.904Z", search.options?.beforeIso)
@@ -830,59 +830,6 @@ class SharedHomeSearchSavedStoreTest {
         scope.cancel()
     }
 
-    // Nav spec §9.7 / §10.2: the Search tab keeps its results and scroll. The tab refreshes when
-    // the shell reappears (Back from a result, foreground); that refresh reloads every row shown,
-    // not just the first page, so a reader scrolled past it keeps their place.
-    @Test
-    fun refreshSearchReloadsEveryLoadedPageWhileNewSearchStartsFromFirstPage() = runTest {
-        val newSearches = listOf(null, SharedHomeSearchSavedIntent.SubmitSearch, SharedHomeSearchSavedIntent.SetSearchSort(SearchSort.Recent))
-        for (newSearch in newSearches) {
-            val search = PagedSearchRepository(total = 75)
-            val store =
-                SharedHomeSearchSavedStore(
-                    authStore = InMemoryRaftAuthSessionStore(sampleSession()),
-                    savedRepository = FakeSavedRepository(),
-                    searchRepository = search,
-                    scope = backgroundScope,
-                    searchDebounceMillis = 0L
-                )
-            store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("release"))
-            runCurrent()
-            store.dispatch(SharedHomeSearchSavedIntent.LoadMoreSearch)
-            runCurrent()
-            assertEquals(60, store.state.value.search.items.size)
-            search.calls.clear()
-
-            store.dispatch(newSearch ?: SharedHomeSearchSavedIntent.RefreshSearch)
-            runCurrent()
-
-            val after = store.state.value.search
-            if (newSearch == null) {
-                assertEquals(listOf(0 to 30, 30 to 30), search.calls)
-                assertEquals((0 until 60).map { "message-$it" }, after.items.map { it.key })
-                assertEquals(true to 60, after.hasMore to after.nextOffset)
-            } else {
-                assertEquals(listOf(0 to 30), search.calls, "new search $newSearch")
-                assertEquals(30, after.items.size, "new search $newSearch")
-            }
-            assertEquals(false, after.refreshing)
-        }
-    }
-
-    @Test
-    fun searchDepthLoadKeepsLoadedRowsWhenALaterPageFails() = runTest {
-        val search = PagedSearchRepository(total = 100, failAtOffset = 60)
-        val result =
-            loadSearchSnapshotToDepth(depth = 90, pageSize = 30) { offset, limit ->
-                search.search(ServerId("server-1"), "release", offset, limit, SearchQueryOptions())
-            }
-        val snapshot = (result as DataResult.Content).data
-        assertEquals(Triple(60, true, 60), Triple(snapshot.items.size, snapshot.hasMore, snapshot.nextOffset))
-        val firstPageFailure =
-            loadSearchSnapshotToDepth(depth = 90, pageSize = 30) { _, _ -> DataResult.Error(ScreenError(code = "search_network")) }
-        assertEquals("search_network", (firstPageFailure as DataResult.Error).error.code)
-    }
-
     @Test
     fun sortChangeDuringInitialSearchStaysLoadingUntilReplacementCompletes() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -931,10 +878,10 @@ class SharedHomeSearchSavedStoreTest {
                 searchDebounceMillis = 0L
             )
 
-        store.dispatch(SharedHomeSearchSavedIntent.ToggleSearchSender("user-1"))
+        store.dispatch(SharedHomeSearchSavedIntent.SetSearchSender("user-1"))
 
         assertEquals("", search.query)
-        assertEquals(listOf("user-1"), search.options?.senderIds)
+        assertEquals("user-1", search.options?.senderId)
         assertEquals(listOf("message-filter-only"), store.state.value.search.items.map { it.key })
         assertEquals(true, store.state.value.search.searched)
         scope.cancel()
@@ -1018,7 +965,7 @@ class SharedHomeSearchSavedStoreTest {
         assertEquals(false, store.state.value.search.myMessagesOnly)
         assertEquals(null, store.state.value.search.selectedChannelId)
         assertEquals(SearchTimeRange.Any, store.state.value.search.timeRange)
-        assertEquals(emptyList(), search.options?.senderIds)
+        assertEquals(null, search.options?.senderId)
         assertEquals(null, search.options?.channelId)
         assertEquals(null, search.options?.afterIso)
         assertEquals(null, search.options?.beforeIso)
@@ -1040,19 +987,19 @@ class SharedHomeSearchSavedStoreTest {
 
         store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("handoff"))
         store.dispatch(SharedHomeSearchSavedIntent.SetMyMessagesOnly(true))
-        store.dispatch(SharedHomeSearchSavedIntent.ToggleSearchSender("agent-1"))
+        store.dispatch(SharedHomeSearchSavedIntent.SetSearchSender("agent-1"))
         store.dispatch(SharedHomeSearchSavedIntent.SubmitSearch)
 
         assertEquals(false, store.state.value.search.myMessagesOnly)
-        assertEquals(listOf("agent-1"), store.state.value.search.selectedSenderIds)
-        assertEquals(listOf("agent-1"), search.options?.senderIds)
+        assertEquals("agent-1", store.state.value.search.selectedSenderId)
+        assertEquals("agent-1", search.options?.senderId)
         scope.cancel()
     }
 
     @Test
-    fun senderFilterSupportsMultipleSelectedSenders() = runBlocking {
+    fun senderFilterSelectionReplacesThePreviousSender() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val search = FakeSearchRepository(items = listOf(inboxItem("message-multi-sender")))
+        val search = FakeSearchRepository(items = listOf(inboxItem("message-sender")))
         val store =
             SharedHomeSearchSavedStore(
                 authStore = InMemoryRaftAuthSessionStore(sampleSession()),
@@ -1062,16 +1009,17 @@ class SharedHomeSearchSavedStoreTest {
                 searchDebounceMillis = 0L
             )
 
-        store.dispatch(SharedHomeSearchSavedIntent.ToggleSearchSender("user-1"))
-        store.dispatch(SharedHomeSearchSavedIntent.ToggleSearchSender("agent-1"))
+        store.dispatch(SharedHomeSearchSavedIntent.SetSearchSender("user-1"))
+        store.dispatch(SharedHomeSearchSavedIntent.SetSearchSender("agent-1"))
 
-        assertEquals(listOf("user-1", "agent-1"), store.state.value.search.selectedSenderIds)
-        assertEquals(listOf("user-1", "agent-1"), search.options?.senderIds)
+        // Like the web, one sender at most: the second pick replaces the first.
+        assertEquals("agent-1", store.state.value.search.selectedSenderId)
+        assertEquals(listOf("user-1", "agent-1"), search.calls.map { it.options.senderId })
 
-        store.dispatch(SharedHomeSearchSavedIntent.ToggleSearchSender("user-1"))
+        store.dispatch(SharedHomeSearchSavedIntent.SetSearchSender(null))
 
-        assertEquals(listOf("agent-1"), store.state.value.search.selectedSenderIds)
-        assertEquals(listOf("agent-1"), search.options?.senderIds)
+        assertEquals(null, store.state.value.search.selectedSenderId)
+        assertEquals(false, store.state.value.search.searched)
         scope.cancel()
     }
 
@@ -1201,7 +1149,8 @@ class SharedHomeSearchSavedStoreTest {
             query: String,
             offset: Int,
             limit: Int,
-            options: SearchQueryOptions
+            options: SearchQueryOptions,
+            cursor: String?
         ): DataResult<SearchSnapshot> {
             this.query = query
             this.options = options
@@ -1316,7 +1265,8 @@ class SharedHomeSearchSavedStoreTest {
             query: String,
             offset: Int,
             limit: Int,
-            options: SearchQueryOptions
+            options: SearchQueryOptions,
+            cursor: String?
         ): DataResult<SearchSnapshot> {
             val result = CompletableDeferred<DataResult<SearchSnapshot>>()
             pending += serverId to result
@@ -1346,7 +1296,8 @@ class SharedHomeSearchSavedStoreTest {
             query: String,
             offset: Int,
             limit: Int,
-            options: SearchQueryOptions
+            options: SearchQueryOptions,
+            cursor: String?
         ): DataResult<SearchSnapshot> {
             calls += SearchInvocation(query = query, offset = offset, limit = limit, options = options)
             return withContext(NonCancellable) {
@@ -1369,35 +1320,6 @@ class SharedHomeSearchSavedStoreTest {
                         )
                     )
                 )
-        }
-    }
-
-    /** Serves `message-0 until total` by offset/limit and records each (offset, limit) call. */
-    private inner class PagedSearchRepository(
-        private val total: Int,
-        private val failAtOffset: Int? = null,
-    ) : SearchRepository {
-        val calls = mutableListOf<Pair<Int, Int>>()
-
-        override suspend fun search(
-            serverId: ServerId,
-            query: String,
-            offset: Int,
-            limit: Int,
-            options: SearchQueryOptions
-        ): DataResult<SearchSnapshot> {
-            calls += offset to limit
-            if (offset == failAtOffset) return DataResult.Error(ScreenError(code = "search_network"))
-            val end = minOf(offset + limit, total)
-            return DataResult.Content(
-                SearchSnapshot(
-                    server = testServer(serverId),
-                    query = query,
-                    items = (offset until end).map { inboxItem("message-$it") },
-                    hasMore = end < total,
-                    nextOffset = end
-                )
-            )
         }
     }
 

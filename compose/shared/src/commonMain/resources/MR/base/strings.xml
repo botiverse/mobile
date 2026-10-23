@@ -1742,7 +1742,6 @@
     <string name="search_scope_expand_all">Search all</string>
     <string name="search_filter_from">From</string>
     <string name="search_filter_from_value">From: %1$s</string>
-    <string name="search_filter_from_selected">From: %1$d selected</string>
     <string name="search_filter_search_senders">Search senders</string>
     <string name="search_filter_loading_senders">Loading senders…</string>
     <string name="search_filter_channels">Channels</string>

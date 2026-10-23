@@ -21823,13 +21823,15 @@ internal fun SharedHomeSearchPanel(
                         searchText = senderSearch,
                         onSearchChange = { senderSearch = it },
                         options = state.senderFilterOptions(),
-                        selectedIds = state.selectedSenderIds.toSet(),
+                        // One sender, like the web: a pick replaces the current sender.
+                        selectedIds = setOfNotNull(state.selectedSenderId),
                         onToggle = {
-                            onIntent(SharedHomeSearchSavedIntent.ToggleSearchSender(it))
+                            onIntent(SharedHomeSearchSavedIntent.SetSearchSender(it))
                         },
-                        onClear = { onIntent(SharedHomeSearchSavedIntent.ClearSearchSenders) },
+                        onClear = { onIntent(SharedHomeSearchSavedIntent.SetSearchSender(null)) },
                         onDismiss = { openFilterId = null },
-                        multiSelect = true,
+                        multiSelect = false,
+                        showClear = true,
                         // An empty list while senders load (or fail) says so.
                         status =
                             when {
@@ -22689,12 +22691,12 @@ private fun SharedHomeSearchFilters(
     val hasActiveFilters =
         state.selectedScopes.isNotEmpty() ||
             state.myMessagesOnly ||
-            state.selectedSenderIds.isNotEmpty() ||
+            state.selectedSenderId != null ||
             state.selectedChannelId != null ||
             state.timeRange != SearchTimeRange.Any
     val selectedChannel = channelFilters.firstOrNull { it.id == state.selectedChannelId }
     val scopeActive = state.selectedScopes.isNotEmpty()
-    val senderActive = state.selectedSenderIds.isNotEmpty()
+    val senderActive = state.selectedSenderId != null
     val channelActive = state.selectedChannelId != null
     val timeActive = state.timeRange != SearchTimeRange.Any
     val sortActive = state.sort != SearchSort.Relevance
@@ -24204,17 +24206,14 @@ private fun SharedHomeSearchPanelState.senderFilterOptions(): List<RaftFilterOpt
 
 @Composable
 private fun SharedHomeSearchPanelState.localizedSenderFilterLabel(): String {
-    val selectedIds = selectedSenderIds.map { it.trim() }.filter { it.isNotBlank() }.distinct()
-    if (selectedIds.isEmpty()) return stringResource(MR.strings.search_filter_from)
+    val selectedId = selectedSenderId?.trim()?.takeIf { it.isNotBlank() }
+        ?: return stringResource(MR.strings.search_filter_from)
     val meLabel = stringResource(MR.strings.search_sender_me)
-    val selected = senderFilters.filter { it.id in selectedIds.toSet() }
-    return when (selectedIds.size) {
-        1 -> stringResource(
-            MR.strings.search_filter_from_value,
-            selected.singleOrNull()?.let { if (it.isSelf) meLabel else it.displayLabel } ?: selectedIds.first()
-        )
-        else -> stringResource(MR.strings.search_filter_from_selected, selectedIds.size)
-    }
+    val selected = senderFilters.firstOrNull { it.id == selectedId }
+    return stringResource(
+        MR.strings.search_filter_from_value,
+        selected?.let { if (it.isSelf) meLabel else it.displayLabel } ?: selectedId
+    )
 }
 
 private val SearchSenderFilterItem.displayLabel: String

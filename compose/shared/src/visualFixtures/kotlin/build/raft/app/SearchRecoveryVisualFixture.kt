@@ -35,8 +35,7 @@ private fun SearchRecoveryVisualContent() {
     DisposableEffect(store) { onDispose { store.clear() } }
     LaunchedEffect(store) {
         store.dispatch(SharedHomeSearchSavedIntent.SetSearchChannel("channel-1"))
-        store.dispatch(SharedHomeSearchSavedIntent.ToggleSearchSender("user-1"))
-        store.dispatch(SharedHomeSearchSavedIntent.ToggleSearchSender("agent-2"))
+        store.dispatch(SharedHomeSearchSavedIntent.SetSearchSender("user-1"))
         store.dispatch(SharedHomeSearchSavedIntent.ToggleSearchScope(SearchScope.Mentioned))
         store.dispatch(SharedHomeSearchSavedIntent.ToggleSearchScope(SearchScope.Humans))
         store.dispatch(SharedHomeSearchSavedIntent.SetSearchTimeRange(SearchTimeRange.Today))

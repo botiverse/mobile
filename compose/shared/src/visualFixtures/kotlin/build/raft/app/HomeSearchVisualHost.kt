@@ -186,7 +186,7 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
     timeRange = SearchTimeRange.Last7Days,
     selectedScopes = listOf(SearchScope.Mentioned, SearchScope.Humans),
     myMessagesOnly = false,
-    selectedSenderIds = listOf("user_artin"),
+    selectedSenderId = "user_artin",
     // Visual fixture is static + non-interactive (`onIntent = {}` in HomeSearchVisualContent),
     // so the store never actually runs a search. Mark `searched = true` explicitly so the
     // panel's "items/empty/results-count" branch falls into the "has results" path instead
@@ -442,7 +442,7 @@ internal fun HomeSearchErrorVisualContent() {
                     sort = SearchSort.Relevance,
                     timeRange = SearchTimeRange.Any,
                     myMessagesOnly = false,
-                    selectedSenderIds = emptyList(),
+                    selectedSenderId = null,
                     selectedChannelId = null,
                     items = emptyList(),
                     totalCount = 0,

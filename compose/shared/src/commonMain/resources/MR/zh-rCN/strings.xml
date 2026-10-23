@@ -1742,7 +1742,6 @@
     <string name="search_scope_expand_all">全部</string>
     <string name="search_filter_from">发送者</string>
     <string name="search_filter_from_value">发送者：%1$s</string>
-    <string name="search_filter_from_selected">已选择 %1$d 位发送者</string>
     <string name="search_filter_search_senders">搜索发送者</string>
     <string name="search_filter_loading_senders">正在加载发送者…</string>
     <string name="search_filter_channels">频道</string>

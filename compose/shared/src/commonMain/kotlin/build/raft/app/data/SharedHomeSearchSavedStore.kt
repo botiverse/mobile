@@ -146,7 +146,7 @@ internal class SharedHomeSearchSavedStore(
                 search =
                     _state.value.search.copy(
                         serverId = owner?.serverId?.value,
-                        selectedSenderIds = emptyList(),
+                        selectedSenderId = null,
                         selectedChannelId = null,
                         senderFilters = emptyList(),
                         senderFiltersLoading = false,
@@ -161,6 +161,7 @@ internal class SharedHomeSearchSavedStore(
                         empty = false,
                         hasMore = false,
                         nextOffset = null,
+                        nextCursor = null,
                         errorCode = null,
                         noPermissionCode = null,
                         resultQuery = null,
@@ -210,33 +211,22 @@ internal class SharedHomeSearchSavedStore(
                     _state.value.copy(search = _state.value.search.copy(selectedChannelId = intent.channelId))
                 scheduleSearchRefresh()
             }
-            is SharedHomeSearchSavedIntent.ToggleSearchSender -> {
+            is SharedHomeSearchSavedIntent.SetSearchSender -> {
+                // One sender at most, like the web: picking another replaces the current one.
                 val currentSearch = _state.value.search
-                val selectedSenderIds = currentSearch.selectedSenderIds.toggleSenderId(intent.senderId)
-                val senderWasAdded = intent.senderId in selectedSenderIds
-                val senderKind = currentSearch.senderFilters.firstOrNull { it.id == intent.senderId }?.kind
+                val senderId = intent.senderId?.trim()?.takeIf { it.isNotBlank() }
+                val senderKind = senderId?.let { id -> currentSearch.senderFilters.firstOrNull { it.id == id }?.kind }
                 _state.value =
                     _state.value.copy(
                         search =
                             currentSearch.copy(
-                                selectedSenderIds = selectedSenderIds,
+                                selectedSenderId = senderId,
                                 selectedScopes =
-                                    if (senderWasAdded && senderKind != null) {
+                                    if (senderKind != null) {
                                         currentSearch.selectedScopes.withSenderKindConflictResolved(senderKind)
                                     } else {
                                         currentSearch.selectedScopes
                                     },
-                                myMessagesOnly = false
-                            )
-                    )
-                scheduleSearchRefresh()
-            }
-            SharedHomeSearchSavedIntent.ClearSearchSenders -> {
-                _state.value =
-                    _state.value.copy(
-                        search =
-                            _state.value.search.copy(
-                                selectedSenderIds = emptyList(),
                                 myMessagesOnly = false
                             )
                     )
@@ -259,14 +249,11 @@ internal class SharedHomeSearchSavedStore(
                         search =
                             currentSearch.copy(
                                 selectedScopes = selectedScopes,
-                                selectedSenderIds =
-                                    if (exclusiveKind == null) {
-                                        currentSearch.selectedSenderIds
-                                    } else {
-                                        currentSearch.selectedSenderIds.filter { senderId ->
+                                selectedSenderId =
+                                    currentSearch.selectedSenderId?.takeIf { senderId ->
+                                        exclusiveKind == null ||
                                             currentSearch.senderFilters.firstOrNull { it.id == senderId }?.kind
                                                 ?.let { it == exclusiveKind } != false
-                                        }
                                     },
                                 myMessagesOnly = currentSearch.myMessagesOnly && exclusiveKind != MemberKind.Agent
                             )
@@ -283,7 +270,7 @@ internal class SharedHomeSearchSavedStore(
                         search =
                             _state.value.search.copy(
                                 myMessagesOnly = intent.enabled,
-                                selectedSenderIds = if (intent.enabled) emptyList() else _state.value.search.selectedSenderIds,
+                                selectedSenderId = if (intent.enabled) null else _state.value.search.selectedSenderId,
                                 selectedScopes =
                                     if (intent.enabled) {
                                         _state.value.search.selectedScopes.withSenderKindConflictResolved(MemberKind.Human)
@@ -300,7 +287,7 @@ internal class SharedHomeSearchSavedStore(
                         search =
                             _state.value.search.copy(
                                 myMessagesOnly = false,
-                                selectedSenderIds = emptyList(),
+                                selectedSenderId = null,
                                 selectedScopes = emptyList(),
                                 selectedChannelId = null,
                                 timeRange = SearchTimeRange.Any
@@ -636,28 +623,29 @@ internal class SharedHomeSearchSavedStore(
                     }
                     val serverId = owner.serverId
                     val bounds = timeRangeBoundsProvider(previous.timeRange)
-                    val senderIds =
+                    val senderId =
                         when {
-                            previous.selectedSenderIds.isNotEmpty() -> previous.selectedSenderIds
-                            previous.myMessagesOnly -> listOf(session.user.id)
-                            else -> emptyList()
+                            !previous.selectedSenderId.isNullOrBlank() -> previous.selectedSenderId
+                            previous.myMessagesOnly -> session.user.id
+                            else -> null
                         }
                     val options =
                         SearchQueryOptions(
                             sort = previous.sort,
-                            senderIds = senderIds,
+                            senderId = senderId,
                             scopes = previous.selectedScopes,
                             channelId = previous.selectedChannelId?.let(::ChannelId),
                             afterIso = bounds.afterIso,
                             beforeIso = bounds.beforeIso
                         )
-                    val fetchPage: suspend (Int, Int) -> DataResult<SearchSnapshot> = { offset, limit ->
+                    val fetchPage: SearchPageFetcher = { page, limit ->
                         searchRepository.search(
                             serverId = serverId,
                             query = previous.query,
-                            offset = offset,
+                            offset = page.offset,
                             limit = limit,
-                            options = options
+                            options = options,
+                            cursor = page.cursor
                         )
                     }
                     val result =
@@ -673,7 +661,7 @@ internal class SharedHomeSearchSavedStore(
                                 fetchPage = fetchPage
                             )
                         } else {
-                            fetchPage(previous.nextOffset ?: previous.items.size, HomeSearchPageSize)
+                            fetchPage(previous.nextSearchPage(), HomeSearchPageSize)
                         }
                     val latestOwner = SearchServerOwner.from(authStore.readSession())
                     if (latestOwner != owner) {
@@ -730,6 +718,7 @@ internal class SharedHomeSearchSavedStore(
                         empty = false,
                         hasMore = false,
                         nextOffset = null,
+                        nextCursor = null,
                         errorCode = null,
                         noPermissionCode = null,
                         resultQuery = null,
@@ -1080,6 +1069,7 @@ internal class SharedHomeSearchSavedStore(
                                 totalCount = result.data.totalCount,
                                 hasMore = result.data.hasMore,
                                 nextOffset = result.data.nextOffset,
+                                nextCursor = result.data.nextCursor,
                                 searched = true,
                                 empty = items.isEmpty(),
                                 loading = false,
@@ -1098,6 +1088,7 @@ internal class SharedHomeSearchSavedStore(
                                 empty = !append,
                                 hasMore = false,
                                 nextOffset = null,
+                                nextCursor = null,
                                 loading = false,
                                 refreshing = false,
                                 loadingMore = false,
@@ -1505,7 +1496,8 @@ data class SharedHomeSearchPanelState(
     val sort: SearchSort = SearchSort.Relevance,
     val timeRange: SearchTimeRange = SearchTimeRange.Any,
     val myMessagesOnly: Boolean = false,
-    val selectedSenderIds: List<String> = emptyList(),
+    /** The one sender filter (web `senderId`); choosing another sender replaces it. */
+    val selectedSenderId: String? = null,
     val selectedScopes: List<SearchScope> = emptyList(),
     val senderFilters: List<SearchSenderFilterItem> = emptyList(),
     val senderFiltersLoading: Boolean = false,
@@ -1521,6 +1513,8 @@ data class SharedHomeSearchPanelState(
     val empty: Boolean = false,
     val hasMore: Boolean = false,
     val nextOffset: Int? = null,
+    /** Server walk cursor for the next page (recent-sort text search); preferred over [nextOffset]. */
+    val nextCursor: String? = null,
     val errorCode: String? = null,
     val noPermissionCode: String? = null,
     val resultQuery: String? = null,
@@ -1532,16 +1526,25 @@ data class SharedHomeSearchPanelState(
 internal fun SharedHomeSearchPanelState.hasMessageSearchIntent(): Boolean =
     query.trim().isNotBlank() ||
         myMessagesOnly ||
-        selectedSenderIds.any { it.isNotBlank() } ||
+        !selectedSenderId.isNullOrBlank() ||
         selectedScopes.isNotEmpty() ||
         !selectedChannelId.isNullOrBlank() ||
         timeRange != SearchTimeRange.Any
 
-private fun List<String>.toggleSenderId(senderId: String): List<String> {
-    val normalized = senderId.trim()
-    if (normalized.isBlank()) return this
-    return if (normalized in this) filterNot { it == normalized } else this + normalized
-}
+/**
+ * Where a search page starts: the server's walk [cursor] when the previous page gave one, else
+ * the row [offset] (web `loadMoreResults`: "a cursor continues exactly below what was shown").
+ * The repository sends the cursor only when it is valid for the search (query + sort=recent).
+ */
+internal data class SearchPageStart(val offset: Int, val cursor: String? = null)
+
+internal typealias SearchPageFetcher = suspend (page: SearchPageStart, limit: Int) -> DataResult<SearchSnapshot>
+
+private fun searchPageAfter(loadedRows: Int, nextOffset: Int?, nextCursor: String?): SearchPageStart =
+    SearchPageStart(offset = nextOffset ?: loadedRows, cursor = nextCursor)
+
+internal fun SharedHomeSearchPanelState.nextSearchPage(): SearchPageStart =
+    searchPageAfter(items.size, nextOffset, nextCursor)
 
 private fun List<SearchScope>.toggleSearchScope(scope: SearchScope): List<SearchScope> =
     if (scope in this) filterNot { it == scope } else SearchScope.entries.filter { it == scope || it in this }
@@ -1575,8 +1578,8 @@ sealed interface SharedHomeSearchSavedIntent {
     data object RefreshSearch : SharedHomeSearchSavedIntent
     data object LoadMoreSearch : SharedHomeSearchSavedIntent
     data class PreselectSearchChannel(val channelId: String?) : SharedHomeSearchSavedIntent
-    data class ToggleSearchSender(val senderId: String) : SharedHomeSearchSavedIntent
-    data object ClearSearchSenders : SharedHomeSearchSavedIntent
+    /** Filters by one sender, replacing any other; null clears it. */
+    data class SetSearchSender(val senderId: String?) : SharedHomeSearchSavedIntent
     data class SetSearchChannel(val channelId: String?) : SharedHomeSearchSavedIntent
     data class SetSearchSort(val sort: SearchSort) : SharedHomeSearchSavedIntent
     data class SetSearchTimeRange(val range: SearchTimeRange) : SharedHomeSearchSavedIntent
@@ -1656,19 +1659,19 @@ internal fun List<MemberProfile>.toSearchSenderFilters(
  * Loads search results from offset 0 until at least [depth] rows are loaded (at least one page),
  * the server has no more, or a page fails. Pages are [pageSize] rows (the server caps a page at
  * 50), so a depth beyond one page takes several requests. The combined snapshot continues paging
- * where the last loaded page ended. A failure on the first page is returned as is; a failure on a
+ * where the last loaded page ended (its walk cursor, else its offset). A failure on the first page is returned as is; a failure on a
  * later page keeps the rows loaded so far and leaves more to load from there.
  */
 internal suspend fun loadSearchSnapshotToDepth(
     depth: Int,
     pageSize: Int,
-    fetchPage: suspend (offset: Int, limit: Int) -> DataResult<SearchSnapshot>,
+    fetchPage: SearchPageFetcher,
 ): DataResult<SearchSnapshot> {
-    val first = fetchPage(0, pageSize)
+    val first = fetchPage(SearchPageStart(offset = 0), pageSize)
     var combined = (first as? DataResult.Content)?.data ?: return first
     while (combined.hasMore && combined.items.size < depth) {
-        val offset = combined.nextOffset ?: combined.items.size
-        when (val page = fetchPage(offset, pageSize)) {
+        val start = searchPageAfter(combined.items.size, combined.nextOffset, combined.nextCursor)
+        when (val page = fetchPage(start, pageSize)) {
             is DataResult.Content -> {
                 val items = (combined.items + page.data.items).distinctBy { it.key }
                 val grew = items.size > combined.items.size
@@ -1677,13 +1680,14 @@ internal suspend fun loadSearchSnapshotToDepth(
                         items = items,
                         totalCount = items.size,
                         hasMore = page.data.hasMore,
-                        nextOffset = page.data.nextOffset
+                        nextOffset = page.data.nextOffset,
+                        nextCursor = page.data.nextCursor
                     )
                 // A page of rows already shown cannot make progress; stop instead of looping.
                 if (!grew) break
             }
             is DataResult.Empty -> {
-                combined = combined.copy(hasMore = false, nextOffset = null)
+                combined = combined.copy(hasMore = false, nextOffset = null, nextCursor = null)
             }
             else -> break
         }

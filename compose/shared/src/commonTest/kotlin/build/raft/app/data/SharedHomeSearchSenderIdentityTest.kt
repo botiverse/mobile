@@ -4,7 +4,6 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
-import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import kotlinx.coroutines.CoroutineScope
@@ -169,14 +168,7 @@ class SharedHomeSearchSenderIdentityTest {
         override suspend fun removeChannelMember(priority: DataRequestPriority, request: RemoveChannelMemberRequest): DataResult<ChannelMemberActionResult> = error("unused")
     }
 
-    private object EmptySavedRepository : SavedRepository {
-        override suspend fun loadInitial(serverId: ServerId, limit: Int): DataResult<SavedSnapshot> = DataResult.Empty(EmptyReason.NoInboxItems)
-        override suspend fun loadMore(serverId: ServerId, offset: Int, limit: Int): DataResult<SavedSnapshot> = DataResult.Empty(EmptyReason.NoInboxItems)
-        override suspend fun saveMessage(serverId: ServerId, messageId: MessageId): DataResult<SavedMessageMutationResult> = error("unused")
-        override suspend fun unsaveMessage(serverId: ServerId, messageId: MessageId): DataResult<SavedMessageMutationResult> = error("unused")
-    }
-
     private object EmptySearchRepository : SearchRepository {
-        override suspend fun search(serverId: ServerId, query: String, offset: Int, limit: Int, options: SearchQueryOptions): DataResult<SearchSnapshot> = DataResult.Empty(EmptyReason.NoInboxItems)
+        override suspend fun search(serverId: ServerId, query: String, offset: Int, limit: Int, options: SearchQueryOptions, cursor: String?): DataResult<SearchSnapshot> = DataResult.Empty(EmptyReason.NoInboxItems)
     }
 }
