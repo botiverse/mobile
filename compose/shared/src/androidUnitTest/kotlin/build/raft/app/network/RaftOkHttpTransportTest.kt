@@ -9,6 +9,7 @@ import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
@@ -286,8 +287,77 @@ class RaftOkHttpTransportTest {
         assertTrue(text.endsWith("--\r\n"))
     }
 
-    private fun uploadExecutor(): KtorRaftHttpExecutor {
-        val lanes = RaftOkHttpLanes(buildRaftBaseOkHttpClient(eventListenerFactory = null))
+    /**
+     * Hands e9baeedb: progress must follow bytes written to the connection, not to Ktor's body
+     * channel. The server never reads the body, so once the socket buffers fill the upload stalls and
+     * progress must stop well short of the total (it used to read 100% at once).
+     */
+    @Test
+    fun uploadProgressFollowsTheConnectionNotTheBodyChannel() = runBlocking {
+        server.enqueue(MockResponse.Builder().doNotReadRequestBody().onResponseStart(SocketEffect.Stall).build())
+        val total = 16L * 1024L * 1024L
+        val fileBytes = ByteArray(total.toInt())
+        val progress = java.util.concurrent.CopyOnWriteArrayList<RaftTransferProgress>()
+        // Loopback socket buffers can hold tens of MB; pin the client's send buffer so "the
+        // connection stopped taking bytes" happens early, as on a real slow uplink.
+        val smallSendBuffer =
+            object : javax.net.SocketFactory() {
+                private val delegate = javax.net.SocketFactory.getDefault()
+                private fun tune(socket: java.net.Socket) = socket.apply { sendBufferSize = 64 * 1024 }
+                override fun createSocket() = tune(delegate.createSocket())
+                override fun createSocket(host: String, port: Int) = tune(delegate.createSocket(host, port))
+                override fun createSocket(host: String, port: Int, localHost: InetAddress, localPort: Int) =
+                    tune(delegate.createSocket(host, port, localHost, localPort))
+                override fun createSocket(host: InetAddress, port: Int) = tune(delegate.createSocket(host, port))
+                override fun createSocket(address: InetAddress, port: Int, localAddress: InetAddress, localPort: Int) =
+                    tune(delegate.createSocket(address, port, localAddress, localPort))
+            }
+        val executor = uploadExecutor { socketFactory(smallSendBuffer) }
+
+        val upload =
+            launch(kotlinx.coroutines.Dispatchers.IO) {
+                executor.executeFile(
+                    priority = RaftRequestPriority.Foreground,
+                    url = server.url("/bucket/big.bin?sig=1").toString(),
+                    method = "PUT",
+                    headers = emptyMap(),
+                    body =
+                        RaftHttpFileBody(
+                            path = "content://big",
+                            contentType = "application/octet-stream",
+                            contentLength = total,
+                            openStream = {
+                                build.raft.app.data.boundedPlatformFileNetworkStream(total, ArrayChunkSource(fileBytes))
+                            }
+                        ),
+                    onUploadProgress = { progress += it },
+                )
+            }
+        // Wait until the transfer has started and then stopped moving (socket buffers full).
+        var last = -1L
+        var stableSince = System.nanoTime()
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20)
+        while (System.nanoTime() < deadline) {
+            val now = progress.lastOrNull()?.bytesTransferred ?: -1L
+            if (now != last) {
+                last = now
+                stableSince = System.nanoTime()
+            } else if (now > 0 && System.nanoTime() - stableSince > TimeUnit.MILLISECONDS.toNanos(750)) {
+                break
+            }
+            Thread.sleep(25)
+        }
+        upload.cancel()
+
+        assertTrue(last > 0, "no progress reported")
+        // Measured with this setup: ~0.2 MB at the connection vs ~2 MB when counted at the body
+        // writer (Ktor's body channel and buffers), which is what made small photos jump to 100%.
+        assertTrue(last < 1024L * 1024L, "progress ran ahead of the connection: $last of $total")
+        assertTrue(progress.all { it.bytesTotal == total })
+    }
+
+    private fun uploadExecutor(customize: OkHttpClient.Builder.() -> Unit = {}): KtorRaftHttpExecutor {
+        val lanes = RaftOkHttpLanes(buildRaftBaseOkHttpClient(eventListenerFactory = null).newBuilder().apply(customize).build())
         return KtorRaftHttpExecutor(
             clients = lanes.ktorProvider(),
             requestLifetimeCoordinator = RaftNetworkRequestLifetimeCoordinator(),

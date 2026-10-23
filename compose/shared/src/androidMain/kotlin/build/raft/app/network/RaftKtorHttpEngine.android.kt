@@ -21,6 +21,7 @@ import okhttp3.EventListener
 import okhttp3.Handshake
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
+import okio.buffer
 
 /**
  * Android app HTTP: Ktor over OkHttp (artin 2026-10-23). What replaces which curl workaround:
@@ -72,6 +73,7 @@ internal fun buildRaftBaseOkHttpClient(
         .followRedirects(true)
         .followSslRedirects(true)
         .apply { eventListenerFactory?.let(::eventListenerFactory) }
+        .addNetworkInterceptor(RaftUploadProgressInterceptor)
         .build()
 
 /** Per lane and call kind, derived from [base] (same pool) with the lane's own dispatcher. */
@@ -258,5 +260,80 @@ internal object RaftOkHttpTransportFacts : EventListener.Factory {
 
         private fun elapsedMs(startNs: Long): Long =
             if (startNs == 0L) 0L else TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNs)
+    }
+}
+
+internal actual fun platformRaftUploadProgressTracker(): RaftUploadProgressTracker =
+    RaftUploadProgressInterceptor.tracker
+
+/**
+ * Measures upload progress where bytes leave OkHttp for the connection (Hands e9baeedb: counting at
+ * the body writer filled Ktor's ~1 MB channel instantly, so a photo showed 100% before it was sent).
+ * A request that carries [HEADER] gets the header removed and its body wrapped in a counting sink;
+ * HTTP/2 flow control and socket backpressure pace those writes to the real transfer. A retried or
+ * rewritten body restarts the count from zero.
+ */
+internal object RaftUploadProgressInterceptor : okhttp3.Interceptor {
+    const val HEADER = "X-Raft-Upload-Progress"
+    private const val REPORT_STEP_BYTES = 32L * 1024L
+
+    private val listeners = java.util.concurrent.ConcurrentHashMap<String, (RaftTransferProgress) -> Unit>()
+    private val nextId = java.util.concurrent.atomic.AtomicLong(0L)
+
+    val tracker =
+        RaftUploadProgressTracker { listener ->
+            if (listener == null) {
+                RaftUploadProgressRoute(null, null) {}
+            } else {
+                val id = nextId.incrementAndGet().toString()
+                listeners[id] = listener
+                RaftUploadProgressRoute(null, HEADER to id) { listeners.remove(id) }
+            }
+        }
+
+    override fun intercept(chain: okhttp3.Interceptor.Chain): okhttp3.Response {
+        val request = chain.request()
+        val id = request.header(HEADER) ?: return chain.proceed(request)
+        val stripped = request.newBuilder().removeHeader(HEADER)
+        val body = request.body
+        val listener = listeners[id]
+        if (body == null || listener == null) return chain.proceed(stripped.build())
+        return chain.proceed(stripped.method(request.method, CountingBody(body, listener)).build())
+    }
+
+    private class CountingBody(
+        private val delegate: okhttp3.RequestBody,
+        private val listener: (RaftTransferProgress) -> Unit,
+    ) : okhttp3.RequestBody() {
+        override fun contentType() = delegate.contentType()
+
+        override fun contentLength(): Long = delegate.contentLength()
+
+        override fun isOneShot(): Boolean = delegate.isOneShot()
+
+        override fun isDuplex(): Boolean = delegate.isDuplex()
+
+        override fun writeTo(sink: okio.BufferedSink) {
+            val total = contentLength().takeIf { it >= 0L }
+            var written = 0L
+            var reported = 0L
+            val counting =
+                object : okio.ForwardingSink(sink) {
+                    override fun write(source: okio.Buffer, byteCount: Long) {
+                        super.write(source, byteCount)
+                        written += byteCount
+                        if (written - reported >= REPORT_STEP_BYTES || written == total) {
+                            reported = written
+                            runCatching { listener(RaftTransferProgress(bytesTransferred = written, bytesTotal = total)) }
+                        }
+                    }
+                }
+            val buffered = counting.buffer()
+            delegate.writeTo(buffered)
+            buffered.flush()
+            if (reported != written) {
+                runCatching { listener(RaftTransferProgress(bytesTransferred = written, bytesTotal = total)) }
+            }
+        }
     }
 }

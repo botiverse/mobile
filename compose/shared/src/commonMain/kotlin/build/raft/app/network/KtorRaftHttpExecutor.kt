@@ -41,6 +41,8 @@ internal class KtorRaftHttpExecutor(
     private val callScope: CoroutineScope = RaftKtorCallScope,
     private val transportFacts: (requestId: String) -> String? = ::takeRaftKtorTransportFacts,
     private val engineLabel: String = raftKtorEngineLabel(),
+    /** Where upload progress is measured: the platform's network layer when it can, else the body writer. */
+    private val uploadProgress: RaftUploadProgressTracker = platformRaftUploadProgressTracker(),
 ) : RaftHttpExecutor {
 
     override suspend fun execute(
@@ -103,6 +105,7 @@ internal class KtorRaftHttpExecutor(
         val boundary = "RaftBoundary" + Random.nextBytes(12).joinToString("") { byte ->
             byte.toUByte().toString(radix = 16).padStart(2, '0')
         }
+        val progress = uploadProgress.route(onUploadProgress)
         return perform(
             KtorCallSpec(
                 logPrefix = "slock_http_multipart",
@@ -117,7 +120,7 @@ internal class KtorRaftHttpExecutor(
                         boundary = boundary,
                         fields = fields,
                         files = files,
-                        onProgress = onUploadProgress,
+                        onProgress = progress.bodyWriterProgress,
                     )
                 },
                 requestBytes = files.sumOf { file -> file.bytes.size.toLong().takeIf { it > 0L } ?: file.sizeBytes ?: 0L },
@@ -127,6 +130,7 @@ internal class KtorRaftHttpExecutor(
                 methodClass = RaftNetworkMethodClass.ProcessMutation,
                 redactSensitive = false,
                 extraLogFields = "fields=${fields.size} files=${files.size} streaming=$streaming",
+                progress = progress,
             )
         )
     }
@@ -141,9 +145,11 @@ internal class KtorRaftHttpExecutor(
     ): RaftHttpExecutorResponse {
         val traceHeaders = raftTraceHeaders(headers)
         val (requestHeaders, contentType) = traceHeaders.splitContentHeaders()
+        val progress = uploadProgress.route(onUploadProgress)
         return perform(
             presignedSpec(
                 bodyKind = "bytes",
+                progress = progress,
                 url = url,
                 method = method,
                 priority = priority,
@@ -154,7 +160,7 @@ internal class KtorRaftHttpExecutor(
                     RaftStreamingBodyContent(
                         declaredContentType = contentType,
                         length = bodyBytes.size.toLong(),
-                        onProgress = onUploadProgress,
+                        onProgress = progress.bodyWriterProgress,
                         writeBody = { sink -> sink.writeChunked(bodyBytes) },
                     )
                 },
@@ -172,9 +178,11 @@ internal class KtorRaftHttpExecutor(
     ): RaftHttpExecutorResponse {
         val traceHeaders = raftTraceHeaders(headers)
         val (requestHeaders, contentType) = traceHeaders.splitContentHeaders()
+        val progress = uploadProgress.route(onUploadProgress)
         return perform(
             presignedSpec(
                 bodyKind = "file",
+                progress = progress,
                 url = url,
                 method = method,
                 priority = priority,
@@ -185,7 +193,7 @@ internal class KtorRaftHttpExecutor(
                     RaftStreamingBodyContent(
                         declaredContentType = contentType ?: body.contentType.toContentTypeOrNull(),
                         length = body.contentLength,
-                        onProgress = onUploadProgress,
+                        onProgress = progress.bodyWriterProgress,
                         writeBody = { sink ->
                             body.openStream().pipeChunksTo(sink)
                         },
@@ -202,6 +210,7 @@ internal class KtorRaftHttpExecutor(
      */
     private fun presignedSpec(
         bodyKind: String,
+        progress: RaftUploadProgressRoute,
         url: String,
         method: String,
         priority: RaftRequestPriority,
@@ -226,9 +235,17 @@ internal class KtorRaftHttpExecutor(
             methodClass = RaftNetworkMethodClass.ProcessMutation,
             redactSensitive = true,
             extraLogFields = "bodyKind=$bodyKind",
+            progress = progress,
         )
 
-    private suspend fun perform(spec: KtorCallSpec): RaftHttpExecutorResponse {
+    private suspend fun perform(spec: KtorCallSpec): RaftHttpExecutorResponse =
+        try {
+            performTracked(spec)
+        } finally {
+            spec.progress?.release?.invoke()
+        }
+
+    private suspend fun performTracked(spec: KtorCallSpec): RaftHttpExecutorResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         val clientRequestId = spec.headers.entries
             .firstOrNull { it.key.equals(KTOR_REQUEST_ID_HEADER, ignoreCase = true) }
@@ -304,7 +321,10 @@ internal class KtorRaftHttpExecutor(
             val response: HttpResponse =
                 clients.client(spec.priority, spec.kind).request(spec.url) {
                     method = HttpMethod.parse(spec.method)
-                    headers { spec.headers.forEach { (name, value) -> append(name, value.toSafeHeaderValue()) } }
+                    headers {
+                        spec.headers.forEach { (name, value) -> append(name, value.toSafeHeaderValue()) }
+                        spec.progress?.networkHeader?.let { (name, value) -> append(name, value) }
+                    }
                     if (content != null) setBody(content)
                     timeout {
                         requestTimeoutMillis = spec.totalTimeoutMillis
@@ -511,6 +531,7 @@ private class KtorCallSpec(
     val methodClass: RaftNetworkMethodClass,
     val redactSensitive: Boolean,
     val extraLogFields: String,
+    val progress: RaftUploadProgressRoute? = null,
 )
 
 /**
@@ -717,3 +738,29 @@ internal fun io.ktor.client.HttpClientConfig<*>.configureRaftKtorClient() {
     followRedirects = true
     install(io.ktor.client.plugins.HttpTimeout)
 }
+
+/**
+ * One upload's progress route. Exactly one of [bodyWriterProgress] (count bytes as the body writer
+ * hands them to the engine) and [networkHeader] (an internal marker header the platform engine strips
+ * and uses to count bytes written to the connection) is set when a listener exists.
+ */
+internal class RaftUploadProgressRoute(
+    val bodyWriterProgress: ((RaftTransferProgress) -> Unit)?,
+    val networkHeader: Pair<String, String>?,
+    val release: () -> Unit,
+)
+
+internal fun interface RaftUploadProgressTracker {
+    fun route(listener: ((RaftTransferProgress) -> Unit)?): RaftUploadProgressRoute
+}
+
+/** Counts at the body writer: right when the engine consumes the body directly (tests, iOS). */
+internal val BodyWriterUploadProgressTracker =
+    RaftUploadProgressTracker { listener -> RaftUploadProgressRoute(listener, null) {} }
+
+/**
+ * Android: bytes written to the OkHttp connection (HTTP/2 flow control / socket backpressure), not to
+ * Ktor's ~1 MB body channel, which made a picked photo read 100% at once (Hands e9baeedb).
+ * iOS: the body writer (NSURLSession streams the body itself).
+ */
+internal expect fun platformRaftUploadProgressTracker(): RaftUploadProgressTracker

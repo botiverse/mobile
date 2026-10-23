@@ -327,6 +327,8 @@ class KtorRaftHttpExecutorTest {
                 requestLifetimeCoordinator = coordinator,
                 transportFacts = { null },
                 engineLabel = "ktor_test",
+                // MockEngine consumes the body itself: count at the body writer here.
+                uploadProgress = BodyWriterUploadProgressTracker,
             )
     }
 

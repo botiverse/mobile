@@ -30,6 +30,7 @@ internal object RaftClientPlatformHeaderProbe {
                 requestLifetimeCoordinator = RaftNetworkRequestLifetimeCoordinator(),
                 transportFacts = { null },
                 engineLabel = "ktor_probe",
+                uploadProgress = BodyWriterUploadProgressTracker,
             )
         executor.execute(
             priority = RaftRequestPriority.Foreground,
