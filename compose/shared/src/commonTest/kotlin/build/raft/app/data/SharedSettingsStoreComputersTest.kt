@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.data.SharedSettingsStoreTest.BlockingCall
 import build.raft.app.data.SharedSettingsStoreTest.FakeSettingsComputersSource
 import build.raft.app.data.SharedSettingsStoreTest.FakeSettingsRepository
 import build.raft.app.model.RealtimeRefreshRequired
@@ -60,6 +61,52 @@ class SharedSettingsStoreComputersTest {
 
         assertEquals(listOf("Studio"), listNames(list))
         assertEquals("server_unavailable", list.state.value.routeErrorCode)
+    }
+
+    @Test
+    fun pullRefreshHoldsRefreshingRunsOnceAndKeepsThePageOnFailure() = runTest {
+        data class Case(
+            val label: String,
+            val destination: SharedSettingsDestination,
+            val itemId: String?,
+            /** What the page's refresh button and pull-to-refresh dispatch. */
+            val refresh: SharedSettingsIntent,
+            val call: String,
+        )
+        val cases =
+            listOf(
+                Case("list", SharedSettingsDestination.Computers, null, SharedSettingsIntent.RefreshComputers, "computers"),
+                Case("detail", SharedSettingsDestination.ComputerDetail, "m-1", SharedSettingsIntent.Refresh, "computerDetail:m-1"),
+            )
+        cases.forEach { case ->
+            val repository = detailRepository().apply { computersResult = DataResult.Content(computers(machine("m-1", "Studio"))) }
+            val store = store(repository, standalone = true)
+            store.accept(SharedSettingsIntent.LoadPageContent(case.destination, case.itemId))
+            val block = BlockingCall()
+            repository.computersBlock = block
+            repository.computerDetailBlock = block
+            repository.computersResult = DataResult.Error(ScreenError("server_unavailable", retryable = true))
+            repository.computerDetailResult = DataResult.Error(ScreenError("server_unavailable", retryable = true))
+            repository.calls.clear()
+
+            store.dispatch(case.refresh)
+            runCurrent()
+            assertTrue(store.state.value.isRefreshing(case.destination), "${case.label}: refreshing while the request runs")
+            store.dispatch(case.refresh)
+            runCurrent()
+            assertEquals(listOf(case.call), repository.calls, "${case.label}: a refresh in flight is not restarted")
+
+            block.release()
+            runCurrent()
+            assertEquals(false, store.state.value.isRefreshing(case.destination), case.label)
+            assertEquals("server_unavailable", store.state.value.routeErrorCode, case.label)
+            val shownName =
+                when (case.destination) {
+                    SharedSettingsDestination.Computers -> listNames(store).single()
+                    else -> assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(store.state.value.computerDetail).data.computer.name
+                }
+            assertEquals("Studio", shownName, "${case.label}: the loaded page stays")
+        }
     }
 
     @Test

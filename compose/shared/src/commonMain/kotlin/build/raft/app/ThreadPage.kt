@@ -10,6 +10,7 @@ import build.raft.designsystem.components.RaftMessageListJumpControls
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
+import build.raft.app.components.RaftStorePullToRefreshBox
 import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftBackButton
@@ -5227,9 +5228,16 @@ internal fun ThreadMembersPageContent(
                 }
             )
         }
+        // Pull-to-refresh reloads the roster through the same path as the error state's Retry.
+        RaftStorePullToRefreshBox(
+            refreshing = refreshing,
+            onRefresh = onRefresh,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            enabled = !membersLoading,
+        ) {
         LazyColumn(
             state = rosterListState,
-            modifier = Modifier.weight(1f).fillMaxWidth(),
+            modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 12.dp + if (canAddMembers && !membersLoading) 0.dp else bottomSafeArea),
         ) {
             if (membersFailed) {
@@ -5336,6 +5344,7 @@ internal fun ThreadMembersPageContent(
                     }
                 }
             }
+        }
         }
         // Web: hidden while the roster loads, disabled when nobody is left to add.
         if (canAddMembers && !membersLoading) {
@@ -31241,7 +31250,8 @@ private fun ThreadFilesTab(
     ThreadFilesContent(
         payload = payload,
         attachmentOpenStates = attachmentOpenStates,
-        autoLoadRouteListKey = threadInstanceKey
+        autoLoadRouteListKey = threadInstanceKey,
+        refreshing = filesState.refreshing
     ) { action, attachmentId ->
         when (action) {
             "open" -> {
@@ -31261,6 +31271,7 @@ private fun ThreadFilesTab(
             }
             "loadMore" -> vm.dispatch(SharedThreadFilesIntent.LoadMore("load_more"))
             "retry" -> vm.dispatch(SharedThreadFilesIntent.Refresh("retry"))
+            "pullRefresh" -> vm.dispatch(SharedThreadFilesIntent.PullRefresh)
         }
     }
 }

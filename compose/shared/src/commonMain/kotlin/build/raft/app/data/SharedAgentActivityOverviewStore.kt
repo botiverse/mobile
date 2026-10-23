@@ -39,6 +39,11 @@ data class AgentActivityOverviewState(
     val status: AgentActivityOverviewStatus = AgentActivityOverviewStatus.Idle,
     val loadingMore: Boolean = false,
     val replies: Map<MessageId, AgentActivityReplyState> = emptyMap(),
+    /**
+     * A [AgentActivityOverviewIntent.Refresh] of the loaded overview is running (pull-to-refresh
+     * holds its indicator on it). Silent live reloads do not set it.
+     */
+    val refreshing: Boolean = false,
 )
 
 sealed interface AgentActivityOverviewIntent {
@@ -126,8 +131,15 @@ class SharedAgentActivityOverviewStore(
 
     private fun refresh() {
         if (_state.value.agentId == null) return
-        // Retry from the error screen shows the loading state while it runs.
-        _state.update { if (it.status is AgentActivityOverviewStatus.Error) it.copy(status = AgentActivityOverviewStatus.Loading) else it }
+        // Retry from the error screen shows the loading state while it runs; a loaded overview
+        // stays on screen and reports `refreshing` until the reload lands.
+        _state.update {
+            when (it.status) {
+                is AgentActivityOverviewStatus.Error -> it.copy(status = AgentActivityOverviewStatus.Loading)
+                AgentActivityOverviewStatus.Loaded -> it.copy(refreshing = true)
+                else -> it
+            }
+        }
         loadLatest(DataRequestPriority.Visible)
         // Replies that failed for a passing reason are asked again.
         _state.value.replies.filterValues { it == AgentActivityReplyState.Failed }.keys.forEach(::loadReply)
@@ -169,6 +181,7 @@ class SharedAgentActivityOverviewStore(
             }
             if (requestGeneration != generation) return@launch
             applyLatest(result)
+            if (!latestPending) _state.update { if (it.refreshing) it.copy(refreshing = false) else it }
             if (latestPending) {
                 latestPending = false
                 val nextPriority = latestPendingPriority

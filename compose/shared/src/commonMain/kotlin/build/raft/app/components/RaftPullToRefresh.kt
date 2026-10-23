@@ -11,9 +11,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -58,6 +60,39 @@ internal fun RaftPullToRefreshBox(
         RaftPullToRefreshStyle.Cupertino ->
             RaftCupertinoPullToRefreshBox(isRefreshing, onRefresh, modifier, enabled, contentAlignment, content)
     }
+}
+
+/**
+ * [RaftPullToRefreshBox] over a store whose [refreshing] flag also covers refreshes the user did
+ * not pull (open, resume, realtime, retry). The indicator follows only a refresh this box asked
+ * for; a pull while the store is already refreshing joins that refresh instead of starting
+ * another, so [onRefresh] (the page's store Refresh intent) runs once per idle pull.
+ */
+@Composable
+internal fun RaftStorePullToRefreshBox(
+    refreshing: Boolean,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    contentAlignment: Alignment = Alignment.TopStart,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    var pulled by remember { mutableStateOf(false) }
+    LaunchedEffect(refreshing) {
+        if (!refreshing) pulled = false
+    }
+    val latestRefreshing by rememberUpdatedState(refreshing)
+    RaftPullToRefreshBox(
+        isRefreshing = refreshing && pulled,
+        onRefresh = {
+            pulled = true
+            if (!latestRefreshing) onRefresh()
+        },
+        modifier = modifier,
+        enabled = enabled,
+        contentAlignment = contentAlignment,
+        content = content,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

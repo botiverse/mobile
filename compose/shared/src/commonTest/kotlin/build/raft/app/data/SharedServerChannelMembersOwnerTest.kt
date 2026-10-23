@@ -73,6 +73,44 @@ class SharedServerChannelMembersOwnerTest {
     }
 
     @Test
+    fun forcedReloadKeepsTheRosterWhileItRunsAndWhenItFails() = runBlocking {
+        // The channel Members page's pull-to-refresh: a forced Visible reload of a loaded roster.
+        val cases =
+            listOf<Pair<String, suspend (ChannelId) -> List<MemberProfile>>>(
+                "content" to { _ -> listOf(member("member-b"), member("member-a")) },
+                "failure" to { _ -> error("network down") },
+            )
+        cases.forEach { (label, answer) ->
+            val repository = OwnerTestMemberRepository().apply { channelMembers = listOf(member("member-a")) }
+            val ownerState = MutableStateFlow<ProcessServerMembersOwner?>(owner("env-a", "account-a"))
+            val store = store(repository, ownerState) { 1L }
+            store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID))
+            val started = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            repository.channelMembersLoader = { channelId ->
+                started.complete(Unit)
+                release.await()
+                answer(channelId)
+            }
+
+            val reload = async {
+                store.loadChannelMembers(ServerId(SERVER_ID), ChannelId(CHANNEL_ID), DataRequestPriority.Visible, force = true)
+            }
+            started.await()
+            val inFlight = store.channelMemberSliceFlow(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)).first()
+            assertEquals(SharedServerMembersLoadStatus.InFlight, inFlight.status, label)
+            assertEquals(listOf("member-a"), inFlight.members.map { it.id.value }, "$label: roster stays while it reloads")
+
+            release.complete(Unit)
+            reload.await()
+            val settled = store.channelMemberSliceFlow(ServerId(SERVER_ID), ChannelId(CHANNEL_ID)).first()
+            val expected = if (label == "content") listOf("member-a", "member-b") else listOf("member-a")
+            assertEquals(expected, settled.members.map { it.id.value }.sorted(), label)
+            assertEquals(2, repository.getChannelMembersCalls, label)
+        }
+    }
+
+    @Test
     fun lateOldOwnerResponseCannotPublish() = runBlocking {
         val repository = OwnerTestMemberRepository()
         val started = CompletableDeferred<Unit>()

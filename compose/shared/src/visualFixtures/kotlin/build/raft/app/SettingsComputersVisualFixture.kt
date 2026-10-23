@@ -56,7 +56,6 @@ private fun SettingsComputersVisualContent() {
                 title = detail.computer.name,
                 subtitle = "",
                 onBack = {},
-                trailingContent = { RaftComputersRefreshAction(refreshing = false, onRefresh = {}) },
             ) {
                 RaftComputersTheme {
                     RaftSettingsComputerDetailContent(
@@ -85,7 +84,6 @@ private fun SettingsComputersVisualContent() {
                 title = stringResource(MR.strings.settings_computers_title),
                 subtitle = "",
                 onBack = {},
-                trailingContent = { RaftComputersRefreshAction(refreshing = false, onRefresh = {}) },
             ) {
                 RaftComputersTheme {
                     RaftSettingsComputersContent(

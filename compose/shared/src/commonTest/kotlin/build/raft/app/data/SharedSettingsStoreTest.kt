@@ -2929,6 +2929,8 @@ class SharedSettingsStoreTest {
         var registerConnectedAppBlock: BlockingCall? = null
         var createServerInviteBlock: BlockingCall? = null
         var deleteServerBlock: BlockingCall? = null
+        var computersBlock: BlockingCall? = null
+        var computerDetailBlock: BlockingCall? = null
         var setServerNotificationModeBlock: BlockingCall? = null
         var setServerNotificationModeResult: DataResult<SettingsMobileSnapshot>? = null
         var setServerNotificationModeFailure: Throwable? = null
@@ -3176,11 +3178,13 @@ class SharedSettingsStoreTest {
 
         override suspend fun getComputers(): DataResult<SettingsComputersSnapshot> {
             calls += "computers"
+            computersBlock?.consume()
             return computersResult
         }
 
         override suspend fun getComputerDetail(machineId: String): DataResult<SettingsComputerDetailSnapshot> {
             calls += "computerDetail:$machineId"
+            computerDetailBlock?.consume()
             return computerDetailResult
         }
 

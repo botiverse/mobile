@@ -15,13 +15,21 @@ import kotlinx.coroutines.launch
 internal data class SharedThreadFilesState(
     val basePayload: RaftThreadScreenPayload = RaftThreadScreenPayload(),
     val payload: RaftThreadFilesPayload = RaftThreadFilesPayload(),
-    val requestInFlight: Boolean = false
+    val requestInFlight: Boolean = false,
+    /** A pull-to-refresh is reloading the first page while the loaded list stays on screen. */
+    val refreshing: Boolean = false
 )
 
 internal sealed interface SharedThreadFilesIntent {
     data class Start(val basePayload: RaftThreadScreenPayload) : SharedThreadFilesIntent
 
     data class Refresh(val reason: String = "refresh") : SharedThreadFilesIntent
+
+    /**
+     * Pull-to-refresh: reload the first page and keep the loaded list on screen (a failure keeps
+     * it too, with the error on the load-more row). Single-flight: ignored while a request runs.
+     */
+    data object PullRefresh : SharedThreadFilesIntent
     data class LoadMore(val reason: String = "load_more") : SharedThreadFilesIntent
 }
 
@@ -42,6 +50,14 @@ internal class SharedThreadFilesStore(
                 requestJob = null
                 resetInFlightFlag()
                 requestJob = scope.launch { fetch(reason = intent.reason, cursor = null) }
+            }
+            SharedThreadFilesIntent.PullRefresh -> {
+                val current = _state.value
+                if (current.requestInFlight || current.payload.loadingMore) {
+                    diagnosticsLogger?.invoke("thread_files_pull_refresh_skip reason=in_flight")
+                    return
+                }
+                requestJob = scope.launch { fetch(reason = "pull_refresh", cursor = null, keepContent = true) }
             }
             is SharedThreadFilesIntent.LoadMore -> {
                 requestJob = scope.launch {
@@ -87,18 +103,19 @@ internal class SharedThreadFilesStore(
         )
     }
 
-    private suspend fun fetch(reason: String, cursor: String?) {
+    private suspend fun fetch(reason: String, cursor: String?, keepContent: Boolean = false) {
         val current = _state.value
         if (current.requestInFlight || (cursor != null && current.payload.loadingMore)) return
         val basePayload = current.basePayload
         val routeKey = basePayload.threadFilesRouteKey()
+        val refreshInPlace = keepContent && cursor == null && current.payload.status == "content" && current.payload.items.isNotEmpty()
         val loadingPayload =
-            if (cursor != null) {
-                current.payload.copy(loadingMore = true, errorCode = null)
-            } else {
-                current.payload.copy(status = "loading", loadingMore = false, errorCode = null)
+            when {
+                cursor != null -> current.payload.copy(loadingMore = true, errorCode = null)
+                refreshInPlace -> current.payload.copy(errorCode = null)
+                else -> current.payload.copy(status = "loading", loadingMore = false, errorCode = null)
             }
-        reduce(current.copy(payload = loadingPayload, requestInFlight = true))
+        reduce(current.copy(payload = loadingPayload, requestInFlight = true, refreshing = refreshInPlace))
         val result =
             runCatchingPreservingCancellation {
                 dataSource.fetchFilesPayload(
@@ -141,7 +158,7 @@ internal class SharedThreadFilesStore(
                         errorServerMessage = result.blocker.serverMessage
                     )
             }
-        reduce(latest.copy(payload = nextPayload, requestInFlight = false))
+        reduce(latest.copy(payload = nextPayload, requestInFlight = false, refreshing = false))
         diagnosticsLogger?.invoke(
             "thread_files_result reason=$reason threadId=${basePayload.sourceThreadId.orEmpty()} " +
                 "cursor=${cursor.orEmpty()} status=${nextPayload.status} items=${nextPayload.items.size} " +
@@ -159,7 +176,8 @@ internal class SharedThreadFilesStore(
         reduce(
             current.copy(
                 payload = current.payload.copy(loadingMore = false),
-                requestInFlight = false
+                requestInFlight = false,
+                refreshing = false
             )
         )
     }

@@ -207,11 +207,20 @@ internal class ReplyThreadAccessConversationRepositoryRecorder(
         attachmentId: AttachmentId
     ): DataResult<AttachmentOpenTarget> = error("unused")
 
+    /** Channel Files answers, in order; each request waits for [releaseChannelFiles] when set. */
+    val channelFilesResults = ArrayDeque<DataResult<ChannelFilesSnapshot>>()
+    var releaseChannelFiles: CompletableDeferred<Unit>? = null
+    val channelFilesRequests = mutableListOf<Pair<ChannelId, String?>>()
+
     override suspend fun getChannelFiles(
         channelId: ChannelId,
         limit: Int,
         cursor: String?
-    ): DataResult<ChannelFilesSnapshot> = error("unused")
+    ): DataResult<ChannelFilesSnapshot> {
+        channelFilesRequests += channelId to cursor
+        releaseChannelFiles?.await()
+        return channelFilesResults.removeFirstOrNull() ?: error("unscripted channel files request")
+    }
 
     override suspend fun sendMessage(
         channelId: ChannelId,

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -26,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.components.RaftStorePullToRefreshBox
 import build.raft.app.compat.ui.NestedScrollMode
 import build.raft.app.compat.ui.nestedScroll
 import build.raft.app.data.AgentActivityActionCount
@@ -141,9 +143,15 @@ internal fun MembersAgentActivityOverview(
         return
     }
     val loaded = status == AgentActivityOverviewStatus.Loaded
+    RaftStorePullToRefreshBox(
+        refreshing = state.refreshing,
+        onRefresh = { binding.onIntent(AgentActivityOverviewIntent.Refresh) },
+        modifier = modifier,
+        enabled = loaded,
+    ) {
     LazyColumn(
-        modifier = modifier
-            .fillMaxWidth()
+        modifier = Modifier
+            .fillMaxSize()
             .nestedScroll(scrollUp = NestedScrollMode.SELF_FIRST, scrollDown = NestedScrollMode.SELF_FIRST),
         contentPadding = PaddingValues(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(24.dp),
@@ -212,6 +220,7 @@ internal fun MembersAgentActivityOverview(
                 }
             }
         }
+    }
     }
 }
 
