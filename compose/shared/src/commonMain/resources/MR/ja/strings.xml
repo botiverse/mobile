@@ -2918,6 +2918,12 @@
     <string name="agent_migration_canceled_post_message">エージェントがコンピューターを切り替えた後に移行はキャンセルされました。新しいコンピューター上のエージェントは停止され、クリーンアップも完了しています。</string>
     <string name="agent_migration_hosted_canceled_message">クラウドへの移行はキャンセルされました。エージェントは引き続き %1$s 上にあります。</string>
     <string name="agent_migration_reference_label">移行 ID</string>
+    <string name="agent_migration_reference_copy">移行 ID をコピー</string>
+    <string name="agent_migration_reference_copied">移行 ID をコピーしました</string>
+    <string name="agent_migration_step_done">完了</string>
+    <string name="agent_migration_step_failed">失敗</string>
+    <string name="agent_migration_section_description_with_last">%1$s%2$s</string>
+    <string name="agent_migration_hosted_review_more_paths">ほか %1$d 件</string>
     <string name="agent_migration_cancel_dialog_title">移行をキャンセルしますか？</string>
     <string name="agent_migration_cancel_dialog_confirm">移行をキャンセル</string>
     <string name="agent_migration_cancel_dialog_requesting">キャンセル中…</string>

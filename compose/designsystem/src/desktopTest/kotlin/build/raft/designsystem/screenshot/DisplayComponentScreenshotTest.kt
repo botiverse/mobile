@@ -98,7 +98,12 @@ import build.raft.designsystem.components.RaftSidebarSectionAction
 import build.raft.designsystem.components.RaftSidebarSectionHeader
 import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftSkeletonVariant
+import build.raft.designsystem.components.RaftSpinner
+import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.components.RaftStatusDot
+import build.raft.designsystem.components.RaftStep
+import build.raft.designsystem.components.RaftStepStatus
+import build.raft.designsystem.components.RaftSteps
 import build.raft.designsystem.components.RaftStatusSize
 import build.raft.designsystem.components.RaftStatusVariant
 import build.raft.designsystem.components.RaftStickerTile
@@ -657,6 +662,42 @@ class DisplayComponentScreenshotTest {
                     repeat(3) { index ->
                         RaftListRowSkeleton(divider = index > 0)
                     }
+                }
+            }
+        }
+
+    /**
+     * Steps in a column: in progress (number, then a spinner in the marker), failed, stopped
+     * (wait), all finished, and a step with a description.
+     */
+    @Test
+    fun steps() =
+        capture("steps") {
+            val titles = listOf("Stop agent", "Pack workspace", "Transfer files", "Start on new computer", "Migration complete")
+            val plain = titles.map { RaftStep(it) }
+            val spinner: @Composable () -> Unit = { RaftSpinner(size = RaftSpinnerSize.Xs) }
+            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                Column(Modifier.width(200.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Caption("Process, step 2")
+                    RaftSteps(plain, current = 2)
+                    Caption("Process with a spinner")
+                    RaftSteps(
+                        titles.mapIndexed { i, t -> RaftStep(t, icon = if (i == 2) spinner else null) },
+                        current = 3,
+                    )
+                    Caption("Description")
+                    RaftSteps(
+                        listOf(RaftStep("Your team"), RaftStep("Computer", description = "Install Raft Computer, then sign in."), RaftStep("First agent")),
+                        current = 2,
+                    )
+                }
+                Column(Modifier.width(200.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Caption("Error, step 2")
+                    RaftSteps(plain, current = 2, status = RaftStepStatus.Error)
+                    Caption("Wait, step 1")
+                    RaftSteps(plain, current = 1, status = RaftStepStatus.Wait)
+                    Caption("Finish")
+                    RaftSteps(plain, current = 5, status = RaftStepStatus.Finish)
                 }
             }
         }

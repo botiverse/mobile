@@ -2,11 +2,16 @@ package build.raft.app
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -15,16 +20,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import build.raft.app.components.RaftAppSectionEyebrow
-import build.raft.app.components.raftCardSurface
 import build.raft.app.components.RaftProBadge
 import build.raft.app.components.RaftProUpgradeDialog
 import build.raft.app.data.AGENT_MIGRATION_STEP_COUNT
 import build.raft.app.data.AgentMigrationActionError
 import build.raft.app.data.AgentMigrationEffect
 import build.raft.app.data.AgentMigrationEnding
+import build.raft.app.data.AgentMigrationErrorCodes
 import build.raft.app.data.AgentMigrationHostedImportSummary
 import build.raft.app.data.AgentMigrationIntent
 import build.raft.app.data.AgentMigrationNotice
@@ -51,11 +59,28 @@ import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftCard
+import build.raft.designsystem.components.RaftDescriptionList
+import build.raft.designsystem.components.RaftDescriptionValue
+import build.raft.designsystem.components.RaftDialog
+import build.raft.designsystem.components.RaftDialogSheet
+import build.raft.designsystem.components.RaftDialogSize
+import build.raft.designsystem.components.RaftGlyph
+import build.raft.designsystem.components.RaftGlyphIcon
+import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftRadioGroup
 import build.raft.designsystem.components.RaftRadioRow
+import build.raft.designsystem.components.RaftSectionEyebrow
+import build.raft.designsystem.components.RaftSeparator
+import build.raft.designsystem.components.RaftSpinner
+import build.raft.designsystem.components.RaftSpinnerSize
+import build.raft.designsystem.components.RaftStep
+import build.raft.designsystem.components.RaftStepStatus
+import build.raft.designsystem.components.RaftSteps
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import com.tencent.tmm.kmmresource.compose.stringResource
+import kotlinx.coroutines.delay
 
 /** A computer the migration can name or target (from the server's machine list). */
 internal data class AgentMigrationComputer(
@@ -81,14 +106,24 @@ internal class AgentMigrationSectionInputs(
     val onAgentPlacementChanged: () -> Unit
 )
 
-private const val HOSTED_TARGET_CHOICE = "__cloud__"
+/** The target option for the cloud; never a machine id (web `HOSTED_TARGET_CHOICE`). */
+internal const val HOSTED_TARGET_CHOICE = "__cloud__"
+
+/** Web profile section: `Separator`, then `px-5 py-4`. */
+private val AgentMigrationSectionPaddingX = 20.dp
+private val AgentMigrationSectionPaddingY = 16.dp
+
+/** Web `mt-3` between the section's blocks, `gap-3` inside the progress panel. */
+private val AgentMigrationBlockGap = 12.dp
 
 /**
  * Web `AgentMigrationSection`: move the agent to another computer or to the
  * cloud, follow the move, cancel it, and confirm the cloud review. A Pro
  * feature: the title carries the Pro tag and, on a plan without it, the
- * entry opens the upgrade sheet instead of the start dialog.
+ * entry opens the upgrade sheet instead of the start dialog. Draws its own
+ * full-width separator above, as every profile section.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun AgentMigrationSection(
     state: AgentMigrationState,
@@ -116,72 +151,92 @@ internal fun AgentMigrationSection(
         showStartDialog = true
     }
 
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
-            RaftAppSectionEyebrow(label = stringResource(MR.strings.agent_migration_section_title))
-            RaftProBadge()
-        }
-        if (notice == null || notice.isCompleted || notice.isCanceled) {
-            RaftText(
-                text = stringResource(MR.strings.agent_migration_section_description),
-                style = typography.caption,
-                color = colors.foregroundHint
-            )
-            if (notice != null && ended == AgentMigrationEnding.Completed) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        RaftSeparator()
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = AgentMigrationSectionPaddingX, vertical = AgentMigrationSectionPaddingY)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                RaftSectionEyebrow(text = stringResource(MR.strings.agent_migration_section_title))
+                RaftProBadge()
+            }
+            // What migration does matters before one exists; once a migration is shown, its block says it.
+            if (notice == null || notice.isCompleted || notice.isCanceled) {
+                val description = stringResource(MR.strings.agent_migration_section_description)
                 RaftText(
-                    text = agentMigrationLastSummary(notice, inputs),
+                    text =
+                        if (notice != null && ended == AgentMigrationEnding.Completed) {
+                            stringResource(
+                                MR.strings.agent_migration_section_description_with_last,
+                                description,
+                                agentMigrationLastSummary(notice, inputs)
+                            )
+                        } else {
+                            description
+                        },
+                    modifier = Modifier.padding(top = 4.dp),
                     style = typography.caption,
                     color = colors.foregroundHint
                 )
             }
-        }
-        if (notice != null && ended != AgentMigrationEnding.Completed && ended != AgentMigrationEnding.Canceled) {
-            AgentMigrationProgressPanel(
-                notice = notice,
-                state = state,
-                inputs = inputs,
-                onShowCancel = {
-                    inputs.onIntent(AgentMigrationIntent.ClearCancelError)
-                    showCancel = true
-                }
-            )
-        }
-        state.statusError?.let { error ->
-            RaftBanner(
-                title = stringResource(MR.strings.agent_migration_detail_migration_status_unavailable),
-                description = agentMigrationErrorText(error),
-                status = RaftBannerStatus.Warning,
-                size = RaftBannerSize.Sm
-            )
-        }
-        if (!active && state.loaded) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm, Alignment.End)
-            ) {
-                if (retryOnTarget) {
+            // A completed or canceled move between computers has no block: the line above covers it.
+            if (notice != null && ended != AgentMigrationEnding.Completed && ended != AgentMigrationEnding.Canceled) {
+                AgentMigrationProgressPanel(
+                    notice = notice,
+                    state = state,
+                    inputs = inputs,
+                    onShowCancel = {
+                        inputs.onIntent(AgentMigrationIntent.ClearCancelError)
+                        showCancel = true
+                    },
+                    modifier = Modifier.padding(top = AgentMigrationBlockGap)
+                )
+            }
+            state.statusError?.let { error ->
+                RaftBanner(
+                    title = stringResource(MR.strings.agent_migration_detail_migration_status_unavailable),
+                    description = agentMigrationErrorText(error),
+                    status = RaftBannerStatus.Warning,
+                    size = RaftBannerSize.Sm,
+                    modifier = Modifier.padding(top = AgentMigrationBlockGap)
+                )
+            }
+            // While a migration runs, the progress block owns the only action (Cancel).
+            if (!active && state.loaded) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth().padding(top = AgentMigrationBlockGap),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (retryOnTarget) {
+                        RaftButton(
+                            text = stringResource(MR.strings.agent_migration_detail_try_migration_again),
+                            onClick = { openStart(notice?.targetMachineId) },
+                            size = RaftButtonSize.Md,
+                            enabled = !inputs.proGateChecking
+                        )
+                    }
                     RaftButton(
-                        text = stringResource(MR.strings.agent_migration_detail_try_migration_again),
-                        onClick = { openStart(notice?.targetMachineId) },
+                        text =
+                            stringResource(
+                                when {
+                                    retryOnTarget -> MR.strings.agent_migration_migrate_elsewhere
+                                    // A failed move to the cloud keeps its single Try Again; a computer move
+                                    // that failed after the switch starts over from where the agent now is.
+                                    notice?.isFailed == true && ended != AgentMigrationEnding.Failed ->
+                                        MR.strings.agent_migration_detail_try_migration_again
+                                    inputs.hostedAvailable -> MR.strings.agent_migration_hosted_start_entry
+                                    else -> MR.strings.agent_migration_detail_start_migration
+                                }
+                            ),
+                        onClick = { openStart(null) },
                         size = RaftButtonSize.Md,
                         enabled = !inputs.proGateChecking
                     )
                 }
-                RaftButton(
-                    text =
-                        stringResource(
-                            when {
-                                retryOnTarget -> MR.strings.agent_migration_migrate_elsewhere
-                                notice?.isFailed == true && ended != AgentMigrationEnding.Failed ->
-                                    MR.strings.agent_migration_detail_try_migration_again
-                                inputs.hostedAvailable -> MR.strings.agent_migration_hosted_start_entry
-                                else -> MR.strings.agent_migration_detail_start_migration
-                            }
-                        ),
-                    onClick = { openStart(null) },
-                    size = RaftButtonSize.Md,
-                    enabled = !inputs.proGateChecking
-                )
             }
         }
     }
@@ -218,13 +273,18 @@ internal fun AgentMigrationSection(
             onDismiss = { showUpgrade = false }
         )
     }
-    LaunchedEffect(notice?.canCancel(), state.canceling, state.cancelError) {
-        // The cancel landed (or the move can no longer be canceled): the panel shows the result.
-        if (showCancel && !state.canceling && (state.cancelError != null || notice?.canCancel() != true)) {
-            showCancel = false
+    // Web ConfirmDialog: a cancel that went through closes the dialog; a failed one keeps it
+    // open with the error. It shows only while the move can still be canceled.
+    var cancelSent by remember { mutableStateOf(false) }
+    LaunchedEffect(state.canceling, state.cancelError) {
+        if (state.canceling) {
+            cancelSent = true
+        } else if (cancelSent) {
+            cancelSent = false
+            if (state.cancelError == null) showCancel = false
         }
     }
-    if (showCancel && notice != null) {
+    if (showCancel && notice != null && (notice.canCancel() || state.canceling)) {
         AgentMigrationCancelDialog(
             notice = notice,
             state = state,
@@ -425,25 +485,104 @@ private fun agentMigrationNoticeCopy(notice: AgentMigrationNotice, inputs: Agent
     }
 }
 
+/** Web MigrationProgressPanel `failed`: the move failed, or stalled where only a person can help. */
+internal fun AgentMigrationNotice.failedLook(): Boolean =
+    isFailed ||
+        (state == "starting" && failureReason == "auto_start_failed") ||
+        (isHosted && (state == "arriving" || state == "starting") && failureReason in HOSTED_ARRIVAL_ATTENTION_REASONS)
+
+/** How the step at [index] (from 1) marks itself: its number, or a spinner while it runs. */
+internal enum class AgentMigrationStepMarker { Number, Spinner }
+
+/**
+ * The progress Steps of [MigrationProgressPanel]: [current] (from 1) and its [status] as the web
+ * passes them to raft-ui `Steps`. The step in progress spins while the move works on it; a
+ * move waiting for the user's review shows its number.
+ */
+internal data class AgentMigrationStepsModel(val current: Int, val status: RaftStepStatus, val running: Boolean) {
+    fun marker(index: Int): AgentMigrationStepMarker =
+        if (running && index == current && status == RaftStepStatus.Process) AgentMigrationStepMarker.Spinner else AgentMigrationStepMarker.Number
+}
+
+internal fun agentMigrationStepsModel(notice: AgentMigrationNotice): AgentMigrationStepsModel {
+    val completed = notice.isCompleted
+    val status =
+        when {
+            completed -> RaftStepStatus.Finish
+            notice.failedLook() || notice.cancelNeedsAttention -> RaftStepStatus.Error
+            notice.isCanceled -> RaftStepStatus.Wait
+            else -> RaftStepStatus.Process
+        }
+    val current = if (completed) AGENT_MIGRATION_STEP_COUNT else notice.progressStep() + 1
+    return AgentMigrationStepsModel(current, status, running = notice.isActive && !notice.isHostedReviewPending())
+}
+
+@Composable
+private fun AgentMigrationProgressSteps(notice: AgentMigrationNotice) {
+    val model = agentMigrationStepsModel(notice)
+    val labels =
+        if (notice.isHosted) {
+            listOf(
+                MR.strings.agent_migration_hosted_step_upload,
+                MR.strings.agent_migration_hosted_step_check_files,
+                MR.strings.agent_migration_hosted_step_review,
+                MR.strings.agent_migration_hosted_step_switch,
+                MR.strings.agent_migration_hosted_step_complete
+            )
+        } else {
+            listOf(
+                MR.strings.agent_migration_detail_migration_step_stop_agent,
+                MR.strings.agent_migration_detail_migration_step_pack_workspace,
+                MR.strings.agent_migration_detail_migration_step_transfer,
+                MR.strings.agent_migration_detail_migration_step_start_on_target,
+                MR.strings.agent_migration_detail_migration_step_complete
+            )
+        }
+    val spinner: @Composable () -> Unit = { RaftSpinner(size = RaftSpinnerSize.Xs) }
+    RaftSteps(
+        steps =
+            labels.mapIndexed { offset, label ->
+                RaftStep(
+                    title = stringResource(label),
+                    icon = if (model.marker(offset + 1) == AgentMigrationStepMarker.Spinner) spinner else null
+                )
+            },
+        current = model.current,
+        status = model.status,
+        finishLabel = stringResource(MR.strings.agent_migration_step_done),
+        errorLabel = stringResource(MR.strings.agent_migration_step_failed)
+    )
+}
+
+/** Web MigrationErrorContent: where the agent is now (bold), then why. */
+private fun agentMigrationNoticeText(copy: AgentMigrationNoticeCopy, boldPlacement: Boolean): AnnotatedString =
+    buildAnnotatedString {
+        copy.placement?.let { placement ->
+            if (boldPlacement) withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(placement) } else append(placement)
+            append("\n")
+        }
+        append(copy.message)
+    }
+
 @Composable
 private fun AgentMigrationProgressPanel(
     notice: AgentMigrationNotice,
     state: AgentMigrationState,
     inputs: AgentMigrationSectionInputs,
-    onShowCancel: () -> Unit
+    onShowCancel: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val copy = agentMigrationNoticeCopy(notice, inputs)
-    val attention = notice.needsAttention()
+    // A failed move between computers keeps the steps, stopped at the one that failed, then
+    // one banner: the summary, where the agent is and why, plus the reference.
     if (notice.endedComputerMigration() == AgentMigrationEnding.Failed) {
-        // A failed move between computers keeps its steps, stopped at the one that failed, then
-        // one banner (web MigrationProgressPanel, botiverse/slock #10833).
-        Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
-            AgentMigrationSteps(notice, current = notice.progressStep(), stoppedAt = true)
+        Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AgentMigrationBlockGap)) {
+            AgentMigrationProgressSteps(notice)
             RaftBanner(
                 title = agentMigrationLastSummary(notice, inputs),
-                description = listOfNotNull(copy.placement, copy.message).joinToString("\n"),
+                description = agentMigrationNoticeText(copy, boldPlacement = false),
                 status = RaftBannerStatus.Warning,
                 size = RaftBannerSize.Sm
             )
@@ -451,6 +590,8 @@ private fun AgentMigrationProgressPanel(
         }
         return
     }
+    val failed = notice.failedLook()
+    val attention = notice.needsAttention()
     val target = agentMigrationTargetLabel(inputs, notice)
     val header =
         when {
@@ -473,44 +614,32 @@ private fun AgentMigrationProgressPanel(
                 if (notice.isHosted) stringResource(MR.strings.agent_migration_hosted_header_idle)
                 else stringResource(MR.strings.agent_migration_detail_migration_to_target, "", target)
         }
-    val current = if (notice.isCompleted) AGENT_MIGRATION_STEP_COUNT else notice.progressStep()
     val reviewSummary = if (notice.isHostedReviewPending()) notice.hosted?.importSummary else null
-    Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AgentMigrationBlockGap)) {
         RaftText(text = header, style = typography.subhead.copy(fontWeight = FontWeight.SemiBold), color = colors.foreground)
-        AgentMigrationSteps(notice, current = current, stoppedAt = attention)
+        AgentMigrationProgressSteps(notice)
+        // Problems keep the warning banner; normal progress is plain text.
         if (attention) {
             RaftBanner(
-                title = copy.title,
-                description = listOfNotNull(copy.placement, copy.message).joinToString("\n"),
+                title = copy.title.takeIf { failed || notice.isCancelRequested },
+                description = agentMigrationNoticeText(copy, boldPlacement = true),
                 status = RaftBannerStatus.Warning,
                 size = RaftBannerSize.Sm
             )
+            // The reference is for support, so it only appears when something needs attention.
             AgentMigrationReference(notice, inputs)
         } else {
-            copy.title?.takeIf { notice.isCancelRequested }?.let {
-                RaftText(text = it, style = typography.callout.copy(fontWeight = FontWeight.SemiBold), color = colors.foreground)
+            Column {
+                copy.title?.takeIf { notice.isCancelRequested }?.let {
+                    RaftText(text = it, style = typography.callout.copy(fontWeight = FontWeight.SemiBold), color = colors.foreground)
+                }
+                RaftText(text = copy.message, style = typography.callout, color = colors.foregroundMuted)
             }
-            RaftText(text = copy.message, style = typography.callout, color = colors.foregroundMuted)
-        }
-        state.cancelError?.let { error ->
-            RaftBanner(
-                description =
-                    stringResource(
-                        if (error.code == build.raft.app.data.AgentMigrationErrorCodes.RevisionStale ||
-                            error.code == build.raft.app.data.AgentMigrationErrorCodes.ConcurrentUpdate
-                        ) {
-                            MR.strings.agent_migration_cancel_dialog_stale_error
-                        } else {
-                            MR.strings.agent_migration_cancel_dialog_generic_error
-                        }
-                    ) + " (" + error.code + ")",
-                status = RaftBannerStatus.Warning,
-                size = RaftBannerSize.Sm
-            )
         }
         if (reviewSummary != null) {
             AgentMigrationHostedReviewCard(notice, reviewSummary, state, inputs, onShowCancel)
         } else if (notice.isActive && notice.canCancel()) {
+            // While the review waits, its own Cancel sits beside Confirm.
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 RaftButton(
                     text = stringResource(MR.strings.agent_migration_detail_cancel),
@@ -522,77 +651,55 @@ private fun AgentMigrationProgressPanel(
     }
 }
 
-/**
- * The move's steps (web `Steps`): done up to [current], [current] marked as the failure when
- * [stoppedAt], or as running while the move is active.
- */
+/** Web MigrationReference: the label, the ID in Space Mono, and a copy button that turns into a check for 2s. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AgentMigrationSteps(notice: AgentMigrationNotice, current: Int, stoppedAt: Boolean) {
+private fun AgentMigrationReference(notice: AgentMigrationNotice, inputs: AgentMigrationSectionInputs) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    val steps =
-        if (notice.isHosted) {
-            listOf(
-                MR.strings.agent_migration_hosted_step_upload,
-                MR.strings.agent_migration_hosted_step_check_files,
-                MR.strings.agent_migration_hosted_step_review,
-                MR.strings.agent_migration_hosted_step_switch,
-                MR.strings.agent_migration_hosted_step_complete
-            )
-        } else {
-            listOf(
-                MR.strings.agent_migration_detail_migration_step_stop_agent,
-                MR.strings.agent_migration_detail_migration_step_pack_workspace,
-                MR.strings.agent_migration_detail_migration_step_transfer,
-                MR.strings.agent_migration_detail_migration_step_start_on_target,
-                MR.strings.agent_migration_detail_migration_step_complete
-            )
+    var copied by remember(notice.migrationRef) { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(2_000)
+            copied = false
         }
-    Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
-        steps.forEachIndexed { index, label ->
-            val icon =
-                when {
-                    index < current -> RaftLucideIconName.CircleCheck
-                    index == current && stoppedAt -> RaftLucideIconName.TriangleAlert
-                    index == current && notice.isActive -> RaftLucideIconName.LoaderCircle
-                    else -> RaftLucideIconName.Circle
-                }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
-                RaftLucideIcon(
-                    name = icon,
-                    modifier = Modifier.size(16.dp),
-                    color = if (index <= current) RaftColor.TextBlackArgb else RaftColor.TextMutedGrayArgb
-                )
-                RaftText(
-                    text = stringResource(label),
-                    style = typography.callout,
-                    color = if (index <= current) colors.foreground else colors.foregroundHint
-                )
+    }
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.Center
+    ) {
+        RaftText(
+            text = stringResource(MR.strings.agent_migration_reference_label),
+            modifier = Modifier.align(Alignment.CenterVertically),
+            style = typography.caption.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.foregroundMuted
+        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            RaftText(
+                text = notice.migrationRef,
+                modifier = Modifier.weight(1f, fill = false),
+                style = typography.monoMeta,
+                color = colors.foreground
+            )
+            RaftIconButton(
+                onClick = {
+                    inputs.onCopy(notice.migrationRef)
+                    copied = true
+                },
+                tooltip =
+                    stringResource(
+                        if (copied) MR.strings.agent_migration_reference_copied else MR.strings.agent_migration_reference_copy
+                    ),
+                variant = RaftButtonVariant.Ghost
+            ) {
+                RaftGlyphIcon(if (copied) RaftGlyph.Check else RaftGlyph.Copy, size = 14.dp)
             }
         }
     }
 }
 
-@Composable
-private fun AgentMigrationReference(notice: AgentMigrationNotice, inputs: AgentMigrationSectionInputs) {
-    val colors = RaftTheme.colors
-    val typography = RaftTheme.typography
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
-        RaftText(
-            text = stringResource(MR.strings.agent_migration_reference_label),
-            style = typography.caption.copy(fontWeight = FontWeight.SemiBold),
-            color = colors.foregroundMuted
-        )
-        RaftText(text = notice.migrationRef, style = typography.monoMeta, color = colors.foreground, modifier = Modifier.weight(1f, fill = false))
-        RaftButton(
-            text = stringResource(MR.strings.common_copy),
-            onClick = { inputs.onCopy(notice.migrationRef) },
-            variant = RaftButtonVariant.Ghost,
-            size = RaftButtonSize.Md
-        )
-    }
-}
-
+/** Web HostedMigrationReview: a Card with what moves and what stays, and the final Confirm. */
 @Composable
 private fun AgentMigrationHostedReviewCard(
     notice: AgentMigrationNotice,
@@ -605,53 +712,11 @@ private fun AgentMigrationHostedReviewCard(
     val typography = RaftTheme.typography
     val source = agentMigrationComputerLabel(inputs, notice.sourceMachineId)
     val skipped = summary.skipped.filter { it.count > 0 }
-    Column(
-        modifier = Modifier.fillMaxWidth().raftCardSurface().padding(RaftAppSpacing.Md),
-        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
-    ) {
-        RaftText(
-            text = stringResource(MR.strings.agent_migration_hosted_review_title),
-            style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
-            color = colors.foreground
-        )
-        AgentMigrationReviewItem(
-            term = stringResource(MR.strings.agent_migration_hosted_review_imported_term),
-            detail = agentMigrationFileCount(summary.importedFileCount, summary.importedBytes)
-        )
-        if (skipped.isEmpty()) {
-            AgentMigrationReviewItem(
-                term = stringResource(MR.strings.agent_migration_hosted_review_skipped_none),
-                detail = stringResource(MR.strings.agent_migration_hosted_review_nothing_skipped)
-            )
-        } else {
-            skipped.forEach { group ->
-                val shown = group.largestPaths.take(5)
-                AgentMigrationReviewItem(
-                    term = stringResource(MR.strings.agent_migration_hosted_review_skipped_term, agentMigrationSkipReason(group.reason)),
-                    detail = agentMigrationFileCount(group.count, group.bytes),
-                    paths = shown
-                )
-            }
-        }
-        RaftText(
-            text = stringResource(MR.strings.agent_migration_hosted_review_final, source),
-            style = typography.callout,
-            color = colors.foreground
-        )
-        notice.transferDeadlineAt?.let(inputs.formatTimestamp)?.let { deadline ->
-            RaftText(
-                text = stringResource(MR.strings.agent_migration_hosted_review_deadline, source, "", deadline),
-                style = typography.caption,
-                color = colors.foregroundHint
-            )
-        }
-        state.confirmError?.let { error ->
-            RaftBanner(description = agentMigrationErrorText(error), status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm, Alignment.End)
-        ) {
+    RaftCard(
+        modifier = Modifier.fillMaxWidth(),
+        title = stringResource(MR.strings.agent_migration_hosted_review_title),
+        footer = {
+            Spacer(Modifier.weight(1f))
             RaftButton(
                 text = stringResource(MR.strings.agent_migration_detail_cancel),
                 onClick = onShowCancel,
@@ -667,18 +732,57 @@ private fun AgentMigrationHostedReviewCard(
                 loadingLabel = stringResource(MR.strings.agent_migration_hosted_confirming)
             )
         }
-    }
-}
-
-@Composable
-private fun AgentMigrationReviewItem(term: String, detail: String, paths: List<String> = emptyList()) {
-    val colors = RaftTheme.colors
-    val typography = RaftTheme.typography
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        RaftText(text = term, style = typography.caption.copy(fontWeight = FontWeight.SemiBold), color = colors.foregroundMuted)
-        RaftText(text = detail, style = typography.callout, color = colors.foreground)
-        paths.forEach { path ->
-            RaftText(text = path, style = typography.monoMeta, color = colors.foregroundMuted)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(AgentMigrationBlockGap)) {
+            RaftDescriptionList {
+                Item(
+                    term = stringResource(MR.strings.agent_migration_hosted_review_imported_term),
+                    value = agentMigrationFileCount(summary.importedFileCount, summary.importedBytes),
+                    copyable = false
+                )
+                if (skipped.isEmpty()) {
+                    Item(
+                        term = stringResource(MR.strings.agent_migration_hosted_review_skipped_none),
+                        value = stringResource(MR.strings.agent_migration_hosted_review_nothing_skipped),
+                        copyable = false
+                    )
+                } else {
+                    skipped.forEach { group ->
+                        val shown = group.largestPaths.take(5)
+                        val more = group.count - shown.size
+                        Item(term = stringResource(MR.strings.agent_migration_hosted_review_skipped_term, agentMigrationSkipReason(group.reason))) {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                RaftDescriptionValue(agentMigrationFileCount(group.count, group.bytes), copyable = false)
+                                shown.forEach { path ->
+                                    RaftText(text = path, style = typography.monoMeta, color = colors.foregroundMuted)
+                                }
+                                if (shown.isNotEmpty() && more > 0) {
+                                    RaftText(
+                                        text = stringResource(MR.strings.agent_migration_hosted_review_more_paths, more),
+                                        style = typography.caption,
+                                        color = colors.foregroundHint
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            RaftText(
+                text = stringResource(MR.strings.agent_migration_hosted_review_final, source),
+                style = typography.callout,
+                color = colors.foreground
+            )
+            notice.transferDeadlineAt?.let(inputs.formatTimestamp)?.let { deadline ->
+                RaftText(
+                    text = stringResource(MR.strings.agent_migration_hosted_review_deadline, source, "", deadline),
+                    style = typography.caption,
+                    color = colors.foregroundHint
+                )
+            }
+            state.confirmError?.let { error ->
+                RaftBanner(description = agentMigrationErrorText(error), status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
+            }
         }
     }
 }
@@ -722,6 +826,29 @@ private fun agentMigrationSkipReason(reason: String): String =
         }
     )
 
+/** The computers a move can go to: attached computers other than the agent's own. */
+internal fun agentMigrationTargets(inputs: AgentMigrationSectionInputs): List<AgentMigrationComputer> =
+    inputs.computers.filter { it.isComputer && it.id != inputs.sourceMachineId }
+
+/**
+ * Web AgentMigrationDialog's pick: the [choice] if it is offered, else the first computer; the
+ * cloud when it is chosen or is the only place to go. Null: nowhere to go.
+ */
+internal fun agentMigrationResolvedTarget(
+    choice: String?,
+    targets: List<AgentMigrationComputer>,
+    hostedAvailable: Boolean
+): String? =
+    when {
+        hostedAvailable && (choice == HOSTED_TARGET_CHOICE || targets.isEmpty()) -> HOSTED_TARGET_CHOICE
+        targets.any { it.id == choice } -> choice
+        else -> targets.firstOrNull()?.id
+    }
+
+/**
+ * Web AgentMigrationDialog (`narrow="sheet"`): on a phone a 90% sheet with × at the start and
+ * the one commit button at the end of its head; on a tablet the centred dialog.
+ */
 @Composable
 private fun AgentMigrationStartDialog(
     state: AgentMigrationState,
@@ -730,135 +857,145 @@ private fun AgentMigrationStartDialog(
     onStart: (AgentMigrationTarget) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val targets = remember(inputs.computers, inputs.sourceMachineId) { agentMigrationTargets(inputs) }
+    var choice by remember(targets, initialTarget) {
+        mutableStateOf(targets.firstOrNull { it.id == initialTarget }?.id ?: targets.firstOrNull()?.id)
+    }
+    val selected = agentMigrationResolvedTarget(choice, targets, inputs.hostedAvailable)
+    RaftDialogSheet(
+        onDismissRequest = { if (!state.starting) onDismiss() },
+        title = agentMigrationStartDialogTitle(inputs),
+        commitLabel = agentMigrationStartCommitLabel(state, inputs, selected),
+        onCommit = {
+            val target = selected ?: return@RaftDialogSheet
+            onStart(if (target == HOSTED_TARGET_CHOICE) AgentMigrationTarget.Cloud else AgentMigrationTarget.Computer(target))
+        },
+        commitEnabled = !state.starting && selected != null,
+        commitVariant = RaftButtonVariant.Primary,
+        closeLabel = stringResource(MR.strings.common_close),
+        cancelLabel = stringResource(MR.strings.agent_migration_detail_cancel)
+    ) {
+        AgentMigrationStartForm(state, inputs, targets, selected, onSelect = { choice = it })
+    }
+}
+
+@Composable
+internal fun agentMigrationStartDialogTitle(inputs: AgentMigrationSectionInputs): String =
+    stringResource(
+        if (inputs.hostedAvailable) MR.strings.agent_migration_hosted_dialog_title
+        else MR.strings.agent_migration_detail_move_to_another_computer
+    )
+
+@Composable
+internal fun agentMigrationStartCommitLabel(state: AgentMigrationState, inputs: AgentMigrationSectionInputs, selected: String?): String =
+    stringResource(
+        when {
+            state.starting -> MR.strings.agent_migration_detail_starting
+            selected == HOSTED_TARGET_CHOICE -> MR.strings.agent_migration_hosted_start
+            // Title "Move Agent" offers both destinations, so the button keeps one.
+            inputs.hostedAvailable -> MR.strings.agent_migration_detail_start_migration
+            else -> MR.strings.agent_migration_move_confirm
+        }
+    )
+
+/**
+ * The dialog's body: the target picked from a radio list, then what happens next.
+ */
+@Composable
+internal fun ColumnScope.AgentMigrationStartForm(
+    state: AgentMigrationState,
+    inputs: AgentMigrationSectionInputs,
+    targets: List<AgentMigrationComputer>,
+    selected: String?,
+    onSelect: (String) -> Unit
+) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    val targets = remember(inputs.computers, inputs.sourceMachineId) {
-        inputs.computers.filter { it.isComputer && it.id != inputs.sourceMachineId }
-    }
-    var selected by remember(targets, initialTarget) {
-        mutableStateOf(
-            targets.firstOrNull { it.id == initialTarget }?.id
-                ?: targets.firstOrNull()?.id
-                ?: HOSTED_TARGET_CHOICE.takeIf { inputs.hostedAvailable }
-        )
-    }
-    val hostedSelected = inputs.hostedAvailable && selected == HOSTED_TARGET_CHOICE
+    val hostedSelected = selected == HOSTED_TARGET_CHOICE
     val source = agentMigrationComputerLabel(inputs, inputs.sourceMachineId)
-    RaftUnifiedDialog(
-        title =
-            stringResource(
-                if (inputs.hostedAvailable) MR.strings.agent_migration_hosted_dialog_title
-                else MR.strings.agent_migration_detail_move_to_another_computer
-            ),
-        onDismiss = onDismiss,
-        dismissEnabled = !state.starting,
-        maxWidth = 520.dp,
-        titleMaxLines = 2
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-            verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)
-        ) {
-            item {
-                RaftText(
-                    text =
-                        stringResource(
-                            if (inputs.hostedAvailable) MR.strings.agent_migration_hosted_target_label
-                            else MR.strings.agent_migration_detail_target_computer
-                        ),
-                    style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.foreground
-                )
-            }
-            item {
-                if (targets.isEmpty() && !inputs.hostedAvailable) {
-                    RaftText(
-                        text = stringResource(MR.strings.agent_migration_detail_no_other_attached_computer),
-                        style = typography.callout,
-                        color = colors.foregroundHint
+        RaftText(
+            text =
+                stringResource(
+                    if (inputs.hostedAvailable) MR.strings.agent_migration_hosted_target_label
+                    else MR.strings.agent_migration_detail_target_computer
+                ),
+            style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.foreground
+        )
+        // The target stays a radio list (Jasper's picker rule, #triage:5ecc9db0).
+        if (targets.isEmpty() && !inputs.hostedAvailable) {
+            RaftText(
+                text = stringResource(MR.strings.agent_migration_detail_no_other_attached_computer),
+                style = typography.callout,
+                color = colors.foregroundHint
+            )
+        } else {
+            RaftRadioGroup {
+                targets.forEach { computer ->
+                    RaftRadioRow(
+                        label = computer.name,
+                        selected = selected == computer.id,
+                        enabled = !state.starting,
+                        onClick = { onSelect(computer.id) }
                     )
-                } else {
-                    RaftRadioGroup {
-                        targets.forEach { computer ->
-                            RaftRadioRow(
-                                label = computer.name,
-                                selected = selected == computer.id,
-                                enabled = !state.starting,
-                                onClick = { selected = computer.id }
-                            )
-                        }
-                        if (inputs.hostedAvailable) {
-                            RaftRadioRow(
-                                label = stringResource(MR.strings.agent_migration_hosted_option),
-                                selected = hostedSelected,
-                                enabled = !state.starting,
-                                onClick = { selected = HOSTED_TARGET_CHOICE }
-                            )
-                        }
-                    }
                 }
-            }
-            item {
-                val notes =
-                    if (hostedSelected) {
-                        listOf(
-                            stringResource(MR.strings.agent_migration_hosted_note_stopped, source),
-                            stringResource(MR.strings.agent_migration_hosted_note_files, source),
-                            stringResource(MR.strings.agent_migration_hosted_note_session),
-                            stringResource(MR.strings.agent_migration_hosted_note_github),
-                            stringResource(MR.strings.agent_migration_hosted_note_final)
-                        ).map { "• $it" }
-                    } else {
-                        listOf(
-                            stringResource(MR.strings.agent_migration_detail_migration_mode_stop_before_export),
-                            stringResource(MR.strings.agent_migration_detail_migration_session_reset_detailed)
-                        )
-                    }
-                Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
-                    notes.forEach { RaftText(text = it, style = typography.callout, color = colors.foregroundMuted) }
-                }
-            }
-            state.startError?.let { error ->
-                item {
-                    RaftBanner(description = agentMigrationErrorText(error), status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
+                if (inputs.hostedAvailable) {
+                    RaftRadioRow(
+                        label = stringResource(MR.strings.agent_migration_hosted_option),
+                        selected = hostedSelected,
+                        enabled = !state.starting,
+                        onClick = { onSelect(HOSTED_TARGET_CHOICE) }
+                    )
                 }
             }
         }
-        RaftDialogFooter {
-            RaftButton(
-                text = stringResource(MR.strings.agent_migration_detail_cancel),
-                onClick = onDismiss,
-                variant = RaftButtonVariant.Ghost,
-                size = RaftButtonSize.Lg,
-                enabled = !state.starting
-            )
-            RaftButton(
-                text =
-                    stringResource(
-                        when {
-                            hostedSelected -> MR.strings.agent_migration_hosted_start
-                            // Title "Move Agent" offers both destinations, so the button keeps one.
-                            inputs.hostedAvailable -> MR.strings.agent_migration_detail_start_migration
-                            else -> MR.strings.agent_migration_move_confirm
-                        }
-                    ),
-                onClick = {
-                    val choice = selected ?: return@RaftButton
-                    onStart(
-                        if (choice == HOSTED_TARGET_CHOICE) AgentMigrationTarget.Cloud
-                        else AgentMigrationTarget.Computer(choice)
-                    )
-                },
-                variant = RaftButtonVariant.Primary,
-                size = RaftButtonSize.Lg,
-                enabled = selected != null,
-                loading = state.starting,
-                loadingLabel = stringResource(MR.strings.agent_migration_detail_starting)
-            )
+        // The one choice first; what happens next follows as the dialog's body text.
+        if (hostedSelected) {
+            // Said before starting: the move to the cloud is final once confirmed.
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(
+                    stringResource(MR.strings.agent_migration_hosted_note_stopped, source),
+                    stringResource(MR.strings.agent_migration_hosted_note_files, source),
+                    stringResource(MR.strings.agent_migration_hosted_note_session),
+                    stringResource(MR.strings.agent_migration_hosted_note_github),
+                    stringResource(MR.strings.agent_migration_hosted_note_final)
+                ).forEach { note ->
+                    Row {
+                        RaftText(text = "•", modifier = Modifier.width(20.dp), style = typography.subhead, color = colors.foregroundMuted)
+                        RaftText(text = note, modifier = Modifier.weight(1f), style = typography.subhead, color = colors.foregroundMuted)
+                    }
+                }
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                RaftText(
+                    text = stringResource(MR.strings.agent_migration_detail_migration_mode_stop_before_export),
+                    style = typography.subhead,
+                    color = colors.foregroundMuted
+                )
+                RaftText(
+                    text = stringResource(MR.strings.agent_migration_detail_migration_session_reset_detailed),
+                    style = typography.subhead,
+                    color = colors.foregroundMuted
+                )
+            }
+        }
+        state.startError?.let { error ->
+            RaftBanner(description = agentMigrationErrorText(error), status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
         }
     }
 }
 
+/** Web AgentMigrationCancelDialog (a ConfirmDialog, `max-w-md`, orange confirm). */
 @Composable
 private fun AgentMigrationCancelDialog(
     notice: AgentMigrationNotice,
@@ -871,41 +1008,13 @@ private fun AgentMigrationCancelDialog(
     val typography = RaftTheme.typography
     val source = agentMigrationComputerLabel(inputs, notice.sourceMachineId)
     val target = agentMigrationComputerLabel(inputs, notice.targetMachineId)
-    RaftUnifiedDialog(
+    RaftDialog(
+        onDismissRequest = { if (!state.canceling) onDismiss() },
         title = stringResource(MR.strings.agent_migration_cancel_dialog_title),
-        onDismiss = onDismiss,
-        dismissEnabled = !state.canceling,
-        maxWidth = 448.dp
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)) {
-            RaftText(
-                text = stringResource(MR.strings.agent_migration_cancel_dialog_safety_title),
-                style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.foreground
-            )
-            RaftText(
-                text =
-                    if (notice.isHosted) {
-                        stringResource(MR.strings.agent_migration_hosted_cancel_dialog_safe_message, source)
-                    } else {
-                        stringResource(MR.strings.agent_migration_cancel_dialog_safe_message, source, target)
-                    },
-                style = typography.callout,
-                color = colors.foregroundMuted
-            )
-            AgentMigrationReference(notice, inputs)
-            RaftText(
-                text =
-                    if (notice.isHosted) {
-                        stringResource(MR.strings.agent_migration_hosted_cancel_dialog_explanation, source)
-                    } else {
-                        stringResource(MR.strings.agent_migration_cancel_dialog_explanation)
-                    },
-                style = typography.callout,
-                color = colors.foregroundMuted
-            )
-        }
-        RaftDialogFooter {
+        size = RaftDialogSize.Md,
+        dismissOnClickOutside = false,
+        closeLabel = stringResource(MR.strings.common_close),
+        footer = {
             RaftButton(
                 text = stringResource(MR.strings.agent_migration_cancel_dialog_keep_action),
                 onClick = onDismiss,
@@ -922,6 +1031,52 @@ private fun AgentMigrationCancelDialog(
                 loading = state.canceling,
                 loadingLabel = stringResource(MR.strings.agent_migration_cancel_dialog_requesting)
             )
+        }
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(AgentMigrationBlockGap)) {
+            Column {
+                RaftText(
+                    text = stringResource(MR.strings.agent_migration_cancel_dialog_safety_title),
+                    style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.foreground
+                )
+                RaftText(
+                    text =
+                        if (notice.isHosted) {
+                            stringResource(MR.strings.agent_migration_hosted_cancel_dialog_safe_message, source)
+                        } else {
+                            stringResource(MR.strings.agent_migration_cancel_dialog_safe_message, source, target)
+                        },
+                    style = typography.subhead,
+                    color = colors.foregroundMuted
+                )
+            }
+            AgentMigrationReference(notice, inputs)
+            RaftText(
+                text =
+                    if (notice.isHosted) {
+                        stringResource(MR.strings.agent_migration_hosted_cancel_dialog_explanation, source)
+                    } else {
+                        stringResource(MR.strings.agent_migration_cancel_dialog_explanation)
+                    },
+                style = typography.callout,
+                color = colors.foregroundMuted
+            )
+            // A problem is orange (warning); the dialog stays open on it.
+            state.cancelError?.let { error ->
+                RaftBanner(
+                    description =
+                        stringResource(
+                            if (error.code == AgentMigrationErrorCodes.RevisionStale || error.code == AgentMigrationErrorCodes.ConcurrentUpdate) {
+                                MR.strings.agent_migration_cancel_dialog_stale_error
+                            } else {
+                                MR.strings.agent_migration_cancel_dialog_generic_error
+                            }
+                        ) + " (" + error.code + ")",
+                    status = RaftBannerStatus.Warning,
+                    size = RaftBannerSize.Md
+                )
+            }
         }
     }
 }
