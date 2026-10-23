@@ -13390,7 +13390,7 @@ private fun ThreadMarkdownTaskCandidateRow(
             ) {
                 val statusMeta = task.status.sharedTaskStatusChipMeta()
                 RaftAnchoredMetaChip(
-                    label = statusMeta.label,
+                    label = task.status.localizedLabel(),
                     iconName = statusMeta.icon,
                     iconSize = statusMeta.iconSize,
                     color = statusMeta.color,
@@ -28560,10 +28560,13 @@ internal fun RaftThreadScreenPayload.threadBeginningReplyCountLabel(): String? {
 internal fun RaftThreadScreenPayload.threadBeginningReplyCount(): Int? =
     originMessage?.replyCount?.coerceAtLeast(0)
 
-private val ThreadTaskStatusMenuItems: List<RaftBaseMenuItem> =
-    SharedTaskStatusChipMetas.map { option ->
-        RaftBaseMenuItem(id = option.key, label = option.label)
-    }
+/** The task status choices, labelled in the app's language (`tasks_status_*`), keyed by status. */
+private val ThreadTaskStatusMenuItems: List<RaftBaseMenuItem>
+    @Composable
+    get() =
+        SharedTaskStatusChipMetas.map { option ->
+            RaftBaseMenuItem(id = option.key, label = option.status.localizedLabel())
+        }
 
 internal fun threadTaskStatusChipClickIdentity(
     message: RaftThreadMessageItem,
