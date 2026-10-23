@@ -106,6 +106,7 @@ class RaftLocatedTest {
 }
 
 /** A 60fps frame clock on the test's virtual time. */
+@OptIn(ExperimentalCoroutinesApi::class)
 private class VirtualFrameClock(private val scheduler: TestCoroutineScheduler) : MonotonicFrameClock {
     override suspend fun <R> withFrameNanos(onFrame: (frameTimeNanos: Long) -> R): R {
         delay(16)
