@@ -17,33 +17,27 @@ class RaftCurlSocketIoPolicyTest {
         assertNull(RaftCurlSocketIoPolicy.userChoice())
     }
 
+    // artin 2026-10-23: the server flag no longer turns curl on; only the user's explicit choice does.
     @Test
-    fun withoutAUserChoiceTheServerFlagDecidesPerServer() {
+    fun withoutAUserChoiceRealtimeStaysOnThePlatformStackEvenWithTheServerFlagOn() {
         RaftCurlSocketIoPolicy.bindUserChoice { null }
-        RaftCurlSocketIoPolicy.bindServerFlag { serverId -> serverId == "on" }
-        assertTrue(RaftCurlSocketIoPolicy.isEnabledFor("on"))
-        assertFalse(RaftCurlSocketIoPolicy.isEnabledFor("off"))
+        RaftCurlSocketIoPolicy.bindServerFlag { true }
+        assertFalse(RaftCurlSocketIoPolicy.isEnabledFor("on"))
         assertFalse(RaftCurlSocketIoPolicy.isEnabledFor(null))
+        assertTrue(RaftCurlSocketIoPolicy.serverDefaultFor("on"))
     }
 
     @Test
-    fun aUserChoiceWinsOverTheServerFlagEitherWay() {
-        var flag = true
-        var choice: Boolean? = false
-        RaftCurlSocketIoPolicy.bindServerFlag { flag }
+    fun onlyAnExplicitUserChoiceSelectsCurl() {
+        var choice: Boolean? = true
+        RaftCurlSocketIoPolicy.bindServerFlag { false }
         RaftCurlSocketIoPolicy.bindUserChoice { choice }
-        assertFalse(RaftCurlSocketIoPolicy.isEnabledFor("s1"))
-
-        flag = false
-        choice = true
         assertTrue(RaftCurlSocketIoPolicy.isEnabledFor("s1"))
-        assertFalse(RaftCurlSocketIoPolicy.serverDefaultFor("s1"))
 
-        // Clearing the choice hands the decision back to the server flag.
+        choice = false
+        assertFalse(RaftCurlSocketIoPolicy.isEnabledFor("s1"))
         choice = null
         assertFalse(RaftCurlSocketIoPolicy.isEnabledFor("s1"))
-        flag = true
-        assertTrue(RaftCurlSocketIoPolicy.isEnabledFor("s1"))
     }
 
     @Test

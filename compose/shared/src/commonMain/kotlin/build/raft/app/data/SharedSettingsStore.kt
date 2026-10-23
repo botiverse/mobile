@@ -1481,7 +1481,8 @@ class SharedSettingsDataSource(
         val store = realtimeTransportPreferenceStore ?: return this
         if (!RaftCurlSocketIoPolicy.platformSupported) return this
         val serverId = sessionStore.readSession()?.currentServerId?.trim()?.takeIf(String::isNotEmpty)
-        val enabled = store.readCurlSocketIoUserChoiceSync() ?: RaftCurlSocketIoPolicy.serverDefaultFor(serverId)
+        // artin 2026-10-23: curl Socket.IO is a diagnostic opt-in; an untouched switch is off.
+        val enabled = store.readCurlSocketIoUserChoiceSync() ?: false
         return copy(
             realtimeCurlSocketIo =
                 SettingsMobileToggleSnapshot(

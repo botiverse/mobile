@@ -10,6 +10,8 @@ import io.socket.client.Manager
 import io.socket.client.Socket
 import io.socket.emitter.Emitter
 import io.socket.engineio.client.transports.WebSocket
+import java.util.concurrent.TimeUnit
+import okhttp3.OkHttpClient
 import org.json.JSONObject
 
 class SocketIoSocketTransport internal constructor(
@@ -41,6 +43,10 @@ class SocketIoSocketTransport internal constructor(
                     transports = arrayOf(WebSocket.NAME)
                     reconnection = true
                     this.auth = auth
+                    // artin 2026-10-23: one OkHttp client with a WebSocket ping, so a dead socket is
+                    // noticed within ~2 pings instead of after Engine.IO's 45 s heartbeat window.
+                    callFactory = RaftRealtimeOkHttp.client
+                    webSocketFactory = RaftRealtimeOkHttp.client
                 }
             )
             listeners.forEach { (eventName, eventListeners) ->
@@ -205,3 +211,24 @@ internal fun realtimeSocketIoWirePayload(eventName: String, payload: Map<String,
     } else {
         JSONObject(payload)
     }
+
+/**
+ * The OkHttp client under socket.io-client-java (the default Android realtime stack since the Ktor
+ * switch; curl Socket.IO is a Developer opt-in). [RAFT_REALTIME_PING_INTERVAL_SECONDS] WebSocket pings
+ * fail a half-open socket quickly so the Socket.IO manager reconnects; the read timeout is left to the
+ * ping (a quiet socket is healthy while pongs arrive).
+ */
+internal const val RAFT_REALTIME_PING_INTERVAL_SECONDS = 15L
+internal const val RAFT_REALTIME_CONNECT_TIMEOUT_SECONDS = 10L
+
+internal object RaftRealtimeOkHttp {
+    val client: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .pingInterval(RAFT_REALTIME_PING_INTERVAL_SECONDS, TimeUnit.SECONDS)
+            .connectTimeout(RAFT_REALTIME_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(0L, TimeUnit.MILLISECONDS)
+            .writeTimeout(20L, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
+    }
+}

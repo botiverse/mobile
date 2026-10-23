@@ -29,7 +29,7 @@ class RealtimeCurlSocketIoPreferenceTest {
     }
 
     @Test
-    fun absentPreferenceFollowsServerFlagAndStoredChoiceOverridesIt() {
+    fun absentPreferenceIsOffWhateverTheServerFlagAndOnlyAStoredChoiceTurnsCurlOn() {
         val keyValues = InMemoryRaftKeyValueStore()
         val preferenceStore = KeyValueRealtimeTransportPreferenceStore(keyValues)
         var serverFlag = true
@@ -37,7 +37,8 @@ class RealtimeCurlSocketIoPreferenceTest {
         RaftCurlSocketIoPolicy.bindUserChoice { preferenceStore.readCurlSocketIoUserChoiceSync() }
 
         assertNull(preferenceStore.readCurlSocketIoUserChoiceSync())
-        assertTrue(RaftCurlSocketIoPolicy.isEnabledFor("server-a"))
+        // artin 2026-10-23: the server flag no longer selects curl.
+        assertFalse(RaftCurlSocketIoPolicy.isEnabledFor("server-a"))
         assertFalse(RaftCurlSocketIoPolicy.isEnabledFor("server-b"))
         serverFlag = false
         assertFalse(RaftCurlSocketIoPolicy.isEnabledFor("server-a"))
@@ -54,7 +55,7 @@ class RealtimeCurlSocketIoPreferenceTest {
 
         keyValues.putString(REALTIME_CURL_SOCKETIO_PREFERENCE_KEY, "garbage")
         assertNull(preferenceStore.readCurlSocketIoUserChoiceSync())
-        assertTrue(RaftCurlSocketIoPolicy.isEnabledFor("server-a"))
+        assertFalse(RaftCurlSocketIoPolicy.isEnabledFor("server-a"))
     }
 
     @Test
@@ -72,15 +73,15 @@ class RealtimeCurlSocketIoPreferenceTest {
     }
 
     @Test
-    fun mobileSnapshotShowsServerFlagForCurrentServerWhenNoChoiceExists(): Unit = runBlocking {
+    fun mobileSnapshotShowsOffWhenNoChoiceExistsEvenWithTheServerFlagOn(): Unit = runBlocking {
         val keyValues = InMemoryRaftKeyValueStore()
         var serverFlag = true
         RaftCurlSocketIoPolicy.bindServerFlag { serverId -> serverId == "server-a" && serverFlag }
         val dataSource = dataSource(keyValues)
 
-        val enabledByServer = assertIs<DataResult.Content<SettingsMobileSnapshot>>(dataSource.loadMobilePreferences())
-        assertTrue(enabledByServer.data.realtimeCurlSocketIo.available)
-        assertTrue(enabledByServer.data.realtimeCurlSocketIo.enabled)
+        val flagOn = assertIs<DataResult.Content<SettingsMobileSnapshot>>(dataSource.loadMobilePreferences())
+        assertTrue(flagOn.data.realtimeCurlSocketIo.available)
+        assertFalse(flagOn.data.realtimeCurlSocketIo.enabled)
 
         serverFlag = false
         val disabledByServer = assertIs<DataResult.Content<SettingsMobileSnapshot>>(dataSource.loadMobilePreferences())
