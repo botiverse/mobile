@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftTopBarDefaults
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.rememberRaftSkeletonDelayPassed
 import build.raft.designsystem.components.LocalRaftListSkeletonDelayMillis
@@ -99,6 +100,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -237,6 +239,7 @@ private val HomeListHorizontalPadding = RaftAppSpacing.Md
 private val HomeListRowHorizontalPadding = RaftAppSpacing.Sm
 // Web phone Sidebar.tsx scroller `pt-1` (the Home head stays on screen, so not `pt-2`).
 private val HomeListTopPadding = RaftAppSpacing.Xs
+private val HomeListTopPaddingUnderTopBar = RaftAppSpacing.Sm
 // Web `SidebarSectionDescription` `py-1.5`.
 private val HomeSidebarSectionEmptyHintPaddingVertical = 6.dp
 // #372 React parity: the post-sign-in loading state shows skeleton rows
@@ -1467,7 +1470,7 @@ internal data class RaftStructuralHomeShellData(
     val serverSwitcherExpanded: Boolean = false,
     val serverDrawerEnabled: Boolean = false,
     val homeServerAvatarEnabled: Boolean = false,
-    /** Wide layout: the top bar holds the server switcher, so the head shows the page name. */
+    /** Wide layout: the top bar is above the list, so the list has no head (web `hideTitle`). */
     val serverSwitcherInTopBar: Boolean = false,
     val serverDrawerSections: List<RaftHomeServerDrawerSection> = emptyList(),
     val pendingServerId: String? = null,
@@ -1592,7 +1595,11 @@ internal fun RaftStructuralHomeShell(
     serverSwitcherExpanded: Boolean = false,
     serverDrawerEnabled: Boolean = false,
     homeServerAvatarEnabled: Boolean = false,
-    /** Wide layout (artin task #8): the top bar holds the server switcher; the head shows "Home". */
+    /**
+     * Wide layout (artin task #8): the top bar holds the server switcher and the bell, so the list
+     * has no head of its own (web MainLayout `hideTitle={showTopBar}`); the bell's state goes to
+     * [LocalRaftAppShellTopBar].
+     */
     serverSwitcherInTopBar: Boolean = false,
     serverDrawerSections: List<RaftHomeServerDrawerSection> = emptyList(),
     pendingServerId: String? = null,
@@ -2261,7 +2268,19 @@ private fun RaftStructuralHomeShellContent(
     // trigger and center only see non-app-update notifications.
     val appUpdateBanner = remember(notifications) { notifications.homeAppUpdateBannerNotification() }
     val visibleNotifications = remember(notifications) { notifications.nonAppUpdateHomeNotifications() }
-    var notificationCenterExpanded by remember(currentServerId) { mutableStateOf(false) }
+    // Wide layout: the bell is in the top bar, so its open state is the shell's; Home still
+    // closes it on focus loss, a tab switch and a server switch.
+    val topBarBell = LocalRaftAppShellTopBar.current?.takeIf { serverSwitcherInTopBar }
+    val localNotificationCenterExpanded = remember(currentServerId) { mutableStateOf(false) }
+    var notificationCenterExpanded by (topBarBell?.bellOpen ?: localNotificationCenterExpanded)
+    if (topBarBell != null) {
+        LaunchedEffect(topBarBell, currentServerId) { topBarBell.bellOpen.value = false }
+        SideEffect {
+            topBarBell.notifications = visibleNotifications
+            topBarBell.onView = onNotificationView
+            topBarBell.onDismiss = onNotificationDismiss
+        }
+    }
     LaunchedEffect(externalFocusLossDismissEpoch) {
         if (externalFocusLossDismissEpoch > 0) {
             notificationCenterExpanded = false
@@ -2329,11 +2348,10 @@ private fun RaftStructuralHomeShellContent(
         Column(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)) {
             Column(modifier = Modifier.fillMaxSize()) {
-                traceMarkdownSection(RaftHomeTraceNames.TITLEBAR_RENDER, notifications.size) {
+                if (!serverSwitcherInTopBar) traceMarkdownSection(RaftHomeTraceNames.TITLEBAR_RENDER, notifications.size) {
                     HomeTitlebar(
                         serverName = currentServerName,
                         serverIdentity = currentHomeHeaderServer.takeIf { homeServerAvatarEnabled },
-                        title = if (serverSwitcherInTopBar) stringResource(MR.strings.tab_home) else null,
                         serverPublicPageLive = currentHomeHeaderServer.publicPageLive,
                         hasOtherServerUnread = serverSwitcherHasOtherUnread,
                         serverSwitcherOpen = serverSwitcherExpanded,
@@ -2448,8 +2466,9 @@ private fun RaftStructuralHomeShellContent(
                                 // Rows keep their own 1dp margins (raft-ui SidebarItem `my-px`).
                             ) {
                                 // Web phone Home (Sidebar.tsx `px-2 pt-1`): the list starts 4dp under the
-                                // header; the first row's own 1dp margin puts its box 5dp down.
-                                item { Spacer(Modifier.height(HomeListTopPadding)) }
+                                // header; the first row's own 1dp margin puts its box 5dp down. Under the
+                                // wide top bar, with no head, 8dp (Sidebar `hideTitle`: `pt-2`).
+                                item { Spacer(Modifier.height(if (serverSwitcherInTopBar) HomeListTopPaddingUnderTopBar else HomeListTopPadding)) }
                                 // Jasper 2026-10-20: with the phone bar on screen, Search and Activity
                                 // live there (Search and Activity tabs); only Saved stays here. The wide
                                 // rail carries both too (nav spec §5), so it drops them as well.
@@ -3038,7 +3057,8 @@ private fun RaftStructuralHomeShellContent(
                     }
                 }
             }
-            if (notificationCenterExpanded) {
+            // Wide layout: the shell draws the popover under the top bar's bell.
+            if (notificationCenterExpanded && topBarBell == null) {
                 RaftFloatingOverlayHost(
                     onDismiss = { notificationCenterExpanded = false },
                     modifier = Modifier.padding(bottom = bottomContentPadding),
@@ -4705,11 +4725,6 @@ private fun List<RaftHomePinnedRow>.sortedPinnedRows(mode: RaftSidebarSortMode):
 private fun HomeTitlebar(
     serverName: String,
     serverIdentity: RaftServerSwitcherItem? = null,
-    /**
-     * Wide layout: the page name in place of the server switcher, which is in the top bar there
-     * (web: with the top bar the sidebar has no workspace button).
-     */
-    title: String? = null,
     serverPublicPageLive: Boolean = false,
     hasOtherServerUnread: Boolean,
     serverSwitcherOpen: Boolean = false,
@@ -4743,18 +4758,14 @@ private fun HomeTitlebar(
         ) {
             // The header always shows the identity cluster (avatar tile, name, chevron). Before
             // the server identity loads (cold start, fixtures) it is built from the name alone.
-            if (title != null) {
-                HomeTitlebarPageTitle(title = title, onClick = onBlankClick, modifier = Modifier.weight(1f))
-            } else {
-                HomeServerIdentityCluster(
-                    server = homeTitlebarServerIdentity(serverIdentity, serverName, serverPublicPageLive),
-                    unread = hasOtherServerUnread,
-                    open = serverSwitcherOpen,
-                    onClick = onServerBadgeClick,
-                    onBlankClick = onBlankClick,
-                    modifier = Modifier.weight(1f)
-                )
-            }
+            HomeServerIdentityCluster(
+                server = homeTitlebarServerIdentity(serverIdentity, serverName, serverPublicPageLive),
+                unread = hasOtherServerUnread,
+                open = serverSwitcherOpen,
+                onClick = onServerBadgeClick,
+                onBlankClick = onBlankClick,
+                modifier = Modifier.weight(1f)
+            )
             if (refreshing) {
                 RaftHeaderRefreshIndicator()
             }
@@ -4767,33 +4778,6 @@ private fun HomeTitlebar(
                 modifier = Modifier.offset(x = HomeNotificationBellEdgeInset)
             )
         }
-    }
-}
-
-/**
- * The wide Home head's page name, in the tab root heads' title style ([RaftTopPageHeader]); a tap
- * scrolls the list to the top, as the blank head does on the phone.
- */
-@Composable
-private fun HomeTitlebarPageTitle(title: String, onClick: (() -> Unit)?, modifier: Modifier = Modifier) {
-    Box(
-        modifier =
-            modifier
-                .height(RaftAppSize.PageHeaderContentHeight)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    enabled = onClick != null,
-                ) { onClick?.invoke() },
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Text(
-            text = title,
-            style = RaftType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
-            color = RaftColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
     }
 }
 
@@ -4994,29 +4978,74 @@ private fun HomeNotificationCenter(
     // attention (unread notifications) are independent states: only attention
     // gets the pink dot; only disclosure gets the selected button treatment.
     // The trigger never carries warning/error severity colors.
-    val visibleNotifications = remember(notifications) { notifications.visibleHomeNotifications() }
-    val hasUnread = visibleNotifications.isNotEmpty()
     Box(modifier = modifier.size(HomeNotificationTriggerSlotSize)) {
         Box(modifier = Modifier.align(Alignment.TopEnd).padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
-            // raft-ui `PanelAction`: ghost; disclosure shows the pressed wash, no shadow.
-            Button(
-                onClick = onToggle,
-                pressOffset = 0.dp,
-                modifier =
-                    Modifier
-                        .size(HomeNotificationTriggerSize)
-                        .background(if (open) RaftColor.FillPressed else Color.Transparent, RoundedCornerShape(RaftAppRadius.Control))
-            ) {
-                // Web parity (task #113 / artin 2026-08-06): the pink dot sits
-                // directly at the Bell icon's top-right corner (web: dot on the
-                // icon wrapper span, `-top-1 -end-1`), not at the button slot
-                // corner. Icon-sized wrapper keeps the same geometry.
-                Box(modifier = Modifier.size(HomeNotificationBellIconSize)) {
-                    RaftLucideIcon(RaftLucideIconName.Bell, Modifier.size(HomeNotificationBellIconSize))
-                    if (hasUnread) {
-                        ServerUnreadMarker(Modifier.align(Alignment.TopEnd))
-                    }
-                }
+            HomeNotificationBellButton(notifications, open, onToggle, HomeNotificationTriggerSize)
+        }
+    }
+}
+
+/**
+ * The wide top bar's bell (web TopBarGlobalActions, NotificationTrigger `top-bar`): the Home
+ * head's bell as a 36dp frame item, so its 20dp icon ends 20dp from the window's edge.
+ */
+@Composable
+internal fun RaftAppTopBarNotificationBell(
+    notifications: List<RaftHomeNotificationItem>,
+    open: Boolean,
+    onToggle: () -> Unit,
+) {
+    HomeNotificationBellButton(notifications, open, onToggle, RaftAppTopBarNotificationTriggerSize)
+}
+
+/** The bell's popover under the wide top bar, at its trailing end; shown while [state] is open. */
+@Composable
+internal fun RaftAppTopBarNotificationOverlay(state: RaftAppShellTopBarState, topInset: Dp) {
+    if (!state.bellOpen.value) return
+    RaftFloatingOverlayHost(
+        onDismiss = { state.bellOpen.value = false },
+        dismissActivationDelayMillis = RaftFloatingOverlayClickTriggeredDismissDelayMillis
+    ) { _ ->
+        Box(Modifier.fillMaxSize()) {
+            HomeNotificationPopover(
+                state.notifications,
+                state.onView,
+                state.onDismiss,
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = topInset, end = RaftTopBarDefaults.TrailingEndPadding)
+                    .raftFloatingContentClickTarget()
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomeNotificationBellButton(
+    notifications: List<RaftHomeNotificationItem>,
+    open: Boolean,
+    onToggle: () -> Unit,
+    size: Dp,
+) {
+    val visibleNotifications = remember(notifications) { notifications.visibleHomeNotifications() }
+    val hasUnread = visibleNotifications.isNotEmpty()
+    // raft-ui `PanelAction`: ghost; disclosure shows the pressed wash, no shadow.
+    Button(
+        onClick = onToggle,
+        pressOffset = 0.dp,
+        modifier =
+            Modifier
+                .size(size)
+                .background(if (open) RaftColor.FillPressed else Color.Transparent, RoundedCornerShape(RaftAppRadius.Control))
+    ) {
+        // Web parity (task #113 / artin 2026-08-06): the pink dot sits
+        // directly at the Bell icon's top-right corner (web: dot on the
+        // icon wrapper span, `-top-1 -end-1`), not at the button slot
+        // corner. Icon-sized wrapper keeps the same geometry.
+        Box(modifier = Modifier.size(HomeNotificationBellIconSize)) {
+            RaftLucideIcon(RaftLucideIconName.Bell, Modifier.size(HomeNotificationBellIconSize))
+            if (hasUnread) {
+                ServerUnreadMarker(Modifier.align(Alignment.TopEnd))
             }
         }
     }
@@ -5025,6 +5054,7 @@ private fun HomeNotificationCenter(
 // A 20dp bell in a 44dp button: raft-ui NotificationCenter's bell size (`size-5`). The web phone navbar
 // uses 22px; artin found that too big in the app (2026-10-21).
 private val HomeNotificationTriggerSize = 44.dp
+private val RaftAppTopBarNotificationTriggerSize = 36.dp
 private val HomeNotificationBellIconSize = 20.dp
 private val HomeNotificationTriggerSlotSize = HomeNotificationTriggerSize + HomeSmallShadowOffset
 // From the trigger slot's end to the bell icon's: the shadow offset, then the icon centred in 44dp.

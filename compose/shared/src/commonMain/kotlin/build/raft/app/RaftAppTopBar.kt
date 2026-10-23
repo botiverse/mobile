@@ -1,10 +1,13 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -31,8 +34,8 @@ import com.tencent.tmm.kmmresource.compose.stringResource
  *   ([onWorkspaceClick]; [serverMenuOpen] keeps its press fill), then the workspace strip of
  *   every server's avatar, where a tap on another server switches to it ([onServerPick]);
  * - centre: the search field ([RaftSearchTrigger]), which opens search ([onSearchClick]);
- * - trailing: empty. The web shows Working now and the bell there; the app has no Working now
- *   summary yet, and Activity is a rail entry.
+ * - trailing: the notification bell ([bell], web TopBarGlobalActions' NotificationTrigger
+ *   `top-bar`). The web shows Working now before it; the app has no Working now summary yet.
  *
  * [currentServer] null (the server list hasn't loaded) leaves the workspace out.
  */
@@ -48,6 +51,10 @@ internal fun RaftAppShellTopBar(
     windowWidth: Dp,
     modifier: Modifier = Modifier,
     topSafeArea: Dp = 0.dp,
+    /** The bell at the trailing end; null draws none. */
+    bell: RaftAppShellTopBarState? = null,
+    /** A tap on the bell, before it toggles (the shell closes the server panel). */
+    onBellToggle: () -> Unit = {},
 ) {
     val unreadDescription = stringResource(MR.strings.tab_activity_unread_dot)
     val otherUnreadDescription = stringResource(MR.strings.home_server_switcher_other_unread)
@@ -122,6 +129,18 @@ internal fun RaftAppShellTopBar(
                 }
             },
             center = { RaftSearchTrigger(label = searchLabel, onClick = onSearchClick, windowWidth = windowWidth) },
+            trailing = {
+                if (bell != null) {
+                    RaftAppTopBarNotificationBell(
+                        notifications = bell.notifications,
+                        open = bell.bellOpen.value,
+                        onToggle = {
+                            onBellToggle()
+                            bell.bellOpen.value = !bell.bellOpen.value
+                        },
+                    )
+                }
+            },
         )
     }
 }
@@ -132,3 +151,24 @@ internal fun RaftAppShellTopBar(
  */
 internal fun raftAppShellTopBarMenuTopInset(topSafeArea: Dp): Dp =
     topSafeArea + RaftTopBarDefaults.Height - RaftTopBarDefaults.ItemInset
+
+/**
+ * The wide layout's top bar, as the pages under it see it (artin task #8, follow-up to #3550). Its
+ * presence ([LocalRaftAppShellTopBar] non-null) tells a tab root's list pane that the top bar is
+ * above it, so the list has no head of its own (web MainLayout `hideTitle={showTopBar}`).
+ *
+ * The bell moved from the Home list's head to the top bar: Home publishes its notifications and
+ * actions here ([notifications], [onView], [onDismiss]) and keeps [bellOpen] as its notification
+ * center's open state, so Home's focus-loss and tab-switch dismissals still close it. The shell
+ * draws the bell and its popover.
+ */
+@Stable
+internal class RaftAppShellTopBarState {
+    val bellOpen: MutableState<Boolean> = mutableStateOf(false)
+    var notifications: List<RaftHomeNotificationItem> by mutableStateOf(emptyList())
+    var onView: (RaftHomeNotificationItem) -> Unit by mutableStateOf({})
+    var onDismiss: (RaftHomeNotificationItem) -> Unit by mutableStateOf({})
+}
+
+/** The wide top bar over the shell's pages; null on the phone (and outside the shell). */
+internal val LocalRaftAppShellTopBar = staticCompositionLocalOf<RaftAppShellTopBarState?> { null }
