@@ -127,6 +127,15 @@ must remain separate for the exact being reviewed.
     `processing_state=VALID`, the named internal group assigned, and
     `internal_build_state=IN_BETA_TESTING` (Apple `auto_notify_enabled` may
     be the only notify path).
+9b. **Android and iOS external cadences are separate** (artin, 2026-10-23).
+    Android ships every release. iOS TestFlight internal also gets every
+    release. iOS external (Insiders, Beta App Review) is submitted only after
+    the previous external submission has been approved; releases in between
+    skip external and stay internal. Do not withdraw a pending external
+    review to replace it. When iOS does go external, its What to Test covers
+    everything since the last external release, not just the current one.
+    Community announcements cover only what is actually public on each
+    platform.
 10. Starting a release train requires a Raft **interval reminder**. As soon as
     the first platform draft is dispatched, the operator schedules a recurring
     10-minute reminder on the release thread. Each firing must fresh-read every
