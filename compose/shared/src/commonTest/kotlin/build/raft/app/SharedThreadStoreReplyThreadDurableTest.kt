@@ -4,6 +4,8 @@ import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.RawMessagePage
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
+import build.raft.app.data.ThreadMessagesPage
+import build.raft.app.data.WireMessage
 import build.raft.app.data.ThreadReplyCacheIdentitySnapshot
 import build.raft.app.network.sync.CanonicalConversationContextV2
 import build.raft.app.network.sync.CanonicalMessageEnvelopeV2
@@ -28,6 +30,7 @@ import build.raft.app.network.sync.TopLevelScopeRefV2
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.runBlocking
@@ -176,7 +179,7 @@ class SharedThreadStoreReplyThreadDurableTest {
         val replyParent: ThreadDurableReplyParent,
     )
 
-    private class FakeReader(private val frame: ThreadDurableLastKnownFrame?) : ThreadDurableLastKnownReader {
+    private class FakeReader(var frame: ThreadDurableLastKnownFrame?) : ThreadDurableLastKnownReader {
         val topLevelReads = mutableListOf<SyncScopeId>()
         val replyReads = mutableListOf<ReplyRead>()
 
@@ -323,11 +326,12 @@ class SharedThreadStoreReplyThreadDurableTest {
         loader: ThreadEnteredScopeSnapshotLoader? = null,
         extender: ThreadDurablePageExtender? = null,
         logs: MutableList<String> = mutableListOf(),
+        payloadStore: SharedThreadPayloadStore? = storeScope?.let { SharedThreadPayloadStore(scope = it) },
     ): SharedThreadDataSource =
         SharedThreadDataSource(
             networkApi = api,
             messageStore = storeScope?.let { SharedThreadMessageStore(scope = it) },
-            payloadStore = storeScope?.let { SharedThreadPayloadStore(scope = it) },
+            payloadStore = payloadStore,
             sessionStore = InMemoryRaftAuthSessionStore(ownerA.session),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
             replyCacheIdentityAuthority = { ownerA },
@@ -413,4 +417,176 @@ class SharedThreadStoreReplyThreadDurableTest {
             status = "loading",
             canSend = true,
         )
+
+    // ---- Hands 4b6ccb0d: a confirmed own send survives a summary advance into the reopened first frame ----
+
+    /** [replyRoute] with its typed parent kind, which a pending send's route identity requires. */
+    private fun sendableReplyRoute(): RaftThreadScreenPayload = replyRoute().copy(parentChannelKind = "channel")
+
+    /** Replies r-[first]..r-[last] of `thread-1` as the messages endpoint returns them. */
+    private fun repliesResponse(range: IntRange): String =
+        range.joinToString(prefix = """{"historyLimited":false,"messages":[""", postfix = "]}") { index ->
+            """{"id":"r-$index","seq":$index,"channelId":"thread-1","content":"reply $index",""" +
+                """"createdAt":"2026-05-19T16:00:${index.toString().padStart(2, '0')}Z","senderId":"u-a",""" +
+                """"senderName":"Owner A","senderType":"user","messageType":"chat"}"""
+        }
+
+    private fun ownSentPage(index: Int): ThreadMessagesPage =
+        ThreadMessagesPage(
+            messages = listOf(
+                WireMessage(
+                    id = "r-$index",
+                    seq = index.toLong(),
+                    channelId = "thread-1",
+                    senderType = "user",
+                    senderId = "u-a",
+                    senderName = "Owner A",
+                    messageType = "chat",
+                    content = "reply $index",
+                    createdAt = "2026-05-19T16:01:00Z",
+                ),
+            ),
+            canLoadMoreBefore = false,
+            canLoadMoreAfter = false,
+        )
+
+    private fun summary(replyCount: Int): SharedThreadSummaryFact =
+        SharedThreadSummaryFact(
+            replyCount = replyCount,
+            latestActivityMessageId = "r-$replyCount",
+            latestActivityPreview = "reply $replyCount",
+            latestActivityAt = "2026-05-19T16:01:${replyCount.toString().padStart(2, '0')}Z",
+            lastMessageId = "r-$replyCount",
+            lastMessagePreview = "reply $replyCount",
+            lastMessageAt = "2026-05-19T16:01:${replyCount.toString().padStart(2, '0')}Z",
+        )
+
+    @Test
+    fun ownSendSurvivesAnInboxSummaryAdvanceIntoTheReopenedFirstFrame() = runBlocking {
+        val logs = mutableListOf<String>()
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + scopeJob)
+        val api = SharedThreadStoreTest.FakeThreadApi(bodyText = repliesResponse(1..15))
+        // The disk holds the thread as it was before the send (the realtime echo is never written to a
+        // discontinuous reply-thread window).
+        val reader = FakeReader(replyFrame(count = 15))
+        val loader = FakeLoader()
+        val payloadStore = SharedThreadPayloadStore(scope = scope)
+        val dataSource = dataSource(api, scope, reader = reader, loader = loader, logs = logs, payloadStore = payloadStore)
+        val context = assertNotNull(dataSource.captureReplyCacheProducerContext())
+        val first = SharedThreadStore(dataSource, scope = scope, diagnosticsLogger = logs::add)
+        first.accept(SharedThreadIntent.Start(sendableReplyRoute()))
+        withTimeout(5_000L) { while (logs.none { "thread_refresh_result threadId=thread-1" in it }) yield() }
+        assertEquals(15, first.state.value.payload.messages.size)
+
+        // 1. The user's send is confirmed: the visible page and the memory cache hold 16 replies.
+        first.accept(
+            SharedThreadIntent.ReplaceLocalSendWithSentPage(
+                messageId = "local-16",
+                page = ownSentPage(16),
+                expectedProvenance = context.provenance,
+                expectedRoute = first.state.value.payload.resolveThreadRouteIdentity(),
+            ),
+        )
+        assertEquals(
+            (1..16).map { "r-$it" },
+            first.state.value.payload.messages.map { it.id },
+        )
+        // 2. The Activity inbox reloads with the higher reply count: the memory entry is superseded.
+        payloadStore.freshnessLedger.acceptSummary("server-1", "thread-1", summary(15))
+        assertTrue(payloadStore.freshnessLedger.acceptSummary("server-1", "thread-1", summary(16)))
+        assertEquals(null, dataSource.cachedPayloadIfCurrent("thread-1", context.provenance), "precondition: get() misses")
+        // 3. Leave; 4. reopen with the network down, so only the first frame can show the send.
+        first.clear()
+        api.failChannelMessages = true
+        val reopenLogStart = logs.size
+        val reopened = SharedThreadStore(dataSource, scope = scope, diagnosticsLogger = logs::add)
+        reopened.accept(SharedThreadIntent.Start(sendableReplyRoute()))
+
+        val reopenLogs = logs.drop(reopenLogStart)
+        assertTrue(
+            reopenLogs.any { "thread_visible_payload threadId=thread-1 status=content messages=16" in it },
+            reopenLogs.toString(),
+        )
+        assertTrue(
+            reopenLogs.any { "thread_start_superseded_memory threadId=thread-1" in it && "memorySeq=16 durableSeq=15 chosen=memory" in it },
+            reopenLogs.toString(),
+        )
+        assertEquals((1..16).map { "r-$it" }, reopened.state.value.payload.messages.map { it.id })
+        scopeJob.cancelAndJoin()
+    }
+
+    @Test
+    fun aSupersededMemoryCopyOlderThanTheDiskStillLoses() = runBlocking {
+        val logs = mutableListOf<String>()
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(coroutineContext + scopeJob)
+        val api = SharedThreadStoreTest.FakeThreadApi(bodyText = repliesResponse(1..10))
+        val reader = FakeReader(frame = null)
+        val payloadStore = SharedThreadPayloadStore(scope = scope)
+        val dataSource = dataSource(api, scope, reader = reader, logs = logs, payloadStore = payloadStore)
+        // Memory learns replies 1..10, then a summary supersedes it while the disk moved on to 1..15.
+        val first = SharedThreadStore(dataSource, scope = scope, diagnosticsLogger = logs::add)
+        first.accept(SharedThreadIntent.Start(sendableReplyRoute()))
+        withTimeout(5_000L) { while (logs.none { "thread_refresh_result threadId=thread-1" in it }) yield() }
+        assertEquals(10, first.state.value.payload.messages.size)
+        first.clear()
+        payloadStore.freshnessLedger.acceptSummary("server-1", "thread-1", summary(10))
+        assertTrue(payloadStore.freshnessLedger.acceptSummary("server-1", "thread-1", summary(15)))
+        reader.frame = replyFrame(count = 15)
+        api.failChannelMessages = true
+        val reopenLogStart = logs.size
+        val reopened = SharedThreadStore(dataSource, scope = scope, diagnosticsLogger = logs::add)
+        reopened.accept(SharedThreadIntent.Start(sendableReplyRoute()))
+
+        val reopenLogs = logs.drop(reopenLogStart)
+        assertTrue(reopenLogs.any { "memorySeq=10 durableSeq=15 chosen=durable" in it }, reopenLogs.toString())
+        assertTrue(reopenLogs.any { "thread_visible_payload threadId=thread-1 status=content messages=15" in it }, reopenLogs.toString())
+        assertTrue(reopened.state.value.payload.durableLastKnown)
+        assertEquals((1..15).map { "reply $it" }, reopened.state.value.payload.messages.map { it.body })
+        scopeJob.cancelAndJoin()
+    }
+
+    private suspend fun ownSendCatchUpRun(diskHasTheSend: Boolean): Pair<List<ReplyRead>, List<String>> =
+        kotlinx.coroutines.coroutineScope {
+            val logs = mutableListOf<String>()
+            val scopeJob = SupervisorJob()
+            val scope = CoroutineScope(coroutineContext + scopeJob)
+            val api = SharedThreadStoreTest.FakeThreadApi(bodyText = repliesResponse(1..15))
+            val reader = FakeReader(replyFrame(count = 15))
+            val loader = FakeLoader()
+            val dataSource = dataSource(api, scope, reader = reader, loader = loader, logs = logs)
+            val context = assertNotNull(dataSource.captureReplyCacheProducerContext())
+            val store = SharedThreadStore(dataSource, scope = scope, diagnosticsLogger = logs::add)
+            store.accept(SharedThreadIntent.Start(sendableReplyRoute()))
+            withTimeout(5_000L) { while (logs.none { "thread_refresh_result threadId=thread-1" in it }) yield() }
+            withTimeout(5_000L) { while (loader.replyLoads.isEmpty()) yield() }
+            loader.replyLoads.clear()
+            if (diskHasTheSend) reader.frame = replyFrame(count = 16)
+            store.accept(
+                SharedThreadIntent.ReplaceLocalSendWithSentPage(
+                    messageId = "local-16",
+                    page = ownSentPage(16),
+                    expectedProvenance = context.provenance,
+                    expectedRoute = store.state.value.payload.resolveThreadRouteIdentity(),
+                ),
+            )
+            delay(SharedThreadOwnSendDurableCheckDelayMillis + 500L)
+            repeat(20) { yield() }
+            scopeJob.cancelAndJoin()
+            loader.replyLoads.toList() to logs.filter { "thread_own_send_durable_catchup" in it }
+        }
+
+    @Test
+    fun aConfirmedSendMissingFromTheDiskRefetchesTheThreadsEnterSnapshot() = runBlocking {
+        val (loads, logs) = ownSendCatchUpRun(diskHasTheSend = false)
+        assertEquals(listOf(ReplyRead(partition(ownerA), "thread-1", parent)), loads, logs.toString())
+        assertEquals(1, logs.size, logs.toString())
+        assertTrue("sent=1 stored=false requested=true" in logs.single(), logs.toString())
+        // Twin: identical send whose echo already reached the disk fetches nothing.
+        val (twinLoads, twinLogs) = ownSendCatchUpRun(diskHasTheSend = true)
+        assertEquals(emptyList(), twinLoads)
+        assertEquals(emptyList(), twinLogs)
+    }
+
 }
