@@ -40,14 +40,15 @@ internal fun interface RealtimeCanonicalFinalOwnerGateway {
     ): Boolean
 }
 
-/** One immutable per-server snapshot decides both flags for one event. Missing/unresolved values are OFF. */
+/**
+ * One immutable per-server snapshot decides the route for one event. T3 (the retired `sync_core_messages_v1`)
+ * is always on once the snapshot resolves; an unresolved snapshot and a missing T4 value are OFF.
+ */
 internal fun realtimeCanonicalFinalFlagRoute(
     snapshot: ServerFeatureFlagSnapshot,
-    t3FlagKey: String,
     t4FlagKey: String,
 ): RealtimeCanonicalFinalFlagRoute {
     if (!snapshot.resolved) return RealtimeCanonicalFinalFlagRoute.LegacyWithoutT3
-    if (!snapshot.isEnabled(t3FlagKey)) return RealtimeCanonicalFinalFlagRoute.LegacyWithoutT3
     if (!snapshot.isEnabled(t4FlagKey)) return RealtimeCanonicalFinalFlagRoute.LegacyWithCurrentT3
     return RealtimeCanonicalFinalFlagRoute.Prepared
 }
@@ -70,14 +71,11 @@ internal sealed interface RealtimeCanonicalFinalPreparationResult {
 internal class RealtimeCanonicalFinalSinkIntegrationSeam(
     private val snapshotForServer: (String) -> ServerFeatureFlagSnapshot,
     val registrationDirectory: RealtimeCanonicalFinalSinkRegistrationDirectory,
-    private val t3FlagKey: String = SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY,
     private val t4FlagKey: String,
     private val lazyRouterFactory: (() -> RealtimeCanonicalFinalSinkLazyRouter)? = null,
 ) {
     init {
-        require(t3FlagKey.isNotBlank()) { "canonical final sink T3 flag key must not be blank" }
         require(t4FlagKey.isNotBlank()) { "canonical final sink T4 flag key must not be blank" }
-        require(t3FlagKey != t4FlagKey) { "canonical final sink rollout must be independent from the T3 flag" }
     }
 
     private val routerLock = SynchronizedObject()
@@ -90,7 +88,7 @@ internal class RealtimeCanonicalFinalSinkIntegrationSeam(
                 ?: ServerFeatureFlagSnapshot.Unresolved
         return RealtimeCanonicalFinalFlagEvaluation(
             snapshot = snapshot,
-            route = realtimeCanonicalFinalFlagRoute(snapshot, t3FlagKey, t4FlagKey),
+            route = realtimeCanonicalFinalFlagRoute(snapshot, t4FlagKey),
         )
     }
 

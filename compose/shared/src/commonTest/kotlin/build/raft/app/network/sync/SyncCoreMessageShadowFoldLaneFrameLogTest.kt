@@ -2,14 +2,8 @@ package build.raft.app.network.sync
 
 import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.canonical.message.CanonicalMessageRow
-import build.raft.app.data.HomeNetworkResponse
-import build.raft.app.data.SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY
-import build.raft.app.data.SharedServerFeatureFlags
-import build.raft.app.data.RaftFeatureFlagsApi
-import build.raft.app.model.ServerId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -20,20 +14,6 @@ import kotlin.test.assertTrue
  * told apart from a second application.
  */
 class SyncCoreMessageShadowFoldLaneFrameLogTest {
-    private class FakeFlagsApi(private val enabled: Boolean) : RaftFeatureFlagsApi {
-        override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse =
-            HomeNetworkResponse(
-                code = 200,
-                bodyText =
-                    """{"evaluations":[{"key":"$SYNC_CORE_MESSAGES_FEATURE_FLAG_KEY","enabled":$enabled}]}""",
-            )
-    }
-
-    private fun flags(): SharedServerFeatureFlags =
-        SharedServerFeatureFlags(FakeFlagsApi(enabled = true)).also { flags ->
-            runBlocking { flags.prefetch(ServerId("s1")) }
-        }
-
     private val partition =
         DurablePartitionKey("s1", "p1", SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID, "env-test")
 
@@ -61,7 +41,6 @@ class SyncCoreMessageShadowFoldLaneFrameLogTest {
 
     private fun lane(logs: MutableList<String>): SyncCoreMessageShadowFoldLane =
         SyncCoreMessageShadowFoldLane(
-            featureFlags = flags(),
             adapter = NoopAdapter(),
             scope = CoroutineScope(SupervisorJob()),
             logger = logs::add,
