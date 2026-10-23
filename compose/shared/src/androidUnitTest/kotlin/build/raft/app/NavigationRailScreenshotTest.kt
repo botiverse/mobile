@@ -26,10 +26,11 @@ import org.robolectric.annotation.GraphicsMode
  * The wide layout's chrome, light and dark (artin task #8, the web desktop): the top bar
  * ([RaftAppShellTopBar]) across the window, with the current server's workspace button, the
  * workspace strip of five servers (Botiverse current, Acme Labs with unread) and the search field
- * centred; under it the navigation rail ([RaftNavigationRailTabBar]) with no header and no Search:
- * Home selected, Activity with unread, Tasks, Members, then Settings in the footer; beside it the
- * Home list pane, whose head shows "Home" rather than a second server switcher. Fixed fixture
- * data; verify / record as [RaftRobolectricScreenshot].
+ * centred, and the bell at the trailing end, dotted for the Home list's one notification; under it
+ * the navigation rail ([RaftNavigationRailTabBar]) with no header and no Search: Home selected,
+ * Activity with unread, Tasks, Members, then Settings in the footer; beside it the Home list pane,
+ * with no head of its own (web Sidebar `hideTitle`). Fixed fixture data; verify / record as
+ * [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -59,7 +60,8 @@ class NavigationRailScreenshotTest {
                 remember {
                     object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
                 }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+            val topBar = remember { RaftAppShellTopBarState() }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftAppShellTopBar provides topBar) {
                 Column(Modifier.width(1280.dp).height(600.dp).background(RaftColor.SurfaceWhite)) {
                     RaftAppShellTopBar(
                         currentServer = servers.first(),
@@ -70,6 +72,7 @@ class NavigationRailScreenshotTest {
                         searchLabel = "Search",
                         onSearchClick = {},
                         windowWidth = 1280.dp,
+                        bell = topBar,
                     )
                     Row(Modifier.weight(1f)) {
                         RaftNavigationRailTabBar(
@@ -85,8 +88,8 @@ class NavigationRailScreenshotTest {
                             bottomItems =
                                 listOf(RaftBottomTabItemPayload(key = "settings", label = "Settings", iconName = RaftLucideIconName.Settings)),
                         )
-                        // The Home list pane: its head shows the page name, not a second server
-                        // switcher (the top bar holds the server).
+                        // The Home list pane: no head under the top bar; its notifications go to the
+                        // top bar's bell.
                         Box(Modifier.width(320.dp).fillMaxHeight()) {
                             RaftStructuralHomeShell(
                                 currentServerName = servers.first().name,
@@ -99,6 +102,7 @@ class NavigationRailScreenshotTest {
                                     ),
                                 directMessages =
                                     listOf(RaftHomeConversationItem(id = "dm-ada", name = "Ada", kind = "dm", avatarLabel = "AD")),
+                                notifications = listOf(RaftHomeNotificationItem(id = "n-offline", title = "Computer offline")),
                                 serverSwitcherInTopBar = true,
                                 applyTopSafeArea = false,
                                 topSafeAreaOverride = 0.dp,

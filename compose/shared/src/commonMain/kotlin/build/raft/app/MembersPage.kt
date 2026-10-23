@@ -5573,11 +5573,16 @@ internal fun MembersListContent(
             .fillMaxSize()
             .background(RaftColor.SurfaceWhite)
     ) {
-        MembersPageHeader(
-            title = displayTitle,
-            refreshing = raftHeaderRefreshIndicatorVisible(refreshing, pullRefreshing),
-            onBack = onBack
-        )
+        // Under the wide top bar the Members list has no head (web Sidebar `hideTitle`, artin
+        // task #8); a pushed Members page (with Back) keeps its own.
+        val underTopBar = LocalRaftAppShellTopBar.current != null && onBack == null
+        if (!underTopBar) {
+            MembersPageHeader(
+                title = displayTitle,
+                refreshing = raftHeaderRefreshIndicatorVisible(refreshing, pullRefreshing),
+                onBack = onBack
+            )
+        }
         BoxWithConstraints(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentAlignment = Alignment.TopCenter,
@@ -5604,7 +5609,8 @@ internal fun MembersListContent(
                     .fillMaxSize()
                     .padding(horizontal = MembersListContainerInset),
             ) {
-                item { Spacer(Modifier.height(RaftAppSpacing.Xs)) }
+                // `pt-2` with no head under the top bar.
+                item { Spacer(Modifier.height(if (underTopBar) RaftAppSpacing.Sm else RaftAppSpacing.Xs)) }
                 item {
                     RaftSidebarSectionHeader(
                         title = displayAgentsLabel,

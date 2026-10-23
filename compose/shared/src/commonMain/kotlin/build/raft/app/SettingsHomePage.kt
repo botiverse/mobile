@@ -6780,7 +6780,11 @@ private fun RaftAppShellReadyContent(
         }
     }
 
+    // artin task #8: the wide top bar's bell, and the sign to the list panes under it that they
+    // have no head of their own.
+    val appShellTopBar = remember { RaftAppShellTopBarState() }
     val mainRouteSurface: @Composable () -> Unit = {
+        CompositionLocalProvider(LocalRaftAppShellTopBar provides appShellTopBar.takeIf { navRailActive }) {
         RaftAppShellSurface(
             shellScope = shellScope,
             bottomTabs = appShellBottomTabItems,
@@ -6880,6 +6884,7 @@ private fun RaftAppShellReadyContent(
                             servers = serverMenuModel?.servers.orEmpty(),
                             serverMenuOpen = serverMenuState.open,
                             onWorkspaceClick = {
+                                appShellTopBar.bellOpen.value = false
                                 bridge.log("app_shell_server_menu_toggle open=${!serverMenuState.open} from=top_bar")
                                 serverMenuState.toggle()
                             },
@@ -6891,6 +6896,7 @@ private fun RaftAppShellReadyContent(
                             onSearchClick = {
                                 // The rail's old Search entry: the inline Search over the current tab.
                                 serverMenuState.dismiss()
+                                appShellTopBar.bellOpen.value = false
                                 RaftProductEvents.navEntrySelected(
                                     destination = appShellNavDestination(AppShellRailSearchKey),
                                     surface = RaftNavSurface.TopBar,
@@ -6904,13 +6910,24 @@ private fun RaftAppShellReadyContent(
                                     .takeIf { it.widthPx > 0 && it.density > 0f }
                                     ?.let { (it.widthPx / it.density).dp } ?: 0.dp,
                             topSafeArea = shellScope.topSafeArea,
+                            bell = appShellTopBar,
+                            onBellToggle = { serverMenuState.dismiss() },
                         )
                     }
                 } else {
                     null
                 },
-            // The top bar's server panel opens under its workspace button, over the rail.
-            shellOverlay = if (navRailActive) { { serverMenuOverlay(true) } } else null,
+            // The top bar's server panel opens under its workspace button, and the bell's popover
+            // under the bell, over the rail.
+            shellOverlay =
+                if (navRailActive) {
+                    {
+                        serverMenuOverlay(true)
+                        RaftAppTopBarNotificationOverlay(appShellTopBar, raftAppShellTopBarMenuTopInset(shellScope.topSafeArea))
+                    }
+                } else {
+                    null
+                },
         ) {
                     // The wide top bar clears the status bar: the pages under it start at its seam.
                     @Suppress("NAME_SHADOWING")
@@ -7998,6 +8015,7 @@ private fun RaftAppShellReadyContent(
                     )
                 }
             }
+        }
         }
     }
 
@@ -19473,7 +19491,10 @@ private fun SharedMembersScreen(
     when (val current = state) {
         SharedMembersUiState.Loading ->
             Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
-                MembersPageHeader(title = membersTitle, onBack = onBack)
+                // No head under the wide top bar, as the loaded list (MembersListContent).
+                if (LocalRaftAppShellTopBar.current == null || onBack != null) {
+                    MembersPageHeader(title = membersTitle, onBack = onBack)
+                }
                 RaftCenteredLoading()
         }
         is SharedMembersUiState.Error ->
@@ -20037,7 +20058,7 @@ private fun SharedHomeScreen(
     prefersChineseCommunity: Boolean = false,
     serverDrawerEnabled: Boolean = false,
     homeServerAvatarEnabled: Boolean = false,
-    /** Wide layout: the top bar holds the server switcher, so the list's head shows "Home". */
+    /** Wide layout: the top bar holds the server switcher and the bell, so the list has no head. */
     serverSwitcherInTopBar: Boolean = false,
     /** The phone bottom bar is on screen: the list drops its Search / Activity rows. */
     searchAndActivityOnShellNav: Boolean = false,
@@ -27655,13 +27676,16 @@ internal fun SettingsHomeContent(
             Modifier
         }
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.Canvas)) {
-        RaftMainTabPageHeader(
-            title = payload.title,
-            subtitle = null,
-            modifier = headerModifier,
-            applyTopSafeArea = applyTopSafeArea,
-            onBack = onBack
-        )
+        // Under the wide top bar the Settings tab has no head (web Sidebar `hideTitle`, artin task #8).
+        if (LocalRaftAppShellTopBar.current == null || onBack != null) {
+            RaftMainTabPageHeader(
+                title = payload.title,
+                subtitle = null,
+                modifier = headerModifier,
+                applyTopSafeArea = applyTopSafeArea,
+                onBack = onBack
+            )
+        }
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
