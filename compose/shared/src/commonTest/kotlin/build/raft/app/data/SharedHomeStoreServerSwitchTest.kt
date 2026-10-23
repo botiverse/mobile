@@ -37,7 +37,7 @@ class SharedHomeStoreServerSwitchTest {
         h.store.accept(SharedHomeIntent.SelectServer("server-2"))
         assertEquals("server-2", h.serverId())
         assertNull(h.switch().pendingServerId)
-        assertEquals(0, h.switch().failureCount)
+        assertEquals(0, h.switch().failureCount, h.logs.joinToString("\n"))
         assertFalse(h.refreshing())
         h.close()
     }
@@ -136,13 +136,13 @@ class SharedHomeStoreServerSwitchTest {
         gateTwo.complete(Unit)
         first.join()
         assertEquals("server-3", h.switch().pendingServerId, "the superseded load neither lands nor fails the new switch")
-        assertEquals(0, h.switch().failureCount)
+        assertEquals(0, h.switch().failureCount, h.logs.joinToString("\n"))
 
         gateThree.complete(Unit)
         second.join()
         assertEquals("server-3", h.serverId())
         assertNull(h.switch().pendingServerId)
-        assertEquals(0, h.switch().failureCount)
+        assertEquals(0, h.switch().failureCount, h.logs.joinToString("\n"))
         h.close()
     }
 
@@ -198,6 +198,7 @@ class SharedHomeStoreServerSwitchTest {
         val store: SharedHomeStore,
         val auth: InMemoryRaftAuthSessionStore,
         val api: SwitchHomeApi,
+        val logs: List<String>,
     ) {
         fun switch(): HomeServerSwitchState = store.state.value.serverSwitchState
 
@@ -208,11 +209,14 @@ class SharedHomeStoreServerSwitchTest {
         fun close() = scope.cancel()
     }
 
-    private suspend fun TestScope.harness(timeoutMillis: Long = SERVER_SWITCH_TIMEOUT_MS): Harness {
+    // Virtual time jumps whenever the test waits on an idle scheduler, so only the timeout case
+    // runs with a reachable timeout; the others are about how loads end.
+    private suspend fun TestScope.harness(timeoutMillis: Long = 3_600_000L): Harness {
         val scope = CoroutineScope(SupervisorJob() + UnconfinedTestDispatcher(testScheduler))
         val servers = authServerFixtures() + StoredAuthServer(id = "server-3", name = "Three", slug = "three")
         val auth = InMemoryRaftAuthSessionStore(authSessionFixture(servers = servers))
         val api = SwitchHomeApi()
+        val logs = mutableListOf<String>()
         val store =
             SharedHomeStore(
                 authStore = auth,
@@ -229,10 +233,11 @@ class SharedHomeStoreServerSwitchTest {
                         }
                     ),
                 scope = scope,
+                diagnosticsLogger = { line -> if ("switch" in line || "drop" in line) logs += line },
                 serverSwitchTimeoutMillis = timeoutMillis,
             )
         store.accept(SharedHomeIntent.Start)
-        return Harness(scope, store, auth, api)
+        return Harness(scope, store, auth, api, logs)
     }
 
     private fun home(serverId: ServerId): HomeSnapshot =
