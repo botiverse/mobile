@@ -283,7 +283,7 @@ fun RaftRadio(
 }
 
 @Composable
-private fun RaftRadioBox(selected: Boolean, enabled: Boolean, focused: Boolean, modifier: Modifier) {
+internal fun RaftRadioBox(selected: Boolean, enabled: Boolean, focused: Boolean, modifier: Modifier) {
     val colors = RaftTheme.colors
     val look = raftRadioLook(selected, enabled, colors)
     Box(

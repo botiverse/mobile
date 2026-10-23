@@ -9,7 +9,8 @@ import build.raft.app.data.RuntimeAccountUsageLoad
 import build.raft.app.data.RuntimeQuotaLineCopy
 import build.raft.app.data.RuntimeQuotaSummary
 import build.raft.app.data.canViewMachineRuntimeAccountUsage
-import build.raft.app.data.formatRuntimeQuotaLine
+import build.raft.app.data.RuntimeQuotaLinePart
+import build.raft.app.data.runtimeQuotaLineParts
 import build.raft.app.data.summarizeRuntimeQuota
 import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftChoicePicker
@@ -82,15 +83,15 @@ internal fun rememberRuntimeQuotaLineCopy(): RuntimeQuotaLineCopy {
 }
 
 /**
- * The compact quota line of each of [requests] that has one, by option id. Reads go through
- * [access]'s store (60 s cache, one request per key in flight); nothing is read without
- * [access] (no usage on this route) or for a machine the viewer may not see.
+ * The usage read of each of [requests] [access] may read, by option id: absent while it loads.
+ * Reads go through [access]'s store (60 s cache, one request per key in flight); nothing is read
+ * without [access] (no usage on this route) or for a machine the viewer may not see.
  */
 @Composable
-internal fun rememberRuntimeQuotaLines(
+internal fun rememberRuntimeQuotaLoads(
     access: MembersRuntimeAccountUsageAccess?,
     requests: List<RuntimeQuotaRequest>
-): Map<String, String> {
+): RuntimeQuotaLoads {
     val keys = remember(access, requests) { runtimeQuotaKeys(access, requests) }
     val loads = remember(access) { mutableStateMapOf<RuntimeAccountUsageKey, RuntimeAccountUsageLoad>() }
     LaunchedEffect(access, keys.values.toSet()) {
@@ -104,8 +105,23 @@ internal fun rememberRuntimeQuotaLines(
             }
         }
     }
+    return RuntimeQuotaLoads(keys, keys.mapNotNull { (optionId, key) -> loads[key]?.let { optionId to it } }.toMap())
+}
+
+/** What [rememberRuntimeQuotaLoads] read: the [keys] it may read and the [loads] that came back. */
+internal data class RuntimeQuotaLoads(
+    val keys: Map<String, RuntimeAccountUsageKey>,
+    val loads: Map<String, RuntimeAccountUsageLoad>
+)
+
+/**
+ * The compact quota line of each option of [quota] that has one, by option id, in pieces
+ * ([runtimeQuotaLineParts]); reset times read relative to now.
+ */
+@Composable
+internal fun rememberRuntimeQuotaLineParts(quota: RuntimeQuotaLoads): Map<String, List<RuntimeQuotaLinePart>> {
     val copy = rememberRuntimeQuotaLineCopy()
-    val summaries = keys.mapNotNull { (optionId, key) -> loads[key].quotaSummary(key)?.let { optionId to it } }
+    val summaries = quota.keys.mapNotNull { (optionId, key) -> quota.loads[optionId].quotaSummary(key)?.let { optionId to it } }
     val timeContext = LocalRaftTimeContextProvider.current?.current
     // Relative reset words ("3 小时后") for every used-up window, resolved in composition.
     val resetLabels =
@@ -113,8 +129,17 @@ internal fun rememberRuntimeQuotaLines(
             .flatMap { (_, summary) -> summary.segments.mapNotNull { if (it.usedUp) it.resetsAt else null } }
             .distinct()
             .associateWith { raftRelativeTimestampLabel(it, timeContext) }
-    return summaries.associate { (optionId, summary) -> optionId to formatRuntimeQuotaLine(summary, copy) { resetLabels[it] } }
+    return summaries.associate { (optionId, summary) -> optionId to runtimeQuotaLineParts(summary, copy) { resetLabels[it] } }
 }
+
+/** The compact quota line of each of [requests] that has one, by option id ([rememberRuntimeQuotaLoads]). */
+@Composable
+internal fun rememberRuntimeQuotaLines(
+    access: MembersRuntimeAccountUsageAccess?,
+    requests: List<RuntimeQuotaRequest>
+): Map<String, String> =
+    rememberRuntimeQuotaLineParts(rememberRuntimeQuotaLoads(access, requests))
+        .mapValues { (_, parts) -> parts.joinToString(" · ") { it.text } }
 
 /** The machine a runtime picker reads quota lines on, and its facts when they are known. */
 internal data class RuntimeQuotaMachine(

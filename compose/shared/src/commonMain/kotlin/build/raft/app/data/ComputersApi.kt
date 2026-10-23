@@ -544,7 +544,21 @@ internal data class ComputerSummary(
     /** The human who attached a managed Computer (server `creator`); null for raw daemons or a departed attacher. */
     val creator: SettingsComputerCreatorSnapshot? = null,
     /** Server `agentScopes`: per-agent memory scope state; null when offline, off, or from an older server/daemon. */
-    val agentScopes: SettingsComputerAgentScopesSnapshot? = null
+    val agentScopes: SettingsComputerAgentScopesSnapshot? = null,
+    /** Server `diskStatus`: free and total disk while online; null when offline or never reported. */
+    val diskStatus: ComputerSizeStatus? = null,
+    /** Server `memoryStatus`: free and total memory while online; null when offline, never reported, or an older Computer. */
+    val memoryStatus: ComputerSizeStatus? = null
+)
+
+/**
+ * slock `packages/shared/src/index.ts` `MachineDiskStatus` (and `MachineMemoryStatus`, the same
+ * shape): `{ availableBytes, totalBytes }`. Only a readable report is kept (web
+ * `readableDiskStatus`): a positive total and a free size that is not negative.
+ */
+internal data class ComputerSizeStatus(
+    val availableBytes: Double,
+    val totalBytes: Double
 )
 
 /** `POST …/computer/restart` accepted: [requestId] correlates the later `computer:restart:done`. */
@@ -734,8 +748,30 @@ private data class ComputerDto(
     val creator: ComputerCreatorDto? = null,
     // services/machineReadModel.ts `agentScopes: MachineAgentScopesStatus | null` (packages/shared/src/agentMemoryLimit.ts),
     // null unless the machine is online and its daemon reports `machine:agent_scopes`.
-    val agentScopes: MachineAgentScopesDto? = null
+    val agentScopes: MachineAgentScopesDto? = null,
+    // services/machineReadModel.ts `diskStatus: MachineDiskStatus | null` and
+    // `memoryStatus: MachineMemoryStatus | null` (packages/shared/src/index.ts), both null unless
+    // the machine is online; memory is absent from Computers older than its report (slock #11032).
+    val diskStatus: MachineSizeStatusDto? = null,
+    val memoryStatus: MachineSizeStatusDto? = null
 )
+
+/**
+ * slock `packages/shared/src/index.ts` `MachineDiskStatus` / `MachineMemoryStatus`:
+ * `{ availableBytes: number, totalBytes: number }`. Read as doubles so a JavaScript number in any
+ * spelling decodes; [toStatus] drops a report web `readableDiskStatus` would not show.
+ */
+@Serializable
+private data class MachineSizeStatusDto(
+    val availableBytes: Double? = null,
+    val totalBytes: Double? = null
+) {
+    fun toStatus(): ComputerSizeStatus? {
+        val total = totalBytes?.takeIf { it.isFinite() && it > 0.0 } ?: return null
+        val available = availableBytes?.takeIf { it.isFinite() && it >= 0.0 } ?: return null
+        return ComputerSizeStatus(availableBytes = available, totalBytes = total)
+    }
+}
 
 /**
  * slock packages/shared/src/agentMemoryLimit.ts `MachineAgentScopesStatus`:
@@ -939,7 +975,9 @@ private fun ComputerDto.toSummary(): ComputerSummary? {
         remoteUpgradeSupported = remoteUpgradeSupported,
         versionGate = versionGate?.toSnapshot(),
         creator = creator?.toSnapshot(),
-        agentScopes = agentScopes?.toSnapshot()
+        agentScopes = agentScopes?.toSnapshot(),
+        diskStatus = diskStatus?.toStatus(),
+        memoryStatus = memoryStatus?.toStatus()
     )
 }
 

@@ -179,18 +179,22 @@ internal fun runtimeQuotaPlanName(provider: RuntimeAccountUsageProvider, planLab
     return if (shown.startsWith(brand, ignoreCase = true)) shown else "$brand $shown"
 }
 
+/** One piece of a compact line; [usedUp] marks a used-up window (drawn in `warning-strong`). */
+internal data class RuntimeQuotaLinePart(val text: String, val usedUp: Boolean = false)
+
 /**
- * The compact line: "Claude Max · 5 小时 剩 72% · 本周 剩 40%". [resetLabel] turns a reset
- * timestamp into its relative words ("3 小时后"); null or blank drops the reset.
+ * The compact line in pieces: the plan, then each window ("5 小时 剩 72%"), or the plan's
+ * "needs attention" alone. [resetLabel] turns a reset timestamp into its relative words
+ * ("3 小时后"); null or blank drops the reset.
  */
-internal fun formatRuntimeQuotaLine(
+internal fun runtimeQuotaLineParts(
     summary: RuntimeQuotaSummary,
     copy: RuntimeQuotaLineCopy,
     resetLabel: (String) -> String?
-): String {
+): List<RuntimeQuotaLinePart> {
     val plan = runtimeQuotaPlanName(summary.provider, summary.planLabel)
-    if (summary.segments.isEmpty()) return copy.attention(plan)
-    val parts =
+    if (summary.segments.isEmpty()) return listOf(RuntimeQuotaLinePart(copy.attention(plan)))
+    val windows =
         summary.segments.map { segment ->
             val name =
                 when (segment.kind) {
@@ -200,13 +204,20 @@ internal fun formatRuntimeQuotaLine(
                 }
             if (segment.usedUp) {
                 val reset = segment.resetsAt?.let(resetLabel)?.trim()?.takeIf { it.isNotEmpty() }
-                if (reset != null) copy.usedUp(name, reset) else copy.usedUpNoReset(name)
+                RuntimeQuotaLinePart(if (reset != null) copy.usedUp(name, reset) else copy.usedUpNoReset(name), usedUp = true)
             } else {
-                copy.left(name, "${segment.percentLeft}%")
+                RuntimeQuotaLinePart(copy.left(name, "${segment.percentLeft}%"))
             }
         }
-    return (listOf(plan) + parts).joinToString(" · ")
+    return listOf(RuntimeQuotaLinePart(plan)) + windows
 }
+
+/** The compact line as one string: "Claude Max · 5 小时 剩 72% · 本周 剩 40%" ([runtimeQuotaLineParts]). */
+internal fun formatRuntimeQuotaLine(
+    summary: RuntimeQuotaSummary,
+    copy: RuntimeQuotaLineCopy,
+    resetLabel: (String) -> String?
+): String = runtimeQuotaLineParts(summary, copy, resetLabel).joinToString(" · ") { it.text }
 
 /**
  * Web `canViewMachineRuntimeAccountUsage` (slock `packages/web/src/utils/

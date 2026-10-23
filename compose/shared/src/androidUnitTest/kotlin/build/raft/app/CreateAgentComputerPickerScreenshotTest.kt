@@ -84,7 +84,7 @@ class CreateAgentComputerPickerScreenshotTest {
         }
 }
 
-private val pickerTimeContext =
+internal val pickerTimeContext =
     RaftTimeContext(
         localOffsetMinutes = 8 * 60,
         todayEpochDay = raftEpochDayForDate(2026, 10, 22),
@@ -92,9 +92,9 @@ private val pickerTimeContext =
         nowEpochMillis = 1_792_635_000_000L
     )
 
-private val pickerOwner = SharedComputersOwner(environmentId = "https://api.example", accountId = "user-1", sessionGeneration = "gen-1")
+internal val pickerOwner = SharedComputersOwner(environmentId = "https://api.example", accountId = "user-1", sessionGeneration = "gen-1")
 
-private fun claudeUsage(vararg windows: String, plan: String = "max"): String =
+internal fun claudeUsage(vararg windows: String, plan: String = "max"): String =
     """{"state":"fresh","snapshot":{"protocolVersion":2,"provider":"claude","collectedAt":"2026-10-22T02:04:00.000Z","accounts":[{"accountKey":"acct","planLabel":"$plan","health":"ok","windows":[${windows.joinToString(",")}]}]}}"""
 
 // Labels as @botiverse/oar 0.69 writes them for Claude (runtimes/claude/account-usage.js); ids are opaque.
@@ -120,9 +120,10 @@ private val usageByMachine =
             )
     )
 
-private class PickerUsageApi : RaftComputersApi {
+/** Answers usage reads from [usage] by machine id (no snapshot for any other); shared by the picker screenshot tests. */
+internal class PickerUsageApi(private val usage: Map<String, String> = usageByMachine) : RaftComputersApi {
     override suspend fun runtimeAccountUsage(serverId: ServerId, machineId: String, provider: String): HomeNetworkResponse =
-        HomeNetworkResponse(code = 200, bodyText = usageByMachine[machineId] ?: """{"state":"missing","snapshot":null}""")
+        HomeNetworkResponse(code = 200, bodyText = usage[machineId] ?: """{"state":"missing","snapshot":null}""")
 
     override suspend fun machines(serverId: ServerId): HomeNetworkResponse = error("unused")
     override suspend fun registerMachine(serverId: ServerId, body: String): HomeNetworkResponse = error("unused")
@@ -136,12 +137,12 @@ private class PickerUsageApi : RaftComputersApi {
 }
 
 @Composable
-private fun rememberPickerAccess(): MembersRuntimeAccountUsageAccess =
-    remember {
+internal fun rememberPickerAccess(usage: Map<String, String> = usageByMachine): MembersRuntimeAccountUsageAccess =
+    remember(usage) {
         MembersRuntimeAccountUsageAccess(
             store =
                 SharedRuntimeAccountUsageStore(
-                    client = RaftComputersApiClient(PickerUsageApi()),
+                    client = RaftComputersApiClient(PickerUsageApi(usage)),
                     currentIdentity = { pickerOwner },
                     clock = { pickerTimeContext.nowEpochMillis ?: 0L }
                 ),
