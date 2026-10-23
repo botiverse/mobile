@@ -36,6 +36,8 @@ import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.onSizeChanged
@@ -355,6 +357,9 @@ internal fun activitySwipeFullDone(revealPx: Float, widthPx: Float): Boolean =
     // Half a pixel of slack: 0.6f is not exact in binary, and a sub-pixel never matters to a finger.
     widthPx > 0f && revealPx + 0.5f >= widthPx * ActivitySwipeFullDoneFraction
 
+/** A release at least this fast (per second) toward or away from the buttons opens or closes the row. */
+internal val ActivitySwipeFlickVelocity = 400.dp
+
 /** Where a released row goes. */
 internal enum class ActivitySwipeRelease {
     /** Springs back closed. */
@@ -376,10 +381,16 @@ internal fun activitySwipeReleaseTarget(
     buttonsWidthPx: Float,
     widthPx: Float,
     doneEnabled: Boolean = true,
+    revealVelocityPxPerSec: Float = 0f,
+    flickVelocityPxPerSec: Float = Float.POSITIVE_INFINITY,
 ): ActivitySwipeRelease =
     when {
         widthPx <= 0f || buttonsWidthPx <= 0f || revealPx <= 0f -> ActivitySwipeRelease.Close
+        // Only distance applies Done, never a flick, so a fast swipe cannot finish a row by accident.
         doneEnabled && activitySwipeFullDone(revealPx, widthPx) -> ActivitySwipeRelease.Done
+        // A quick flick decides by direction: toward the buttons opens, back closes (#785).
+        revealVelocityPxPerSec >= flickVelocityPxPerSec -> ActivitySwipeRelease.Open
+        revealVelocityPxPerSec <= -flickVelocityPxPerSec -> ActivitySwipeRelease.Close
         revealPx > buttonsWidthPx / 2f -> ActivitySwipeRelease.Open
         else -> ActivitySwipeRelease.Close
     }
@@ -705,6 +716,7 @@ internal fun ActivitySwipeActionsBox(
                     var target = reveal.value
                     var release = ActivitySwipeRelease.Close
                     val tickGate = ActivitySwipeFullDoneTickGate()
+                    val velocity = VelocityTracker()
                     tickGate.update(doneEnabled && activitySwipeFullDone(target, widthPx.toFloat()))
                     try {
                         while (true) {
@@ -712,9 +724,21 @@ internal fun ActivitySwipeActionsBox(
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
                             if (!change.pressed) {
                                 change.consume()
-                                release = activitySwipeReleaseTarget(target, buttonsWidthPx, widthPx.toFloat(), doneEnabled)
+                                velocity.addPointerInputChange(change)
+                                // Positive while uncovering the buttons: leftward in LTR, rightward in RTL.
+                                val dragVelocityX = velocity.calculateVelocity().x
+                                release =
+                                    activitySwipeReleaseTarget(
+                                        target,
+                                        buttonsWidthPx,
+                                        widthPx.toFloat(),
+                                        doneEnabled,
+                                        revealVelocityPxPerSec = if (isLtr) -dragVelocityX else dragVelocityX,
+                                        flickVelocityPxPerSec = ActivitySwipeFlickVelocity.toPx(),
+                                    )
                                 break
                             }
+                            velocity.addPointerInputChange(change)
                             target = activitySwipeRevealPx(target, change.position.x - change.previousPosition.x, widthPx.toFloat(), isLtr)
                             change.consume()
                             if (tickGate.update(doneEnabled && activitySwipeFullDone(target, widthPx.toFloat()))) currentFullDoneTick.tick()

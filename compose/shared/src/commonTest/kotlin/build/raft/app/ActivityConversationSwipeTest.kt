@@ -438,6 +438,23 @@ class ActivitySwipeButtonsSpecTest {
     }
 
     @Test
+    fun quickFlickOpensOrClosesByDirectionButNeverAppliesDone() {
+        val two = 2 * button
+        val flick = 1000f
+        fun release(reveal: Float, velocity: Float) =
+            activitySwipeReleaseTarget(reveal, two, width, revealVelocityPxPerSec = velocity, flickVelocityPxPerSec = flick)
+        // A short, fast flick toward the buttons opens; a fast flick back closes even past halfway.
+        assertEquals(ActivitySwipeRelease.Open, release(20f, flick))
+        assertEquals(ActivitySwipeRelease.Close, release(120f, -flick))
+        // Slower than a flick: distance decides as before.
+        assertEquals(ActivitySwipeRelease.Close, release(20f, flick - 1f))
+        assertEquals(ActivitySwipeRelease.Open, release(120f, -(flick - 1f)))
+        // Past 60% is Done whatever the speed; a flick alone never reaches Done.
+        assertEquals(ActivitySwipeRelease.Done, release(240f, -flick))
+        assertEquals(ActivitySwipeRelease.Open, release(200f, 10 * flick))
+    }
+
+    @Test
     fun fullDoneIsPastSixtyPercentOfTheRowAndGoesAwayWhenTheFingerComesBack() {
         assertEquals(0.6f, ActivitySwipeFullDoneFraction)
         val path = listOf(50f, 150f, 239f, 240f, 300f, 230f, 260f)
