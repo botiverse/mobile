@@ -1011,6 +1011,8 @@ internal class SharedHomeStore(
             if (message.seq != null && message.seq <= checkpoint.maxReadSeq) return@forEach
             val key = BackgroundUnreadScopeKey(serverId, scopeId)
             val projection = backgroundUnreadByScope.getOrPut(key) { BackgroundUnreadScopeProjection() }
+            // Already counted (live, then again in a `sync:resume` batch): seqs are server-global.
+            if (message.seq != null && projection.countBySeq.containsKey(message.seq)) return@forEach
             val seq = message.seq
             if (seq == null) {
                 projection.unknownSeqCount += 1
@@ -4638,6 +4640,10 @@ private fun ConversationSummary.withRealtimePreview(
                     channelId?.value == activeConversationId ||
                     messageStreamChannelId().value == activeConversationId
                 )
+    // Exact catch-up (slock #10982) can deliver a message twice: live, then in a `sync:resume` batch.
+    // A message is new for this row only above the row's `lastMessageSeq`; a seq-less one keeps the
+    // previous id-only rule.
+    val rowSeq = lastMessageSeq
     val unreadCandidates =
         if (!incrementUnread || isActiveConversation) {
             emptyList()
@@ -4646,25 +4652,35 @@ private fun ConversationSummary.withRealtimePreview(
                 .distinctBy { it.id }
                 .filter { message ->
                     message.id != lastMessageId &&
-                        message.author.id.value != currentMemberId
+                        message.author.id.value != currentMemberId &&
+                        (rowSeq == null || message.seq == null || message.seq > rowSeq)
                 }
         }
     val unreadIncrement = unreadCandidates.size
     // Web projects `hasMention` from the unread messages it holds: an unread one that mentions the user.
     val mentioned = unreadCandidates.any { message -> message.mentions.mentionsUser(currentMemberId) }
-    val next =
+    val withUnread =
         copy(
             mentionCount = if (mentioned) maxOf(mentionCount, 1) else mentionCount,
             mentionCountKnown = mentionCountKnown || mentioned,
-            lastMessageId = latest.id,
-            lastMessageSeq = latest.seq ?: lastMessageSeq,
-            lastMessagePreview = latest.body,
-            lastMessageAt = latest.timestampLabel,
-            lastMessageSenderName = latest.author.displayName,
             unreadCount = unreadCount + unreadIncrement,
             firstUnreadMessageId = firstUnreadMessageId ?: unreadCandidates.firstOrNull()?.id,
             unreadCountKnown = unreadCountKnown || unreadIncrement > 0
         )
+    // A late or repeated message below the row's latest never replaces its preview (nor lowers
+    // `lastMessageSeq`, which would let the next repeat count again).
+    val next =
+        if (rowSeq != null && latest.seq != null && latest.seq < rowSeq) {
+            withUnread
+        } else {
+            withUnread.copy(
+                lastMessageId = latest.id,
+                lastMessageSeq = latest.seq ?: lastMessageSeq,
+                lastMessagePreview = latest.body,
+                lastMessageAt = latest.timestampLabel,
+                lastMessageSenderName = latest.author.displayName
+            )
+        }
     return HomeRealtimeConversationPatch(next, unreadIncrement)
 }
 

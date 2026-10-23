@@ -181,6 +181,10 @@ class SharedActivityStore internal constructor(
     // One owner for live row patches, version-ledger changes, background reconcile scheduling,
     // and canonical load folds.
     private val realtimeOwnerLock = SynchronizedObject()
+    // Seqs the summary already counted from realtime (guarded by realtimeOwnerLock). Exact catch-up
+    // (slock #10982) can deliver a message twice — live, then in a `sync:resume` batch — and the
+    // summary path never patches rows, so the rows alone cannot tell. Seqs are server-global.
+    private val realtimeCountedUnreadSeqs = linkedSetOf<Long>()
 
     internal fun updateRuntimeIntegrations(
         authStore: RaftAuthSessionStore = this.authStore,
@@ -1096,7 +1100,17 @@ class SharedActivityStore internal constructor(
         val current = _state.value
         val snapshot = current.snapshot ?: return
         val currentUserId = currentUserId() ?: return
-        val increment = event.activitySummaryUnreadIncrement(snapshot, activeConversationId, currentUserId)
+        val increment =
+            synchronized(realtimeOwnerLock) {
+                event.activitySummaryUnreadIncrement(snapshot, activeConversationId, currentUserId) { seq ->
+                    // false = already counted; else record it (oldest dropped past the cap).
+                    realtimeCountedUnreadSeqs.add(seq).also {
+                        while (realtimeCountedUnreadSeqs.size > ActivityRealtimeCountedSeqLimit) {
+                            realtimeCountedUnreadSeqs.remove(realtimeCountedUnreadSeqs.first())
+                        }
+                    }
+                }
+            }
         if (increment <= 0) return
         reduceState(
             SharedActivityIntent.ApplyRealtimeSummaryEvent(event, activeConversationId),
@@ -3225,17 +3239,26 @@ private fun InboxItem.withActivityThreadTaskProjection(binding: ActivityTaskNoti
     )
 }
 
+private const val ActivityRealtimeCountedSeqLimit = 512
+
+/**
+ * [markCounted] records a counted message seq and answers false when it was counted before: a message
+ * delivered live and again in a `sync:resume` batch is one unread.
+ */
 private fun RealtimeEvent.activitySummaryUnreadIncrement(
     snapshot: InboxSnapshot,
     activeConversationId: String?,
-    currentUserId: String
+    currentUserId: String,
+    markCounted: (seq: Long) -> Boolean,
 ): Int =
     when (this) {
-        is MessageNew -> snapshot.unreadIncrementForMessage(message, activeConversationId, currentUserId)
+        is MessageNew -> snapshot.unreadIncrementForMessage(message, activeConversationId, currentUserId, markCounted)
         is SyncResumeResponse ->
             messages
                 .distinctBy { it.id }
-                .sumOf { message -> snapshot.unreadIncrementForMessage(message, activeConversationId, currentUserId) }
+                .sumOf { message ->
+                    snapshot.unreadIncrementForMessage(message, activeConversationId, currentUserId, markCounted)
+                }
         is ThreadUpdated ->
             unreadCount
                 ?.takeIf {
@@ -3253,7 +3276,8 @@ private fun RealtimeEvent.activitySummaryUnreadIncrement(
 private fun InboxSnapshot.unreadIncrementForMessage(
     message: Message,
     activeConversationId: String?,
-    currentUserId: String
+    currentUserId: String,
+    markCounted: (seq: Long) -> Boolean,
 ): Int {
     val channelId = message.channelId ?: message.threadChannelId ?: return 0
     if (message.author.id.value == currentUserId) return 0
@@ -3263,7 +3287,8 @@ private fun InboxSnapshot.unreadIncrementForMessage(
                 (item.threadChannelId == channelId || item.channelId == channelId)
         }) return 0
     if (items.any { item -> item.latestActivityMessageId == message.id || item.lastMessageId == message.id }) return 0
-    return 1
+    val seq = message.seq ?: return 1
+    return if (markCounted(seq)) 1 else 0
 }
 
 private fun isActiveActivityConversation(

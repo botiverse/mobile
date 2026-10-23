@@ -93,6 +93,7 @@ import build.raft.app.data.toThreadRouteId
 import build.raft.app.data.withExecutedAgent
 import build.raft.app.data.withExecutedChannel
 import build.raft.app.data.withExecutedChannelMembers
+import build.raft.app.data.realtime.isSyncHorizonReset
 import build.raft.app.data.realtime.RealtimeVisibleStreamGapPolicy
 import build.raft.app.data.realtime.RealtimeVisibleStreamGapRequest
 import build.raft.app.model.Attachment
@@ -9321,6 +9322,13 @@ internal class SharedThreadStore(
         event: RealtimeEvent,
         activeReplyParentMessageId: MessageId? = null
     ) {
+        if (event.isSyncHorizonReset()) {
+            // A resume had too many late messages to send (slock #10982): re-read the latest page through
+            // the existing gap catch-up, as on a foreground resume.
+            diagnosticsLogger?.invoke("thread_sync_horizon_reset threadId=${_state.value.payload.sourceThreadId.orEmpty()}")
+            refreshLatestAfterVisibleMaxSeq()
+            return
+        }
         val acceptedPayload = _state.value.payload
         val eventStaleToken = routeStaleToken
         val eventRouteIdentity = acceptedPayload.realtimeGapRouteIdentity()

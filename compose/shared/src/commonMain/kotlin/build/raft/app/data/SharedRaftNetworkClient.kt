@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.data.realtime.RealtimeBaselineHistoryRequests
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
@@ -50,7 +51,10 @@ internal class SharedRaftNetworkClient(
     private val platformFileResolver: RaftPlatformFileResolver? = null,
     private val executor: RaftHttpExecutor = createPlatformRaftHttpExecutor(warningLogger),
     // Task #150: shared across every client built on the same executor, like the scheduler.
-    private val reachabilityGates: RaftHostReachabilityGates = RaftHostReachabilityGates()
+    private val reachabilityGates: RaftHostReachabilityGates = RaftHostReachabilityGates(),
+    // Sync horizon (slock #10982): a starting horizon is usable only if no baseline history read of its
+    // server was sent before its ack arrived. Recorded here, right before the request leaves.
+    private val onBaselineHistoryRequestSent: (serverId: String) -> Unit = RealtimeBaselineHistoryRequests::recordSent,
 ) : RaftNetworkClient, AuthorityBoundRaftNetworkClient, ProgressiveAttachmentNetworkClient {
     private fun authMiddleware(authBaseUrl: String = currentBaseUrl()): RaftNetworkAuthMiddleware =
         RaftNetworkAuthMiddleware(
@@ -189,6 +193,9 @@ internal class SharedRaftNetworkClient(
                     ) authenticated@{ auth ->
                         if (!expectedAuthority.matchesCurrentEnvironment(currentBaseUrl())) {
                             return@authenticated routeEnvironmentChangedResponse()
+                        }
+                        if (RealtimeBaselineHistoryRequests.isBaselineHistoryRequest(method, path)) {
+                            onBaselineHistoryRequestSent(auth.serverId)
                         }
                         val response =
                             executor.execute(

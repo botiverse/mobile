@@ -36,6 +36,41 @@ internal class FakeRealtimeSocketTransport : RealtimeSocketTransport {
         linearize { emitted += eventName to payload }
     }
 
+    /**
+     * False (default) models a stack without acks (the curl Socket.IO client): no `sync:horizon` is sent,
+     * so emit-order assertions of the older tests stay as they were. The sync horizon tests turn it on.
+     */
+    var supportsAck = false
+    /** Pending acks in emit order; [answerAck] delivers one like the server's ack callback. */
+    val pendingAcks = mutableListOf<PendingAck>()
+
+    class PendingAck(
+        val eventName: String,
+        val context: RealtimeSocketConnectionContext,
+        val onAck: (RealtimeSocketConnectionContext, Any?) -> Unit,
+    )
+
+    override fun emitWithAck(
+        eventName: String,
+        onAck: (RealtimeSocketConnectionContext, Any?) -> Unit,
+    ): Boolean =
+        linearize {
+            if (!supportsAck) return@linearize false
+            val context = currentContext ?: return@linearize false
+            emitted += eventName to emptyMap()
+            pendingAcks += PendingAck(eventName, context, onAck)
+            true
+        }
+
+    /** Answers the oldest pending ack of [eventName] with the context of the socket that sent it (maybe stale). */
+    fun answerAck(eventName: String, payload: Any?) {
+        linearize {
+            val ack = pendingAcks.first { it.eventName == eventName }
+            pendingAcks -= ack
+            ack.onAck(ack.context, payload)
+        }
+    }
+
     override fun on(
         eventName: String,
         listener: (RealtimeSocketConnectionContext, Any?) -> Unit,

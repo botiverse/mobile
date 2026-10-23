@@ -62,6 +62,7 @@ object GeneratedRealtimeContract {
         const val ChannelJoined = "channel:joined"
         const val ChannelJoinDenied = "channel:join_denied"
         const val SyncResume = "sync:resume"
+        const val SyncHorizon = "sync:horizon"
         const val SyncResumeResponse = "sync:resume:response"
         const val JoinChannel = "join:channel"
         const val LeaveChannel = "leave:channel"

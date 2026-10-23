@@ -5,6 +5,7 @@ import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.data.realtime.RealtimeSocketConnectionContext
 import build.raft.app.data.realtime.RealtimeSocketTransport
+import io.socket.client.Ack
 import io.socket.client.IO
 import io.socket.client.Manager
 import io.socket.client.Socket
@@ -72,6 +73,24 @@ class SocketIoSocketTransport internal constructor(
             socket?.emit(eventName, realtimeSocketIoWirePayload(eventName, payload))
         }
     }
+
+    override fun emitWithAck(
+        eventName: String,
+        onAck: (RealtimeSocketConnectionContext, Any?) -> Unit,
+    ): Boolean =
+        generationFence.withCurrent { generation ->
+            val current = socket
+            if (generation == null || current == null) return@withCurrent false
+            build.raft.app.core.data.diagnostics.RaftAppLog.d("SlockRealtime", "transport_emit_ack eventName=$eventName")
+            // No payload: the server reads the ack as the last argument (`emit("sync:horizon", ack)`).
+            current.emit(
+                eventName,
+                Ack { args ->
+                    generationFence.runIfCurrent(generation) { onAck(generation.context, args.firstOrNull()) }
+                },
+            )
+            true
+        }
 
     override fun on(
         eventName: String,

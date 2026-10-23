@@ -44,6 +44,7 @@ enum GeneratedRealtimeContract {
         static let channelJoined = "channel:joined"
         static let channelJoinDenied = "channel:join_denied"
         static let syncResume = "sync:resume"
+        static let syncHorizon = "sync:horizon"
         static let syncResumeResponse = "sync:resume:response"
         static let joinChannel = "join:channel"
         static let leaveChannel = "leave:channel"

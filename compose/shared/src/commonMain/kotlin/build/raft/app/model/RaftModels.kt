@@ -908,7 +908,14 @@ enum class RealtimeRefreshScope {
 data class SyncResumeResponse(
     val messages: List<Message>,
     val currentSeq: Long,
-    val hasMore: Boolean
+    val hasMore: Boolean,
+    /**
+     * The read's sync horizon (decimal xid8 text, never a number); null from a server that predates it.
+     * See `build.raft.app.data.realtime.RealtimeSyncHorizon`.
+     */
+    val horizon: String? = null,
+    /** More late messages qualified than the server sends: the client re-fetches its visible scope. */
+    val horizonReset: Boolean = false,
 ) : RealtimeEvent
 
 @Serializable
