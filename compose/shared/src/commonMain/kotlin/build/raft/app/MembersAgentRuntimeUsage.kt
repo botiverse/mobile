@@ -21,6 +21,7 @@ import build.raft.app.data.RuntimeAccountUsageLoad
 import build.raft.app.data.RuntimeAccountUsageProvider
 import build.raft.app.data.RuntimeAccountUsageRead
 import build.raft.app.data.RuntimeAccountUsageWindow
+import build.raft.app.data.RuntimeAccountUsageViewer
 import build.raft.app.data.RuntimeAccountUsageWindowStatus
 import build.raft.app.data.SharedComputersOwner
 import build.raft.app.data.SharedRuntimeAccountUsageStore
@@ -62,7 +63,9 @@ internal class MembersRuntimeAccountUsageAccess(
     /** Called when a read found [owner] is no longer the signed-in identity; re-resolve it. */
     val onIdentityChanged: () -> Unit = {},
     /** Diagnostics sink (no identity, token or machine data is ever written to it). */
-    val log: (String) -> Unit = {}
+    val log: (String) -> Unit = {},
+    /** Who is looking, for [canViewMachineRuntimeAccountUsage]; null while unknown (the server decides). */
+    val viewer: RuntimeAccountUsageViewer? = null
 )
 
 /**

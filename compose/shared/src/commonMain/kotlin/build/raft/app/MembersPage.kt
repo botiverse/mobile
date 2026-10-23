@@ -4232,18 +4232,26 @@ internal fun MemberDetailPageContent(
             ?.collect { event -> runtimeAccountUsageOwnerTracker.onAuthSessionEvent(event) }
     }
     val runtimeAccountUsageOwner by runtimeAccountUsageOwnerTracker.owner.collectAsState()
+    // Who is looking, for the pickers' quota lines (web canViewMachineRuntimeAccountUsage).
+    var runtimeAccountUsageViewer by remember { mutableStateOf<build.raft.app.data.RuntimeAccountUsageViewer?>(null) }
+    LaunchedEffect(runtimeAccountUsageOwner, activeServerId) {
+        runtimeAccountUsageViewer =
+            if (runtimeAccountUsageOwner == null) null
+            else build.raft.app.data.runtimeAccountUsageViewerFor(provider.authStore.readSession())
+    }
     // Task #137: read-only runtime account usage for the agent's Runtime Config chip. Only
     // routes that allow private agent surfaces get a server id; the server still decides
     // access (403 hides the entry).
     val runtimeAccountUsageAccess =
-        remember(provider.runtimeAccountUsageStore, runtimeAccountUsageOwner, statusLookupServerId, runtimeAccountUsageOwnerTracker) {
+        remember(provider.runtimeAccountUsageStore, runtimeAccountUsageOwner, statusLookupServerId, runtimeAccountUsageOwnerTracker, runtimeAccountUsageViewer) {
             provider.runtimeAccountUsageStore?.let { store ->
                 MembersRuntimeAccountUsageAccess(
                     store = store,
                     owner = runtimeAccountUsageOwner,
                     serverId = statusLookupServerId,
                     onIdentityChanged = { routeScope.launch { runtimeAccountUsageOwnerTracker.invalidate() } },
-                    log = { message -> bridge.log(message) }
+                    log = { message -> bridge.log(message) },
+                    viewer = runtimeAccountUsageViewer
                 )
             }
         }
@@ -11886,6 +11894,8 @@ private fun MembersAgentRuntimeConfigDialog(
         onDispose { runtimeConfigScrollCoordinator.invalidate() }
     }
 
+    // Read here: dialog content is hosted at the page root, outside the route's usage access.
+    val runtimeQuotaMachine = machineId?.takeIf { it.isNotBlank() }?.let { RuntimeQuotaMachine(it, access = LocalMembersRuntimeAccountUsageAccess.current) }
     RaftUnifiedDialog(
         title = stringResource(MR.strings.member_dialog_edit_runtime_config).raftDisplayUppercase(),
         dismissEnabled = !saving,
@@ -11941,6 +11951,7 @@ private fun MembersAgentRuntimeConfigDialog(
                     if (runtime == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
                         BuiltInRuntimeSection(
                             runtime = runtime,
+                            quotaMachine = runtimeQuotaMachine,
                             onRuntimeChange = ::switchRuntime,
                             machineRuntimeIds = machineRuntimeIds,
                             runtimeAvailabilityError = null,
@@ -11989,6 +12000,7 @@ private fun MembersAgentRuntimeConfigDialog(
                         }
                     } else AdvancedRuntimeSection(
                         runtime = runtime,
+                        quotaMachine = runtimeQuotaMachine,
                         existingRuntimeId = stableInitialConfig.runtime,
                         onRuntimeChange = ::switchRuntime,
                         model = model,

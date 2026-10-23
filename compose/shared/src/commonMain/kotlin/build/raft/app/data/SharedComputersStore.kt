@@ -781,7 +781,10 @@ private fun List<ComputerSummary>.toCreateAgentMachineOptions(): List<SharedCrea
                     ComputerStatus.Offline -> "offline"
                     ComputerStatus.Unknown -> "unknown"
                 },
-            runtimes = machine.runtimes
+            runtimes = machine.runtimes,
+            attachedByCurrentUser = machine.attachedByCurrentUser,
+            creatorId = machine.creator?.id,
+            usageFactsKnown = true
         )
     }
 

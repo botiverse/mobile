@@ -529,6 +529,8 @@ internal fun RuntimeFormV2RuntimeSection(
     machineRuntimeIds: List<String>,
     runtimeAvailabilityError: String?,
     enabled: Boolean,
+    /** The computer whose usage gives each runtime its quota line; null: no lines. */
+    quotaMachine: RuntimeQuotaMachine? = null,
     content: @Composable () -> Unit
 ) {
     val focusManager = LocalFocusManager.current
@@ -541,16 +543,15 @@ internal fun RuntimeFormV2RuntimeSection(
     )
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         RaftFieldLabel(text = stringResource(MR.strings.agent_create_label_runtime))
-        RaftBrutalSelectField(
-            options = runtimeOptions.toBrutalSelectOptions(),
-            selectedId = runtime,
-            selectedLabel = runtimeOptions.firstOrNull { it.id == runtime }?.label.orEmpty(),
-            placeholder = stringResource(MR.strings.agent_create_placeholder_select_runtime),
+        RuntimeSelectChoice(
+            runtime = runtime,
+            runtimeOptions = runtimeOptions,
+            quotaMachine = quotaMachine,
             enabled = enabled && runtimeAvailabilityError == null,
-            rowHeight = 36.dp,
-            onSelect = { option ->
+            emptyLabel = null,
+            onSelect = { id ->
                 focusManager.clearFocus(force = true)
-                onRuntimeChange(option.id)
+                onRuntimeChange(id)
             }
         )
         content()

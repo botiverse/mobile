@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
@@ -344,8 +345,29 @@ internal data class SharedCreateAgentMachineOption(
     val id: String,
     val name: String,
     val status: String,
-    val runtimes: List<String> = emptyList()
+    val runtimes: List<String> = emptyList(),
+    /** For the quota lines ([build.raft.app.data.canViewMachineRuntimeAccountUsage]). */
+    val attachedByCurrentUser: Boolean = false,
+    val creatorId: String? = null,
+    /** False when the option came without the machine list (route params): the server decides. */
+    val usageFactsKnown: Boolean = false
 )
+
+/** Each computer's quota line: the usage of [runtimeId] (the runtime being picked) on it. */
+@Composable
+internal fun rememberCreateAgentMachineQuotaLines(
+    access: MembersRuntimeAccountUsageAccess?,
+    machines: List<SharedCreateAgentMachineOption>,
+    runtimeId: String
+): Map<String, String> =
+    rememberRuntimeQuotaLines(access, remember(machines, runtimeId) { machines.map { it.quotaRequest(runtimeId) } })
+
+/** The computer picker's options, each with its quota line as the description. */
+internal fun createAgentMachineChoiceOptions(
+    items: List<CreateAgentDropdownItem>,
+    quotaLines: Map<String, String>
+): List<RaftComboboxOption<String>> =
+    items.map { item -> RaftComboboxOption(item.id, item.label, description = quotaLines[item.id], enabled = item.enabled) }
 
 internal data class SharedCreateAgentRuntimeModelOption(
     val id: String,
@@ -912,6 +934,10 @@ internal fun SharedCreateAgentDialog(
         )
     }
     val availableSelectedMachineId = createAgentAvailableMachineId(machines, selectedMachineId)
+    // Read here: dialog content is hosted at the page root, outside the route's usage access.
+    val runtimeUsageAccess = LocalMembersRuntimeAccountUsageAccess.current
+    val selectedQuotaMachine =
+        machines.firstOrNull { it.id == availableSelectedMachineId }?.quotaMachine()?.copy(access = runtimeUsageAccess)
     var machineRuntimeInitialized by remember(initialRuntime) { mutableStateOf(initialRuntime.isNotBlank()) }
     val supportedRuntimeIds = remember {
         RUNTIMES.filter { it.supported && !it.deprecated }.map { it.id }.toSet()
@@ -1409,6 +1435,8 @@ internal fun SharedCreateAgentDialog(
                             requiredComputer = requiredComputer,
                             suggestedComputer = suggestedComputer,
                             enabled = !submitting,
+                            runtimeId = runtime,
+                            usageAccess = runtimeUsageAccess,
                             onSelect = { id ->
                                 if (requiredComputer.isNullOrBlank() || id == requiredComputer) {
                                     focusManager.clearFocus(force = true)
@@ -1508,6 +1536,7 @@ internal fun SharedCreateAgentDialog(
                         if (v2Active) {
                             RuntimeFormV2RuntimeSection(
                                 runtime = runtime,
+                                quotaMachine = selectedQuotaMachine,
                                 onRuntimeChange = { newRuntime ->
                                     val nextCatalog =
                                         availableSelectedMachineId?.let { machineId ->
@@ -1562,6 +1591,7 @@ internal fun SharedCreateAgentDialog(
                         } else if (runtime == "builtin") {
                             BuiltInRuntimeSection(
                                 runtime = runtime,
+                                quotaMachine = selectedQuotaMachine,
                                 onRuntimeChange = { newRuntime ->
                                     if (newRuntime != runtime) {
                                         builtInApiKey = TextFieldValue("")
@@ -1625,6 +1655,7 @@ internal fun SharedCreateAgentDialog(
                         } else {
                             AdvancedRuntimeSection(
                             runtime = runtime,
+                            quotaMachine = selectedQuotaMachine,
                             kimiSdkReasoningCapability = kimiSdkReasoningCapability,
                             onRuntimeChange = { newRuntime ->
                                 val nextCatalog =
@@ -1853,7 +1884,7 @@ private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int, planLabel: S
 }
 
 @Composable
-private fun MachinePicker(
+internal fun MachinePicker(
     machines: List<SharedCreateAgentMachineOption>,
     machinesLoading: Boolean,
     machinesErrorMessage: String?,
@@ -1862,6 +1893,8 @@ private fun MachinePicker(
     requiredComputer: String?,
     suggestedComputer: String?,
     enabled: Boolean,
+    runtimeId: String,
+    usageAccess: MembersRuntimeAccountUsageAccess?,
     onSelect: (String) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1917,16 +1950,16 @@ private fun MachinePicker(
                         requiredComputer = requiredComputer,
                         offlineSuffix = stringResource(MR.strings.agent_create_suffix_offline)
                     )
-                RaftBrutalSelectField(
-                    options = machineItems.toBrutalSelectOptions(),
-                    selectedId = selectedMachineId.orEmpty(),
-                    selectedLabel =
-                        machineItems.firstOrNull { it.id == selectedMachineId }?.label
-                            ?: stringResource(MR.strings.agent_create_placeholder_select_computer),
+                // Jasper's picker rule: radios up to 5 computers, a sheet list up to 10, then search.
+                // Each computer carries the chosen runtime's quota line there.
+                val quotaLines = rememberCreateAgentMachineQuotaLines(usageAccess, machines, runtimeId)
+                RuntimePickerChoice(
+                    value = selectedMachineId,
+                    options = createAgentMachineChoiceOptions(machineItems, quotaLines),
+                    onValueChange = onSelect,
+                    title = stringResource(MR.strings.agent_create_label_computer),
                     placeholder = stringResource(MR.strings.agent_create_placeholder_select_computer),
-                    enabled = enabled,
-                    rowHeight = 40.dp,
-                    onSelect = { item -> onSelect(item.id) }
+                    enabled = enabled
                 )
             }
         }
@@ -1970,7 +2003,9 @@ internal fun BuiltInRuntimeSection(
     onEnvVarEntriesChange: (List<Pair<String, String>>) -> Unit,
     advancedOpen: Boolean,
     onAdvancedOpenChange: (Boolean) -> Unit,
-    enabled: Boolean
+    enabled: Boolean,
+    /** The computer whose usage gives each runtime its quota line; null: no lines. */
+    quotaMachine: RuntimeQuotaMachine? = null
 ) {
     val focusManager = LocalFocusManager.current
     val runtimeOptions = createAgentRuntimeDropdownItems(
@@ -1992,16 +2027,15 @@ internal fun BuiltInRuntimeSection(
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         RaftFieldLabel(text = stringResource(MR.strings.agent_create_label_runtime))
-        RaftBrutalSelectField(
-            options = runtimeOptions.toBrutalSelectOptions(),
-            selectedId = runtime,
-            selectedLabel = runtimeOptions.firstOrNull { it.id == runtime }?.label ?: "Built-in (Pi)",
-            placeholder = stringResource(MR.strings.agent_create_placeholder_select_runtime),
+        RuntimeSelectChoice(
+            runtime = runtime,
+            runtimeOptions = runtimeOptions,
+            quotaMachine = quotaMachine,
             enabled = enabled && runtimeAvailabilityError == null,
-            rowHeight = 36.dp,
-            onSelect = { option ->
+            emptyLabel = getRuntimeDisplayName(runtime),
+            onSelect = { id ->
                 focusManager.clearFocus(force = true)
-                onRuntimeChange(option.id)
+                onRuntimeChange(id)
             }
         )
         if (loading && form == null) {
@@ -2184,7 +2218,9 @@ internal fun AdvancedRuntimeSection(
     command: String,
     onCommandChange: (String) -> Unit,
     advancedOpen: Boolean,
-    onAdvancedOpenChange: (Boolean) -> Unit
+    onAdvancedOpenChange: (Boolean) -> Unit,
+    /** The computer whose usage gives each runtime its quota line; null: no lines. */
+    quotaMachine: RuntimeQuotaMachine? = null
 ) {
     val supportedRuntimes = RUNTIMES.filter { it.supported }
     val runtimeInfo = supportedRuntimes.firstOrNull { it.id == runtime } ?: supportedRuntimes.first()
@@ -2217,19 +2253,17 @@ internal fun AdvancedRuntimeSection(
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         RaftFieldLabel(text = stringResource(MR.strings.agent_create_label_runtime))
-        RaftBrutalSelectField(
-            options = runtimeOptions.toBrutalSelectOptions(),
-            selectedId = runtime,
-            selectedLabel =
-                runtimeOptions.firstOrNull { it.id == runtime }?.label
-                    ?: runtime.takeIf { runtimeAvailabilityError == null }?.let { getRuntimeDisplayName(it) }
-                    ?: stringResource(MR.strings.agent_create_state_no_runtimes),
-            placeholder = stringResource(MR.strings.agent_create_placeholder_select_runtime),
+        RuntimeSelectChoice(
+            runtime = runtime,
+            runtimeOptions = runtimeOptions,
+            quotaMachine = quotaMachine,
             enabled = runtimeEnabled,
-            rowHeight = 36.dp,
-            onSelect = { option ->
+            emptyLabel =
+                runtime.takeIf { runtimeAvailabilityError == null }?.let { getRuntimeDisplayName(it) }
+                    ?: stringResource(MR.strings.agent_create_state_no_runtimes),
+            onSelect = { id ->
                 focusManager.clearFocus(force = true)
-                onRuntimeChange(option.id)
+                onRuntimeChange(id)
             }
         )
         runtimeAvailabilityError?.let { error ->
