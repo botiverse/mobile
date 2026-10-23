@@ -42,6 +42,8 @@ object RealtimeSocketEvents {
     const val TaskDeleted = GeneratedRealtimeContract.SocketEvent.TaskDeleted
     const val AgentActivity = GeneratedRealtimeContract.SocketEvent.AgentActivity
     const val AgentSeen = GeneratedRealtimeContract.SocketEvent.AgentSeen
+    /** Agent typing line (slock `packages/shared/src/agentTyping.ts`): an agent is about to post into `channel:<channelId>`. */
+    const val AgentTyping = GeneratedRealtimeContract.SocketEvent.AgentTyping
     const val AgentSession = GeneratedRealtimeContract.SocketEvent.AgentSession
     const val AgentCreated = GeneratedRealtimeContract.SocketEvent.AgentCreated
     const val AgentDeleted = GeneratedRealtimeContract.SocketEvent.AgentDeleted

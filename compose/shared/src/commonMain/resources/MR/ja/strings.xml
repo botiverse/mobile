@@ -741,6 +741,11 @@
     <string name="thread_audio_attachment_fallback_name">音声添付ファイル</string>
     <string name="thread_audio_file_label">音声ファイル</string>
     <string name="thread_action_back_to_bottom">最下部に戻る</string>
+    <string name="thread_agent_typing_one">{first} が入力中…</string>
+    <string name="thread_agent_typing_two">{first} と {second} が入力中…</string>
+    <string name="thread_agent_typing_three">{first}、{second}、{third} が入力中…</string>
+    <string name="thread_agent_typing_many">{first}、{second} ほか {others} 個のエージェントが入力中…</string>
+    <string name="thread_agent_typing_agent_fallback">エージェント</string>
     <string name="thread_jump_new_messages_one">新着メッセージ 1 件</string>
     <string name="thread_jump_new_messages_many">新着メッセージ %1$d 件</string>
     <string name="thread_jump_next_unread_thread">次の未読スレッド（%1$d）</string>

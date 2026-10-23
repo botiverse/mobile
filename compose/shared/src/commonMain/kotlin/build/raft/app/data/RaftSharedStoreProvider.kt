@@ -512,6 +512,8 @@ internal class RaftSharedStoreProvider private constructor(
         RaftShellScopedStoreCache<SharedAdaptiveScrollAnchorStore>()
     private val shellPeerReadReceiptStores =
         RaftShellScopedStoreCache<SharedPeerReadReceiptStore>()
+    private val shellAgentTypingStores =
+        RaftShellScopedStoreCache<SharedAgentTypingStore>()
     private val processReadReceiptLock = SynchronizedObject()
     private var processReadReceiptCoordinator: ReadReceiptCoordinator? = null
     private val processReadReceiptRepositories = mutableMapOf<ReadReceiptOwner, RealReadReceiptRepository>()
@@ -1469,6 +1471,20 @@ internal class RaftSharedStoreProvider private constructor(
             )
         }
 
+    /**
+     * Agent typing line: who is about to post where, for this shell's selected server. Created by the
+     * first conversation page and from then on fed by the shell's realtime owner whichever page is
+     * open, as the web's socket bridge feeds its store.
+     */
+    fun agentTypingStore(scope: RaftShellStoreScope): SharedAgentTypingStore =
+        shellAgentTypingStores.getOrPut(scope) {
+            SharedAgentTypingStore(scope = threadSendScope, now = ::defaultNowMillis).also { store ->
+                realtimeDomainEventOwner(scope).registerGuardedActiveThreadSink(
+                    RealtimeGuardedActiveThreadSink { serverId, event -> store.consume(serverId, event) },
+                )
+            }
+        }
+
     fun createAuthDataSourceForCurrentEnvironment(
         avatarCacheNativeCache: RaftAvatarNativeCache = UnsupportedRaftAvatarNativeCache
     ): SharedAuthDataSource =
@@ -1928,6 +1944,7 @@ internal class RaftSharedStoreProvider private constructor(
         shellAuthStores.remove(scope)
         shellServerMembersStores.remove(scope)?.clearScopedReadCaches()
         shellRealtimeDomainEventOwners.remove(scope)
+        shellAgentTypingStores.remove(scope)?.close()
         shellAgentDetailStores.remove(scope)
         shellComputersStores.remove(scope)?.dispatch(SharedComputersIntent.Clear)
         shellCreateAgentFormOwnerJobs.remove(scope)?.cancel()

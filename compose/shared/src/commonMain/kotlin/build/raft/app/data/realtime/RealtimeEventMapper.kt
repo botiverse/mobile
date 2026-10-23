@@ -73,7 +73,9 @@ import build.raft.app.model.ThreadFollowersUpdated
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.canonical.message.CanonicalMessageCarry
+import build.raft.app.data.AgentTypingWire
 import build.raft.app.data.ScopeReadUpdatedWire
+import build.raft.app.data.toAgentTypingUpdated
 import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.WireForwardMessageBundle
 import build.raft.app.data.projectAgentActivityStatus
@@ -225,6 +227,9 @@ class RealtimeEventMapper(
                 decodeOrNull(AgentSeenDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.AgentActivity ->
                 decodeOrNull(AgentActivityDto.serializer(), element)?.toDomain()
+            // Agent typing line (slock packages/shared/src/agentTyping.ts AgentTypingEvent).
+            RealtimeSocketEvents.AgentTyping ->
+                decodeOrNull(AgentTypingWire.serializer(), element)?.toAgentTypingUpdated()
             RealtimeSocketEvents.AgentSession ->
                 decodeSubjectRefresh(element, RealtimeRefreshScope.Agents, eventName)
             RealtimeSocketEvents.AgentCreated ->
