@@ -49,8 +49,9 @@ class SharedActivityStoreMentionsReadTest {
     }
 
     @Test
-    fun markAllReadKeepsMentionsRowsListedAndOnlyEmptiesUnread() = runTest {
-        listOf(InboxFilter.Mentions to 2, InboxFilter.Unread to 0).forEach { (filter, expectedRows) ->
+    fun markAllReadKeepsRowsListedInMentionsAndUnreadButOnlyUnreadCountsEmpty() = runTest {
+        // Unread keeps every listed row, shown read, until the user moves on (stdrc 10-23).
+        listOf(InboxFilter.Mentions to 2, InboxFilter.Unread to 0).forEach { (filter, expectedTotalCount) ->
             val rows =
                 listOf(
                     activityItem("channel-1", unreadCount = 2).copy(hasMention = true, readStateLatestActivitySeq = "10"),
@@ -68,10 +69,10 @@ class SharedActivityStoreMentionsReadTest {
 
             assertEquals(1, read.inboxReadAllServerIds.size, "filter=$filter")
             assertEquals(2, inbox.initialLoadCount, "a confirmed read-all refreshes once, like web; filter=$filter")
-            assertEquals(expectedRows, store.state.value.items.size, "filter=$filter")
-            assertEquals(expectedRows, store.state.value.totalCount, "filter=$filter")
+            assertEquals(2, store.state.value.items.size, "filter=$filter")
+            assertEquals(expectedTotalCount, store.state.value.totalCount, "filter=$filter")
             assertEquals(0, store.state.value.totalUnreadCount, "filter=$filter")
-            assertEquals(List(expectedRows) { false to 0 }, store.state.value.items.map { it.hasMention to it.unreadCount })
+            assertEquals(List(2) { false to 0 }, store.state.value.items.map { it.hasMention to it.unreadCount })
         }
     }
 

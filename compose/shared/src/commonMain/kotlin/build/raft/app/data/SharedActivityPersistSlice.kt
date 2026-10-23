@@ -104,8 +104,8 @@ private object SharedActivityPersistSpec :
         next.errorCode == "unauthenticated"
 
     override fun partialize(state: SharedActivityState): SharedActivityPersistSnapshot? {
-        // The retained read row is a view of this visit only; a cold start does not bring it back.
-        val snapshot = state.withRetainedReadRowReleased().snapshot ?: return null
+        // The rows retained for this visit are a view of the visit only; a cold start does not bring them back.
+        val snapshot = state.withRetainedReadRowsReleased().snapshot ?: return null
         if (!state.loaded) return null
         return SharedActivityPersistSnapshot(
             selectedFilterName = state.selectedFilter.name,

@@ -520,9 +520,9 @@ private fun HomeActivityRouterContent(
             }
         onDispose { subscription.close() }
     }
-    // Leaving the Activity route releases the retained read row (Unread keeps the row the user read
-    // only until they move on). The route, not the list pane: compact DetailOnly unmounts the list
-    // while a conversation is open, and returning to the list must still show the row.
+    // Leaving the Activity route releases the rows read this visit (Unread keeps the rows the user
+    // read only until they move on). The route, not the list pane: compact DetailOnly unmounts the list
+    // while a conversation is open, and returning to the list must still show the rows.
     DisposableEffect(sharedStores, environment.storeScope) {
         onDispose {
             sharedStores.homeActivityStoreOrNull(environment.storeScope)
