@@ -118,6 +118,8 @@ internal class RaftAndroidSandboxWebView(
     private var pendingRuntimeJavaScript: String = ""
     private var allowedNavigationSchemes: Set<String> = emptySet()
     private var hostEventsEnabled: Boolean = false
+    private var suppressLongPress: Boolean = false
+    private var backgroundArgb: Int? = null
     private var currentUrl: String = ""
     private var currentTitle: String = ""
     private var currentProgress: Int = 0
@@ -146,7 +148,37 @@ internal class RaftAndroidSandboxWebView(
         updateInjectedJavaScript(config.injectedJavaScript)
         updateAllowedNavigationSchemes(config.allowedNavigationSchemes)
         updateHostEventsEnabled(config.hostEventsEnabled)
+        updateLongPressAndBackground(config.suppressLongPress, config.backgroundArgb)
         updateSrc(config.url)
+    }
+
+    private fun updateLongPressAndBackground(nextSuppressLongPress: Boolean, nextBackgroundArgb: Int?) {
+        if (suppressLongPress == nextSuppressLongPress && backgroundArgb == nextBackgroundArgb) return
+        suppressLongPress = nextSuppressLongPress
+        backgroundArgb = nextBackgroundArgb
+        applyLongPressAndBackground()
+    }
+
+    /**
+     * Embedded product surfaces drop the WebView's own long-press affordances: text selection,
+     * the selection haptic and the context menu. A consuming long-click listener stops WebView's
+     * performLongClick selection path; the page-side CSS (`user-select:none`) covers the rest.
+     * Re-applied on every WebView (re)creation.
+     */
+    private fun applyLongPressAndBackground() {
+        if (suppressLongPress) {
+            webView.setOnLongClickListener { true }
+            webView.isLongClickable = false
+            webView.isHapticFeedbackEnabled = false
+        } else {
+            webView.setOnLongClickListener(null)
+            webView.isLongClickable = true
+            webView.isHapticFeedbackEnabled = true
+        }
+        backgroundArgb?.let { argb ->
+            webView.setBackgroundColor(argb)
+            setBackgroundColor(argb)
+        }
     }
 
     fun bindController(controller: RaftWebViewController) {
@@ -189,6 +221,7 @@ internal class RaftAndroidSandboxWebView(
         removeAllViews()
         addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         configureWebView()
+        applyLongPressAndBackground()
         if (restoreCurrentDocument) restoreCurrentDocumentAfterRecreation()
     }
 

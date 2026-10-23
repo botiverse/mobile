@@ -233,9 +233,11 @@ internal fun SettingsWebViewAccessTokenSyncEffect(
     documentReady: Boolean,
     controller: RaftWebViewController,
     binding: SettingsWebViewHostAuthBinding?,
-    surface: SettingsWebViewSurface,
+    /** Null for host-shell WebViews that are not a Settings surface (agent Activity tab). */
+    surface: SettingsWebViewSurface?,
     trustedDocumentUrl: String = "",
     logger: (String) -> Unit = {},
+    diagnosticsName: String = surface?.diagnosticsName.orEmpty(),
 ) {
     val session = snapshot.session ?: return
     val activeBinding = binding ?: return
@@ -269,7 +271,7 @@ internal fun SettingsWebViewAccessTokenSyncEffect(
             )
         if (!dispatched) fence.onDispatchFailed(update)
         logger(
-            "settings_webview_access_token_sync surface=${surface.diagnosticsName} " +
+            "settings_webview_access_token_sync surface=$diagnosticsName " +
                 "generation=${update.authMutationGeneration} result=${if (dispatched) "dispatched" else "detached"}"
         )
     }

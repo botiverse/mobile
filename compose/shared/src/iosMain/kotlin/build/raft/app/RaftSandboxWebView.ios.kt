@@ -122,6 +122,8 @@ internal class RaftIosSandboxWebView(
     private var useWideViewPort = false
     private var allowedNavigationSchemes: Set<String> = emptySet()
     private var hostEventsEnabled = false
+    private var suppressLongPress = false
+    private var backgroundArgb: Int? = null
     private var currentURL = ""
     private var currentTitle = ""
     private var currentLoading = false
@@ -154,7 +156,9 @@ internal class RaftIosSandboxWebView(
                 domStorageEnabled != config.domStorageEnabled ||
                 ephemeral != config.ephemeral ||
                 injectedJavaScript != config.injectedJavaScript ||
-                hostEventsEnabled != config.hostEventsEnabled
+                hostEventsEnabled != config.hostEventsEnabled ||
+                suppressLongPress != config.suppressLongPress ||
+                backgroundArgb != config.backgroundArgb
         allowScripts = config.allowScripts
         // The auth user-script's main-frame scope is selected from this policy at configuration
         // time, so a policy change rebuilds (a broad script must not survive into a fenced document).
@@ -164,6 +168,8 @@ internal class RaftIosSandboxWebView(
         ephemeral = config.ephemeral
         injectedJavaScript = config.injectedJavaScript
         hostEventsEnabled = config.hostEventsEnabled
+        suppressLongPress = config.suppressLongPress
+        backgroundArgb = config.backgroundArgb
         configured = true
         val srcChanged = updateSrcState(config.url.trim())
         if (rebuild) {
@@ -247,8 +253,20 @@ internal class RaftIosSandboxWebView(
         val next = WKWebView(frame = container.bounds, configuration = configuration)
         next.navigationDelegate = delegate
         next.UIDelegate = delegate
-        next.backgroundColor = UIColor.whiteColor
-        next.opaque = true
+        val hostBackground = backgroundArgb?.let(::raftIosUIColorFromArgb)
+        if (hostBackground != null) {
+            // A non-opaque WKWebView shows its background colour (not white) before first paint.
+            next.opaque = false
+            next.backgroundColor = hostBackground
+            next.scrollView.backgroundColor = hostBackground
+            container.backgroundColor = hostBackground
+        } else {
+            next.backgroundColor = UIColor.whiteColor
+            next.opaque = true
+        }
+        // Embedded product surfaces: no link preview (long-press peek) on links; text selection
+        // and the callout are disabled by the page-side CSS in the injected document-start script.
+        next.allowsLinkPreview = !suppressLongPress
         next.allowsBackForwardNavigationGestures = false
         next.autoresizingMask = UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight
         webView = next
@@ -648,3 +666,11 @@ private class RaftIosWebViewScriptMessageHandler(
         owner.didReceiveScriptMessage(userContentController, didReceiveScriptMessage)
     }
 }
+
+private fun raftIosUIColorFromArgb(argb: Int): UIColor =
+    UIColor.colorWithRed(
+        red = ((argb shr 16) and 0xFF) / 255.0,
+        green = ((argb shr 8) and 0xFF) / 255.0,
+        blue = (argb and 0xFF) / 255.0,
+        alpha = ((argb ushr 24) and 0xFF) / 255.0,
+    )

@@ -126,7 +126,9 @@ internal fun RaftSandboxWebView(
     controller: RaftWebViewController,
     allowedNavigationSchemes: Set<String> = emptySet(),
     onNavigationStateChange: (RaftWebViewNavigationState) -> Unit = {},
-    onHostMessage: (String, JSONObject) -> Unit = { _, _ -> }
+    onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
+    suppressLongPress: Boolean = false,
+    backgroundArgb: Int? = null,
 ) {
     val events = remember { RaftWebViewEvents() }
     events.onLoadCommit = onLoadCommit
@@ -148,7 +150,9 @@ internal fun RaftSandboxWebView(
             ephemeral,
             injectedJavaScript,
             allowedNavigationSchemesValue,
-            hostEventsEnabled
+            hostEventsEnabled,
+            suppressLongPress,
+            backgroundArgb
         ) {
             RaftWebViewConfig(
                 url = url,
@@ -161,7 +165,9 @@ internal fun RaftSandboxWebView(
                 injectedJavaScript = injectedJavaScript,
                 allowedNavigationSchemes =
                     allowedNavigationSchemesValue.split(',').filter { it.isNotEmpty() }.toSet(),
-                hostEventsEnabled = hostEventsEnabled
+                hostEventsEnabled = hostEventsEnabled,
+                suppressLongPress = suppressLongPress,
+                backgroundArgb = backgroundArgb
             )
         }
     RaftSandboxWebViewHost(config = config, events = events, controller = controller, modifier = modifier)
@@ -230,7 +236,9 @@ internal fun RaftWebView(
     controller: RaftWebViewController,
     allowedNavigationSchemes: Set<String> = emptySet(),
     onNavigationStateChange: (RaftWebViewNavigationState) -> Unit = {},
-    onHostMessage: (String, JSONObject) -> Unit = { _, _ -> }
+    onHostMessage: (String, JSONObject) -> Unit = { _, _ -> },
+    suppressLongPress: Boolean = false,
+    backgroundArgb: Int? = null,
 ) {
     RaftSandboxWebView(
         url = url,
@@ -250,7 +258,9 @@ internal fun RaftWebView(
         controller = controller,
         allowedNavigationSchemes = allowedNavigationSchemes,
         onNavigationStateChange = onNavigationStateChange,
-        onHostMessage = onHostMessage
+        onHostMessage = onHostMessage,
+        suppressLongPress = suppressLongPress,
+        backgroundArgb = backgroundArgb
     )
 }
 
