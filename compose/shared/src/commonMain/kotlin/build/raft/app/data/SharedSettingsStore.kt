@@ -4630,9 +4630,9 @@ private fun SettingsLanguageRegionSnapshot.withLocalTranslationPreferences(
 
 private fun TranslationModePreference.mobileLabel(): String =
     when (this) {
-        TranslationModePreference.Automatic -> "Automatic"
+        TranslationModePreference.Automatic -> "Auto"
         TranslationModePreference.Manual -> "Manual"
-        TranslationModePreference.Original -> "Original"
+        TranslationModePreference.Original -> "Off"
     }
 
 private fun LinkOpenMode.mobileLabel(): String =

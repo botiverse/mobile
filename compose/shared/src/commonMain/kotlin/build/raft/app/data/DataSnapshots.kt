@@ -2027,9 +2027,9 @@ data class SettingsLanguageRegionSnapshot(
             detail = "Stored locally on this device.",
             options =
                 listOf(
-                    SettingsMobileSelectionOptionSnapshot("automatic", "Automatic"),
+                    SettingsMobileSelectionOptionSnapshot("automatic", "Auto"),
                     SettingsMobileSelectionOptionSnapshot("manual", "Manual"),
-                    SettingsMobileSelectionOptionSnapshot("original", "Original")
+                    SettingsMobileSelectionOptionSnapshot("original", "Off")
                 )
         )
 )
