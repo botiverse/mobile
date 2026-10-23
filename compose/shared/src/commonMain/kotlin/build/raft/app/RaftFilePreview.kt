@@ -9,7 +9,16 @@ import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftCard
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
-import build.raft.designsystem.gesture.raftBackSwipePagingDrag
+import build.raft.designsystem.gesture.raftBackSwipePaging
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import kotlinx.coroutines.CoroutineScope
 import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.base.Utils
 import build.raft.app.base.raftAttachmentHostDownloadId
@@ -1438,6 +1447,8 @@ private suspend fun <T> RaftFilePreviewRemoteOperationScope.runThreadApi(
 
 private suspend fun RaftFilePreviewRemoteOperationScope.loadPreview(
     payload: RaftFilePreviewPayload,
+    /** Lane of the attachment URL request: [raftFilePreviewImageResolutionPriority] for gallery images. */
+    priority: DataRequestPriority,
     authStore: RaftAuthSessionStore,
     truncatedPreviewHint: String,
     errorStrings: ErrorPresentationStrings,
@@ -1484,6 +1495,7 @@ private suspend fun RaftFilePreviewRemoteOperationScope.loadPreview(
                     payload.loadThreadAttachmentPreview(
                         threadApi = filePreviewThreadApi(networkClient, diagnosticsLogger),
                         networkClient = networkClient,
+                        priority = priority,
                         truncatedPreviewHint = truncatedPreviewHint,
                         expiresAtSink = { resolvedExpiresAt = it }
                     )
@@ -1510,6 +1522,7 @@ private suspend fun RaftFilePreviewRemoteOperationScope.loadPreview(
                     payload.loadThreadAttachmentPreview(
                         threadApi = filePreviewThreadApi(networkClient, diagnosticsLogger),
                         networkClient = networkClient,
+                        priority = priority,
                         truncatedPreviewHint = truncatedPreviewHint
                     )
                 RaftFilePreviewSourceAgentWorkspace ->
@@ -1837,8 +1850,6 @@ private fun RaftFilePreviewStandalonePageContent() {
             RaftComposerImageEditorState()
         }
     var composerImageEditSaving by remember(payload.composerImageActionId) { mutableStateOf(false) }
-    // Keyed by image identity, not URL: the full-size image replacing the thumbnail keeps the zoom.
-    val imageZoomState = remember(payload.raftFilePreviewImageZoomIdentity()) { RaftZoomableImageState() }
     var composerImageFinalizing by remember(payload.composerImageActionId) { mutableStateOf(false) }
     val composerImageOperationGate =
         remember(launchPayloadTrace.sessionId, payload.composerImageActionId) {
@@ -2200,6 +2211,8 @@ private fun RaftFilePreviewStandalonePageContent() {
                 val loadResult =
                     resolutionOperationScope.loadPreview(
                         payload = requestPayload,
+                        // Neighbour preloads wait behind on-screen work; the shown image does not.
+                        priority = raftFilePreviewImageResolutionPriority(preload),
                         authStore = authStore,
                         truncatedPreviewHint = truncatedPreviewHint,
                         errorStrings = errorStrings,
@@ -2340,6 +2353,7 @@ private fun RaftFilePreviewStandalonePageContent() {
                         val result =
                             scope.loadPreview(
                                 payload = payload,
+                                priority = DataRequestPriority.Visible,
                                 authStore = authStore,
                                 truncatedPreviewHint = truncatedPreviewHint,
                                 errorStrings = errorStrings,
@@ -3762,6 +3776,15 @@ private fun RaftFilePreviewStandalonePageContent() {
         )
     val downloadUiState = raftFilePreviewDownloadUiState(visiblePublicDownloadState, shownDownloadStatus)
     val downloadActive = downloadUiState == RaftFilePreviewDownloadUiState.Downloading
+    // The page's close path: the header back button, and a swipe down on the image viewer.
+    fun closePreviewPage() {
+        if (launchPayloadTrace.routeKind == RaftFilePreviewRouteEphemeral) {
+            retireCurrentEphemeralSession(cleanupPending = false)
+        } else {
+            RaftFilePreviewLaunchPayloadStore.retire(launchPayloadTrace.sessionId)
+        }
+        pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+    }
     RaftFilePreviewPageScaffold(
         title = if (composerImageEditMode) stringResource(MR.strings.file_preview_editor_title) else payload.previewHeaderTitle(),
         // A long press on the title copies the file name (not the editor title or a stand-in).
@@ -3772,12 +3795,7 @@ private fun RaftFilePreviewStandalonePageContent() {
             if (composerImageEditMode && !composerImageEditSaving) {
                 composerImageEditMode = false
             } else if (!composerImageEditMode) {
-                if (launchPayloadTrace.routeKind == RaftFilePreviewRouteEphemeral) {
-                    retireCurrentEphemeralSession(cleanupPending = false)
-                } else {
-                    RaftFilePreviewLaunchPayloadStore.retire(launchPayloadTrace.sessionId)
-                }
-                pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+                closePreviewPage()
             }
         },
         contentPadding = 0.dp,
@@ -3984,7 +4002,10 @@ private fun RaftFilePreviewStandalonePageContent() {
                     onResumeDownload = { requestDownloadControl("resume") },
                     onStopDownload = { requestDownloadControl("stop") },
                     onImageGalleryIndexChange = ::selectImageGalleryIndex,
-                    imageZoomState = imageZoomState,
+                    imageGalleryPagePayload = { index ->
+                        payload.withImageGalleryIndex(index, imageGalleryResolutionState.resolvedPayloadByAttachmentId)
+                    },
+                    onImageSwipeDismiss = ::closePreviewPage,
                     onShare =
                         if (raftFilePreviewShowsShareAction(canOpenWith, downloadUiState)) {
                             { requestExternalOpen(share = true) }
@@ -6858,6 +6879,7 @@ internal fun agentWorkspaceLazyPreviewPayload(agentId: String, path: String): Ra
 private suspend fun RaftFilePreviewPayload.loadThreadAttachmentPreview(
     threadApi: RaftThreadApiClient,
     networkClient: RaftNetworkClient,
+    priority: DataRequestPriority,
     truncatedPreviewHint: String,
     expiresAtSink: ((String?) -> Unit)? = null
 ): RaftFilePreviewPayload? {
@@ -6906,13 +6928,14 @@ private suspend fun RaftFilePreviewPayload.loadThreadAttachmentPreview(
                 mimeType = externalMimeType
             ))
     return when {
-        wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkClient, truncatedPreviewHint)
+        wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkClient, priority, truncatedPreviewHint)
         wantsXlsx -> loadThreadXlsxAttachmentPreview(networkClient)
-        wantsImage -> loadThreadImageAttachmentPreview(threadApi, expiresAtSink)
-        wantsVideo -> loadThreadVideoAttachmentPreview(threadApi)
-        wantsAudio -> loadThreadVideoAttachmentPreview(threadApi, title = MR.strings.file_preview_audio.desc(), audioOnly = true)
+        wantsImage -> loadThreadImageAttachmentPreview(threadApi, priority, expiresAtSink)
+        wantsVideo -> loadThreadVideoAttachmentPreview(threadApi, priority)
+        wantsAudio ->
+            loadThreadVideoAttachmentPreview(threadApi, priority, title = MR.strings.file_preview_audio.desc(), audioOnly = true)
         wantsHtml -> loadThreadHtmlAttachmentPreview(threadApi)
-        wantsText -> loadThreadTextAttachmentPreview(threadApi, networkClient, truncatedPreviewHint)
+        wantsText -> loadThreadTextAttachmentPreview(threadApi, networkClient, priority, truncatedPreviewHint)
         else ->
             copy(
                 kind = "unsupported",
@@ -6925,10 +6948,11 @@ private suspend fun RaftFilePreviewPayload.loadThreadAttachmentPreview(
 
 private suspend fun RaftFilePreviewPayload.loadThreadImageAttachmentPreview(
     threadApi: RaftThreadApiClient,
+    priority: DataRequestPriority,
     expiresAtSink: ((String?) -> Unit)? = null
 ): RaftFilePreviewPayload {
     val remoteImageUrl =
-        when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
+        when (val response = threadApi.attachmentUrl(priority, attachmentId, disposition = "inline")) {
             is ThreadApiResult.Success -> {
                 expiresAtSink?.invoke(response.data.expiresAt)
                 response.data.url.takeIf { it.isNotBlank() }
@@ -6982,11 +7006,12 @@ private suspend fun RaftFilePreviewPayload.loadThreadHtmlAttachmentPreview(
 
 private suspend fun RaftFilePreviewPayload.loadThreadVideoAttachmentPreview(
     threadApi: RaftThreadApiClient,
+    priority: DataRequestPriority,
     title: StringDesc = MR.strings.file_preview_video.desc(),
     audioOnly: Boolean = false
 ): RaftFilePreviewPayload {
     val target =
-        when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
+        when (val response = threadApi.attachmentUrl(priority, attachmentId, disposition = "inline")) {
             is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
             is ThreadApiResult.Failure -> null
         } ?: return copy(
@@ -7040,6 +7065,7 @@ private suspend fun fetchServerAttachmentPreview(
 private suspend fun RaftFilePreviewPayload.loadThreadTextAttachmentPreview(
     threadApi: RaftThreadApiClient,
     networkClient: RaftNetworkClient,
+    priority: DataRequestPriority,
     truncatedPreviewHint: String
 ): RaftFilePreviewPayload {
     val serverPreview = fetchServerAttachmentPreview(networkClient, attachmentId)
@@ -7058,7 +7084,7 @@ private suspend fun RaftFilePreviewPayload.loadThreadTextAttachmentPreview(
         )
     }
     val target =
-        when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
+        when (val response = threadApi.attachmentUrl(priority, attachmentId, disposition = "inline")) {
             is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
             is ThreadApiResult.Failure -> null
         } ?: return copy(
@@ -7115,6 +7141,7 @@ private suspend fun RaftFilePreviewPayload.loadThreadTextAttachmentPreview(
 private suspend fun RaftFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
     threadApi: RaftThreadApiClient,
     networkClient: RaftNetworkClient,
+    priority: DataRequestPriority,
     truncatedPreviewHint: String
 ): RaftFilePreviewPayload {
     val serverPreview = fetchServerAttachmentPreview(networkClient, attachmentId)
@@ -7137,7 +7164,7 @@ private suspend fun RaftFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
         )
     }
     val target =
-        when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
+        when (val response = threadApi.attachmentUrl(priority, attachmentId, disposition = "inline")) {
             is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
             is ThreadApiResult.Failure -> null
         } ?: return copy(
@@ -7276,7 +7303,7 @@ private suspend fun RaftFilePreviewPayload.threadAttachmentExternalUrl(
     threadApi: RaftThreadApiClient
 ): String? {
     if (source != RaftFilePreviewSourceThreadAttachment || attachmentId.isBlank()) return null
-    return when (val response = threadApi.attachmentUrl(attachmentId, disposition = "attachment")) {
+    return when (val response = threadApi.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "attachment")) {
         is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
         is ThreadApiResult.Failure -> null
     }
@@ -7761,32 +7788,91 @@ internal fun RaftFilePreviewPayloadContent(
     /** Share the downloaded file (system share sheet); offered on the file page once downloaded. */
     onShare: (() -> Unit)? = null,
     /**
-     * Image zoom, keyed by the page on [raftFilePreviewImageZoomIdentity]: the loading (thumbnail) and
-     * resolved (full-size) payloads of one image render from different branches here, so the state
-     * must live above this composable to survive the swap.
+     * The gallery image at an index, as it would be shown once selected (resolved full-size URL when
+     * known, else its thumbnail); renders the neighbouring pages of the image pager. Null falls back
+     * to the gallery's thumbnails.
      */
-    imageZoomState: RaftZoomableImageState? = null,
+    imageGalleryPagePayload: ((Int) -> RaftFilePreviewPayload?)? = null,
+    /** Swipe down on an unzoomed image closes the viewer through this; null disables the gesture. */
+    onImageSwipeDismiss: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val onToggleDownload = if (downloadPaused) onResumeDownload else onPauseDownload
     val actionTerms = raftFilePreviewLocalizedActionTerms()
     val fallbackFile = stringResource(MR.strings.file_preview_fallback_file)
-    if (payload.kind == "loading" && payload.shouldRenderImagePreview()) {
+    if (payload.kind == "loading" || payload.kind == "image") {
+        // One call site for the loading (thumbnail) and resolved (full-size) payloads of an image, so
+        // the pager, each page's zoom (keyed by image identity) and the image surface's underlay
+        // survive the swap.
         RaftFilePreviewImageGallerySurface(
             payload = payload,
             onImageGalleryIndexChange = onImageGalleryIndexChange,
+            pagePayload = imageGalleryPagePayload ?: { index -> payload.withImageGalleryIndex(index) },
+            onSwipeDismiss = onImageSwipeDismiss,
             modifier = modifier.fillMaxSize()
-        ) {
-            RaftFilePreviewImagePanel(
-                source = payload.imageUrl,
-                fallbackSource = payload.currentImageThumbnailUrl(),
-                contentDescription = payload.name.ifBlank { payload.path },
-                modifier = Modifier.fillMaxSize(),
-                backgroundColor = RaftColor.SurfaceWhite,
-                borderWidth = 0.dp,
-                zoomable = true,
-                zoomState = imageZoomState
-            )
+        ) { pagePayload, selected, zoomState ->
+            when {
+                pagePayload.raftFilePreviewShowsImage() ->
+                    RaftFilePreviewDownloadStatusOverlay(
+                        statusLabel = downloadStatusLabel.takeIf { selected && pagePayload.kind == "image" },
+                        showProgress = selected && pagePayload.kind == "image" && downloadInProgress,
+                        progressPercent = downloadProgressPercent,
+                        downloadView = downloadView,
+                        downloadPaused = downloadPaused,
+                        onToggleDownload = onToggleDownload,
+                        onStopDownload = onStopDownload,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        RaftFilePreviewImagePanel(
+                            source = pagePayload.imageUrl,
+                            fallbackSource = pagePayload.currentImageThumbnailUrl(),
+                            contentDescription = pagePayload.name.ifBlank { pagePayload.path },
+                            modifier = Modifier.fillMaxSize(),
+                            backgroundColor = RaftColor.SurfaceWhite,
+                            borderWidth = 0.dp,
+                            zoomable = true,
+                            zoomState = zoomState
+                        )
+                    }
+                pagePayload.kind == "image" ->
+                    RaftFilePreviewGenericCard(
+                        iconName = RaftLucideIconName.Image,
+                        name = pagePayload.name.ifBlank { pagePayload.path },
+                        meta = pagePayload.meta,
+                        message =
+                            pagePayload.localizedMessage().ifBlank {
+                                stringResource(MR.strings.file_preview_error_image_unavailable)
+                            },
+                        statusLabel = downloadStatusLabel.takeIf { selected },
+                        showProgress = selected && downloadInProgress,
+                        progressPercent = downloadProgressPercent,
+                        downloadView = downloadView,
+                        secondaryActionLabel =
+                            onExternalBrowserOpen
+                                ?.takeIf { selected }
+                                ?.let { stringResource(MR.strings.file_preview_action_open_in_browser) },
+                        secondaryActionIcon = RaftLucideIconName.ExternalLink,
+                        secondaryActionEnabled = !downloadInProgress,
+                        onSecondaryAction = onExternalBrowserOpen?.takeIf { selected },
+                        actionLabel =
+                            onDownload
+                                ?.takeIf { selected && !downloadInProgress }
+                                ?.let { raftFilePreviewPrimaryActionLabel(pagePayload, downloadState, actionTerms) },
+                        actionIcon =
+                            if (downloadInProgress || !selected) {
+                                null
+                            } else {
+                                raftFilePreviewPrimaryActionIcon(pagePayload, downloadState)
+                            },
+                        actionEnabled = primaryActionEnabled,
+                        onAction = onDownload?.takeIf { selected },
+                        downloadPaused = downloadPaused,
+                        onToggleDownload = onToggleDownload,
+                        onStopDownload = onStopDownload,
+                        modifier = Modifier.fillMaxSize().padding(RaftAppSpacing.Md)
+                    )
+                else -> RaftFilePreviewLoadingIndicator(modifier = Modifier.fillMaxSize())
+            }
         }
         return
     }
@@ -7871,68 +7957,6 @@ internal fun RaftFilePreviewPayloadContent(
                 }
             }
         }
-        "image" ->
-            RaftFilePreviewImageGallerySurface(
-                payload = payload,
-                onImageGalleryIndexChange = onImageGalleryIndexChange,
-                modifier = modifier.fillMaxSize()
-            ) {
-                if (payload.imageUrl != null) {
-                    RaftFilePreviewDownloadStatusOverlay(
-                        statusLabel = downloadStatusLabel,
-                        showProgress = downloadInProgress,
-                        progressPercent = downloadProgressPercent,
-                        downloadView = downloadView,
-                        downloadPaused = downloadPaused,
-                        onToggleDownload = onToggleDownload,
-                        onStopDownload = onStopDownload,
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        RaftFilePreviewImagePanel(
-                            source = payload.imageUrl,
-                            fallbackSource = payload.currentImageThumbnailUrl(),
-                            contentDescription = payload.name.ifBlank { payload.path },
-                            modifier = Modifier.fillMaxSize(),
-                            backgroundColor = RaftColor.SurfaceWhite,
-                            borderWidth = 0.dp,
-                            zoomable = true,
-                            zoomState = imageZoomState
-                        )
-                    }
-                } else {
-                    RaftFilePreviewGenericCard(
-                        iconName = RaftLucideIconName.Image,
-                        name = payload.name.ifBlank { payload.path },
-                        meta = payload.meta,
-                        message = payload.localizedMessage().ifBlank { stringResource(MR.strings.file_preview_error_image_unavailable) },
-                        statusLabel = downloadStatusLabel,
-                        showProgress = downloadInProgress,
-                        progressPercent = downloadProgressPercent,
-                        downloadView = downloadView,
-                        secondaryActionLabel =
-                            onExternalBrowserOpen?.let { stringResource(MR.strings.file_preview_action_open_in_browser) },
-                        secondaryActionIcon = RaftLucideIconName.ExternalLink,
-                        secondaryActionEnabled = !downloadInProgress,
-                        onSecondaryAction = onExternalBrowserOpen,
-                        actionLabel =
-                            onDownload
-                                ?.takeIf { !downloadInProgress }
-                                ?.let { raftFilePreviewPrimaryActionLabel(payload, downloadState, actionTerms) },
-                        actionIcon =
-                            if (downloadInProgress) {
-                                null
-                            } else {
-                                raftFilePreviewPrimaryActionIcon(payload, downloadState)
-                            },
-                        actionEnabled = primaryActionEnabled,
-                        onAction = onDownload,
-                        downloadPaused = downloadPaused,
-                        onToggleDownload = onToggleDownload,
-                        onStopDownload = onStopDownload,
-                        modifier = Modifier.fillMaxSize().padding(RaftAppSpacing.Md)
-                    )
-                }
-            }
         "html" ->
             RaftFilePreviewDownloadStatusOverlay(
                 statusLabel = downloadStatusLabel,
@@ -8008,17 +8032,6 @@ internal fun RaftFilePreviewPayloadContent(
                     modifier = Modifier.fillMaxSize()
                 )
             }
-        "loading" -> {
-            RaftFilePreviewImageGallerySurface(
-                payload = payload,
-                onImageGalleryIndexChange = onImageGalleryIndexChange,
-                modifier = modifier.fillMaxSize()
-            ) {
-                RaftFilePreviewLoadingIndicator(
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-        }
         "error" ->
             RaftFilePreviewMessage(
                 iconName = RaftLucideIconName.TriangleAlert,
@@ -8071,52 +8084,106 @@ internal fun RaftFilePreviewPayloadContent(
     }
 }
 
+/**
+ * The image viewer: one image, or the images of one message in a pager.
+ *
+ * Gallery: a [HorizontalPager] whose drags are driven by [raftBackSwipePaging] (the neighbouring
+ * image slides in under the finger and the release snaps to a page; the iOS back-swipe rules hold:
+ * on the first image a back drag pops the page, past it the leading edge strip still does). The
+ * selected image is [payload]; the others render from [pagePayload]. A zoomed image keeps the drag
+ * for its pan, so the pager stays still, until the pan is pushed on against the image's side edge,
+ * which hands the drag to the pager (iOS Photos). Each page keeps its own zoom, keyed by image
+ * identity, and goes back to 1x once another image is selected.
+ *
+ * Swipe down on an unzoomed image (mostly vertical) drags it with the finger, shrinking it and
+ * fading the background, and closes the viewer through [onSwipeDismiss] past a distance or on a
+ * fast fling; otherwise it springs back.
+ */
 @Composable
 private fun RaftFilePreviewImageGallerySurface(
     payload: RaftFilePreviewPayload,
     onImageGalleryIndexChange: ((Int) -> Unit)?,
+    pagePayload: (Int) -> RaftFilePreviewPayload?,
+    onSwipeDismiss: (() -> Unit)?,
     modifier: Modifier = Modifier,
-    content: @Composable () -> Unit
+    pageContent: @Composable (pagePayload: RaftFilePreviewPayload, selected: Boolean, zoomState: RaftZoomableImageState) -> Unit
 ) {
     val progressLabel = payload.imageGalleryProgressLabel()
-    var dragOffsetPx by remember(payload.imageGalleryIndex, payload.imageGallery.size) { mutableStateOf(0f) }
-    val swipeThresholdPx =
-        with(LocalDensity.current) {
-            56.dp.toPx()
-        }
-    // iOS: this page is a native push swiped away by the host's full-page pop. On the first image a
-    // back drag must stay unconsumed (a rubber-band here made the Compose touch recogniser win, so
-    // the preview could not be swiped back); past it the drag pages back except from the leading
-    // edge strip, which still pops the page. Android: every horizontal drag pages, as before.
-    val galleryModifier =
+    val dismissState = remember { RaftImageSwipeDismissState() }
+    val dismissScope = rememberCoroutineScope()
+    Box(
+        modifier =
+            modifier
+                .clipToBounds()
+                .onSizeChanged { dismissState.viewportHeight = it.height.toFloat() }
+                .drawBehind { drawRect(RaftColor.SurfaceWhite, alpha = dismissState.backgroundAlpha) }
+    ) {
         if (progressLabel != null && onImageGalleryIndexChange != null) {
-            Modifier.raftBackSwipePagingDrag(
-                canPageBackward = payload.imageGalleryIndex > 0,
-                onDragStart = { dragOffsetPx = 0f },
-                onDrag = { totalDx -> dragOffsetPx = payload.imageGalleryDragOffsetWithResistance(totalDx) },
-                onDragEnd = { totalDx ->
-                    dragOffsetPx = 0f
-                    payload.nextImageGalleryIndex(totalDx, swipeThresholdPx)?.let(onImageGalleryIndexChange)
-                },
-                onDragCancel = { dragOffsetPx = 0f }
-            )
+            val selectedIndex = payload.imageGalleryIndex.coerceIn(0, payload.imageGallery.lastIndex)
+            val pagerState = rememberPagerState(initialPage = selectedIndex) { payload.imageGallery.size }
+            val currentSelectedIndex by rememberUpdatedState(selectedIndex)
+            val currentOnIndexChange by rememberUpdatedState(onImageGalleryIndexChange)
+            // Pager -> selection: a drag that settles on another image selects it (its full-size URL
+            // resolves, the download state resets). Reported on settle, not at the half-way point, so
+            // the selection never changes under a finger that is still down.
+            LaunchedEffect(pagerState) {
+                snapshotFlow { pagerState.settledPage }.collect { page ->
+                    if (page != currentSelectedIndex && page in 0 until pagerState.pageCount) {
+                        currentOnIndexChange(page)
+                    }
+                }
+            }
+            // Selection -> pager (programmatic scroll). Intent owner: the page's selected image when
+            // it changes without a drag (e.g. the gallery rebuilt around another index). Fence: never
+            // while the pager is dragged or settling; a drag owns the viewport and reports its own
+            // settle above, which then wins. Re-checked when scrolling stops.
+            val scrollInProgress = pagerState.isScrollInProgress
+            LaunchedEffect(pagerState, selectedIndex, scrollInProgress) {
+                if (!scrollInProgress && pagerState.currentPage != selectedIndex) {
+                    pagerState.scrollToPage(selectedIndex)
+                }
+            }
+            HorizontalPager(
+                state = pagerState,
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .raftBackSwipePaging(pagerState, PagerDefaults.flingBehavior(pagerState)),
+                // Driven by raftBackSwipePaging: the pager's own drag would consume the iOS back swipe.
+                userScrollEnabled = false,
+                beyondViewportPageCount = 1
+            ) { page ->
+                val selected = page == selectedIndex
+                val shown = if (selected) payload else pagePayload(page)
+                if (shown != null) {
+                    RaftFilePreviewImageGalleryPage(
+                        pagePayload = shown,
+                        selected = selected,
+                        inPager = true,
+                        dismissState = dismissState,
+                        dismissScope = dismissScope,
+                        onSwipeDismiss = onSwipeDismiss,
+                        pageContent = pageContent
+                    )
+                }
+            }
         } else {
-            Modifier
-        }
-    Box(modifier = modifier.clipToBounds().then(galleryModifier)) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .offset { IntOffset(dragOffsetPx.roundToInt(), 0) }
-        ) {
-            content()
+            RaftFilePreviewImageGalleryPage(
+                pagePayload = payload,
+                selected = true,
+                inPager = false,
+                dismissState = dismissState,
+                dismissScope = dismissScope,
+                onSwipeDismiss = onSwipeDismiss,
+                pageContent = pageContent
+            )
         }
         if (progressLabel != null) {
             Box(
                 modifier =
                     Modifier
                         .align(Alignment.TopEnd)
+                        .graphicsLayer { alpha = dismissState.backgroundAlpha }
                         .padding(top = 12.dp, end = 12.dp)
                         .background(RaftColor.SurfaceWhite)
                         .border(RaftAppStroke.Default, RaftColor.BorderBlack)
@@ -8131,6 +8198,51 @@ private fun RaftFilePreviewImageGallerySurface(
                 )
             }
         }
+    }
+}
+
+/** One page of the image viewer, with its own zoom (keyed by image identity) and the dismiss drag. */
+@Composable
+private fun RaftFilePreviewImageGalleryPage(
+    pagePayload: RaftFilePreviewPayload,
+    selected: Boolean,
+    inPager: Boolean,
+    dismissState: RaftImageSwipeDismissState,
+    dismissScope: CoroutineScope,
+    onSwipeDismiss: (() -> Unit)?,
+    pageContent: @Composable (pagePayload: RaftFilePreviewPayload, selected: Boolean, zoomState: RaftZoomableImageState) -> Unit
+) {
+    // Keyed by identity, not URL: the full-size image replacing the thumbnail keeps the zoom.
+    val zoomState =
+        remember(pagePayload.raftFilePreviewImageZoomIdentity(), inPager) {
+            RaftZoomableImageState(handsOffAtHorizontalEdge = inPager)
+        }
+    // A page that is no longer the selected image (swiped away) goes back to 1x.
+    LaunchedEffect(zoomState, selected) {
+        if (!selected) zoomState.reset()
+    }
+    val dismissible = selected && onSwipeDismiss != null && pagePayload.raftFilePreviewShowsImage()
+    val currentOnSwipeDismiss by rememberUpdatedState(onSwipeDismiss)
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .then(
+                    if (dismissible) {
+                        Modifier
+                            .raftImageSwipeDismiss(
+                                state = dismissState,
+                                zoomState = zoomState,
+                                scope = dismissScope,
+                                onDismiss = { currentOnSwipeDismiss?.invoke() }
+                            )
+                            .raftImageSwipeDismissLayer(dismissState)
+                    } else {
+                        Modifier
+                    }
+                )
+    ) {
+        pageContent(pagePayload, selected, zoomState)
     }
 }
 
@@ -9008,6 +9120,14 @@ internal data class RaftFilePreviewImageGalleryResolutionState(
 }
 
 /**
+ * Request lane for resolving a gallery image's full-size URL: a neighbour [preload] is warmup work
+ * (Background, behind every on-screen request); the shown image is on-screen work (Visible).
+ * Preloads still never cancel the shown image's request ([RaftFilePreviewImageGalleryResolutionState]).
+ */
+internal fun raftFilePreviewImageResolutionPriority(preload: Boolean): DataRequestPriority =
+    if (preload) DataRequestPriority.Background else DataRequestPriority.Visible
+
+/**
  * Neighbour payloads whose full-size URL to resolve ahead of a swipe: next, then previous. Empty
  * until the shown image is resolved or its own request is in flight, so preloads never go first.
  */
@@ -9135,28 +9255,6 @@ internal fun RaftFilePreviewPayload.withImageGalleryIndex(
         )
     }
     return nextImage.toPreviewPayload(previous = this, imageGalleryIndex = nextIndex)
-}
-
-internal fun RaftFilePreviewPayload.nextImageGalleryIndex(
-    dragDistancePx: Float,
-    thresholdPx: Float
-): Int? {
-    if (imageGallery.size <= 1) return null
-    return when {
-        dragDistancePx <= -thresholdPx && imageGalleryIndex < imageGallery.lastIndex -> imageGalleryIndex + 1
-        dragDistancePx >= thresholdPx && imageGalleryIndex > 0 -> imageGalleryIndex - 1
-        else -> null
-    }
-}
-
-private fun RaftFilePreviewPayload.imageGalleryDragOffsetWithResistance(dragDistancePx: Float): Float {
-    if (imageGallery.size <= 1) return 0f
-    val index = imageGalleryIndex.coerceIn(0, imageGallery.lastIndex)
-    return when {
-        dragDistancePx > 0f && index == 0 -> dragDistancePx * 0.35f
-        dragDistancePx < 0f && index == imageGallery.lastIndex -> dragDistancePx * 0.35f
-        else -> dragDistancePx
-    }
 }
 
 @Composable
@@ -10361,6 +10459,10 @@ internal fun RaftFilePreviewImagePanel(
         showLoadingIndicator = true
     )
 }
+
+/** Whether the viewer draws this payload as an image (a resolved image, or a thumbnail while it loads). */
+internal fun RaftFilePreviewPayload.raftFilePreviewShowsImage(): Boolean =
+    (kind == "image" && imageUrl != null) || (kind == "loading" && shouldRenderImagePreview())
 
 internal fun RaftFilePreviewPayload.shouldRenderImagePreview(): Boolean =
     kind == "image" || (kind == "loading" && requestedKind == "image" && !imageUrl.isNullOrBlank())

@@ -336,7 +336,7 @@ private fun Modifier.raftForwardDragAtStart(
  * Scroll semantics for a scroller whose own scrolling is disabled at its start (a disabled
  * `LazyRow`/pager drops its scroll actions): VoiceOver scrolling still moves it, then settles.
  */
-private fun Modifier.raftYieldingScrollSemantics(
+internal fun Modifier.raftYieldingScrollSemantics(
     state: ScrollableState,
     isLtr: Boolean,
     scope: CoroutineScope,

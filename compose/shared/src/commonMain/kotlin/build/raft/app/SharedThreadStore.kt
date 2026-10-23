@@ -5082,8 +5082,12 @@ internal class SharedThreadDataSource(
             session.servers.any { server -> server.id.trim() == expected.serverId.trim() }
     }
 
-    suspend fun attachmentUrl(attachmentId: String, disposition: String? = null): ThreadApiResult<ThreadAttachmentOpenTarget> =
-        api.attachmentUrl(attachmentId, disposition)
+    suspend fun attachmentUrl(
+        priority: DataRequestPriority,
+        attachmentId: String,
+        disposition: String? = null
+    ): ThreadApiResult<ThreadAttachmentOpenTarget> =
+        api.attachmentUrl(priority, attachmentId, disposition)
 
     suspend fun attachmentHtmlPreviewUrl(attachmentId: String): ThreadApiResult<ThreadAttachmentOpenTarget> =
         api.attachmentHtmlPreviewUrl(attachmentId)

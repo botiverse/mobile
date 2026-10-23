@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.DataRequestPriority
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -114,5 +115,11 @@ class RaftFilePreviewImageGalleryPreloadTest {
             fullSize.raftFilePreviewImageZoomIdentity(),
             fullSize.withImageGalleryIndex(2, mapOf("att-3" to resolved(pendingAt(2))))!!.raftFilePreviewImageZoomIdentity()
         )
+    }
+
+    @Test
+    fun neighbourPreloadsResolveInTheBackgroundLaneAndTheShownImageDoesNot() {
+        assertEquals(DataRequestPriority.Background, raftFilePreviewImageResolutionPriority(preload = true))
+        assertEquals(DataRequestPriority.Visible, raftFilePreviewImageResolutionPriority(preload = false))
     }
 }

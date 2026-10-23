@@ -65,7 +65,11 @@ internal interface RaftThreadApi {
         action: String,
         resolutionIds: List<String>
     ): ThreadApiResult<List<PendingMentionActionExecuteResult>>
-    suspend fun attachmentUrl(attachmentId: String, disposition: String? = null): ThreadApiResult<ThreadAttachmentOpenTarget>
+    suspend fun attachmentUrl(
+        priority: DataRequestPriority,
+        attachmentId: String,
+        disposition: String? = null
+    ): ThreadApiResult<ThreadAttachmentOpenTarget>
     suspend fun attachmentHtmlPreviewUrl(attachmentId: String): ThreadApiResult<ThreadAttachmentOpenTarget>
     suspend fun attachmentComments(attachmentId: String): ThreadApiResult<ThreadAttachmentCommentsPage>
     suspend fun sendAttachmentComment(attachmentId: String, body: String): ThreadApiResult<Unit>
@@ -178,8 +182,12 @@ internal class RaftThreadApiClient(
                 wire.results.map { it.toDomain() }
             }
 
-    override suspend fun attachmentUrl(attachmentId: String, disposition: String?): ThreadApiResult<ThreadAttachmentOpenTarget> =
-        transport.attachmentUrl(attachmentId, disposition)
+    override suspend fun attachmentUrl(
+        priority: DataRequestPriority,
+        attachmentId: String,
+        disposition: String?
+    ): ThreadApiResult<ThreadAttachmentOpenTarget> =
+        transport.attachmentUrl(priority, attachmentId, disposition)
             .mapThreadBody(
                 contractCode = "thread_attachment_url_contract_mismatch",
                 serializer = ThreadAttachmentUrlResponseDto.serializer(),
@@ -336,9 +344,13 @@ internal class NetworkRaftThreadApi(
             )
         )
 
-    override suspend fun attachmentUrl(attachmentId: String, disposition: String?): HomeNetworkResponse =
+    override suspend fun attachmentUrl(
+        priority: DataRequestPriority,
+        attachmentId: String,
+        disposition: String?
+    ): HomeNetworkResponse =
         networkClient.request(
-            priority = DataRequestPriority.Visible,
+            priority = priority,
             path = "attachments/${attachmentId.trim()}/url",
             query = listOfNotNull(disposition?.trim()?.takeIf { it.isNotBlank() }?.let { "disposition" to it })
         )

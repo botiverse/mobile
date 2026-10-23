@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.SharedThreadNetworkApi
@@ -150,7 +151,7 @@ class SharedThreadJumpToLatestTest {
             randomId: String?
         ) = unused()
         override suspend fun executePendingMentionActions(action: String, resolutionIds: List<String>) = unused()
-        override suspend fun attachmentUrl(attachmentId: String, disposition: String?) = unused()
+        override suspend fun attachmentUrl(priority: DataRequestPriority, attachmentId: String, disposition: String?) = unused()
         override suspend fun attachmentHtmlPreviewUrl(attachmentId: String) = unused()
         override suspend fun attachmentComments(attachmentId: String) = unused()
         override suspend fun sendAttachmentComment(attachmentId: String, body: String) = unused()

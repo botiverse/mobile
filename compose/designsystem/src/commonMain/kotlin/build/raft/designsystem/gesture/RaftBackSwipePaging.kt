@@ -1,18 +1,25 @@
 package build.raft.designsystem.gesture
 
+import androidx.compose.foundation.MutatePriority
+import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
 
 /**
  * Leading-edge strip where a back drag always belongs to the host's back swipe, even over content
@@ -71,50 +78,64 @@ internal fun raftStartsInLeadingEdge(xPx: Float, widthPx: Float, edgePx: Float, 
 }
 
 /**
- * Horizontal swipe paging (an image gallery: one item at a time, swipe to the next / previous) that
- * cooperates with the host's full-page back swipe (iOS: the page is a native push and is swiped
- * away by `FDFullscreenPopGesture`):
+ * Drives a horizontal pager (a `HorizontalPager` with `userScrollEnabled = false`, state [state])
+ * from horizontal drags on its bounds, so the neighbouring page slides in under the finger and the
+ * release settles with [flingBehavior] (the pager's snap fling), while cooperating with the host's
+ * full-page back swipe (iOS: the page is a native push swiped away by `FDFullscreenPopGesture`):
  *
- * - On the first item a back-direction drag is left to the host, so the page pops interactively.
- * - Past the first item a back drag pages back, except from the leading [RaftBackSwipeEdgeWidth]
+ * - On the first page a back-direction drag is left unconsumed, so the host pops the page.
+ * - Past the first page a back drag pages back, except from the leading [RaftBackSwipeEdgeWidth]
  *   strip, which still pops the page; the surface registers itself as back-swipe content over the
  *   rest of its bounds so the native recogniser does not begin there.
- * - Content inside that consumes the movement first (a zoomed image panning, a pinch) cancels the
- *   drag; such content registers its own [raftBackSwipeRegion] while it owns horizontal drags.
+ * - Vertical-dominant drags are left to the content (a swipe-down dismiss, a list).
+ * - Content inside that consumes the movement (a zoomed image panning, a pinch, a dismiss drag)
+ *   keeps it: the pager does not move while it does. Should the content stop consuming in the
+ *   middle of the gesture (a zoomed image panned against its side edge hands the drag over), the
+ *   pager measures from that point and takes the drag if it continues horizontally.
  *
- * [onDrag] and [onDragEnd] receive the horizontal distance from the touch-down point in pixels.
- * Without a host back swipe this claims every horizontal drag.
+ * The pager's own drag handling must stay disabled: it would consume the back drags above (which
+ * makes the Compose touch recogniser win against the native pop) and could not be handed a drag in
+ * the middle of a gesture. Scroll semantics are provided here instead. Without a host back swipe
+ * (Android: Back is an OS gesture) every horizontal drag pages.
  */
 @Composable
-fun Modifier.raftBackSwipePagingDrag(
-    canPageBackward: Boolean,
-    onDragStart: () -> Unit = {},
-    onDrag: (totalDxPx: Float) -> Unit,
-    onDragEnd: (totalDxPx: Float) -> Unit,
-    onDragCancel: () -> Unit = {},
+fun Modifier.raftBackSwipePaging(
+    state: ScrollableState,
+    flingBehavior: FlingBehavior,
 ): Modifier {
     val hostHasBackSwipe = LocalRaftBackSwipeRegions.current != null
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
     val edgePx = with(LocalDensity.current) { RaftBackSwipeEdgeWidth.toPx() }
-    val currentCanPageBackward by rememberUpdatedState(canPageBackward)
-    val currentOnDragStart by rememberUpdatedState(onDragStart)
-    val currentOnDrag by rememberUpdatedState(onDrag)
-    val currentOnDragEnd by rememberUpdatedState(onDragEnd)
-    val currentOnDragCancel by rememberUpdatedState(onDragCancel)
+    val scope = rememberCoroutineScope()
+    val currentFling = rememberUpdatedState(flingBehavior)
     return this
-        .raftBackSwipeRegion(RaftBackSwipeEdgeWidth) { currentCanPageBackward }
-        .pointerInput(hostHasBackSwipe, isLtr, edgePx) {
+        .raftBackSwipeRegion(RaftBackSwipeEdgeWidth) { state.canScrollBackward }
+        .raftYieldingScrollSemantics(state, isLtr, scope, currentFling)
+        .pointerInput(state, hostHasBackSwipe, isLtr, edgePx) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
                 val slop = viewConfiguration.touchSlop
+                // The host's pop decides from where the gesture began, so the edge rule does too.
                 val startsInLeadingEdge =
                     raftStartsInLeadingEdge(down.position.x, size.width.toFloat(), edgePx, isLtr)
+                val tracker = VelocityTracker()
+                tracker.addPointerInputChange(down)
+                var origin = down.position
+                var overSlop = 0f
                 var claimed = false
                 while (!claimed) {
                     val event = awaitPointerEvent()
                     val change = event.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
-                    if (!change.pressed || change.isConsumed) return@awaitEachGesture
-                    val total = change.position - down.position
+                    if (!change.pressed) return@awaitEachGesture
+                    if (change.isConsumed || event.changes.count { it.pressed } > 1) {
+                        // Content owns this movement (or a second finger is down): measure any
+                        // hand-over from here.
+                        origin = change.position
+                        tracker.resetTracking()
+                        continue
+                    }
+                    tracker.addPointerInputChange(change)
+                    val total = change.position - origin
                     when (
                         raftPagingDragDecision(
                             dxPx = total.x,
@@ -123,38 +144,52 @@ fun Modifier.raftBackSwipePagingDrag(
                             isLtr = isLtr,
                             hostHasBackSwipe = hostHasBackSwipe,
                             startsInLeadingEdge = startsInLeadingEdge,
-                            canPageBackward = currentCanPageBackward,
+                            canPageBackward = state.canScrollBackward,
                         )
                     ) {
                         RaftPagingDragDecision.Undecided -> Unit
                         RaftPagingDragDecision.Release -> return@awaitEachGesture
                         RaftPagingDragDecision.Claim -> {
                             claimed = true
+                            overSlop = raftOverSlopPx(total.x, slop)
                             change.consume()
-                            currentOnDragStart()
-                            currentOnDrag(total.x)
                         }
                     }
                 }
-                var finished = false
+                val deltas = Channel<Float>(Channel.UNLIMITED)
+                val velocities = Channel<Float>(1)
+                if (overSlop != 0f) deltas.trySend(raftForwardScrollDelta(overSlop, isLtr))
+                scope.launch {
+                    state.scroll(MutatePriority.UserInput) {
+                        for (delta in deltas) scrollBy(delta)
+                        val velocity = velocities.tryReceive().getOrNull() ?: 0f
+                        with(currentFling.value) { performFling(velocity) }
+                    }
+                }
+                var finalVelocity = 0f
                 try {
                     while (true) {
                         val event = awaitPointerEvent()
                         val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        if (change.isConsumed) break
-                        val totalDx = change.position.x - down.position.x
+                        tracker.addPointerInputChange(change)
                         if (!change.pressed) {
+                            finalVelocity = raftForwardFlingVelocity(
+                                tracker.calculateVelocity().x,
+                                isLtr,
+                                viewConfiguration.maximumFlingVelocity,
+                            )
                             change.consume()
-                            finished = true
-                            currentOnDragEnd(totalDx)
                             break
                         }
-                        currentOnDrag(totalDx)
+                        val dx = change.position.x - change.previousPosition.x
+                        if (dx != 0f) deltas.trySend(raftForwardScrollDelta(dx, isLtr))
                         change.consume()
                     }
                 } finally {
-                    // Also on cancellation (pointer input reset): the surface must settle back.
-                    if (!finished) currentOnDragCancel()
+                    // Also on cancellation (pointer input reset): the scroll block must end and
+                    // settle on a page, or it would hold the scroll mutex at UserInput priority.
+                    velocities.trySend(finalVelocity)
+                    deltas.close()
                 }
             }
         }

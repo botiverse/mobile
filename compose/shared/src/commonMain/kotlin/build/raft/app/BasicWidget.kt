@@ -87,6 +87,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -509,7 +510,16 @@ private fun RaftZoomableCachedImage(
             source = source,
             contentDescription = contentDescription,
             contentScale = ContentScale.Fit,
-            onImageStateChange = onImageStateChange,
+            onImageStateChange = { imageState ->
+                // Pan is bounded by the image as fitted into the viewport, so it needs the image size.
+                // The thumbnail and the full-size image share an aspect ratio, so either one will do.
+                (imageState as? AsyncImagePainter.State.Success)
+                    ?.painter
+                    ?.intrinsicSize
+                    ?.takeIf { it != Size.Unspecified }
+                    ?.let { state.contentSize = it }
+                onImageStateChange?.invoke(imageState)
+            },
             modifier = Modifier
                 .fillMaxSize()
                 .raftZoomableImageLayer(state)
@@ -532,9 +542,12 @@ private fun Modifier.raftZoomableImageLayer(state: RaftZoomableImageState): Modi
 /**
  * Pinch to zoom (around the fingers' centroid), drag to pan while zoomed, and double tap.
  *
- * At 1x a one-finger drag is never consumed, so the gallery swipe and the iOS back swipe keep it;
- * movement is consumed only once a pinch or a zoomed pan passes the touch slop. Down events are never
- * consumed. A double tap zooms to [RaftZoomableImageDoubleTapScale] around the tap, or back to 1x.
+ * At 1x a one-finger drag is never consumed, so the gallery swipe, the swipe-down dismiss and the
+ * iOS back swipe keep it; movement is consumed only once a pinch or a zoomed pan passes the touch
+ * slop. Down events are never consumed. A double tap zooms to [RaftZoomableImageDoubleTapScale]
+ * around the tap, or back to 1x. With [RaftZoomableImageState.handsOffAtHorizontalEdge] a zoomed
+ * one-finger pan that keeps pushing against the image's side edge stops consuming for the rest of
+ * the gesture, so the surrounding pager takes the drag over (iOS Photos).
  */
 private fun Modifier.raftZoomableImageGestures(
     state: RaftZoomableImageState,
@@ -554,9 +567,11 @@ private fun Modifier.raftZoomableImageGestures(
                     (down.position - previousTap).getDistance() <= viewConfiguration.touchSlop * 4f
             val touchSlopTracker = ZoomPanTouchSlopTracker(viewConfiguration.touchSlop)
             var isTap = true
-            // Another handler (gallery paging, back swipe) consumed the gesture: leave the rest of it alone.
+            // Another handler (gallery paging, back swipe) consumed the gesture, or the drag was
+            // handed to the pager: leave the rest of it alone.
             var released = false
             var travelled = Offset.Zero
+            var edgePush = Offset.Zero
             while (true) {
                 val event = awaitPointerEvent()
                 val pressed = event.changes.count { it.pressed }
@@ -593,6 +608,16 @@ private fun Modifier.raftZoomableImageGestures(
                             viewportExtent = max(state.viewport.width, state.viewport.height),
                         )
                 if (pastTouchSlop) {
+                    if (state.handsOffAtHorizontalEdge && pressed == 1 && zoomChange == 1f) {
+                        edgePush = state.edgePush(edgePush, panChange)
+                        if (raftZoomableImageHandsOffToPager(edgePush, viewConfiguration.touchSlop)) {
+                            // Left unconsumed from here on: the pager measures its drag from this point.
+                            released = true
+                            continue
+                        }
+                    } else {
+                        edgePush = Offset.Zero
+                    }
                     state.transformBy(
                         focus = event.calculateCentroid(useCurrent = true),
                         zoomChange = zoomChange,

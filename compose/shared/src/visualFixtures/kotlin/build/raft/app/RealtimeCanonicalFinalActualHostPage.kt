@@ -1229,7 +1229,7 @@ private class ActualHostThreadApi(
     override suspend fun executePendingMentionActions(action: String, resolutionIds: List<String>): HomeNetworkResponse =
         HomeNetworkResponse(code = 200, bodyText = """{"results":[]}""")
 
-    override suspend fun attachmentUrl(attachmentId: String, disposition: String?): HomeNetworkResponse =
+    override suspend fun attachmentUrl(priority: DataRequestPriority, attachmentId: String, disposition: String?): HomeNetworkResponse =
         HomeNetworkResponse(code = 200, bodyText = """{"url":"http://127.0.0.1/attachment"}""")
 
     override suspend fun attachmentHtmlPreviewUrl(attachmentId: String): HomeNetworkResponse = attachmentUrl(attachmentId)
