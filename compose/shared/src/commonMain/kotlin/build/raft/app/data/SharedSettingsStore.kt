@@ -12,7 +12,6 @@ import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
 import build.raft.app.network.RaftCurlSocketIoPolicy
-import build.raft.app.network.currentRaftNetworkTransportController
 import build.raft.app.network.updateRaftNetworkKmmRecoveryEnvironment
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -553,7 +552,6 @@ sealed interface SharedSettingsIntent {
     data class SetHomeServerAvatarEnabled(val enabled: Boolean) : SharedSettingsIntent
     /** Task #154: stores the user's explicit realtime curl Socket.IO choice (no longer follows the server). */
     data class SetRealtimeCurlSocketIoEnabled(val enabled: Boolean) : SharedSettingsIntent
-    data class SetHttp3Enabled(val enabled: Boolean) : SharedSettingsIntent
     data class SetThreadReverseLayoutEnabled(val enabled: Boolean) : SharedSettingsIntent
     data object RefreshStorage : SharedSettingsIntent
     data class ClearStorage(val target: String) : SharedSettingsIntent
@@ -691,8 +689,6 @@ class SharedSettingsDataSource(
     private val linkOpenPreferenceRepository: LinkOpenPreferenceRepository? = null,
     private val authRuntimeCapabilityStore: SharedAuthRuntimeCapabilityStore? = null,
     private val realtimeTransportPreferenceStore: RealtimeTransportPreferenceStore? = null,
-    private val http3PreferenceStore: Http3PreferenceStore? = null,
-    private val onHttp3UserChoiceChanged: (() -> String?)? = null,
     private val threadReverseLayoutPreferenceStore: ThreadReverseLayoutPreferenceStore? = null,
     /** What the switch follows until the user picks: the flag for the selected server (alpha builds: on). */
     private val threadReverseLayoutDefault: (suspend () -> Boolean)? = null,
@@ -1417,16 +1413,6 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
-    suspend fun setHttp3Enabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
-        val store =
-            http3PreferenceStore
-                ?: return DataResult.Error(ScreenError("settings_http3_unavailable", retryable = false))
-        store.saveHttp3UserChoice(enabled)
-        val applied = onHttp3UserChoiceChanged?.invoke()
-        diagnosticsLogger?.invoke("http3_user_choice enabled=$enabled ${applied ?: "controller=unbound"}")
-        return loadMobilePreferences()
-    }
-
     suspend fun setThreadReverseLayoutEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
         val store =
             threadReverseLayoutPreferenceStore
@@ -1447,27 +1433,6 @@ class SharedSettingsDataSource(
                     available = true,
                     statusLabel = if (enabled) "Enabled" else "Off",
                     detail = "Open chats at the newest message, laid out from the bottom. Until changed, follows the server default."
-                )
-        )
-    }
-
-    /**
-     * Task #3: the switch shows the effective value: the user's explicit choice when there is one,
-     * otherwise off. Read from this data source's own store so the row reflects a save immediately.
-     */
-    private fun SettingsMobileSnapshot.withHttp3Preference(): SettingsMobileSnapshot {
-        val store = http3PreferenceStore ?: return this
-        val controller = currentRaftNetworkTransportController() ?: return this
-        val transport = controller.getPreferenceSync()
-        if (transport.availability == NetworkTransportPreferenceAvailability.Http3Unsupported) return this
-        val enabled = store.readHttp3UserChoiceSync() ?: transport.requestedHttp3Enabled
-        return copy(
-            http3 =
-                SettingsMobileToggleSnapshot(
-                    enabled = enabled,
-                    available = true,
-                    statusLabel = if (enabled) "Enabled" else "Off",
-                    detail = "New requests try HTTP/3 and fall back to HTTP/2 when the network cannot. Until changed, follows the server default."
                 )
         )
     }
@@ -1876,7 +1841,6 @@ class SharedSettingsDataSource(
                         detail = "The Home workspace avatar preference is not available on this platform."
                     ),
         ).withRealtimeCurlSocketIoPreference()
-            .withHttp3Preference()
             .withThreadReverseLayoutPreference()
             .withPushPreviewModePreference()
     }
@@ -2776,14 +2740,6 @@ class SharedSettingsStore(
                     )
                 dataSource.setHomeServerAvatarEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_HOME_SERVER_AVATAR)
-            }
-            is SharedSettingsIntent.SetHttp3Enabled -> {
-                _state.value =
-                    _state.value.copy(
-                        actionState = SharedSettingsActionState(MOBILE_ACTION_HTTP3, inProgress = true)
-                    )
-                dataSource.setHttp3Enabled(intent.enabled)
-                    .applyMobileActionResult(MOBILE_ACTION_HTTP3)
             }
             is SharedSettingsIntent.SetThreadReverseLayoutEnabled -> {
                 _state.value =
@@ -4194,7 +4150,6 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetNewDesignSettingsEnabled,
             is SharedSettingsIntent.SetHomeServerAvatarEnabled,
             is SharedSettingsIntent.SetRealtimeCurlSocketIoEnabled,
-            is SharedSettingsIntent.SetHttp3Enabled,
             is SharedSettingsIntent.SetThreadReverseLayoutEnabled,
             is SharedSettingsIntent.ClearStorage,
             is SharedSettingsIntent.SetApiEnvironment,
@@ -4445,7 +4400,6 @@ internal const val MOBILE_ACTION_DESKTOP_MODE = "desktopModeOnLargeScreen"
 internal const val MOBILE_ACTION_NEW_DESIGN_SETTINGS = "newDesignSettings"
 internal const val MOBILE_ACTION_HOME_SERVER_AVATAR = "homeServerAvatar"
 internal const val MOBILE_ACTION_REALTIME_CURL_SOCKETIO = "realtimeCurlSocketIo"
-internal const val MOBILE_ACTION_HTTP3 = "http3"
 internal const val MOBILE_ACTION_THREAD_REVERSE_LAYOUT = "threadReverseLayout"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
 internal const val COMPUTER_ACTION_RENAME = "renameComputer"

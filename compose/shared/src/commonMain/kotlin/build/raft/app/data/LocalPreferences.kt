@@ -2,8 +2,6 @@ package build.raft.app.data
 
 import build.raft.app.network.REALTIME_CURL_SOCKETIO_PREFERENCE_KEY
 import build.raft.app.network.RaftCurlSocketIoPolicy
-import build.raft.app.network.HTTP3_PREFERENCE_KEY
-import build.raft.app.network.RaftHttp3Policy
 import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
@@ -936,27 +934,6 @@ const val PUSH_PREVIEW_MODE_DEFAULT = "full"
 
 /** What a stored-but-unreadable preference resolves to: hide the body rather than show it. */
 const val PUSH_PREVIEW_MODE_UNREADABLE = "hidden"
-
-/**
- * Task #3: the Settings switch "Enable HTTP/3". Three states under [HTTP3_PREFERENCE_KEY]: absent =
- * follow the server-sent transport variant, "true" / "false" = the user's explicit choice.
- */
-interface Http3PreferenceStore {
-    /** The user's explicit choice, or null while the switch follows the server variant. */
-    fun readHttp3UserChoiceSync(): Boolean?
-    suspend fun saveHttp3UserChoice(enabled: Boolean)
-}
-
-class KeyValueHttp3PreferenceStore(
-    private val store: SharedPreferenceStore
-) : Http3PreferenceStore {
-    override fun readHttp3UserChoiceSync(): Boolean? =
-        RaftHttp3Policy.parseUserChoice(store.getString(HTTP3_PREFERENCE_KEY))
-
-    override suspend fun saveHttp3UserChoice(enabled: Boolean) {
-        store.putBoolean(HTTP3_PREFERENCE_KEY, enabled)
-    }
-}
 
 /**
  * Task #22: the agent-profile tab order the user set (on web or here) for each server, kept so the

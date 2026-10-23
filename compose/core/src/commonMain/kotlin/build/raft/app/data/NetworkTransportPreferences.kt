@@ -1,25 +1,29 @@
 package build.raft.app.data
 
+import build.raft.app.network.RaftHttpTransport
+
 enum class NetworkTransportPreferenceAvailability {
     Ready,
     NativeUnavailable,
-    Http3Unsupported,
     TrustUnavailable,
     ProxyUnavailable,
     RuntimeUnavailable
 }
 
 /**
- * Separates the requested policy from the effective request policy. Requesting HTTP/3 never proves
- * that an individual request negotiated HTTP/3.
+ * What the next app request will use. [requestedTransport] is the policy (Ktor unless the Developer
+ * curl override is on); [activeTransport] is what actually carries new requests after the curl
+ * readiness check. [curlAvailability] / [detail] describe the curl runtime, which only matters while
+ * the override is on.
  */
 data class NetworkTransportPreferenceSnapshot(
-    val requestedHttp3Enabled: Boolean,
-    val effectiveHttp3Enabled: Boolean,
-    /** Engine policy for the next request; actual selection is emitted by NetworkKMM diagnostics. */
-    val curlRequestedForNewCalls: Boolean,
-    val available: Boolean,
-    val availability: NetworkTransportPreferenceAvailability,
+    val requestedTransport: RaftHttpTransport,
+    val activeTransport: RaftHttpTransport,
+    val curlAvailability: NetworkTransportPreferenceAvailability,
     val detail: String,
     val generation: Long
-)
+) {
+    /** Engine policy for the next NetworkKMM request; actual selection is emitted by NetworkKMM diagnostics. */
+    val curlRequestedForNewCalls: Boolean
+        get() = activeTransport == RaftHttpTransport.Curl
+}

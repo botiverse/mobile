@@ -50,7 +50,8 @@ import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.RaftRequestScheduler
 import build.raft.app.network.createPlatformRaftHttpExecutor
 import build.raft.app.network.RaftCurlSocketIoPolicy
-import build.raft.app.network.RaftHttp3Policy
+import build.raft.app.network.HTTP_TRANSPORT_OVERRIDE_PREFERENCE_KEY
+import build.raft.app.network.RaftHttpTransportPolicy
 import build.raft.app.network.RaftDohFallbackPolicy
 import build.raft.app.network.RaftNetworkTransportController
 import build.raft.app.network.installRaftNetworkTransportController
@@ -2039,10 +2040,12 @@ internal class RaftSharedStoreProvider private constructor(
             RaftCurlSocketIoPolicy.bindUserChoice {
                 realtimeTransportPreferenceStore.readCurlSocketIoUserChoiceSync()
             }
-            // Task #3: the HTTP/3 switch's explicit choice (absent = HTTP/3 off). Bound before the
-            // transport controller exists so its first snapshot honours it.
-            val http3PreferenceStore = KeyValueHttp3PreferenceStore(sharedPreferenceStore)
-            RaftHttp3Policy.bindUserChoice { http3PreferenceStore.readHttp3UserChoiceSync() }
+            // artin 2026-10-23: Ktor carries app HTTP; the Developer curl override (absent = Ktor) is
+            // bound before the transport controller exists so its first snapshot honours it.
+            RaftHttpTransportPolicy.bindOverride(
+                read = { sharedPreferenceStore.getString(HTTP_TRANSPORT_OVERRIDE_PREFERENCE_KEY) },
+                write = { value -> sharedPreferenceStore.putString(HTTP_TRANSPORT_OVERRIDE_PREFERENCE_KEY, value) }
+            )
             logSharedAuthDiagnostic(
                 "shared_key_value",
                 "storage_scope name=sharedPreference " +
@@ -2055,10 +2058,10 @@ internal class RaftSharedStoreProvider private constructor(
             networkTransportController.getPreferenceSync().let { snapshot ->
                 logSharedAuthDiagnostic(
                     "shared_network_transport",
-                    "requestedHttp3=${snapshot.requestedHttp3Enabled} " +
-                        "effectiveHttp3=${snapshot.effectiveHttp3Enabled} " +
-                        "curlRequested=${snapshot.curlRequestedForNewCalls} " +
-                        "availability=${snapshot.availability} generation=${snapshot.generation}"
+                    "requested=${snapshot.requestedTransport.diagnosticsValue} " +
+                        "active=${snapshot.activeTransport.diagnosticsValue} " +
+                        "label=${networkTransportController.activeTransportLabel(snapshot).replace(' ', '_')} " +
+                        "curlAvailability=${snapshot.curlAvailability} generation=${snapshot.generation}"
                 )
             }
             val apiEnvironmentKeyValueStoreBinding =

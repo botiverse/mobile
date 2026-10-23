@@ -6,6 +6,7 @@ from pathlib import Path
 NETWORK_PATTERNS = (
     "slock_auth_ktor_failed",
     "slock_networkkmm",
+    "slock_http_",
     "unknownhostexception",
     "connectexception",
     "sslhandshakeexception",

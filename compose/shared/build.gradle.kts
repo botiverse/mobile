@@ -170,6 +170,10 @@ kotlin {
                 // Unified network infra (task #12): all platforms' HTTP goes
                 // through NetworkKMM behind the RaftHttpExecutor seam.
                 implementation("com.tencent.kuiklybase:network:0.1.0-raft.47")
+                // App HTTP transport (artin 2026-10-23): Ktor client behind the RaftHttpExecutor seam,
+                // OkHttp engine on Android and Darwin (NSURLSession) on iOS. NetworkKMM stays for
+                // downloads and the Developer curl override.
+                implementation(libs.ktor.client.core)
                 // Mermaid parse + layout (Kotlin Multiplatform, android + ios). The scene is drawn
                 // by the library's Compose Multiplatform renderer (mermaid-compose, built against
                 // CMP 1.8; the app's newer CMP wins resolution) inside RaftMermaidViewport.
@@ -193,6 +197,7 @@ kotlin {
                 // required default for new async tests; see AGENTS.md unit-test
                 // rules (task #18). Version tracks kotlinx-coroutines-core above.
                 implementation(libs.kotlinx.coroutines.test)
+                implementation(libs.ktor.client.mock)
             }
         }
         val androidMain by getting {
@@ -211,10 +216,13 @@ kotlin {
                 // below). Android-only artifact; iOS plays them through Skia's Codec instead. The
                 // loader turns Coil's service loader off so this never decodes outside the viewer.
                 implementation(libs.coil.gif)
+                implementation(libs.ktor.client.okhttp)
+                implementation(libs.okhttp.transport)
             }
         }
         val androidUnitTest by getting {
             dependencies {
+                implementation(libs.okhttp.mockwebserver3)
                 implementation("app.cash.sqldelight:sqlite-driver:2.1.0")
                 implementation(libs.robolectric)
                 // Native scroll arbitration tests exercise the renderer’s compile-only host APIs.
@@ -241,6 +249,7 @@ kotlin {
             iosSimulatorArm64Main.dependsOn(this)
             dependencies {
                 implementation("app.cash.sqldelight:native-driver:2.1.0")
+                implementation(libs.ktor.client.darwin)
             }
         }
         val iosArm64Test by getting
