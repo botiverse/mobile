@@ -8812,7 +8812,7 @@ private fun SharedThreadRouteContentContent(
         if (!shouldRequest) return
         bridge.log("thread_inline_image_fallback status=start attachmentId=${attachmentId.take(8)}")
         coroutineScope.launch {
-            when (val response = dataSource.attachmentUrl(attachmentId, disposition = "inline")) {
+            when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")) {
                 is ThreadApiResult.Success -> {
                     inlineImageFallbackState =
                         inlineImageFallbackState.resolve(attachmentId, response.data.url)
@@ -9006,7 +9006,7 @@ private fun SharedThreadRouteContentContent(
             inlineAudioPreviewStates +
                 (attachmentId to ThreadInlineAudioPreviewUiState(status = ThreadInlineAudioPreviewStatus.Loading))
         coroutineScope.launch {
-            when (val response = dataSource.attachmentUrl(attachmentId, disposition = "inline")) {
+            when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline")) {
                 is ThreadApiResult.Success -> {
                     val url = response.data.url.trim()
                     inlineAudioPreviewStates =
@@ -9048,7 +9048,7 @@ private fun SharedThreadRouteContentContent(
                     runThreadInlineVideoPreviewFetch(
                         policy = ThreadInlineVideoRetryPolicy.Default,
                         fetch = {
-                            dataSource.attachmentUrl(attachmentId, disposition = "inline").toInlineVideoFetchOutcome()
+                            dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "inline").toInlineVideoFetchOutcome()
                         },
                         awaitRetry = { delayMs ->
                             withTimeoutOrNull(delayMs) {
@@ -13561,7 +13561,7 @@ private suspend fun openSharedThreadAttachment(
 ): ThreadAttachmentOpenResult {
     val attachmentId = attachment.id.takeIf { it.isNotBlank() }
         ?: return ThreadAttachmentOpenResult(status = "failed")
-    return when (val response = dataSource.attachmentUrl(attachmentId, disposition = "attachment")) {
+    return when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "attachment")) {
         is ThreadApiResult.Success -> {
             val nativeResult =
                 bridge.openAttachment(
@@ -13592,7 +13592,7 @@ private suspend fun saveSharedThreadAttachment(
 ): ThreadAttachmentOpenResult {
     val attachmentId = attachment.id.takeIf { it.isNotBlank() }
         ?: return ThreadAttachmentOpenResult(status = "failed", message = "Unable to download attachment")
-    return when (val response = dataSource.attachmentUrl(attachmentId, disposition = "attachment")) {
+    return when (val response = dataSource.attachmentUrl(DataRequestPriority.Visible, attachmentId, disposition = "attachment")) {
         is ThreadApiResult.Success -> {
             val nativeResult =
                 bridge.saveAttachment(

@@ -62,7 +62,7 @@ internal object ReplyThreadAccessNetworkApi : SharedThreadNetworkApi {
         resolutionIds: List<String>,
     ): HomeNetworkResponse = error("unused")
 
-    override suspend fun attachmentUrl(attachmentId: String, disposition: String?): HomeNetworkResponse = error("unused")
+    override suspend fun attachmentUrl(priority: DataRequestPriority, attachmentId: String, disposition: String?): HomeNetworkResponse = error("unused")
 
     override suspend fun attachmentHtmlPreviewUrl(attachmentId: String): HomeNetworkResponse = error("unused")
 

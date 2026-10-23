@@ -112,7 +112,7 @@ class ThreadApiTest {
     fun attachmentOpenTargetRequiresCanonicalUrlField() = runBlocking {
         val api = RaftThreadApiClient(FakeThreadNetworkApi(attachmentUrlBody = """{"url":"https://cdn.slock.ai/a.png","expiresAt":null}"""))
 
-        val result = api.attachmentUrl("att-1")
+        val result = api.attachmentUrl(DataRequestPriority.Visible, "att-1")
 
         assertEquals("https://cdn.slock.ai/a.png", assertIs<ThreadApiResult.Success<ThreadAttachmentOpenTarget>>(result).data.url)
     }
@@ -121,7 +121,7 @@ class ThreadApiTest {
     fun attachmentOpenTargetRejectsDownloadUrlAlias() = runBlocking {
         val api = RaftThreadApiClient(FakeThreadNetworkApi(attachmentUrlBody = """{"downloadUrl":"https://cdn.slock.ai/a.png"}"""))
 
-        val result = api.attachmentUrl("att-1")
+        val result = api.attachmentUrl(DataRequestPriority.Visible, "att-1")
 
         assertEquals("thread_attachment_url_contract_mismatch", assertIs<ThreadApiResult.Failure>(result).contractCode)
     }
@@ -484,7 +484,9 @@ class ThreadApiTest {
         assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(
             api.sendMessage("channel-1", "hello", asTask = true, attachmentIds = listOf("att-1"), randomId = "rid-1")
         )
-        assertIs<ThreadApiResult.Success<ThreadAttachmentOpenTarget>>(api.attachmentUrl("att-1", disposition = "inline"))
+        assertIs<ThreadApiResult.Success<ThreadAttachmentOpenTarget>>(api.attachmentUrl(DataRequestPriority.Visible, "att-1", disposition = "inline"))
+        // A gallery neighbour's preload resolves its URL in the background lane.
+        assertIs<ThreadApiResult.Success<ThreadAttachmentOpenTarget>>(api.attachmentUrl(DataRequestPriority.Background, "att-2", disposition = "inline"))
         assertIs<ThreadApiResult.Success<ThreadAttachmentCommentsPage>>(api.attachmentComments("att-1"))
         assertIs<ThreadApiResult.Success<Unit>>(api.sendAttachmentComment("att-1", "looks good"))
         assertIs<ThreadApiResult.Success<Unit>>(api.markChannelReadToSeq("channel-1", 42L))
@@ -505,6 +507,7 @@ class ThreadApiTest {
                 "GET messages/sync priority=Visible query=since_seq=10&limit=30&channel_id=channel-1 server= body=",
                 """POST messages priority=Foreground query= server= body={"channelId":"channel-1","content":"hello","attachmentIds":["att-1"],"asTask":true,"randomId":"rid-1"}""",
                 "GET attachments/att-1/url priority=Visible query=disposition=inline server= body=",
+                "GET attachments/att-2/url priority=Background query=disposition=inline server= body=",
                 "GET attachments/att-1/comments priority=Visible query= server= body=",
                 """POST attachments/att-1/comments priority=Foreground query= server= body={"content":"looks good"}""",
                 """POST channels/channel-1/read priority=Foreground query= server= body={"seq":42}""",
@@ -577,7 +580,7 @@ class ThreadApiTest {
             )
         }
 
-        override suspend fun attachmentUrl(attachmentId: String, disposition: String?): HomeNetworkResponse =
+        override suspend fun attachmentUrl(priority: DataRequestPriority, attachmentId: String, disposition: String?): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = attachmentUrlBody)
 
         override suspend fun attachmentHtmlPreviewUrl(attachmentId: String): HomeNetworkResponse =

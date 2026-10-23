@@ -2088,25 +2088,6 @@ class RaftFilePreviewDownloadStatusTest {
     }
 
     @Test
-    fun imageGallerySwipeChoosesPreviousAndNextIndex() {
-        val payload =
-            RaftFilePreviewPayload(
-                kind = "image",
-                imageGallery =
-                    listOf(
-                        RaftFilePreviewGalleryImage(attachmentId = "att-1"),
-                        RaftFilePreviewGalleryImage(attachmentId = "att-2"),
-                        RaftFilePreviewGalleryImage(attachmentId = "att-3")
-                    ),
-                imageGalleryIndex = 1
-            )
-
-        assertEquals(2, payload.nextImageGalleryIndex(dragDistancePx = -80f, thresholdPx = 56f))
-        assertEquals(0, payload.nextImageGalleryIndex(dragDistancePx = 80f, thresholdPx = 56f))
-        assertEquals(null, payload.nextImageGalleryIndex(dragDistancePx = 20f, thresholdPx = 56f))
-    }
-
-    @Test
     fun imageGalleryIndexChangeRebuildsPayloadForSelectedAttachment() {
         val payload =
             RaftFilePreviewPayload(

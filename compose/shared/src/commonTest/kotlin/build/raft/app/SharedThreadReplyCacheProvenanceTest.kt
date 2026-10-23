@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.ConversationRepository
 import build.raft.app.data.SharedMessagesPayload
@@ -985,7 +986,7 @@ class SharedThreadReplyCacheProvenanceTest {
                 override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int): ThreadApiResult<ThreadMessagesPage> = unused()
                 override suspend fun sendMessage(channelId: String, body: String, asTask: Boolean, attachmentIds: List<String>, randomId: String?): ThreadApiResult<ThreadMessagesPage> = unused()
                 override suspend fun executePendingMentionActions(action: String, resolutionIds: List<String>): ThreadApiResult<List<PendingMentionActionExecuteResult>> = unused()
-                override suspend fun attachmentUrl(attachmentId: String, disposition: String?): ThreadApiResult<ThreadAttachmentOpenTarget> = unused()
+                override suspend fun attachmentUrl(priority: DataRequestPriority, attachmentId: String, disposition: String?): ThreadApiResult<ThreadAttachmentOpenTarget> = unused()
                 override suspend fun attachmentHtmlPreviewUrl(attachmentId: String): ThreadApiResult<ThreadAttachmentOpenTarget> = unused()
                 override suspend fun attachmentComments(attachmentId: String): ThreadApiResult<ThreadAttachmentCommentsPage> = unused()
                 override suspend fun sendAttachmentComment(attachmentId: String, body: String): ThreadApiResult<Unit> = unused()
