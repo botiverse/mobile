@@ -32,7 +32,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * artin task #20: the wide list + detail split ([RaftAdaptiveListDetailSplit]) beside the rail at
- * each column kind's default width: Activity (380 list, empty detail beside it), Search before and
+ * each column kind's default width, under the wide top bar: Activity (380 list, empty detail beside it), Search before and
  * after a result is picked (full width, then the 380 list beside the result) and Home (240
  * sidebar). Fixed fixture rows; verify / record as [RaftRobolectricScreenshot].
  */
@@ -78,35 +78,47 @@ class AdaptiveListDetailSplitScreenshotTest {
                     object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
                 }
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+                val servers = listOf(RaftServerSwitcherItem(id = "s1", name = "Botiverse", slug = "botiverse", activityUnreadCount = 0L))
                 RaftDesignSystemTheme {
-                    Row(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
-                        RaftNavigationRailTabBar(
-                            items =
-                                listOf(
-                                    RaftBottomTabItemPayload("home", "Home", RaftLucideIconName.House, selected = scene.railKey == "home"),
-                                    RaftBottomTabItemPayload("activity", "Activity", RaftLucideIconName.Activity, selected = scene.railKey == "activity"),
-                                    RaftBottomTabItemPayload("tasks", "Tasks", RaftLucideIconName.SquareCheckBig),
-                                    RaftBottomTabItemPayload("search", "Search", RaftLucideIconName.Search, selected = scene.railKey == "search"),
-                                    RaftBottomTabItemPayload("members", "Members", RaftLucideIconName.Users),
-                                ),
-                            onSelect = {},
-                            modifier = Modifier.fillMaxHeight(),
-                            header = RaftNavigationRailHeader(key = "server:1", label = "Botiverse"),
-                            bottomItems =
-                                listOf(RaftBottomTabItemPayload("settings", "Settings", RaftLucideIconName.Settings)),
+                    Column(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
+                        // The wide shell since #3550: the top bar (workspace, search) over the rail.
+                        RaftAppShellTopBar(
+                            currentServer = servers.first(),
+                            servers = servers,
+                            serverMenuOpen = false,
+                            onWorkspaceClick = {},
+                            onServerPick = {},
+                            searchLabel = "Search",
+                            onSearchClick = {},
+                            windowWidth = 1280.dp,
                         )
-                        Box(Modifier.weight(1f).fillMaxHeight()) {
-                            RaftAdaptiveListDetailSplit(
-                                kind = scene.kind,
-                                widths = remember { RaftListPaneWidths(store = null) },
-                                dualPane = true,
-                                active = true,
-                                hasSelection = scene.picked,
-                                detailBottomInset = 0.dp,
-                                listPane = { FixtureList(scene) },
-                                detailPane = { modifier -> FixtureDetail(modifier, scene.picked) },
-                                fillListWhenNothingPicked = scene.fillWhenNothingPicked,
+                        Row(Modifier.weight(1f)) {
+                            RaftNavigationRailTabBar(
+                                items =
+                                    listOf(
+                                        RaftBottomTabItemPayload("home", "Home", RaftLucideIconName.House, selected = scene.railKey == "home"),
+                                        RaftBottomTabItemPayload("activity", "Activity", RaftLucideIconName.Activity, selected = scene.railKey == "activity"),
+                                        RaftBottomTabItemPayload("tasks", "Tasks", RaftLucideIconName.SquareCheckBig),
+                                        RaftBottomTabItemPayload("members", "Members", RaftLucideIconName.Users),
+                                    ),
+                                onSelect = {},
+                                modifier = Modifier.fillMaxHeight(),
+                                bottomItems =
+                                    listOf(RaftBottomTabItemPayload("settings", "Settings", RaftLucideIconName.Settings)),
                             )
+                            Box(Modifier.weight(1f).fillMaxHeight()) {
+                                RaftAdaptiveListDetailSplit(
+                                    kind = scene.kind,
+                                    widths = remember { RaftListPaneWidths(store = null) },
+                                    dualPane = true,
+                                    active = true,
+                                    hasSelection = scene.picked,
+                                    detailBottomInset = 0.dp,
+                                    listPane = { FixtureList(scene) },
+                                    detailPane = { modifier -> FixtureDetail(modifier, scene.picked) },
+                                    fillListWhenNothingPicked = scene.fillWhenNothingPicked,
+                                )
+                            }
                         }
                     }
                 }
