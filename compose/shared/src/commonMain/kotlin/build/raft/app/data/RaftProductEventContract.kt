@@ -28,6 +28,19 @@ import kotlinx.serialization.json.jsonObject
 const val RAFT_PRODUCT_EVENTS_SLOCK_SHA: String = "9fdf630244561c770e7223ed190b9920c35da29a"
 
 /**
+ * The entry-level events (`channel_tab_selected`, `message_action_selected`, `activity_item_open`,
+ * `activity_mark`, `agent_create_opened`) and their values: botiverse/slock #11064 head, which
+ * builds on #11045 (merged on staging as [RAFT_PRODUCT_ENTRY_EVENTS_BASE_SLOCK_SHA]) and adds the
+ * native sources, the long-press message actions and the `members_page` / `composer_mention`
+ * entries. The server validates names and values strictly; a native app build that sends these
+ * must not ship before server v1.21.31 is in production.
+ */
+const val RAFT_PRODUCT_ENTRY_EVENTS_SLOCK_SHA: String = "36b076b0ca196bbeccd695c05d4df5a587e6602e"
+
+/** botiverse/slock #11045 merge commit on staging: `channel_tab_selected`, `message_action_selected`. */
+const val RAFT_PRODUCT_ENTRY_EVENTS_BASE_SLOCK_SHA: String = "3e959613eeeaa80607e826792c1f72bd17459191"
+
+/**
  * botiverse/slock #10790 head, where `clientEventBatchSchema` gained the optional batch-level
  * `device_class: "phone" | "tablet"` (`packages/server/src/services/productEventIngest.ts`).
  */
@@ -138,6 +151,106 @@ enum class RaftAppOpenVia(val wire: String) {
     @SerialName("other") Other("other"),
 }
 
+/** `CHANNEL_TABS`. */
+@Serializable
+enum class RaftChannelTab(val wire: String) {
+    @SerialName("chat") Chat("chat"),
+    @SerialName("tasks") Tasks("tasks"),
+    @SerialName("files") Files("files"),
+}
+
+/** `CHANNEL_TAB_SURFACES` the app has: the header's Chat / Tasks / Files strip. */
+@Serializable
+enum class RaftChannelTabSurface(val wire: String) {
+    @SerialName("header_tabs") HeaderTabs("header_tabs"),
+}
+
+/** `MESSAGE_ACTION_SURFACES` the app has: the long-press message menu. */
+@Serializable
+enum class RaftMessageActionSurface(val wire: String) {
+    @SerialName("long_press") LongPress("long_press"),
+}
+
+/**
+ * `MESSAGE_ACTIONS` the app's long-press menu can send. The registry also has `copy_text`, `pin`,
+ * `unpin`, `mark_unread`, `edit`, `delete`, `report` for the native menu; the app's message menu
+ * has none of those items today, so they have no entry here.
+ */
+@Serializable
+enum class RaftMessageAction(val wire: String) {
+    @SerialName("open_menu") OpenMenu("open_menu"),
+    @SerialName("open_reaction_picker") OpenReactionPicker("open_reaction_picker"),
+    @SerialName("react_quick") ReactQuick("react_quick"),
+    @SerialName("reply_in_thread") ReplyInThread("reply_in_thread"),
+    @SerialName("follow_thread") FollowThread("follow_thread"),
+    @SerialName("unfollow_thread") UnfollowThread("unfollow_thread"),
+    @SerialName("task_done") TaskDone("task_done"),
+    @SerialName("task_reopen") TaskReopen("task_reopen"),
+    @SerialName("convert_to_task") ConvertToTask("convert_to_task"),
+    @SerialName("copy_link") CopyLink("copy_link"),
+    @SerialName("copy_markdown") CopyMarkdown("copy_markdown"),
+    @SerialName("forward") Forward("forward"),
+    @SerialName("select") Select("select"),
+    @SerialName("save") Save("save"),
+    @SerialName("unsave") Unsave("unsave"),
+    @SerialName("translate") Translate("translate"),
+}
+
+/** `activity_item_open.item_kind`. */
+@Serializable
+enum class RaftActivityItemKind(val wire: String) {
+    @SerialName("channel") Channel("channel"),
+    @SerialName("dm") Dm("dm"),
+    @SerialName("thread") Thread("thread"),
+    @SerialName("mention_action") MentionAction("mention_action"),
+}
+
+/** `activity_mark.action`. */
+@Serializable
+enum class RaftActivityMarkAction(val wire: String) {
+    @SerialName("read") Read("read"),
+    @SerialName("unread") Unread("unread"),
+    @SerialName("read_all") ReadAll("read_all"),
+    @SerialName("done") Done("done"),
+}
+
+/** `AGENT_CREATE_ENTRIES` the app has. */
+@Serializable
+enum class RaftAgentCreateEntry(val wire: String) {
+    @SerialName("channel_members") ChannelMembers("channel_members"),
+    @SerialName("members_page") MembersPage("members_page"),
+}
+
+@Serializable
+data class RaftChannelTabSelectedProperties(
+    val tab: RaftChannelTab,
+    val surface: RaftChannelTabSurface,
+    @SerialName("was_active") val wasActive: Boolean,
+)
+
+@Serializable
+data class RaftMessageActionSelectedProperties(
+    val action: RaftMessageAction,
+    val surface: RaftMessageActionSurface,
+    /** Only sent for a thread reply; absent for a top-level message. */
+    @SerialName("in_thread") val inThread: Boolean? = null,
+)
+
+@Serializable
+data class RaftActivityItemOpenProperties(
+    @SerialName("item_kind") val itemKind: RaftActivityItemKind,
+)
+
+@Serializable
+data class RaftActivityMarkProperties(
+    val action: RaftActivityMarkAction,
+)
+
+@Serializable
+data class RaftAgentCreateOpenedProperties(
+    val entry: RaftAgentCreateEntry,
+)
+
 @Serializable
 data class RaftNavEntrySelectedProperties(
     val destination: RaftNavDestination,
@@ -166,6 +279,21 @@ sealed class RaftProductEvent<P>(val name: String, private val serializer: KSeri
 
     data class NavEntrySelected(override val properties: RaftNavEntrySelectedProperties) :
         RaftProductEvent<RaftNavEntrySelectedProperties>("nav_entry_selected", RaftNavEntrySelectedProperties.serializer())
+
+    data class ChannelTabSelected(override val properties: RaftChannelTabSelectedProperties) :
+        RaftProductEvent<RaftChannelTabSelectedProperties>("channel_tab_selected", RaftChannelTabSelectedProperties.serializer())
+
+    data class MessageActionSelected(override val properties: RaftMessageActionSelectedProperties) :
+        RaftProductEvent<RaftMessageActionSelectedProperties>("message_action_selected", RaftMessageActionSelectedProperties.serializer())
+
+    data class ActivityItemOpen(override val properties: RaftActivityItemOpenProperties) :
+        RaftProductEvent<RaftActivityItemOpenProperties>("activity_item_open", RaftActivityItemOpenProperties.serializer())
+
+    data class ActivityMark(override val properties: RaftActivityMarkProperties) :
+        RaftProductEvent<RaftActivityMarkProperties>("activity_mark", RaftActivityMarkProperties.serializer())
+
+    data class AgentCreateOpened(override val properties: RaftAgentCreateOpenedProperties) :
+        RaftProductEvent<RaftAgentCreateOpenedProperties>("agent_create_opened", RaftAgentCreateOpenedProperties.serializer())
 
     data class AppOpened(override val properties: RaftAppOpenedProperties) :
         RaftProductEvent<RaftAppOpenedProperties>("app_opened", RaftAppOpenedProperties.serializer())

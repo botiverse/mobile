@@ -13,6 +13,8 @@ import build.raft.app.data.ActivityUnreadSummaryProjection
 import build.raft.app.data.ActivityUpdateTrackingState
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
+import build.raft.app.data.RaftActivityMarkAction
+import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedHomeContentState
 import androidx.compose.runtime.Immutable
@@ -1006,7 +1008,10 @@ private fun SharedActivityPanelContent(
                     selectedFilter = state.selectedFilter,
                     totalUnreadCount = state.totalUnreadCount,
                     onFilterSelected = { onIntent(SharedActivityIntent.SetFilter(it)) },
-                    onMarkAllRead = { onIntent(SharedActivityIntent.MarkAllRead) }
+                    onMarkAllRead = {
+                        RaftProductEvents.activityMark(RaftActivityMarkAction.ReadAll)
+                        onIntent(SharedActivityIntent.MarkAllRead)
+                    }
                 )
             },
             modifier = Modifier.weight(1f).fillMaxWidth()
@@ -1755,6 +1760,7 @@ private fun SharedActivityList(
         )
     fun openRow(renderedItemKey: String) {
         val currentItem = committedRowItem(renderedItemKey) ?: return
+        RaftProductEvents.activityItemOpen(currentItem.kind.productActivityItemKind())
         selectedItemKey = currentItem.key
         onIntent(
             SharedActivityIntent.PrewarmActivityTail(
@@ -1777,7 +1783,10 @@ private fun SharedActivityList(
     }
     fun commitSwipeDone(swiped: InboxItem) {
         val current = presentedItemsState.value.firstOrNull { it.key == swiped.key }
-        activitySwipeDoneCommitItem(swiped, current)?.let { item -> latestOnIntent(SharedActivityIntent.MarkDone(item)) }
+        activitySwipeDoneCommitItem(swiped, current)?.let { item ->
+            RaftProductEvents.activityMark(RaftActivityMarkAction.Done)
+            latestOnIntent(SharedActivityIntent.MarkDone(item))
+        }
     }
     fun applySwipeDone(transition: ActivitySwipeDoneTransition) {
         swipeDoneUndo = transition.state
@@ -2080,11 +2089,16 @@ private fun SharedActivityList(
                     when (id) {
                         "toggle-read" ->
                             if (item.unreadCount > 0) {
+                                RaftProductEvents.activityMark(RaftActivityMarkAction.Read)
                                 onIntent(SharedActivityIntent.MarkRead(item))
                             } else {
+                                RaftProductEvents.activityMark(RaftActivityMarkAction.Unread)
                                 onIntent(SharedActivityIntent.MarkUnread(item))
                             }
-                        "done" -> onIntent(SharedActivityIntent.MarkDone(item))
+                        "done" -> {
+                            RaftProductEvents.activityMark(RaftActivityMarkAction.Done)
+                            onIntent(SharedActivityIntent.MarkDone(item))
+                        }
                         "follow-thread" -> onIntent(SharedActivityIntent.FollowThread(item))
                         "unfollow-thread" -> onIntent(SharedActivityIntent.UnfollowThread(item))
                         "mute-activity" -> channelMute?.onToggle?.invoke(item.channelId.value, true)

@@ -74,6 +74,27 @@ object RaftProductEvents {
         recorder.client.invalidateConsent()
     }
 
+    fun channelTabSelected(tab: RaftChannelTab, wasActive: Boolean) {
+        recorder.channelTabSelected(tab, wasActive)
+    }
+
+    fun messageActionSelected(action: RaftMessageAction, inThread: Boolean) {
+        recorder.messageActionSelected(action, inThread)
+    }
+
+    fun activityItemOpen(itemKind: RaftActivityItemKind?) {
+        if (itemKind == null) return
+        recorder.activityItemOpen(itemKind)
+    }
+
+    fun activityMark(action: RaftActivityMarkAction) {
+        recorder.activityMark(action)
+    }
+
+    fun agentCreateOpened(entry: RaftAgentCreateEntry) {
+        recorder.agentCreateOpened(entry)
+    }
+
     fun navEntrySelected(destination: RaftNavDestination?, surface: RaftNavSurface, wasActive: Boolean) {
         if (destination == null) return
         recorder.navEntrySelected(destination, surface, wasActive)

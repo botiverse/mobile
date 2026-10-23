@@ -57,6 +57,9 @@ internal data class ThreadTimelineSlice(
 ) {
     /** Derived from [surfaceKind]; the menu's `reply` capability reads this single source. */
     val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind)
+
+    /** The page is a reply thread (its rows other than the origin are thread replies). */
+    val replyThreadSurface: Boolean get() = surfaceKind == RaftThreadSurfaceKind.ReplyThread
 }
 
 internal data class ThreadInlineSearchMatch(

@@ -41,6 +41,8 @@ import build.raft.app.components.RaftUiSelectionOption
 import build.raft.app.components.TabPager
 import build.raft.app.components.TabPagerGesturePolicy
 import build.raft.app.data.AGENT_MIGRATION_FEATURE_FLAG_KEY
+import build.raft.app.data.RaftAgentCreateEntry
+import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.AGENT_MIGRATION_HOSTED_FEATURE_FLAG_KEY
 import build.raft.app.data.AgentMigrationIntent
 import build.raft.app.data.AgentMigrationState
@@ -5634,6 +5636,7 @@ internal fun MembersListContent(
                                         onDismissMenu = { createAgentMenuOpen = false },
                                         onSelect = { mode ->
                                             createAgentMenuOpen = false
+                                            RaftProductEvents.agentCreateOpened(RaftAgentCreateEntry.MembersPage)
                                             activeCreateAgentMode = mode
                                             if (mode.requiresComputerSelection()) createAgentLoadMachines()
                                         }
