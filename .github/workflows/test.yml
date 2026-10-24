@@ -415,6 +415,25 @@ jobs:
             --console=plain \
             --stacktrace
 
+      # The gate above compiles with the visual fixtures on (SLOCK_VISUAL_FIXTURES, job env), so it
+      # never sees the configuration that ships: release, fixtures off (src/visualFixturesOff,
+      # fixture data back in commonTest). On the full tier (nightly, full-ci, scope=full) compile
+      # that configuration too, so a break shows up before release day. Its own invocation: the
+      # fixture flag changes :shared's source sets.
+      - name: Compile Android release configuration (fixtures off)
+        if: ${{ env.BUILD_CONNECTED_APKS == 'true' }}
+        working-directory: compose
+        env:
+          SLOCK_VISUAL_FIXTURES: "false"
+        run: |
+          ./gradlew \
+            -PslockVisualFixtures=false \
+            :shared:compileReleaseKotlinAndroid \
+            :androidApp:compileReleaseKotlin \
+            --no-daemon \
+            --console=plain \
+            --stacktrace
+
       # Gradle 9 does not run buildSrc's own tests as part of a build; the hang watchdog that every
       # JVM test task installs is only checked here.
       - name: Run buildSrc tests (hang watchdog)
