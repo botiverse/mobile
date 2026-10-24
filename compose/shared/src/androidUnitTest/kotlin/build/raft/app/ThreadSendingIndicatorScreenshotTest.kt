@@ -21,9 +21,9 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Own messages just sent, light and dark: sending (left-aligned, then right-aligned) and failed
- * (left, then right). Captured ~2 s after composition, inside the 5 s sending delay
- * ([ThreadSendingIndicatorDelayMs]), so the sending rows draw no spinner yet (their slot stays
- * reserved) while the failed rows already show their failure line. Reports land in
+ * (left, then right). Captured right after composition settles, well inside the 5 s sending
+ * delay ([ThreadSendingIndicatorDelayMs]), so the sending rows draw no spinner yet (their slot
+ * stays reserved) while the failed rows already show their failure line. Reports land in
  * `build/reports/home-screenshots/` (CI artifact `shared-home-screenshots`); verify / record as
  * [RaftRobolectricScreenshot].
  */

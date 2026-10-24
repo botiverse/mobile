@@ -44,8 +44,11 @@ internal fun rememberDelayedSendingVisible(
     delayMs: Long = ThreadSendingIndicatorDelayMs,
 ): Boolean {
     var visible by remember(localId, isSending) { mutableStateOf(false) }
-    LaunchedEffect(localId, isSending, delayMs) {
-        runDelayedSendingVisibility(isSending, delayMs) { visible = it }
+    // Received and sent rows (nearly every row) launch nothing.
+    if (isSending) {
+        LaunchedEffect(localId, delayMs) {
+            runDelayedSendingVisibility(isSending = true, delayMs = delayMs) { visible = it }
+        }
     }
     return isSending && visible
 }
