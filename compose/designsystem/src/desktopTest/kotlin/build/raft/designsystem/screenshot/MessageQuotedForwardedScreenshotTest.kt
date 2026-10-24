@@ -177,7 +177,7 @@ class MessageQuotedForwardedScreenshotTest {
         RaftAvatar(
             type = if (agent) RaftAvatarType.Agent else RaftAvatarType.Human,
             size = RaftMessageQuotedPreviewDefaults.AvatarSize,
-            initials = name,
+            initials = name.take(1),
         )
     }
 
