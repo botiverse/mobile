@@ -12939,7 +12939,7 @@ internal fun sharedHomeSearchTimestampTextStyle() =
 // Badge, `text-callout` `foreground-muted` description; hairline separators from 55dp;
 // pressed lays `fill-pressed`. An archived channel mutes its title and description.
 @Composable
-private fun SharedHomeSearchEntityRow(
+internal fun SharedHomeSearchEntityRow(
     result: SearchEntityResult,
     query: String,
     agentStatusResolver: RaftAgentStatusResolver,
@@ -13024,9 +13024,17 @@ private fun SharedHomeSearchEntityRow(
                     )
                 }
             }
+            // A channel matched by its description shows it from just before the hit.
+            val subtitle =
+                if (result.type == SearchEntityType.Channel && result.subtitleDataRange == null) {
+                    raftSearchExcerptAroundHit(result.subtitle, query)
+                } else {
+                    result.subtitle
+                }
             RaftSearchHitText(
-                text = result.subtitle,
+                text = subtitle,
                 query = query,
+                highlightRange = result.subtitleDataRange.takeIf { subtitle == result.subtitle },
                 style = typography.callout.withHomeSearchVisualTextScale(visualTextScale),
                 color = if (mutedArchived) RaftColor.ForegroundHint else RaftColor.TextMuted,
                 maxLines = 1,
@@ -13230,7 +13238,7 @@ private fun SharedHomeThreadResultGroup(
 // (14dp avatar, `text-callout` bold `foreground`), then #channel, thread, and the time at
 // the end; the body is `text-callout` `foreground-muted`, two lines, 2dp below.
 @Composable
-private fun SharedHomeSearchMessageResultRow(
+internal fun SharedHomeSearchMessageResultRow(
     item: InboxItem,
     query: String,
     nested: Boolean = false,
@@ -13374,14 +13382,22 @@ internal fun homeSearchHighlightedAnnotatedString(
  */
 internal fun homeSearchHighlightRanges(
     text: String,
-    query: String
+    query: String,
+    within: IntRange? = null
 ): List<IntRange> {
+    if (within != null) {
+        val from = within.first.coerceIn(0, text.length)
+        val to = (within.last + 1).coerceIn(from, text.length)
+        return homeSearchHighlightRanges(text.substring(from, to), query).map { (it.first + from)..(it.last + from) }
+    }
     if (text.isBlank()) return emptyList()
     val terms =
         query
             .trim()
             .split(Regex("\\s+"))
-            .map { it.trim() }
+            // A leading "@" / "#" only says what kind of thing is searched: "@remy" matches
+            // "Remy" and "@Remy" alike (the prefix is taken from the text when it is there).
+            .map { it.trim().trimStart('@', '#') }
             .filter { it.isNotBlank() }
             .distinctBy { it.lowercase() }
             .sortedByDescending { it.length }
@@ -13397,9 +13413,12 @@ internal fun homeSearchHighlightRanges(
                 continue
             }
             val endExclusive = start + term.length
-            if ((start until endExclusive).none { occupied[it] }) {
-                ranges += start until endExclusive
-                for (index in start until endExclusive) {
+            // A hit on a handle or channel takes its "@" / "#" ("@Remy" is one unit, as when the
+            // query has it).
+            val hitStart = if (!isHandleStart(text, start - 1)) start else start - 1
+            if ((hitStart until endExclusive).none { occupied[it] }) {
+                ranges += hitStart until endExclusive
+                for (index in hitStart until endExclusive) {
                     occupied[index] = true
                 }
             }
@@ -13408,6 +13427,12 @@ internal fun homeSearchHighlightRanges(
     }
     return mergeAbuttingHighlightRanges(ranges.sortedBy { it.first })
 }
+
+private fun Char.isHitPrefix(): Boolean = this == '@' || this == '#'
+
+/** True when [index] is an "@" / "#" that opens a handle or channel: not glued to a preceding word ("a@b.com"). */
+private fun isHandleStart(text: String, index: Int): Boolean =
+    index >= 0 && text[index].isHitPrefix() && (index == 0 || !text[index - 1].isLetterOrDigit())
 
 /** Joins sorted, non-overlapping ranges that touch (`a.last + 1 == b.first`). */
 private fun mergeAbuttingHighlightRanges(sorted: List<IntRange>): List<IntRange> {
@@ -13691,7 +13716,9 @@ internal data class SearchEntityResult(
     val computerIdentity: SettingsComputerRouteIdentity? = null,
     val avatarWireValue: String? = null,
     val showPresence: Boolean = false,
-    val archived: Boolean = false
+    val archived: Boolean = false,
+    /** The part of [subtitle] that is real data (a handle, a description); the rest is a fixed label that is never marked. Null = all of it. */
+    val subtitleDataRange: IntRange? = null
 ) {
     val memberId: String?
         get() = memberIdentity?.memberId?.value
@@ -13906,6 +13933,7 @@ internal fun homeSearchEntityCandidates(
                         subtitle =
                             conversation.subtitle?.takeIf { it.isNotBlank() }
                                 ?: if (type == SearchEntityType.Channel) channelLabel else dmLabel,
+                        subtitleDataRange = if (conversation.subtitle.isNullOrBlank()) IntRange.EMPTY else null,
                         threadId = conversation.threadId.value,
                         memberIdentity = conversationIdentity.dmPeerIdentity,
                         conversationIdentity = conversationIdentity,
@@ -13983,6 +14011,7 @@ internal fun homeSearchEntityCandidates(
                             type = SearchEntityType.Computer,
                             title = title,
                             subtitle = machine.hostname?.trim().orEmpty().ifBlank { computerLabel },
+                            subtitleDataRange = if (machine.hostname?.trim().isNullOrEmpty()) IntRange.EMPTY else null,
                             threadId = null,
                             memberIdentity = null,
                             conversationIdentity = null,
@@ -14147,6 +14176,14 @@ internal fun SearchSenderFilterItem.toHomeSearchEntityResult(
                 append(if (kind == MemberKind.Agent) agentLabel else personLabel)
                 if (handle.isNotBlank()) append(" · @$handle")
                 if (conversationIdentity == null) append(" · $membersLabel")
+            },
+        // Only the "@handle" is data; "Agent" and "Members" are fixed labels.
+        subtitleDataRange =
+            if (handle.isBlank()) {
+                IntRange.EMPTY
+            } else {
+                val start = (if (kind == MemberKind.Agent) agentLabel else personLabel).length + " · ".length
+                start until start + 1 + handle.length
             },
         threadId = conversationIdentity?.threadId?.value,
         memberIdentity = identity,
