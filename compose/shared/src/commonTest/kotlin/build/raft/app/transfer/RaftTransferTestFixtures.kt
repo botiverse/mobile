@@ -18,3 +18,11 @@ internal fun testTransfer(
         percent = percent,
         bytesPerSecond = bytesPerSecond
     )
+
+/** An upload meter's sample for [bytesTransferred] of [bytesTotal] (the percent its meter would show). */
+internal fun testUploadTransfer(bytesTransferred: Long, bytesTotal: Long): RaftTransferProgress =
+    testTransfer(
+        downloadedBytes = bytesTransferred,
+        totalBytes = bytesTotal,
+        percent = (bytesTransferred * 100L / bytesTotal).toInt()
+    )

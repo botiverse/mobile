@@ -508,6 +508,8 @@
     <string name="thread_composer_mention_request_error_generic">This mention action could not be applied. Try again.</string>
     <string name="thread_composer_attachment_upload_failed">Upload failed</string>
     <string name="thread_composer_attachment_uploading">Uploading</string>
+    <string name="thread_composer_attachment_checking">Checking file…</string>
+    <string name="thread_composer_attachment_finishing">Finishing upload…</string>
     <string name="thread_composer_attachment_file">file</string>
     <string name="thread_members_title">Members (%1$d)</string>
     <string name="thread_members_agents">Agents</string>

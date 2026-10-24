@@ -5097,7 +5097,7 @@ internal class SharedThreadDataSource(
     suspend fun uploadAttachments(
         channelId: String,
         files: List<PlatformFile>,
-        onProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)? = null
+        onProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)? = null
     ): DataResult<AttachmentUploadResult> {
         val repository =
             conversationRepository

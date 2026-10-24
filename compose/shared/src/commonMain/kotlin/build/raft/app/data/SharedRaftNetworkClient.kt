@@ -334,14 +334,14 @@ internal class SharedRaftNetworkClient(
         priority: DataRequestPriority,
         upload: AttachmentUploadSessionPut,
         bytes: ByteArray,
-        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?,
+        onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?,
     ): HomeNetworkResponse = authorityBindingRequiredResponse()
 
     override suspend fun putAttachmentUploadFile(
         priority: DataRequestPriority,
         upload: AttachmentUploadSessionPut,
         file: PlatformFile,
-        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?,
+        onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?,
     ): HomeNetworkResponse = authorityBindingRequiredResponse()
 
     override suspend fun prepareAttachmentUploadFile(
@@ -360,7 +360,7 @@ internal class SharedRaftNetworkClient(
         priority: DataRequestPriority,
         channelId: ChannelId,
         files: List<MultipartFile>,
-        onProgress: (build.raft.app.network.RaftTransferProgress) -> Unit
+        onProgress: (build.raft.app.network.RaftWireTransferProgress) -> Unit
     ): HomeNetworkResponse =
         uploadAttachmentsInternal(
             priority = priority,
@@ -458,7 +458,7 @@ internal class SharedRaftNetworkClient(
         upload: AttachmentUploadSessionPut,
         bytes: ByteArray,
         expectedAuthority: RaftExpectedAuthBinding,
-        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?,
+        onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?,
     ): HomeNetworkResponse =
         executePresignedPut(
             priority = priority,
@@ -474,7 +474,7 @@ internal class SharedRaftNetworkClient(
         upload: AttachmentUploadSessionPut,
         file: PlatformFile,
         expectedAuthority: RaftExpectedAuthBinding,
-        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?,
+        onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?,
     ): HomeNetworkResponse {
         // Do not even stat a private file after the captured route authority has gone stale.
         // [executePresignedPut] repeats this check immediately before and after transport; this
@@ -599,7 +599,7 @@ internal class SharedRaftNetworkClient(
         channelId: ChannelId,
         files: List<MultipartFile>,
         expectedAuthority: RaftExpectedAuthBinding?,
-        onProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?
+        onProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?
     ): HomeNetworkResponse {
         val resolvedFiles = files.preparePlatformFileStreams().getOrElse { return it }
         return uploadMultipart(
@@ -623,7 +623,7 @@ internal class SharedRaftNetworkClient(
         bodyBytes: ByteArray?,
         bodyFile: RaftHttpFileBody?,
         expectedAuthority: RaftExpectedAuthBinding,
-        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?,
+        onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?,
     ): HomeNetworkResponse {
         // A presigned URL is intentionally sent without Authorization, but it remains part of
         // the same captured route operation.  Fence both sides of the I/O against session,
@@ -922,7 +922,7 @@ internal class SharedRaftNetworkClient(
         requestBytes: Long,
         key: String,
         expectedAuthority: RaftExpectedAuthBinding? = null,
-        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)? = null
+        onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)? = null
     ): HomeNetworkResponse {
         val startedAt = TimeSource.Monotonic.markNow()
         val requestBaseUrl = expectedAuthority?.environmentId?.normalizedEnvironmentId() ?: currentBaseUrl()

@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
 class RaftDarwinUploadProgressIosTest {
     @Test
     fun markerLeavesTheWireRequestAndRoutesSentBytesToItsListener() {
-        val received = mutableListOf<RaftTransferProgress>()
+        val received = mutableListOf<RaftWireTransferProgress>()
         val route = RaftDarwinUploadProgress.tracker.route { received += it }
         val marker = assertNotNull(route.networkHeader)
         assertNull(route.bodyWriterProgress)
@@ -30,9 +30,9 @@ class RaftDarwinUploadProgressIosTest {
         assertNull(task.originalRequest?.valueForHTTPHeaderField(RaftDarwinUploadProgress.HEADER))
         assertEquals(
             listOf(
-                RaftTransferProgress(bytesTransferred = 65_536L, bytesTotal = 320_360L),
+                RaftWireTransferProgress(bytesTransferred = 65_536L, bytesTotal = 320_360L),
                 // NSURLSessionTransferSizeUnknown is reported as an unknown total, not -1.
-                RaftTransferProgress(bytesTransferred = 320_360L, bytesTotal = null),
+                RaftWireTransferProgress(bytesTransferred = 320_360L, bytesTotal = null),
             ),
             received
         )

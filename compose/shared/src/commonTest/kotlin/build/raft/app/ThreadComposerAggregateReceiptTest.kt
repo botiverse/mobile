@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.transfer.testUploadTransfer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -151,8 +152,7 @@ class ThreadComposerAggregateReceiptTest {
             store.acceptWithState(
                 SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
                     attachmentId = old.id,
-                    bytesTransferred = 99L,
-                    bytesTotal = 100L,
+                    transfer = testUploadTransfer(99L, 100L),
                     expectedDraftKey = draftKey,
                     expectedAdmission = oldAdmission
                 )
@@ -196,8 +196,7 @@ class ThreadComposerAggregateReceiptTest {
             store.acceptWithState(
                 SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
                     attachmentId = old.id,
-                    bytesTransferred = 50L,
-                    bytesTotal = 100L,
+                    transfer = testUploadTransfer(50L, 100L),
                     expectedDraftKey = draftKey,
                     expectedAdmission = oldAdmission
                 )
@@ -399,8 +398,7 @@ class ThreadComposerAggregateReceiptTest {
             mimeType = "image/png",
             status = "uploading",
             fileRef = ref,
-            source = source,
-            uploadBytesTotal = 100L
+            source = source
         )
 
     private fun ready(id: String) =

@@ -1153,6 +1153,57 @@ def check_single_byte_size_formatter(root: Path) -> None:
         )
 
 
+TRANSFER_PACKAGE = "compose/shared/src/commonMain/kotlin/build/raft/app/transfer/"
+# A transfer percent computed from bytes: a x100 next to a byte count on one line.
+TRANSFER_PERCENT_FORMULA = re.compile(
+    r"(?:\*\s*100(?:L|\.0|f)?\b|\b100(?:L|\.0|f)?\s*\*)(?!\s*1024)"
+)
+BYTE_COUNT_WORD = re.compile(r"(?i)bytes|transferred|downloaded|loaded")
+
+
+def _production_kotlin_sources(root: Path):
+    for path in sorted((root / "compose").rglob("*.kt")):
+        parts = path.relative_to(root).parts
+        if len(parts) > 2 and parts[2] == "build":
+            continue
+        if any(part == "test" or part.endswith("Test") or part.endswith("Tests") for part in parts[:-1]):
+            continue
+        yield "/".join(parts), path.read_text(encoding="utf-8").replace("\r\n", "\n")
+
+
+def check_single_transfer_meter(root: Path) -> None:
+    """Arch audit #2 (2026-10-24): five percent formulas in five layers.
+
+    Upload progress jumped to 100 and downloads read 100 before the file was saved because each
+    layer turned bytes into a percent its own way. Transfer percent and speed come from
+    build.raft.app.transfer.RaftTransferMeter only; a byte count multiplied by 100 anywhere else in
+    production Kotlin is another formula.
+    """
+    offenders = []
+    scanned = 0
+    saw_meter = False
+    for rel, text in _production_kotlin_sources(root):
+        scanned += 1
+        if rel.startswith(TRANSFER_PACKAGE):
+            saw_meter = saw_meter or "class RaftTransferMeter" in text
+            continue
+        for line_number, line in enumerate(text.split("\n"), start=1):
+            stripped = line.strip()
+            if stripped.startswith(("//", "*", "/*")):
+                continue
+            if TRANSFER_PERCENT_FORMULA.search(line) and BYTE_COUNT_WORD.search(line):
+                offenders.append(f"{rel}:{line_number}: {stripped}")
+    if scanned == 0:
+        raise Violation("transfer percent check scanned zero production files (glob drift?)")
+    if not saw_meter:
+        raise Violation(f"transfer percent check did not find RaftTransferMeter under {TRANSFER_PACKAGE}")
+    if offenders:
+        raise Violation(
+            "transfer percent and speed come from build.raft.app.transfer.RaftTransferMeter only; "
+            "found a percent computed from bytes:\n  " + "\n  ".join(offenders)
+        )
+
+
 def run(root: Path) -> None:
     def read(rel: str) -> str:
         path = root / rel
@@ -1217,6 +1268,7 @@ def run(root: Path) -> None:
         }
     )
     check_single_byte_size_formatter(root)
+    check_single_transfer_meter(root)
 
 
 def self_test() -> None:
@@ -2086,6 +2138,28 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
                 pass
             else:
                 raise SystemExit(f"self-test: byte-size formatter checker accepted {label}")
+
+    meter_files = {
+        TRANSFER_PACKAGE + "RaftTransfer.kt": "class RaftTransferMeter { val p = (done * 100L / total) }\n",
+        "compose/shared/src/commonMain/kotlin/a/Page.kt": "val max = 100L * 1024L * 1024L\nval zoom = scale * 100f\n",
+        "compose/shared/src/commonTest/kotlin/a/PageTest.kt": "val p = bytes * 100 / total\n",
+    }
+    tmp, root = _tree(meter_files)
+    with tmp:
+        check_single_transfer_meter(root)
+    for label, extra in (
+        ("composer ratio", {"compose/shared/src/commonMain/kotlin/a/B.kt": "return ((uploadBytesTransferred * 100L) / total)\n"}),
+        ("double ratio", {"compose/androidApp/src/main/java/a/B.kt": "((snapshot.downloadedBytes.toDouble() * 100.0) / total)\n"}),
+        ("missing meter", {TRANSFER_PACKAGE + "RaftTransfer.kt": "object Nothing\n"}),
+    ):
+        tmp, root = _tree({**meter_files, **extra})
+        with tmp:
+            try:
+                check_single_transfer_meter(root)
+            except Violation:
+                pass
+            else:
+                raise SystemExit(f"self-test: transfer meter checker accepted {label}")
 
     print("check_source_constraints self-test passed")
 

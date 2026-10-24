@@ -79,7 +79,7 @@ class RealtimeBaselineHistoryRequestNetworkTest {
             fields: Map<String, String>,
             files: List<MultipartFile>,
             headers: Map<String, String>,
-            onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?
+            onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?
         ): RaftHttpExecutorResponse = RaftHttpExecutorResponse(code = 200, bodyText = "{}", errorBodyText = null)
     }
 

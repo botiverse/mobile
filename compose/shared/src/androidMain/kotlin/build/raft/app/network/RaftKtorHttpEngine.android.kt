@@ -279,7 +279,7 @@ internal object RaftUploadProgressInterceptor : okhttp3.Interceptor {
     const val HEADER = "X-Raft-Upload-Progress"
     private const val REPORT_STEP_BYTES = 32L * 1024L
 
-    private val listeners = java.util.concurrent.ConcurrentHashMap<String, (RaftTransferProgress) -> Unit>()
+    private val listeners = java.util.concurrent.ConcurrentHashMap<String, (RaftWireTransferProgress) -> Unit>()
     private val nextId = java.util.concurrent.atomic.AtomicLong(0L)
 
     val tracker =
@@ -305,7 +305,7 @@ internal object RaftUploadProgressInterceptor : okhttp3.Interceptor {
 
     private class CountingBody(
         private val delegate: okhttp3.RequestBody,
-        private val listener: (RaftTransferProgress) -> Unit,
+        private val listener: (RaftWireTransferProgress) -> Unit,
     ) : okhttp3.RequestBody() {
         override fun contentType() = delegate.contentType()
 
@@ -326,7 +326,7 @@ internal object RaftUploadProgressInterceptor : okhttp3.Interceptor {
                         written += byteCount
                         if (written - reported >= REPORT_STEP_BYTES || written == total) {
                             reported = written
-                            runCatching { listener(RaftTransferProgress(bytesTransferred = written, bytesTotal = total)) }
+                            runCatching { listener(RaftWireTransferProgress(bytesTransferred = written, bytesTotal = total)) }
                         }
                     }
                 }
@@ -334,7 +334,7 @@ internal object RaftUploadProgressInterceptor : okhttp3.Interceptor {
             delegate.writeTo(buffered)
             buffered.flush()
             if (reported != written) {
-                runCatching { listener(RaftTransferProgress(bytesTransferred = written, bytesTotal = total)) }
+                runCatching { listener(RaftWireTransferProgress(bytesTransferred = written, bytesTotal = total)) }
             }
         }
     }

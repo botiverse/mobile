@@ -99,7 +99,7 @@ internal class KtorRaftHttpExecutor(
         fields: Map<String, String>,
         files: List<MultipartFile>,
         headers: Map<String, String>,
-        onUploadProgress: ((RaftTransferProgress) -> Unit)?
+        onUploadProgress: ((RaftWireTransferProgress) -> Unit)?
     ): RaftHttpExecutorResponse {
         val traceHeaders = raftTraceHeaders(headers)
         val (requestHeaders, _) = withRaftApiClientHeaders(traceHeaders).splitContentHeaders()
@@ -143,7 +143,7 @@ internal class KtorRaftHttpExecutor(
         method: String,
         headers: Map<String, String>,
         bodyBytes: ByteArray,
-        onUploadProgress: ((RaftTransferProgress) -> Unit)?,
+        onUploadProgress: ((RaftWireTransferProgress) -> Unit)?,
     ): RaftHttpExecutorResponse {
         val traceHeaders = raftTraceHeaders(headers)
         val (requestHeaders, contentType) = traceHeaders.splitContentHeaders()
@@ -176,7 +176,7 @@ internal class KtorRaftHttpExecutor(
         method: String,
         headers: Map<String, String>,
         body: RaftHttpFileBody,
-        onUploadProgress: ((RaftTransferProgress) -> Unit)?,
+        onUploadProgress: ((RaftWireTransferProgress) -> Unit)?,
     ): RaftHttpExecutorResponse {
         val traceHeaders = raftTraceHeaders(headers)
         val (requestHeaders, contentType) = traceHeaders.splitContentHeaders()
@@ -691,7 +691,7 @@ private suspend fun (suspend (ByteArray) -> Unit).writeChunked(bytes: ByteArray)
 internal class RaftStreamingBodyContent(
     private val declaredContentType: ContentType?,
     private val length: Long?,
-    private val onProgress: ((RaftTransferProgress) -> Unit)?,
+    private val onProgress: ((RaftWireTransferProgress) -> Unit)?,
     private val writeBody: suspend (sink: suspend (ByteArray) -> Unit) -> Unit,
 ) : OutgoingContent.WriteChannelContent(), RaftChunkedBody {
     override val contentType: ContentType? get() = declaredContentType
@@ -702,7 +702,7 @@ internal class RaftStreamingBodyContent(
         writeBody { chunk ->
             sink(chunk)
             sent += chunk.size
-            onProgress?.invoke(RaftTransferProgress(bytesTransferred = sent, bytesTotal = length))
+            onProgress?.invoke(RaftWireTransferProgress(bytesTransferred = sent, bytesTotal = length))
         }
     }
 
@@ -731,7 +731,7 @@ internal class RaftMultipartContent(
     private val boundary: String,
     private val fields: Map<String, String>,
     private val files: List<MultipartFile>,
-    private val onProgress: ((RaftTransferProgress) -> Unit)?,
+    private val onProgress: ((RaftWireTransferProgress) -> Unit)?,
 ) : OutgoingContent.WriteChannelContent(), RaftChunkedBody {
     override val contentType: ContentType =
         ContentType.MultiPart.FormData.withParameter("boundary", boundary)
@@ -779,7 +779,7 @@ internal class RaftMultipartContent(
             if (bytes.isEmpty()) return
             sink(bytes)
             sent += bytes.size
-            onProgress?.invoke(RaftTransferProgress(bytesTransferred = sent, bytesTotal = total))
+            onProgress?.invoke(RaftWireTransferProgress(bytesTransferred = sent, bytesTotal = total))
         }
         fieldParts.forEach { emit(it) }
         files.forEachIndexed { index, file ->
@@ -813,13 +813,13 @@ internal fun io.ktor.client.HttpClientConfig<*>.configureRaftKtorClient() {
  * and uses to count bytes written to the connection) is set when a listener exists.
  */
 internal class RaftUploadProgressRoute(
-    val bodyWriterProgress: ((RaftTransferProgress) -> Unit)?,
+    val bodyWriterProgress: ((RaftWireTransferProgress) -> Unit)?,
     val networkHeader: Pair<String, String>?,
     val release: () -> Unit,
 )
 
 internal fun interface RaftUploadProgressTracker {
-    fun route(listener: ((RaftTransferProgress) -> Unit)?): RaftUploadProgressRoute
+    fun route(listener: ((RaftWireTransferProgress) -> Unit)?): RaftUploadProgressRoute
 }
 
 /** Counts at the body writer: right when the engine consumes the body directly (tests, iOS). */

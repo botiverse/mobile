@@ -63,7 +63,7 @@ class SharedRaftNetworkClientTest {
             fields: Map<String, String>,
             files: List<MultipartFile>,
             headers: Map<String, String>,
-            onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?
+            onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?
         ): RaftHttpExecutorResponse {
             multiparts += RecordedMultipart(url, fields, files, headers)
             return respond(url)

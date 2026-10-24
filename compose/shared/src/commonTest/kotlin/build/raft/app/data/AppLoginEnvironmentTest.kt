@@ -49,7 +49,7 @@ class AppLoginEnvironmentTest {
             }
             override suspend fun executeMultipart(priority: RaftRequestPriority, url: String,
                 fields: Map<String, String>, files: List<MultipartFile>, headers: Map<String, String>,
-                onUploadProgress: ((RaftTransferProgress) -> Unit)?): RaftHttpExecutorResponse = error("Unexpected multipart")
+                onUploadProgress: ((RaftWireTransferProgress) -> Unit)?): RaftHttpExecutorResponse = error("Unexpected multipart")
         }
         val runtime = createAppLoginRuntime(environments, sessions, transportFactory = { base ->
             SharedRaftAuthTransport(baseUrl = base, executor = executor)
