@@ -254,28 +254,56 @@ final class RaftIosSystemTabs {
     }
 
     /// Builds or updates [controller]'s tabs from [specs]; [panelImage] is the server's avatar
-    /// (nil = its initial tile). Tabs are rebuilt only when the key list or a tab's kind changes.
+    /// (nil = its initial tile).
+    ///
+    /// The server's UISearchTab is never changed in place: setting its title or image while the
+    /// bar is not on screen leaves the bar's titles shrunk and truncated (iOS 26.5; CI probe).
+    /// It is created configured, and replaced by a new one when its name or avatar changes.
+    /// Page tabs are created with their icon and updated in place.
     func apply(_ specs: [RaftIosTabBarItemSpec], panelImage: UIImage?, to controller: UITabBarController) {
         let nextKeys = specs.map(\.key)
-        let kindChanged = specs.contains { spec in
-            guard let tab = tabsByKey[spec.key] else { return false }
-            return (tab is UISearchTab) != spec.opensPanel
+        var replace = nextKeys != keys
+        for spec in specs {
+            guard let tab = tabsByKey[spec.key] else { continue }
+            if (tab is UISearchTab) != spec.opensPanel { replace = true }
+            if spec.opensPanel, imageSourceByKey[spec.key] != Self.panelSource(spec, panelImage) { replace = true }
         }
-        if nextKeys != keys || kindChanged {
+        if replace {
             var next: [String: UITab] = [:]
             let make = makeContent
             let tabs: [UITab] = specs.map { spec in
-                if let existing = tabsByKey[spec.key], (existing is UISearchTab) == spec.opensPanel {
-                    next[spec.key] = existing
+                let key = spec.key
+                if spec.opensPanel {
+                    let source = Self.panelSource(spec, panelImage)
+                    if let existing = tabsByKey[key] as? UISearchTab, imageSourceByKey[key] == source {
+                        next[key] = existing
+                        return existing
+                    }
+                    let tab = UISearchTab { _ in make(key) }
+                    tab.title = spec.title
+                    // No badge on the server tab (artin 10-23).
+                    tab.image = RaftIosServerAvatarImage.circle(
+                        panelImage,
+                        fallbackLabel: spec.avatarFallbackLabel,
+                        diameter: RaftIosServerAvatarImage.diameter
+                    )
+                    tab.accessibilityLabel = spec.accessibilityLabel ?? spec.title
+                    imageSourceByKey[key] = source
+                    next[key] = tab
+                    return tab
+                }
+                if let existing = tabsByKey[key], !(existing is UISearchTab) {
+                    next[key] = existing
                     return existing
                 }
-                let key = spec.key
                 // A page tab gets its icon at creation: the bar lays the title out around it.
-                let tab: UITab = spec.opensPanel
-                    ? UISearchTab { _ in make(key) }
-                    : UITab(title: spec.title, image: RaftIosTabIcon.images(for: spec).normal, identifier: key) { _ in make(key) }
-                imageSourceByKey[key] = spec.opensPanel ? nil : Self.imageSource(spec)
-                next[spec.key] = tab
+                let tab = UITab(title: spec.title, image: RaftIosTabIcon.images(for: spec).normal, identifier: key) { _ in
+                    make(key)
+                }
+                tab.accessibilityLabel = spec.accessibilityLabel ?? spec.title
+                tab.badgeValue = spec.badgeValue
+                imageSourceByKey[key] = Self.imageSource(spec)
+                next[key] = tab
                 return tab
             }
             tabsByKey = next
@@ -283,32 +311,24 @@ final class RaftIosSystemTabs {
             imageSourceByKey = imageSourceByKey.filter { next[$0.key] != nil }
             controller.setTabs(tabs, animated: false)
         }
-        for spec in specs {
+        for spec in specs where !spec.opensPanel {
             guard let tab = tabsByKey[spec.key] else { continue }
             if tab.title != spec.title { tab.title = spec.title }
-            tab.accessibilityLabel = spec.accessibilityLabel ?? spec.title
-            if spec.opensPanel {
-                // No badge on the server tab (artin 10-23).
-                let source = panelImage.map { "avatar:\(ObjectIdentifier($0).hashValue)" }
-                    ?? "initial:\(spec.avatarFallbackLabel ?? "")"
-                if imageSourceByKey[spec.key] != source {
-                    imageSourceByKey[spec.key] = source
-                    tab.image = RaftIosServerAvatarImage.circle(
-                        panelImage,
-                        fallbackLabel: spec.avatarFallbackLabel,
-                        diameter: RaftIosServerAvatarImage.diameter
-                    )
-                }
-                if tab.badgeValue != nil { tab.badgeValue = nil }
-            } else {
-                let source = Self.imageSource(spec)
-                if imageSourceByKey[spec.key] != source {
-                    imageSourceByKey[spec.key] = source
-                    tab.image = RaftIosTabIcon.images(for: spec).normal
-                }
-                if tab.badgeValue != spec.badgeValue { tab.badgeValue = spec.badgeValue }
+            let label = spec.accessibilityLabel ?? spec.title
+            if tab.accessibilityLabel != label { tab.accessibilityLabel = label }
+            let source = Self.imageSource(spec)
+            if imageSourceByKey[spec.key] != source {
+                imageSourceByKey[spec.key] = source
+                tab.image = RaftIosTabIcon.images(for: spec).normal
             }
+            if tab.badgeValue != spec.badgeValue { tab.badgeValue = spec.badgeValue }
         }
+    }
+
+    /// What the server tab is drawn from: its name, label and avatar (or initial).
+    private static func panelSource(_ spec: RaftIosTabBarItemSpec, _ image: UIImage?) -> String {
+        let picture = image.map { "avatar:\(ObjectIdentifier($0).hashValue)" } ?? "initial:\(spec.avatarFallbackLabel ?? "")"
+        return "\(spec.title)|\(spec.accessibilityLabel ?? "")|\(picture)"
     }
 
     private static func imageSource(_ spec: RaftIosTabBarItemSpec) -> String {

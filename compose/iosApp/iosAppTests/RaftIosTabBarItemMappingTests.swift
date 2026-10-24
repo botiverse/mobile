@@ -370,6 +370,42 @@ final class RaftIosTabBarItemMappingTests: XCTestCase {
         }
     }
 
+    func testServerTabChangesReplaceItAndKeepTheTitlesWhole() throws {
+        guard #available(iOS 26.0, *) else { throw XCTSkip("the separate server button is iOS 26 only") }
+        // The first state arrives before the bar is on screen; a server switch or avatar load
+        // can arrive while it is covered. Neither may shrink the page titles.
+        let bar = makeSystemBar()
+        defer { bar.window.isHidden = true }
+        let first = try XCTUnwrap(bar.tabs.tab(for: "more"))
+        bar.window.isHidden = true
+        let renamed = RaftIosTabBarItemSpec(
+            key: "more", title: "Raft", systemImageName: "server.rack", selectedSystemImageName: "server.rack",
+            badgeValue: nil, enabled: true, opensPanel: true, accessibilityLabel: "Current server: Raft", avatarFallbackLabel: "R"
+        )
+        let pages = ["home", "activity", "tasks", "search"].map { key in
+            RaftIosTabBarItemSpec(key: key, title: key.capitalized, systemImageName: "circle", selectedSystemImageName: "circle", badgeValue: nil, enabled: true)
+        }
+        bar.tabs.apply(pages + [renamed], panelImage: nil, to: bar.controller)
+        bar.tabs.select("home", in: bar.controller)
+        bar.window.isHidden = false
+        bar.controller.view.layoutIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        let second = try XCTUnwrap(bar.tabs.tab(for: "more"))
+        XCTAssertFalse(first === second, "a changed server tab is replaced, not mutated")
+        XCTAssertEqual(second.title, "Raft")
+        XCTAssertEqual(second.accessibilityLabel, "Current server: Raft")
+        XCTAssertEqual(bar.controller.selectedTab?.identifier, "home")
+        func labels(_ view: UIView) -> [UILabel] {
+            view.subviews.flatMap { sub -> [UILabel] in ((sub as? UILabel).map { [$0] } ?? []) + labels(sub) }
+        }
+        let titles = labels(bar.controller.tabBar).filter { ["Home", "Activity", "Tasks", "Search"].contains($0.text ?? "") }
+        XCTAssertFalse(titles.isEmpty)
+        for label in titles {
+            let frame = label.convert(label.bounds, to: bar.window)
+            XCTAssertGreaterThanOrEqual(frame.width + 0.5, label.intrinsicContentSize.width, "\(label.text ?? "") truncated: \(frame)")
+        }
+    }
+
     func testTappingTheServerTabAsksTheDelegateAndSelectsNothing() throws {
         guard #available(iOS 26.0, *) else { throw XCTSkip("the separate server button is iOS 26 only") }
         let bar = makeSystemBar()
