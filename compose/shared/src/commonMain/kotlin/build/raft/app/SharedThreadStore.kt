@@ -1991,6 +1991,13 @@ internal class SharedThreadDataSource(
             routeIdentity = routeIdentity,
             serverId = context.provenance.serverId,
             principalId = context.provenance.principalId,
+            // Task #80: the member directory names a seeded sender (human or agent) before the
+            // canonical load does; the Activity row itself may carry no name at all.
+            memberNames =
+                context.provenance.serverId.trim().takeIf { it.isNotBlank() }
+                    ?.let { serverId -> serverMembersStore?.currentKnownMemberProfilesById(ServerId(serverId)) }
+                    ?.mapValues { (_, profile) -> profile.displayName }
+                    .orEmpty(),
         )
     }
 

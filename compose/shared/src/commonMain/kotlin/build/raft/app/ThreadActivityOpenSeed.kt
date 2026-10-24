@@ -20,6 +20,8 @@ internal data class ThreadActivityOpenSeedSource(
     val ownerServerId: String?,
     val ownerUserId: String?,
     val items: List<InboxItem>,
+    /** Activity's own sender names by member id (what its rows show), humans and agents alike. */
+    val senderNames: Map<String, String> = emptyMap(),
 )
 
 internal fun SharedActivityState.toThreadActivityOpenSeedSource(): ThreadActivityOpenSeedSource =
@@ -27,6 +29,7 @@ internal fun SharedActivityState.toThreadActivityOpenSeedSource(): ThreadActivit
         ownerServerId = ownerServerId ?: snapshot?.server?.id?.value,
         ownerUserId = ownerUserId,
         items = (listOfNotNull(snapshot) + filterSnapshots.values).flatMap { it.items },
+        senderNames = senderProfiles.mapValues { (_, profile) -> profile.displayName },
     )
 
 /**
@@ -40,16 +43,18 @@ internal fun threadActivityOpenSeedMessages(
     routeIdentity: ThreadRouteIdentity,
     serverId: String,
     principalId: String,
+    memberNames: Map<String, String> = emptyMap(),
 ): List<RaftThreadMessageItem> {
     if (serverId.isBlank() || source.ownerServerId != serverId) return emptyList()
     if (source.ownerUserId != null && source.ownerUserId != principalId) return emptyList()
     val stream = routeIdentity.timelineChannelId ?: return emptyList()
     if (!routeIdentity.canRenderTimelineCandidates) return emptyList()
     val byId = LinkedHashMap<String, RaftThreadMessageItem>()
+    val names = ActivitySeedNames(memberNames = memberNames, activityNames = source.senderNames)
     source.items
         .filter { item -> item.activitySeedStreamId(routeIdentity) == stream }
         .forEach { item ->
-            item.activitySeedMessages(principalId).forEach { message ->
+            item.activitySeedMessages(principalId, names).forEach { message ->
                 val existing = byId[message.id]
                 // A reply window entry carries the server seq; it wins over a row-derived copy.
                 if (existing == null || (existing.seq == null && message.seq != null)) {
@@ -117,10 +122,13 @@ private fun InboxItem.activitySeedStreamId(routeIdentity: ThreadRouteIdentity): 
         InboxItemKind.System -> null
     }?.takeIf { it.isNotBlank() }
 
-private fun InboxItem.activitySeedMessages(principalId: String): List<RaftThreadMessageItem> =
+private fun InboxItem.activitySeedMessages(
+    principalId: String,
+    names: ActivitySeedNames,
+): List<RaftThreadMessageItem> =
     when (kind) {
         InboxItemKind.Thread ->
-            latestReplies.mapNotNull { reply -> reply.toActivitySeedMessage(principalId) } +
+            latestReplies.mapNotNull { reply -> reply.toActivitySeedMessage(principalId, names) } +
                 listOfNotNull(
                     activitySeedMessage(
                         id = latestActivityMessageId?.value,
@@ -131,6 +139,7 @@ private fun InboxItem.activitySeedMessages(principalId: String): List<RaftThread
                         senderKind = latestActivitySenderKind,
                         senderAvatar = latestActivitySenderAvatarWireValue,
                         principalId = principalId,
+                        names = names,
                     )
                 )
         InboxItemKind.Channel,
@@ -146,6 +155,7 @@ private fun InboxItem.activitySeedMessages(principalId: String): List<RaftThread
                     senderKind = lastMessageSenderKind,
                     senderAvatar = lastMessageSenderAvatarWireValue,
                     principalId = principalId,
+                    names = names,
                 )
             )
         InboxItemKind.System -> emptyList()
@@ -160,30 +170,37 @@ private fun InboxItem.activitySeedMessage(
     senderKind: MemberKind?,
     senderAvatar: String?,
     principalId: String,
+    names: ActivitySeedNames,
 ): RaftThreadMessageItem? {
     val messageId = id?.takeIf { it.isNotBlank() } ?: return null
     val text = body?.takeIf { it.isNotBlank() } ?: return null
     val at = createdAt?.takeIf { it.isNotBlank() } ?: return null
     val author = senderId?.takeIf { it.isNotBlank() } ?: return null
-    val name = senderName?.takeIf { it.isNotBlank() } ?: author
+    // Web `isSystemSender`: a membership note is stored as sender type `user` with sender id `system`,
+    // so the sender kind alone does not tell (task #80, "@Jasper joined this channel." as a chat row).
+    val system = senderKind == MemberKind.System || author == ActivitySeedSystemSenderId
+    val name = if (system) ActivitySeedSystemAuthorName else names.resolve(author, senderName)
     return RaftThreadMessageItem(
         id = messageId,
         authorId = author,
         authorName = name,
         authorHandle = name,
-        authorKind = senderKind.activitySeedAuthorKind(),
-        isOwn = author == principalId,
+        authorKind = if (system) "system" else senderKind.activitySeedAuthorKind(),
+        isOwn = !system && author == principalId,
         avatarLabel = name.toRaftAvatarLabel(),
-        avatarWireValue = senderAvatar?.takeIf { it.isNotBlank() },
+        avatarWireValue = senderAvatar?.takeIf { it.isNotBlank() && !system },
         delegatedBy = latestDelegatedBy.takeIf { messageId == (latestActivityMessageId ?: lastMessageId)?.value },
         timestampLabel = at,
         createdAtEpochMillis = parseRaftTimestampEpochMillisOrNull(at),
-        messageType = if (senderKind == MemberKind.System) "System" else "Chat",
+        messageType = if (system) "System" else "Chat",
         body = text,
     )
 }
 
-private fun ReplyPreview.toActivitySeedMessage(principalId: String): RaftThreadMessageItem? {
+private fun ReplyPreview.toActivitySeedMessage(
+    principalId: String,
+    names: ActivitySeedNames,
+): RaftThreadMessageItem? {
     if (messageId.isBlank() || content.isBlank()) return null
     val kind =
         when (senderType.trim().lowercase()) {
@@ -191,20 +208,22 @@ private fun ReplyPreview.toActivitySeedMessage(principalId: String): RaftThreadM
             "agent" -> "agent"
             "system" -> "system"
             else -> return null
-        }
+        }.let { projected -> if (senderId.trim() == ActivitySeedSystemSenderId) "system" else projected }
     val name =
-        senderDisplayName?.trim()?.takeIf { it.isNotBlank() }
-            ?: senderName.trim().takeIf { it.isNotBlank() }
-            ?: senderId
+        if (kind == "system") {
+            ActivitySeedSystemAuthorName
+        } else {
+            names.resolve(senderId, senderDisplayName, senderName)
+        }
     return RaftThreadMessageItem(
         id = messageId,
         authorId = senderId,
         authorName = name,
         authorHandle = senderName,
         authorKind = kind,
-        isOwn = senderId == principalId,
+        isOwn = kind != "system" && senderId == principalId,
         avatarLabel = name.toRaftAvatarLabel(),
-        avatarWireValue = senderAvatarUrl?.takeIf { it.isNotBlank() },
+        avatarWireValue = senderAvatarUrl?.takeIf { it.isNotBlank() && kind != "system" },
         timestampLabel = createdAt,
         createdAtEpochMillis = parseRaftTimestampEpochMillisOrNull(createdAt),
         seq = seq,
@@ -220,3 +239,37 @@ private fun MemberKind?.activitySeedAuthorKind(): String =
         MemberKind.External -> "external"
         else -> "human"
     }
+
+/** The sender id the server stores on membership and other system notes (web `isSystemSender`). */
+internal const val ActivitySeedSystemSenderId = "system"
+
+/** A seeded system note's author: the system row shows no author, but the data stays a name, not an id. */
+internal const val ActivitySeedSystemAuthorName = "System"
+
+/**
+ * Names a seeded row may show for its sender (task #80: a human sender showed as a raw id until the
+ * load finished). Most specific first: the server member directory, then the names the Activity rows
+ * themselves show, then whatever the row carried. A raw id is never a name; with nothing known the
+ * name stays blank and the row shows its neutral "Unknown" until the canonical load names it.
+ */
+internal class ActivitySeedNames(
+    private val memberNames: Map<String, String> = emptyMap(),
+    private val activityNames: Map<String, String> = emptyMap(),
+) {
+    fun resolve(senderId: String, vararg carried: String?): String =
+        activitySeedAuthorName(senderId, memberNames, activityNames, carried.toList())
+}
+
+/** See [ActivitySeedNames]; pure so the precedence is unit-tested. */
+internal fun activitySeedAuthorName(
+    senderId: String,
+    memberNames: Map<String, String>,
+    activityNames: Map<String, String>,
+    carried: List<String?>,
+): String {
+    val id = senderId.trim()
+    return (sequenceOf(memberNames[id], activityNames[id]) + carried.asSequence())
+        .mapNotNull { candidate -> candidate?.trim()?.takeIf { it.isNotBlank() && it != id } }
+        .firstOrNull()
+        .orEmpty()
+}

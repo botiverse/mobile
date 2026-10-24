@@ -106,10 +106,11 @@ class ThreadOfflineLastKnownTipTest {
             MR.strings.thread_state_beginning_conversation.desc(),
             threadOlderMessagesStatusSpec(canLoadMoreBefore = false, durableLastKnown = false).label
         )
-        // Stand-in frame: paging is closed too, but the frame is not the beginning.
+        // Stand-in frame whose load failed: paging is closed too, but the frame is not the beginning.
+        // (While that load still runs, the row says older messages are loading: task #80.)
         assertEquals(
             MR.strings.thread_offline_older_unavailable.desc(),
-            threadOlderMessagesStatusSpec(canLoadMoreBefore = false, durableLastKnown = true).label
+            threadOlderMessagesStatusSpec(canLoadMoreBefore = false, durableLastKnown = true, mainLoadFailed = true).label
         )
         // Task #168: a stand-in whose stored window reaches the conversation's first message IS the beginning.
         assertEquals(
@@ -124,6 +125,7 @@ class ThreadOfflineLastKnownTipTest {
                 sourceThreadId = "channel-1",
                 status = "content",
                 durableLastKnown = true,
+                mainLoadFailed = true,
                 canLoadMoreBefore = false,
                 messages = listOf(RaftThreadMessageItem(id = "m1", authorId = "u-a", authorName = "Owner A", body = "durable body"))
             ).toThreadTimelineSlice()
