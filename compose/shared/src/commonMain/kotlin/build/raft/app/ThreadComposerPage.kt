@@ -1,5 +1,12 @@
 package build.raft.app
 
+import kotlinx.serialization.Transient
+import com.tencent.tmm.kmmresource.compose.localized
+import build.raft.app.transfer.raftComposerUploadDisplay
+import build.raft.app.transfer.RaftTransferProgress
+import build.raft.app.transfer.RaftTransferMeter
+import build.raft.app.transfer.RaftComposerUploadDisplay
+import build.raft.app.transfer.RaftComposerUploadPhase
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
@@ -1016,13 +1023,18 @@ internal data class RaftPendingAttachmentItem(
     val mimeType: String? = null,
     val previewUri: String? = null,
     val status: String = "ready",
-    val uploadProgress: Int = 0,
     val errorCode: String? = null,
     val source: String? = null,
     val externalShareToken: String? = null,
     val externalShareAccountId: String? = null,
-    val externalShareServerId: String? = null
-)
+    val externalShareServerId: String? = null,
+    /** The upload meter's state; null until the upload starts sending. Not serialized. */
+    @Transient val uploadTransfer: RaftTransferProgress? = null
+) {
+    /** What the tray shows for this attachment's upload; null when it is ready. */
+    val uploadDisplay: RaftComposerUploadDisplay?
+        get() = raftComposerUploadDisplay(status, uploadTransfer)
+}
 
 @Serializable
 internal data class RaftPendingMentionActionItem(
@@ -1120,8 +1132,12 @@ data class SharedThreadComposerAttachment(
     val externalShareToken: String? = null,
     val externalShareAccountId: String? = null,
     val externalShareServerId: String? = null,
-    val uploadBytesTransferred: Long = 0L,
-    val uploadBytesTotal: Long? = null
+    /**
+     * The upload meter's state (owned by the upload attempt in the Thread page): null until the
+     * upload starts sending, Done once the server confirmed it. Not persisted: a restored draft
+     * re-uploads.
+     */
+    @Transient val uploadTransfer: RaftTransferProgress? = null
 )
 
 /** Composer UI formatting boundary; raw bytes win over old persisted display labels. */
@@ -1758,7 +1774,7 @@ private fun threadComposerVisualFixture(
                             sizeLabel = "1.8 MB",
                             mimeType = "application/zip",
                             status = "uploading",
-                            uploadProgress = 64
+                            uploadTransfer = RaftTransferMeter(bytesTotal = 100L).bytes(64L)
                         ),
                         RaftPendingAttachmentItem(
                             id = "picked-trace",
@@ -1766,7 +1782,6 @@ private fun threadComposerVisualFixture(
                             sizeLabel = "8.4 MB",
                             mimeType = "application/json",
                             status = "failed",
-                            uploadProgress = 0,
                             errorCode = "attachment_too_large"
                         )
                     )
@@ -4462,7 +4477,8 @@ private fun ComposerAttachmentPreviewChip(
 ) {
     val imagePreviewUri = attachment.previewUri?.takeIf { it.isNotBlank() }
     val onOpen = onPreview.takeIf { attachment.canOpenComposerAttachmentPreview(previewEnabled) }
-    val phase = attachment.composerAttachmentPhase(enabled)
+    // The upload meter's chip state (phase, percent, words); a failed tile only while enabled.
+    val upload = attachment.uploadDisplay?.takeIf { it.phase != RaftComposerUploadPhase.Failed || enabled }
     RaftComposerAttachment {
         if (attachment.isComposerImageAttachment()) {
             RaftComposerAttachmentImage(onClick = onOpen) {
@@ -4474,7 +4490,7 @@ private fun ComposerAttachmentPreviewChip(
                         borderWidth = 0.dp,
                         contentScale = RaftImageThumbnailContentScale
                     )
-                } else if (phase == null) {
+                } else if (upload == null) {
                     // With no thumbnail, an overlay's spinner or text stands in for the glyph.
                     RaftLucideIcon(RaftLucideIconName.Image, modifier = Modifier.size(20.dp), color = raftArgbHex(RaftTheme.colors.foregroundMuted))
                 }
@@ -4493,20 +4509,12 @@ private fun ComposerAttachmentPreviewChip(
             }
         }
         // The web's overlays on file and image tiles alike; mobile keeps Retry on a failed one.
-        if (phase != null) {
-            // Today's fields, mapped onto (phase, percent, label); the transfer-progress
-            // display model (phase, percent, label) replaces this mapping.
-            val progress = attachment.uploadProgress.coerceIn(0, 100)
-            val failed = phase == RaftComposerAttachmentPhase.Failed
+        if (upload != null) {
+            val failed = upload.phase == RaftComposerUploadPhase.Failed
             RaftComposerAttachmentOverlay(
-                phase = phase,
-                percent = progress.takeIf { !failed },
-                label =
-                    when {
-                        failed -> stringResource(MR.strings.thread_composer_attachment_upload_failed)
-                        progress > 0 -> "$progress%"
-                        else -> stringResource(MR.strings.thread_composer_attachment_uploading)
-                    },
+                phase = upload.phase.toComposerAttachmentPhase(),
+                percent = upload.percent,
+                label = upload.label.localized(),
                 action = stringResource(MR.strings.common_retry).takeIf { failed },
                 onAction = onRetry.takeIf { failed }
             )
@@ -4525,11 +4533,13 @@ private fun ComposerAttachmentPreviewChip(
  * enabled (Retry needs it). Main has no checking/finishing state yet; the transfer-progress
  * model maps onto [RaftComposerAttachmentPhase] here.
  */
-private fun RaftPendingAttachmentItem.composerAttachmentPhase(enabled: Boolean): RaftComposerAttachmentPhase? =
-    when {
-        status == "uploading" -> RaftComposerAttachmentPhase.Uploading
-        status == "failed" && enabled -> RaftComposerAttachmentPhase.Failed
-        else -> null
+/** The design system's overlay phase for the upload meter's chip phase (same four states). */
+private fun RaftComposerUploadPhase.toComposerAttachmentPhase(): RaftComposerAttachmentPhase =
+    when (this) {
+        RaftComposerUploadPhase.Checking -> RaftComposerAttachmentPhase.Checking
+        RaftComposerUploadPhase.Uploading -> RaftComposerAttachmentPhase.Uploading
+        RaftComposerUploadPhase.Finishing -> RaftComposerAttachmentPhase.Finishing
+        RaftComposerUploadPhase.Failed -> RaftComposerAttachmentPhase.Failed
     }
 
 internal fun composerAttachmentRows(

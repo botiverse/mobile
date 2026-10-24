@@ -183,7 +183,7 @@ class KtorRaftHttpExecutorTest {
     fun multipartUploadStreamsTheFileAndReportsProgressToTheEnd() = runBlocking {
         val fileBytes = ByteArray(300 * 1024) { (it % 251).toByte() }
         val harness = Harness { request -> respond(request.body.toByteArray().size.toString(), HttpStatusCode.OK) }
-        val progress = mutableListOf<RaftTransferProgress>()
+        val progress = mutableListOf<RaftWireTransferProgress>()
 
         val response =
             harness.executor.executeMultipart(
@@ -210,7 +210,7 @@ class KtorRaftHttpExecutorTest {
         assertEquals(total, harness.requests.single().body.contentLength)
         assertTrue(progress.size > 2, "progress=$progress")
         assertEquals(progress.map { it.bytesTransferred }.sorted(), progress.map { it.bytesTransferred })
-        assertEquals(RaftTransferProgress(total, total), progress.last())
+        assertEquals(RaftWireTransferProgress(total, total), progress.last())
         assertTrue(harness.requests.single().body.contentType.toString().startsWith("multipart/form-data; boundary="))
         assertEquals(listOf(RaftRequestPriority.Foreground to RaftKtorCallKind.NonIdempotent), harness.lanes)
     }
@@ -223,7 +223,7 @@ class KtorRaftHttpExecutorTest {
             received.complete(request.body.toByteArray())
             respond("", HttpStatusCode.OK)
         }
-        val progress = mutableListOf<RaftTransferProgress>()
+        val progress = mutableListOf<RaftWireTransferProgress>()
 
         val response =
             harness.executor.executeFile(
@@ -246,7 +246,7 @@ class KtorRaftHttpExecutorTest {
         val body = harness.requests.single().body
         assertEquals(fileBytes.size.toLong(), body.contentLength)
         assertEquals("application/pdf", body.contentType.toString())
-        assertEquals(RaftTransferProgress(fileBytes.size.toLong(), fileBytes.size.toLong()), progress.last())
+        assertEquals(RaftWireTransferProgress(fileBytes.size.toLong(), fileBytes.size.toLong()), progress.last())
     }
 
     @Test

@@ -4,7 +4,7 @@ import build.raft.app.network.MultipartFile
 import build.raft.app.network.RaftHttpExecutor
 import build.raft.app.network.RaftHttpExecutorResponse
 import build.raft.app.network.RaftRequestPriority
-import build.raft.app.network.RaftTransferProgress
+import build.raft.app.network.RaftWireTransferProgress
 import kotlinx.coroutines.runBlocking
 import build.raft.app.data.SharedApiEnvironmentStore
 import kotlin.test.Test
@@ -89,7 +89,7 @@ class PrivateDeploymentRequestTest {
                 headers: Map<String, String>, bodyText: String?, jsonBody: Boolean): RaftHttpExecutorResponse = answer()
             override suspend fun executeMultipart(priority: RaftRequestPriority, url: String,
                 fields: Map<String, String>, files: List<MultipartFile>, headers: Map<String, String>,
-                onUploadProgress: ((RaftTransferProgress) -> Unit)?): RaftHttpExecutorResponse = error("Unexpected multipart")
+                onUploadProgress: ((RaftWireTransferProgress) -> Unit)?): RaftHttpExecutorResponse = error("Unexpected multipart")
         }
         val web = "https://raft.example.com"
         assertTrue(privateDeploymentWebReachable(executor { RaftHttpExecutorResponse(200, "<html>", null) }, web))

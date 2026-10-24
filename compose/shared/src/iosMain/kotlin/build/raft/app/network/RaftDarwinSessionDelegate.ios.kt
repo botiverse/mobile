@@ -84,7 +84,7 @@ internal object RaftDarwinUploadProgress {
     private const val PROPERTY_KEY = "build.raft.app.uploadProgressId"
 
     private val lock = SynchronizedObject()
-    private val listeners = HashMap<String, (RaftTransferProgress) -> Unit>()
+    private val listeners = HashMap<String, (RaftWireTransferProgress) -> Unit>()
     private val nextId = atomic(0L)
 
     val tracker =
@@ -111,7 +111,7 @@ internal object RaftDarwinUploadProgress {
         val listener = synchronized(lock) { listeners[id] } ?: return
         runCatching {
             listener(
-                RaftTransferProgress(
+                RaftWireTransferProgress(
                     bytesTransferred = totalBytesSent,
                     bytesTotal = totalBytesExpectedToSend.takeIf { it >= 0L },
                 )

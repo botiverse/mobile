@@ -508,6 +508,8 @@
     <string name="thread_composer_mention_request_error_generic">无法完成该提及操作，请重试。</string>
     <string name="thread_composer_attachment_upload_failed">上传失败</string>
     <string name="thread_composer_attachment_uploading">上传中</string>
+    <string name="thread_composer_attachment_checking">正在检查文件…</string>
+    <string name="thread_composer_attachment_finishing">正在完成上传…</string>
     <string name="thread_composer_attachment_file">文件</string>
     <string name="thread_members_title">成员（%1$d）</string>
     <string name="thread_members_agents">Agent</string>

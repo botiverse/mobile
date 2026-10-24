@@ -16,6 +16,8 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.designsystem.components.LocalRaftSpinnerStillStep
+import build.raft.app.transfer.RaftTransferMeter
+import build.raft.app.transfer.testUploadTransfer
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -43,7 +45,16 @@ class ThreadComposerAttachmentTrayScreenshotTest {
     @Test
     fun attachmentTrayDark() = capture("thread.composer-attachments.dark", RaftAppAppearance.Dark)
 
-    private fun capture(name: String, appearance: RaftAppAppearance) =
+    private fun capture(name: String, appearance: RaftAppAppearance) = captureComposerTray(activities, name, appearance, trayAttachments)
+}
+
+/** The tray at the composer's 321dp inside the design-system theme, spinners held still. */
+internal fun captureComposerTray(
+    activities: RobolectricComposeActivityRule,
+    name: String,
+    appearance: RaftAppAppearance,
+    attachments: List<RaftPendingAttachmentItem>
+) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftSpinnerStillStep provides 0) {
@@ -51,7 +62,7 @@ class ThreadComposerAttachmentTrayScreenshotTest {
                     Box(Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp)) {
                         Box(Modifier.width(321.dp)) {
                             ComposerAttachmentTray(
-                                attachments = trayAttachments,
+                                attachments = attachments,
                                 enabled = true,
                                 previewEnabled = true,
                                 onEvent = { _, _ -> },
@@ -61,7 +72,6 @@ class ThreadComposerAttachmentTrayScreenshotTest {
                 }
             }
         }
-}
 
 private val trayAttachments =
     listOf(
@@ -73,7 +83,7 @@ private val trayAttachments =
             mimeType = "application/zip",
             sizeBytes = 8_400_000L,
             status = "uploading",
-            uploadProgress = 42,
+            uploadTransfer = testUploadTransfer(42L, 100L),
         ),
         RaftPendingAttachmentItem(
             id = "recording",
@@ -81,8 +91,16 @@ private val trayAttachments =
             mimeType = "video/quicktime",
             sizeBytes = 31_000_000L,
             status = "uploading",
+            // Sending started, no byte yet: "Uploading".
+            uploadTransfer = RaftTransferMeter(bytesTotal = 31_000_000L).progress,
         ),
-        RaftPendingAttachmentItem(id = "photo", fileName = "whiteboard.jpg", mimeType = "image/jpeg", status = "uploading"),
+        RaftPendingAttachmentItem(
+            id = "photo",
+            fileName = "whiteboard.jpg",
+            mimeType = "image/jpeg",
+            status = "uploading",
+            uploadTransfer = RaftTransferMeter(bytesTotal = 100L).progress,
+        ),
         RaftPendingAttachmentItem(
             id = "trace",
             fileName = "oversized-trace.jsonl",

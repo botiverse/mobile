@@ -603,7 +603,7 @@ class DirectAttachmentUploadNetworkContractTest {
             fields: Map<String, String>,
             files: List<MultipartFile>,
             headers: Map<String, String>,
-            onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?,
+            onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?,
         ): RaftHttpExecutorResponse {
             multipartCalls += 1
             return respond("POST", url)
@@ -615,7 +615,7 @@ class DirectAttachmentUploadNetworkContractTest {
             method: String,
             headers: Map<String, String>,
             bodyBytes: ByteArray,
-            onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?,
+            onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?,
         ): RaftHttpExecutorResponse {
             byteBodies += ByteBody(url = url, headers = headers, bytes = bodyBytes)
             bytesFailure?.let { throw it }
@@ -628,7 +628,7 @@ class DirectAttachmentUploadNetworkContractTest {
             method: String,
             headers: Map<String, String>,
             body: RaftHttpFileBody,
-            onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?,
+            onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?,
         ): RaftHttpExecutorResponse {
             fileBodies += body
             consumeFile(body)

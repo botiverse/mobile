@@ -109,7 +109,7 @@ class SharedRaftUploadTimeoutChainTest {
             fields: Map<String, String>,
             files: List<MultipartFile>,
             headers: Map<String, String>,
-            onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?
+            onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?
         ): RaftHttpExecutorResponse {
             multipartAttempts += 1
             try {

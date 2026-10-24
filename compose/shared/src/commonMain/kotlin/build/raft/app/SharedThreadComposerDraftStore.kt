@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.data.InboxItem
 import build.raft.app.data.InboxSnapshot
 import build.raft.app.data.MviDispatchReceipt
@@ -1279,7 +1280,7 @@ internal class SharedThreadComposerDraftPersistence(
                     attachment.copy(
                         status = "queued",
                         errorCode = null,
-                        uploadBytesTransferred = 0L
+                        uploadTransfer = null
                     )
                 } else {
                     attachment
@@ -2388,10 +2389,10 @@ internal sealed interface SharedThreadComposerDraftIntent {
         /** Scope failure marking to the exact local-row generations that failed. */
         val expectedAdmissions: Map<String, SharedThreadComposerAttachmentAdmission> = emptyMap()
     ) : SharedThreadComposerDraftIntent
+    /** The upload attempt's meter state ([transfer]), published by the attempt that owns the meter. */
     data class UpdateAttachmentUploadProgress(
         val attachmentId: String,
-        val bytesTransferred: Long,
-        val bytesTotal: Long?,
+        val transfer: RaftTransferProgress,
         /** Scope progress to the draft and local-row generation which emitted it. */
         val expectedDraftKey: String? = null,
         val expectedAdmission: SharedThreadComposerAttachmentAdmission? = null
@@ -2913,14 +2914,9 @@ internal class SharedThreadComposerDraftStore(
                                     attachment.id == intent.attachmentId &&
                                     attachment.status == "uploading"
                                 ) {
-                                    val total = intent.bytesTotal?.takeIf { it > 0L }
-                                        ?: attachment.uploadBytesTotal?.takeIf { it > 0L }
-                                    val transferred =
-                                        maxOf(attachment.uploadBytesTransferred, intent.bytesTransferred.coerceAtLeast(0L))
-                                            .let { value -> if (total != null) value.coerceAtMost(total) else value }
+                                    // Samples hop dispatchers on their way here: never rewind.
                                     attachment.copy(
-                                        uploadBytesTransferred = transferred,
-                                        uploadBytesTotal = total
+                                        uploadTransfer = attachment.uploadTransfer?.followedBy(intent.transfer) ?: intent.transfer
                                     )
                                 } else {
                                     attachment

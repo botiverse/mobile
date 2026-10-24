@@ -35,7 +35,7 @@ internal interface DirectAttachmentUploadSessionGateway {
     suspend fun put(
         upload: AttachmentUploadSessionPut,
         file: PlatformFile,
-        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)? = null,
+        onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)? = null,
     ): DataResult<Unit>
     suspend fun complete(uploadId: String): DataResult<AttachmentUploadSessionCompleteResult>
     suspend fun cancel(uploadId: String): DataResult<AttachmentUploadSessionView>
@@ -140,7 +140,7 @@ internal class DirectAttachmentUploadOperation(
         file: PlatformFile,
         clientRequestId: String,
         onPhase: (ThreadComposerDirectUploadPhase) -> Unit = {},
-        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)? = null,
+        onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)? = null,
     ): DataResult<Attachment> =
         coordinator.uploadOneThreadFile(channelId, file, clientRequestId, onPhase, onUploadProgress)
 }
@@ -162,7 +162,7 @@ private class ConversationRepositoryDirectAttachmentUploadSessionGateway(
     override suspend fun put(
         upload: AttachmentUploadSessionPut,
         file: PlatformFile,
-        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?,
+        onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?,
     ): DataResult<Unit> {
         val hasFileRef = file.fileRef?.trim()?.isNotBlank() == true
         if (hasFileRef && file.bytes.isNotEmpty()) {
@@ -476,7 +476,7 @@ internal class DirectAttachmentUploadCoordinator(
         file: PlatformFile,
         clientRequestId: String,
         onPhase: (ThreadComposerDirectUploadPhase) -> Unit = {},
-        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)? = null,
+        onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)? = null,
     ): DataResult<Attachment> =
         gateway.uploadOneThreadFile(channelId, file, clientRequestId, onPhase, onUploadProgress)
 

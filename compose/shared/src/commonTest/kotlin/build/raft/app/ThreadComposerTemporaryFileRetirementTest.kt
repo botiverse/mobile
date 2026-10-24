@@ -333,8 +333,7 @@ class ThreadComposerTemporaryFileRetirementTest {
             source = "external_share",
             externalShareToken = "token",
             externalShareAccountId = "account",
-            externalShareServerId = "server",
-            uploadBytesTotal = 100L
+            externalShareServerId = "server"
         )
 
     private class FakeRetirementHandler(

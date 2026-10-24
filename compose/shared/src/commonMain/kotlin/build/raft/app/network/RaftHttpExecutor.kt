@@ -14,7 +14,11 @@ internal data class RaftHttpExecutorResponse(
     val isSuccessful: Boolean get() = code in 200..299
 }
 
-data class RaftTransferProgress(
+/**
+ * Wire-side only: the bytes an executor handed to the engine so far. It never reaches UI or
+ * stores; a transfer's owner feeds it to a [build.raft.app.transfer.RaftTransferMeter].
+ */
+data class RaftWireTransferProgress(
     val bytesTransferred: Long,
     val bytesTotal: Long? = null
 )
@@ -60,7 +64,7 @@ internal interface RaftHttpExecutor {
         fields: Map<String, String>,
         files: List<MultipartFile>,
         headers: Map<String, String>,
-        onUploadProgress: ((RaftTransferProgress) -> Unit)? = null
+        onUploadProgress: ((RaftWireTransferProgress) -> Unit)? = null
     ): RaftHttpExecutorResponse
 
     /** Binary in-memory request; default keeps test doubles source-compatible. */
@@ -70,7 +74,7 @@ internal interface RaftHttpExecutor {
         method: String,
         headers: Map<String, String>,
         bodyBytes: ByteArray,
-        onUploadProgress: ((RaftTransferProgress) -> Unit)? = null,
+        onUploadProgress: ((RaftWireTransferProgress) -> Unit)? = null,
     ): RaftHttpExecutorResponse =
         RaftHttpExecutorResponse(
             code = 501,
@@ -85,7 +89,7 @@ internal interface RaftHttpExecutor {
         method: String,
         headers: Map<String, String>,
         body: RaftHttpFileBody,
-        onUploadProgress: ((RaftTransferProgress) -> Unit)? = null,
+        onUploadProgress: ((RaftWireTransferProgress) -> Unit)? = null,
     ): RaftHttpExecutorResponse =
         RaftHttpExecutorResponse(
             code = 501,

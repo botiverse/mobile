@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.transfer.RaftComposerUploadPhase
+import build.raft.app.transfer.raftComposerUploadDisplay
+import build.raft.app.transfer.testUploadTransfer
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.InboxItem
 import build.raft.app.model.ChannelId
@@ -11,6 +14,7 @@ import build.raft.app.model.TaskSummary
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -155,7 +159,7 @@ class SharedThreadComposerDraftStoreTest {
                 listOf(externalShareAttachment(status = "uploading"))
             )
         )
-        store.dispatch(SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress("local", 1L, 10L))
+        store.dispatch(SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress("local", testUploadTransfer(1L, 10L)))
 
         assertEquals("ni", store.state.value.seedText)
         assertEquals(null, store.state.value.editorCommand)
@@ -1822,7 +1826,7 @@ class SharedThreadComposerDraftStoreTest {
         val restored = persistence.read(draftKey) ?: error("expected draft")
 
         assertEquals("queued", restored.uploadedAttachments.single().status)
-        assertEquals(0L, restored.uploadedAttachments.single().uploadBytesTransferred)
+        assertNull(restored.uploadedAttachments.single().uploadTransfer)
         assertEquals("private://image", restored.uploadedAttachments.single().fileRef)
     }
 
@@ -1838,8 +1842,7 @@ class SharedThreadComposerDraftStoreTest {
                 status = "uploading",
                 fileRef = "cache/photo.jpg",
                 source = "platform_picker",
-                uploadBytesTransferred = 42L,
-                uploadBytesTotal = 100L
+                uploadTransfer = testUploadTransfer(42L, 100L)
             )
         val video =
             SharedThreadComposerAttachment(
@@ -1849,8 +1852,7 @@ class SharedThreadComposerDraftStoreTest {
                 status = "uploading",
                 fileRef = "cache/clip.mp4",
                 source = "platform_picker",
-                uploadBytesTransferred = 42L,
-                uploadBytesTotal = 100L
+                uploadTransfer = testUploadTransfer(42L, 100L)
             )
 
         persistence.save(draftKey, "Body", asTask = false, uploadedAttachments = listOf(image, video))
@@ -1858,7 +1860,7 @@ class SharedThreadComposerDraftStoreTest {
         val restored = persistence.read(draftKey) ?: error("expected draft")
         assertEquals(listOf("picked-image", "picked-video"), restored.uploadedAttachments.map { it.id })
         assertEquals(listOf("queued", "queued"), restored.uploadedAttachments.map { it.status })
-        assertEquals(listOf(0L, 0L), restored.uploadedAttachments.map { it.uploadBytesTransferred })
+        assertEquals(listOf(null, null), restored.uploadedAttachments.map { it.uploadTransfer })
     }
 
     @Test
@@ -1997,11 +1999,14 @@ class SharedThreadComposerDraftStoreTest {
                 listOf(externalShareAttachment(status = "uploading"))
             )
         )
-        store.dispatch(SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress("local", 70L, 100L))
-        store.dispatch(SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress("local", 30L, 100L))
-        store.dispatch(SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress("local", 150L, 100L))
-        assertEquals(100L, store.state.value.uploadedAttachments.single().uploadBytesTransferred)
-        assertEquals(100, store.state.value.uploadedAttachments.single().threadComposerUploadProgressPercent())
+        store.dispatch(SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress("local", testUploadTransfer(70L, 100L)))
+        store.dispatch(SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress("local", testUploadTransfer(30L, 100L)))
+        store.dispatch(SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress("local", testUploadTransfer(150L, 100L)))
+        val transfer = store.state.value.uploadedAttachments.single().uploadTransfer
+        // 30 after 70 is a late sample: dropped. 150 of 100 is every byte sent: 99, not 100.
+        assertEquals(150L, transfer?.bytesDone)
+        assertEquals(99, transfer?.percent)
+        assertEquals(RaftComposerUploadPhase.Finishing, raftComposerUploadDisplay("uploading", transfer)?.phase)
 
         store.dispatch(
             SharedThreadComposerDraftIntent.AddUploadedAttachments(
@@ -2010,7 +2015,7 @@ class SharedThreadComposerDraftStoreTest {
                 replacedAttachmentIdsByUploadedId = mapOf("remote" to "local")
             )
         )
-        store.dispatch(SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress("local", 99L, 100L))
+        store.dispatch(SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress("local", testUploadTransfer(99L, 100L)))
         assertEquals(listOf("remote"), store.state.value.uploadedAttachments.map { it.id })
     }
 
@@ -2158,8 +2163,7 @@ class SharedThreadComposerDraftStoreTest {
             source = "external_share",
             externalShareToken = "token",
             externalShareAccountId = "account",
-            externalShareServerId = "server",
-            uploadBytesTotal = 100L
+            externalShareServerId = "server"
         )
     @Test
     fun changeWithAlreadySyncedTextReturnsNoopReceiptCarryingSameText() = runBlocking {

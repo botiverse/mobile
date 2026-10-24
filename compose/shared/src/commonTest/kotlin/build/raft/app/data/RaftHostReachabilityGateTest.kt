@@ -4,7 +4,7 @@ import build.raft.app.network.MultipartFile
 import build.raft.app.network.RaftHttpExecutor
 import build.raft.app.network.RaftHttpExecutorResponse
 import build.raft.app.network.RaftRequestPriority
-import build.raft.app.network.RaftTransferProgress
+import build.raft.app.network.RaftWireTransferProgress
 import build.raft.app.runPortableCoroutineTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -179,7 +179,7 @@ class RaftHostReachabilityGateTest {
             fields: Map<String, String>,
             files: List<MultipartFile>,
             headers: Map<String, String>,
-            onUploadProgress: ((RaftTransferProgress) -> Unit)?
+            onUploadProgress: ((RaftWireTransferProgress) -> Unit)?
         ): RaftHttpExecutorResponse = error("unused")
     }
 

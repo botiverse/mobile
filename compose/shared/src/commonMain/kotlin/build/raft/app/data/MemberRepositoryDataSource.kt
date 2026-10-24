@@ -128,14 +128,14 @@ interface RaftNetworkClient {
         priority: DataRequestPriority,
         upload: AttachmentUploadSessionPut,
         bytes: ByteArray,
-        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)? = null,
+        onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)? = null,
     ): HomeNetworkResponse = authorityBindingRequiredResponse()
 
     suspend fun putAttachmentUploadFile(
         priority: DataRequestPriority,
         upload: AttachmentUploadSessionPut,
         file: PlatformFile,
-        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)? = null,
+        onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)? = null,
     ): HomeNetworkResponse = authorityBindingRequiredResponse()
 
     /**
@@ -181,7 +181,7 @@ internal fun interface ProgressiveAttachmentNetworkClient {
         priority: DataRequestPriority,
         channelId: ChannelId,
         files: List<MultipartFile>,
-        onProgress: (build.raft.app.network.RaftTransferProgress) -> Unit
+        onProgress: (build.raft.app.network.RaftWireTransferProgress) -> Unit
     ): HomeNetworkResponse
 }
 
@@ -254,7 +254,7 @@ internal interface AuthorityBoundRaftNetworkClient {
         upload: AttachmentUploadSessionPut,
         bytes: ByteArray,
         expectedAuthority: RaftExpectedAuthBinding,
-        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)? = null,
+        onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)? = null,
     ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
 
     suspend fun putAttachmentUploadFileBound(
@@ -262,7 +262,7 @@ internal interface AuthorityBoundRaftNetworkClient {
         upload: AttachmentUploadSessionPut,
         file: PlatformFile,
         expectedAuthority: RaftExpectedAuthBinding,
-        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)? = null,
+        onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)? = null,
     ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
 
     suspend fun prepareAttachmentUploadFileBound(
@@ -366,7 +366,7 @@ internal fun RaftNetworkClient.boundTo(expectedAuthority: RaftExpectedAuthBindin
             priority: DataRequestPriority,
             upload: AttachmentUploadSessionPut,
             bytes: ByteArray,
-            onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?,
+            onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?,
         ): HomeNetworkResponse =
             bound?.putAttachmentUploadBytesBound(priority, upload, bytes, expectedAuthority, onUploadProgress)
                 ?: authorityBindingUnsupportedResponse()
@@ -375,7 +375,7 @@ internal fun RaftNetworkClient.boundTo(expectedAuthority: RaftExpectedAuthBindin
             priority: DataRequestPriority,
             upload: AttachmentUploadSessionPut,
             file: PlatformFile,
-            onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?,
+            onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?,
         ): HomeNetworkResponse =
             bound?.putAttachmentUploadFileBound(priority, upload, file, expectedAuthority, onUploadProgress)
                 ?: authorityBindingUnsupportedResponse()

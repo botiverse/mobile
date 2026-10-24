@@ -6337,8 +6337,7 @@ private fun RaftAppShellReadyContent(
                     source = "external_share",
                     externalShareToken = handoff.envelope.token,
                     externalShareAccountId = handoff.accountId,
-                    externalShareServerId = handoff.serverId,
-                    uploadBytesTotal = item.sizeBytes.takeIf { it > 0L }
+                    externalShareServerId = handoff.serverId
                 )
             }
         val stageResult =

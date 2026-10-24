@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.transfer.RaftTransferMeter
+import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.components.RaftMessageListJumpSide
@@ -9820,8 +9822,7 @@ private fun SharedThreadRouteContentContent(
                             errorCode = null,
                             fileRef = file.fileRef,
                             source = file.source ?: existingAttachmentsById[file.id]?.source,
-                            uploadBytesTransferred = 0L,
-                            uploadBytesTotal = file.sizeBytes?.takeIf { it > 0L }
+                            uploadTransfer = null
                         )
                         ?: SharedThreadComposerAttachment(
                             id = file.id,
@@ -9832,8 +9833,7 @@ private fun SharedThreadRouteContentContent(
                             previewUri = file.composerLocalPreviewUri(),
                             status = "uploading",
                             fileRef = file.fileRef,
-                            source = file.source,
-                            uploadBytesTotal = file.sizeBytes?.takeIf { it > 0L }
+                            source = file.source
                         )
                 }
         if (requireAllFiles && localAttachments.size != acceptedFiles.size) {
@@ -10130,12 +10130,8 @@ private fun SharedThreadRouteContentContent(
                         externalShareToken = sourceAttachment?.externalShareToken,
                         externalShareAccountId = sourceAttachment?.externalShareAccountId,
                         externalShareServerId = sourceAttachment?.externalShareServerId,
-                        uploadBytesTransferred =
-                            sourceAttachment?.uploadBytesTotal
-                                ?: sourceAttachment?.uploadBytesTransferred
-                                ?: file.sizeBytes
-                                ?: 0L,
-                        uploadBytesTotal = sourceAttachment?.uploadBytesTotal ?: file.sizeBytes
+                        // The server confirmed the upload: the transfer is done.
+                        uploadTransfer = sourceAttachment?.uploadTransfer?.completed(file.sizeBytes)
                     )
                 }
             if (readyAttachments.size != acceptedFiles.size) {
@@ -10324,13 +10320,13 @@ private fun SharedThreadRouteContentContent(
                                         }
                                     val uploadFile = resolvedUpload.file
                                     val decision = resolvedUpload.decision
-                                    fun publishPhaseProgress(phase: ThreadComposerDirectUploadPhase) {
-                                        val transferred =
-                                            when (phase) {
-                                                ThreadComposerDirectUploadPhase.Creating -> 1L
-                                                ThreadComposerDirectUploadPhase.Putting -> 2L
-                                                ThreadComposerDirectUploadPhase.Verifying -> 3L
-                                            }
+                                    // This attempt's upload meter. The engine reports the bytes it wrote; the percent stays
+                                    // at 99 until the server confirmed the upload (the ready attachment is the 100%). Until the
+                                    // first publish the chip says "Checking file…" (size, limits, upload session).
+                                    val uploadMeter = RaftTransferMeter(bytesTotal = uploadFile.sizeBytes)
+                                    val uploadMeterLock = SynchronizedObject()
+                                    fun publishTransfer(step: RaftTransferMeter.() -> RaftTransferProgress) {
+                                        val transfer = synchronized(uploadMeterLock) { uploadMeter.step() }
                                         coroutineScope.launch {
                                             attachmentUploadOrchestrator.publishIfAccepted(
                                                 localAttachmentId,
@@ -10340,13 +10336,21 @@ private fun SharedThreadRouteContentContent(
                                                 composerDraftViewModel.accept(
                                                     SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
                                                         attachmentId = localAttachmentId,
-                                                        bytesTransferred = transferred,
-                                                        bytesTotal = 3L,
+                                                        transfer = transfer,
                                                         expectedDraftKey = draftKey,
                                                         expectedAdmission = admission
                                                     )
                                                 )
                                             }
+                                        }
+                                    }
+                                    fun publishPhaseProgress(phase: ThreadComposerDirectUploadPhase) {
+                                        when (phase) {
+                                            // Still checking: the upload session is being created.
+                                            ThreadComposerDirectUploadPhase.Creating -> Unit
+                                            ThreadComposerDirectUploadPhase.Putting -> publishTransfer { total(uploadFile.sizeBytes) }
+                                            // Every byte is with the storage; the server verifies before it confirms.
+                                            ThreadComposerDirectUploadPhase.Verifying -> publishTransfer { finishing() }
                                         }
                                     }
                                     when (decision) {
@@ -10359,28 +10363,11 @@ private fun SharedThreadRouteContentContent(
                                         ThreadComposerDirectUploadDecision.Direct -> {
                                             val operation = directUploadOperation
                                             if (operation == null) {
+                                                publishTransfer { total(uploadFile.sizeBytes) }
                                                 dataSource.uploadAttachments(
                                                     channelId = channelId,
                                                     files = listOf(uploadFile),
-                                                    onProgress = { progress ->
-                                                        coroutineScope.launch {
-                                                            attachmentUploadOrchestrator.publishIfAccepted(
-                                                                localAttachmentId,
-                                                                draftKey,
-                                                                uploadAttemptToken
-                                                            ) {
-                                                                composerDraftViewModel.accept(
-                                                                    SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
-                                                                        attachmentId = localAttachmentId,
-                                                                        bytesTransferred = progress.bytesTransferred,
-                                                                        bytesTotal = progress.bytesTotal,
-                                                                        expectedDraftKey = draftKey,
-                                                                        expectedAdmission = admission
-                                                                    )
-                                                                )
-                                                            }
-                                                        }
-                                                    }
+                                                    onProgress = { progress -> publishTransfer { bytes(progress.bytesTransferred, progress.bytesTotal) } }
                                                 )
                                             } else {
                                                 when (
@@ -10390,25 +10377,7 @@ private fun SharedThreadRouteContentContent(
                                                             file = uploadFile,
                                                             clientRequestId = clientRequestId,
                                                             onPhase = ::publishPhaseProgress,
-                                                            onUploadProgress = { progress ->
-                                                                coroutineScope.launch {
-                                                                    attachmentUploadOrchestrator.publishIfAccepted(
-                                                                        localAttachmentId,
-                                                                        draftKey,
-                                                                        uploadAttemptToken
-                                                                    ) {
-                                                                        composerDraftViewModel.accept(
-                                                                            SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
-                                                                                attachmentId = localAttachmentId,
-                                                                                bytesTransferred = progress.bytesTransferred,
-                                                                                bytesTotal = progress.bytesTotal,
-                                                                                expectedDraftKey = draftKey,
-                                                                                expectedAdmission = admission
-                                                                            )
-                                                                        )
-                                                                    }
-                                                                }
-                                                            },
+                                                            onUploadProgress = { progress -> publishTransfer { bytes(progress.bytesTransferred, progress.bytesTotal) } },
                                                         )
                                                 ) {
                                                     is DataResult.Content ->
@@ -10419,30 +10388,14 @@ private fun SharedThreadRouteContentContent(
                                                 }
                                             }
                                         }
-                                        ThreadComposerDirectUploadDecision.LegacyMultipart ->
+                                        ThreadComposerDirectUploadDecision.LegacyMultipart -> {
+                                            publishTransfer { total(uploadFile.sizeBytes) }
                                             dataSource.uploadAttachments(
                                                 channelId = channelId,
                                                 files = listOf(uploadFile),
-                                                onProgress = { progress ->
-                                                    coroutineScope.launch {
-                                                        attachmentUploadOrchestrator.publishIfAccepted(
-                                                            localAttachmentId,
-                                                            draftKey,
-                                                            uploadAttemptToken
-                                                        ) {
-                                                            composerDraftViewModel.accept(
-                                                                SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress(
-                                                                    attachmentId = localAttachmentId,
-                                                                    bytesTransferred = progress.bytesTransferred,
-                                                                    bytesTotal = progress.bytesTotal,
-                                                                    expectedDraftKey = draftKey,
-                                                                    expectedAdmission = admission
-                                                                )
-                                                            )
-                                                        }
-                                                    }
-                                                }
+                                                onProgress = { progress -> publishTransfer { bytes(progress.bytesTransferred, progress.bytesTotal) } }
                                             )
+                                        }
                                     }
                                 }
                             }
@@ -10476,11 +10429,8 @@ private fun SharedThreadRouteContentContent(
                                                     externalShareToken = sourceAttachment?.externalShareToken,
                                                     externalShareAccountId = sourceAttachment?.externalShareAccountId,
                                                     externalShareServerId = sourceAttachment?.externalShareServerId,
-                                                    uploadBytesTransferred =
-                                                        sourceAttachment?.uploadBytesTotal
-                                                            ?: sourceAttachment?.uploadBytesTransferred
-                                                            ?: 0L,
-                                                    uploadBytesTotal = sourceAttachment?.uploadBytesTotal
+                                                    // The server confirmed the upload: the transfer is done.
+                                                    uploadTransfer = sourceAttachment?.uploadTransfer?.completed()
                                                 )
                                             }
                                         if (
@@ -14281,7 +14231,7 @@ private fun RaftThreadComposerPayload.withThreadComposerDraftState(
                 mimeType = attachment.mimeType,
                 previewUri = attachment.previewUri,
                 status = attachment.status,
-                uploadProgress = attachment.threadComposerUploadProgressPercent(),
+                uploadTransfer = attachment.uploadTransfer,
                 errorCode = attachment.errorCode,
                 source = attachment.source,
                 externalShareToken = attachment.externalShareToken,
@@ -14315,13 +14265,6 @@ private fun RaftThreadComposerPayload.withThreadComposerDraftState(
         streamChannelId = resolvedAuxiliaryThreadId,
         enabled = renderedPayload.canSend && resolvedAuxiliaryThreadId != null
     )
-}
-
-internal fun SharedThreadComposerAttachment.threadComposerUploadProgressPercent(): Int {
-    val total = uploadBytesTotal?.takeIf { it > 0L } ?: return 0
-    return ((uploadBytesTransferred.coerceIn(0L, total) * 100L) / total)
-        .coerceIn(0L, 100L)
-        .toInt()
 }
 
 private class ThreadRouteScaffoldSlots(

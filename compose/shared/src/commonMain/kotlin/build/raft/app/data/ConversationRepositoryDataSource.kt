@@ -58,7 +58,7 @@ internal class RealConversationAuthorityBoundAttachmentUploader(
 internal fun interface ProgressiveConversationAttachmentUploader {
     suspend fun uploadAttachmentsWithProgress(
         request: AttachmentUploadRequest,
-        onProgress: (build.raft.app.network.RaftTransferProgress) -> Unit
+        onProgress: (build.raft.app.network.RaftWireTransferProgress) -> Unit
     ): DataResult<AttachmentUploadResult>
 }
 
@@ -420,7 +420,7 @@ class RealConversationRepository private constructor(
     override suspend fun putAttachmentUploadBytes(
         upload: AttachmentUploadSessionPut,
         bytes: ByteArray,
-        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?,
+        onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?,
     ): DataResult<Unit> {
         if (directSessionAuthority == null) return directSessionAuthorityRequired()
         currentContext() ?: return authRequired()
@@ -443,7 +443,7 @@ class RealConversationRepository private constructor(
     override suspend fun putAttachmentUploadFile(
         upload: AttachmentUploadSessionPut,
         file: PlatformFile,
-        onUploadProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?,
+        onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?,
     ): DataResult<Unit> {
         if (directSessionAuthority == null) return directSessionAuthorityRequired()
         currentContext() ?: return authRequired()
@@ -1034,13 +1034,13 @@ class RealConversationRepository private constructor(
 
     override suspend fun uploadAttachmentsWithProgress(
         request: AttachmentUploadRequest,
-        onProgress: (build.raft.app.network.RaftTransferProgress) -> Unit
+        onProgress: (build.raft.app.network.RaftWireTransferProgress) -> Unit
     ): DataResult<AttachmentUploadResult> =
         uploadAttachmentsInternal(request, onProgress)
 
     private suspend fun uploadAttachmentsInternal(
         request: AttachmentUploadRequest,
-        onProgress: ((build.raft.app.network.RaftTransferProgress) -> Unit)?
+        onProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?
     ): DataResult<AttachmentUploadResult> {
         currentContext() ?: return authRequired()
         if (request.files.isEmpty()) return DataResult.Empty(EmptyReason.NoMessages)

@@ -203,7 +203,7 @@ class RaftOkHttpTransportTest {
         val executor = uploadExecutor()
         val fileBytes = ByteArray(200 * 1024) { (it % 253).toByte() }
         server.enqueue(MockResponse.Builder().code(200).body("<etag/>").build())
-        val progress = mutableListOf<RaftTransferProgress>()
+        val progress = mutableListOf<RaftWireTransferProgress>()
 
         val response =
             executor.executeFile(
@@ -241,7 +241,7 @@ class RaftOkHttpTransportTest {
             recorded.headers.names().map { it.lowercase() }.toSet()
         )
         assertTrue(recorded.body!!.toByteArray().contentEquals(fileBytes))
-        assertEquals(RaftTransferProgress(fileBytes.size.toLong(), fileBytes.size.toLong()), progress.last())
+        assertEquals(RaftWireTransferProgress(fileBytes.size.toLong(), fileBytes.size.toLong()), progress.last())
     }
 
     @Test
@@ -297,7 +297,7 @@ class RaftOkHttpTransportTest {
         server.enqueue(MockResponse.Builder().doNotReadRequestBody().onResponseStart(SocketEffect.Stall).build())
         val total = 16L * 1024L * 1024L
         val fileBytes = ByteArray(total.toInt())
-        val progress = java.util.concurrent.CopyOnWriteArrayList<RaftTransferProgress>()
+        val progress = java.util.concurrent.CopyOnWriteArrayList<RaftWireTransferProgress>()
         // Loopback socket buffers can hold tens of MB; pin the client's send buffer so "the
         // connection stopped taking bytes" happens early, as on a real slow uplink.
         val smallSendBuffer =
