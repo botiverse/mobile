@@ -2136,7 +2136,7 @@ static NSDictionary *RaftDiagnosticsPrepareAttachmentFiles(NSDictionary *about, 
             [fileManager createDirectoryAtPath:snapshotLogDir withIntermediateDirectories:YES attributes:nil error:nil];
             NSString *snapshotLogPath = RaftDiagnosticsUniqueSnapshotPath(
                 snapshotLogDir,
-                logPath.lastPathComponent,
+                RaftDiagnosticsSnapshotLogFileName(sessionName, logPath.lastPathComponent),
                 reservedSnapshotPaths
             );
             if (RaftDiagnosticsWriteSanitizedSnapshotLog(logPath, snapshotLogPath)) {
