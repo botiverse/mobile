@@ -99,9 +99,10 @@ internal fun WireForwardMessageBundle?.toForwardMessageBundle(): ForwardMessageB
 internal fun WireActionCardMetadata?.toForwardMessageBundle(): ForwardMessageBundle? {
     val source = this ?: return null
     if (source.kind != "forwarded-bundle") return null
-    val forwardedMessages = source.forwardedItems
-        .mapIndexedNotNull { fallbackIndex, item -> item.toForwardMessageItem(fallbackIndex) }
-        .distinctBy { it.id }
+    val kept = source.forwardedItems
+        .mapIndexedNotNull { fallbackIndex, item -> item.toForwardMessageItem(fallbackIndex)?.let { item to it } }
+        .distinctBy { (_, message) -> message.id }
+    val forwardedMessages = kept.map { (_, message) -> message }
     if (forwardedMessages.isEmpty()) return null
     val sourceTitle = source.forwardedItems
         .firstOrNull()
@@ -114,7 +115,8 @@ internal fun WireActionCardMetadata?.toForwardMessageBundle(): ForwardMessageBun
         sourceTitle = sourceTitle,
         totalCount = forwardedMessages.size,
         messages = forwardedMessages,
-        visibleSource = source.forwardedItems.firstOrNull()?.visibleForwardSource()
+        // The source of the first item the card shows (web: `sourceLabel(firstItem)`).
+        visibleSource = kept.first().first.visibleForwardSource()
     )
 }
 
