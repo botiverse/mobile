@@ -927,6 +927,8 @@
     <string name="activity_swipe_layer_done">完了</string>
     <string name="activity_swipe_layer_unfollow">フォロー解除</string>
     <string name="activity_swipe_layer_mute">ミュート</string>
+    <string name="activity_swipe_layer_read">既読</string>
+    <string name="activity_swipe_layer_unread">未読</string>
     <string name="activity_swipe_unfollowed_thread">%1$s のスレッドのフォローを解除しました</string>
     <string name="activity_swipe_muted_activity">%1$s のアクティビティをミュートしました</string>
     <string name="activity_fallback_thread_update">スレッドの更新</string>

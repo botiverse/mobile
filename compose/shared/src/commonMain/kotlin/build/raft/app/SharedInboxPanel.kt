@@ -1814,6 +1814,16 @@ private fun SharedActivityList(
         runSwipeEndCommand(activitySwipeEndApplyCommand(currentItem, action))
         swipeEndUndo = swipeEndUndo.swipe(currentItem, action)
     }
+    // raft-design #793: the swipe toward the end marks the row read, or unread when it is read, through
+    // the menu's Mark as read / unread write and analytics. No toast, no Undo: the row stays in place
+    // (in Unread too: the store keeps a row read this visit listed until the user moves on), and
+    // swiping again switches it back.
+    fun swipeRowToggleRead(renderedItemKey: String) {
+        val currentItem = committedRowItem(renderedItemKey) ?: return
+        if (currentItem.activitySwipeStartButton() == null) return
+        RaftProductEvents.activityMark(activityReadToggleMarkAction(currentItem))
+        latestOnIntent(activityReadToggleIntent(currentItem))
+    }
     fun undoSwipeEnd(token: Long) {
         val transition = swipeEndUndo.undo(token)
         swipeEndUndo = transition.state
@@ -1924,8 +1934,9 @@ private fun SharedActivityList(
                                 onSwipeDone = { swipeRowDone(item.key) },
                                 swipeEndAction = item.activitySwipeEndAction(channelMute?.mutedByChannelId.orEmpty()),
                                 onSwipeEnd = { swipeRowEnd(item.key) },
-                                swipeOpen = swipeOpenRow.isOpen(item.key),
-                                onSwipeOpenChange = { open -> swipeOpenRow = swipeOpenRow.change(item.key, open) },
+                                onSwipeToggleRead = { swipeRowToggleRead(item.key) },
+                                swipeOpenSide = swipeOpenRow.openSide(item.key),
+                                onSwipeOpenChange = { side -> swipeOpenRow = swipeOpenRow.change(item.key, side) },
                                 onSwipeOpenRowPlaced = swipeOpenRowGeometry::onOpenRowPlaced,
                             )
                         }
@@ -2048,7 +2059,13 @@ private fun SharedActivityList(
                                     } else {
                                         stringResource(MR.strings.home_action_mark_as_unread)
                                     },
-                                icon = RaftLucideIconName.Mail
+                                // Web InboxContextMenu, and the swipe's Read / Unread button (#793).
+                                icon =
+                                    if (item.unreadCount > 0) {
+                                        RaftLucideIconName.MessageSquareCheck
+                                    } else {
+                                        RaftLucideIconName.MessageSquareDot
+                                    }
                             )
                         "done" ->
                             RaftBaseMenuItem(
@@ -2087,14 +2104,10 @@ private fun SharedActivityList(
                 onDismiss = { activeMenuItem = null },
                 onSelect = { id ->
                     when (id) {
-                        "toggle-read" ->
-                            if (item.unreadCount > 0) {
-                                RaftProductEvents.activityMark(RaftActivityMarkAction.Read)
-                                onIntent(SharedActivityIntent.MarkRead(item))
-                            } else {
-                                RaftProductEvents.activityMark(RaftActivityMarkAction.Unread)
-                                onIntent(SharedActivityIntent.MarkUnread(item))
-                            }
+                        "toggle-read" -> {
+                            RaftProductEvents.activityMark(activityReadToggleMarkAction(item))
+                            onIntent(activityReadToggleIntent(item))
+                        }
                         "done" -> {
                             RaftProductEvents.activityMark(RaftActivityMarkAction.Done)
                             onIntent(SharedActivityIntent.MarkDone(item))
