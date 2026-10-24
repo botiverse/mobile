@@ -22602,7 +22602,12 @@ internal data class ThreadHistoryStatusSpec(
     val leadingIcon: RaftLucideIconName? = null,
     val secondaryLabel: String? = null,
     /** When set, the secondary line is this reply count, localized at render time. */
-    val secondaryReplyCount: Int? = null
+    val secondaryReplyCount: Int? = null,
+    /**
+     * Task #80: the history above is still loading (web `HistoryTopState` `loadingOlder`, a
+     * `ContentLoading` spinner beside the line). Revealed after [ThreadStandInLoadingRevealDelayMs].
+     */
+    val loading: Boolean = false
 )
 
 private fun ThreadTimelineSlice.threadSelectedShareMessages(
@@ -22720,7 +22725,8 @@ internal fun threadOlderMessagesStatusSpec(timelineSlice: ThreadTimelineSlice): 
         secondaryLabel = timelineSlice.beginningReplyCountLabel,
         secondaryReplyCount = timelineSlice.beginningReplyCount,
         durableLastKnown = timelineSlice.durableLastKnown,
-        durableReachedOldest = timelineSlice.durableReachedOldest
+        durableReachedOldest = timelineSlice.durableReachedOldest,
+        mainLoadFailed = timelineSlice.mainLoadFailed
     )
 
 internal fun threadOlderMessagesStatusSpec(
@@ -22728,11 +22734,18 @@ internal fun threadOlderMessagesStatusSpec(
     secondaryLabel: String? = null,
     secondaryReplyCount: Int? = null,
     durableLastKnown: Boolean = false,
-    durableReachedOldest: Boolean = false
+    durableReachedOldest: Boolean = false,
+    mainLoadFailed: Boolean = false
 ): ThreadHistoryStatusSpec =
     when {
         // Task #168 step 2b: a stand-in whose stored window still has older pages pages like any frame.
         canLoadMoreBefore -> ThreadHistoryStatusSpec(label = MR.strings.thread_state_loading_older.desc())
+        // Task #80 (artin): a stand-in (the Activity seed, a stored frame) while its first load is still
+        // running has the rest of the conversation on the way: say so, with the spinner, as the web's
+        // list top does while it loads. "Not available offline" is only true once that load failed,
+        // the same gate as the offline tip (Hands e0a5248d).
+        durableLastKnown && !durableReachedOldest && !mainLoadFailed ->
+            ThreadHistoryStatusSpec(label = MR.strings.thread_state_loading_older.desc(), loading = true)
         // Task #1125: an offline stand-in frame with paging closed is NOT the beginning of the
         // conversation. Say what is true instead of claiming a boundary the frame cannot prove —
         // unless the stored window itself reaches the start (task #168): then it is the beginning.
@@ -24423,7 +24436,7 @@ private val ThreadSystemMessageTimeColor: Color get() = RaftColor.TextBlack.copy
 private val ThreadSystemMessageBodyColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.5f)
 
 @Composable
-private fun ThreadSystemMessageRow(
+internal fun ThreadSystemMessageRow(
     message: RaftThreadMessageItem,
     timestampValue: String
 ) {
@@ -24521,17 +24534,40 @@ private fun ThreadInlineActionRow(
 }
 
 @Composable
-private fun ThreadHistoryStatusRow(
-    spec: ThreadHistoryStatusSpec
+internal fun ThreadHistoryStatusRow(
+    spec: ThreadHistoryStatusSpec,
+    loadingRevealDelayMs: Long = ThreadStandInLoadingRevealDelayMs,
+    spinnerStillStep: Int? = null
 ) {
+    // A load that answers within the delay replaces the frame without the spinner ever showing; the
+    // row keeps its height meanwhile, so revealing it moves nothing.
+    var loadingRevealed by remember(spec.loading) { mutableStateOf(!spec.loading || loadingRevealDelayMs <= 0L) }
+    if (!loadingRevealed) {
+        LaunchedEffect(Unit) {
+            delay(loadingRevealDelayMs)
+            loadingRevealed = true
+        }
+    }
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Md, vertical = 8.dp),
+        modifier =
+            Modifier.fillMaxWidth()
+                .padding(horizontal = RaftAppSpacing.Md, vertical = 8.dp)
+                .alpha(if (loadingRevealed) 1f else 0f),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Row(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (spec.loading) {
+                RaftSpinner(
+                    size = RaftSpinnerSize.Md,
+                    color = RaftColor.TextMutedGray,
+                    contentDescription = spec.label.localized(),
+                    stillStep = spinnerStillStep
+                )
+                Spacer(Modifier.width(8.dp))
+            }
             spec.leadingIcon?.let { iconName ->
                 RaftLucideIcon(
                     iconName,
@@ -25022,10 +25058,12 @@ private fun ThreadMessageCardContent(
             peerReadReceipts?.mentionReadStates(message)
         }
     val localizedAuthorName =
-        if (message.isOwn && message.authorName == "You") {
-            stringResource(MR.strings.thread_author_you)
-        } else {
-            message.authorName
+        when {
+            message.isOwn && message.authorName == "You" -> stringResource(MR.strings.thread_author_you)
+            // Task #80: a row whose sender no source could name yet (a seeded stand-in) shows the
+            // neutral "Unknown", never a raw id, until the canonical load names it.
+            message.authorName.isBlank() -> stringResource(MR.strings.thread_comments_unknown_author)
+            else -> message.authorName
         }
     // task #392 (port of Web PR #7545): agent model label, resolved live from
     // the members directory — the message wire carries no model. `null` for
@@ -34253,6 +34291,13 @@ internal fun ThreadLoadingState(spinnerStillStep: Int? = null) {
         }
     }
 }
+
+/**
+ * Task #80: how long a stand-in frame's "loading older" spinner waits before it shows, so a load that
+ * answers quickly swaps the frame without a flash. The value the thread page's loading placeholder
+ * used before #3596 (`ThreadLoadingRevealDelayMs`) and the file preview's minimum-visible time.
+ */
+internal const val ThreadStandInLoadingRevealDelayMs = 600L
 
 /**
  * Task #1137 keeps a channel that was empty when last seen as a durable empty stand-in. Until the
