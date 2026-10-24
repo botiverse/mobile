@@ -1,8 +1,8 @@
 package build.raft.app.shared
 
 import android.content.Context
-import android.os.Handler
 import android.os.Looper
+import android.os.MessageQueue
 import android.util.Log
 import android.webkit.WebView
 import java.util.concurrent.atomic.AtomicBoolean
@@ -19,9 +19,12 @@ import java.util.concurrent.atomic.AtomicBoolean
  * this as "the first web surface I open is slow; later ones are fine".
  *
  * Design constraints:
- * - **Off the critical path.** Scheduled at a posted message-queue idle slot, so the first
- *   frame and any startup work already queued win. There is no warm-up attempt before the
- *   main thread goes idle once.
+ * - **Off the critical path.** Scheduled from the first CMP frame (`RaftCmpActivity`), not from
+ *   `Application.onCreate`, and run from a main-looper [MessageQueue.IdleHandler], so the first
+ *   frame and any startup work already queued win. A cold start used to post it straight from
+ *   `Application.onCreate`, which ran the provider load (300 ms+ interpreted, over a second on
+ *   a loaded two-core device) before the launch activity was even created and started the
+ *   renderer process while the first composition was still running.
  * - **Single shot.** A process-level [AtomicBoolean] guarantees at most one construction for
  *   the lifetime of the process, regardless of how many callers schedule it.
  * - **Silent on failure.** A provider that refuses to initialise must never surface as a
@@ -46,12 +49,11 @@ internal object RaftAndroidWebViewWarmup {
     internal var createWarmInstance: (Any?) -> Any = { context -> WebView(context as Context) }
 
     /**
-     * Test seam: how a scheduled warm-up is dispatched. Production posts to the main looper;
-     * tests substitute a synchronous runner.
+     * Test seam: how a scheduled warm-up is dispatched. Production waits for the main looper's
+     * next idle slot; tests substitute a synchronous runner.
      */
     @Volatile
-    internal var dispatch: (() -> Unit) -> Boolean =
-            { task -> Handler(Looper.getMainLooper()).post(task) }
+    internal var dispatch: (() -> Unit) -> Boolean = ::dispatchOnMainIdle
 
     /**
      * Test seam: resolves the context a warm-up run receives. Production passes the application
@@ -141,8 +143,19 @@ internal object RaftAndroidWebViewWarmup {
         attempted.set(false)
         warmInstance = null
         createWarmInstance = { context -> WebView(context as Context) }
-        dispatch = { task -> Handler(Looper.getMainLooper()).post(task) }
+        dispatch = ::dispatchOnMainIdle
         resolveContext = { context -> (context as Context).applicationContext ?: context }
         log = { message -> Log.i(LOG_TAG, message) }
+    }
+
+    /** Runs [task] once, the next time the main looper has nothing due. Any thread. */
+    private fun dispatchOnMainIdle(task: () -> Unit): Boolean {
+        Looper.getMainLooper().queue.addIdleHandler(
+            MessageQueue.IdleHandler {
+                task()
+                false
+            }
+        )
+        return true
     }
 }

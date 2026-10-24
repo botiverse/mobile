@@ -15,7 +15,6 @@ import build.raft.app.shared.AndroidRealtimeKeepAliveController
 import build.raft.app.shared.RaftAndroidHostHooks
 import build.raft.app.shared.ProcessAndroidAttachmentMediaStoreCleanup
 import build.raft.app.shared.ProcessAndroidAttachmentPublicDownloads
-import build.raft.app.shared.RaftAndroidWebViewWarmup
 import build.raft.app.shared.installAndroidThreadComposerTemporaryFileRetirement
 import build.raft.app.shared.isAndroidSystemDark
 import build.raft.app.data.KeyValueAuthSessionStore
@@ -49,10 +48,8 @@ class RaftApplication : Application() {
         recordCoroutineWorkerKeepAliveDiagnostics()
         ProcessAndroidAttachmentPublicDownloads.start(this)
         ProcessAndroidAttachmentMediaStoreCleanup.start(this)
-        // task #6: warm the WebView provider off the critical path so the first real web
-        // surface does not pay cold initialisation on the UI thread. Single shot, idle
-        // scheduled, failure-silent; no other startup work depends on it.
-        RaftAndroidWebViewWarmup.schedule(this)
+        // task #6 WebView warm-up is scheduled from the first CMP frame (RaftCmpActivity), not
+        // here: from onCreate it ran before the launch activity existed and lengthened cold start.
         RaftAndroidLocalDiagnostics.init(this)
         installAndroidRaftAppIdentity(
             name = "Raft",
