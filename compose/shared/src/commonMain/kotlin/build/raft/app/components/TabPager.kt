@@ -6,6 +6,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -68,6 +70,12 @@ fun TabPager(
     modifier: Modifier = Modifier,
     gesturePolicy: TabPagerGesturePolicy = TabPagerGesturePolicy(),
     keepItemAlive: Boolean = false,
+    /**
+     * Called once when a user-driven scroll comes to rest on a page other than the one it
+     * started on. Not called for programmatic scrolls (tab taps), the initial page, or a drag
+     * that springs back to its starting page.
+     */
+    onUserSwipeSettled: (Int) -> Unit = {},
     tabBar: @Composable () -> Unit = {},
     /**
      * task #233 diagnostic tap: every sync-relevant event (effect launches,
@@ -135,6 +143,25 @@ fun TabPager(
             }
             // NOT cleared here: the port's animate returns early, so the
             // currentPage effect clears the target on arrival instead.
+        }
+    }
+
+    // Analytics seam: one callback per user-driven scroll that rests on a different page. The
+    // origin is captured when the scroll starts (only if no programmatic scroll is in flight)
+    // and compared when isScrollInProgress drops, so a drag that crosses the half-page point
+    // and comes back, or a tap-driven animation, reports nothing.
+    val swipeSettledCallback by rememberUpdatedState(onUserSwipeSettled)
+    val currentPageCount by rememberUpdatedState(pageCount)
+    LaunchedEffect(pagerState) {
+        var origin: Int? = null
+        snapshotFlow { pagerState.isScrollInProgress }.collect { scrolling ->
+            if (scrolling) {
+                origin = if (programmaticTarget.value == null) pagerState.currentPage else null
+            } else {
+                val start = origin
+                origin = null
+                tabPagerSwipeLanding(start, pagerState.currentPage, currentPageCount)?.let(swipeSettledCallback)
+            }
         }
     }
 
@@ -320,6 +347,13 @@ internal fun edgeGuardGestureDecision(
         else -> EdgeGuardGestureDecision.Undecided
     }
 }
+
+/**
+ * The page a user swipe landed on, or `null` when nothing should be reported: no user-driven
+ * scroll ([startPage] null), a spring-back to the same page, or an out-of-range [endPage].
+ */
+internal fun tabPagerSwipeLanding(startPage: Int?, endPage: Int, pageCount: Int): Int? =
+    endPage.takeIf { startPage != null && startPage != it && it in 0 until pageCount }
 
 /** Stable per-page identity helper for callers keying retained page state. */
 @Composable

@@ -15738,6 +15738,7 @@ private fun ThreadPageContentContent(
                     onTabTapped = { tab, wasSelected ->
                         RaftProductEvents.channelTabSelected(tab.productChannelTab(), wasSelected)
                     },
+                    onTabSwiped = { tab -> RaftProductEvents.channelTabSwiped(tab.productChannelTab()) },
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     itemKeyPrefix = "thread-tab",
                     content = renderThreadTabContent

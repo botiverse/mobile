@@ -78,6 +78,10 @@ object RaftProductEvents {
         recorder.channelTabSelected(tab, wasActive)
     }
 
+    fun channelTabSwiped(tab: RaftChannelTab) {
+        recorder.channelTabSwiped(tab)
+    }
+
     fun messageActionSelected(action: RaftMessageAction, inThread: Boolean) {
         recorder.messageActionSelected(action, inThread)
     }
