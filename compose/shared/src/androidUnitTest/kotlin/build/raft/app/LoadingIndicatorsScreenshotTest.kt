@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftChipLoadingIndicator
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftUiMenuItem
@@ -58,18 +57,18 @@ class LoadingIndicatorsScreenshotTest {
                         loading = true
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        RaftBrutalActionButton(
+                        RaftModalActionButton(
                             label = "Sending…",
                             onClick = {},
-                            backgroundColor = RaftColor.AccentPink,
-                            leadingIcon = RaftLucideIconName.Send,
+                            color = RaftColor.Brand,
+                            icon = RaftLucideIconName.Send,
                             loading = true
                         )
-                        RaftBrutalActionButton(
+                        RaftModalActionButton(
                             label = "Delete",
                             onClick = {},
-                            backgroundColor = RaftColor.AccentRed,
-                            leadingIcon = RaftLucideIconName.Trash2,
+                            color = RaftColor.AccentRed,
+                            icon = RaftLucideIconName.Trash2,
                             loading = true
                         )
                         RaftHeaderRefreshIndicator()

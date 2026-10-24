@@ -1719,7 +1719,7 @@ private fun RaftLookIconButton(
     val shape = RoundedCornerShape(RaftAppRadius.Control)
     RaftAnchorButton(
         onClick = { if (!loading) onClick() },
-        onLongClick = onLongClick,
+        onLongClick = onLongClick.takeIf { !loading },
         longClickLabel = longClickLabel,
         enabled = enabled,
         pressFeedback = enabled,
