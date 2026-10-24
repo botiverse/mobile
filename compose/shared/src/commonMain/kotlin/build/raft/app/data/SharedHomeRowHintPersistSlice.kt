@@ -194,7 +194,30 @@ internal fun SharedHomeContentState.Content.toRowHintsSnapshot(): HomeRowHintsSn
  * or realtime event), because that is newer than anything restored.
  */
 internal fun SharedHomeContentState.Content.displayRowHints(): Map<String, HomeRowRestoredHint> =
-    if (isDurableIdentityCache) restoredRowHints else emptyMap()
+    if (isDurableIdentityCache || rowHintsRetained) restoredRowHints else emptyMap()
+
+/**
+ * Task #164: true when this content's row counts came from a network Home (live), false while it
+ * shows only the durable cache's last-known hints (cold start, server switch, sign-in).
+ */
+internal fun SharedHomeContentState.Content.showsLiveUnread(): Boolean =
+    !isDurableIdentityCache && !rowHintsRetained
+
+/**
+ * Task #164: a network Home whose unread was frozen (stale or unavailable) over content that still
+ * showed the restored last-known counts keeps showing them, instead of rows with no count, until
+ * a load with fresh unread replaces the content.
+ */
+internal fun SharedHomeContentState.Content.keepingLastKnownRowHintsFrom(
+    previous: SharedHomeContentState.Content?,
+    unreadFrozen: Boolean
+): SharedHomeContentState.Content {
+    if (!unreadFrozen || previous == null) return this
+    if (previous.baseSnapshot.server.id != baseSnapshot.server.id || previous.session.user.id != session.user.id) return this
+    val hints = previous.displayRowHints()
+    if (hints.isEmpty()) return this
+    return copy(restoredRowHints = hints, rowHintsRetained = true)
+}
 
 private fun HomeSnapshot.homeRowIds(): Set<String> =
     (channels.map { it.threadId.value } + directMessages.map { it.threadId.value }).toSet()

@@ -903,6 +903,8 @@
     <string name="composer_state_no_matching_channels">一致するチャンネルがありません</string>
     <string name="inbox_action_mark_all_read">すべて既読にする</string>
     <string name="inbox_error_load_activity">アクティビティを読み込めませんでした</string>
+    <string name="activity_stale_notice">アクティビティは最新ではない可能性があります。Raft が復旧すると自動で更新されます。</string>
+    <string name="home_unread_stale_notice">未読数は最新ではない可能性があります。Raft が復旧すると自動で更新されます。</string>
     <string name="inbox_state_activity_empty">会話はありません</string>
     <string name="inbox_state_no_mentions">メンションはありません</string>
     <string name="inbox_state_no_unread_chats">未読の会話はありません</string>

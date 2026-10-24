@@ -537,7 +537,13 @@ data class HomeNetworkPayload(
     // (error/timeout/hung/contract-mismatch) so unreadCounts/serverUnreadSummary
     // are an honest empty, NOT an authoritative zero. Consumers must keep the
     // prior unread badges instead of clobbering them to read.
-    val unreadEnrichmentAvailable: Boolean = true
+    val unreadEnrichmentAvailable: Boolean = true,
+    /**
+     * Task #164: an unread read (`channels/unread` or `servers/unread-summary`) came back as the
+     * server's remembered body (`X-Raft-Stale`) or as `503 rw_overloaded`. The data that did
+     * arrive is still here; the store decides whether it may replace what Home shows.
+     */
+    val unreadStale: Boolean = false
 )
 
 data class HomeNetworkResponse(
@@ -587,24 +593,28 @@ internal class RaftHomeApiClient(
                     transport.directMessages(serverId, priority)
                 }
             }
+        val unreadCountsStale = HomeSectionStaleness()
         val unreadCountsDeferred =
             async {
                 requestHomeSection(
                     category = "channel_unread_counts",
                     contractCode = "home_unread_counts_contract_mismatch",
                     serializer = ChannelUnreadSummaryWireDto.serializer(),
-                    errorTextDecoder = HomeNetworkResponse::homeUnreadCountsRouteErrorTextOrNull
+                    errorTextDecoder = HomeNetworkResponse::homeUnreadCountsRouteErrorTextOrNull,
+                    staleness = unreadCountsStale
                 ) {
                     transport.channelUnreadCounts(serverId, priority)
                 }
             }
+        val serverUnreadSummaryStale = HomeSectionStaleness()
         val serverUnreadSummaryDeferred =
             async {
                 requestHomeSection(
                     category = "server_unread_summary",
                     contractCode = "home_server_unread_summary_contract_mismatch",
                     serializer = ListSerializer(ServerUnreadSummaryDto.serializer()),
-                    errorTextDecoder = HomeNetworkResponse::homeServerUnreadSummaryRouteErrorTextOrNull
+                    errorTextDecoder = HomeNetworkResponse::homeServerUnreadSummaryRouteErrorTextOrNull,
+                    staleness = serverUnreadSummaryStale
                 ) {
                     transport.serverUnreadSummary(serverId, priority)
                 }
@@ -654,7 +664,8 @@ internal class RaftHomeApiClient(
                 followedThreadUnread = unreadSummary?.followedThreadUnread ?: emptyMap(),
                 serverUnreadSummary = serverUnreadSummary,
                 serverUnreadSummaryAvailable = serverUnreadSummaryAvailable,
-                unreadEnrichmentAvailable = unreadEnrichmentAvailable
+                unreadEnrichmentAvailable = unreadEnrichmentAvailable,
+                unreadStale = unreadCountsStale.stale || serverUnreadSummaryStale.stale
             )
         )
     }
@@ -666,23 +677,29 @@ internal class RaftHomeApiClient(
     suspend fun channelUnreadSummary(
         serverId: ServerId,
         priority: DataRequestPriority
-    ): DataResult<ChannelUnreadSummary> =
-        when (
+    ): DataResult<ChannelUnreadSummary> {
+        val staleness = HomeSectionStaleness()
+        return when (
             val result =
                 requestHomeSection(
                     category = "channel_unread_counts",
                     contractCode = "home_unread_counts_contract_mismatch",
                     serializer = ChannelUnreadSummaryWireDto.serializer(),
-                    errorTextDecoder = HomeNetworkResponse::homeUnreadCountsRouteErrorTextOrNull
+                    errorTextDecoder = HomeNetworkResponse::homeUnreadCountsRouteErrorTextOrNull,
+                    staleness = staleness
                 ) {
                     transport.channelUnreadCounts(serverId, priority)
                 }
         ) {
-            is DataResult.Content -> DataResult.Content(result.data.toChannelUnreadSummary())
+            is DataResult.Content ->
+                DataResult.Content(
+                    result.data.toChannelUnreadSummary().copy(stale = staleness.stale)
+                )
             is DataResult.Empty -> DataResult.Empty(result.reason)
             is DataResult.Error -> DataResult.Error(result.error)
             is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
         }
+    }
 
     /**
      * Awaits an auxiliary (non-canonical) home section without ever letting it
@@ -719,6 +736,7 @@ internal class RaftHomeApiClient(
         contractCode: String,
         serializer: KSerializer<T>,
         errorTextDecoder: (HomeNetworkResponse) -> String?,
+        staleness: HomeSectionStaleness? = null,
         request: suspend () -> HomeNetworkResponse
     ): DataResult<T> {
         val response =
@@ -732,6 +750,16 @@ internal class RaftHomeApiClient(
                 )
                 throw throwable
             }
+        if (staleness != null) {
+            val staleReason = response.raftStaleReason()
+            staleness.stale = staleReason != null || response.isRwOverloaded()
+            if (staleness.stale) {
+                diagnosticsLogger(
+                    "home_endpoint_stale category=$category code=${response.code} " +
+                        "reason=${staleReason?.wireValue ?: if (response.code == 503) RwOverloadedErrorCode else "unknown"}"
+                )
+            }
+        }
         diagnosticsLogger(
             "home_network_body_received source=home_$category code=${response.code} " +
                 "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} hasBody=${response.bodyText != null}"
@@ -783,8 +811,21 @@ private fun <T> HomeNetworkResponse.toHomeApiFailure(serverMessage: String?): Da
     if (code == 401 || code == 403) {
         DataResult.NoPermission(PermissionBlocker(code = "home_http_$code", serverMessage = serverMessage))
     } else {
-        DataResult.Error(ScreenError(code = "home_http_$code", retryable = true, serverMessage = serverMessage))
+        DataResult.Error(
+            ScreenError(
+                code = "home_http_$code",
+                retryable = true,
+                serverMessage = serverMessage,
+                serverCode = RwOverloadedErrorCode.takeIf { isRwOverloaded() }
+            )
+        )
     }
+
+/** Task #164: whether one Home unread read was answered stale (header) or as `503 rw_overloaded`. */
+private class HomeSectionStaleness {
+    @kotlin.concurrent.Volatile
+    var stale: Boolean = false
+}
 
 @Serializable
 private data class HomeChannelsRouteErrorDto(val error: String? = null)

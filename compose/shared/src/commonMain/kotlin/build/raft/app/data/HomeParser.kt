@@ -320,7 +320,8 @@ fun parseRaftHome(
             // task #831: carry unread availability through so the Store keeps
             // prior badges instead of clobbering them to zero when the unread
             // endpoints were unavailable.
-            unreadEnrichmentAvailable = payload.unreadEnrichmentAvailable
+            unreadEnrichmentAvailable = payload.unreadEnrichmentAvailable,
+            unreadStale = payload.unreadStale
         )
     )
 }

@@ -103,6 +103,7 @@ internal fun activityStore(
     beforeRealtimeHighWaterFold: () -> Unit = {},
     onRealtimePatchOwnerEntered: () -> Unit = {},
     onReadReceiptPredictionOwnerEntered: () -> Unit = {},
+    staleRecoveryDelayMillis: (attempt: Int) -> Long = { attempt -> raftStaleRecoveryDelayMillis(attempt) },
     diagnosticsLogger: (String) -> Unit = {}
 ): SharedActivityStore =
     SharedActivityStore(
@@ -133,6 +134,7 @@ internal fun activityStore(
         beforeRealtimeHighWaterFold = beforeRealtimeHighWaterFold,
         onRealtimePatchOwnerEntered = onRealtimePatchOwnerEntered,
         onReadReceiptPredictionOwnerEntered = onReadReceiptPredictionOwnerEntered,
+        staleRecoveryDelayMillis = staleRecoveryDelayMillis,
         diagnosticsLogger = diagnosticsLogger
     )
 

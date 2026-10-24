@@ -1465,6 +1465,8 @@ internal data class RaftStructuralHomeShellData(
     val savedCount: Int = 0,
     val notifications: List<RaftHomeNotificationItem> = emptyList(),
     val inlineError: RaftHomeInlineError? = null,
+    /** Task #164: the unread counts may be old (read warehouse behind); shows the stale notice. */
+    val unreadStale: Boolean = false,
     val contentRefreshing: Boolean = false,
     val contentRefreshEnabled: Boolean = true,
     val serverSwitcherExpanded: Boolean = false,
@@ -1590,6 +1592,7 @@ internal fun RaftStructuralHomeShell(
     savedCount: Int = 0,
     notifications: List<RaftHomeNotificationItem> = emptyList(),
     inlineError: RaftHomeInlineError? = null,
+    unreadStale: Boolean = false,
     contentRefreshing: Boolean = false,
     contentRefreshEnabled: Boolean = true,
     serverSwitcherExpanded: Boolean = false,
@@ -1709,6 +1712,7 @@ internal fun RaftStructuralHomeShell(
                 savedCount = savedCount,
                 notifications = notifications,
                 inlineError = inlineError,
+                unreadStale = unreadStale,
                 contentRefreshing = contentRefreshing,
                 contentRefreshEnabled = contentRefreshEnabled,
                 serverSwitcherExpanded = serverSwitcherExpanded,
@@ -1823,6 +1827,7 @@ private fun RaftStructuralHomeShellContent(
     val savedCount = data.savedCount
     val notifications = data.notifications
     val inlineError = data.inlineError
+    val unreadStale = data.unreadStale
     val contentRefreshing = data.contentRefreshing
     val contentRefreshEnabled = data.contentRefreshEnabled
     val serverSwitcherExpanded = data.serverSwitcherExpanded
@@ -2378,6 +2383,10 @@ private fun RaftStructuralHomeShellContent(
                     )
                 }
                 RaftAppShellBodyTopBanner()
+                // Task #164 (stdrc O2): under the head, above the list; the counts stay as they are.
+                if (unreadStale) {
+                    RaftReadWarehouseStaleNotice(stringResource(MR.strings.home_unread_stale_notice))
+                }
                 appUpdateBanner?.let { update ->
                     HomeAppUpdateBanner(
                         notification = update,

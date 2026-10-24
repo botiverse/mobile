@@ -554,7 +554,13 @@ data class HomeSnapshot(
      * `[thread] N` segment and thread @ mark; kept current by `thread:updated` and read-state events.
      */
     // String keys: JSON map keys must be primitive, and HomeSnapshot is persisted.
-    val followedThreadUnread: Map<String, HomeFollowedThreadUnread> = emptyMap()
+    val followedThreadUnread: Map<String, HomeFollowedThreadUnread> = emptyMap(),
+    /**
+     * Task #164: this load's unread reads were the server's remembered bodies (`X-Raft-Stale`) or
+     * `503 rw_overloaded`. Never persisted; the store turns it into [SharedHomeState.unreadStale].
+     */
+    @Transient
+    val unreadStale: Boolean = false
 )
 
 data class ServerListSnapshot(
@@ -637,7 +643,9 @@ data class ThreadListSnapshot(
     val threads: List<InboxItem>,
     val totalCount: Int = threads.size,
     val hasMore: Boolean = false,
-    val nextOffset: Int? = null
+    val nextOffset: Int? = null,
+    /** Task #164: the server answered from its remembered followed-threads body (`X-Raft-Stale`). */
+    val staleReason: RaftStaleReason? = null
 )
 
 data class ThreadReplySummariesSnapshot(
@@ -1080,7 +1088,13 @@ data class InboxSnapshot(
      * Server `activeUnreadCount` (unread excluding mention-only channels; web
      * drives its rail dot from it). Null when the server omits it.
      */
-    val activeUnreadCount: Int? = null
+    val activeUnreadCount: Int? = null,
+    /**
+     * Task #164: set when the server answered from its remembered body (`X-Raft-Stale`), up to
+     * 5 minutes old. Never persisted: a restored snapshot is the client's own last good page.
+     */
+    @Transient
+    val staleReason: RaftStaleReason? = null
 )
 
 internal fun InboxSnapshot.activityVisibleSummaryCounts(

@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.app.data.DataResult
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.InboxItem
+import build.raft.app.data.RaftStaleReason
+import build.raft.app.data.ScreenError
 import build.raft.app.data.ThreadListSnapshot
 import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.authSessionFixture
@@ -76,6 +78,54 @@ class SharedThreadUnreadThreadJumpTest {
             store.dispatch(SharedThreadIntent.ResolveUnreadThreadParents(setOf("t-elsewhere")))
             advanceUntilIdle()
             assertEquals(2, repository.unreadFollowedRequests.size)
+            assertEquals(setOf("t-old"), store.state.value.unreadThreadParents.keys)
+        } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    /**
+     * Task #164: while the read warehouse is behind (`503 rw_overloaded`, or a remembered list
+     * that may predate the thread), an id it could not resolve may be asked again by the next
+     * trigger; any other failure stays final for the page (above).
+     */
+    @Test
+    fun idsTheOverloadedListCouldNotResolveAreAskedAgainByTheNextTrigger() = runTest {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
+        val repository = repository()
+        repository.unreadFollowedResult =
+            DataResult.Error(ScreenError(code = "server_unavailable", retryable = true, serverCode = "rw_overloaded"))
+        val store = SharedThreadStore(dataSource = dataSource(repository), scope = scope, initialPayload = channelWindow())
+
+        try {
+            store.dispatch(SharedThreadIntent.ResolveUnreadThreadParents(setOf("t-old")))
+            advanceUntilIdle()
+            assertEquals(emptyMap(), store.state.value.unreadThreadParents)
+
+            // A remembered list that does not hold the thread yet: still not final.
+            repository.unreadFollowedResult =
+                DataResult.Content(
+                    ThreadListSnapshot(
+                        server = ServerSummary(id = ServerId(ServerIdValue), name = "Slock"),
+                        threads = emptyList(),
+                        staleReason = RaftStaleReason.RwOverloaded,
+                    )
+                )
+            store.dispatch(SharedThreadIntent.ResolveUnreadThreadParents(setOf("t-old")))
+            advanceUntilIdle()
+
+            repository.unreadFollowedResult =
+                DataResult.Content(
+                    ThreadListSnapshot(
+                        server = ServerSummary(id = ServerId(ServerIdValue), name = "Slock"),
+                        threads = listOf(followedRow("t-old", parentChannel = ChannelIdValue, parentMessage = "p-old", unread = 3)),
+                    )
+                )
+            store.dispatch(SharedThreadIntent.ResolveUnreadThreadParents(setOf("t-old")))
+            advanceUntilIdle()
+
+            assertEquals(3, repository.unreadFollowedRequests.size, "one request per trigger, never a loop")
             assertEquals(setOf("t-old"), store.state.value.unreadThreadParents.keys)
         } finally {
             scopeJob.cancelAndJoin()

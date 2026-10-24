@@ -10295,6 +10295,7 @@ private fun SharedHomeScreen(
                 savedSelected = state.selectedTopAction == SharedHomeTopAction.Saved,
                 notifications = notificationItems,
                 contentRefreshing = sharedHomeHeaderRefreshing(state),
+                unreadStale = state.unreadStale,
                 channelOrder = snapshot.sidebarOrder?.channelOrder.orEmpty(),
                 channelSortMode = snapshot.sidebarOrder?.channelSortMode ?: "manual",
                 jointChannelSortMode = snapshot.sidebarOrder?.jointChannelSortMode ?: "manual",
@@ -16613,7 +16614,7 @@ internal fun HomeActivityVisualContent() {
  * `segment` picks all / unread / mentions / pinned.
  */
 @Composable
-internal fun RaftActivityTabVisualContent() {
+internal fun RaftActivityTabVisualContent(stale: Boolean = false) {
     val pager = LocalActivity.current.getPager() as Pager
     val segment =
         remember(pager.pageData.params.toString()) {
@@ -16630,6 +16631,7 @@ internal fun RaftActivityTabVisualContent() {
                         selectedFilter = filter,
                         snapshot = homeActivityTabVisualSnapshot,
                         loaded = true,
+                        stale = stale,
                     ),
                 onIntent = {},
                 onOpenItem = {},

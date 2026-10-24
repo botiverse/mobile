@@ -4,6 +4,7 @@ import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.data.AttachmentUploadCapabilities
 import build.raft.app.data.AttachmentUploadCapabilitiesCache
 import build.raft.app.data.DataResult
+import build.raft.app.data.isRwOverloadedError
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.isAuthSessionBlocker
 import build.raft.app.data.isEdgeBlockedMarker
@@ -11415,14 +11416,21 @@ internal class SharedThreadStore(
                 return
             }
             val threads = (result as? DataResult.Content)?.data?.threads
+            // Task #164: the read warehouse being behind is temporary. Ids it could not resolve
+            // (an overload, or a remembered list that may predate them) may be asked again by the
+            // next trigger; every other answer stays final for this page, as before.
+            val rwStale = result?.isRwOverloadedError == true ||
+                (result as? DataResult.Content)?.data?.staleReason != null
             if (threads == null) {
+                if (rwStale) unreadThreadParentsRequested -= pending
                 diagnosticsLogger?.invoke(
                     "thread_unread_thread_parents_result result=${result?.let { it::class.simpleName } ?: "unavailable"} " +
-                        "requested=${pending.size}"
+                        "requested=${pending.size} rwStale=$rwStale"
                 )
                 return
             }
             val resolved = threads.toThreadUnreadThreadParents(channelId)
+            if (rwStale) unreadThreadParentsRequested -= pending.filterNotTo(LinkedHashSet()) { it in resolved }
             diagnosticsLogger?.invoke(
                 "thread_unread_thread_parents_result result=content requested=${pending.size} " +
                     "resolved=${pending.count { it in resolved }} channelThreads=${resolved.size}"

@@ -303,6 +303,11 @@ private val RaftBannerInlineActionMinWidth = 452.dp
  * text), so a long message such as a runtime error keeps the full width.
  * [status] is [RaftBannerStatus.Warning] for something to fix, `Destructive` only for
  * what cannot be undone.
+ *
+ * [pending] (as [RaftBanner]'s, raft-ui 0.22 #709): while the panel waits on something that
+ * resolves by itself, such as data that refreshes once the server recovers, the 12dp spinner
+ * takes the icon's place, centred in the 16dp icon column on the first line. It is decorative;
+ * the message says what waits. Use it with [RaftBannerStatus.Info]: waiting is not a problem.
  */
 @Composable
 fun RaftPanelNotice(
@@ -311,6 +316,7 @@ fun RaftPanelNotice(
     status: RaftBannerStatus = RaftBannerStatus.Warning,
     maxLines: Int = 2,
     stackActions: Boolean = false,
+    pending: Boolean = false,
     actions: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
@@ -330,9 +336,15 @@ fun RaftPanelNotice(
         verticalAlignment = Alignment.Top,
     ) {
         // `[&>svg]:lead-icon`: the 16dp icon centred on the 20dp first line.
-        status.glyph?.let { glyph ->
-            Box(Modifier.height(20.dp), contentAlignment = Alignment.Center) {
-                RaftGlyphIcon(glyph, size = 16.dp, color = colors.foreground)
+        if (pending) {
+            Box(Modifier.width(16.dp).height(20.dp).clearAndSetSemantics {}, contentAlignment = Alignment.Center) {
+                RaftSpinner(color = colors.foreground)
+            }
+        } else {
+            status.glyph?.let { glyph ->
+                Box(Modifier.height(20.dp), contentAlignment = Alignment.Center) {
+                    RaftGlyphIcon(glyph, size = 16.dp, color = colors.foreground)
+                }
             }
         }
         if (stackActions && actions != null) {

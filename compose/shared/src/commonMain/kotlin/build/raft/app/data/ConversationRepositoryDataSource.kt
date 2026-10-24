@@ -963,6 +963,7 @@ class RealConversationRepository private constructor(
             block = { networkClient.followedThreads(DataRequestPriority.Visible, limit, context.server.id) },
             emptyWhen = { it.threads.isEmpty() },
             source = "followed_threads",
+            markStale = { snapshot, reason -> snapshot.copy(staleReason = reason) },
             mapper = { bodyText -> parseFollowedThreadListSnapshotFromBody(bodyText, context) }
         )
     }
@@ -979,6 +980,7 @@ class RealConversationRepository private constructor(
             },
             emptyWhen = { it.threads.isEmpty() },
             source = "followed_threads_unread",
+            markStale = { snapshot, reason -> snapshot.copy(staleReason = reason) },
             mapper = { bodyText -> parseFollowedThreadListSnapshotFromBody(bodyText, context) }
         )
     }
@@ -1612,6 +1614,7 @@ class RealConversationRepository private constructor(
         emptyWhen: (T) -> Boolean = { false },
         source: String? = null,
         bodyEventFields: ((String) -> String)? = null,
+        markStale: ((T, RaftStaleReason) -> T)? = null,
         mapper: (String) -> T
     ): DataResult<T> =
         executeConversationWithDiagnostics(
@@ -1621,6 +1624,7 @@ class RealConversationRepository private constructor(
             source = source,
             diagnosticsLogger = warningLogger,
             bodyEventFields = bodyEventFields,
+            markStale = markStale,
             mapper = mapper
         )
 
@@ -2085,6 +2089,8 @@ private suspend fun <T> executeConversationWithDiagnostics(
     source: String? = null,
     diagnosticsLogger: (String) -> Unit = {},
     bodyEventFields: ((String) -> String)? = null,
+    /** Task #164: tags a body the server served from its remembered copy (`X-Raft-Stale`); always Content. */
+    markStale: ((T, RaftStaleReason) -> T)? = null,
     mapper: (String) -> T
 ): DataResult<T> {
     var statusCode: Int? = null
@@ -2110,7 +2116,13 @@ private suspend fun <T> executeConversationWithDiagnostics(
             withContext(RaftJsonParseDispatcher) {
                 mapper(body)
             }
-        val dataResult = if (emptyWhen(result)) DataResult.Empty(emptyReason) else DataResult.Content(result)
+        val staleReason = markStale?.let { response.raftStaleReason() }
+        val dataResult =
+            when {
+                staleReason != null -> DataResult.Content(markStale(result, staleReason))
+                emptyWhen(result) -> DataResult.Empty(emptyReason)
+                else -> DataResult.Content(result)
+            }
         diagnosticsLogger(
             "conversation_parse_result source=$sourceLabel result=${dataResult.conversationDiagnosticsResult()} " +
                 "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} " +
