@@ -933,17 +933,21 @@ jobs:
               echo
               echo "Raw changelog (proofread + translate before publishing):"
               echo
-              echo '\`\`\`'
+              echo '```'
               cat changelog.txt 2>/dev/null || echo "(no changelog generated)"
-              echo '\`\`\`'
+              echo '```'
               echo
-              echo "Publish flow:"
+              echo "Publish flow (after owner approval). Publish only through finalize: it runs the channel guard before activating."
+              echo "Do not run a bare hands releases publish; that skips the guard."
               echo
-              echo '\`\`\`sh'
+              echo '```sh'
               echo "hands releases show raft-android ${{ steps.publish-hands-release.outputs.release_id }}"
-              echo "hands releases update raft-android ${{ steps.publish-hands-release.outputs.release_id }} --changelog-file zh-CN=zh-CN.md --changelog-file en=en.md --changelog-file ja=ja.md"
-              echo "hands releases publish raft-android ${{ steps.publish-hands-release.outputs.release_id }}"
-              echo '\`\`\`'
+              echo "scripts/finalize_android_hands_release.sh --release ${{ steps.publish-hands-release.outputs.release_id }} \\"
+              echo "  --version ${{ needs.resolve.outputs.version_major }}.${{ needs.resolve.outputs.version_minor }}.${{ needs.resolve.outputs.version_patch }} --build ${{ needs.resolve.outputs.version_build }} --channel ${{ needs.resolve.outputs.hands_channel }} \\"
+              echo "  --zh-notes change-logs/${{ needs.resolve.outputs.version_major }}.${{ needs.resolve.outputs.version_minor }}.${{ needs.resolve.outputs.version_patch }}/android/zh-CN.md \\"
+              echo "  --en-notes change-logs/${{ needs.resolve.outputs.version_major }}.${{ needs.resolve.outputs.version_minor }}.${{ needs.resolve.outputs.version_patch }}/android/en.md \\"
+              echo "  --ja-notes change-logs/${{ needs.resolve.outputs.version_major }}.${{ needs.resolve.outputs.version_minor }}.${{ needs.resolve.outputs.version_patch }}/android/ja.md --confirm-publish"
+              echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
