@@ -1078,6 +1078,7 @@ jobs:
             RaftIosAdaptivePanePublisherTests \
             RaftIosAvatarCacheProviderTests \
             RaftIosNetworkRequestLifetimeAdapterTests \
+            RaftIosRealtimeLifecyclePolicyTests \
             RaftIosOpenAttachmentTests \
             RaftShareControllerFailureReasonTests
 

@@ -83,6 +83,7 @@ final class RaftIosRealtimeHost: NSObject {
     private var nextPresenceTransportEpoch: Int64 = 0
     private var foregroundEpoch: Int64 = 0
     private var didInstallObservers = false
+    private var lifecyclePolicy: RaftIosRealtimeLifecyclePolicy?
 
     var statusLabel: String {
         queue.sync {
@@ -753,52 +754,27 @@ final class RaftIosRealtimeHost: NSObject {
             name: Notification.Name(GeneratedRealtimeContract.Notify.roomsEventName),
             object: nil
         )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appDidBecomeActive),
-            name: UIApplication.didBecomeActiveNotification,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(appWillResignActive),
-            name: UIApplication.willResignActiveNotification,
-            object: nil
-        )
+        // willResignActive hides the shell only; the socket closes on didEnterBackground
+        // (see RaftIosRealtimeLifecyclePolicy).
+        let policy = RaftIosRealtimeLifecyclePolicy(notificationCenter: .default, target: self)
+        policy.install()
+        lifecyclePolicy = policy
     }
 
-    @objc private func appDidBecomeActive() {
-        queue.async { [weak self] in
-            guard let self else { return }
-            for runtime in self.runtimes.values where runtime.state == .disconnected {
-                if let params = runtime.connectParams { self.openSocketLocked(runtime: runtime, params: params) }
-            }
-            self.foregroundEpoch += 1
-            // task #483: every live shell is foregrounded together.
-            let shellIds = RaftIosShellWindowRegistry.allShellInstanceIds()
-            for shellId in shellIds.isEmpty
-                ? [RaftIosShellWindowContract.legacyShellInstanceId] : shellIds {
-                RaftHostVisibilityKt.updateRaftHostVisibility(shellInstanceId: shellId, visible: true)
-            }
+    private func setShellVisibleLocked(_ visible: Bool) {
+        if visible {
+            foregroundEpoch += 1
+        }
+        // task #483: every live shell is foregrounded / backgrounded together.
+        let shellIds = RaftIosShellWindowRegistry.allShellInstanceIds()
+        for shellId in shellIds.isEmpty
+            ? [RaftIosShellWindowContract.legacyShellInstanceId] : shellIds {
+            RaftHostVisibilityKt.updateRaftHostVisibility(shellInstanceId: shellId, visible: visible)
+        }
+        if visible {
             NSLog("thread_lifecycle_host_show epoch=\\(self.foregroundEpoch) runtimes=\\(self.runtimes.count)")
-            self.sendAppLifecycle(event: "show")
         }
-    }
-
-    @objc private func appWillResignActive() {
-        queue.async { [weak self] in
-            guard let self else { return }
-            // task #483: every live shell is backgrounded together.
-            let shellIds = RaftIosShellWindowRegistry.allShellInstanceIds()
-            for shellId in shellIds.isEmpty
-                ? [RaftIosShellWindowContract.legacyShellInstanceId] : shellIds {
-                RaftHostVisibilityKt.updateRaftHostVisibility(shellInstanceId: shellId, visible: false)
-            }
-            self.sendAppLifecycle(event: "hide")
-            for runtime in self.runtimes.values {
-                self.disconnectRuntimeLocked(runtime, reason: "background", keepSession: true)
-            }
-        }
+        sendAppLifecycle(event: visible ? "show" : "hide")
     }
 
     private func sendAppLifecycle(event: String) {
@@ -967,4 +943,38 @@ final class RaftIosRealtimeHost: NSObject {
         "pinned:updated",
         "notification:push",
     ]
+}
+
+extension RaftIosRealtimeHost: RaftIosRealtimeLifecycleTarget {
+    func recordRealtimeLifecycle(_ event: String) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            let connected = self.runtimes.values.filter { $0.state == .connected }.count
+            self.record("info", "\(event) runtimes=\(self.runtimes.count) connected=\(connected)")
+        }
+    }
+
+    func setRealtimeShellVisible(_ visible: Bool) {
+        queue.async { [weak self] in
+            self?.setShellVisibleLocked(visible)
+        }
+    }
+
+    func disconnectRealtimeForBackground() {
+        queue.async { [weak self] in
+            guard let self else { return }
+            for runtime in self.runtimes.values {
+                self.disconnectRuntimeLocked(runtime, reason: "background", keepSession: true)
+            }
+        }
+    }
+
+    func reconnectDisconnectedRealtime() {
+        queue.async { [weak self] in
+            guard let self else { return }
+            for runtime in self.runtimes.values where runtime.state == .disconnected {
+                if let params = runtime.connectParams { self.openSocketLocked(runtime: runtime, params: params) }
+            }
+        }
+    }
 }
