@@ -140,7 +140,7 @@ class MessageQuotedForwardedScreenshotTest {
                     footerLabel = "View all 3 messages",
                     onFooterClick = {},
                     footerMode = RaftMessageForwardedBundleFooterMode.Always,
-                    foldHeight = 8 * 24.dp,
+                    foldHeight = 24.dp * 8,
                 ) {
                     RaftMessageForwardedBundleItem(author = "@alpha", time = { RaftMessageForwardedBundleItemTime("May 4 · 3:16 PM") }) {
                         Body(
