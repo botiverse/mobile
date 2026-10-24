@@ -4494,19 +4494,21 @@ private fun ComposerAttachmentPreviewChip(
         }
         // The web's overlays on file and image tiles alike; mobile keeps Retry on a failed one.
         if (phase != null) {
+            // Today's fields, mapped onto (phase, percent, label); the transfer-progress
+            // display model (phase, percent, label) replaces this mapping.
+            val progress = attachment.uploadProgress.coerceIn(0, 100)
+            val failed = phase == RaftComposerAttachmentPhase.Failed
             RaftComposerAttachmentOverlay(
                 phase = phase,
-                percent = attachment.uploadProgress.coerceIn(0, 100).takeIf { phase != RaftComposerAttachmentPhase.Failed },
+                percent = progress.takeIf { !failed },
                 label =
-                    stringResource(
-                        if (phase == RaftComposerAttachmentPhase.Failed) {
-                            MR.strings.thread_composer_attachment_upload_failed
-                        } else {
-                            MR.strings.thread_composer_attachment_uploading
-                        }
-                    ),
-                action = stringResource(MR.strings.common_retry).takeIf { phase == RaftComposerAttachmentPhase.Failed },
-                onAction = onRetry.takeIf { phase == RaftComposerAttachmentPhase.Failed }
+                    when {
+                        failed -> stringResource(MR.strings.thread_composer_attachment_upload_failed)
+                        progress > 0 -> "$progress%"
+                        else -> stringResource(MR.strings.thread_composer_attachment_uploading)
+                    },
+                action = stringResource(MR.strings.common_retry).takeIf { failed },
+                onAction = onRetry.takeIf { failed }
             )
         }
         if (enabled) {

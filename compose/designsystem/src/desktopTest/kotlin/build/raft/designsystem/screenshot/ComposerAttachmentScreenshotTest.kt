@@ -52,7 +52,7 @@ class ComposerAttachmentScreenshotTest {
                 Caption("Checking: file, image")
                 PhaseRow(RaftComposerAttachmentPhase.Checking, null, "Checking file…")
                 Caption("Uploading: 42%, first byte")
-                PhaseRow(RaftComposerAttachmentPhase.Uploading, 42, "Uploading")
+                PhaseRow(RaftComposerAttachmentPhase.Uploading, 42, "42%")
                 PhaseRow(RaftComposerAttachmentPhase.Uploading, 0, "Uploading")
                 Caption("Finishing: file, image")
                 PhaseRow(RaftComposerAttachmentPhase.Finishing, 99, "Finishing upload…")

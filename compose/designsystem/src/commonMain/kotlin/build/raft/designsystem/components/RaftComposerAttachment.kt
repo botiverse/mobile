@@ -195,11 +195,10 @@ fun RaftComposerAttachmentImage(
  *
  * - [Checking][RaftComposerAttachmentPhase.Checking], [Uploading][RaftComposerAttachmentPhase.Uploading]
  *   and [Finishing][RaftComposerAttachmentPhase.Finishing]: `layer-card` at 80% over the whole
- *   tile, then centred a small spinner and 4dp under it the status in Space Mono meta bold
- *   `foreground`. Uploading with a known [percent] above 0 reads "42%"; otherwise it reads
- *   [label] ("Uploading", "Checking file…", "Finishing upload…"). Uploading and Finishing run
- *   the 4dp bar inset 6dp from the sides and bottom (2dp radius, `layer-card` track, `info`
- *   fill, at least 4% so it is visible from the start) when [percent] is known.
+ *   tile, then centred a small spinner and 4dp under it [label] ("Checking file…", "Uploading",
+ *   "42%", "Finishing upload…") in Space Mono meta bold `foreground`. A [percent] (the bar's
+ *   value; null for no bar) runs the 4dp bar inset 6dp from the sides and bottom (2dp radius,
+ *   `layer-card` track, `info` fill, at least 4% so it is visible from the start).
  * - [Failed][RaftComposerAttachmentPhase.Failed]: `layer-card` at 90% inside a 1dp
  *   `danger-strong` edge, [label] ("Upload failed") centred in caption 12/16 semibold
  *   `danger-strong`. Mobile adds the underlined [action] ("Retry") under it; tapping the tile
@@ -246,7 +245,6 @@ fun BoxScope.RaftComposerAttachmentOverlay(
         }
         return
     }
-    val text = if (phase == RaftComposerAttachmentPhase.Uploading && percent != null && percent > 0) "$percent%" else label
     Column(
         modifier =
             modifier
@@ -260,7 +258,7 @@ fun BoxScope.RaftComposerAttachmentOverlay(
         // The web's span neither wraps nor truncates: a word wider than a 64dp image tile
         // ("Uploading") stays on one line, centred on the tile.
         RaftText(
-            text = text,
+            text = label,
             modifier = Modifier.padding(top = 4.dp).wrapContentWidth(unbounded = true),
             style = RaftTheme.typography.monoMeta.copy(fontWeight = FontWeight.Bold),
             color = colors.foreground,
@@ -269,7 +267,7 @@ fun BoxScope.RaftComposerAttachmentOverlay(
             softWrap = false,
         )
     }
-    if (percent != null && phase != RaftComposerAttachmentPhase.Checking) RaftComposerAttachmentProgressBar(percent)
+    if (percent != null) RaftComposerAttachmentProgressBar(percent)
 }
 
 /**
