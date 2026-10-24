@@ -2365,7 +2365,8 @@ private fun RaftFilePreviewStandalonePageContent() {
                         val result =
                             scope.loadPreview(
                                 payload = payload,
-                                priority = DataRequestPriority.Visible,
+                                // The file the user tapped: same lane as the gallery's shown image.
+                                priority = raftFilePreviewImageResolutionPriority(preload = false),
                                 authStore = authStore,
                                 truncatedPreviewHint = truncatedPreviewHint,
                                 errorStrings = errorStrings,
@@ -9367,11 +9368,13 @@ internal data class RaftFilePreviewImageGalleryResolutionState(
 
 /**
  * Request lane for resolving a gallery image's full-size URL: a neighbour [preload] is warmup work
- * (Background, behind every on-screen request); the shown image is on-screen work (Visible).
+ * (Background, behind every on-screen request); the shown image is what the user just tapped and is
+ * waiting on (Foreground). On the Visible lane it queued behind a screen's worth of list and
+ * image requests (Hands 43837e84: 9.5-20 s while Foreground calls took under 1 s).
  * Preloads still never cancel the shown image's request ([RaftFilePreviewImageGalleryResolutionState]).
  */
 internal fun raftFilePreviewImageResolutionPriority(preload: Boolean): DataRequestPriority =
-    if (preload) DataRequestPriority.Background else DataRequestPriority.Visible
+    if (preload) DataRequestPriority.Background else DataRequestPriority.Foreground
 
 /**
  * Neighbour payloads whose full-size URL to resolve ahead of a swipe: next, then previous. Empty
