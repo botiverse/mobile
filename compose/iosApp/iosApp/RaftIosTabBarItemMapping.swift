@@ -82,21 +82,6 @@ enum RaftIosTabBarItemMapping {
         return Array(unique.prefix(maximumTabCount))
     }
 
-    /// The tabs the system bar shows, and the panel tab shown as the separate server button.
-    /// With [separatePanelButton] (iOS 26) the first panel tab leaves the bar, so pressing it
-    /// never moves the bar's Liquid Glass selection; before iOS 26 it stays the last tab.
-    static func splitPanelButton(
-        _ items: [RaftIosTabBarItemSpec],
-        separatePanelButton: Bool
-    ) -> (tabs: [RaftIosTabBarItemSpec], panel: RaftIosTabBarItemSpec?) {
-        guard separatePanelButton, let index = items.firstIndex(where: \.opensPanel) else {
-            return (items, nil)
-        }
-        var tabs = items
-        let panel = tabs.remove(at: index)
-        return (tabs, panel)
-    }
-
     /// Index of the shared selection in the displayed keys; nil keeps the current selection
     /// (shared selected a destination that is not a bottom tab, e.g. rail Search).
     static func selectedIndex(of selectedKey: String?, in keys: [String]) -> Int? {
@@ -161,46 +146,12 @@ struct RaftIosTabTapGate {
     }
 }
 
-/// The iOS 26 server button beside the Liquid Glass tab bar (like Music's separate Search).
-///
-/// Measured, not public: the system's separated circle, spacing and margins are not exposed, so
-/// these follow the iOS 26 iPhone bar (a 62pt-tall pill, about 21pt from the screen edges).
-/// They need a device check.
-enum RaftIosServerButtonLayout {
-    /// The round button: the height of the bar's pill.
-    static let diameter: CGFloat = 62
-    /// Between the bar's pill and the button.
-    static let spacing: CGFloat = 8
-    /// The button's trailing edge from the safe area: the pill's own side margin.
-    static let trailingMargin: CGFloat = 21
-    /// The avatar, clipped to a circle, centred in the glass.
-    static let avatarDiameter: CGFloat = 40
-
-    /// The width left to the system tab bar's container: the bar lays its pill out inside it
-    /// (margins and safe areas included), so the pill and the button can never overlap.
-    static func tabBarContainerWidth(containerWidth: CGFloat, showsButton: Bool) -> CGFloat {
-        guard showsButton else { return max(0, containerWidth) }
-        return max(0, containerWidth - diameter - spacing)
-    }
-
-    /// The button's frame in the container. [barFrame] is the system tab bar's frame and
-    /// [barBottomInset] its bottom safe-area inset: the pill is centred in the bar above it.
-    static func buttonFrame(
-        containerWidth: CGFloat,
-        safeAreaRight: CGFloat,
-        barFrame: CGRect,
-        barBottomInset: CGFloat
-    ) -> CGRect {
-        let contentHeight = max(0, barFrame.height - barBottomInset)
-        let centerY = barFrame.minY + contentHeight / 2
-        let x = containerWidth - max(0, safeAreaRight) - trailingMargin - diameter
-        return CGRect(x: x.rounded(), y: (centerY - diameter / 2).rounded(), width: diameter, height: diameter)
-    }
-}
-
-/// The server's avatar for the button: its image clipped to a circle, or the app's initial tile
-/// (ink with the initial in brand yellow, as the panel and Android draw it).
+/// The server's avatar for the server tab: its image clipped to a circle, or the app's initial
+/// tile (ink with the initial in brand yellow, as the panel and Android draw it).
 enum RaftIosServerAvatarImage {
+    /// The avatar image's size; the system centres it in its round glass button.
+    static let diameter: CGFloat = 40
+
     /// raft-ui `sticker-ink` (#141111).
     static let ink = UIColor(red: 0x14 / 255.0, green: 0x11 / 255.0, blue: 0x11 / 255.0, alpha: 1)
     /// raft-ui palette yellow (#FFD441), the initial's colour.
@@ -249,44 +200,146 @@ enum RaftIosServerAvatarImage {
     }
 }
 
-/// The separate round Liquid Glass server button (iOS 26): the system glass button style with
-/// the server's avatar in a circle inside it. No badge (artin 10-23). A tap toggles the server
-/// panel; it is a plain button, so it never takes or moves the tab bar's selection.
-@available(iOS 26.0, *)
-final class RaftIosServerTabButton: UIButton {
-    private let avatarView = UIImageView()
-
-    static func make() -> RaftIosServerTabButton {
-        let button = RaftIosServerTabButton(type: .system)
-        var configuration = UIButton.Configuration.glass()
-        configuration.cornerStyle = .capsule
-        button.configuration = configuration
-        button.avatarView.isUserInteractionEnabled = false
-        button.avatarView.contentMode = .scaleAspectFit
-        button.avatarView.isAccessibilityElement = false
-        button.addSubview(button.avatarView)
-        button.isAccessibilityElement = true
-        button.accessibilityTraits = .button
-        return button
-    }
-
-    /// Label, identifier and avatar from [spec]; [avatar] is the decoded server image, if any.
-    func apply(_ spec: RaftIosTabBarItemSpec, avatar: UIImage?) {
-        accessibilityLabel = spec.accessibilityLabel ?? spec.title
-        accessibilityIdentifier = "raft-tab-\(spec.key)"
-        isEnabled = spec.enabled
-        avatarView.image = RaftIosServerAvatarImage.circle(
-            avatar,
-            fallbackLabel: spec.avatarFallbackLabel,
-            diameter: RaftIosServerButtonLayout.avatarDiameter
+/// A tab's icon: the web's Lucide glyph (template asset, tinted by the bar) when the app ships
+/// it, SF Symbols otherwise. Lucide has no filled variants, so selection is the tint alone.
+enum RaftIosTabIcon {
+    static func images(for spec: RaftIosTabBarItemSpec) -> (normal: UIImage?, selected: UIImage?) {
+        if let assetName = spec.imageAssetName,
+           let asset = UIImage(named: assetName)?.withRenderingMode(.alwaysTemplate) {
+            return (asset, asset)
+        }
+        return (
+            symbol(RaftIosTabBarItemMapping.imageNameCandidates(preferred: spec.systemImageName)),
+            symbol(RaftIosTabBarItemMapping.imageNameCandidates(
+                preferred: spec.selectedSystemImageName,
+                fallback: spec.systemImageName
+            ))
         )
     }
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        let edge = RaftIosServerButtonLayout.avatarDiameter
-        avatarView.frame = CGRect(x: (bounds.width - edge) / 2, y: (bounds.height - edge) / 2, width: edge, height: edge)
-        bringSubviewToFront(avatarView)
+    private static func symbol(_ names: [String]) -> UIImage? {
+        for name in names {
+            if let image = UIImage(systemName: name) { return image }
+        }
+        return nil
     }
 }
 
+/// The iOS 26 bar built from system tabs (`UITabBarController.tabs`). The current-server tab is
+/// a `UISearchTab`: iOS 26 draws it as its own round Liquid Glass button beside the bar, like
+/// Music's separate Search, so its position, size, glass and alignment are UIKit's. It shows the
+/// server's avatar (an original-colour image) and never takes the selection: the delegate
+/// refuses every selection and runs the shell's handler instead (it opens the server panel).
+@available(iOS 26.0, *)
+final class RaftIosSystemTabs {
+    private var tabsByKey: [String: UITab] = [:]
+    private var keys: [String] = []
+    /// What each tab's image was made from; the image is set again only when that changes (a
+    /// new image relays the button out).
+    private var imageSourceByKey: [String: String] = [:]
+    /// Content for a tab: an empty, transparent placeholder (the shell draws the page).
+    var makeContent: (String) -> UIViewController = { _ in
+        let content = UIViewController()
+        content.view.backgroundColor = .clear
+        return content
+    }
+
+    /// The shell key of [tab], if it is one of these tabs.
+    func key(for tab: UITab) -> String? {
+        tabsByKey.first { $0.value === tab }?.key
+    }
+
+    func tab(for key: String) -> UITab? {
+        tabsByKey[key]
+    }
+
+    /// Builds or updates [controller]'s tabs from [specs]; [panelImage] is the server's avatar
+    /// (nil = its initial tile).
+    ///
+    /// The server's UISearchTab is never changed in place: setting its title or image while the
+    /// bar is not on screen leaves the bar's titles shrunk and truncated (iOS 26.5; CI probe).
+    /// It is created configured, and replaced by a new one when its name or avatar changes.
+    /// Page tabs are created with their icon and updated in place.
+    func apply(_ specs: [RaftIosTabBarItemSpec], panelImage: UIImage?, to controller: UITabBarController) {
+        let nextKeys = specs.map(\.key)
+        var replace = nextKeys != keys
+        for spec in specs {
+            guard let tab = tabsByKey[spec.key] else { continue }
+            if (tab is UISearchTab) != spec.opensPanel { replace = true }
+            if spec.opensPanel, imageSourceByKey[spec.key] != Self.panelSource(spec, panelImage) { replace = true }
+        }
+        if replace {
+            var next: [String: UITab] = [:]
+            let make = makeContent
+            let tabs: [UITab] = specs.map { spec in
+                let key = spec.key
+                if spec.opensPanel {
+                    let source = Self.panelSource(spec, panelImage)
+                    if let existing = tabsByKey[key] as? UISearchTab, imageSourceByKey[key] == source {
+                        next[key] = existing
+                        return existing
+                    }
+                    let tab = UISearchTab { _ in make(key) }
+                    tab.title = spec.title
+                    // No badge on the server tab (artin 10-23).
+                    tab.image = RaftIosServerAvatarImage.circle(
+                        panelImage,
+                        fallbackLabel: spec.avatarFallbackLabel,
+                        diameter: RaftIosServerAvatarImage.diameter
+                    )
+                    tab.accessibilityLabel = spec.accessibilityLabel ?? spec.title
+                    imageSourceByKey[key] = source
+                    next[key] = tab
+                    return tab
+                }
+                if let existing = tabsByKey[key], !(existing is UISearchTab) {
+                    next[key] = existing
+                    return existing
+                }
+                // A page tab gets its icon at creation: the bar lays the title out around it.
+                let tab = UITab(title: spec.title, image: RaftIosTabIcon.images(for: spec).normal, identifier: key) { _ in
+                    make(key)
+                }
+                tab.accessibilityLabel = spec.accessibilityLabel ?? spec.title
+                tab.badgeValue = spec.badgeValue
+                imageSourceByKey[key] = Self.imageSource(spec)
+                next[key] = tab
+                return tab
+            }
+            tabsByKey = next
+            keys = nextKeys
+            imageSourceByKey = imageSourceByKey.filter { next[$0.key] != nil }
+            controller.setTabs(tabs, animated: false)
+        }
+        for spec in specs where !spec.opensPanel {
+            guard let tab = tabsByKey[spec.key] else { continue }
+            if tab.title != spec.title { tab.title = spec.title }
+            let label = spec.accessibilityLabel ?? spec.title
+            if tab.accessibilityLabel != label { tab.accessibilityLabel = label }
+            let source = Self.imageSource(spec)
+            if imageSourceByKey[spec.key] != source {
+                imageSourceByKey[spec.key] = source
+                tab.image = RaftIosTabIcon.images(for: spec).normal
+            }
+            if tab.badgeValue != spec.badgeValue { tab.badgeValue = spec.badgeValue }
+        }
+    }
+
+    /// What the server tab is drawn from: its name, label and avatar (or initial).
+    private static func panelSource(_ spec: RaftIosTabBarItemSpec, _ image: UIImage?) -> String {
+        let picture = image.map { "avatar:\(ObjectIdentifier($0).hashValue)" } ?? "initial:\(spec.avatarFallbackLabel ?? "")"
+        return "\(spec.title)|\(spec.accessibilityLabel ?? "")|\(picture)"
+    }
+
+    private static func imageSource(_ spec: RaftIosTabBarItemSpec) -> String {
+        "\(spec.imageAssetName ?? "")|\(spec.systemImageName)"
+    }
+
+    /// Shows [key] as the selected page tab (programmatic: the delegate is not asked).
+    func select(_ key: String?, in controller: UITabBarController) {
+        guard let key = key, let tab = tabsByKey[key], !(tab is UISearchTab), controller.selectedTab !== tab else {
+            return
+        }
+        controller.selectedTab = tab
+    }
+}
