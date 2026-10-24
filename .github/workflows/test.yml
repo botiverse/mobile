@@ -63,10 +63,15 @@ jobs:
       attachment_api_levels: ${{ steps.plan.outputs.attachment_api_levels }}
       reason: ${{ steps.plan.outputs.reason }}
     steps:
+      # Full history for the PR merge-base / push before..after diffs below, but
+      # blobless: `git diff --name-only` needs commits and trees only. The few
+      # blobs a step reads at another commit (the gitlink gate's .gitmodules)
+      # are fetched on demand with the persisted checkout credentials.
       - name: Checkout exact event source
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          filter: blob:none
 
       - name: Validate checked-in CI tiering contract
         run: scripts/ci/test_ci_tiering_contract.sh
