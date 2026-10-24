@@ -894,10 +894,10 @@ internal fun ActivitySwipeActionsBox(
                     var target = reveal.value
                     // This row is the open one now: any other open row closes as this one slides.
                     currentOnOpenChange(activitySwipeDragSide(target, claimedTowardStart))
-                    var settle: () -> Unit = {
-                        currentOnOpenChange(null)
-                        busy = false
-                    }
+                    // Where the row goes on release (a value, not a lambda: Kotlin/Native miscasts a captured
+                    // function-typed var here).
+                    var settleSide: ActivitySwipeSide? = null
+                    var applyOnRelease = false
                     val tickGate = ActivitySwipeFullDoneTickGate()
                     val velocity = VelocityTracker()
                     tickGate.update(activitySwipeArmed(target, widthPx.toFloat(), doneEnabled, hasStart))
@@ -912,34 +912,29 @@ internal fun ActivitySwipeActionsBox(
                                 val dragVelocityX = velocity.calculateVelocity().x
                                 val revealVelocity = if (isLtr) -dragVelocityX else dragVelocityX
                                 val flick = ActivitySwipeFlickVelocity.toPx()
-                                settle =
-                                    if (target < 0f) {
-                                        when (activitySwipeStartReleaseTarget(-target, startButtonWidthPx, widthPx.toFloat(), -revealVelocity, flick)) {
-                                            ActivitySwipeStartRelease.Toggle -> ::completeToggle
-                                            ActivitySwipeStartRelease.Open -> {
-                                                {
-                                                    currentOnOpenChange(ActivitySwipeSide.Start)
-                                                    busy = false
-                                                }
-                                            }
-                                            ActivitySwipeStartRelease.Close -> settle
+                                if (target < 0f) {
+                                    when (activitySwipeStartReleaseTarget(-target, startButtonWidthPx, widthPx.toFloat(), -revealVelocity, flick)) {
+                                        ActivitySwipeStartRelease.Toggle -> {
+                                            settleSide = ActivitySwipeSide.Start
+                                            applyOnRelease = true
                                         }
-                                    } else {
-                                        when (
-                                            activitySwipeReleaseTarget(
-                                                target, buttonsWidthPx, widthPx.toFloat(), doneEnabled, revealVelocity, flick,
-                                            )
-                                        ) {
-                                            ActivitySwipeRelease.Done -> ::completeDone
-                                            ActivitySwipeRelease.Open -> {
-                                                {
-                                                    currentOnOpenChange(ActivitySwipeSide.End)
-                                                    busy = false
-                                                }
-                                            }
-                                            ActivitySwipeRelease.Close -> settle
-                                        }
+                                        ActivitySwipeStartRelease.Open -> settleSide = ActivitySwipeSide.Start
+                                        ActivitySwipeStartRelease.Close -> Unit
                                     }
+                                } else {
+                                    when (
+                                        activitySwipeReleaseTarget(
+                                            target, buttonsWidthPx, widthPx.toFloat(), doneEnabled, revealVelocity, flick,
+                                        )
+                                    ) {
+                                        ActivitySwipeRelease.Done -> {
+                                            settleSide = ActivitySwipeSide.End
+                                            applyOnRelease = true
+                                        }
+                                        ActivitySwipeRelease.Open -> settleSide = ActivitySwipeSide.End
+                                        ActivitySwipeRelease.Close -> Unit
+                                    }
+                                }
                                 break
                             }
                             velocity.addPointerInputChange(change)
@@ -955,7 +950,14 @@ internal fun ActivitySwipeActionsBox(
                         }
                     } finally {
                         // Also on cancellation (pointer input reset): never leave a row half open.
-                        settle()
+                        when {
+                            applyOnRelease && settleSide == ActivitySwipeSide.End -> completeDone()
+                            applyOnRelease -> completeToggle()
+                            else -> {
+                                currentOnOpenChange(settleSide)
+                                busy = false
+                            }
+                        }
                     }
                 }
             }
