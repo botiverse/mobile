@@ -118,8 +118,8 @@ class RaftFilePreviewImageGalleryPreloadTest {
     }
 
     @Test
-    fun neighbourPreloadsResolveInTheBackgroundLaneAndTheShownImageDoesNot() {
+    fun neighbourPreloadsResolveInTheBackgroundLaneAndTheTappedImageInTheForegroundLane() {
         assertEquals(DataRequestPriority.Background, raftFilePreviewImageResolutionPriority(preload = true))
-        assertEquals(DataRequestPriority.Visible, raftFilePreviewImageResolutionPriority(preload = false))
+        assertEquals(DataRequestPriority.Foreground, raftFilePreviewImageResolutionPriority(preload = false))
     }
 }

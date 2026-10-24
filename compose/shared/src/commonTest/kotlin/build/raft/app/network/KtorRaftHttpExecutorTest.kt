@@ -8,6 +8,7 @@ import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.toByteArray
 import io.ktor.client.network.sockets.ConnectTimeoutException
+import io.ktor.client.network.sockets.SocketTimeoutException
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.HttpResponseData
@@ -318,6 +319,78 @@ class KtorRaftHttpExecutorTest {
                 harness.logs.joinToString("\n")
             )
         }
+    }
+
+    /** A lane whose platform replaces its connections after a timeout (iOS, Hands 43837e84). */
+    private class RecyclingLane(private val recycleOnTimeout: Boolean) : RaftKtorClientProvider {
+        var generation = 0L
+        val sent = mutableListOf<Long>()
+        val outcomes = mutableListOf<Pair<Long, Boolean>>()
+        private val clients = mutableMapOf<Long, HttpClient>()
+
+        override fun client(priority: RaftRequestPriority, kind: RaftKtorCallKind): HttpClient {
+            val gen = generation
+            return clients.getOrPut(gen) {
+                HttpClient(
+                    MockEngine {
+                        sent += gen
+                        if (gen == 0L) throw SocketTimeoutException("Socket timeout has expired") else respond("""{"ok":true}""", HttpStatusCode.OK)
+                    }
+                ) { configureRaftKtorClient() }
+            }
+        }
+
+        override fun generation(priority: RaftRequestPriority): Long = generation
+
+        override fun recordOutcome(priority: RaftRequestPriority, generation: Long, timedOut: Boolean) {
+            outcomes += generation to timedOut
+            if (timedOut && recycleOnTimeout && generation == this.generation) this.generation += 1
+        }
+    }
+
+    private fun executorOn(lane: RaftKtorClientProvider, logs: MutableList<String>) =
+        KtorRaftHttpExecutor(
+            warningLogger = { logs += it },
+            clients = lane,
+            requestLifetimeCoordinator = RaftNetworkRequestLifetimeCoordinator(),
+            transportFacts = { null },
+            engineLabel = "ktor_test",
+            uploadProgress = BodyWriterUploadProgressTracker,
+        )
+
+    @Test
+    fun aGetThatTimedOutWhileItsLaneWasReplacedRunsOnceMoreOnTheFreshConnections() = runBlocking {
+        val lane = RecyclingLane(recycleOnTimeout = true)
+        val logs = mutableListOf<String>()
+
+        val response = executorOn(lane, logs).execute(RaftRequestPriority.Visible, "https://api.raft.test/api/attachments/a/url", "GET", emptyMap(), null, false)
+
+        assertEquals(200, response.code)
+        assertEquals(listOf(0L, 1L), lane.sent)
+        assertEquals(listOf(0L to true, 1L to false), lane.outcomes)
+        assertTrue(logs.any { it.startsWith("slock_http_execute_retry_fresh_session lane=visible_idempotent") }, logs.joinToString("\n"))
+    }
+
+    @Test
+    fun aTimeoutIsReturnedAsBeforeWhenTheLaneKeepsItsConnections() = runBlocking {
+        val lane = RecyclingLane(recycleOnTimeout = false)
+        val response = executorOn(lane, mutableListOf()).execute(RaftRequestPriority.Visible, "https://api.raft.test/api/x", "GET", emptyMap(), null, false)
+
+        assertEquals(0, response.code)
+        assertTrue("kind=TIMEOUT " in response.transportDiagnostics.orEmpty(), response.transportDiagnostics)
+        assertEquals(listOf(0L), lane.sent)
+        assertEquals(listOf(0L to true), lane.outcomes)
+    }
+
+    @Test
+    fun aPostIsNeverResentOnTheFreshConnections() = runBlocking {
+        val lane = RecyclingLane(recycleOnTimeout = true)
+        val response =
+            executorOn(lane, mutableListOf()).execute(RaftRequestPriority.Visible, "https://api.raft.test/api/messages", "POST", emptyMap(), "{}", true)
+
+        assertEquals(0, response.code)
+        assertEquals(listOf(0L), lane.sent)
+        assertEquals(1L, lane.generation, "the lane is still replaced for the next calls")
     }
 
     private class Harness(

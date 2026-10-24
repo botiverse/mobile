@@ -310,12 +310,43 @@ internal class KtorRaftHttpExecutor(
         }
     }
 
-    /** One transport attempt. Never throws except for cancellation of its own job. */
+    /**
+     * The call, plus at most one more attempt: an idempotent call that timed out while the platform
+     * replaced its lane's connections (a stuck reused HTTP/2 connection on iOS, Hands 43837e84) runs
+     * once more on the fresh ones, with a shorter idle timeout so the retry fits the call's budget.
+     */
     private suspend fun runCall(
         spec: KtorCallSpec,
         clientRequestId: String,
         startedAt: TimeSource.Monotonic.ValueTimeMark,
-    ): RaftHttpExecutorResponse =
+    ): RaftHttpExecutorResponse {
+        val generation = clients.generation(spec.priority)
+        val first = runAttempt(spec, clientRequestId, startedAt, socketTimeoutOverrideMillis = null)
+        clients.recordOutcome(spec.priority, generation, timedOut = first.timedOut)
+        val freshGeneration = clients.generation(spec.priority)
+        if (!first.timedOut || spec.kind != RaftKtorCallKind.Idempotent || freshGeneration == generation) {
+            return first.response
+        }
+        warningLogger(
+            "${spec.logPrefix}_retry_fresh_session lane=${spec.kind.logValue(spec.priority)} " +
+                "clientRequestId=$clientRequestId generation=$freshGeneration " +
+                "elapsedMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+        )
+        val retry =
+            runAttempt(spec, clientRequestId, startedAt, socketTimeoutOverrideMillis = RAFT_KTOR_FRESH_SESSION_RETRY_SOCKET_TIMEOUT_MILLIS)
+        clients.recordOutcome(spec.priority, freshGeneration, timedOut = retry.timedOut)
+        return retry.response
+    }
+
+    private class KtorAttempt(val response: RaftHttpExecutorResponse, val timedOut: Boolean)
+
+    /** One transport attempt. Never throws except for cancellation of its own job. */
+    private suspend fun runAttempt(
+        spec: KtorCallSpec,
+        clientRequestId: String,
+        startedAt: TimeSource.Monotonic.ValueTimeMark,
+        socketTimeoutOverrideMillis: Long?,
+    ): KtorAttempt =
         try {
             val content = spec.content()
             // Ktor 3 reads the whole body inside request(), so the response is consumed within this
@@ -329,9 +360,11 @@ internal class KtorRaftHttpExecutor(
                     }
                     if (content != null) setBody(content)
                     timeout {
-                        requestTimeoutMillis = spec.totalTimeoutMillis
+                        requestTimeoutMillis =
+                            if (socketTimeoutOverrideMillis == null) spec.totalTimeoutMillis
+                            else (spec.totalTimeoutMillis - startedAt.elapsedNow().inWholeMilliseconds).coerceAtLeast(1_000L)
                         connectTimeoutMillis = spec.connectTimeoutMillis
-                        spec.socketTimeoutMillis?.let { socketTimeoutMillis = it }
+                        (socketTimeoutOverrideMillis ?: spec.socketTimeoutMillis)?.let { socketTimeoutMillis = it }
                     }
                 }
             val outcome =
@@ -354,7 +387,7 @@ internal class KtorRaftHttpExecutor(
                     totalMs = startedAt.elapsedNow().inWholeMilliseconds,
                     facts = transportFacts(clientRequestId),
                 )
-            when {
+            val result = when {
                 status in 200..299 ->
                     RaftHttpExecutorResponse(
                         code = status,
@@ -385,12 +418,13 @@ internal class KtorRaftHttpExecutor(
                         responseHeaders = responseHeaders
                     )
             }
+            KtorAttempt(result, timedOut = false)
         } catch (error: Throwable) {
             val kind = classifyRaftKtorFailure(error)
             // A Ktor request timeout is a CancellationException subtype on some paths; only a real
             // cancellation of this attempt's job (caller gone or lifecycle retirement) is rethrown.
             if (kind == RaftTransportFailureKind.CANCELLED && error is CancellationException) throw error
-            RaftHttpExecutorResponse(
+            val response = RaftHttpExecutorResponse(
                 code = 0,
                 bodyText = null,
                 errorBodyText =
@@ -407,6 +441,9 @@ internal class KtorRaftHttpExecutor(
                         facts = transportFacts(clientRequestId),
                     )
             )
+            // A socket / connect timeout says the connection gave nothing; the call's own total budget
+            // running out (HttpRequestTimeoutException) does not, and leaves nothing to retry with.
+            KtorAttempt(response, timedOut = kind == RaftTransportFailureKind.TIMEOUT && error !is HttpRequestTimeoutException)
         }
 
     private fun ktorDiagnostics(
@@ -427,6 +464,12 @@ internal class KtorRaftHttpExecutor(
 /** Ordinary requests: 30 s total like before, but a 5 s connect so a dead route fails fast. */
 internal const val RAFT_KTOR_REQUEST_TIMEOUT_MILLIS = 30_000L
 internal const val RAFT_KTOR_CONNECT_TIMEOUT_MILLIS = 5_000L
+
+/**
+ * Idle timeout of the one retry on a lane's fresh connections ([RaftKtorClientProvider.generation]):
+ * the first attempt already spent its 20 s, so the retry must answer well inside the 30 s total.
+ */
+internal const val RAFT_KTOR_FRESH_SESSION_RETRY_SOCKET_TIMEOUT_MILLIS = 8_000L
 
 /** Uploads keep their long total budgets; a stalled socket (no byte either way) still fails after 60 s. */
 internal const val RAFT_KTOR_UPLOAD_SOCKET_TIMEOUT_MILLIS = 60_000L
@@ -460,6 +503,19 @@ internal enum class RaftKtorCallKind {
 /** One Ktor [HttpClient] per lane and call kind; clients of one platform share one connection pool. */
 internal fun interface RaftKtorClientProvider {
     fun client(priority: RaftRequestPriority, kind: RaftKtorCallKind): HttpClient
+
+    /**
+     * Which transport generation of [priority]'s lane [client] currently hands out. It changes when the
+     * platform replaces the lane's connections ([recordOutcome]); Android never does (OkHttp pings and
+     * health-checks its HTTP/2 connections), iOS does (NSURLSession has neither, Hands 43837e84).
+     */
+    fun generation(priority: RaftRequestPriority): Long = 0L
+
+    /**
+     * A call that ran on [generation] of [priority]'s lane finished; [timedOut] when it got no answer
+     * before its timeout. The platform may replace the lane's connections in response.
+     */
+    fun recordOutcome(priority: RaftRequestPriority, generation: Long, timedOut: Boolean) = Unit
 }
 
 internal object RaftKtorProcessClients {
