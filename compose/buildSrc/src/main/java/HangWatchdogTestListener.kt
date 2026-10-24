@@ -3,6 +3,7 @@ package build.raft.ci
 import org.gradle.api.tasks.testing.TestDescriptor
 import org.gradle.api.tasks.testing.TestListener
 import org.gradle.api.tasks.testing.TestResult
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Per-test hang watchdog for JVM unit tests (task #32).
@@ -27,6 +28,10 @@ import org.gradle.api.tasks.testing.TestResult
  *   raft.test.watchdog.timeout.ms    default 60000
  *   raft.test.watchdog.heartbeat.ms  default 30000
  *   raft.test.watchdog.enabled       default true (set "false" to disable)
+ *
+ * Every in-flight test has its own watchdog: with `maxParallelForks > 1` the
+ * forks report interleaved beforeTest/afterTest events, so a later test
+ * starting in another fork must not stop watching an earlier one.
  *
  * The defaults are deliberately far above the normal per-test duration (the
  * shared unit suite is ~40s for thousands of tests, i.e. milliseconds per
@@ -59,12 +64,14 @@ class HangWatchdogTestListener @JvmOverloads constructor(
 
     private class Watched(val descriptor: TestDescriptor, val startMs: Long)
 
-    @Volatile
-    private var watched: Watched? = null
+    private val inFlight = ConcurrentHashMap<TestDescriptor, Watched>()
 
     override fun beforeSuite(suite: TestDescriptor) = Unit
 
-    override fun afterSuite(suite: TestDescriptor, result: TestResult) = Unit
+    override fun afterSuite(suite: TestDescriptor, result: TestResult) {
+        // The root suite closing ends the task's test run; stop every watchdog.
+        if (suite.parent == null) inFlight.clear()
+    }
 
     override fun beforeTest(testDescriptor: TestDescriptor) {
         if (!enabled) return
@@ -72,26 +79,22 @@ class HangWatchdogTestListener @JvmOverloads constructor(
         // run / class containers). Only real test methods have a className;
         // guard everything else so the watchdog binds to a single test.
         if (testDescriptor.className == null) return
-        clearWatched()
-        watched = Watched(testDescriptor, clock())
-        spawner(Runnable { runWatchdog() })
+        val current = Watched(testDescriptor, clock())
+        inFlight[testDescriptor] = current
+        spawner(Runnable { runWatchdog(current) })
     }
 
     override fun afterTest(testDescriptor: TestDescriptor, result: TestResult) {
-        if (watched?.descriptor == testDescriptor) {
-            clearWatched()
-        }
+        inFlight.remove(testDescriptor)
     }
 
-    private fun clearWatched() {
-        watched = null
-    }
+    private fun isWatching(current: Watched): Boolean = inFlight[current.descriptor] === current
 
-    private fun runWatchdog() {
+    private fun runWatchdog(current: Watched) {
         val me = Thread.currentThread()
         var nextHeartbeatAt = heartbeatMs
         while (!me.isInterrupted) {
-            val current = watched ?: return
+            if (!isWatching(current)) return
             val elapsed = clock() - current.startMs
             val remaining = timeoutMs - elapsed
             if (remaining <= 0) {
@@ -105,8 +108,7 @@ class HangWatchdogTestListener @JvmOverloads constructor(
             } catch (_: InterruptedException) {
                 return
             }
-            val after = watched
-            if (after == null || after.descriptor !== current.descriptor) return
+            if (!isWatching(current)) return
             val nowElapsed = clock() - current.startMs
             if (nowElapsed >= nextHeartbeatAt) {
                 out("raft-test-watchdog: still running ${identify(current.descriptor)} (${nowElapsed / 1000}s elapsed)")

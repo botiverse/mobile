@@ -8,6 +8,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import android.graphics.BitmapFactory
 import build.raft.app.base.BridgeModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.IModuleCreator
@@ -21,6 +23,7 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.network.sync.initialThreadRepliesReadModel
+import build.raft.app.resources.MR
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -35,6 +38,11 @@ import org.robolectric.annotation.GraphicsMode
  *    chip, and four replies with one new and a draft;
  *  - the second has one reaction and two read replies.
  * Reports land in `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
+ *
+ * The reaction sprite atlas is decoded here, synchronously, instead of through
+ * [ThreadReactionAtlasProvider]: that provider loads it asynchronously, so whether the glyphs were
+ * drawn by the time of the capture depended on what earlier tests in the same JVM had already
+ * loaded, and the golden flipped when the unit tests were spread over several forks.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -62,6 +70,12 @@ class ThreadMessageFooterScreenshotTest {
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = livePager
+            val atlas =
+                remember {
+                    it.assets.open(MR.assets.reactions.reaction_atlas_v1.originalPath).use { stream ->
+                        BitmapFactory.decodeStream(stream).asImageBitmap()
+                    }
+                }
             val clock =
                 remember {
                     RaftTimeContextProvider(
@@ -77,7 +91,7 @@ class ThreadMessageFooterScreenshotTest {
                 LocalRaftTimeContextProvider provides clock,
             ) {
                 RaftDesignSystemTheme {
-                    ThreadReactionAtlasProvider {
+                    CompositionLocalProvider(LocalThreadReactionAtlasImage provides atlas) {
                         Column(Modifier.fillMaxSize().background(RaftColor.Canvas).padding(top = RaftAppSpacing.Sm)) {
                             FooterRows()
                         }
