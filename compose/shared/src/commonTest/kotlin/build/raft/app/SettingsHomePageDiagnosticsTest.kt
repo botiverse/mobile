@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.format.RaftFormat
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedSettingsDestination
@@ -567,7 +568,7 @@ class SettingsHomePageDiagnosticsTest {
 
     @Test
     fun feedbackFailurePresentationKeepsServerCodeOutOfUserFacingCopy() {
-        val attachmentMaxLabel = settingsFeedbackAttachmentMaxLabel(50L * 1024L * 1024L)
+        val attachmentMaxLabel = RaftFormat.byteLimit(50L * 1024L * 1024L)
         val copy =
             SettingsHandsFeedbackCopy(
                 submissionFailedTitle = "发送失败",

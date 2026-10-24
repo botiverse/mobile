@@ -31,7 +31,7 @@ import build.raft.app.components.raftCardSurface
 import build.raft.app.components.raftControlSurface
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.SharedMembersLoadStatus
-import build.raft.app.data.formatAttachmentSizeLabel
+import build.raft.app.format.RaftFormat
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -1127,10 +1127,10 @@ data class SharedThreadComposerAttachment(
 
 /** Composer UI formatting boundary; raw bytes win over old persisted display labels. */
 internal fun RaftPendingAttachmentItem.displaySizeLabel(): String =
-    sizeBytes.takeIf { it > 0L }?.let(::formatAttachmentSizeLabel) ?: sizeLabel
+    sizeBytes.takeIf { it > 0L }?.let { RaftFormat.bytes(it) } ?: sizeLabel
 
 internal fun SharedThreadComposerAttachment.displaySizeLabel(): String =
-    sizeBytes.takeIf { it > 0L }?.let(::formatAttachmentSizeLabel) ?: sizeLabel
+    sizeBytes.takeIf { it > 0L }?.let { RaftFormat.bytes(it) } ?: sizeLabel
 
 data class SharedThreadComposerMemberSuggestion(
     val displayName: String,

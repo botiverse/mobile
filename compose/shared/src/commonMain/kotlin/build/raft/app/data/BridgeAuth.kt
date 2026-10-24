@@ -769,7 +769,8 @@ internal fun JsonObject.toStorageSnapshot(): SharedSettingsStorageSnapshot {
                             detail = row.optString("detail"),
                             sizeLabel = row.optString("sizeLabel").ifBlank { row.optString("size") },
                             clearEnabled = row.optBoolean("clearEnabled", false),
-                            clearInProgress = row.optBoolean("clearInProgress", false)
+                            clearInProgress = row.optBoolean("clearInProgress", false),
+                            sizeBytes = row.optLong("sizeBytes", -1L).takeIf { it >= 0L }
                         )
                     )
                 }
@@ -778,7 +779,8 @@ internal fun JsonObject.toStorageSnapshot(): SharedSettingsStorageSnapshot {
     return SharedSettingsStorageSnapshot(
         totalSizeLabel = optString("totalSizeLabel").ifBlank { optString("totalSize") },
         rows = rows,
-        feedback = optString("feedback").takeIf { it.isNotBlank() }
+        feedback = optString("feedback").takeIf { it.isNotBlank() },
+        totalSizeBytes = optLong("totalSizeBytes", -1L).takeIf { it >= 0L }
     )
 }
 

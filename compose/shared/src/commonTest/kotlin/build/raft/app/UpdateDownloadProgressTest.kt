@@ -46,12 +46,6 @@ class UpdateDownloadProgressTest {
         assertTrue(appUpdatePrimaryActionEnabled(snapshot, false, false, "failed"))
     }
 
-    @Test fun byteLabelsStayReadable() {
-        assertEquals("0 B", appUpdateBytesLabel(-1))
-        assertEquals("512 B", appUpdateBytesLabel(512))
-        assertEquals("1.5 KB", appUpdateBytesLabel(1536))
-        assertEquals("50.0 MB", appUpdateBytesLabel(50L * 1024 * 1024))
-    }
     @Test fun localTerminalSurvivesFailedOfferRefresh() {
         val initial = SharedSettingsUpdateCheckSnapshot(supported = true, updateAvailable = true,
             statusLabel = "Downloading", actionLabel = "Downloading", downloadProgressToken = "42")

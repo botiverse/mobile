@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.format.RaftFormat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -50,27 +51,6 @@ internal fun AgentMigrationComputer.liveDiskStatus(): ComputerSizeStatus? = disk
 /** Web `liveMemoryStatus`: the memory report on the same terms as the disk. */
 internal fun AgentMigrationComputer.liveMemoryStatus(): ComputerSizeStatus? = memoryStatus.takeIf { online }
 
-/**
- * Web `formatFileSizeBytes` (packages/web/src/utils/fileSizePresentation.ts): one decimal from
- * KB up ("120.0 GB"), whole bytes below; the unit words are the same in every locale.
- */
-internal fun formatComputerSizeBytes(bytes: Double): String {
-    if (!bytes.isFinite() || bytes <= 0.0) return "0 B"
-    val kb = 1024.0
-    return when {
-        bytes < kb -> "${bytes.toLong()} B"
-        bytes < kb * kb -> "${oneDecimal(bytes / kb)} KB"
-        bytes < kb * kb * kb -> "${oneDecimal(bytes / (kb * kb))} MB"
-        else -> "${oneDecimal(bytes / (kb * kb * kb))} GB"
-    }
-}
-
-/** JavaScript `toFixed(1)` for the positive sizes above. */
-private fun oneDecimal(value: Double): String {
-    val tenths = kotlin.math.round(value * 10.0).toLong()
-    return "${tenths / 10}.${tenths % 10}"
-}
-
 /** The words of a computer's own line ([agentMigrationTargetInfoLine]). */
 internal class AgentMigrationTargetInfoCopy(
     val offline: String,
@@ -90,8 +70,8 @@ internal fun agentMigrationTargetInfoLine(computer: AgentMigrationComputer, copy
     val parts = mutableListOf<String>()
     if (computer.offline) parts += copy.offline
     computer.agentCount?.let { parts += copy.agents(it) }
-    computer.liveMemoryStatus()?.let { parts += copy.memoryFree(formatComputerSizeBytes(it.availableBytes)) }
-    computer.liveDiskStatus()?.let { parts += copy.diskFree(formatComputerSizeBytes(it.availableBytes)) }
+    computer.liveMemoryStatus()?.let { parts += copy.memoryFree(RaftFormat.bytes(it.availableBytes)) }
+    computer.liveDiskStatus()?.let { parts += copy.diskFree(RaftFormat.bytes(it.availableBytes)) }
     return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
 }
 
@@ -347,7 +327,7 @@ private class SizeWords(
 @Composable
 private fun agentMigrationSizeText(status: ComputerSizeStatus?, offline: Boolean, offlineFor: String?, words: SizeWords): String =
     when {
-        status != null -> stringResource(words.detail, formatComputerSizeBytes(status.availableBytes), formatComputerSizeBytes(status.totalBytes))
+        status != null -> stringResource(words.detail, RaftFormat.bytes(status.availableBytes), RaftFormat.bytes(status.totalBytes))
         offline && offlineFor != null -> stringResource(words.offlineFor, offlineFor)
         offline -> stringResource(words.offline)
         else -> stringResource(words.unknown)

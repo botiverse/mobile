@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.format.RaftFormat
 import build.raft.app.data.COMPUTER_ACTION_DELETE
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
@@ -369,7 +370,7 @@ private fun PermissionBlocker.toComputersFailure(): RaftComputersFailure =
     )
 
 /** Bytes as the web workspace list writes them (`12.3 MB`). */
-internal fun raftComputerWorkspaceSize(bytes: Long?): String? = bytes?.takeIf { it >= 0L }?.let(::appUpdateBytesLabel)
+internal fun raftComputerWorkspaceSize(bytes: Long?): String? = bytes?.takeIf { it >= 0L }?.let { RaftFormat.bytes(it) }
 
 /**
  * Whether a realtime event concerns the Computers pages of [serverId]: a Machines-scope refresh

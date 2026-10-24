@@ -51,15 +51,6 @@ class AgentMigrationTargetInfoTest {
     }
 
     @Test
-    fun sizesReadLikeTheWebFileSize() {
-        assertEquals("0 B", formatComputerSizeBytes(0.0))
-        assertEquals("512 B", formatComputerSizeBytes(512.0))
-        assertEquals("1.5 KB", formatComputerSizeBytes(1536.0))
-        assertEquals("120.0 GB", formatComputerSizeBytes(120 * gb))
-        assertEquals("2048.0 GB", formatComputerSizeBytes(2048 * gb))
-    }
-
-    @Test
     fun offlineDurationIsCoarseFromTheLastHeartbeat() {
         val now = requireNotNull(parseRaftTimestampEpochMillisOrNull("2026-10-23T12:00:00.000Z"))
         assertEquals(AgentMigrationDurationUnit.Minutes to 1, agentMigrationOfflineDuration("2026-10-23T12:00:00.000Z", now))

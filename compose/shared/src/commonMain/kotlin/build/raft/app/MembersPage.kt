@@ -15089,15 +15089,6 @@ private fun RaftWorkspaceNode.membersWorkspaceIconName(expanded: Boolean): Strin
         RaftWorkspaceFileKind.Unsupported -> "file"
     }
 
-private fun Long?.membersWorkspaceSizeLabel(): String? {
-    val bytes = this ?: return null
-    return when {
-        bytes < 1024 -> "$bytes B"
-        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
-        else -> "${bytes / (1024 * 1024)} MB"
-    }
-}
-
 private fun String?.membersActivitySortKey(): Long =
     parseRaftTimestampEpochMillisOrNull(this) ?: Long.MIN_VALUE
 

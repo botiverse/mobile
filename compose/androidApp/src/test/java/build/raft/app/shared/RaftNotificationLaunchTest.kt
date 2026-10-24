@@ -6,7 +6,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.util.Locale
 
 class RaftNotificationLaunchTest {
 
@@ -222,17 +221,6 @@ class RaftNotificationLaunchTest {
             )
         )
         assertFalse(shareText.contains("\nHands: slug="))
-    }
-
-    @Test
-    fun storageSizeLabelUsesTheSelectedAppLocaleAndSystemFallback() {
-        val bytes = 93_973_268L
-
-        assertEquals("89.6 MB", formatStorageSizeLabel(bytes, "en", Locale.US))
-        assertEquals("89.6 MB", formatStorageSizeLabel(bytes, "zh-CN", Locale.US))
-        assertEquals("89.6 MB", formatStorageSizeLabel(bytes, "ja", Locale.US))
-        assertEquals("89,6 MB", formatStorageSizeLabel(bytes, null, Locale.GERMANY))
-        assertEquals("0 B", formatStorageSizeLabel(0L, "zh-CN", Locale.US))
     }
 
     @Test

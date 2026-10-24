@@ -3,7 +3,7 @@ package build.raft.app
 import build.raft.app.data.DataResult
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.RaftShellStoreScope
-import build.raft.app.data.formatAttachmentSizeLabel
+import build.raft.app.format.RaftFormat
 import build.raft.app.resources.MR
 import build.raft.app.compat.json.JSONObject
 import com.tencent.tmm.kmmresource.resource.desc.desc
@@ -373,7 +373,7 @@ internal fun settingsHandsFeedbackImageEditRequest(
                 path = firstFile.fileName,
                 meta =
                     listOf(
-                        firstFile.sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+                        firstFile.sizeBytes?.takeIf { it > 0L }?.let { RaftFormat.bytes(it) }.orEmpty(),
                         firstFile.mimeType.orEmpty()
                     ).filter { it.isNotBlank() }.joinToString(" \u00b7 "),
                 imageUrl = previewUri.takeIf { it.isNotBlank() },
@@ -445,7 +445,7 @@ internal fun settingsHandsFeedbackImageEditPreviewRequest(
                 path = file.fileName,
                 meta =
                     listOf(
-                        file.sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+                        file.sizeBytes?.takeIf { it > 0L }?.let { RaftFormat.bytes(it) }.orEmpty(),
                         file.mimeType.orEmpty()
                     ).filter { it.isNotBlank() }.joinToString(" \u00b7 "),
                 imageUrl = previewUri.takeIf { it.isNotBlank() },

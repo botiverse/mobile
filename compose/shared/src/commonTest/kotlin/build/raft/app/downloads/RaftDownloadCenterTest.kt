@@ -263,16 +263,6 @@ class RaftDownloadCenterTest {
     }
 
     @Test
-    fun sizeLabelsUseOneDecimalBinaryUnits() {
-        assertEquals("512 B", raftDownloadSizeLabel(512))
-        assertEquals("1.0 KB", raftDownloadSizeLabel(1024))
-        assertEquals("1.5 MB", raftDownloadSizeLabel(1_572_864))
-        assertEquals("2.0 GB", raftDownloadSizeLabel(2L * 1024 * 1024 * 1024))
-        assertEquals("850.0 KB/s", raftDownloadSpeedLabel(850L * 1024))
-        assertNull(raftDownloadSpeedLabel(0))
-    }
-
-    @Test
     fun attachmentSelectorDrivesTheCardAndFilePageProgressStates() = runTest {
         val center = center()
         val task = ScriptedTask()
