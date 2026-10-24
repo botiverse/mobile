@@ -796,7 +796,6 @@
     <string name="thread_forward_bundle_fallback_title">Forwarded messages</string>
     <string name="thread_forward_bundle_unavailable">This forwarded message is unavailable.</string>
     <string name="thread_forward_badge">Forwarded</string>
-    <string name="thread_forward_bundle_count_one">message</string>
     <string name="thread_forward_from_source">from %1$s</string>
     <string name="thread_forward_from_thread">from %1$s · thread</string>
     <string name="thread_forward_selected">%1$d selected</string>

@@ -20,6 +20,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,6 +37,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextStyle
@@ -99,9 +104,10 @@ enum class RaftMessageForwardedBundleFooterMode {
  * `mono-meta`, `foreground-hint`) and, at the end, [source] ("from #launch-week",
  * `caption`, `foreground-hint`; semibold and a control when [onOpenSource] is set).
  *
- * [items] ([RaftMessageForwardedBundleItem]s) fold on their own: past [foldHeight] (8 lines of
- * the item text, [RaftMessageForwardedBundleDefaults.FallbackFoldHeight] by default) the list
- * is cut at that height and fades out into `layer-card` over its last 40dp. [footerLabel]
+ * [items] ([RaftMessageForwardedBundleItem]s) fold on their own: when their text alone (not the
+ * attachments) runs past [foldHeight] (8 lines of the item text,
+ * [RaftMessageForwardedBundleDefaults.FallbackFoldHeight] by default) the list is cut at that height and fades out into
+ * `layer-card` over its last 40dp. [footerLabel]
  * ("View all 6 messages", `footnote` semibold with a 12dp `chevron-right`, 12 x 8dp) shows per
  * [footerMode] and calls [onFooterClick].
  */
@@ -159,8 +165,11 @@ fun RaftMessageForwardedBundle(
             }
         }
         val folded = remember { mutableStateOf(false) }
-        ForwardedFold(foldHeight = foldHeight, folded = folded) {
-            Column(Modifier.fillMaxWidth(), content = items)
+        val meter = remember { ForwardedFoldMeter() }
+        CompositionLocalProvider(LocalForwardedFoldMeter provides meter) {
+            ForwardedFold(foldHeight = foldHeight, folded = folded, meter = meter) {
+                Column(Modifier.fillMaxWidth(), content = items)
+            }
         }
         val showFooter =
             footerLabel != null &&
@@ -229,11 +238,27 @@ private fun ForwardedFooterAction(label: String, onClick: (() -> Unit)?) {
 }
 
 /**
- * Measures [content] at its full height; past [foldHeight] (1px of slack) it is cut there and
- * fades into `layer-card` at the bottom (`from-layer-card via-layer-card/80 to-layer-card/0`).
+ * The rendered heights of the items' text (`MessageForwardedBundleItemContent`): the fold measures
+ * only these, so attachments, galleries and padding never fold a short bundle.
+ */
+internal class ForwardedFoldMeter {
+    val textHeights = mutableStateMapOf<Any, Int>()
+}
+
+internal val LocalForwardedFoldMeter = compositionLocalOf<ForwardedFoldMeter?> { null }
+
+/**
+ * raft-ui's fold: when the items' text together ([meter]) runs past [foldHeight] (1px of
+ * slack), the list is cut at that height and fades into `layer-card` at the bottom
+ * (`from-layer-card via-layer-card/80 to-layer-card/0`); the footer then opens the rest.
  */
 @Composable
-private fun ForwardedFold(foldHeight: Dp, folded: MutableState<Boolean>, content: @Composable () -> Unit) {
+private fun ForwardedFold(
+    foldHeight: Dp,
+    folded: MutableState<Boolean>,
+    meter: ForwardedFoldMeter,
+    content: @Composable () -> Unit,
+) {
     val surface = RaftTheme.colors.layerCard
     val fade =
         if (foldHeight < RaftMessageForwardedBundleDefaults.TightFoldBelow) {
@@ -267,7 +292,7 @@ private fun ForwardedFold(foldHeight: Dp, folded: MutableState<Boolean>, content
     ) { measurables, constraints ->
         val placeable = measurables.first().measure(constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity))
         val limit = foldHeight.roundToPx()
-        val folds = placeable.height > limit + 1
+        val folds = meter.textHeights.values.sum() > limit + 1 && placeable.height > limit
         if (folded.value != folds) folded.value = folds
         val height = if (folds) limit else placeable.height
         layout(placeable.width, height) { placeable.place(0, 0) }
@@ -317,7 +342,16 @@ fun RaftMessageForwardedBundleItem(
                 Box(Modifier.align(Alignment.CenterVertically)) { time() }
             }
         }
-        content()
+        val meter = LocalForwardedFoldMeter.current
+        val key = remember { Any() }
+        DisposableEffect(meter, key) { onDispose { meter?.textHeights?.remove(key) } }
+        Box(
+            if (meter != null) {
+                Modifier.onSizeChanged { meter.textHeights[key] = it.height }
+            } else {
+                Modifier
+            },
+        ) { content() }
         if (attachments != null) {
             Column(Modifier.padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp), content = attachments)
         }
@@ -425,7 +459,8 @@ fun RaftMessageForwardedBundleGallery(
     val chunk = if (count == 4) 2 else 3
     val rows = (0 until count).chunked(chunk)
     BoxWithConstraints(modifier.fillMaxWidth()) {
-        val wide = maxWidth >= RaftMessageForwardedBundleDefaults.GalleryWideFrom
+        val available = maxWidth
+        val wide = available >= RaftMessageForwardedBundleDefaults.GalleryWideFrom
         val gap = RaftMessageForwardedBundleDefaults.GalleryGap
         Column(verticalArrangement = Arrangement.spacedBy(gap)) {
             rows.forEach { row ->
@@ -437,7 +472,7 @@ fun RaftMessageForwardedBundleGallery(
                         wide -> 144.dp
                         else -> 128.dp
                     }
-                val cellWidth = (maxWidth - gap * (columns - 1)) / columns
+                val cellWidth = (available - gap * (columns - 1)) / columns
                 row.chunked(columns).forEach { line ->
                     Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
                         line.forEach { index ->

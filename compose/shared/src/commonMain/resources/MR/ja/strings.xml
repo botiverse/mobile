@@ -798,7 +798,6 @@
     <string name="thread_forward_bundle_fallback_title">転送されたメッセージ</string>
     <string name="thread_forward_bundle_unavailable">この転送されたメッセージは利用できません。</string>
     <string name="thread_forward_badge">転送済み</string>
-    <string name="thread_forward_bundle_count_one">1 件のメッセージ</string>
     <string name="thread_forward_from_source">%1$s から</string>
     <string name="thread_forward_from_thread">%1$s のスレッドから</string>
     <string name="thread_forward_selected">%1$d 件選択中</string>

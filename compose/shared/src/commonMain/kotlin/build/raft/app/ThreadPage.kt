@@ -31487,8 +31487,11 @@ private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
 @Composable
 private fun ThreadForwardAttachments(item: ForwardMessageItem, modifier: Modifier = Modifier) {
     if (item.attachments.isNotEmpty()) {
+        // Without the thread's inline-image host (e.g. a page that doesn't provide one) the
+        // images could never load, so they stay file chips.
+        val imageHostAvailable = LocalThreadInlineImageFallbackHost.current != null
         val images =
-            if (item.attachmentsProjected) {
+            if (item.attachmentsProjected && imageHostAvailable) {
                 item.attachments.filter { it.id != null && it.isForwardImagePreview() }
             } else {
                 emptyList()
@@ -31590,7 +31593,7 @@ internal fun ThreadForwardBundleCard(
         label = stringResource(MR.strings.thread_forward_badge),
         countLabel =
             if (count == 1) {
-                stringResource(MR.strings.thread_forward_bundle_count_one)
+                stringResource(MR.strings.thread_message_count_one)
             } else {
                 stringResource(MR.strings.thread_message_count_many, count)
             },
