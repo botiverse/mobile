@@ -3,9 +3,12 @@ package build.raft.app.network
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.darwin.Darwin
 import io.ktor.client.engine.darwin.DarwinHttpRequestException
+import io.ktor.client.engine.darwin.KtorNSURLSessionDelegate
 import platform.Foundation.NSHTTPCookieAcceptPolicy
+import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSURLErrorDomain
 import platform.Foundation.NSURLRequestReloadIgnoringLocalCacheData
+import platform.Foundation.NSURLSession
 import platform.Foundation.NSURLSessionConfiguration
 
 /**
@@ -22,6 +25,10 @@ import platform.Foundation.NSURLSessionConfiguration
  * - No URL cache and no cookies, like curl: every API response is fresh and auth stays in headers.
  * - System proxy / PAC and system trust apply (curl was direct with a pinned CA bundle).
  * Dead HTTP/2 connections are detected by NSURLSession's own connection health handling.
+ *
+ * Each lane builds its own session around [RaftDarwinSessionDelegate], which forwards Ktor's callbacks
+ * and adds upload progress from NSURLSession (`didSendBodyData`) and connection facts from its task
+ * metrics.
  */
 internal const val RAFT_DARWIN_IDLE_TIMEOUT_SECONDS = 20.0
 internal const val RAFT_DARWIN_RESOURCE_TIMEOUT_SECONDS = 1_800.0
@@ -36,12 +43,23 @@ private fun raftDarwinMaxConnectionsPerHost(priority: RaftRequestPriority): Long
 internal actual fun createPlatformRaftKtorClientProvider(): RaftKtorClientProvider {
     val clients =
         RaftRequestPriority.entries.associateWith { priority ->
+            val ktorDelegate = KtorNSURLSessionDelegate()
+            val configuration = NSURLSessionConfiguration.defaultSessionConfiguration()
+            configureRaftSession(configuration, priority)
+            // Serial, as NSURLSession asks of a delegate queue: a task's metrics are then recorded before
+            // its completion releases the caller. Ktor's callbacks only hand chunks to unbounded channels.
+            val delegateQueue = NSOperationQueue().apply { maxConcurrentOperationCount = 1 }
+            val session =
+                NSURLSession.sessionWithConfiguration(
+                    configuration,
+                    RaftDarwinSessionDelegate(ktorDelegate),
+                    delegateQueue = delegateQueue
+                )
             HttpClient(Darwin) {
                 configureRaftKtorClient()
                 engine {
-                    configureSession {
-                        configureRaftSession(this, priority)
-                    }
+                    usePreconfiguredSession(session, ktorDelegate)
+                    configureRequest { RaftDarwinUploadProgress.moveMarkerToProperty(this) }
                 }
             }
         }
@@ -64,6 +82,9 @@ private fun configureRaftSession(configuration: NSURLSessionConfiguration, prior
 
 internal actual fun raftKtorEngineLabel(): String = "ktor_darwin"
 
+// Ktor's Darwin engine reports HTTP/1.1 for every response; the real protocol needs NSURLSessionTaskMetrics.
+internal actual fun raftKtorEngineReportsProtocol(): Boolean = false
+
 internal actual fun classifyPlatformTransportFailure(error: Throwable): RaftTransportFailureKind? {
     val origin = (error as? DarwinHttpRequestException)?.origin ?: return null
     if (origin.domain != NSURLErrorDomain) return null
@@ -77,6 +98,7 @@ internal actual fun classifyPlatformTransportFailure(error: Throwable): RaftTran
     }
 }
 
-internal actual fun takeRaftKtorTransportFacts(requestId: String): String? = null
+internal actual fun takeRaftKtorTransportFacts(requestId: String): String? = RaftDarwinTransportFacts.take(requestId)
 
-internal actual fun platformRaftUploadProgressTracker(): RaftUploadProgressTracker = BodyWriterUploadProgressTracker
+/** Bytes NSURLSession has sent ([RaftDarwinUploadProgress]), not bytes handed to Ktor's body channel. */
+internal actual fun platformRaftUploadProgressTracker(): RaftUploadProgressTracker = RaftDarwinUploadProgress.tracker

@@ -303,8 +303,26 @@ class KtorRaftHttpExecutorTest {
         )
     }
 
+    @Test
+    fun protocolIsLoggedOnlyWhenTheEngineReportsIt() = runBlocking {
+        listOf(true to "protocol=HTTP/1.1", false to "protocol=$RAFT_KTOR_PROTOCOL_UNREPORTED").forEach { (reports, expected) ->
+            val harness = Harness(engineReportsProtocol = reports) { respond("{}", HttpStatusCode.OK) }
+
+            val response =
+                harness.executor.execute(RaftRequestPriority.Visible, "https://api.raft.test/api/x", "GET", emptyMap(), null, false)
+
+            val diagnostics = response.transportDiagnostics.orEmpty()
+            assertTrue(expected in diagnostics, "reports=$reports: $diagnostics")
+            assertTrue(
+                harness.logs.any { it.startsWith("slock_http_execute_finish") && expected in it },
+                harness.logs.joinToString("\n")
+            )
+        }
+    }
+
     private class Harness(
         coordinator: RaftNetworkRequestLifetimeCoordinator = RaftNetworkRequestLifetimeCoordinator(),
+        engineReportsProtocol: Boolean = true,
         handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,
     ) {
         val requests = mutableListOf<HttpRequestData>()
@@ -327,6 +345,7 @@ class KtorRaftHttpExecutorTest {
                 requestLifetimeCoordinator = coordinator,
                 transportFacts = { null },
                 engineLabel = "ktor_test",
+                engineReportsProtocol = engineReportsProtocol,
                 // MockEngine consumes the body itself: count at the body writer here.
                 uploadProgress = BodyWriterUploadProgressTracker,
             )
