@@ -39,7 +39,11 @@ permissions:
   packages: read
 
 concurrency:
-  group: test-${{ github.ref }}
+  # The nightly gets its own group. It runs on refs/heads/main, and in the shared
+  # test-refs/heads/main group GitHub keeps only the newest pending run, so a main push
+  # queued behind a running push replaced the pending nightly and the full readback
+  # (device suite, canonical-final, attachment legs) silently did not run.
+  group: test-${{ github.ref }}${{ github.event_name == 'schedule' && '-nightly' || '' }}
   # Preserve the running post-merge record on protected branches. GitHub still
   # coalesces multiple pending runs in the same group to the newest commit.
   # PR and merge-queue refs keep superseding stale work for that exact ref.
