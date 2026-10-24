@@ -10,8 +10,8 @@ rollout: full
 
 ## zh-CN
 
-在“动态”列表中向右滑动一行即可停止关注它：消息列会取消关注，频道会静音动态。松手后会出现提示，点“撤销”可以恢复关注或取消静音。私信和提及不能这样滑动。长按菜单中仍有同样的选项。从屏幕边缘开始的滑动仍然是返回手势。
+在“动态”列表中往左滑一行，会在行尾露出「完成 / 取消关注 / 静音」按钮（消息列是取消关注，频道是静音）。滑过一半松手，按钮停在打开状态，点哪个就执行哪个；一直拉到底直接完成。取消关注或静音后会出现提示，点“撤销”可以恢复。私信和提及没有取消关注或静音按钮。长按菜单中仍有同样的选项。从屏幕边缘开始的滑动仍然是返回手势。
 
 ## en
 
-Swipe an Activity row to the right to stop following it: a thread is unfollowed and a channel's activity is muted. A toast follows with Undo, which follows the thread again or unmutes the channel. DMs and mentions don't swipe right. The same actions stay in the press-and-hold menu, and a swipe that starts at the screen edge still goes back.
+Swipe an Activity row to the left to reveal Done / Unfollow / Mute buttons at the end of the row (Unfollow for threads, Mute for channels). Release past halfway and the buttons stay open; tap one to run it. Pull all the way to mark the row done. After unfollowing or muting, a notice appears; tap Undo to restore. DMs and mentions have no Unfollow or Mute button. The same options remain in the press-and-hold menu. A swipe that starts at the screen edge is still the back gesture.
