@@ -1134,20 +1134,35 @@ jobs:
             --console=plain \
             --stacktrace || gradle_rc=$?
           python3 - <<'PY'
-          import pathlib, sys, xml.etree.ElementTree as ET
+          import pathlib, re, sys, xml.etree.ElementTree as ET
           reports = sorted(pathlib.Path("shared/build/test-results/iosSimulatorArm64Test").glob("*.xml"))
           total = 0
+          ran = {}
           for report in reports:
               suite = ET.parse(report).getroot()
               count = int(suite.get("tests", "0"))
               total += count
+              simple = suite.get("name", "").split("[")[0].strip().rsplit(".", 1)[-1]
+              ran[simple] = ran.get(simple, 0) + count
               print(f"{suite.get('name')}: {count} tests, {suite.get('failures')} failures, {suite.get('skipped')} skipped")
               for case in suite.iter("testcase"):
                   for problem in list(case.iter("failure")) + list(case.iter("error")):
                       print(f"  FAILED {case.get('name')}: {problem.get('message')}")
                       print("    " + (problem.text or "").strip()[:2000].replace("\n", "\n    "))
           print(f"iosTest total: {total} tests in {len(reports)} classes")
-          sys.exit(0 if total > 0 else 1)
+          # Every top-level class in an iosTest file with @Test must have run at least one case:
+          # a class the --tests filters above miss (Hands 1b6dd022: RaftDarwinUploadProgressTest
+          # compiled but never ran) fails here instead of passing silently.
+          declared = set()
+          for source in pathlib.Path("shared/src/iosTest").rglob("*.kt"):
+              text = source.read_text()
+              if "@Test" in text:
+                  declared.update(re.findall(r"^(?:(?:internal|public|open) )*class (\w+)", text, re.M))
+          missing = sorted(name for name in declared if ran.get(name, 0) == 0)
+          for name in missing:
+              print(f"NOT RUN: {name} has @Test cases but executed 0 (name must match *IosTest or *IosSmokeTest)")
+          print(f"iosTest classes declared: {len(declared)}, not run: {len(missing)}")
+          sys.exit(0 if total > 0 and not missing else 1)
           PY
           summary_rc=$?
           [ "$gradle_rc" -eq 0 ] && [ "$summary_rc" -eq 0 ]

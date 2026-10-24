@@ -41,6 +41,8 @@ internal class KtorRaftHttpExecutor(
     private val callScope: CoroutineScope = RaftKtorCallScope,
     private val transportFacts: (requestId: String) -> String? = ::takeRaftKtorTransportFacts,
     private val engineLabel: String = raftKtorEngineLabel(),
+    /** False where the engine's response version is a constant rather than the wire protocol (Darwin). */
+    private val engineReportsProtocol: Boolean = raftKtorEngineReportsProtocol(),
     /** Where upload progress is measured: the platform's network layer when it can, else the body writer. */
     private val uploadProgress: RaftUploadProgressTracker = platformRaftUploadProgressTracker(),
 ) : RaftHttpExecutor {
@@ -337,7 +339,7 @@ internal class KtorRaftHttpExecutor(
                     status = response.status.value,
                     headers = response.headers.entries().associate { (name, values) -> name to values },
                     bodyText = if (spec.redactSensitive) null else response.bodyAsText(),
-                    protocol = response.version.toString(),
+                    protocol = if (engineReportsProtocol) response.version.toString() else RAFT_KTOR_PROTOCOL_UNREPORTED,
                 )
             val status = outcome.status
             val text = if (spec.redactSensitive) null else outcome.bodyText
@@ -505,6 +507,16 @@ internal expect fun classifyPlatformTransportFailure(error: Throwable): RaftTran
 
 /** "okhttp" / "darwin", reported as `engine=ktor_<label>`. */
 internal expect fun raftKtorEngineLabel(): String
+
+/**
+ * Whether Ktor's `HttpResponse.version` is the protocol the call really used. OkHttp: yes. Darwin: no,
+ * Ktor 3.6 hardcodes HTTP/1.1 for every NSURLSession response (DarwinTaskHandler.toResponseData), so
+ * iOS logged `protocol=HTTP/1.1` for HTTP/2 and HTTP/3 calls alike (Hands 1b6dd022).
+ */
+internal expect fun raftKtorEngineReportsProtocol(): Boolean
+
+/** `protocol=` when the engine does not report it; never a guessed version. */
+internal const val RAFT_KTOR_PROTOCOL_UNREPORTED = "unreported"
 
 /** Builds the process clients: Android OkHttp lanes, iOS NSURLSession lanes. */
 internal expect fun createPlatformRaftKtorClientProvider(): RaftKtorClientProvider

@@ -147,6 +147,8 @@ internal actual fun createPlatformRaftKtorClientProvider(): RaftKtorClientProvid
 
 internal actual fun raftKtorEngineLabel(): String = "ktor_okhttp"
 
+internal actual fun raftKtorEngineReportsProtocol(): Boolean = true
+
 internal actual fun classifyPlatformTransportFailure(error: Throwable): RaftTransportFailureKind? =
     when (error) {
         is UnknownHostException -> RaftTransportFailureKind.DNS
