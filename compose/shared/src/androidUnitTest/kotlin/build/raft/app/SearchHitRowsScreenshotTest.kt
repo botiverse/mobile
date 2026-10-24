@@ -28,10 +28,10 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Search hit stickers on the Home search rows, light and dark, with descender words ("Remy",
+ * Search hits (S1: yellow fill, no ring, surrounding weight) on the Home search rows, light and dark, with descender words ("Remy",
  * "query"): an entity row whose "@Remy" handle is one hit, and message rows whose snippet shows
  * the hit (the second is a CJK snippet). The
- * sticker covers the whole line box, so the descenders sit inside it. Verify / record as
+ * fill covers the whole line box, so the descenders sit inside it. Verify / record as
  * [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -62,7 +62,7 @@ class SearchHitRowsScreenshotTest {
     }
 }
 
-private fun entity(type: SearchEntityType, title: String, subtitle: String) =
+private fun entity(type: SearchEntityType, title: String, subtitle: String, data: IntRange? = null) =
     SearchEntityResult(
         key = "entity:$title",
         type = type,
@@ -76,6 +76,7 @@ private fun entity(type: SearchEntityType, title: String, subtitle: String) =
                 sourceServerId = ServerId("server-1"),
             ),
         conversationIdentity = null,
+        subtitleDataRange = data,
     )
 
 private fun message(id: String, preview: String) =
@@ -94,13 +95,13 @@ private fun message(id: String, preview: String) =
 private fun SearchHitRowsContent() {
     Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         SharedHomeSearchEntityRow(
-            result = entity(SearchEntityType.Agent, "Remy", "Agent · @Remy"),
+            result = entity(SearchEntityType.Agent, "Remy", "Agent · @Remy", data = 8 until 13),
             query = "remy",
             agentStatusResolver = EmptyRaftAgentStatusResolver,
             onOpen = {},
         )
         SharedHomeSearchEntityRow(
-            result = entity(SearchEntityType.Agent, "Query Bot", "Agent · @query-bot"),
+            result = entity(SearchEntityType.Agent, "Query Bot", "Agent · @query-bot", data = 8 until 18),
             query = "query",
             agentStatusResolver = EmptyRaftAgentStatusResolver,
             showSeparator = true,
@@ -109,6 +110,13 @@ private fun SearchHitRowsContent() {
         SharedHomeSearchMessageResultRow(
             item = message("1", "Ask remy to query the release notes, then summarize what it found for the group."),
             query = "remy query",
+            onOpen = {},
+        )
+        SharedHomeSearchEntityRow(
+            result = entity(SearchEntityType.Channel, "remy-chat", "Working group: the weekly sync about remy and rollout"),
+            query = "remy",
+            agentStatusResolver = EmptyRaftAgentStatusResolver,
+            showSeparator = true,
             onOpen = {},
         )
         SharedHomeSearchMessageResultRow(

@@ -29,7 +29,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.style.ResolvedTextDirection
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -228,13 +228,13 @@ internal fun RaftSearchEmptyState(
 }
 
 /**
- * Text with the DS search hit (raft-ui lib/search-hit.ts) on every [query] term: the hit
- * keeps the surrounding font but goes bold in `sticker-ink`, on a `brand` sticker (sticker
- * radius, 1.5dp inset `sticker-ink` edge, 1.5dp outer `sticker-edge` die-cut). The sticker
- * is drawn behind the glyphs, so it takes no layout room: web pads it 3px each side, and here
- * it reaches up to 3dp into a neighbouring space or line edge but never over a neighbouring
- * glyph. Touching hits are already one range ([homeSearchHighlightRanges]), so one sticker.
- * Hits hidden behind an ellipsis draw nothing.
+ * Text with the DS search hit (raft-ui lib/search-hit.ts, stdrc S1) on every [query] term: the
+ * hit keeps the surrounding font and weight in `sticker-ink` on a `you` fill (yellow in every
+ * theme: [RaftColor.Brand]), sticker radius, no border or ring. The fill is drawn behind the
+ * glyphs, so it takes no layout room: web pads it 2px each side and 1px above and below the
+ * line box, and here it reaches up to 2dp into a neighbouring space or line edge but never over
+ * a neighbouring glyph. Touching hits are already one range ([homeSearchHighlightRanges]), so
+ * one fill. Hits hidden behind an ellipsis draw nothing.
  */
 @Composable
 internal fun RaftSearchHitText(
@@ -245,13 +245,13 @@ internal fun RaftSearchHitText(
     modifier: Modifier = Modifier,
     maxLines: Int = Int.MAX_VALUE,
     overflow: TextOverflow = TextOverflow.Clip,
+    // Only this part of [text] can hold a hit (a row's fixed label stays unmarked); null = all.
+    highlightRange: IntRange? = null,
 ) {
-    val ranges = remember(text, query) { homeSearchHighlightRanges(text, query) }
+    val ranges = remember(text, query, highlightRange) { homeSearchHighlightRanges(text, query, highlightRange) }
     val annotated = remember(text, ranges) { raftSearchHitAnnotatedString(text, ranges) }
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     val fill = RaftColor.Brand
-    val edge = RaftColor.StickerInk
-    val dieCut = RaftColor.StickerEdge
     RaftText(
         text = annotated,
         style = style,
@@ -266,33 +266,61 @@ internal fun RaftSearchHitText(
                 modifier.drawBehind {
                     val result = layout ?: return@drawBehind
                     if (result.layoutInput.text.text != text) return@drawBehind
-                    drawRaftSearchHits(result, ranges, fill, edge, dieCut)
+                    drawRaftSearchHits(result, ranges, fill)
                 }
             },
     )
+}
+
+/** Context kept before the first hit by [raftSearchExcerptAroundHit], in display columns. */
+private const val RaftSearchExcerptColumnsBeforeHit = 20
+
+private fun Char.isWideColumn(): Boolean =
+    code in 0x1100..0x115F || code in 0x2E80..0xA4CF || code in 0xAC00..0xD7A3 ||
+        code in 0xF900..0xFAFF || code in 0xFE30..0xFE4F || code in 0xFF00..0xFF60 || code in 0xFFE0..0xFFE6
+
+/**
+ * [text] (whitespace collapsed) from a little before its first hit, so a one-line subtitle
+ * shows it: up to 20 display columns of context (a CJK / fullwidth char counts 2), led by "…".
+ * Text with no hit, or a hit already near the start, comes back unchanged. Web: `excerptAroundSearchHit`.
+ */
+internal fun raftSearchExcerptAroundHit(text: String, query: String): String {
+    val compact = text.replace(Regex("\\s+"), " ").trim()
+    val hit = homeSearchHighlightRanges(compact, query).firstOrNull()?.first ?: return compact
+    if (hit <= 0) return compact
+    var width = 0
+    var keepFrom = hit
+    while (keepFrom > 0) {
+        width += if (compact[keepFrom - 1].isWideColumn()) 2 else 1
+        if (width > RaftSearchExcerptColumnsBeforeHit) break
+        keepFrom--
+    }
+    if (keepFrom == 0) return compact
+    return "…" + compact.substring(keepFrom, hit).trimStart() + compact.substring(hit)
 }
 
 internal fun raftSearchHitAnnotatedString(text: String, ranges: List<IntRange>): AnnotatedString {
     if (ranges.isEmpty()) return AnnotatedString(text)
     return buildAnnotatedString {
         append(text)
-        val hit = raftSpanStyleForWeight(FontWeight.Bold).copy(color = RaftColor.StickerInk)
+        val hit = SpanStyle(color = RaftColor.StickerInk)
         ranges.forEach { range -> addStyle(hit, start = range.first, end = range.last + 1) }
     }
 }
 
-/** web `px-[3px]`: the room the sticker wants beside the hit glyphs. */
-private val RaftSearchHitPadX = 3.dp
+/** web `px-[2px]`: the room the hit fill wants beside the hit glyphs. */
+private val RaftSearchHitPadX = 2.dp
+
+/** web `py-px`: fill above and below the line box. */
+private val RaftSearchHitPadY = 1.dp
 
 private fun DrawScope.drawRaftSearchHits(
     layout: TextLayoutResult,
     ranges: List<IntRange>,
     fill: Color,
-    edge: Color,
-    dieCut: Color,
 ) {
     val radius = CornerRadius(RaftAppRadius.Sticker.toPx())
-    val stroke = RaftAppStroke.Control.toPx()
+    val padY = RaftSearchHitPadY.toPx()
     val padX = RaftSearchHitPadX.toPx()
     val layoutWidth = layout.size.width.toFloat()
     val text = layout.layoutInput.text.text
@@ -337,25 +365,9 @@ private fun DrawScope.drawRaftSearchHits(
                 ) ?: continue
             val top = layout.getLineTop(line)
             val bottom = layout.getLineBottom(line)
-            // The whole line box (ascent to descent), so descenders ("y", "g") sit inside it.
-            val box = Rect(extent.start, top, extent.endInclusive, bottom)
-            if (dieCut.alpha > 0f) {
-                drawRoundRect(
-                    dieCut,
-                    topLeft = Offset(box.left - stroke / 2f, box.top - stroke / 2f),
-                    size = Size(box.width + stroke, box.height + stroke),
-                    cornerRadius = CornerRadius(radius.x + stroke / 2f),
-                    style = Stroke(stroke),
-                )
-            }
+            // The whole line box (ascent to descent) plus `py-px`, so descenders ("y", "g") sit inside it.
+            val box = Rect(extent.start, top - padY, extent.endInclusive, bottom + padY)
             drawRoundRect(fill, topLeft = box.topLeft, size = box.size, cornerRadius = radius)
-            drawRoundRect(
-                edge,
-                topLeft = Offset(box.left + stroke / 2f, box.top + stroke / 2f),
-                size = Size(box.width - stroke, box.height - stroke),
-                cornerRadius = CornerRadius((radius.x - stroke / 2f).coerceAtLeast(0f)),
-                style = Stroke(stroke),
-            )
         }
     }
 }
