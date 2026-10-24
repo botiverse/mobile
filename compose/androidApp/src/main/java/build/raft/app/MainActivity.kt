@@ -14,6 +14,7 @@ import build.raft.app.shared.RaftRouteKeys
 import build.raft.app.shared.currentAndroidShellRouteOwner
 import build.raft.app.shared.withAndroidShellRouteOwner
 import build.raft.app.data.RaftAppLoginBridge
+import build.raft.app.RaftMessageLinkIngress
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.mobileOAuthConflictMessageOrNull
 import build.raft.app.data.SharedAuthDataSource
@@ -100,6 +101,7 @@ class MainActivity : ComponentActivity() {
             !handleMobileOAuthCallback(intent) &&
             !handleSocialAuthCallback(intent) &&
             !handleEmailVerificationLink(intent) &&
+            !handleRaftMessageLink(intent) &&
             !handleUnsupportedRaftWebLink(intent)
         ) {
             openSharedShell(intent)
@@ -133,6 +135,32 @@ class MainActivity : ComponentActivity() {
             }
         }
         externalShareAdmissionOwner.acknowledge(generation)
+    }
+
+    /**
+     * A Raft message link (App Link on app.raft.build / open.raft.build, or the Developer
+     * environment's web host): the shared inbox keeps it (through sign-in) until an app shell with
+     * a ready session resolves and opens it through the window navigation coordinator, the entry a
+     * notification tap uses. A live shell in this task is only revealed; otherwise the shell is
+     * started or brought forward the way a notification tap starts it. Anything else stays on the
+     * web ([handleUnsupportedRaftWebLink]).
+     */
+    private fun handleRaftMessageLink(intent: Intent?): Boolean {
+        if (intent?.action != Intent.ACTION_VIEW) return false
+        val uri = intent.data ?: return false
+        val webUrl = AndroidApiServerEnvironmentStore(applicationContext).current().webUrl
+        if (!RaftMessageLinkIngress.accept(uri.toString(), source = "android_view", configuredWebUrl = webUrl)) {
+            return false
+        }
+        // Ids stay out of the retained Activity intent; the inbox owns the link now.
+        setIntent(Intent(this, MainActivity::class.java))
+        val liveShellInTask = AndroidShellWindowRegistry.hasShellInTask(taskId)
+        RaftAppLog.d("SlockBoot", "app_message_link_accepted liveShellInTask=$liveShellInTask")
+        if (!liveShellInTask) {
+            RaftCmpActivity.startAppShell(applicationContext, pageData = JSONObject(), clearTask = false)
+        }
+        finish()
+        return true
     }
 
     /**

@@ -300,6 +300,16 @@ jobs:
           echo "profile_uuid=${PROFILE_UUID}" >> "$GITHUB_OUTPUT"
           echo "profile_name=${PROFILE_NAME}" >> "$GITHUB_OUTPUT"
           echo "profile_team=${PROFILE_TEAM}" >> "$GITHUB_OUTPUT"
+          # Raft message links (#proj-mobile #26): the app declares Associated Domains
+          # (applinks:app.raft.build / open.raft.build). A profile generated before that
+          # capability was enabled on the App ID cannot sign it; archive without the
+          # entitlement then (Universal Links stay off in that build) instead of failing.
+          if /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.associated-domains' "${PROFILE_PLIST}" >/dev/null 2>&1; then
+            echo "associated_domains=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "associated_domains=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Provisioning profile ${PROFILE_NAME} has no Associated Domains entitlement; this build ships without Universal Links. Enable Associated Domains on the build.raft.app App ID, regenerate the App Store profile and update SLOCK_IOS_PROVISIONING_PROFILE_BASE64."
+          fi
           echo "keychain_path=${KEYCHAIN_PATH}" >> "$GITHUB_OUTPUT"
 
       - name: Test diagnostics path admission
@@ -343,6 +353,7 @@ jobs:
         env:
           PROFILE_NAME: ${{ steps.signing.outputs.profile_name }}
           PROFILE_TEAM: ${{ steps.signing.outputs.profile_team }}
+          PROFILE_ASSOCIATED_DOMAINS: ${{ steps.signing.outputs.associated_domains }}
         run: |
           set -euo pipefail
           mkdir -p "${RUNNER_TEMP}/ios-release"
@@ -368,6 +379,13 @@ jobs:
             "OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES"
             "RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES"
           )
+          if [ "${PROFILE_ASSOCIATED_DOMAINS:-false}" != "true" ]; then
+            # Same entitlements minus Associated Domains (see the signing step).
+            FALLBACK_ENTITLEMENTS="${RUNNER_TEMP}/ios-release/iosApp-no-associated-domains.entitlements"
+            cp iosApp/iosApp.entitlements "${FALLBACK_ENTITLEMENTS}"
+            plutil -remove com.apple.developer.associated-domains "${FALLBACK_ENTITLEMENTS}"
+            BUILD_SETTINGS+=("CODE_SIGN_ENTITLEMENTS=${FALLBACK_ENTITLEMENTS}")
+          fi
           set -o pipefail
           ARCHIVE_LOG="${RUNNER_TEMP}/ios-release/xcodebuild-archive.log"
           xcodebuild \

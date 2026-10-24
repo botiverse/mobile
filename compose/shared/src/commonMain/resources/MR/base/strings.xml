@@ -85,6 +85,12 @@
     <string name="home_error_conversation_not_ready">Conversation isn\'t ready yet — try again</string>
     <string name="home_error_notification_server_unavailable">Notification server unavailable</string>
     <string name="home_error_notification_sign_in">Sign in to open this notification</string>
+    <string name="message_link_title">Message link</string>
+    <string name="message_link_not_found_title">Message not found</string>
+    <string name="message_link_not_found_body">The link may be wrong, or you don\'t have access to it.</string>
+    <string name="message_link_switched_server">Switched to %1$s</string>
+    <string name="message_link_public_preview_title">Public preview</string>
+    <string name="message_link_public_preview_notice">You haven\'t joined this server. This is its public preview.</string>
     <string name="home_error_conversation_unavailable">Conversation is no longer available</string>
     <string name="home_error_direct_message_unavailable">Direct message is unavailable</string>
     <string name="home_error_open_direct_message_failed_prefix">Failed to open direct message:&#160;</string>
