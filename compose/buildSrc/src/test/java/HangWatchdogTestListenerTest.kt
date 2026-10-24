@@ -130,6 +130,34 @@ class HangWatchdogTestListenerTest {
     }
 
     @Test
+    fun `parallel forks - a later test starting or finishing does not unwatch a hung earlier test`() {
+        val rec = Recording()
+        val bodies = mutableListOf<Runnable>()
+        val hung = FakeDescriptor("build.raft.app.ForkOneTest", "hangsForever")
+        val quick = FakeDescriptor("build.raft.app.ForkTwoTest", "quick")
+        val l = HangWatchdogTestListener(
+            timeoutMs = 100,
+            heartbeatMs = 1_000,
+            clock = { rec.now },
+            sleeper = { requested -> rec.now += requested },
+            exiter = { code -> rec.exitCodes.add(code) },
+            out = { line -> rec.lines.add(line) },
+            spawner = { body -> bodies.add(body) },
+        )
+
+        // Interleaved events, as two forks deliver them.
+        l.beforeTest(hung)
+        l.beforeTest(quick)
+        l.afterTest(quick, FakeResult())
+        bodies.forEach { it.run() }
+
+        assertEquals(listOf(HangWatchdogTestListener.EXIT_CODE_HANG), rec.exitCodes)
+        val hangLines = rec.lines.filter { it.contains("HANG DETECTED") }
+        assertEquals(1, hangLines.size)
+        assertTrue(hangLines[0].contains("build.raft.app.ForkOneTest.hangsForever"))
+    }
+
+    @Test
     fun `disabled listener never starts a watchdog`() {
         val rec = Recording()
         val l = listener(rec, timeoutMs = 100, heartbeatMs = 30, enabled = false) { requested, advance, _ ->
