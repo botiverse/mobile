@@ -11216,7 +11216,7 @@ private fun MembersAgentActionButton(
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
-private fun MembersAgentRuntimeConfigRows(
+internal fun MembersAgentRuntimeConfigRows(
     resolution: MembersAgentRuntimeConfigResolution,
     runtimeModelsCatalog: SharedCreateAgentRuntimeModelCatalog?,
     machineId: String?
