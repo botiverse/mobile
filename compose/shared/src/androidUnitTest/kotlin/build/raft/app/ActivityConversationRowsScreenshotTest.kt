@@ -8,6 +8,8 @@ import android.view.ViewGroup
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -316,7 +318,8 @@ private fun ActivityRowsVisualContent(appearance: RaftAppAppearance) {
                 ),
         )
     RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light) {
-        Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
+        // Scrollable like the real LazyColumn: a row past the viewport keeps its own height.
+        Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).verticalScroll(rememberScrollState())) {
             rows.forEachIndexed { index, item ->
                 ActivityConversationListRow(
                     item = item,
@@ -430,7 +433,8 @@ private fun ActivityRowsSwipeVisualContent(appearance: RaftAppAppearance, pose: 
                 listOf(resting to (false to 0f), thread to (false to 0.7f), channel to (false to 0.55f), resting.copy(key = "channel:launch-2") to (false to 0f))
         }
     RaftTheme(appearance = if (appearance == RaftAppAppearance.Dark) RaftAppearance.Dark else RaftAppearance.Light) {
-        Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
+        // Scrollable like the real LazyColumn: a row past the viewport keeps its own height.
+        Column(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).verticalScroll(rememberScrollState())) {
             rows.forEachIndexed { index, (item, rowState) ->
                 val (open, slide) = rowState
                 ActivityConversationListRow(
