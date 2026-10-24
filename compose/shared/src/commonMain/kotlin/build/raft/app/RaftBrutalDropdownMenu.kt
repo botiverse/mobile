@@ -48,7 +48,7 @@ private const val RaftBrutalDropdownMenuRowHeightValue = 40f
  * like any other item (raft-ui: no red menu items, the confirm dialog carries the deletion).
  */
 @Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftMenuItem. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftMenuItem. Add no new uses; see docs/raftbrutal-migration.md.",
     level = DeprecationLevel.WARNING,
 )
 internal data class RaftBrutalDropdownMenuItem(
@@ -81,7 +81,7 @@ internal data class RaftBrutalDropdownMenuItem(
  */
 @Composable
 @Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftDropdownMenu. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftDropdownMenu. Add no new uses; see docs/raftbrutal-migration.md.",
     level = DeprecationLevel.WARNING,
 )
 internal fun RaftBrutalDropdownMenu(
@@ -148,7 +148,7 @@ internal fun RaftBrutalDropdownMenu(
 @Suppress("UNUSED_PARAMETER")
 @Composable
 @Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftMenuSurface. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftMenuSurface. Add no new uses; see docs/raftbrutal-migration.md.",
     level = DeprecationLevel.WARNING,
 )
 internal fun RaftBrutalDropdownMenuSurface(
@@ -246,7 +246,7 @@ private fun RaftDropdownMenuSurface(
  */
 @Composable
 @Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftMenuItem. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftMenuItem. Add no new uses; see docs/raftbrutal-migration.md.",
     level = DeprecationLevel.WARNING,
 )
 internal fun RaftBrutalDropdownMenuRow(

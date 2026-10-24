@@ -87,7 +87,7 @@ classify_relevant_path() {
     .gitmodules|.github/actions/*|.github/gradle-cache-epoch|.github/gradle-cache-quarantine)
       mark_all_platforms
       ;;
-    scripts/check_commonmain_map_compat.sh|scripts/check_markdown_spike_println_gate.sh|scripts/check_auth_session_writes.sh|scripts/check_attachment_mapper_formatting.sh|scripts/check_canonical_message_v2_reaction_vector.sh|scripts/check_server_activity_unread_fixture.sh|scripts/check_read_state_behavior_vector.sh|scripts/check_read_state_sync_domain_registration.sh|scripts/audit_translucent_action_tokens.py|scripts/prepare_*.sh|scripts/ci/*)
+    scripts/check_commonmain_map_compat.sh|scripts/check_auth_session_writes.sh|scripts/check_canonical_message_v2_reaction_vector.sh|scripts/check_server_activity_unread_fixture.sh|scripts/check_read_state_behavior_vector.sh|scripts/prepare_*.sh|scripts/ci/*)
       mark_all_platforms
       ;;
     third_party/kuikly-compose-markdown/*|third_party/markdown-parser/*)
