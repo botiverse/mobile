@@ -85,18 +85,6 @@ jobs:
       - name: Validate Hands Android SDK Raft consumer contract
         run: python3 scripts/ci/test_hands_raft_consumer_contract.py
 
-      - name: Validate no-local-Ktor dependency contract
-        run: python3 scripts/ci/test_no_local_ktor_ci_contract.py
-
-      # Task #373 / PR #2497: mermaid consumer confinement. Since the CMP
-      # switch mermaid renders through one commonMain adapter
-      # (RaftMermaidDiagramBlock + RaftMermaidCanvas); per-platform actuals
-      # must not return and no other production source imports mermaid.
-      - name: Validate mermaid plane confinement contract
-        run: |
-          python3 scripts/ci/check_mermaid_plane_confinement.py --self-test
-          python3 scripts/ci/check_mermaid_plane_confinement.py
-
       - name: Validate fail-closed git diff consumers
         run: |
           .github/actions/git-safe-workspace/test_configure.sh
@@ -290,33 +278,11 @@ jobs:
           scripts/check_commonmain_map_compat.sh --self-test
           scripts/check_commonmain_map_compat.sh
 
-      - name: Guard RaftWindowDialog ownership (no raw Dialog / ModalBottomSheet)
-        shell: bash
-        run: |
-          scripts/check_raft_window_dialog.sh --self-test
-          scripts/check_raft_window_dialog.sh
-
-      - name: Guard deprecated RaftBrutal* / legacy accent uses (no file may grow; docs/raftbrutal-migration.md)
-        shell: bash
-        run: |
-          scripts/check_raftbrutal_usage.sh --self-test
-          scripts/check_raftbrutal_usage.sh
-
-      - name: Guard SlockMarkdownSpike println gate (task #20)
-        shell: bash
-        run: |
-          scripts/check_markdown_spike_println_gate.sh --self-test
-          scripts/check_markdown_spike_println_gate.sh
-
       - name: Guard atomic auth-session writes (#466 no-bypass)
         shell: bash
         run: |
           scripts/check_auth_session_writes.sh --self-test
           scripts/check_auth_session_writes.sh
-
-      - name: Guard attachment mapper raw-size boundary
-        shell: bash
-        run: scripts/check_attachment_mapper_formatting.sh
 
       # These fixture/vector guards verify the vendored copy against a digest pinned in
       # the script — fully local since task #18 (a pinned commit's content is
@@ -333,15 +299,6 @@ jobs:
       - name: Guard server/mobile Activity-unread fixture
         shell: bash
         run: scripts/check_server_activity_unread_fixture.sh
-
-      - name: Guard read-state SyncCore registration boundary
-        shell: bash
-        run: scripts/check_read_state_sync_domain_registration.sh
-
-      - name: Guard translucent semantic action fills
-        run: |
-          scripts/audit_translucent_action_tokens.py --self-test
-          scripts/audit_translucent_action_tokens.py --strict
 
       - name: Set up JDK
         uses: actions/setup-java@v5

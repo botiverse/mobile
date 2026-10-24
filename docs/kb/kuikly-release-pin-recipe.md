@@ -25,7 +25,7 @@ Do **not** hand-edit `compose/iosApp/Podfile.lock` — it is regenerated in step
 
 - `scripts/ci/verify_kuikly_release_manifest.sh` — must end in `ALL_COMPLETE_EXACT`.
 - `scripts/ci/test_kuikly_raft_consumer_contract.py` — static consumer contract (fails until step 3 regenerates the lockfile).
-- `scripts/ci/check_source_constraints.py` and `git diff --check`.
+- `git diff --check`.
 
 ## 3. Regenerate the native lockfile for real
 

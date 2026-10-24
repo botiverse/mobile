@@ -34,7 +34,7 @@ data class RaftWindowDialogProperties(
 /**
  * The one platform window every Raft dialog, sheet and modal opens ([RaftDialog], [RaftSheet],
  * [RaftDialogSheet], the combobox's sheet, the app's `Modal`). Nothing else calls Compose's
- * `Dialog` or Material's `ModalBottomSheet` (`scripts/check_raft_window_dialog.sh` fails CI).
+ * `Dialog` or Material's `ModalBottomSheet`.
  *
  * Every window gets the same policy, so none of them can miss it:
  * - a right swipe does not pop the page underneath ([RaftBlockBackSwipe]);

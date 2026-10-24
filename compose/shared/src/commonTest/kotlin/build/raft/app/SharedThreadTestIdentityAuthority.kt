@@ -119,9 +119,7 @@ private val testIdentityAuthorityByStore = mutableMapOf<RaftAuthSessionStore, Te
  * The memo is a test-process-wide map (one strong reference per store ever used; memory only,
  * never cleared). It stays test-local only because every test function creates its own store —
  * a class-field store would carry a generation sequence across test functions and stay green.
- * That invariant is enforced, not assumed: `scripts/ci/check_source_constraints.py`
- * (`check_test_session_stores_are_test_local`) fails on any class-field
- * `InMemoryRaftAuthSessionStore` under commonTest.
+ * Keep `InMemoryRaftAuthSessionStore` instances test-local; never hold one in a class field.
  *
  * Configuration on a repeated call for the same store is checked, not merged, and both optional
  * parameters mean the same thing when omitted (`null`): "I am not specifying this — reuse what the

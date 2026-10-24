@@ -44,8 +44,11 @@ find compose/androidApp/src/main/java/build/raft/app/ui compose/androidApp/src/m
   | sed 's#^#  - #'
 
 echo
-echo "5) Platform windows outside RaftWindowDialog (CI gate: scripts/check_raft_window_dialog.sh)"
-scripts/check_raft_window_dialog.sh || true
+echo "5) Platform windows outside RaftWindowDialog (raw Dialog / Material sheet imports)"
+rg -n \
+  "^\\s*import\\s+androidx\\.compose\\.(ui\\.window\\.(Dialog|DialogWindow)|material3?\\.(ModalBottomSheet|ModalBottomSheetLayout|AlertDialog|BasicAlertDialog|DatePickerDialog|TimePickerDialog))\\b" \
+  compose --glob '*.kt' --glob '!**/designsystem/components/RaftWindowDialog.kt' \
+  || true
 
 echo
 echo "Interpretation:"

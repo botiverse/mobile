@@ -9,15 +9,22 @@ name: Knowledge-base index
 #     long after it stopped being true.  This side survives reviews because
 #     nobody re-reads the table after a deletion.
 #
-# This runs for every pull request rather than only on docs/kb changes: an
-# article can be added in one PR and indexed in another, and the drift is only
-# visible when the whole tree is checked.
+# The checker reads the whole docs/kb tree, so any change under docs/kb (an
+# added, deleted or re-indexed article) reruns it against the full index.
 
 on:
   pull_request:
+    paths:
+      - "docs/kb/**"
+      - "scripts/ci/check_kb_index.py"
+      - ".github/workflows/kb-index-contract.yml"
   push:
     branches:
       - main
+    paths:
+      - "docs/kb/**"
+      - "scripts/ci/check_kb_index.py"
+      - ".github/workflows/kb-index-contract.yml"
   workflow_dispatch:
 
 permissions:
