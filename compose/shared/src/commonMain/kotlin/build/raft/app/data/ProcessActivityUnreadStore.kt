@@ -161,13 +161,22 @@ internal class ProcessActivityUnreadStore(
         refresh(serverId, reason = "invalidate:$reason")
     }
 
-    fun invalidate(owner: ProcessActivityUnreadOwner, reason: String) {
+    /**
+     * [eventMarker] identifies the realtime event behind this invalidation. More than one realtime
+     * subscriber delivers the same frame (on iOS both the process ingress coordinator and the
+     * AppShell listener feed the process domain owner), and hint events such as
+     * [RealtimeRefreshRequired] carry no dedup key upstream. A marker already admitted for the
+     * pending or in-flight fetch round is coalesced; markers retire when that round's fetch
+     * completes, so a later identical hint still fetches again.
+     */
+    fun invalidate(owner: ProcessActivityUnreadOwner, reason: String, eventMarker: Any? = null) {
         request(
             serverId = ServerId(owner.serverId),
             foregroundEpoch = null,
             force = true,
             reason = "invalidate:$reason",
-            expectedOwner = owner
+            expectedOwner = owner,
+            eventMarker = eventMarker
         )
     }
 
@@ -279,7 +288,8 @@ internal class ProcessActivityUnreadStore(
         foregroundEpoch: Long?,
         force: Boolean,
         reason: String,
-        expectedOwner: ProcessActivityUnreadOwner?
+        expectedOwner: ProcessActivityUnreadOwner?,
+        eventMarker: Any? = null
     ) {
         val normalizedServerId = serverId.value.trim()
         if (normalizedServerId.isBlank()) return
@@ -296,6 +306,16 @@ internal class ProcessActivityUnreadStore(
                     return@withLock
                 }
                 val entry = entries.getOrPut(owner) { Entry(projection = initialProjection(owner)) }
+                if (eventMarker != null) {
+                    if (eventMarker in entry.pendingEventMarkers || eventMarker in entry.inFlightEventMarkers) {
+                        logger(
+                            "process_activity_unread_request result=coalesced reason=same_event_round " +
+                                "${owner.diagnosticsKey} source=$reason"
+                        )
+                        return@withLock
+                    }
+                    entry.pendingEventMarkers += eventMarker
+                }
                 if (foregroundEpoch != null) {
                     if (foregroundEpoch <= entry.acceptedForegroundEpoch) {
                         logger(
@@ -367,6 +387,9 @@ internal class ProcessActivityUnreadStore(
                     entry.pending = false
                     entry.canonicalDirty = false
                     entry.requestGeneration += 1L
+                    // This attempt covers every event admitted so far; later ones open the next round.
+                    entry.inFlightEventMarkers = entry.pendingEventMarkers
+                    entry.pendingEventMarkers = emptySet()
                     val reason = entry.pendingReason
                     entry.projection =
                         entry.projection.copy(
@@ -399,6 +422,7 @@ internal class ProcessActivityUnreadStore(
             val continueLoop =
                 mutex.withLock {
                     val entry = entries[owner] ?: return
+                    entry.inFlightEventMarkers = emptySet()
                     val currentOwner = ownerResolver(owner.serverId)
                     if (
                         currentOwner != owner ||
@@ -410,6 +434,8 @@ internal class ProcessActivityUnreadStore(
                                 "generation=${attempt.generation} source=${attempt.reason}"
                         )
                         entry.active = false
+                        // No later attempt of this loop covers them; let a redelivery fetch again.
+                        entry.pendingEventMarkers = emptySet()
                         return@withLock false
                     }
                     val factChanged = entry.factRevision != attempt.factRevision
@@ -582,6 +608,9 @@ internal class ProcessActivityUnreadStore(
         var requestGeneration: Long = 0L,
         var factRevision: Long = 0L,
         var canonicalDirty: Boolean = false,
+        // Realtime event markers admitted for the next fetch / covered by the running fetch.
+        var pendingEventMarkers: Set<Any> = emptySet(),
+        var inFlightEventMarkers: Set<Any> = emptySet(),
         // Latest non-authoritative fact counts (suppression-aware local view).
         var latestFactUnread: Int? = null,
         var latestFactTotal: Int? = null,
@@ -620,7 +649,12 @@ internal fun processActivityUnreadRealtimeSink(
                     "serverId=${admission.serverId} type=${event::class.simpleName.orEmpty()}"
             )
         } else {
-            store.invalidate(owner, reason = "realtime:${event::class.simpleName.orEmpty()}")
+            // The event value is the marker: every subscriber decodes the same frame to an equal event.
+            store.invalidate(
+                owner,
+                reason = "realtime:${event::class.simpleName.orEmpty()}",
+                eventMarker = event
+            )
         }
     }
 }
