@@ -303,6 +303,10 @@ jobs:
         shell: bash
         run: scripts/check_canonical_message_v2_reaction_vector.sh
 
+      - name: Guard Web/mobile search snippet vector
+        shell: bash
+        run: scripts/check_search_snippet_vector.sh
+
       - name: Guard server/mobile Activity-unread fixture
         shell: bash
         run: scripts/check_server_activity_unread_fixture.sh

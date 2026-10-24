@@ -13024,10 +13024,11 @@ internal fun SharedHomeSearchEntityRow(
                     )
                 }
             }
-            // A channel matched by its description shows it from just before the hit.
+            // A channel matched by its description shows it cut like a message snippet (web
+            // `searchEntitySubtitleForQuery`): only when the description holds a hit.
             val subtitle =
                 if (result.type == SearchEntityType.Channel && result.subtitleDataRange == null) {
-                    raftSearchExcerptAroundHit(result.subtitle, query)
+                    channelDescriptionSnippet(result.subtitle, query)
                 } else {
                     result.subtitle
                 }
@@ -13373,6 +13374,19 @@ internal fun homeSearchHighlightedAnnotatedString(
 ): AnnotatedString = raftSearchHitAnnotatedString(text, homeSearchHighlightRanges(text, query))
 
 /**
+ * The distinct terms of [query] (web `searchHighlightTokens`), in query order. A leading "@" / "#"
+ * only says what kind of thing is searched: "@remy" matches "Remy" and "@Remy" alike (the prefix
+ * is taken from the text when it is there).
+ */
+internal fun homeSearchHighlightTokens(query: String): List<String> =
+    query
+        .trim()
+        .split(Regex("\\s+"))
+        .map { it.trim().trimStart('@', '#') }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase() }
+
+/**
  * The search hit spans of [query]'s whitespace-separated terms in [text], case-insensitive,
  * longest term first, never overlapping, in text order. Ranges are indices into [text]
  * itself: matching compares char by char (`regionMatches(ignoreCase = true)`) rather than
@@ -13391,16 +13405,7 @@ internal fun homeSearchHighlightRanges(
         return homeSearchHighlightRanges(text.substring(from, to), query).map { (it.first + from)..(it.last + from) }
     }
     if (text.isBlank()) return emptyList()
-    val terms =
-        query
-            .trim()
-            .split(Regex("\\s+"))
-            // A leading "@" / "#" only says what kind of thing is searched: "@remy" matches
-            // "Remy" and "@Remy" alike (the prefix is taken from the text when it is there).
-            .map { it.trim().trimStart('@', '#') }
-            .filter { it.isNotBlank() }
-            .distinctBy { it.lowercase() }
-            .sortedByDescending { it.length }
+    val terms = homeSearchHighlightTokens(query).sortedByDescending { it.length }
     if (terms.isEmpty()) return emptyList()
 
     val occupied = BooleanArray(text.length)
@@ -13704,6 +13709,14 @@ internal fun SharedComputersState.toHomeSearchComputerDirectory(serverId: String
         initialLoadError = slice.error.takeIf { !slice.hasSnapshot && slice.status == SharedComputersLoadStatus.Error },
     )
 }
+
+/** The shared snippet of a channel [description] when it holds a hit of [query], else the description as is. */
+internal fun channelDescriptionSnippet(description: String, query: String): String =
+    if (homeSearchHighlightRanges(description, query).isEmpty()) {
+        description
+    } else {
+        buildSearchSnippet(description, homeSearchHighlightTokens(query))
+    }
 
 internal data class SearchEntityResult(
     val key: String,
