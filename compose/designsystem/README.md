@@ -440,7 +440,7 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
   like a tap outside. Collision handling is the simple flip / clamp of `raftMenuPosition`.
 - **Windows and scrim.** `RaftDialog`, `RaftSheet`, `RaftDialogSheet`, the combobox's sheet
   and the app's `Modal` all open `RaftWindowDialog`, the only caller of Compose's `Dialog`
-  (`scripts/check_raft_window_dialog.sh` fails CI on any other `Dialog` / `ModalBottomSheet`).
+  (do not open a raw `Dialog` / `ModalBottomSheet` anywhere else).
   It blocks the back swipe, makes the window edge to edge with no platform dim, draws
   `RaftTheme.scrim` (`layer-backdrop`, 65% light / 60% dark), and sets the window's system bar
   icons from `RaftTheme.isDark` (`RaftDialogWindowPolicy`, the module's one platform hook:

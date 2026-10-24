@@ -325,7 +325,7 @@ internal val RaftFormFieldSize.raftFieldLabelSize: RaftFieldLabelSize
 
 @Composable
 @Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftDialog / RaftSheet / RaftDialogSheet. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftDialog / RaftSheet / RaftDialogSheet. Add no new uses; see docs/raftbrutal-migration.md.",
     level = DeprecationLevel.WARNING,
 )
 internal fun RaftBrutalModalLayer(
@@ -371,7 +371,7 @@ internal fun RaftBrutalModalLayer(
 
 @Composable
 @Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftMenuItem in a RaftSheet (or RaftListRow). New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftMenuItem in a RaftSheet (or RaftListRow). Add no new uses; see docs/raftbrutal-migration.md.",
     level = DeprecationLevel.WARNING,
 )
 internal fun RaftBrutalActionSheetRow(
@@ -460,7 +460,7 @@ private fun RaftLookActionSheetRow(
  */
 @Composable
 @Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextField inside a RaftField. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextField inside a RaftField. Add no new uses; see docs/raftbrutal-migration.md.",
     level = DeprecationLevel.WARNING,
 )
 internal fun RaftBrutalTextField(
@@ -523,7 +523,7 @@ internal fun RaftBrutalTextField(
  */
 @Composable
 @Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextField inside a RaftField. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextField inside a RaftField. Add no new uses; see docs/raftbrutal-migration.md.",
     level = DeprecationLevel.WARNING,
 )
 internal fun RaftBrutalTextField(
@@ -592,7 +592,7 @@ internal fun RaftBrutalTextField(
  */
 @Composable
 @Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftField. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftField. Add no new uses; see docs/raftbrutal-migration.md.",
     level = DeprecationLevel.WARNING,
 )
 internal fun RaftBrutalFieldFrame(
@@ -725,7 +725,7 @@ private fun RaftBrutalInputFieldFrame(
 @Suppress("UNUSED_PARAMETER")
 @Composable
 @Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextField inside a RaftField. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextField inside a RaftField. Add no new uses; see docs/raftbrutal-migration.md.",
     level = DeprecationLevel.WARNING,
 )
 internal fun RaftBrutalInputField(
@@ -896,7 +896,7 @@ internal fun RaftBrutalInputField(
 @Suppress("UNUSED_PARAMETER")
 @Composable
 @Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextField inside a RaftField. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextField inside a RaftField. Add no new uses; see docs/raftbrutal-migration.md.",
     level = DeprecationLevel.WARNING,
 )
 internal fun RaftBrutalInputField(
@@ -1181,7 +1181,7 @@ internal fun raftBrutalInputFocusPolicy(
 @Suppress("UNUSED_PARAMETER")
 @Composable
 @Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextField(readOnly = true) inside a RaftField. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextField(readOnly = true) inside a RaftField. Add no new uses; see docs/raftbrutal-migration.md.",
     level = DeprecationLevel.WARNING,
 )
 internal fun RaftBrutalReadOnlyField(
@@ -1211,7 +1211,7 @@ internal fun RaftBrutalReadOnlyField(
 @Suppress("UNUSED_PARAMETER")
 @Composable
 @Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextField with a search leading icon (RaftMenuSearchField inside menus). New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextField with a search leading icon (RaftMenuSearchField inside menus). Add no new uses; see docs/raftbrutal-migration.md.",
     level = DeprecationLevel.WARNING,
 )
 internal fun RaftBrutalSearchField(
@@ -1243,7 +1243,7 @@ internal fun RaftBrutalSearchField(
 @Suppress("UNUSED_PARAMETER")
 @Composable
 @Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextField with a search leading icon (RaftMenuSearchField inside menus). New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftTextField with a search leading icon (RaftMenuSearchField inside menus). Add no new uses; see docs/raftbrutal-migration.md.",
     level = DeprecationLevel.WARNING,
 )
 internal fun RaftBrutalSearchField(
@@ -1300,7 +1300,7 @@ internal val RaftBrutalSearchDefaultTextStyle: TextStyle
 @Suppress("UNUSED_PARAMETER")
 @Composable
 @Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftButton. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftButton. Add no new uses; see docs/raftbrutal-migration.md.",
     level = DeprecationLevel.WARNING,
 )
 internal fun RaftBrutalActionButton(
@@ -1604,7 +1604,7 @@ private fun RaftPickerChip(
 @Suppress("UNUSED_PARAMETER")
 @Composable
 @Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftIconButton. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftIconButton. Add no new uses; see docs/raftbrutal-migration.md.",
     level = DeprecationLevel.WARNING,
 )
 internal fun RaftBrutalIconButton(

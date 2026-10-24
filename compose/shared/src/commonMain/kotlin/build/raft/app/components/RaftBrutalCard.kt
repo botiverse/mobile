@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 @Deprecated(
-    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftCard. New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+    "Legacy RaftBrutal layer: use build.raft.designsystem.components.RaftCard. Add no new uses; see docs/raftbrutal-migration.md.",
     level = DeprecationLevel.WARNING,
 )
 internal fun RaftBrutalCard(

@@ -58,10 +58,7 @@ built from responses use the Developer environment `webUrl`
 
 ## 5. Validate
 
-```bash
-scripts/check_slock_source_path_contract.sh
-```
-then hosted CI (`raft-ci-validation`). `commonMain` must also pass the iOS
+Hosted CI (`raft-ci-validation`). `commonMain` must also pass the iOS
 compile, which ordinary PRs skip: JVM-only APIs (`Map.putIfAbsent`,
 `Map.merge`) break Kotlin/Native. Run `test.yml` with `scope=full` when in
 doubt and say in the PR whether iOS ran.

@@ -21,7 +21,7 @@ import kotlin.math.roundToInt
 // literals have no Web token.
 internal object RaftColor {
     @Deprecated(
-        "Legacy brutal accent: use RaftColor.Brand (sticker solid), RaftColor.Frame (the yellow frame) or RaftColor.BrandSoft (wash). New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+        "Legacy brutal accent: use RaftColor.Brand (sticker solid), RaftColor.Frame (the yellow frame) or RaftColor.BrandSoft (wash). Add no new uses; see docs/raftbrutal-migration.md.",
         level = DeprecationLevel.WARNING,
     )
     val BrandYellow = RaftUiPalette.paletteYellow
@@ -29,12 +29,12 @@ internal object RaftColor {
     // == brand yellow), used for the self-mention chip highlight so callsites read intent, not hue.
     val SoftSignal = RaftUiPalette.paletteYellow
     @Deprecated(
-        "Legacy brutal accent: use RaftColor.Attention (sticker solid) or RaftColor.AttentionSoft (wash). New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+        "Legacy brutal accent: use RaftColor.Attention (sticker solid) or RaftColor.AttentionSoft (wash). Add no new uses; see docs/raftbrutal-migration.md.",
         level = DeprecationLevel.WARNING,
     )
     val AccentPink = RaftUiPalette.palettePink
     @Deprecated(
-        "Legacy brutal accent: use RaftColor.Info (sticker solid) or RaftColor.InfoSoft (wash). New uses fail scripts/check_raftbrutal_usage.sh; see docs/raftbrutal-migration.md.",
+        "Legacy brutal accent: use RaftColor.Info (sticker solid) or RaftColor.InfoSoft (wash). Add no new uses; see docs/raftbrutal-migration.md.",
         level = DeprecationLevel.WARNING,
     )
     val AccentCyan = RaftUiPalette.paletteCyan

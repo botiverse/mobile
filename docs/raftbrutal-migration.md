@@ -4,17 +4,9 @@ The old "Brutal" layer (`RaftBrutal*` composables in `compose/shared/.../app/com
 `RaftBrutalDropdownMenu.kt`) is an adapter over `compose/designsystem` that page code still
 calls, and the brutal accent tokens `RaftColor.BrandYellow`, `RaftColor.AccentPink` and
 `RaftColor.AccentCyan` still colour page chrome. Both are now deprecated
-(`@Deprecated(level = WARNING)`), and `scripts/check_raftbrutal_usage.sh` (CI, `Test` workflow)
-fails when any file has more uses than `scripts/raftbrutal_usage_baseline.tsv` records. A file
-that is not in the baseline may have none.
+(`@Deprecated(level = WARNING)`): add no new uses, and lower a file's count when you touch it.
 
-When you migrate a file, lower its count and re-record the baseline:
-
-```bash
-scripts/check_raftbrutal_usage.sh --update-baseline
-```
-
-Never raise a count by hand. Counts below are from `origin/main` at `098d263ac` (2026-10-23).
+Counts below are from `origin/main` at `098d263ac` (2026-10-23).
 A "use" is one `RaftBrutal<Name>` identifier, or one `RaftColor.BrandYellow/AccentPink/AccentCyan`,
 outside imports and comments.
 
@@ -51,7 +43,7 @@ All targets are in `build.raft.designsystem.components` unless noted.
 ## Page batches
 
 Largest win first. One batch is one PR: migrate, add or re-record the Robolectric fixture for
-the page (`compose/shared/src/androidUnitTest`), lower the baseline. "Brutal" is `RaftBrutal*`
+the page (`compose/shared/src/androidUnitTest`). "Brutal" is `RaftBrutal*`
 uses, "Tokens" is legacy accent uses. Paths are under
 `compose/shared/src/commonMain/kotlin/build/raft/app/`.
 
@@ -161,6 +153,4 @@ fixtures and tests: `components/RaftBrutalComponents.kt`, `RaftBrutalDropdownMen
 `components/RaftUiPrimitives.kt` (Tone, Badge), `components/RaftUiFormPrimitives.kt` (Textarea),
 `components/RaftUiLibraryPrimitives.kt`, the visual fixtures (`UiPrimitiveVisualFixtures.kt`,
 `RaftModalPointerBarrierVisualPage.kt`, ...) and the `RaftBrutal*Test.kt` / `RaftDesignTokensTest.kt`
-cases. Delete them together and drop their rows from the baseline.
-
-The full per-file list is `scripts/raftbrutal_usage_baseline.tsv`.
+cases. Delete them together.

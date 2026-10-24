@@ -1,11 +1,10 @@
-import build.raft.ci.registerNoKuiklyGuard
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 /*
  * :core — the UI-free foundation shared by Kuikly pages (:shared) and future Compose Multiplatform
  * pages: models, network base, realtime protocol pieces, kotlinx JSON helpers, HostCapabilities and
  * the store dispatcher. It must never depend on Tencent Kuikly (`com.tencent.kuikly.*` /
- * `com.tencent.kuikly-open`); verifyCoreHasNoKuikly enforces that on every build.
+ * `com.tencent.kuikly-open`); scripts/ci/test_kuikly_raft_consumer_contract.py enforces that in CI.
  *
  * KuiklyBase libraries that do not depend on the Kuikly UI runtime (datetime,
  * resource-core) are allowed.
@@ -70,6 +69,3 @@ kotlin {
         }
     }
 }
-
-// Fails the build if :core sources or its (transitive) Android/iOS dependency graph reference Kuikly.
-registerNoKuiklyGuard("verifyCoreHasNoKuikly")

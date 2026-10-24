@@ -98,18 +98,6 @@ test -d "$SLOCK_SOURCE_REPO/packages/shared"
   that existed when the snapshot was written; it is historical provenance,
   not a current checkout instruction. Current instructions belong in this
   section and must use the external checkout contract above.
-- Before sending a docs/code change to review, run the explicit source-path
-  checker. New files are governed by default; only the currently audited
-  historical snapshots are allowlisted, so a date in a filename is not an
-  exemption:
-
-  ```bash
-  scripts/check_slock_source_path_contract.sh
-  ```
-
-  The command must exit successfully. To preserve an additional dated
-  snapshot, add it to the script's explicit historical list in the same
-  change; do not broaden the checker with a filename pattern.
 - Do not re-introduce bundled web JS artifacts. There used to be an
   `artifacts/web-current/` directory with a minified bundle; it has been
   removed in favor of reading the external source checkout.

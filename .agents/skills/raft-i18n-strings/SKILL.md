@@ -46,7 +46,6 @@ Outside composition use the `StringDesc` helpers already used nearby.
 
 ```bash
 python3 scripts/ci/check_string_edge_spaces.py
-python3 scripts/ci/check_source_constraints.py
 python3 scripts/i18n_code_literal_scan.py      # review scanner for stray English literals
 ```
 `KmmResourceI18nTest` (commonTest) runs in hosted CI; add an assertion there
