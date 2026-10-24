@@ -3582,7 +3582,7 @@ internal fun SharedActivityState.withRetainedRowsDropped(matching: (InboxItem) -
 
 /**
  * A canonical page in a filter that drops read rows no longer lists the retained rows once they
- * are read; each is put back, read, where it stood (before the first row that followed it and is
+ * are read; each is put back (read, unless the user marked it unread again) where it stood (before the first row that followed it and is
  * still on the page). Background loads and reconciles never drop a row read this visit.
  */
 private fun List<InboxItem>.withRetainedReadRows(current: SharedActivityState): List<InboxItem> {
@@ -3598,8 +3598,10 @@ private fun List<InboxItem>.withRetainedReadRows(current: SharedActivityState): 
         if (item.key in pageKeys) {
             anchor = item.key
         } else if (item.key in keys) {
+            // A row the user marked unread again (the swipe's Unread, the menu) keeps that: a page
+            // fetched before the server listed it again must not turn it back to read (#793).
             anchored.getOrPut(anchor) { mutableListOf() }
-                .add(0, item.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false))
+                .add(0, if (item.unreadCount > 0) item else item.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false))
         }
     }
     return buildList(size + anchored.values.sumOf { it.size }) {

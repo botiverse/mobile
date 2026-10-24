@@ -88,7 +88,7 @@ import com.tencent.tmm.kmmresource.compose.stringResource
  *
  * This file is presentation only. Opening, Done, read/unread and the press-and-hold menu stay the
  * Activity list's own intents (SharedActivityList); this layout never changes how Done is applied. The
- * touch rules (raft-design #785: no Done button on the row; a left swipe uncovers Done / Unfollow / Mute buttons, and the press-and-hold menu has the same actions, with undo)
+ * touch rules (raft-design #785: no Done button on the row; a left swipe uncovers Done / Unfollow / Mute buttons, a right swipe Read / Unread (#793), and the press-and-hold menu has the same actions, with undo)
  * are in ActivityConversationSwipe.kt.
  */
 
@@ -578,13 +578,18 @@ internal fun ActivityConversationListRow(
     /** The swipe's Unfollow / Mute button ([activitySwipeEndAction]); null action or callback: none. */
     swipeEndAction: ActivitySwipeEndAction? = null,
     onSwipeEnd: (() -> Unit)? = null,
-    /** Whether the list has this row's swipe buttons open ([ActivitySwipeOpenRow]). */
-    swipeOpen: Boolean = false,
-    /** The row claimed a swipe or settled open (true), or closed (false). */
-    onSwipeOpenChange: (Boolean) -> Unit = {},
+    /**
+     * The swipe toward the end's Read / Unread button (raft-design #793, [activitySwipeStartButton]): the
+     * menu's Mark as read / unread. Null: no start button.
+     */
+    onSwipeToggleRead: (() -> Unit)? = null,
+    /** The side the list has this row's swipe open on ([ActivitySwipeOpenRow]); null: closed. */
+    swipeOpenSide: ActivitySwipeSide? = null,
+    /** The row claimed a swipe or settled open on a side, or closed (null). */
+    onSwipeOpenChange: (ActivitySwipeSide?) -> Unit = {},
     /** Where the open row is, so a tap outside it closes it ([ActivitySwipeOpenRowGeometry]). */
     onSwipeOpenRowPlaced: ((LayoutCoordinates) -> Unit)? = null,
-    /** Screenshots only: the row slid by this share of its width on top of [swipeOpen]. */
+    /** Screenshots only: the row slid by this share of its width on top of [swipeOpenSide] (negative: toward the end). */
     swipePreviewRevealFraction: Float = 0f,
 ) {
     val colors = RaftTheme.colors
@@ -622,10 +627,12 @@ internal fun ActivityConversationListRow(
     ActivitySwipeActionsBox(
         gestureKey = openGestureKey,
         buttons = swipeButtons,
-        open = swipeOpen,
+        openSide = swipeOpenSide,
         onOpenChange = onSwipeOpenChange,
         onDone = { onSwipeDone?.invoke() },
         onAction = { onSwipeEnd?.invoke() },
+        startButton = item.activitySwipeStartButton().takeIf { onSwipeToggleRead != null },
+        onToggleRead = { onSwipeToggleRead?.invoke() },
         modifier = modifier.fillMaxWidth(),
         onOpenRowPlaced = onSwipeOpenRowPlaced,
         previewRevealFraction = swipePreviewRevealFraction,

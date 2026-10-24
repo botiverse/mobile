@@ -103,6 +103,22 @@ class ActivityConversationRowsScreenshotTest {
             ActivityRowsSwipeVisualContent(RaftAppAppearance.Light, ActivityRowsSwipePose.FullDone)
         }
 
+    /**
+     * raft-design #793, rows left open on their start button by a right swipe: an unread thread (Read,
+     * `message-square-check`) and a read channel (Unread, `message-square-dot`), between rows at rest.
+     */
+    @Test
+    fun activityRowsSwipeReadOpenLight() =
+        capture("screens.activity.rows.swipe-read-open", RaftAppAppearance.Light) {
+            ActivityRowsSwipeVisualContent(RaftAppAppearance.Light, ActivityRowsSwipePose.StartOpen)
+        }
+
+    @Test
+    fun activityRowsSwipeReadOpenDark() =
+        capture("screens.activity.rows.swipe-read-open.dark", RaftAppAppearance.Dark) {
+            ActivityRowsSwipeVisualContent(RaftAppAppearance.Dark, ActivityRowsSwipePose.StartOpen)
+        }
+
     private fun capture(
         name: String,
         appearance: RaftAppAppearance,
@@ -340,7 +356,7 @@ private fun ActivityRowsVisualContent(appearance: RaftAppAppearance) {
     }
 }
 
-private enum class ActivityRowsSwipePose { Open, Sliding, FullDone }
+private enum class ActivityRowsSwipePose { Open, Sliding, FullDone, StartOpen }
 
 /** Swiped rows (open, sliding in, or pulled to full Done) between rows at rest. */
 @Composable
@@ -424,6 +440,9 @@ private fun ActivityRowsSwipeVisualContent(appearance: RaftAppAppearance, pose: 
     // (row, open on its buttons, extra slide as a share of the row's width)
     val rows =
         when (pose) {
+            // Open on Read (unread thread) and Unread (the read channel), the rows at rest around them.
+            ActivityRowsSwipePose.StartOpen ->
+                listOf(resting to (false to 0f), thread to (true to 0f), resting.copy(key = "channel:read") to (true to 0f), resting.copy(key = "channel:launch-2") to (false to 0f))
             ActivityRowsSwipePose.Open ->
                 listOf(resting to (false to 0f), thread to (true to 0f), channel to (true to 0f), dm to (true to 0f), resting.copy(key = "channel:launch-2") to (false to 0f))
             ActivityRowsSwipePose.Sliding ->
@@ -453,7 +472,13 @@ private fun ActivityRowsSwipeVisualContent(appearance: RaftAppAppearance, pose: 
                     onSwipeDone = {},
                     swipeEndAction = item.activitySwipeEndAction(mutes),
                     onSwipeEnd = {},
-                    swipeOpen = open,
+                    onSwipeToggleRead = {},
+                    swipeOpenSide =
+                        when {
+                            !open -> null
+                            pose == ActivityRowsSwipePose.StartOpen -> ActivitySwipeSide.Start
+                            else -> ActivitySwipeSide.End
+                        },
                     swipePreviewRevealFraction = slide,
                 )
             }

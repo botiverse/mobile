@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.InboxItem
+import build.raft.app.data.RaftActivityMarkAction
+import build.raft.app.data.isUnfollowedActivityThread
 import build.raft.app.data.SharedActivityIntent
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.session
@@ -526,6 +528,143 @@ class ActivitySwipeButtonsSpecTest {
         // The open row was Done (hidden) or filtered out: nothing stays open, so Back is not held.
         assertNull(open.retain(listOf("b", "c")).key)
         assertSame(open, open.retain(listOf("a", "b")))
+    }
+
+    // raft-design #793: the swipe toward the end, Read / Unread at the row's start.
+
+    private fun row(key: String) =
+        InboxItem(key = key, kind = InboxItemKind.Channel, channelId = ChannelId("ch-$key"), channelName = "general")
+
+    @Test
+    fun startButtonIsReadOnAnUnreadRowUnreadOnAReadOneAndNoneWithoutTheMenuToggle() {
+        val unread = row("u").copy(unreadCount = 3)
+        val read = row("r")
+        assertEquals(ActivitySwipeButton.Read, unread.activitySwipeStartButton())
+        assertEquals(ActivitySwipeButton.Unread, read.activitySwipeStartButton())
+        // An unfollowed thread's menu has no read toggle, so it has no start button either.
+        val unfollowed = row("t").copy(kind = InboxItemKind.Thread, unreadCount = 2, isFollowing = false)
+        assertTrue(unfollowed.isUnfollowedActivityThread)
+        assertNull(unfollowed.activitySwipeStartButton())
+        listOf(unread, read, unfollowed).forEach { item ->
+            assertEquals("toggle-read" in activityContextMenuActionIds(item), item.activitySwipeStartButton() != null, item.key)
+        }
+        // The start buttons apply no end action (they are not Done, Unfollow or Mute).
+        assertNull(ActivitySwipeButton.Read.endAction)
+        assertNull(ActivitySwipeButton.Unread.endAction)
+    }
+
+    @Test
+    fun theToggleWritesWhatTheMenuDoesAndSendsTheSameAnalytics() {
+        val unread = row("u").copy(unreadCount = 3)
+        val read = row("r")
+        assertEquals(SharedActivityIntent.MarkRead(unread), activityReadToggleIntent(unread))
+        assertEquals(SharedActivityIntent.MarkUnread(read), activityReadToggleIntent(read))
+        assertEquals(RaftActivityMarkAction.Read, activityReadToggleMarkAction(unread))
+        assertEquals(RaftActivityMarkAction.Unread, activityReadToggleMarkAction(read))
+        assertEquals("read", activityReadToggleMarkAction(unread).wire)
+        assertEquals("unread", activityReadToggleMarkAction(read).wire)
+        // Swiping again switches it back: a marked-read row offers Unread, a marked-unread one Read.
+        val markedRead = unread.copy(unreadCount = 0)
+        assertEquals(ActivitySwipeButton.Unread, markedRead.activitySwipeStartButton())
+        assertEquals(SharedActivityIntent.MarkUnread(markedRead), activityReadToggleIntent(markedRead))
+        val markedUnread = read.copy(unreadCount = 1)
+        assertEquals(ActivitySwipeButton.Read, markedUnread.activitySwipeStartButton())
+        assertEquals(SharedActivityIntent.MarkRead(markedUnread), activityReadToggleIntent(markedUnread))
+    }
+
+    @Test
+    fun startReleaseOpensPastHalfTheButtonAndTogglesPastSixtyPercent() {
+        data class Case(val reveal: Float, val expected: ActivitySwipeStartRelease)
+        listOf(
+            Case(0f, ActivitySwipeStartRelease.Close),
+            Case(20f, ActivitySwipeStartRelease.Close),
+            Case(36f, ActivitySwipeStartRelease.Close), // exactly half the 72 button is not past it
+            Case(37f, ActivitySwipeStartRelease.Open),
+            Case(72f, ActivitySwipeStartRelease.Open),
+            Case(239f, ActivitySwipeStartRelease.Open),
+            Case(240f, ActivitySwipeStartRelease.Toggle),
+            Case(400f, ActivitySwipeStartRelease.Toggle),
+        ).forEach { case ->
+            assertEquals(case.expected, activitySwipeStartReleaseTarget(case.reveal, button, width), "$case")
+        }
+        assertEquals(ActivitySwipeStartRelease.Close, activitySwipeStartReleaseTarget(300f, button, 0f))
+        assertEquals(ActivitySwipeStartRelease.Close, activitySwipeStartReleaseTarget(300f, 0f, width))
+        // A flick opens or closes by direction, and never toggles; past 60% toggles at any speed.
+        val flick = 1000f
+        fun release(reveal: Float, velocity: Float) =
+            activitySwipeStartReleaseTarget(reveal, button, width, revealVelocityPxPerSec = velocity, flickVelocityPxPerSec = flick)
+        assertEquals(ActivitySwipeStartRelease.Open, release(10f, flick))
+        assertEquals(ActivitySwipeStartRelease.Close, release(60f, -flick))
+        assertEquals(ActivitySwipeStartRelease.Open, release(200f, 10 * flick))
+        assertEquals(ActivitySwipeStartRelease.Toggle, release(240f, -flick))
+    }
+
+    @Test
+    fun theTickArmsOnEitherSideOnlyWhereThatSideCanApply() {
+        // Past 60% toward the start with Done, or toward the end with a start button.
+        assertTrue(activitySwipeArmed(240f, width, doneEnabled = true, hasStart = false))
+        assertTrue(activitySwipeArmed(-240f, width, doneEnabled = false, hasStart = true))
+        assertFalse(activitySwipeArmed(-239f, width, doneEnabled = true, hasStart = true))
+        assertFalse(activitySwipeArmed(-300f, width, doneEnabled = true, hasStart = false))
+        assertFalse(activitySwipeArmed(300f, width, doneEnabled = false, hasStart = true))
+        assertFalse(activitySwipeArmed(0f, width, doneEnabled = true, hasStart = true))
+        // The same gate ticks once per outward crossing on the start side too.
+        val gate = ActivitySwipeFullDoneTickGate()
+        val ticks = listOf(-50f, -250f, -300f, -100f, -260f).map { gate.update(activitySwipeArmed(it, width, false, true)) }
+        assertEquals(listOf(false, true, false, false, true), ticks)
+    }
+
+    @Test
+    fun revealGoesNegativeTowardTheEndOnlyWithAStartButtonAndMirrorsInRtl() {
+        // LTR: rightward (+dx) uncovers the start button as a negative reveal.
+        assertEquals(-30f, activitySwipeRevealPx(0f, 30f, 300f, isLtr = true, hasStart = true))
+        assertEquals(-30f, activitySwipeRevealPx(0f, -30f, 300f, isLtr = false, hasStart = true))
+        // Without one it stops at 0, as before.
+        assertEquals(0f, activitySwipeRevealPx(0f, 30f, 300f, isLtr = true))
+        // A row with only a start button never slides toward the start.
+        assertEquals(0f, activitySwipeRevealPx(0f, -30f, 300f, isLtr = true, hasStart = true, hasEnd = false))
+        assertEquals(-42f, activitySwipeRevealPx(-72f, -30f, 300f, isLtr = true, hasStart = true, hasEnd = false))
+        // Within the row: never past its width either way.
+        assertEquals(-300f, activitySwipeRevealPx(-280f, 50f, 300f, isLtr = true, hasStart = true))
+        // One drag can pass through closed from one side to the other.
+        assertEquals(-20f, activitySwipeRevealPx(30f, 50f, 300f, isLtr = true, hasStart = true))
+    }
+
+    @Test
+    fun aRightSwipeIsClaimedWithAStartButtonAndMirrorsInRtl() {
+        val slop = 8f
+        // Closed row with a start button: toward the end claims (LTR right, RTL left).
+        assertEquals(ActivitySwipeDragDecision.Claim, activitySwipeDragDecision(30f, 2f, slop, isLtr = true, canOpen = true, canClose = true))
+        assertEquals(ActivitySwipeDragDecision.Claim, activitySwipeDragDecision(-30f, 2f, slop, isLtr = false, canOpen = true, canClose = true))
+        // Without one, a closed row still leaves it to the host (back swipe, pager).
+        assertEquals(ActivitySwipeDragDecision.Release, activitySwipeDragDecision(30f, 2f, slop, isLtr = true, canOpen = true, canClose = false))
+        // From the leading edge zone (the system back gesture) it is never claimed.
+        assertEquals(
+            ActivitySwipeDragDecision.Release,
+            activitySwipeDragDecision(30f, 2f, slop, isLtr = true, canOpen = true, canClose = true, startsInEdgeZone = true),
+        )
+        // The drag's side: from closed by direction; covering an open side first.
+        assertEquals(ActivitySwipeSide.Start, activitySwipeDragSide(0f, towardStart = false))
+        assertEquals(ActivitySwipeSide.End, activitySwipeDragSide(0f, towardStart = true))
+        assertEquals(ActivitySwipeSide.Start, activitySwipeDragSide(-72f, towardStart = true))
+        assertEquals(ActivitySwipeSide.End, activitySwipeDragSide(144f, towardStart = false))
+    }
+
+    @Test
+    fun oneRowIsOpenAtATimeOnEitherSide() {
+        val start = ActivitySwipeOpenRow().change("a", ActivitySwipeSide.Start)
+        assertEquals(ActivitySwipeSide.Start, start.openSide("a"))
+        assertNull(start.openSide("b"))
+        // Another row opening on its end buttons closes it.
+        val end = start.change("b", ActivitySwipeSide.End)
+        assertNull(end.openSide("a"))
+        assertEquals(ActivitySwipeSide.End, end.openSide("b"))
+        // The same row moving to its other side.
+        assertEquals(ActivitySwipeSide.End, start.change("a", ActivitySwipeSide.End).openSide("a"))
+        assertSame(start, start.change("a", ActivitySwipeSide.Start))
+        // Settling closed.
+        assertNull(start.change("a", null).key)
+        assertSame(end, end.change("a", null))
     }
 
     @Test
