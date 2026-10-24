@@ -8,7 +8,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** Ik2: the mention read mark exists only once the mention is read; unread has no placeholder at all. */
+/** raft-design #794: the mention read mark exists only once the mention is read; unread has no placeholder at all. */
 class RaftMarkdownMentionReadBadgeTest {
     private fun mention(read: Boolean): AnnotatedString =
         buildAnnotatedString {
@@ -31,14 +31,14 @@ class RaftMarkdownMentionReadBadgeTest {
         assertEquals(setOf("raft-mention-read:read"), content.keys)
         val placeholder = content.getValue("raft-mention-read:read").placeholder
         assertEquals(10f, placeholder.width.value)
-        // Baseline up to the mark's top: cap height (0.7em of 14sp = 9.8) + 3.
-        assertEquals(12.8f, placeholder.height.value, 0.001f)
+        // Baseline up to the mark's top: the name's cap height (0.7em of 14sp = 9.8).
+        assertEquals(9.8f, placeholder.height.value, 0.001f)
         assertEquals(PlaceholderVerticalAlign.AboveBaseline, placeholder.placeholderVerticalAlign)
     }
 
     @Test
     fun markRiseScalesWithFontSize() {
-        assertEquals(17.0f, raftMarkdownMentionReadMarkRiseSp(20.sp), 0.001f)
+        assertEquals(14.0f, raftMarkdownMentionReadMarkRiseSp(20.sp), 0.001f)
     }
 
     @Test

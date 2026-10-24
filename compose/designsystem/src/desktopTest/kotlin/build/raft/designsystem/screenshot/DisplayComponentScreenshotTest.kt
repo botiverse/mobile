@@ -66,6 +66,7 @@ import build.raft.designsystem.components.RaftDescriptionList
 import build.raft.designsystem.components.RaftDescriptionListDirection
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
+import build.raft.designsystem.components.RaftMessageReferenceReadMark
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftIconTile
@@ -605,16 +606,12 @@ class DisplayComponentScreenshotTest {
         }
 
     @Test
-    fun statusDotWithCheck() =
-        capture("status_dot_check") {
+    fun messageReferenceReadMark() =
+        capture("message_reference_read_mark") {
+            // raft-design #794: a bare 10dp check, stroke 2.5, lime-700 in light, the online lime in dark.
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                // The Ik2 read mark: the online sm pixel with a 6.5dp ink check, stroke 3 on the 24 grid.
-                RaftStatusSize.entries.forEach { size ->
-                    Box(contentAlignment = Alignment.Center) {
-                        RaftStatusDot(presence = RaftPresence.Online, size = size)
-                        RaftGlyphIcon(RaftGlyph.Check, size = size.edge * 0.8f, color = RaftUiPalette.stickerInk, strokeWidth = 3f)
-                    }
-                }
+                RaftMessageReferenceReadMark()
+                RaftText("@alpha", style = RaftTheme.typography.body)
             }
         }
 

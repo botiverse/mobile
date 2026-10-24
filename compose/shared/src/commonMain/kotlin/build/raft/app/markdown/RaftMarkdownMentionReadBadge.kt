@@ -11,6 +11,9 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
@@ -18,12 +21,8 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.resources.MR
-import build.raft.designsystem.components.RaftGlyph
-import build.raft.designsystem.components.RaftGlyphIcon
-import build.raft.designsystem.components.RaftPresence
-import build.raft.designsystem.components.RaftStatusDot
-import build.raft.designsystem.components.RaftStatusSize
-import build.raft.designsystem.tokens.RaftUiPalette
+import build.raft.designsystem.components.RaftMessageReferenceReadMark
+import build.raft.designsystem.components.RaftMessageReferenceReadMarkDefaults
 import com.tencent.tmm.kmmresource.compose.stringResource
 
 /**
@@ -53,25 +52,20 @@ internal fun RaftMarkdownMentionReadStateScope(
 private const val MentionReadInlineId = "raft-mention-read:read"
 
 /**
- * Ik2: the read mark sits 2dp right of the mention's last stroke, top-aligned with the mention's
- * line, and 10dp are reserved after the mention (the mark's 8dp plus its 2dp gap) before the
- * normal space. Unread draws nothing at all, so no placeholder is appended for it.
+ * raft-design #794: the read mark is a bare 10dp check. Its box's left edge sits 2dp right of the
+ * mention's last glyph and its top aligns with the top of the name (cap height); 10dp are reserved
+ * after the mention, so the box's last 2dp fall into the following space. Unread draws nothing at
+ * all, so no placeholder is appended for it. The line height is unchanged.
  */
-private val MentionReadBadgeReserve = 10.dp
-private val MentionReadBadgeGap = 2.dp
+private val MentionReadBadgeReserve = RaftMessageReferenceReadMarkDefaults.Reserve
+private val MentionReadBadgeGap = RaftMessageReferenceReadMarkDefaults.GapAfterName
 
-/**
- * The square's top is 3dp above the name's cap-height top (so its bottom is 5dp below the cap top),
- * anchored to the glyphs, not the line box. Space Grotesk's OS/2 sCapHeight is 700 / 1000 em.
- */
-private val MentionReadBadgeAboveCap = 3.dp
+/** Space Grotesk's OS/2 sCapHeight is 700 / 1000 em: the name's top above the baseline. */
 private const val SansCapHeightEm = 0.7f
 
-/** Distance from the baseline up to the mark's top for text of [fontSize] (sp ~ dp at the default scale). */
+/** Distance from the baseline up to the mark's top (the name's top) for text of [fontSize] (sp ~ dp at the default scale). */
 internal fun raftMarkdownMentionReadMarkRiseSp(fontSize: TextUnit): Float =
-    fontSize.value * SansCapHeightEm + MentionReadBadgeAboveCap.value
-private val MentionReadCheckSize = 6.5.dp
-private const val MentionReadCheckStroke = 3f
+    fontSize.value * SansCapHeightEm
 
 /** Appends the read mark placeholder right after a mention (kept on its line by a word joiner); unread appends nothing. */
 internal fun AnnotatedString.Builder.appendRaftMarkdownMentionReadBadge(read: Boolean) {
@@ -97,22 +91,17 @@ internal fun raftMarkdownMentionReadInlineContent(fontSize: TextUnit): Map<Strin
     )
 
 /**
- * The read mark: the online status pixel (`sm`, 8dp, 2dp corners, 1.5dp ink edge, online green)
- * with a 6.5dp ink Lucide check (stroke 3 on the 24 grid) centred in it. Labelled "Read".
+ * The read mark: a bare check ([RaftMessageReferenceReadMark]), hidden from screen readers; the
+ * mention carries the text "Read" instead (web: an sr-only span inside the mention).
  */
 @Composable
 internal fun RaftMarkdownMentionReadBadge() {
     val label = stringResource(MR.strings.thread_mention_agent_read)
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopStart) {
-        Box(Modifier.offset(x = MentionReadBadgeGap), contentAlignment = Alignment.Center) {
-            RaftStatusDot(size = RaftStatusSize.Sm, presence = RaftPresence.Online, contentDescription = label)
-            RaftGlyphIcon(
-                glyph = RaftGlyph.Check,
-                size = MentionReadCheckSize,
-                color = RaftUiPalette.stickerInk,
-                strokeWidth = MentionReadCheckStroke,
-            )
-        }
+    Box(
+        Modifier.fillMaxSize().semantics(mergeDescendants = true) { contentDescription = label },
+        contentAlignment = Alignment.TopStart,
+    ) {
+        RaftMessageReferenceReadMark(Modifier.offset(x = MentionReadBadgeGap).clearAndSetSemantics {})
     }
 }
 
