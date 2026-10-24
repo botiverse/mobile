@@ -28,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -123,6 +124,12 @@ import kotlinx.coroutines.launch
  * ([activitySwipeEndUndoCommand]). One toast at a time: a newer action replaces the older toast (a waiting
  * Done is committed first).
  */
+
+/**
+ * Tests only: button words without the app's string resources (the iOS simulator test binary does not
+ * bundle them). Null in the app.
+ */
+internal val LocalActivitySwipeButtonTestLabels = staticCompositionLocalOf<((ActivitySwipeButton) -> String)?> { null }
 
 /** Width of one uncovered button (raft-design #785: 72px, the row's height, icon over word). */
 internal val ActivitySwipeButtonWidth = 72.dp
@@ -876,11 +883,13 @@ private fun ActivitySwipeButtonCell(
     val background = if (solid) RaftUiPalette.success else colors.fillMuted
     // Done keeps ink on its green in both themes (mock v1: dark mode is still solid green with ink).
     val foreground = if (solid) RaftColor.StickerInk else colors.foreground
+    val testLabels = LocalActivitySwipeButtonTestLabels.current
     val label =
-        when (button) {
-            ActivitySwipeButton.Done -> stringResource(MR.strings.activity_swipe_layer_done)
-            ActivitySwipeButton.Unfollow -> stringResource(MR.strings.activity_swipe_layer_unfollow)
-            ActivitySwipeButton.Mute -> stringResource(MR.strings.activity_swipe_layer_mute)
+        when {
+            testLabels != null -> testLabels(button)
+            button == ActivitySwipeButton.Done -> stringResource(MR.strings.activity_swipe_layer_done)
+            button == ActivitySwipeButton.Unfollow -> stringResource(MR.strings.activity_swipe_layer_unfollow)
+            else -> stringResource(MR.strings.activity_swipe_layer_mute)
         }
     Box(
         Modifier
