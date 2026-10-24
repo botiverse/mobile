@@ -55,7 +55,7 @@ class AndroidAttachmentDownloadCoordinatorRuntimeTest {
             observer.progress.map { it.phase }
         )
         assertEquals(listOf(0L, 2L, 4L, 6L, 8L, 8L), observer.progress.map { it.downloadedBytes })
-        assertEquals(listOf(null, 25, 50, 75, 100, 100), observer.progress.map { it.percent })
+        assertEquals(listOf(null, 25, 50, 75, 99, 99), observer.progress.map { it.percent })
         assertEquals(listOf(null, null, 6L, 6L, 6L, null), observer.progress.map { it.bytesPerSecond })
         assertEquals(listOf(1, 4, 1, 1, 0), sinkStats.snapshot())
         runtimeEvidence("slow_complete", target, observer, transport, sinkStats)

@@ -14,7 +14,6 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.downloads.RaftDownloadEntry
 import build.raft.app.downloads.RaftDownloadErrorKind
 import build.raft.app.downloads.RaftDownloadStatus
-import build.raft.app.downloads.rememberThrottledSpeed
 import build.raft.app.format.RaftFormat
 import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftButton
@@ -245,11 +244,10 @@ private fun RaftDownloadCenterRemoveButton(entry: RaftDownloadEntry, onAction: (
 @Composable
 private fun raftDownloadCenterMeta(entry: RaftDownloadEntry, timeLabel: @Composable (Long) -> String): String {
     val parts = mutableListOf<String>()
-    val shownSpeed = rememberThrottledSpeed(entry.bytesPerSecond.takeIf { entry.status == RaftDownloadStatus.Downloading })
     when (entry.status) {
         RaftDownloadStatus.Downloading, RaftDownloadStatus.Paused -> {
             raftDownloadBytesLabel(entry.downloadedBytes, entry.totalBytes)?.let(parts::add)
-            if (entry.status == RaftDownloadStatus.Downloading) RaftFormat.speed(shownSpeed)?.let(parts::add)
+            if (entry.status == RaftDownloadStatus.Downloading) RaftFormat.speed(entry.bytesPerSecond)?.let(parts::add)
         }
         RaftDownloadStatus.Completed -> {
             // The Open button already says "downloaded": keep the line for size and time.

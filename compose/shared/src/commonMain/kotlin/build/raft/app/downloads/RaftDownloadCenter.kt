@@ -14,6 +14,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
+import build.raft.app.transfer.RaftTransferPhase
+import build.raft.app.transfer.RaftTransferProgress
 
 /** Lifecycle of one download-centre entry. */
 @Serializable
@@ -50,9 +53,11 @@ data class RaftDownloadEntry(
     val fileName: String,
     val mimeType: String? = null,
     val status: RaftDownloadStatus,
+    /** Persisted facts of the last sample (a restored row has no live [transfer]). */
     val downloadedBytes: Long = 0L,
     val totalBytes: Long? = null,
-    val bytesPerSecond: Long? = null,
+    /** The running transfer's meter state, as its owner reported it; never persisted. */
+    @Transient val transfer: RaftTransferProgress? = null,
     /** Bytes are being copied into the public Downloads folder after the transfer. */
     val saving: Boolean = false,
     val errorKind: RaftDownloadErrorKind? = null,
@@ -64,13 +69,13 @@ data class RaftDownloadEntry(
     /** The account (environment + user) of [ownerKey]; empty for rows saved before it existed. */
     val accountKey: String = ""
 ) {
-    /** 0..100 when the total is known, else null. */
+    /** The meter's percent (100 only once completed), null while unknown. */
     val percent: Int?
-        get() {
-            if (status == RaftDownloadStatus.Completed) return 100
-            val total = totalBytes?.takeIf { it > 0L } ?: return null
-            return ((downloadedBytes.coerceIn(0L, total) * 100L) / total).toInt()
-        }
+        get() = transfer?.percent ?: if (status == RaftDownloadStatus.Completed) 100 else null
+
+    /** The meter's shown speed (changes at most once a second), null when not running. */
+    val bytesPerSecond: Long?
+        get() = transfer?.bytesPerSecond
 }
 
 /** What a [RaftDownloadTask] is downloading (identity only). */
@@ -84,12 +89,12 @@ data class RaftDownloadDescriptor(
     val accountKey: String = ""
 )
 
-/** One progress sample reported by a running [RaftDownloadTask]. */
+/**
+ * One progress sample reported by a running [RaftDownloadTask]: the transfer owner's meter state,
+ * and whether the bytes are being copied into Downloads ([saving]) after the transfer.
+ */
 data class RaftDownloadProgressUpdate(
-    val downloadedBytes: Long,
-    val totalBytes: Long?,
-    val bytesPerSecond: Long? = null,
-    val paused: Boolean = false,
+    val transfer: RaftTransferProgress,
     val saving: Boolean = false
 )
 
@@ -208,14 +213,14 @@ class RaftDownloadCenter internal constructor(
         val active = running[id] ?: return
         if (current(id)?.status != RaftDownloadStatus.Downloading) return
         active.task.control(RaftDownloadControl.Pause)
-        patch(id) { it.copy(status = RaftDownloadStatus.Paused, bytesPerSecond = null, updatedAtMillis = nowMillis()) }
+        patch(id) { it.copy(status = RaftDownloadStatus.Paused, transfer = it.transfer?.paused(), updatedAtMillis = nowMillis()) }
     }
 
     fun resume(id: String) {
         val active = running[id] ?: return
         if (current(id)?.status != RaftDownloadStatus.Paused) return
         active.task.control(RaftDownloadControl.Resume)
-        patch(id) { it.copy(status = RaftDownloadStatus.Downloading, updatedAtMillis = nowMillis()) }
+        patch(id) { it.copy(status = RaftDownloadStatus.Downloading, transfer = it.transfer?.resumed(), updatedAtMillis = nowMillis()) }
     }
 
     fun cancel(id: String) {
@@ -292,11 +297,12 @@ class RaftDownloadCenter internal constructor(
         if (running[id]?.attempt != attempt) return
         patch(id) { entry ->
             if (!entry.status.isActive) return@patch entry
+            val transfer = progress.transfer
             entry.copy(
-                status = if (progress.paused) RaftDownloadStatus.Paused else entry.status,
-                downloadedBytes = progress.downloadedBytes.coerceAtLeast(0L),
-                totalBytes = progress.totalBytes?.takeIf { it > 0L } ?: entry.totalBytes,
-                bytesPerSecond = progress.bytesPerSecond,
+                status = if (transfer.phase == RaftTransferPhase.Paused) RaftDownloadStatus.Paused else entry.status,
+                downloadedBytes = transfer.bytesDone,
+                totalBytes = transfer.bytesTotal ?: entry.totalBytes,
+                transfer = transfer,
                 saving = progress.saving,
                 updatedAtMillis = nowMillis()
             )
@@ -309,29 +315,32 @@ class RaftDownloadCenter internal constructor(
         running.remove(id)
         patch(id) { entry ->
             when (outcome) {
-                is RaftDownloadOutcome.Completed ->
+                is RaftDownloadOutcome.Completed -> {
+                    // The host committed the file: the only place a download becomes Done (100%).
+                    val done = (entry.transfer ?: RaftTransferProgress.notStarted(entry.totalBytes)).completed(outcome.sizeBytes)
                     entry.copy(
                         status = RaftDownloadStatus.Completed,
-                        totalBytes = outcome.sizeBytes?.takeIf { it > 0L } ?: entry.totalBytes,
-                        downloadedBytes = outcome.sizeBytes?.takeIf { it > 0L } ?: entry.totalBytes ?: entry.downloadedBytes,
+                        totalBytes = done.bytesTotal,
+                        downloadedBytes = done.bytesDone,
                         localUri = outcome.localUri ?: entry.localUri,
-                        bytesPerSecond = null,
+                        transfer = done,
                         saving = false,
                         errorKind = null,
                         errorMessage = null,
                         updatedAtMillis = nowMillis()
                     )
+                }
                 is RaftDownloadOutcome.Cancelled ->
                     entry.copy(
                         status = RaftDownloadStatus.Cancelled,
-                        bytesPerSecond = null,
+                        transfer = entry.transfer?.ended(RaftTransferPhase.Cancelled),
                         saving = false,
                         updatedAtMillis = nowMillis()
                     )
                 is RaftDownloadOutcome.Failed ->
                     entry.copy(
                         status = RaftDownloadStatus.Failed,
-                        bytesPerSecond = null,
+                        transfer = entry.transfer?.ended(RaftTransferPhase.Failed),
                         saving = false,
                         errorKind = RaftDownloadErrorKind.Failed,
                         errorMessage = outcome.message?.takeIf { it.isNotBlank() },
@@ -364,7 +373,6 @@ class RaftDownloadCenter internal constructor(
         if (entry.status.isActive) {
             entry.copy(
                 status = RaftDownloadStatus.Failed,
-                bytesPerSecond = null,
                 saving = false,
                 errorKind = RaftDownloadErrorKind.Interrupted,
                 errorMessage = null

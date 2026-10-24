@@ -91,10 +91,4 @@ internal fun raftDownloadOutcomeForSaveStatus(status: String, message: String?):
     }
 
 internal fun BridgeAttachmentDownloadProgress.toCenterProgress(): RaftDownloadProgressUpdate =
-    RaftDownloadProgressUpdate(
-        downloadedBytes = downloadedBytes,
-        totalBytes = totalBytes,
-        bytesPerSecond = bytesPerSecond,
-        paused = status == "paused",
-        saving = phase.startsWith("export_")
-    )
+    RaftDownloadProgressUpdate(transfer = transfer, saving = phase.startsWith("export_"))

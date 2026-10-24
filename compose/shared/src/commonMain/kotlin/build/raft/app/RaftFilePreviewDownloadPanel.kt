@@ -27,7 +27,8 @@ import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.downloads.RaftDownloadEntry
 import build.raft.app.downloads.RaftDownloadStatus
-import build.raft.app.downloads.rememberThrottledSpeed
+import build.raft.app.transfer.RaftTransferPhase
+import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.format.RaftFormat
 import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBanner
@@ -58,12 +59,15 @@ internal enum class RaftFilePreviewDownloadPhase { Idle, Active, Paused, Saving,
 /** Render model of one download on the file page (from the page's own progress or the centre row). */
 internal data class RaftFilePreviewDownloadView(
     val phase: RaftFilePreviewDownloadPhase,
-    val percent: Int? = null,
-    val downloadedBytes: Long = 0L,
-    val totalBytes: Long? = null,
-    val bytesPerSecond: Long? = null,
+    /** The owner's meter state, rendered as is. */
+    val transfer: RaftTransferProgress = RaftTransferProgress.notStarted(),
     val errorMessage: String? = null
 ) {
+    val percent: Int? get() = transfer.percent
+    val downloadedBytes: Long get() = transfer.bytesDone
+    val totalBytes: Long? get() = transfer.bytesTotal
+    val bytesPerSecond: Long? get() = transfer.bytesPerSecond
+
     val inProgress: Boolean
         get() = phase == RaftFilePreviewDownloadPhase.Active ||
             phase == RaftFilePreviewDownloadPhase.Paused ||
@@ -85,10 +89,7 @@ internal fun raftFilePreviewDownloadView(
         }
     return RaftFilePreviewDownloadView(
         phase = phase,
-        percent = progress?.percent,
-        downloadedBytes = progress?.downloadedBytes ?: 0L,
-        totalBytes = progress?.totalBytes,
-        bytesPerSecond = progress?.bytesPerSecond,
+        transfer = progress?.transfer ?: RaftTransferProgress.notStarted(),
         errorMessage = errorMessage?.takeIf { phase == RaftFilePreviewDownloadPhase.Failed && it.isNotBlank() }
     )
 }
@@ -103,10 +104,7 @@ internal fun RaftDownloadEntry.toFilePreviewDownloadView(): RaftFilePreviewDownl
                 status == RaftDownloadStatus.Failed -> RaftFilePreviewDownloadPhase.Failed
                 else -> RaftFilePreviewDownloadPhase.Idle
             },
-        percent = percent,
-        downloadedBytes = downloadedBytes,
-        totalBytes = totalBytes,
-        bytesPerSecond = bytesPerSecond,
+        transfer = transfer ?: RaftTransferProgress.notStarted(totalBytes),
         errorMessage = errorMessage
     )
 
@@ -121,8 +119,9 @@ internal data class RaftFilePreviewDownloadHoldInput(
 
 /**
  * Keeps the downloading panel up for at least [minVisibleMillis] after it first showed. When the
- * download finishes sooner (the view turns Idle), the last running view stays, filled to 100% when
- * its total was known, until the time is up; then the finished view follows. A failure, a user
+ * download finishes sooner (the view turns Idle), the last running view stays until the time is
+ * up, showing the finished transfer when the owner completed it (100% comes from the transfer,
+ * never from this panel); then the finished view follows. A failure, a user
  * stop ([RaftFilePreviewDownloadHoldInput.hold] = false) or a new download is shown at once.
  */
 internal fun Flow<RaftFilePreviewDownloadHoldInput>.raftHoldingDownloadPanel(
@@ -145,7 +144,8 @@ internal fun Flow<RaftFilePreviewDownloadHoldInput>.raftHoldingDownloadPanel(
             if (since != null && running != null && input.hold && view.phase == RaftFilePreviewDownloadPhase.Idle) {
                 val remaining = minVisibleMillis - since.elapsedNow().inWholeMilliseconds
                 if (remaining > 0L) {
-                    send(running.finishing())
+                    val finished = view.transfer.takeIf { it.phase == RaftTransferPhase.Done }
+                    send(if (finished != null) running.copy(transfer = finished) else running)
                     // A newer frame cancels this wait and is judged against the same start.
                     delay(remaining)
                 }
@@ -154,13 +154,6 @@ internal fun Flow<RaftFilePreviewDownloadHoldInput>.raftHoldingDownloadPanel(
             lastRunning = null
             send(view)
         }
-    }
-
-private fun RaftFilePreviewDownloadView.finishing(): RaftFilePreviewDownloadView =
-    if (totalBytes != null && totalBytes > 0L && phase == RaftFilePreviewDownloadPhase.Active) {
-        copy(percent = 100, downloadedBytes = totalBytes, bytesPerSecond = null)
-    } else {
-        this
     }
 
 /** [view] as the page shows it: [raftHoldingDownloadPanel] over the page's frames. */
@@ -211,7 +204,7 @@ internal fun RaftFilePreviewDownloadProgressBlock(
             RaftFilePreviewDownloadPhase.Saving -> stringResource(MR.strings.download_center_status_saving)
             else -> stringResource(MR.strings.file_preview_download_downloading)
         }
-    val percent = view.percent?.coerceIn(0, 100)
+    val percent = view.percent
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         RaftProgressBar(
             value = percent?.let { it / 100f },
@@ -220,8 +213,7 @@ internal fun RaftFilePreviewDownloadProgressBlock(
             animated = animated && view.phase != RaftFilePreviewDownloadPhase.Paused
         )
         val bytes = raftDownloadBytesLabel(view.downloadedBytes, view.totalBytes)
-        val shownSpeed = rememberThrottledSpeed(view.bytesPerSecond)
-        val speed = RaftFormat.speed(shownSpeed).takeIf { view.phase == RaftFilePreviewDownloadPhase.Active }
+        val speed = RaftFormat.speed(view.bytesPerSecond).takeIf { view.phase == RaftFilePreviewDownloadPhase.Active }
         if (bytes != null || speed != null) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 RaftText(bytes.orEmpty(), style = typography.monoMeta, color = colors.foregroundMuted, maxLines = 1)

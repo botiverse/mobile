@@ -156,6 +156,7 @@ import build.raft.app.network.SharedDownloadedBytes
 import build.raft.app.network.AttachmentDownloadObserver
 import build.raft.app.format.RaftFormat
 import build.raft.app.format.RaftFormatLocale
+import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.network.AttachmentDownloadProgress
 import build.raft.app.network.AttachmentDownloadResult
 import build.raft.app.network.AttachmentDownloadCoordinator
@@ -7916,7 +7917,7 @@ internal class RaftBridgeModule(
                             RaftAppLog.record(
                                     "SlockAttachmentExport",
                                     "phase=${progress.phase} keyHash=${downloadId.hashCode().toString(16)} " +
-                                            "downloadedBytes=${progress.downloadedBytes} totalBytes=${progress.totalBytes}"
+                                            "downloadedBytes=${progress.transfer.bytesDone} totalBytes=${progress.transfer.bytesTotal}"
                             )
                             progressCallback?.invoke(progress.toAndroidBridgePayload())
                                 }
@@ -8457,17 +8458,7 @@ private data class DirectAttachmentDownloadCompletion(
 )
 
 private fun AttachmentDownloadProgress.toAndroidBridgePayload(): Map<String, Any> =
-        buildMap {
-            put("downloadId", downloadId)
-            put("attemptToken", attemptToken)
-            put("sequence", sequence)
-            put("phase", phase)
-            put("status", "progress")
-            put("downloadedBytes", downloadedBytes)
-            totalBytes?.let { put("totalBytes", it) }
-            percent?.let { put("percent", it.coerceIn(0, 100)) }
-            bytesPerSecond?.takeIf { it > 0L }?.let { put("bytesPerSecond", it) }
-        }
+        raftTransferBridgePayload(downloadId, attemptToken, sequence, phase, transfer)
 
 internal fun attachmentDownloadPartFiles(targetFile: File): List<File> {
     val legacyName = "${targetFile.name}.part"
@@ -8582,15 +8573,26 @@ private fun AndroidAttachmentPublicRecord.toSavedAttachmentPayload(): Map<String
 private val attachmentDownloadsExportCoordinator = AttachmentDownloadsExportCoordinator()
 
 private fun AttachmentDownloadsExportProgress.toAndroidBridgePayload(): Map<String, Any> =
+        raftTransferBridgePayload(downloadId, attemptToken, sequence, phase, transfer)
+
+/** The meter state as the bridge `progress` event; values are forwarded, never recomputed. */
+private fun raftTransferBridgePayload(
+        downloadId: String,
+        attemptToken: String,
+        sequence: Long,
+        phase: String,
+        transfer: RaftTransferProgress
+): Map<String, Any> =
         buildMap {
             put("downloadId", downloadId)
             put("attemptToken", attemptToken)
             put("sequence", sequence)
             put("phase", phase)
             put("status", "progress")
-            put("downloadedBytes", downloadedBytes)
-            put("totalBytes", totalBytes)
-            percent?.let { put("percent", it.coerceIn(0, 100)) }
+            put("downloadedBytes", transfer.bytesDone)
+            transfer.bytesTotal?.let { put("totalBytes", it) }
+            transfer.percent?.let { put("percent", it) }
+            transfer.bytesPerSecond?.let { put("bytesPerSecond", it) }
         }
 
 internal fun publicDownloadDisplayName(requestedFileName: String, fallbackExtension: String?): String {

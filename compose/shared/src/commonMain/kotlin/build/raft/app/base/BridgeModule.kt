@@ -1,5 +1,7 @@
 package build.raft.app.base
 
+import build.raft.app.transfer.RaftTransferPhase
+import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.AttachmentOwnerLease
 import build.raft.app.ThreadComposerTemporaryFileRetirement
 import build.raft.app.data.RAFT_SOCKET_BASE_URL
@@ -1502,6 +1504,10 @@ internal class BridgeModule : Module() {
 
 }
 
+/**
+ * One host `progress` event of an attachment transfer: the attempt identity plus the owner's meter
+ * state ([transfer]), decoded as sent. The byte, percent and speed getters read [transfer].
+ */
 internal data class BridgeAttachmentDownloadProgress(
     val downloadId: String = "",
     val attemptToken: String = "",
@@ -1509,39 +1515,46 @@ internal data class BridgeAttachmentDownloadProgress(
     val recordVersion: Long? = null,
     val phase: String = "receiving",
     val status: String = "progress",
-    val percent: Int?,
-    val downloadedBytes: Long,
-    val totalBytes: Long?,
-    val bytesPerSecond: Long? = null
-)
+    val transfer: RaftTransferProgress
+) {
+    val percent: Int? get() = transfer.percent
+    val downloadedBytes: Long get() = transfer.bytesDone
+    val totalBytes: Long? get() = transfer.bytesTotal
+    val bytesPerSecond: Long? get() = transfer.bytesPerSecond
+
+    /** The host reported the file committed: the page's own copy of the transfer completes. */
+    fun completed(sizeBytes: Long? = null): BridgeAttachmentDownloadProgress = copy(transfer = transfer.completed(sizeBytes))
+}
+
+/** The transfer phase of a host wire phase word (download coordinator, MediaStore export, iOS). */
+internal fun raftBridgeTransferPhase(phase: String, status: String, downloadedBytes: Long): RaftTransferPhase =
+    when {
+        status == "paused" -> RaftTransferPhase.Paused
+        // "complete": every byte staged, not yet published; "export_publish": MediaStore commit.
+        phase == "complete" || phase == "export_publish" -> RaftTransferPhase.Finishing
+        downloadedBytes > 0L -> RaftTransferPhase.Running
+        else -> RaftTransferPhase.Queued
+    }
 
 internal fun JSONObject.toBridgeAttachmentDownloadProgress(): BridgeAttachmentDownloadProgress {
-    val totalBytes = optString("totalBytes").toLongOrNull()?.takeIf { it > 0L }
     val downloadedBytes = (optString("downloadedBytes").toLongOrNull() ?: 0L).coerceAtLeast(0L)
-    val bytesPerSecond = optString("bytesPerSecond").toLongOrNull()?.takeIf { it > 0L }
-    val explicitPercent = optString("percent").toIntOrNull()?.coerceIn(0, 100)
-    val percent =
-        when {
-            explicitPercent == 100 -> 100
-            downloadedBytes <= 0L -> null
-            explicitPercent != null -> explicitPercent.coerceIn(1, 99)
-            totalBytes != null ->
-                ((downloadedBytes.toDouble() * 100.0) / totalBytes.toDouble())
-                    .toInt()
-                    .coerceIn(1, 99)
-            else -> null
-        }
+    val phase = optString("phase").ifBlank { if (downloadedBytes > 0L) "receiving" else "response_wait" }
+    val status = optString("status").ifBlank { "progress" }
     return BridgeAttachmentDownloadProgress(
         downloadId = optString("downloadId"),
         attemptToken = optString("attemptToken"),
         sequence = optString("sequence").toLongOrNull()?.coerceAtLeast(0L) ?: 0L,
         recordVersion = optString("recordVersion").toLongOrNull(),
-        phase = optString("phase").ifBlank { if (downloadedBytes > 0L) "receiving" else "response_wait" },
-        status = optString("status").ifBlank { "progress" },
-        percent = percent,
-        downloadedBytes = downloadedBytes,
-        totalBytes = totalBytes,
-        bytesPerSecond = bytesPerSecond
+        phase = phase,
+        status = status,
+        transfer =
+            RaftTransferProgress.decoded(
+                bytesDone = downloadedBytes,
+                bytesTotal = optString("totalBytes").toLongOrNull(),
+                phase = raftBridgeTransferPhase(phase, status, downloadedBytes),
+                percent = optString("percent").toIntOrNull(),
+                bytesPerSecond = optString("bytesPerSecond").toLongOrNull()
+            )
     )
 }
 
@@ -1571,14 +1584,9 @@ internal fun reduceAttachmentDownloadProgress(
         }
     }
     if (incoming.sequence > 0L && current.sequence > 0L && incoming.sequence <= current.sequence) return current
-    if (incoming.downloadedBytes < current.downloadedBytes) return current
-    val currentPercent = current.percent
-    val incomingPercent = incoming.percent
-    if (currentPercent != null && incomingPercent != null && incomingPercent < currentPercent) return current
-    return incoming.copy(
-        totalBytes = incoming.totalBytes ?: current.totalBytes,
-        percent = incomingPercent ?: currentPercent?.takeIf { incoming.downloadedBytes > 0L }
-    )
+    val transfer = current.transfer.followedBy(incoming.transfer)
+    if (transfer === current.transfer) return current
+    return incoming.copy(transfer = transfer)
 }
 
 /**

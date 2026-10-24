@@ -31,7 +31,8 @@ class AttachmentDownloadCoordinatorTest {
         assertEquals(1, sink.commitCount)
         assertEquals(0, sink.abortCount)
         assertEquals(listOf("response_wait", "receiving", "receiving", "complete"), observer.progress.map { it.phase })
-        assertEquals(listOf(null, 40, 100, 100), observer.progress.map { it.percent })
+        // Every byte staged is 99%: 100 belongs to the host's completion, after the atomic commit.
+        assertEquals(listOf(null, 40, 99, 99), observer.progress.map { it.percent })
         assertEquals("complete", observer.results.single().status)
     }
 
@@ -244,7 +245,8 @@ class AttachmentDownloadCoordinatorTest {
         }
         assertEquals("complete", zeroObserver.results.single().status)
         assertEquals(1, zeroSinks.created.single().commitCount)
-        assertEquals(100, zeroObserver.progress.last().percent)
+        assertEquals("complete", zeroObserver.progress.last().phase)
+        assertNull(zeroObserver.progress.last().percent, "an empty body has no percent before the host completes it")
     }
 
     @Test
@@ -266,9 +268,9 @@ class AttachmentDownloadCoordinatorTest {
     @Test
     fun byteArithmeticSaturatesAndPercentCannotOverflow() {
         assertEquals(Long.MAX_VALUE, saturatingAdd(Long.MAX_VALUE - 2L, 10L))
-        assertEquals(Long.MAX_VALUE, saturatingMultiply(Long.MAX_VALUE / 2L + 1L, 1_000L))
-        assertEquals(99, attachmentDownloadPercent(Long.MAX_VALUE - 1L, Long.MAX_VALUE))
-        assertEquals(100, attachmentDownloadPercent(Long.MAX_VALUE, Long.MAX_VALUE))
+        val meter = build.raft.app.transfer.RaftTransferMeter(bytesTotal = Long.MAX_VALUE)
+        assertEquals(99, meter.bytes(Long.MAX_VALUE - 1L).percent)
+        assertEquals(99, meter.bytes(Long.MAX_VALUE).percent)
     }
 
     @Test

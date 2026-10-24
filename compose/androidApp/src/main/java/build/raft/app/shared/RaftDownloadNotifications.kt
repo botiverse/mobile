@@ -21,6 +21,7 @@ import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.downloads.RaftDownloadCenter
 import build.raft.app.downloads.RaftDownloadEntry
 import build.raft.app.downloads.RaftDownloadStatus
+import build.raft.app.transfer.RaftTransferProgress
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -123,10 +124,13 @@ internal object RaftDownloadNotifications {
             } else {
                 context.getString(R.string.raft_download_notification_more, active.size)
             }
-        val total = active.sumOf { it.totalBytes ?: 0L }
-        val done = active.sumOf { entry -> entry.totalBytes?.let { entry.downloadedBytes.coerceAtMost(it) } ?: 0L }
-        val determinate = active.isNotEmpty() && active.all { (it.totalBytes ?: 0L) > 0L } && total > 0L
-        val percent = if (determinate) ((done * 100L) / total).toInt() else 0
+        // The rows' own meter percents, weighted by size: the same numbers the centre shows.
+        val combined =
+            RaftTransferProgress.combinedPercent(
+                active.map { entry -> entry.transfer ?: RaftTransferProgress.notStarted(entry.totalBytes) }
+            )
+        val determinate = combined != null
+        val percent = combined ?: 0
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentTitle(title)
