@@ -215,21 +215,20 @@ internal fun MembersAgentRuntimeUsageChip(
         label = label,
         kind = MembersAgentRuntimeChipKind.Runtime,
         statusColor = statusColor,
+        // Web `RuntimeAccountUsageChip`: the attention state is the dot's accessible name only.
+        // It used to be a sibling Text, which the caller's value Box stacked on top of the chip.
+        statusDescription =
+            when {
+                !offered -> null
+                attention -> stringResource(MR.strings.member_runtime_usage_attention)
+                else -> stringResource(MR.strings.settings_computers_runtime_usage_healthy)
+            },
         // Long press copies the runtime name (never the usage status); a tap opens usage.
         modifier = Modifier.raftCopyable(label) {
             access?.log?.invoke("member_runtime_usage_tap offered=$offered load=${load.diagnosticsLabel()}")
             if (offered) dialogOpen = true
         }
     )
-    if (attention) {
-        Text(
-            text = stringResource(MR.strings.member_runtime_usage_attention),
-            style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 13.sp),
-            color = RaftColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
     // Read before the dialog: its content is rehosted in a separate native window where page
     // composition locals are not retained.
     val timeContext = LocalRaftTimeContextProvider.current?.current
