@@ -85,11 +85,12 @@ internal fun SettingsNotificationsContent(
             ScreenLoadState.Loading ->
                 item {
                     SettingsLoadStateCard(
-                        RaftLucideIconName.LoaderCircle,
+                        RaftLucideIconName.Bell,
                         stringResource(MR.strings.common_loading),
                         stringResource(MR.strings.settings_notifications_loading),
                         null,
-                        onRetry
+                        onRetry,
+                        loading = true
                     )
                 }
             is ScreenLoadState.Empty ->

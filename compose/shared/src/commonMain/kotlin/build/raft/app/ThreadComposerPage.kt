@@ -23,7 +23,6 @@ import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
 import build.raft.app.components.RaftBrutalActionButton
-import build.raft.app.components.RaftChipLoadingIndicator
 import build.raft.app.components.RaftAppCheckbox
 import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.raftCardSurface
@@ -4797,7 +4796,7 @@ private fun ComposerIconButton(
     disabledBackgroundColor: Color = RaftColor.EmptyStateGray,
     disabledAlpha: Float = 1f,
     disabledIconColor: String = "#4D000000",
-    iconSpinning: Boolean = false,
+    loading: Boolean = false,
     onLongClick: (() -> Unit)? = null,
     longClickLabel: String? = null,
     onClick: () -> Unit
@@ -4816,7 +4815,7 @@ private fun ComposerIconButton(
         disabledIconColor = disabledIconColor,
         size = ThreadComposerIconButtonSize,
         iconSize = ThreadComposerIconSize,
-        iconSpinning = iconSpinning,
+        loading = loading,
         onLongClick = onLongClick,
         longClickLabel = longClickLabel,
     )
@@ -4828,18 +4827,19 @@ private fun ComposerSendButton(
     sending: Boolean,
     onClick: () -> Unit
 ) {
-    val icon = if (sending) RaftLucideIconName.RefreshCw else RaftLucideIconName.Send
+    val icon = RaftLucideIconName.Send
     val contentDescription = stringResource(MR.strings.common_send)
     if (sending) {
         ComposerIconButton(
             icon = icon,
-            enabled = enabled,
+            // Busy keeps the pink under the spinner and ignores taps (raft-ui Button > States).
+            enabled = true,
             contentDescription = contentDescription,
             backgroundColor = RaftColor.AccentPink,
             disabledBackgroundColor = RaftColor.AccentPink,
             disabledAlpha = 1f,
             disabledIconColor = "#FF000000",
-            iconSpinning = true,
+            loading = true,
             onClick = onClick
         )
     } else {
@@ -4937,22 +4937,13 @@ private fun ComposerTextChip(
     RaftBrutalActionButton(
         label = text,
         onClick = onClick,
-        enabled = enabled && !loading,
+        enabled = enabled,
+        loading = loading,
         backgroundColor = if (variant == ComposerTextChipVariant.Pink) RaftColor.AccentPink else RaftColor.SurfaceWhite,
         minWidth = 0.dp,
         minHeight = 26.dp,
         leadingIcon = leadingIcon,
-        textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextBlack),
-        trailingContent = if (loading) {
-            {
-                RaftChipLoadingIndicator(
-                    size = 12.dp,
-                    color = RaftColor.TextMutedGrayArgb
-                )
-            }
-        } else {
-            null
-        }
+        textStyle = RaftType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 16.sp, color = RaftColor.TextBlack)
     )
 }
 

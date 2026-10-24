@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.components.RaftIconSpinner
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftTopBarDefaults
 import build.raft.designsystem.components.raftCopyable
@@ -5756,12 +5757,7 @@ private fun HomeServerDrawerServerHeader(
             }
             if (!unavailable) ServerSwitcherUnreadIndicator(section.server)
             if (busy) {
-                RaftLucideIcon(
-                    RaftLucideIconName.LoaderCircle,
-                    Modifier.size(14.dp),
-                    color = RaftColor.TextMutedGrayArgb,
-                    spinning = busy,
-                )
+                RaftIconSpinner(size = 14.dp, color = RaftColor.TextMutedGray)
             } else if (failed) {
                 RaftLucideIcon(RaftLucideIconName.BadgeInfo, Modifier.size(14.dp), color = RaftColor.AccentRedArgb)
             } else if (unavailable) {

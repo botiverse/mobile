@@ -638,14 +638,14 @@ private fun ThreadFileOverflowMenu(
                 onClick = { if (!busy) expanded = true },
                 tooltip = stringResource(MR.strings.thread_files_file_actions, fileName),
                 variant = RaftButtonVariant.Ghost,
-                size = RaftIconButtonSize.Md
+                size = RaftIconButtonSize.Md,
+                loading = busy
             ) {
                 RaftLucideIcon(
-                    name = if (busy) RaftLucideIconName.LoaderCircle else RaftLucideIconName.EllipsisVertical,
+                    name = RaftLucideIconName.EllipsisVertical,
                     // `size="icon-sm"` draws every glyph at 18dp, overriding the 14 the web passes.
                     modifier = Modifier.size(18.dp),
-                    color = raftArgbHex(RaftColor.TextBlack),
-                    spinning = busy
+                    color = raftArgbHex(RaftColor.TextBlack)
                 )
             }
             RaftDropdownMenu(

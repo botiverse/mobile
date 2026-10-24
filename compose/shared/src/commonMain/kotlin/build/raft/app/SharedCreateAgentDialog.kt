@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.components.RaftIconSpinner
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.RaftButton
@@ -2646,12 +2647,7 @@ private fun CreateAgentRandomNameButton(
 
 @Composable
 private fun RaftCreateAgentSpinnerIcon() {
-    RaftLucideIcon(
-        RaftLucideIconName.LoaderCircle,
-        modifier = Modifier.size(13.dp),
-        color = RaftColor.TextMutedGrayArgb,
-        spinning = true
-    )
+    RaftIconSpinner(size = 13.dp, color = RaftColor.TextMutedGray)
 }
 
 @Composable

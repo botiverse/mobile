@@ -3946,12 +3946,8 @@ private fun RaftFilePreviewStandalonePageContent() {
                                     else -> MR.strings.thread_image_preview_save_to_photos
                                 }
                             ),
-                        icon =
-                            if (photosActionState == RaftFilePreviewPhotosActionState.Saving) {
-                                RaftLucideIconName.LoaderCircle
-                            } else {
-                                RaftLucideIconName.Save
-                            },
+                        icon = RaftLucideIconName.Save,
+                        loading = photosActionState == RaftFilePreviewPhotosActionState.Saving,
                         enabled =
                             photosActionState == RaftFilePreviewPhotosActionState.Save ||
                                 photosActionState == RaftFilePreviewPhotosActionState.Retry
@@ -4019,12 +4015,8 @@ private fun RaftFilePreviewStandalonePageContent() {
                                     MR.strings.file_preview_action_save_to_files
                                 }
                             ),
-                        icon =
-                            if (exportInProgress) {
-                                RaftLucideIconName.LoaderCircle
-                            } else {
-                                RaftLucideIconName.Download
-                            },
+                        icon = RaftLucideIconName.Download,
+                        loading = exportInProgress,
                         enabled = !exportInProgress && raftFilePreviewCanStartExternalOperation(downloadStatus)
                     )
                 } else {
@@ -4381,8 +4373,9 @@ private fun RaftFilePreviewImageEditorDoneButton(
                 stringResource(MR.strings.common_done)
             },
         onClick = onDone,
-        enabled = !saving && imageAvailable,
-        leadingIcon = if (saving) RaftLucideIconName.LoaderCircle else RaftLucideIconName.Check,
+        enabled = imageAvailable,
+        loading = saving,
+        leadingIcon = RaftLucideIconName.Check,
         leadingIconSize = 14.dp,
         contentSpacing = 8.dp,
         backgroundColor = RaftColor.BrandYellow,
@@ -8528,7 +8521,6 @@ internal fun RaftFilePreviewPayload.previewIconName(): RaftLucideIconName =
         "image" -> RaftLucideIconName.Image
         "video" -> RaftLucideIconName.Film
         RaftFilePreviewPdfKind -> RaftLucideIconName.FileText
-        "loading" -> RaftLucideIconName.LoaderCircle
         "error" -> RaftLucideIconName.TriangleAlert
         else -> raftFilePreviewFileIconName(this)
     }

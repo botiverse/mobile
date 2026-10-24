@@ -17,9 +17,8 @@ import build.raft.designsystem.theme.RaftTheme
 internal fun RaftContentLucideIcon(
     name: RaftLucideIconName,
     modifier: Modifier = Modifier,
-    size: Dp = 16.dp,
-    spinning: Boolean = false
+    size: Dp = 16.dp
 ) {
     val ink = LocalRaftContentColor.current.takeIf { it.isSpecified } ?: RaftTheme.colors.foreground
-    RaftLucideIcon(name, modifier = modifier.size(size), color = raftArgbHex(ink), spinning = spinning)
+    RaftLucideIcon(name, modifier = modifier.size(size), color = raftArgbHex(ink))
 }

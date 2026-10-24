@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.components.RaftIconSpinner
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -159,8 +160,7 @@ internal fun RaftTopPageHeader(
                         RaftLucideIcon(
                             iconName,
                             modifier = Modifier.size(18.dp),
-                            color = raftArgbHex(RaftColor.StickerInk),
-                            spinning = iconName == RaftLucideIconName.Loader || iconName == RaftLucideIconName.LoaderCircle
+                            color = raftArgbHex(RaftColor.StickerInk)
                         )
                     }
             }
@@ -364,12 +364,7 @@ internal fun RaftMainTabPageHeader(
 internal fun RaftHeaderRefreshIndicator(
     modifier: Modifier = Modifier
 ) {
-    RaftLucideIcon(
-        RaftLucideIconName.LoaderCircle,
-        modifier = modifier.size(LoadingSpinnerSize),
-        color = RaftColor.TextBlackArgb,
-        spinning = true
-    )
+    RaftIconSpinner(modifier = modifier, size = LoadingSpinnerSize, color = RaftColor.TextBlack)
 }
 
 /**
@@ -410,12 +405,7 @@ internal fun RaftCenteredLoading(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            RaftLucideIcon(
-                RaftLucideIconName.LoaderCircle,
-                modifier = Modifier.size(16.dp),
-                color = RaftColor.TextMutedGrayArgb,
-                spinning = true
-            )
+            RaftIconSpinner(size = 16.dp, color = RaftColor.TextMutedGray)
             Text(
                 text = resolvedMessage,
                 style = RaftType.Caption

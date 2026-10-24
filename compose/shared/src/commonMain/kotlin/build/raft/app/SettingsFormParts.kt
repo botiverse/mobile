@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.components.RaftIconSpinner
 import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftFieldLabel
 import build.raft.designsystem.components.raftCopyable
@@ -78,6 +79,8 @@ internal data class RaftSharedSettingsRow(
     val toggleValue: Boolean? = null,
     val supportingDetail: String = "",
     val badgeLabel: String = "",
+    /** Still loading: a spinner in the icon tile instead of [iconName]. */
+    val loading: Boolean = false,
     /** When non-blank and a copy handler is wired, long-pressing the row copies this value. */
     val copyValue: String = ""
 )
@@ -94,9 +97,11 @@ internal fun SettingsLoadStateCard(
     title: String,
     detail: String,
     retryLabel: String?,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    // Still loading: a spinner in place of [iconName].
+    loading: Boolean = false
 ) {
-    SettingsFormSectionCard(iconName = iconName, title = title) {
+    SettingsFormSectionCard(iconName = iconName, title = title, loading = loading) {
         SettingsFormDetailText(detail)
         retryLabel?.let {
             RaftButton(
@@ -112,19 +117,19 @@ internal fun SettingsLoadStateCard(
 @Composable
 private fun SettingsServerSectionHeader(
     iconName: RaftLucideIconName,
-    title: String
+    title: String,
+    loading: Boolean
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        RaftLucideIcon(
-            iconName,
-            modifier = Modifier.size(16.dp),
-            color = RaftColor.TextBlackArgb,
-            spinning = iconName == RaftLucideIconName.Loader || iconName == RaftLucideIconName.LoaderCircle
-        )
+        if (loading) {
+            RaftIconSpinner(size = 16.dp, color = RaftColor.TextBlack)
+        } else {
+            RaftLucideIcon(iconName, modifier = Modifier.size(16.dp), color = RaftColor.TextBlackArgb)
+        }
         Text(title, style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray)
     }
 }
@@ -133,13 +138,14 @@ private fun SettingsServerSectionHeader(
 internal fun SettingsFormSectionCard(
     iconName: RaftLucideIconName,
     title: String,
+    loading: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        SettingsServerSectionHeader(iconName = iconName, title = title)
+        SettingsServerSectionHeader(iconName = iconName, title = title, loading = loading)
         RaftCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
         }
@@ -414,11 +420,15 @@ private fun SharedSettingsRow(
                 modifier = Modifier.size(34.dp).background(if (row.enabled) RaftColor.Info else RaftColor.EmptyStateGray, RoundedCornerShape(RaftAppRadius.Sticker)).border(RaftAppStroke.Control, if (row.enabled) RaftColor.StickerInk else RaftColor.BorderBlack, RoundedCornerShape(RaftAppRadius.Sticker)),
                 contentAlignment = androidx.compose.ui.Alignment.Center
             ) {
-                RaftLucideIcon(
-                    row.iconName,
-                    modifier = Modifier.size(18.dp),
-                    color = if (row.enabled) raftArgbHex(RaftColor.StickerInk) else RaftColor.TextBlackArgb
-                )
+                if (row.loading) {
+                    RaftIconSpinner(size = 18.dp, color = if (row.enabled) RaftColor.StickerInk else RaftColor.TextBlack)
+                } else {
+                    RaftLucideIcon(
+                        row.iconName,
+                        modifier = Modifier.size(18.dp),
+                        color = if (row.enabled) raftArgbHex(RaftColor.StickerInk) else RaftColor.TextBlackArgb
+                    )
+                }
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

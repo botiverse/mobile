@@ -712,12 +712,12 @@ internal fun RaftModalActionButton(
     modifier: Modifier = Modifier,
     color: Color = RaftColor.SurfaceWhite,
     enabled: Boolean = true,
-    iconSpinning: Boolean = icon == RaftLucideIconName.Loader || icon == RaftLucideIconName.LoaderCircle
+    loading: Boolean = false
 ) {
     RaftBrutalActionButton(
         label = label,
         leadingIcon = icon,
-        leadingIconSpinning = iconSpinning,
+        loading = loading,
         onClick = onClick,
         modifier = modifier,
         backgroundColor = color,
@@ -734,7 +734,7 @@ internal fun RaftModalFullWidthActionButton(
     modifier: Modifier = Modifier,
     color: Color = RaftColor.SurfaceWhite,
     enabled: Boolean = true,
-    iconSpinning: Boolean = icon == RaftLucideIconName.Loader || icon == RaftLucideIconName.LoaderCircle
+    loading: Boolean = false
 ) {
     // raft: a full-width `lg` Button (44dp) with the variant mapped from [color].
     RaftBrutalActionButton(
@@ -745,7 +745,7 @@ internal fun RaftModalFullWidthActionButton(
         backgroundColor = color,
         minHeight = 44.dp,
         leadingIcon = icon,
-        leadingIconSpinning = iconSpinning
+        loading = loading
     )
 }
 
@@ -759,7 +759,7 @@ internal fun RaftModalSquareActionButton(
     enabled: Boolean = true,
     size: Dp = 28.dp,
     iconColor: String = "#FF000000",
-    iconSpinning: Boolean = icon == RaftLucideIconName.Loader || icon == RaftLucideIconName.LoaderCircle
+    loading: Boolean = false
 ) {
     RaftBrutalIconButton(
         iconName = icon,
@@ -771,7 +771,7 @@ internal fun RaftModalSquareActionButton(
         size = size,
         iconColor = iconColor,
         disabledIconColor = iconColor,
-        iconSpinning = iconSpinning
+        loading = loading
     )
 }
 

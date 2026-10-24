@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.compat.ui.KeyboardParams
+import build.raft.app.compat.ui.raftColorFromArgbHex
 import build.raft.app.raftAppEditorBehavior
 import build.raft.app.raftResolvedKeyboardOptions
 import build.raft.app.resources.MR
@@ -191,12 +192,7 @@ internal fun RaftChipLoadingIndicator(
     size: Dp = 12.dp,
     color: String = RaftColor.TextMutedGrayArgb
 ) {
-    RaftLucideIcon(
-        name = RaftLucideIconName.LoaderCircle,
-        modifier = modifier.size(size),
-        color = color,
-        spinning = true
-    )
+    RaftIconSpinner(modifier = modifier, size = size, color = raftColorFromArgbHex(color))
 }
 
 @Composable
@@ -1322,7 +1318,8 @@ internal fun RaftBrutalActionButton(
     minWidth: Dp = RaftBrutalActionButtonLegacyMinWidth,
     minHeight: Dp = 40.dp,
     leadingIcon: RaftLucideIconName? = null,
-    leadingIconSpinning: Boolean = leadingIcon == RaftLucideIconName.Loader || leadingIcon == RaftLucideIconName.LoaderCircle,
+    // Busy: the design-system button's spinner over the hidden label (keeps its width, ignores taps).
+    loading: Boolean = false,
     leadingIconSize: Dp = 12.dp,
     contentSpacing: Dp = 6.dp,
     textStyle: TextStyle = RaftBrutalActionButtonDefaultTextStyle,
@@ -1345,7 +1342,8 @@ internal fun RaftBrutalActionButton(
         variant = raftButtonVariantFor(backgroundColor, inDialogFooter = LocalRaftDialogFooter.current),
         size = raftButtonSizeFor(minHeight),
         enabled = enabled,
-        leadingIcon = leadingIcon?.let { icon -> { RaftSlotIcon(icon, spinning = leadingIconSpinning) } },
+        loading = loading,
+        leadingIcon = leadingIcon?.let { icon -> { RaftSlotIcon(icon) } },
         trailingIcon = trailingContent
     )
 }
@@ -1629,7 +1627,8 @@ internal fun RaftBrutalIconButton(
     disabledIconColor: String = "#FF000000",
     size: Dp = 32.dp,
     iconSize: Dp = (size.value * 0.5f).dp,
-    iconSpinning: Boolean = iconName == RaftLucideIconName.Loader || iconName == RaftLucideIconName.LoaderCircle
+    // Busy: a spinner in the icon's place (the design-system icon button's `loading`).
+    loading: Boolean = false
 ) {
     val tooltip = contentDescription?.takeIf { it.isNotBlank() }
     if (size < 24.dp) {
@@ -1646,7 +1645,7 @@ internal fun RaftBrutalIconButton(
             iconColor = iconColor,
             size = size,
             iconSize = iconSize,
-            iconSpinning = iconSpinning
+            loading = loading
         )
     } else {
         RaftIconButton(
@@ -1656,15 +1655,16 @@ internal fun RaftBrutalIconButton(
             variant = raftIconButtonVariantFor(backgroundColor),
             size = raftIconButtonSizeFor(size),
             enabled = enabled,
+            loading = loading,
             onLongClick = onLongClick,
             longClickLabel = longClickLabel
         ) {
             // An explicit ink stays (media controls on a scrim); the legacy black follows the variant.
             val explicitInk = iconColor.takeIf { enabled && it != RaftLegacyIconInkArgb }
             if (explicitInk != null) {
-                RaftLucideIcon(iconName, color = explicitInk, modifier = Modifier.fillMaxSize(), spinning = iconSpinning)
+                RaftLucideIcon(iconName, color = explicitInk, modifier = Modifier.fillMaxSize())
             } else {
-                RaftSlotIcon(iconName, spinning = iconSpinning)
+                RaftSlotIcon(iconName)
             }
         }
     }
@@ -1692,7 +1692,7 @@ private fun RaftLookIconButton(
     iconColor: String,
     size: Dp,
     iconSize: Dp,
-    iconSpinning: Boolean
+    loading: Boolean
 ) {
     val chrome = raftButtonChrome(backgroundColor).let { base ->
         if (base.kind == RaftButtonKind.Outline) raftButtonChrome(Color.Transparent) else base
@@ -1718,7 +1718,7 @@ private fun RaftLookIconButton(
         }
     val shape = RoundedCornerShape(RaftAppRadius.Control)
     RaftAnchorButton(
-        onClick = onClick,
+        onClick = { if (!loading) onClick() },
         onLongClick = onLongClick,
         longClickLabel = longClickLabel,
         enabled = enabled,
@@ -1741,7 +1741,11 @@ private fun RaftLookIconButton(
                 .background(fill, shape)
                 .border(RaftAppStroke.Control, border, shape)
     ) {
-        RaftLucideIcon(iconName, color = resolvedIconColor, modifier = Modifier.size(iconSize), spinning = iconSpinning)
+        if (loading) {
+            RaftIconSpinner(size = iconSize, color = raftColorFromArgbHex(resolvedIconColor))
+        } else {
+            RaftLucideIcon(iconName, color = resolvedIconColor, modifier = Modifier.size(iconSize))
+        }
     }
 }
 

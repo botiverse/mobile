@@ -1,6 +1,8 @@
 package build.raft.app.components
 
 import build.raft.app.RaftColor
+import build.raft.designsystem.components.RaftSpinner
+import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftMonoFamily
 import build.raft.app.RaftLucideIconName
@@ -13,17 +15,6 @@ import build.raft.app.RaftType
 import androidx.compose.ui.text.font.FontWeight
 import build.raft.app.withRaftFontWeight
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.State
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,8 +30,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -342,56 +331,11 @@ internal fun RaftAppSpinner(
     // A fixed step instead of the animation, so still captures are deterministic.
     stillStep: Int? = null
 ) {
-    RaftPixelSpinner(modifier = modifier, size = size, inverse = inverse, stillStep = stillStep)
-}
-
-/**
- * raft-ui 0.7 Spinner: four [RaftAppSpinnerSize.pixel] squares (1dp radius) in a 2x2 grid,
- * drawn in the current ink (`--foreground`, or `--foreground-inverse` for `inverse`). Each
- * rests at 20% and one at a time is lit at full ink for a quarter of a 1s cycle, stepping
- * (no fade) clockwise from the top-left.
- */
-@Composable
-private fun RaftPixelSpinner(
-    modifier: Modifier,
-    size: RaftAppSpinnerSize,
-    inverse: Boolean,
-    stillStep: Int?
-) {
-    val ink = if (inverse) RaftColor.ForegroundInverse else RaftColor.TextBlack
-    val animatedStep: State<Int>? =
-        if (stillStep == null) {
-            val elapsed =
-                rememberInfiniteTransition(label = "slock-spinner").animateFloat(
-                    initialValue = 0f,
-                    targetValue = RaftAppSpinnerCycleMillis.toFloat(),
-                    animationSpec =
-                        infiniteRepeatable(
-                            animation = tween(durationMillis = RaftAppSpinnerCycleMillis, easing = LinearEasing),
-                            repeatMode = RepeatMode.Restart
-                        ),
-                    label = "slock-spinner-elapsed"
-                )
-            // The elapsed time changes every frame, the step only four times a cycle: draw
-            // observes the derived step alone, so the canvas redraws 4x a second.
-            remember(elapsed) { derivedStateOf { raftSpinnerStepAt(elapsed.value.toInt()) } }
-        } else {
-            null
-        }
-    Canvas(modifier = modifier.size(size.extent)) {
-        // Read the step in the draw phase so a step change only redraws the canvas.
-        val step = stillStep ?: animatedStep?.value ?: 0
-        val lit = raftAppSpinnerLitCell(step)
-        val pixel = size.pixel.toPx()
-        val pitch = pixel + size.gap.toPx()
-        val radius = CornerRadius(1.dp.toPx())
-        for (cell in 0 until 4) {
-            drawRoundRect(
-                color = if (cell == lit) ink else ink.copy(alpha = ink.alpha * RaftSpinnerPixelRestAlpha),
-                topLeft = Offset((cell % 2) * pitch, (cell / 2) * pitch),
-                size = Size(pixel, pixel),
-                cornerRadius = radius
-            )
-        }
-    }
+    // The design system's spinner, in the app's theme-following ink.
+    RaftSpinner(
+        modifier = modifier,
+        size = RaftSpinnerSize.valueOf(size.name),
+        color = if (inverse) RaftColor.ForegroundInverse else RaftColor.TextBlack,
+        stillStep = stillStep
+    )
 }

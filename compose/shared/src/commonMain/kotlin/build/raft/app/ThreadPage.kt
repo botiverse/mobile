@@ -18,6 +18,7 @@ import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.components.RaftStorePullToRefreshBox
 import build.raft.app.components.rememberRaftStorePullRefreshState
 import build.raft.app.components.RaftSlotIcon
+import build.raft.app.components.RaftIconSpinner
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftBackButtonDefaults
@@ -26270,12 +26271,15 @@ private fun ThreadMessageLocalSendStatus(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            RaftLucideIcon(
-                if (isFailed) RaftLucideIconName.TriangleAlert else RaftLucideIconName.LoaderCircle,
-                modifier = Modifier.size(13.dp),
-                color = if (isFailed) "#FFF97264" else RaftColor.TextMutedGrayArgb,
-                spinning = !isFailed
-            )
+            if (isFailed) {
+                RaftLucideIcon(
+                    RaftLucideIconName.TriangleAlert,
+                    modifier = Modifier.size(13.dp),
+                    color = "#FFF97264"
+                )
+            } else {
+                RaftIconSpinner(size = 13.dp, color = RaftColor.TextMutedGray)
+            }
             Text(
                 text = label,
                 style =
@@ -26363,12 +26367,7 @@ private fun ThreadMessageSendingIndicator(visible: Boolean, modifier: Modifier =
     ) {
         // Hidden: the 24dp slot stays, so the delayed spinner never moves the bubble.
         if (visible) {
-            RaftLucideIcon(
-                RaftLucideIconName.LoaderCircle,
-                modifier = Modifier.size(14.dp),
-                color = RaftColor.TextMutedGrayArgb,
-                spinning = true
-            )
+            RaftIconSpinner(size = 14.dp, color = RaftColor.TextMutedGray)
         }
     }
 }
@@ -31363,10 +31362,11 @@ private fun ThreadAttachmentCommentComposer(
                 } else {
                     stringResource(MR.strings.thread_comments_send)
                 },
-            icon = if (state.sending) RaftLucideIconName.RefreshCw else RaftLucideIconName.Send,
-            enabled = enabled && state.draft.text.isNotBlank(),
+            icon = RaftLucideIconName.Send,
+            // Busy keeps the button's colour under the spinner (raft-ui Button > States).
+            enabled = (enabled || state.sending) && state.draft.text.isNotBlank(),
             color = RaftColor.AccentCyan,
-            iconSpinning = state.sending,
+            loading = state.sending,
             onClick = onSend
         )
     }
@@ -32807,10 +32807,11 @@ internal fun ThreadForwardNoteDialog(
                     } else {
                         stringResource(MR.strings.common_send)
                     },
-                icon = if (sending) RaftLucideIconName.Loader else RaftLucideIconName.Send,
+                icon = RaftLucideIconName.Send,
                 onClick = onSend,
                 color = RaftColor.AccentPink,
-                enabled = selectedTargetLabel.isNotBlank() && !sending
+                enabled = selectedTargetLabel.isNotBlank(),
+                loading = sending
             )
         }
     }
@@ -34099,8 +34100,8 @@ internal fun ThreadSettingsModal(
                                     stringResource(MR.strings.thread_action_save_changes)
                                 },
                             color = RaftColor.AccentPink,
-                            icon = RaftLucideIconName.Loader.takeIf { profileSaving },
-                            enabled = profileValid && profileChanged && !profileSaving,
+                            enabled = profileValid && profileChanged,
+                            loading = profileSaving,
                             onClick = {
                                 onSave(channelName, subtitle.orEmpty(), trimmedName, trimmedDescription)
                             }

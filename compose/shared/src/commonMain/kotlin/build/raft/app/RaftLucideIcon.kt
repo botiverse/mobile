@@ -1,10 +1,6 @@
 package build.raft.app
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Spacer
@@ -34,7 +30,8 @@ import kotlin.math.roundToInt
  * - unknown names draw nothing but keep the layout slot.
  */
 
-private const val RaftIconSpinDurationSeconds = 0.9f
+// A loading state draws the design system's `RaftSpinner` (or a busy `RaftButton`), not a
+// rotating loader glyph: icons here don't spin.
 
 @Composable
 @NonRestartableComposable
@@ -45,7 +42,6 @@ internal fun RaftLucideIcon(
     fill: String? = null,
     strokeWidth: Float? = null,
     verticalOffsetDp: Float = 0f,
-    spinning: Boolean = false,
     rotationDegrees: Float = 0f,
     rotationAnimationDurationSeconds: Float = 0f
 ) {
@@ -56,7 +52,6 @@ internal fun RaftLucideIcon(
         fill = fill,
         strokeWidth = strokeWidth,
         verticalOffsetDp = verticalOffsetDp,
-        spinning = spinning,
         rotationDegrees = rotationDegrees,
         rotationAnimationDurationSeconds = rotationAnimationDurationSeconds
     )
@@ -71,7 +66,6 @@ internal fun RaftLucideIcon(
     fill: String? = null,
     strokeWidth: Float? = null,
     verticalOffsetDp: Float = 0f,
-    spinning: Boolean = false,
     rotationDegrees: Float = 0f,
     rotationAnimationDurationSeconds: Float = 0f
 ) {
@@ -82,7 +76,6 @@ internal fun RaftLucideIcon(
         fill = fill,
         strokeWidth = strokeWidth,
         verticalOffsetDp = verticalOffsetDp,
-        spinning = spinning,
         rotationDegrees = rotationDegrees,
         rotationAnimationDurationSeconds = rotationAnimationDurationSeconds
     )
@@ -96,28 +89,11 @@ internal fun RaftLucideIconByName(
     fill: String? = null,
     strokeWidth: Float? = null,
     verticalOffsetDp: Float = 0f,
-    spinning: Boolean = false,
     rotationDegrees: Float = 0f,
     rotationAnimationDurationSeconds: Float = 0f
 ) {
     val appliedRotationDegrees =
-        if (spinning) {
-            val transition = rememberInfiniteTransition(label = "slock-icon-spin")
-            val rotation by transition.animateFloat(
-                initialValue = 0f,
-                targetValue = 360f,
-                animationSpec =
-                    infiniteRepeatable(
-                        animation =
-                            tween(
-                                durationMillis = (RaftIconSpinDurationSeconds * 1000f).roundToInt(),
-                                easing = LinearEasing
-                            )
-                    ),
-                label = "slock-icon-spin-rotation"
-            )
-            rotation
-        } else if (rotationAnimationDurationSeconds > 0f) {
+        if (rotationAnimationDurationSeconds > 0f) {
             val rotation by animateFloatAsState(
                 targetValue = rotationDegrees,
                 animationSpec = tween(durationMillis = (rotationAnimationDurationSeconds * 1000f).roundToInt()),

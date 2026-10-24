@@ -8,7 +8,9 @@ import android.view.ViewGroup
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ViewRootForTest
+import build.raft.designsystem.components.LocalRaftSpinnerStillStep
 import java.io.File
 import java.time.Duration
 import kotlin.math.abs
@@ -53,7 +55,8 @@ internal object RaftRobolectricScreenshot {
             val activity = activities.launch()
             // Moko string resources read the app context through the shared SQLDelight holder.
             build.raft.app.data.RaftAndroidSqlDatabaseContext.init(activity)
-            activity.setContent { content(activity) }
+            // Spinners hold still on their first step: a capture is one deterministic frame.
+            activity.setContent { CompositionLocalProvider(LocalRaftSpinnerStillStep provides 0) { content(activity) } }
             settle()
             val composeView = root(activity)?.let(::findComposeRoot)
             assertNotNull(composeView, "no compose root")

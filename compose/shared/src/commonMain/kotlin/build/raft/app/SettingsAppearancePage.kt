@@ -59,11 +59,12 @@ internal fun SettingsAppearanceContent(
             ScreenLoadState.Loading ->
                 item {
                     SettingsLoadStateCard(
-                        RaftLucideIconName.LoaderCircle,
+                        RaftLucideIconName.Type,
                         stringResource(MR.strings.common_loading),
                         stringResource(MR.strings.settings_appearance_loading),
                         null,
-                        onRetry
+                        onRetry,
+                        loading = true
                     )
                 }
             is ScreenLoadState.Empty ->
