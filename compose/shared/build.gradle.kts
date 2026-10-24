@@ -155,6 +155,9 @@ kotlin {
                 // Message math (task #775): KaTeX-style layout in pure Kotlin; the KaTeX fonts
                 // come from :designsystem, so the library's optional font module is not used.
                 implementation(libs.hrm.latex.renderer)
+                // Message code blocks (artin task #20 lane K): keyword/string/comment/number
+                // ranges, coloured with raft-ui tokens in markdown/RaftMarkdownCodeHighlight.kt.
+                implementation(libs.snipme.highlights)
 
                 implementation(libs.kotlinx.serialization.json)
                 implementation(libs.kotlinx.coroutines.core)

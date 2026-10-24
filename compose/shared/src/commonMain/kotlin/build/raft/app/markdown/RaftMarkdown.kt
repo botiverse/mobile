@@ -2849,7 +2849,7 @@ private fun RaftMarkdownCodeBlockContent(
         }
     }
     Box(modifier = Modifier.fillMaxWidth()) {
-        RaftMarkdownCodeSurface(code = code, style = style)
+        RaftMarkdownCodeSurface(code = code, language = language, style = style)
         val pressSource = remember { MutableInteractionSource() }
         val pressed by pressSource.collectIsPressedAsState()
         Box(
@@ -2889,8 +2889,10 @@ private val RaftMarkdownCodeActionRadius = 6.dp
  * drawn before the clip (square corners) and which has no border.
  */
 @Composable
-private fun RaftMarkdownCodeSurface(code: String, style: TextStyle) {
+private fun RaftMarkdownCodeSurface(code: String, language: String?, style: TextStyle) {
     val shape = RoundedCornerShape(RaftAppRadius.Container)
+    // Syntax colours for a known fence language (RaftMarkdownCodeHighlight.kt); plain otherwise.
+    val highlighted = rememberRaftHighlightedCode(code, language)
     Box(
         modifier =
             Modifier
@@ -2900,12 +2902,21 @@ private fun RaftMarkdownCodeSurface(code: String, style: TextStyle) {
                 .background(RaftMarkdownCodeBlockBackground)
                 .border(1.dp, RaftColor.BorderHairline, shape)
     ) {
-        MarkdownBasicText(
-            text = code,
-            color = RaftMarkdownCodeBlockForeground,
-            style = style,
-            modifier = Modifier.padding(RaftMarkdownCodeBlockPadding),
-        )
+        if (highlighted != null) {
+            MarkdownBasicText(
+                text = highlighted,
+                color = RaftMarkdownCodeBlockForeground,
+                style = style,
+                modifier = Modifier.padding(RaftMarkdownCodeBlockPadding),
+            )
+        } else {
+            MarkdownBasicText(
+                text = code,
+                color = RaftMarkdownCodeBlockForeground,
+                style = style,
+                modifier = Modifier.padding(RaftMarkdownCodeBlockPadding),
+            )
+        }
     }
 }
 
