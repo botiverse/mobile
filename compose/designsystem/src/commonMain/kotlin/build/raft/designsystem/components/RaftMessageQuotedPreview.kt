@@ -167,12 +167,14 @@ fun RaftMessageQuotedPreview(
                             )
                         }
                     }
-                    if (channel != null) QuotedDot(Modifier.align(Alignment.CenterVertically))
+                    // Each part carries the dot before it, so a wrapped line never starts with a
+                    // lone dot.
                     Row(
                         Modifier.align(Alignment.CenterVertically),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        if (channel != null) QuotedDot()
                         avatar?.invoke()
                         RaftText(
                             authorName,
@@ -195,24 +197,25 @@ fun RaftMessageQuotedPreview(
                         }
                     }
                     if (threadLabel != null) {
-                        QuotedDot(Modifier.align(Alignment.CenterVertically))
                         Row(
                             Modifier.align(Alignment.CenterVertically),
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
+                            QuotedDot(Modifier.padding(end = 2.dp))
                             RaftGlyphIcon(RaftGlyph.MessageSquare, size = 14.dp, color = colors.foregroundHint)
                             RaftText(threadLabel, style = hintPart, color = colors.foregroundHint, maxLines = 1)
                         }
                     }
                     if (archivedLabel != null) {
-                        QuotedDot(Modifier.align(Alignment.CenterVertically))
-                        RaftBadge(
-                            text = archivedLabel,
-                            modifier = Modifier.align(Alignment.CenterVertically),
-                            appearance = RaftBadgeAppearance.Soft,
-                            variant = RaftBadgeVariant.Muted,
-                        )
+                        Row(
+                            Modifier.align(Alignment.CenterVertically),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            QuotedDot()
+                            RaftBadge(text = archivedLabel, appearance = RaftBadgeAppearance.Soft, variant = RaftBadgeVariant.Muted)
+                        }
                     }
                 }
                 if (time != null) {
