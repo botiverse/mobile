@@ -28,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -43,6 +44,7 @@ import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -61,6 +63,7 @@ import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.gesture.LocalRaftBackSwipeRegions
 import build.raft.designsystem.gesture.RaftBackSwipeEdgeWidth
 import build.raft.designsystem.gesture.raftBackSwipeRegion
+import build.raft.designsystem.gesture.raftClaimsHorizontalDragFirst
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftUiPalette
@@ -103,6 +106,10 @@ import kotlinx.coroutines.launch
  *   (2) x |dy|, toward the start, or toward the end only while the row is open (the swipe back that closes
  *   it). Any movement past the touch slop that is not on track for that hands the gesture to the list and
  *   locks the swipe out for the rest of that pointer stream ([ActivitySwipeDragPolicy]).
+ * - Filter pager: the rows sit in the Activity filter TabPager, whose drag would otherwise claim at 1x the
+ *   touch slop, before the row's gate (iOS 1.15.5: the list slid toward the next filter, the row never
+ *   opened). The row registers [raftClaimsHorizontalDragFirst] with its claim distance (0 in its edge
+ *   zones), so over a row the pager waits until the row has claimed or released.
  * - iOS full-page pop: only an open row registers a back-swipe region (without its leading
  *   [RaftBackSwipeEdgeWidth] strip), so the swipe back that closes it is not taken for a page pop. A closed
  *   row leaves every drag toward the end to the host.
@@ -117,6 +124,12 @@ import kotlinx.coroutines.launch
  * ([activitySwipeEndUndoCommand]). One toast at a time: a newer action replaces the older toast (a waiting
  * Done is committed first).
  */
+
+/**
+ * Tests only: button words without the app's string resources (the iOS simulator test binary does not
+ * bundle them). Null in the app.
+ */
+internal val LocalActivitySwipeButtonTestLabels = staticCompositionLocalOf<((ActivitySwipeButton) -> String)?> { null }
 
 /** Width of one uncovered button (raft-design #785: 72px, the row's height, icon over word). */
 internal val ActivitySwipeButtonWidth = 72.dp
@@ -634,6 +647,15 @@ internal fun ActivitySwipeActionsBox(
                 (if (isLtr) systemGestures.getRight(density, layoutDirection) else systemGestures.getLeft(density, layoutDirection)).toFloat(),
             hostBackSwipeEdgePx = if (hostHasBackSwipe) with(density) { RaftBackSwipeEdgeWidth.toPx() } else 0f,
         )
+    // The row decides at 2x the touch slop, later than the tab pager it sits in would take the drag (1x);
+    // the pager waits for this distance over the row (outside its edge zones), then the row has claimed or
+    // released. Without it the whole list slid toward the next filter page on iOS (1.15.5).
+    val claimThresholdPx =
+        activitySwipeClaimThresholdPx(
+            LocalViewConfiguration.current.touchSlop,
+            with(density) { ActivitySwipeMinClaimDistance.toPx() },
+            with(density) { ActivitySwipeMaxClaimDistance.toPx() },
+        )
     // Starts where the list says the row is, so an open row recomposed (or captured) shows open at once.
     val reveal = remember(gestureKey) { Animatable(if (open) buttonsWidthPx else 0f) }
     // True while a finger drives the row or a Done is completing: the row then owns its reveal.
@@ -672,6 +694,10 @@ internal fun ActivitySwipeActionsBox(
             // still pops the page. Inert on hosts without a content back swipe.
             .then(if (open) Modifier.raftBackSwipeRegion(RaftBackSwipeEdgeWidth) { currentOpen } else Modifier)
             .clipToBounds()
+            .raftClaimsHorizontalDragFirst { down, size ->
+                val inEdgeZone = activitySwipeStartsInEdgeZone(down.x, size.width.toFloat(), startEdgePx, endEdgePx, isLtr)
+                if (inEdgeZone) 0f else claimThresholdPx
+            }
             // On the box that does not move, so finger positions are not shifted by the row's own offset.
             // Children (the row's tap / long press, the buttons) see each event first; consuming a claimed
             // drag here cancels their tap, and the list above never sees a claimed drag.
@@ -857,11 +883,13 @@ private fun ActivitySwipeButtonCell(
     val background = if (solid) RaftUiPalette.success else colors.fillMuted
     // Done keeps ink on its green in both themes (mock v1: dark mode is still solid green with ink).
     val foreground = if (solid) RaftColor.StickerInk else colors.foreground
+    val testLabels = LocalActivitySwipeButtonTestLabels.current
     val label =
-        when (button) {
-            ActivitySwipeButton.Done -> stringResource(MR.strings.activity_swipe_layer_done)
-            ActivitySwipeButton.Unfollow -> stringResource(MR.strings.activity_swipe_layer_unfollow)
-            ActivitySwipeButton.Mute -> stringResource(MR.strings.activity_swipe_layer_mute)
+        when {
+            testLabels != null -> testLabels(button)
+            button == ActivitySwipeButton.Done -> stringResource(MR.strings.activity_swipe_layer_done)
+            button == ActivitySwipeButton.Unfollow -> stringResource(MR.strings.activity_swipe_layer_unfollow)
+            else -> stringResource(MR.strings.activity_swipe_layer_mute)
         }
     Box(
         Modifier

@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
+import build.raft.designsystem.gesture.rememberRaftNestedHorizontalDragHost
 import kotlin.math.abs
 
 /**
@@ -192,16 +193,22 @@ fun TabPager(
     // interactive pop instead of rubber-banding the pager (which made the Compose touch recogniser
     // win against the pop); forward drags still turn the page with the pager's own snap fling. Past
     // the first page the pager keeps every drag and tells the host so. Inert on Android.
+    // Rows with their own horizontal swipe (Activity) register with this host: over them the pager's
+    // drag (and the iOS first-page forward drag below) waits until the row claimed or released, since
+    // the row decides later than the pager's 1x slop (iOS 1.15.5: the list slid, the row never opened).
+    val nestedDrags = rememberRaftNestedHorizontalDragHost()
     val backSwipe = rememberRaftBackSwipeScroll(
         state = pagerState,
         flingBehavior = PagerDefaults.flingBehavior(pagerState),
         enabled = gesturePolicy.swipeEnabled,
+        nestedDrags = nestedDrags,
     )
     Column(modifier = modifier) {
         tabBar()
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .then(nestedDrags.modifier)
                 .then(backSwipe.modifier)
                 .onGloballyPositioned { guardWidthPx.value = it.size.width }
                 .pointerInput(gesturePolicy) {
@@ -245,21 +252,23 @@ fun TabPager(
                     }
                 }
         ) {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize(),
-                userScrollEnabled = gesturePolicy.swipeEnabled && backSwipe.userScrollEnabled,
-                key = { page -> page },
-                // Kuikly keepItemAlive kept every page composed.
-                beyondViewportPageCount = if (keepItemAlive) pageCount else 0,
-                // Kuikly's pager had no edge bounce; on iOS the CMP rubber band could stay
-                // stuck at an offset (see raftPlatformTabPagerOverscrollEnabled).
-                overscrollEffect = if (raftPlatformTabPagerOverscrollEnabled()) rememberOverscrollEffect() else null,
-            ) { page ->
-                // currentPage, not settledPage: the latter is frozen on the
-                // iOS port (round-4 evidence), which would leave every
-                // swiped-to page permanently rendered as inactive.
-                pageContent(page, page == pagerState.currentPage)
+            nestedDrags.ProvideScrollerConfiguration {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                    userScrollEnabled = gesturePolicy.swipeEnabled && backSwipe.userScrollEnabled,
+                    key = { page -> page },
+                    // Kuikly keepItemAlive kept every page composed.
+                    beyondViewportPageCount = if (keepItemAlive) pageCount else 0,
+                    // Kuikly's pager had no edge bounce; on iOS the CMP rubber band could stay
+                    // stuck at an offset (see raftPlatformTabPagerOverscrollEnabled).
+                    overscrollEffect = if (raftPlatformTabPagerOverscrollEnabled()) rememberOverscrollEffect() else null,
+                ) { page ->
+                    // currentPage, not settledPage: the latter is frozen on the
+                    // iOS port (round-4 evidence), which would leave every
+                    // swiped-to page permanently rendered as inactive.
+                    nestedDrags.ProvideContent { pageContent(page, page == pagerState.currentPage) }
+                }
             }
         }
     }
