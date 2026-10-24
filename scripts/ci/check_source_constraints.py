@@ -1099,6 +1099,60 @@ def check_test_session_stores_are_test_local(sources: dict[str, str]) -> None:
             )
 
 
+RAFT_FORMAT = "compose/shared/src/commonMain/kotlin/build/raft/app/format/RaftFormat.kt"
+# A byte-size or speed label being *built*: a bare unit literal ("KB", @"MB") or a unit glued to
+# an interpolated number ("${x} KB", "$size MB", "${...}/s"). Whole sample strings such as
+# "128 KB" in fixtures are data, not a formatter, and do not match.
+BYTE_UNIT_FORMATTER = re.compile(
+    r'@?"[KMGT]B"'
+    r'|(?:\$\{[^}"]*\}|\$[A-Za-z_]\w*)\s?[KMGT]B\b'
+    r'|\}\s?/s"'
+)
+
+
+def check_single_byte_size_formatter(root: Path) -> None:
+    """Arch audit #2 / A (2026-10-24): six byte-size and two speed formatters drifted apart.
+
+    The same 1.5 MB file read `1536 KB`, `1.5 MB` and `1.4 MB` on different screens. Sizes and
+    speeds are formatted by `RaftFormat` only; a unit table or a unit glued to a number anywhere
+    else in production code (Kotlin, iOS host) is a seventh formatter.
+    """
+    offenders = []
+    scanned = 0
+    saw_definition = False
+    paths = sorted((root / "compose").rglob("*.kt")) + sorted((root / "compose" / "iosApp").rglob("*.m")) + sorted(
+        (root / "compose" / "iosApp").rglob("*.swift")
+    )
+    for path in paths:
+        parts = path.relative_to(root).parts
+        # Gradle output lives in compose/<module>/build; `build` deeper down is the package name.
+        if len(parts) > 2 and parts[2] == "build":
+            continue
+        if any(part == "test" or part.endswith("Test") or part.endswith("Tests") for part in parts[:-1]):
+            continue
+        rel = "/".join(parts)
+        text = path.read_text(encoding="utf-8").replace("\r\n", "\n")
+        scanned += 1
+        if rel == RAFT_FORMAT:
+            saw_definition = 'listOf("KB", "MB", "GB")' in text
+            continue
+        for line_number, line in enumerate(text.split("\n"), start=1):
+            stripped = line.strip()
+            if stripped.startswith(("//", "*", "/*")):
+                continue
+            if BYTE_UNIT_FORMATTER.search(line):
+                offenders.append(f"{rel}:{line_number}: {stripped}")
+    if scanned == 0:
+        raise Violation("byte-size formatter check scanned zero production files (glob drift?)")
+    if not saw_definition:
+        raise Violation(f"byte-size formatter check did not find the RaftFormat unit table in {RAFT_FORMAT}")
+    if offenders:
+        raise Violation(
+            "byte sizes and speeds are formatted by build.raft.app.format.RaftFormat only "
+            "(bytes / speed / byteLimit); found another formatter:\n  " + "\n  ".join(offenders)
+        )
+
+
 def run(root: Path) -> None:
     def read(rel: str) -> str:
         path = root / rel
@@ -1162,6 +1216,7 @@ def run(root: Path) -> None:
             for path in sorted(common_test_root.rglob("*.kt"))
         }
     )
+    check_single_byte_size_formatter(root)
 
 
 def self_test() -> None:
@@ -2005,6 +2060,32 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
             pass
         else:
             raise SystemExit("self-test: task #1122 test-local session-store checker accepted a class field")
+
+    format_good = 'object RaftFormat { private val Units = listOf("KB", "MB", "GB") }\n'
+    format_files = {
+        RAFT_FORMAT: format_good,
+        "compose/shared/src/commonMain/kotlin/a/Page.kt": 'val sample = "128 KB"\nval s = RaftFormat.bytes(n)\n',
+        "compose/shared/src/commonTest/kotlin/a/PageTest.kt": 'assertEquals("1.5 KB", "${x} KB")\n',
+    }
+    tmp, root = _tree(format_files)
+    with tmp:
+        check_single_byte_size_formatter(root)
+    for label, extra in (
+        ("unit table", {"compose/shared/src/commonMain/kotlin/a/B.kt": 'val units = listOf("B", "KB")\n'}),
+        ("template unit", {"compose/shared/src/commonMain/kotlin/a/B.kt": 'val l = "${bytes / 1024} KB"\n'}),
+        ("simple template", {"compose/androidApp/src/main/java/a/B.kt": 'val l = "$mb MB"\n'}),
+        ("speed suffix", {"compose/shared/src/commonMain/kotlin/a/B.kt": 'val l = "${size(b)}/s"\n'}),
+        ("objc table", {"compose/iosApp/iosApp/Host/B.m": 'NSArray *u = @[ @"B", @"KB" ];\n'}),
+        ("missing definition", {RAFT_FORMAT: "object RaftFormat\n"}),
+    ):
+        tmp, root = _tree({**format_files, **extra})
+        with tmp:
+            try:
+                check_single_byte_size_formatter(root)
+            except Violation:
+                pass
+            else:
+                raise SystemExit(f"self-test: byte-size formatter checker accepted {label}")
 
     print("check_source_constraints self-test passed")
 

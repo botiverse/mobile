@@ -154,6 +154,8 @@ import build.raft.app.data.parseRaftAvatarMountedRenderModel
 import build.raft.app.network.SharedBinaryDownloader
 import build.raft.app.network.SharedDownloadedBytes
 import build.raft.app.network.AttachmentDownloadObserver
+import build.raft.app.format.RaftFormat
+import build.raft.app.format.RaftFormatLocale
 import build.raft.app.network.AttachmentDownloadProgress
 import build.raft.app.network.AttachmentDownloadResult
 import build.raft.app.network.AttachmentDownloadCoordinator
@@ -183,7 +185,6 @@ import java.net.URL
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
-import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -608,41 +609,6 @@ internal fun formatHandsFeedbackShareText(
         appendLine()
         append(description)
     }
-
-internal fun formatStorageSizeLabel(
-    bytes: Long,
-    languageTag: String?,
-    systemLocale: Locale = Locale.getDefault()
-): String {
-    if (bytes <= 0L) return "0 B"
-    val locale =
-        languageTag
-            ?.takeIf { it.isNotBlank() }
-            ?.let(Locale::forLanguageTag)
-            ?.takeIf { it.language.isNotBlank() }
-            ?: systemLocale
-    val units = listOf("B", "KB", "MB", "GB")
-    var value = bytes.toDouble()
-    var index = 0
-    while (value >= 1024.0 && index < units.lastIndex) {
-        value /= 1024.0
-        index++
-    }
-    val number =
-        if (index == 0) {
-            NumberFormat
-                .getIntegerInstance(locale)
-                .apply { isGroupingUsed = false }
-                .format(value.toLong())
-        } else {
-            NumberFormat.getNumberInstance(locale).apply {
-                isGroupingUsed = false
-                minimumFractionDigits = 1
-                maximumFractionDigits = 1
-            }.format(value)
-        }
-    return "$number ${units[index]}"
-}
 
 private fun Map<String, Any>.diagnosticsStringValue(key: String): String =
         this[key]?.toString().orEmpty()
@@ -5031,7 +4997,7 @@ internal class RaftBridgeModule(
     ): Map<String, Any> =
             mapOf(
                     "status" to "ok",
-                    "totalSizeLabel" to snapshot.totalBytes.formatStorageSizeLabel(),
+                    "totalSizeBytes" to snapshot.totalBytes,
                     "feedback" to feedback.orEmpty(),
                     // Serialized like entriesJson (#484): rows cross the render
                     // bridge as a primitive string, independent of container
@@ -5044,7 +5010,7 @@ internal class RaftBridgeModule(
                                                     target = "database",
                                                     title = "Local database",
                                                     detail = "Messages, task metadata, and server snapshots stored on this device.",
-                                                    sizeLabel = snapshot.localDatabaseBytes.formatStorageSizeLabel(),
+                                                    sizeBytes = snapshot.localDatabaseBytes,
                                                     clearEnabled = false
                                             )
                                     )
@@ -5053,7 +5019,7 @@ internal class RaftBridgeModule(
                                                     target = "imageCache",
                                                     title = "Image cache",
                                                     detail = "Downloaded image previews kept for faster viewing.",
-                                                    sizeLabel = snapshot.imageCacheBytes.formatStorageSizeLabel(),
+                                                    sizeBytes = snapshot.imageCacheBytes,
                                                     clearEnabled = true
                                             )
                                     )
@@ -5062,7 +5028,7 @@ internal class RaftBridgeModule(
                                                     target = "attachmentDownloads",
                                                     title = "Attachment staging",
                                                     detail = "Temporary data from active or failed downloads. Completed files remain in Downloads.",
-                                                    sizeLabel = snapshot.attachmentDownloadBytes.formatStorageSizeLabel(),
+                                                    sizeBytes = snapshot.attachmentDownloadBytes,
                                                     clearEnabled = true
                                             )
                                     )
@@ -5071,7 +5037,7 @@ internal class RaftBridgeModule(
                                                     target = "temporaryAndLogs",
                                                     title = "Temporary files and logs",
                                                     detail = "Debug logs and temporary files generated by the app.",
-                                                    sizeLabel = snapshot.temporaryAndLogBytes.formatStorageSizeLabel(),
+                                                    sizeBytes = snapshot.temporaryAndLogBytes,
                                                     clearEnabled = true
                                             )
                                     )
@@ -5120,21 +5086,18 @@ internal class RaftBridgeModule(
             target: String,
             title: String,
             detail: String,
-            sizeLabel: String,
+            sizeBytes: Long,
             clearEnabled: Boolean
     ): JSONObject =
             JSONObject()
                     .put("target", target)
                     .put("title", title)
                     .put("detail", detail)
-                    .put("sizeLabel", sizeLabel)
+                    .put("sizeBytes", sizeBytes)
                     .put("clearEnabled", clearEnabled)
 
-    private fun Long.formatStorageSizeLabel(): String =
-            formatStorageSizeLabel(
-                    bytes = this,
-                    languageTag = RaftHostStrings.appLocaleLanguageTag()
-            )
+    private fun Long.hostSizeLabel(): String =
+            RaftFormat.bytes(this, RaftFormatLocale.forLanguageTag(RaftHostStrings.appLocaleLanguageTag()))
 
     private fun requestNotificationPermissionCapability(): Map<String, Any> {
         AndroidUnreadNotificationPoster.ensureSharedNotificationChannels(appContext)
@@ -5954,8 +5917,8 @@ internal class RaftBridgeModule(
     private fun UpdateCheckResponse.handsDetail(displaySizes: HandsUpdateDisplaySizes): String =
             RaftHostStrings.appUpdateDetail(
                     updateAvailable = requireUpdate() != null,
-                    sizeLabel = displaySizes.fullSizeBytes?.formatStorageSizeLabel(),
-                    patchSizeLabel = displaySizes.patchSizeBytes?.formatStorageSizeLabel()
+                    sizeLabel = displaySizes.fullSizeBytes?.hostSizeLabel(),
+                    patchSizeLabel = displaySizes.patchSizeBytes?.hostSizeLabel()
             )
 
     private fun setApiEnvironment(request: JSONObject): Map<String, Any> {

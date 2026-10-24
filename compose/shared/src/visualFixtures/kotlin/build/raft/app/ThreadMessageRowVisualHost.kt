@@ -58,7 +58,6 @@ import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.RaftAgentsApiClient
 import build.raft.app.data.RaftAgentsNetworkApi
 import build.raft.app.data.RaftRealtimeEvents
-import build.raft.app.data.formatAttachmentSizeLabel
 import build.raft.app.data.RaftComputersApiClient
 import build.raft.app.data.RaftComputersNetworkApi
 import build.raft.app.data.ThreadAttachmentCommentItem

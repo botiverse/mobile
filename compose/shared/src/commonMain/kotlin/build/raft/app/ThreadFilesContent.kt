@@ -2,7 +2,7 @@ package build.raft.app
 
 import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.components.RaftDesignSystemTheme
-import build.raft.app.data.formatAttachmentSizeLabel
+import build.raft.app.format.RaftFormat
 import build.raft.app.data.isEdgeBlockedMarker
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
@@ -611,7 +611,7 @@ private fun ThreadFileMetaLine(item: RaftThreadFileItem) {
 }
 
 internal fun RaftThreadFileItem.displaySizeLabel(): String =
-    sizeBytes.takeIf { it > 0L }?.let(::formatAttachmentSizeLabel) ?: sizeLabel
+    sizeBytes.takeIf { it > 0L }?.let { RaftFormat.bytes(it) } ?: sizeLabel
 
 internal fun RaftThreadFileItem.threadFileHasSourceTarget(): Boolean =
     threadFileSourceFocusMessageId() != null

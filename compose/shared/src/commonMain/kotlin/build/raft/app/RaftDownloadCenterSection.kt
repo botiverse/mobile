@@ -14,9 +14,8 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.downloads.RaftDownloadEntry
 import build.raft.app.downloads.RaftDownloadErrorKind
 import build.raft.app.downloads.RaftDownloadStatus
-import build.raft.app.downloads.raftDownloadSizeLabel
-import build.raft.app.downloads.raftDownloadSpeedLabel
 import build.raft.app.downloads.rememberThrottledSpeed
+import build.raft.app.format.RaftFormat
 import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.raftCopyable
@@ -250,11 +249,11 @@ private fun raftDownloadCenterMeta(entry: RaftDownloadEntry, timeLabel: @Composa
     when (entry.status) {
         RaftDownloadStatus.Downloading, RaftDownloadStatus.Paused -> {
             raftDownloadBytesLabel(entry.downloadedBytes, entry.totalBytes)?.let(parts::add)
-            if (entry.status == RaftDownloadStatus.Downloading) raftDownloadSpeedLabel(shownSpeed)?.let(parts::add)
+            if (entry.status == RaftDownloadStatus.Downloading) RaftFormat.speed(shownSpeed)?.let(parts::add)
         }
         RaftDownloadStatus.Completed -> {
             // The Open button already says "downloaded": keep the line for size and time.
-            (entry.totalBytes ?: entry.downloadedBytes.takeIf { it > 0L })?.let { parts += raftDownloadSizeLabel(it) }
+            (entry.totalBytes ?: entry.downloadedBytes.takeIf { it > 0L })?.let { parts += RaftFormat.bytes(it) }
             parts += timeLabel(entry.updatedAtMillis)
         }
         RaftDownloadStatus.Failed -> {

@@ -132,19 +132,23 @@ data class SharedSettingsNavItem(
 )
 
 data class SharedSettingsStorageSnapshot(
+    /** Host-formatted fallback; [totalSizeBytes] wins when the host sends it. */
     val totalSizeLabel: String,
     val rows: List<SharedSettingsStorageRow>,
     val feedback: String? = null,
-    val feedbackError: ErrorPresentation? = null
+    val feedbackError: ErrorPresentation? = null,
+    val totalSizeBytes: Long? = null
 )
 
 data class SharedSettingsStorageRow(
     val target: String,
     val title: String,
     val detail: String,
+    /** Host-formatted fallback; [sizeBytes] wins when the host sends it. */
     val sizeLabel: String,
     val clearEnabled: Boolean = false,
-    val clearInProgress: Boolean = false
+    val clearInProgress: Boolean = false,
+    val sizeBytes: Long? = null
 )
 
 data class SharedSettingsAboutSnapshot(

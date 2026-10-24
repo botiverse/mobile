@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.format.RaftFormat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -403,8 +404,8 @@ internal fun AppUpdateSummary(
             )
         }
         if (progress?.active == true) {
-            val bytes = appUpdateBytesLabel(progress.downloadedBytes)
-            val total = progress.totalBytes?.let(::appUpdateBytesLabel)
+            val bytes = RaftFormat.bytes(progress.downloadedBytes)
+            val total = progress.totalBytes?.let { RaftFormat.bytes(it) }
             val label = if (total != null) "$bytes / $total" else bytes
             Text(
                 text = stringResource(if (progress.phase == "paused") MR.strings.app_update_download_paused else MR.strings.app_update_downloading),
@@ -647,19 +648,6 @@ internal fun appUpdateCanSkipVersion(snapshot: SharedSettingsUpdateCheckSnapshot
         SharedSettingsUpdateTransactionState.InstallerOpened,
         SharedSettingsUpdateTransactionState.Installed -> false
     }
-}
-
-internal fun appUpdateBytesLabel(bytes: Long): String {
-    val size = bytes.coerceAtLeast(0L)
-    val unit = when {
-        size >= 1_073_741_824L -> 1_073_741_824L to "GB"
-        size >= 1_048_576L -> 1_048_576L to "MB"
-        size >= 1_024L -> 1_024L to "KB"
-        else -> return "$size B"
-    }
-    val whole = size / unit.first
-    val decimal = (size % unit.first) * 10L / unit.first
-    return "$whole.$decimal ${unit.second}"
 }
 
 /** Local completion remains actionable even when the subsequent offer refresh fails. */

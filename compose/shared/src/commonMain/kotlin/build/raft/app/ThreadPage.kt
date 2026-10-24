@@ -129,7 +129,7 @@ import build.raft.app.data.ownSentConversationIds
 import build.raft.app.data.RaftAgentsApiClient
 import build.raft.app.data.RaftAgentsNetworkApi
 import build.raft.app.data.RaftRealtimeEvents
-import build.raft.app.data.formatAttachmentSizeLabel
+import build.raft.app.format.RaftFormat
 import build.raft.app.data.RaftComputersApiClient
 import build.raft.app.data.RaftComputersNetworkApi
 import build.raft.app.data.ThreadAttachmentCommentItem
@@ -7687,8 +7687,8 @@ private fun SharedThreadRouteContentContent(
         attachmentUploadFailedDetailTemplate.replace(ThreadLocalizedFeedbackPlaceholder, detail)
     fun localizedAttachmentTooLarge(fileSize: Long, maxBytes: Long): String =
         attachmentTooLargeTemplate
-            .replace(ThreadLocalizedFeedbackPlaceholder, formatAttachmentSizeLabel(fileSize))
-            .replace("__RAFT_ATTACHMENT_LIMIT__", formatAttachmentSizeLabel(maxBytes))
+            .replace(ThreadLocalizedFeedbackPlaceholder, RaftFormat.bytes(fileSize))
+            .replace("__RAFT_ATTACHMENT_LIMIT__", RaftFormat.byteLimit(maxBytes))
     fun localizedUnableToOpenTarget(target: String): String =
         unableToOpenTargetTemplate.replace(ThreadLocalizedFeedbackPlaceholder, target)
     fun localizedUnableToOpenTaskNumber(taskNumber: Int): String =
@@ -30426,7 +30426,7 @@ private val ThreadAttachmentGroupMaxWidth = 360.dp
 
 /** UI-bound formatting: raw bytes win; sizeLabel exists only for compatibility snapshots. */
 internal fun RaftThreadAttachmentItem.displaySizeLabel(): String =
-    sizeBytes.takeIf { it > 0L }?.let(::formatAttachmentSizeLabel) ?: sizeLabel
+    sizeBytes.takeIf { it > 0L }?.let { RaftFormat.bytes(it) } ?: sizeLabel
 
 /** Group identity for the initial Thread image editor's N/N event stream. */
 internal fun threadComposerImageAnnotationGroupId(actionId: String, fileCount: Int): String =
@@ -30453,7 +30453,7 @@ internal fun threadComposerImageAnnotationPayload(
         path = firstFile.fileName,
         meta =
             listOf(
-                firstFile.sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+                firstFile.sizeBytes?.takeIf { it > 0L }?.let { RaftFormat.bytes(it) }.orEmpty(),
                 firstFile.mimeType.orEmpty()
             ).filter { it.isNotBlank() }.joinToString(" · "),
         imageUrl = previewUri.takeIf { it.isNotBlank() },
@@ -30572,7 +30572,7 @@ internal fun PlatformFile.toComposerImageGalleryImage(): RaftFilePreviewGalleryI
         attachmentId = id,
         name = fileName,
         mimeType = mimeType.orEmpty(),
-        sizeLabel = sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+        sizeLabel = sizeBytes?.takeIf { it > 0L }?.let { RaftFormat.bytes(it) }.orEmpty(),
         thumbnailUrl = composerLocalPreviewUri(),
         composerImageFileRef = fileRef.orEmpty(),
         composerImagePreviewUri = composerLocalPreviewUri().orEmpty(),

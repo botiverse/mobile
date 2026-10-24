@@ -44,6 +44,10 @@ on:
       - "compose/shared/src/visualFixtures/**"
       - "compose/shared/src/visualFixturesOff/**"
       - "compose/androidApp/src/main/java/**/*.kt"
+      # check_single_byte_size_formatter scans every production Kotlin file and the iOS host.
+      - "compose/**/*.kt"
+      - "compose/iosApp/**/*.m"
+      - "compose/iosApp/**/*.swift"
       - "scripts/cmp_generate_page_registry.py"
       - ".github/workflows/source-constraints-lint.yml"
   push:

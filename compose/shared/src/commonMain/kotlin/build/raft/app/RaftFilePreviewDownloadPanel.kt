@@ -27,9 +27,8 @@ import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.downloads.RaftDownloadEntry
 import build.raft.app.downloads.RaftDownloadStatus
-import build.raft.app.downloads.raftDownloadSizeLabel
-import build.raft.app.downloads.raftDownloadSpeedLabel
 import build.raft.app.downloads.rememberThrottledSpeed
+import build.raft.app.format.RaftFormat
 import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.raftCopyable
@@ -182,10 +181,10 @@ internal fun raftDownloadBytesLabel(downloadedBytes: Long, totalBytes: Long?): S
         total != null ->
             stringResource(
                 MR.strings.download_center_progress_bytes,
-                raftDownloadSizeLabel(downloadedBytes.coerceIn(0L, total)),
-                raftDownloadSizeLabel(total)
+                RaftFormat.bytes(downloadedBytes.coerceIn(0L, total)),
+                RaftFormat.bytes(total)
             )
-        downloadedBytes > 0L -> raftDownloadSizeLabel(downloadedBytes)
+        downloadedBytes > 0L -> RaftFormat.bytes(downloadedBytes)
         else -> null
     }
 }
@@ -222,7 +221,7 @@ internal fun RaftFilePreviewDownloadProgressBlock(
         )
         val bytes = raftDownloadBytesLabel(view.downloadedBytes, view.totalBytes)
         val shownSpeed = rememberThrottledSpeed(view.bytesPerSecond)
-        val speed = raftDownloadSpeedLabel(shownSpeed).takeIf { view.phase == RaftFilePreviewDownloadPhase.Active }
+        val speed = RaftFormat.speed(shownSpeed).takeIf { view.phase == RaftFilePreviewDownloadPhase.Active }
         if (bytes != null || speed != null) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 RaftText(bytes.orEmpty(), style = typography.monoMeta, color = colors.foregroundMuted, maxLines = 1)

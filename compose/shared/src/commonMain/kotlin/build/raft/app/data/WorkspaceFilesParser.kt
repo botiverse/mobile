@@ -1,5 +1,7 @@
 package build.raft.app.data
 
+import build.raft.app.format.RaftFormat
+
 import build.raft.app.model.MemberId
 import build.raft.app.model.RaftWorkspaceFileKind
 import build.raft.app.model.RaftWorkspaceFilePreview
@@ -201,7 +203,7 @@ private fun String.hasTextExtension(): Boolean =
 
 private fun formatNodeMeta(sizeBytes: Long?, modifiedAt: String?): String? {
     if (sizeBytes != null && sizeBytes > 0) {
-        return formatAttachmentSizeLabel(sizeBytes)
+        return RaftFormat.bytes(sizeBytes)
     }
     return modifiedAt
 }

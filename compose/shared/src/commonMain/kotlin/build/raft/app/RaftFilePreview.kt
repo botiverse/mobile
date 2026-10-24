@@ -45,7 +45,7 @@ import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedPreferenceStore
-import build.raft.app.data.formatAttachmentSizeLabel
+import build.raft.app.format.RaftFormat
 import build.raft.app.data.RaftEventBus
 import build.raft.app.data.RaftEventBuses
 import build.raft.app.data.RaftSharedStoreRegistry
@@ -9113,7 +9113,7 @@ internal fun RaftFilePreviewPayload.withComposerImageFinalResult(
                     image.copy(
                         name = fileName,
                         mimeType = mimeType,
-                        sizeLabel = sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+                        sizeLabel = sizeBytes?.takeIf { it > 0L }?.let { RaftFormat.bytes(it) }.orEmpty(),
                         thumbnailUrl = previewUri,
                         composerImageFileRef = fileRef,
                         composerImagePreviewUri = previewUri,
@@ -9200,7 +9200,7 @@ internal fun RaftFilePreviewPayload.withComposerImageGalleryFinalResult(
         sourceImage.copy(
             name = fileName,
             mimeType = mimeType,
-            sizeLabel = sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+            sizeLabel = sizeBytes?.takeIf { it > 0L }?.let { RaftFormat.bytes(it) }.orEmpty(),
             thumbnailUrl = previewUri,
             composerImageFileRef = fileRef,
             composerImagePreviewUri = previewUri,
@@ -9690,30 +9690,21 @@ internal fun RaftFilePreviewOverflowMenuButton(
 
 private fun RaftWorkspaceFilePreview.Text.membersWorkspaceMetaLine(fallbackPath: String): String =
     listOfNotNull(
-        sizeBytes.raftFilePreviewSizeLabel(),
+        sizeBytes?.let { RaftFormat.bytes(it) },
         modifiedAt?.takeIf { it.isNotBlank() }
     ).joinToString(" · ").ifBlank { path.ifBlank { fallbackPath } }
 
 private fun RaftWorkspaceFilePreview.Image.membersWorkspaceMetaLine(fallbackPath: String): String =
     listOfNotNull(
-        sizeBytes.raftFilePreviewSizeLabel(),
+        sizeBytes?.let { RaftFormat.bytes(it) },
         modifiedAt?.takeIf { it.isNotBlank() }
     ).joinToString(" · ").ifBlank { path.ifBlank { fallbackPath } }
 
 private fun RaftWorkspaceFilePreview.Unsupported.membersWorkspaceMetaLine(fallbackPath: String): String =
     listOfNotNull(
-        sizeBytes.raftFilePreviewSizeLabel(),
+        sizeBytes?.let { RaftFormat.bytes(it) },
         modifiedAt?.takeIf { it.isNotBlank() }
     ).joinToString(" · ").ifBlank { path.ifBlank { fallbackPath } }
-
-private fun Long?.raftFilePreviewSizeLabel(): String? {
-    val bytes = this ?: return null
-    return when {
-        bytes < 1024 -> "$bytes B"
-        bytes < 1024 * 1024 -> "${bytes / 1024} KB"
-        else -> "${bytes / (1024 * 1024)} MB"
-    }
-}
 
 private val RaftPresentationMimeTopLevels =
     setOf("application", "audio", "chemical", "example", "font", "image", "message", "model", "multipart", "text", "video")
@@ -9853,8 +9844,8 @@ internal fun raftFilePreviewDownloadStatusLabel(
     terms: RaftFilePreviewDownloadStatusTerms
 ): String {
     val percent = progress?.percent
-    val speedLabel = progress?.bytesPerSecond.raftFilePreviewSpeedLabel()
-    val downloadedLabel = progress?.downloadedBytes?.takeIf { it > 0L }.raftFilePreviewSizeLabel()
+    val speedLabel = RaftFormat.speed(progress?.bytesPerSecond)
+    val downloadedLabel = progress?.downloadedBytes?.takeIf { it > 0L }?.let { RaftFormat.bytes(it) }
     val verb =
         when {
             progress?.status == "paused" -> terms.paused
@@ -10199,11 +10190,6 @@ private fun RaftFilePreviewPayload.isAndroidPackageArchive(): Boolean {
     if (mime.equals("application/vnd.android.package-archive", ignoreCase = true)) return true
     val name = attachmentCacheFileName().substringBefore('?').substringBefore('#')
     return name.endsWith(".apk", ignoreCase = true)
-}
-
-private fun Long?.raftFilePreviewSpeedLabel(): String? {
-    val bytesPerSecond = this?.takeIf { it > 0L } ?: return null
-    return "${bytesPerSecond.raftFilePreviewSizeLabel()}/s"
 }
 
 @Composable

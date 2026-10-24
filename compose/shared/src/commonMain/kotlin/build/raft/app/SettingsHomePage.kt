@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.format.RaftFormat
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.components.RaftPickerTriggerButton
 import build.raft.designsystem.components.rememberRaftMobileNavServerPopoverState
@@ -8259,7 +8260,7 @@ internal fun ScreenLoadState<SharedSettingsStorageSnapshot>.toStoragePayload(
     return RaftSettingsStoragePayload(
         instanceId = "shared-shell-settings-storage",
         totalTitle = stringResource(MR.strings.settings_storage_total_title),
-        totalSize = storage?.totalSizeLabel?.takeIf { it.isNotBlank() } ?: if (refreshing) stringResource(MR.strings.settings_state_refreshing) else "--",
+        totalSize = storage?.totalSizeBytes?.let { RaftFormat.bytes(it) } ?: storage?.totalSizeLabel?.takeIf { it.isNotBlank() } ?: if (refreshing) stringResource(MR.strings.settings_state_refreshing) else "--",
         refreshLabel = stringResource(MR.strings.settings_storage_refresh),
         safeClearNote = stringResource(MR.strings.settings_storage_safe_clear_note),
         feedback = localizedSettingsStorageFeedback(statusText),
@@ -8283,7 +8284,7 @@ private fun SharedSettingsStorageRow.toStoragePayloadRow(clearInProgress: Boolea
         iconName = storageTargetIconName(target),
         title = localizedSettingsStorageRowTitle(target, title),
         detail = localizedSettingsStorageRowDetail(detail),
-        size = sizeLabel,
+        size = sizeBytes?.let { RaftFormat.bytes(it) } ?: sizeLabel,
         clearLabel =
             if (clearEnabled) {
                 when (target) {

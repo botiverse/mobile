@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.format.RaftFormat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.size
@@ -905,24 +906,12 @@ private fun AgentMigrationHostedReviewCard(
 
 @Composable
 private fun agentMigrationFileCount(files: Int, bytes: Long): String {
-    val size = formatAgentMigrationBytes(bytes)
+    val size = RaftFormat.bytes(bytes)
     return if (files == 1) {
         stringResource(MR.strings.agent_migration_hosted_review_file_count_one, files, size)
     } else {
         stringResource(MR.strings.agent_migration_hosted_review_file_count_other, files, size)
     }
-}
-
-internal fun formatAgentMigrationBytes(bytes: Long): String {
-    val units = listOf("B", "KB", "MB", "GB", "TB")
-    var value = bytes.toDouble()
-    var unit = 0
-    while (value >= 1024 && unit < units.lastIndex) {
-        value /= 1024
-        unit += 1
-    }
-    val rounded = if (unit == 0 || value >= 10) value.toLong().toString() else ((value * 10).toLong() / 10.0).toString()
-    return "$rounded ${units[unit]}"
 }
 
 @Composable

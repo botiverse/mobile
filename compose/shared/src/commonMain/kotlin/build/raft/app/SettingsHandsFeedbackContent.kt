@@ -15,7 +15,7 @@ import build.raft.app.data.PlatformFile
 import build.raft.app.data.SettingsHandsFeedbackSubmission
 import build.raft.app.data.SettingsHandsFeedbackDraftSnapshot
 import build.raft.app.data.SettingsHandsFeedbackDraftStore
-import build.raft.app.data.formatAttachmentSizeLabel
+import build.raft.app.format.RaftFormat
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
@@ -86,7 +86,7 @@ internal fun SharedHandsFeedbackContent(
     bottomContentPadding: Dp = RaftAppSpacing.Lg
 ) {
     val attachmentMaxBytes = raftFeedbackAttachmentMaxBytes()
-    val attachmentMaxLabel = settingsFeedbackAttachmentMaxLabel(attachmentMaxBytes)
+    val attachmentMaxLabel = RaftFormat.byteLimit(attachmentMaxBytes)
     val copy = settingsHandsFeedbackCopy(attachmentMaxLabel)
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val scope = rememberCoroutineScope()
@@ -1194,9 +1194,6 @@ internal fun SettingsHandsFeedbackCopy.submissionPermissionFailure(): SettingsHa
         retryable = false
     )
 
-internal fun settingsFeedbackAttachmentMaxLabel(maxBytes: Long): String =
-    "${maxBytes / (1024L * 1024L)} MB"
-
 @Composable
 private fun settingsHandsFeedbackCopy(attachmentMaxLabel: String): SettingsHandsFeedbackCopy {
     val attachmentLimitReachedTemplate = stringResource(MR.strings.settings_feedback_attachment_limit_reached)
@@ -1338,7 +1335,7 @@ internal fun PlatformFile.toSettingsHandsFeedbackAttachmentPreviewPayload(
         subtitle = displayName,
         name = displayName,
         path = displayName,
-        meta = sizeBytes?.takeIf { it > 0L }?.let(::formatAttachmentSizeLabel).orEmpty(),
+        meta = sizeBytes?.takeIf { it > 0L }?.let { RaftFormat.bytes(it) }.orEmpty(),
         imageUrl = localUri.takeIf { image },
         externalUrl = localUri,
         externalFileName = displayName,

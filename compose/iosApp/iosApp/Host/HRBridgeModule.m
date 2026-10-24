@@ -4682,33 +4682,13 @@ static RaftStorageUsage RaftStorageMeasure(void) {
     return usage;
 }
 
-/// Mirrors Android formatStorageSizeLabel: 1024-based B/KB/MB/GB, integer bytes, one decimal otherwise.
-static NSString *RaftStorageSizeLabel(unsigned long long bytes) {
-    if (bytes == 0) return @"0 B";
-    NSArray<NSString *> *units = @[ @"B", @"KB", @"MB", @"GB" ];
-    double value = (double)bytes;
-    NSUInteger index = 0;
-    while (value >= 1024.0 && index + 1 < units.count) {
-        value /= 1024.0;
-        index++;
-    }
-    NSNumberFormatter *formatter = [[NSNumberFormatter alloc] init];
-    formatter.locale = NSLocale.currentLocale;
-    formatter.numberStyle = NSNumberFormatterDecimalStyle;
-    formatter.usesGroupingSeparator = NO;
-    formatter.minimumFractionDigits = index == 0 ? 0 : 1;
-    formatter.maximumFractionDigits = index == 0 ? 0 : 1;
-    NSString *number = [formatter stringFromNumber:@(value)] ?: @"0";
-    return [NSString stringWithFormat:@"%@ %@", number, units[index]];
-}
-
 static NSDictionary *RaftStorageRow(NSString *target, NSString *title, NSString *detail,
                                      unsigned long long bytes, BOOL clearEnabled) {
     return @{
         @"target" : target,
         @"title" : title,
         @"detail" : detail,
-        @"sizeLabel" : RaftStorageSizeLabel(bytes),
+        @"sizeBytes" : @(bytes),
         @"clearEnabled" : @(clearEnabled)
     };
 }
@@ -4718,7 +4698,7 @@ static NSDictionary *RaftStoragePayload(RaftStorageUsage usage, NSString *feedba
         usage.database + usage.imageCache + usage.attachmentDownloads + usage.temporaryAndLogs;
     return @{
         @"status" : @"ok",
-        @"totalSizeLabel" : RaftStorageSizeLabel(total),
+        @"totalSizeBytes" : @(total),
         @"feedback" : feedback ?: @"",
         @"rows" : @[
             RaftStorageRow(@"database", @"Local database",

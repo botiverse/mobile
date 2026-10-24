@@ -2,6 +2,8 @@ package build.raft.app.shared
 
 import build.hands.update.HandsFeedback
 import build.hands.update.HandsFeedbackException
+import build.raft.app.format.RaftFormat
+import build.raft.app.format.RaftFormatLocale
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -116,7 +118,7 @@ internal class Base64StringInputStream(
 
 internal class FeedbackAttachmentTooLargeException(
     val maxBytes: Long
-) : IOException("Feedback attachment exceeds ${maxBytes / (1024L * 1024L)} MB")
+) : IOException("Feedback attachment exceeds ${RaftFormat.byteLimit(maxBytes, RaftFormatLocale.English)}")
 
 internal class FeedbackAttachmentReadException(message: String) : IOException(message)
 

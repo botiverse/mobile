@@ -1236,7 +1236,7 @@ class RaftFilePreviewDownloadStatusTest {
                 englishDownloadTerms
             )
 
-        assertEquals("Downloading 42% · 512 KB/s", label)
+        assertEquals("Downloading 42% · 512.0 KB/s", label)
     }
 
     @Test
@@ -1269,7 +1269,7 @@ class RaftFilePreviewDownloadStatusTest {
                 englishDownloadTerms
             )
 
-        assertEquals("Downloading 1 KB", label)
+        assertEquals("Downloading 1.5 KB", label)
     }
 
     @Test
@@ -1305,7 +1305,7 @@ class RaftFilePreviewDownloadStatusTest {
             )
 
         assertEquals(
-            "下载中 42% · 512 KB/s",
+            "下载中 42% · 512.0 KB/s",
             raftFilePreviewDownloadStatusLabel(
                 BridgeAttachmentDownloadProgress(
                     percent = 42,
