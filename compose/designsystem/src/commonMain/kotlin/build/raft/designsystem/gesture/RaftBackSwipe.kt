@@ -229,12 +229,17 @@ class RaftBackSwipeScroll internal constructor(
  *
  * On hosts without a content back swipe this is inert: [RaftBackSwipeScroll.userScrollEnabled]
  * stays true and the modifier is empty.
+ *
+ * Pass the scroller's [nestedDrags] host when its content may claim horizontal drags itself
+ * ([raftClaimsHorizontalDragFirst]): the forward drag driven here then waits for that content to decide,
+ * exactly like the scroller's own drag does.
  */
 @Composable
 fun rememberRaftBackSwipeScroll(
     state: ScrollableState,
     flingBehavior: FlingBehavior = ScrollableDefaults.flingBehavior(),
     enabled: Boolean = true,
+    nestedDrags: RaftNestedHorizontalDragHost? = null,
 ): RaftBackSwipeScroll {
     val regions = LocalRaftBackSwipeRegions.current
     val hostHasBackSwipe = regions != null && enabled
@@ -247,12 +252,12 @@ fun rememberRaftBackSwipeScroll(
     val currentFling = rememberUpdatedState(flingBehavior)
     // Remembered: a new pointerInput lambda would reset the handler and cancel a drag in flight
     // when the page recomposes (the yielding flag flips as soon as the drag leaves the start).
-    return remember(state, isLtr, yielding, scope) {
+    return remember(state, isLtr, yielding, scope, nestedDrags) {
         RaftBackSwipeScroll(
             yieldingState = yielding,
             baseModifier = Modifier
                 .raftBackSwipeRegion { state.canScrollBackward }
-                .raftForwardDragAtStart(state, isLtr, yielding, scope, currentFling),
+                .raftForwardDragAtStart(state, isLtr, yielding, scope, currentFling, nestedDrags),
             yieldingSemantics = Modifier.raftYieldingScrollSemantics(state, isLtr, scope, currentFling),
         )
     }
@@ -261,6 +266,7 @@ fun rememberRaftBackSwipeScroll(
 /**
  * At the start of [state] (while [yielding]), claims forward horizontal drags and drives [state]
  * with them, settling with [fling] on release. Back-direction and vertical drags are never consumed.
+ * Over [nestedDrags] content the claim waits for the slop the content asked for.
  */
 private fun Modifier.raftForwardDragAtStart(
     state: ScrollableState,
@@ -268,12 +274,14 @@ private fun Modifier.raftForwardDragAtStart(
     yielding: State<Boolean>,
     scope: CoroutineScope,
     fling: State<FlingBehavior>,
-): Modifier = pointerInput(state, isLtr) {
+    nestedDrags: RaftNestedHorizontalDragHost?,
+): Modifier = pointerInput(state, isLtr, nestedDrags) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Main)
         // Decided per gesture: away from the start the scroller's own handling is enabled.
         if (!yielding.value) return@awaitEachGesture
-        val slop = viewConfiguration.touchSlop
+        // Content that decides on horizontal drags itself (an Activity row) gets to first.
+        val slop = nestedDrags?.touchSlop(viewConfiguration.touchSlop) ?: viewConfiguration.touchSlop
         val tracker = VelocityTracker()
         tracker.addPointerInputChange(down)
         var overSlop = 0f

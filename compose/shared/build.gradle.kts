@@ -253,6 +253,10 @@ kotlin {
             dependsOn(commonTest)
             iosArm64Test.dependsOn(this)
             iosSimulatorArm64Test.dependsOn(this)
+            dependencies {
+                // Compose UI tests on the simulator (runComposeUiTest), e.g. ActivitySwipeTabPagerIosTest.
+                implementation(libs.cmp.ui.test)
+            }
         }
     }
 }
