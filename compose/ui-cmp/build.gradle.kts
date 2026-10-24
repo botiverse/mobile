@@ -1,3 +1,4 @@
+import build.raft.ci.registerNoKuiklyGuard
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 /*
@@ -9,7 +10,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
  * through the :shared framework, the app's only Kotlin framework).
  *
  * Depends on :core (data layer, HostCapabilities) and :designsystem. It must never depend on Kuikly;
- * scripts/ci/test_kuikly_raft_consumer_contract.py enforces that in CI.
+ * verifyUiCmpHasNoKuikly enforces that on every build.
  */
 plugins {
     kotlin("multiplatform")
@@ -60,6 +61,9 @@ kotlin {
         }
     }
 }
+
+// Fails the build if :ui-cmp sources or its (transitive) Android/iOS dependency graph reference Kuikly.
+registerNoKuiklyGuard("verifyUiCmpHasNoKuikly")
 
 compose.resources {
     packageOfResClass = "build.raft.app.cmp.resources"

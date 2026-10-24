@@ -85,6 +85,9 @@ jobs:
       - name: Validate Hands Android SDK Raft consumer contract
         run: python3 scripts/ci/test_hands_raft_consumer_contract.py
 
+      - name: Validate no-local-Ktor dependency contract
+        run: python3 scripts/ci/test_no_local_ktor_ci_contract.py
+
       - name: Validate fail-closed git diff consumers
         run: |
           .github/actions/git-safe-workspace/test_configure.sh

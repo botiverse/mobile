@@ -117,7 +117,7 @@ BARE_WORDS = {"slock", "Slock", "SLOCK", "kuikly", "Kuikly", "KUIKLY"}
 
 # Kuikly-era names (no Slock prefix) that are trivially renamable: the shared UI payload/model
 # types and host adapters that were named after the Kuikly renderer. The compat layer
-# (JSONObject, Pager, KuiklyFont, ...), the KuiklyBase datetime library and the
+# (JSONObject, Pager, KuiklyFont, ...), the KuiklyBase datetime library, NoKuiklyGuard and the
 # `com.tencent.kuiklybase` markdown fork keep their names on purpose.
 KUIKLY_RENAME_PATTERNS = [
     re.compile(r"^(to)?Kuikly(Thread|Composer|Pending|SharedSettings|Settings|Members|MemberDetail|Snapshot)[A-Za-z0-9_]*$"),

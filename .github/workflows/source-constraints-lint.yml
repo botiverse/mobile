@@ -1,8 +1,9 @@
 name: Source constraints lint
 
 # Incident-born static constraints as an explicit gate (test-discipline
-# announcement, #all 2026-07-25). check_source_constraints.py now holds only
-# the 1.15.0 conditional-interaction-state crash guard; the other steps below
+# announcement, #all 2026-07-25). check_source_constraints.py now holds the
+# 1.15.0 conditional-interaction-state crash guard and the task #82 native
+# Sign in with Apple contract; the other steps below
 # are the visual fixture census, string edge spaces and no-production-visual-pages.
 # Behavior stays proven by behavior tests; this only blocks silent structural
 # regressions a refactor could reintroduce.
@@ -17,6 +18,10 @@ on:
       # this job on its own PR, not only after it lands (LiBai, #2327 review).
       - "compose/shared/src/commonMain/resources/MR/*/strings.xml"
       - "scripts/ci/check_source_constraints.py"
+      # check_native_apple_authentication_services (task #82) reads these iOS files.
+      - "compose/iosApp/iosApp/RaftIosMobileOAuthHost.swift"
+      - "compose/iosApp/iosApp/iosApp.entitlements"
+      - "compose/iosApp/iosApp.xcodeproj/project.pbxproj"
       - "scripts/ci/check_string_edge_spaces.py"
       - "scripts/ci/visual_fixture_split_census.py"
       - "scripts/ci/verify_no_production_visual_pages.py"
