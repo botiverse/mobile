@@ -115,7 +115,7 @@ private val RaftHashCommentLanguages =
  * Non-overlapping, ordered token runs for [code]; empty when nothing is highlighted or the
  * scanner fails. Pure, so it may run on any thread.
  *
- * The scanner treats `//`, `#` and `/*` as comment markers in every language, even inside a
+ * The scanner treats `//`, `#` and a block-comment opener as comment markers in every language, even inside a
  * string, and then loses the string and the line's keywords. It scans a copy of [code] with
  * the markers it would misread blanked out ([raftMaskMisreadCommentMarkers]), so
  * `"https://…"` stays a string, `#include` and Python's `//` stay code, and offsets match.
@@ -161,7 +161,7 @@ internal fun raftCodeTokenRuns(code: String, language: SyntaxLanguage): List<Raf
 /**
  * [code] with every comment marker that is not a real comment in [language] replaced by
  * spaces (same length, so offsets carry over): markers inside a `"`/`'`/`` ` `` string on
- * the line, `#` in C-family code (`#include`, `#[derive]`, `"#fff"`), `//` and `/*` in
+ * the line, `#` in C-family code (`#include`, `#[derive]`, `"#fff"`), `//` and block-comment openers in
  * `#`-comment languages (Python floor division), and shell's `$#` / `${#`.
  */
 internal fun raftMaskMisreadCommentMarkers(code: String, language: SyntaxLanguage): String {
