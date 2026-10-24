@@ -270,6 +270,13 @@ jobs:
       # plans schedule none of them, so those runs skip the ~8 min APK build;
       # full-ci, nightly and scope=full dispatch runs still build and upload.
       BUILD_CONNECTED_APKS: ${{ needs.plan.outputs.run_device_suite == 'true' || needs.plan.outputs.run_canonical_final == 'true' || needs.plan.outputs.attachment_api_levels != '[]' }}
+      # One visual-fixture value for every Gradle call in this job (read by
+      # compose/shared/build.gradle.kts). The connected-test APKs need the
+      # fixtures, and the flag adds source dirs to :shared commonMain, so a job
+      # that mixed values compiled :shared twice. With it on, the fixture
+      # sources compile on every tier and the fixture data reaches the unit
+      # tests through commonMain instead of commonTest.
+      SLOCK_VISUAL_FIXTURES: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -432,7 +439,6 @@ jobs:
           fi
           printf '%s\n' 'org.gradle.jvmargs=-Xmx6g -Xss4m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8' >> "$GUH/gradle.properties"
           ./gradlew \
-            -PslockVisualFixtures=true \
             :shared:assembleDebugAndroidTest \
             :androidApp:assembleConnectedTest \
             :androidApp:assembleConnectedTestAndroidTest \
