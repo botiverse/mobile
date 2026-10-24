@@ -95,7 +95,8 @@ internal class SharedHomeStore(
      */
     private val serverSwitchTimeoutMillis: Long = SERVER_SWITCH_TIMEOUT_MS,
     /** Task #164: the backoff of the stale-unread recovery read; injectable for virtual time. */
-    staleRecoveryDelayMillis: (attempt: Int) -> Long = { attempt -> raftStaleRecoveryDelayMillis(attempt) },
+    staleRecoveryDelayMillis: (attempt: Int, retryAfterMillis: Long?) -> Long =
+        { attempt, retryAfter -> raftStaleRecoveryDelayMillis(attempt, retryAfter) },
     /**
      * #211: load the current server's sidebar-order snapshot. The store
      * calls this in parallel with the home payload load to populate the
@@ -1298,9 +1299,13 @@ internal class SharedHomeStore(
         if (homeSurfaceVisible == visible) return
         homeSurfaceVisible = visible
         if (!visible) return
-        // Task #164: a recovery skipped while Home was hidden is armed again now.
-        if (_state.value.unreadStale && !unreadStaleRecovery.pending) {
-            unreadStaleRecovery.schedule { recoverStaleHomeUnread() }
+        // Task #164: a recovery read skipped while Home was hidden runs now.
+        if (_state.value.unreadStale) {
+            if (unreadStaleRecovery.armed) {
+                unreadStaleRecovery.nudge("home_visible")
+            } else {
+                unreadStaleRecovery.schedule(retryAfterMillis = null) { recoverStaleHomeUnread() }
+            }
         }
         if (visible && current.homeRealtimeDirty) {
             val currentContent = current.content as? SharedHomeContentState.Content
@@ -1568,7 +1573,7 @@ internal class SharedHomeStore(
     private fun markHomeUnreadStale() {
         val current = _state.value
         if (!current.unreadStale) reduceState(current.copy(unreadStale = true))
-        unreadStaleRecovery.schedule { recoverStaleHomeUnread() }
+        unreadStaleRecovery.schedule(retryAfterMillis = null) { recoverStaleHomeUnread() }
     }
 
     /**
@@ -1576,19 +1581,21 @@ internal class SharedHomeStore(
      * [RaftStaleReadRecovery]); a load that reached fresh unread reads disarms it. A failed load
      * (channels / DMs) changes nothing.
      */
-    private fun settleUnreadStaleRecovery(dataResult: DataResult<HomeSnapshot>) {
+    private fun settleUnreadStaleRecovery(dataResult: DataResult<HomeSnapshot>, retryAfterMillis: Long?) {
         when {
-            _state.value.unreadStale -> unreadStaleRecovery.schedule { recoverStaleHomeUnread() }
+            _state.value.unreadStale ->
+                unreadStaleRecovery.schedule(retryAfterMillis) { recoverStaleHomeUnread() }
             dataResult is DataResult.Content -> unreadStaleRecovery.reset()
         }
     }
 
     /**
      * The recovery read: one Home load at background priority. Skipped while Home is hidden (made
-     * visible, it is armed again) and while a load is in flight (its answer settles recovery).
+     * visible, it reads at once) and while a load is in flight (its answer settles recovery). Returns
+     * whether it started a load.
      */
-    private fun recoverStaleHomeUnread() {
-        if (!_state.value.unreadStale) return
+    private fun recoverStaleHomeUnread(): Boolean {
+        if (!_state.value.unreadStale) return false
         val skipReason =
             when {
                 !homeSurfaceVisible -> "surface_hidden"
@@ -1598,7 +1605,8 @@ internal class SharedHomeStore(
             }
         if (skipReason != null) {
             diagnosticsLogger("home_unread_stale_recovery_skip reason=$skipReason")
-            return
+            // A load in flight settles recovery itself; otherwise nothing started.
+            return skipReason == "load_in_flight"
         }
         diagnosticsLogger("home_unread_stale_recovery_load")
         val nextSwitch = _state.value.serverSwitchState.refresh()
@@ -1614,6 +1622,7 @@ internal class SharedHomeStore(
                     stateDiagnosticsReason = previousReason
                 }
             }
+        return true
     }
 
     private fun scheduleRealtimeUnreadReconcileLoad(
@@ -2659,7 +2668,7 @@ internal class SharedHomeStore(
                 diagnosticsLogger("read_state_v1_home_publish rejected=stale_witness")
                 return
             }
-            settleUnreadStaleRecovery(dataResult)
+            settleUnreadStaleRecovery(dataResult, fetchedSnapshot?.unreadRetryAfterMillis)
             if (refreshNotificationsAfterLoad) {
                 loadNotifications()
             } else {

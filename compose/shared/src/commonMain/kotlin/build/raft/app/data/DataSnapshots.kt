@@ -560,7 +560,10 @@ data class HomeSnapshot(
      * `503 rw_overloaded`. Never persisted; the store turns it into [SharedHomeState.unreadStale].
      */
     @Transient
-    val unreadStale: Boolean = false
+    val unreadStale: Boolean = false,
+    /** Task #164: the server's `Retry-After` on that stale or overloaded read. Never persisted. */
+    @Transient
+    val unreadRetryAfterMillis: Long? = null
 )
 
 data class ServerListSnapshot(
@@ -645,7 +648,9 @@ data class ThreadListSnapshot(
     val hasMore: Boolean = false,
     val nextOffset: Int? = null,
     /** Task #164: the server answered from its remembered followed-threads body (`X-Raft-Stale`). */
-    val staleReason: RaftStaleReason? = null
+    val staleReason: RaftStaleReason? = null,
+    /** Task #164: the server's `Retry-After` with that remembered body. */
+    val staleRetryAfterMillis: Long? = null
 )
 
 data class ThreadReplySummariesSnapshot(
@@ -1094,7 +1099,10 @@ data class InboxSnapshot(
      * 5 minutes old. Never persisted: a restored snapshot is the client's own last good page.
      */
     @Transient
-    val staleReason: RaftStaleReason? = null
+    val staleReason: RaftStaleReason? = null,
+    /** Task #164: the server's `Retry-After` with that remembered page. Never persisted. */
+    @Transient
+    val staleRetryAfterMillis: Long? = null
 )
 
 internal fun InboxSnapshot.activityVisibleSummaryCounts(

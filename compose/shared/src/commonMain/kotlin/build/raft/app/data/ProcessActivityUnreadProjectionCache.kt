@@ -37,6 +37,9 @@ class ProcessActivityUnreadProjectionCache(
             entry.environmentId == environmentId.trim().trimEnd('/') &&
                 entry.accountId == accountId.trim() &&
                 entry.serverId == serverId.trim()
+        }?.takeIf { entry ->
+            // Task #164 (web lastCounts.ts): a copy older than 7 days is not shown.
+            nowMillis() - entry.updatedAtMillis <= RaftLastCountsMaxAgeMillis
         }
 
     internal fun read(owner: ProcessActivityUnreadOwner): PersistedActivityUnreadProjection? =
@@ -56,7 +59,21 @@ class ProcessActivityUnreadProjectionCache(
                 totalCount = totalCount.coerceAtLeast(0),
                 updatedAtMillis = nowMillis()
             )
-        val entries = readAll().filterNot { entry -> entry.matches(owner) } + replacement
+        val others = readAll().filterNot { entry -> entry.matches(owner) }
+        // Task #164 (web lastCounts.ts): per account, the 5 most recently saved servers; nothing older
+        // than 7 days. Other accounts' entries are never touched.
+        val sameAccountKept =
+            others
+                .filter { it.environmentId == owner.environmentId && it.accountId == owner.accountId }
+                .sortedByDescending { it.updatedAtMillis }
+                .take(RaftLastCountsMaxServersPerUser - 1)
+                .toSet()
+        val entries =
+            others.filter { entry ->
+                val sameAccount = entry.environmentId == owner.environmentId && entry.accountId == owner.accountId
+                (!sameAccount || entry in sameAccountKept) &&
+                    replacement.updatedAtMillis - entry.updatedAtMillis <= RaftLastCountsMaxAgeMillis
+            } + replacement
         store.putString(
             RAFT_ACTIVITY_UNREAD_MMKV_STORAGE_KEY,
             cacheJson.encodeToString(PersistedActivityUnreadProjectionDocument(entries = entries))

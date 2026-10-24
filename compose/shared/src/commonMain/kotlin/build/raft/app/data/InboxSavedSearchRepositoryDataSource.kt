@@ -232,7 +232,9 @@ class RealInboxRepository(
             mapOnDefault = false,
             diagnosticsLogger = logger,
             warningLogger = warningLogger,
-            markStale = { snapshot, reason -> snapshot.copy(staleReason = reason) },
+            markStale = { snapshot, reason, retryAfter ->
+                snapshot.copy(staleReason = reason, staleRetryAfterMillis = retryAfter)
+            },
             mapper = { bodyText ->
                 val parsed = parseSharedInboxSnapshot(bodyText)
                     ?: throw IllegalStateException("Inbox response missing items")
@@ -293,7 +295,7 @@ internal class ProcessActivityUnreadRepository(
             mapOnDefault = false,
             diagnosticsLogger = logger,
             warningLogger = warningLogger,
-            markStale = { snapshot, reason -> snapshot.copy(staleReason = reason) },
+            markStale = { snapshot, reason, _ -> snapshot.copy(staleReason = reason) },
             mapper = { bodyText ->
                 val parsed = parseSharedInboxSnapshot(bodyText)
                     ?: throw IllegalStateException("Activity unread response missing summary")
@@ -536,7 +538,7 @@ private suspend fun <T> executeInboxLike(
      * page is always Content, even when it has no rows: the store keeps what it showed instead of
      * replacing it with "nothing".
      */
-    markStale: ((T, RaftStaleReason) -> T)? = null,
+    markStale: ((T, RaftStaleReason, Long?) -> T)? = null,
     mapper: (String) -> T
 ): DataResult<T> {
     var statusCode: Int? = null
@@ -560,7 +562,7 @@ private suspend fun <T> executeInboxLike(
             )
         val staleReason = markStale?.let { response.raftStaleReason() }
         when {
-            staleReason != null -> DataResult.Content(markStale(result, staleReason))
+            staleReason != null -> DataResult.Content(markStale(result, staleReason, response.raftRetryAfterMillis()))
             emptyWhen(result) -> DataResult.Empty(emptyReason)
             else -> DataResult.Content(result)
         }
@@ -597,7 +599,8 @@ private fun <T> HomeNetworkResponse.toInboxLikeDataError(serverMessage: String?,
                     code = "server_unavailable",
                     retryable = true,
                     serverMessage = serverMessage,
-                    serverCode = RwOverloadedErrorCode.takeIf { isRwOverloaded() }
+                    serverCode = RwOverloadedErrorCode.takeIf { isRwOverloaded() },
+                    retryAfterSeconds = raftRetryAfterSecondsIfRwOverloaded()
                 )
             )
         else ->

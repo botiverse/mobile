@@ -103,7 +103,8 @@ internal fun activityStore(
     beforeRealtimeHighWaterFold: () -> Unit = {},
     onRealtimePatchOwnerEntered: () -> Unit = {},
     onReadReceiptPredictionOwnerEntered: () -> Unit = {},
-    staleRecoveryDelayMillis: (attempt: Int) -> Long = { attempt -> raftStaleRecoveryDelayMillis(attempt) },
+    staleRecoveryDelayMillis: (attempt: Int, retryAfterMillis: Long?) -> Long =
+        { attempt, retryAfter -> raftStaleRecoveryDelayMillis(attempt, retryAfter) },
     diagnosticsLogger: (String) -> Unit = {}
 ): SharedActivityStore =
     SharedActivityStore(

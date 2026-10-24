@@ -160,6 +160,23 @@ private suspend fun RaftNetworkClient.followedThreads(
         serverIdOverride = serverId
     )
 
+/**
+ * Task #164: the followed-threads list with the inbox's single RisingWave-overload retry (web slock
+ * #11156 routes every followed-threads read through `getRwRead`): a `503 rw_overloaded` is read again
+ * once after `Retry-After` (default 2 s, capped at 10 s). Backoff past that is the caller's recovery.
+ */
+private suspend fun RaftNetworkClient.followedThreadsWithRwOverloadRetry(
+    priority: DataRequestPriority,
+    limit: Int,
+    serverId: ServerId? = null,
+    unreadOnly: Boolean = false
+): HomeNetworkResponse {
+    val first = followedThreads(priority, limit, serverId, unreadOnly)
+    val retryDelayMillis = first.rwOverloadRetryDelayMillis() ?: return first
+    kotlinx.coroutines.delay(retryDelayMillis)
+    return followedThreads(priority, limit, serverId, unreadOnly)
+}
+
 private suspend fun RaftNetworkClient.createOrOpenThread(
     priority: DataRequestPriority,
     channelId: ChannelId,
@@ -960,10 +977,12 @@ class RealConversationRepository private constructor(
         val context = sessionStore.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
         return executeConversation(
             emptyReason = EmptyReason.NoInboxItems,
-            block = { networkClient.followedThreads(DataRequestPriority.Visible, limit, context.server.id) },
+            block = { networkClient.followedThreadsWithRwOverloadRetry(DataRequestPriority.Visible, limit, context.server.id) },
             emptyWhen = { it.threads.isEmpty() },
             source = "followed_threads",
-            markStale = { snapshot, reason -> snapshot.copy(staleReason = reason) },
+            markStale = { snapshot, reason, retryAfter ->
+                snapshot.copy(staleReason = reason, staleRetryAfterMillis = retryAfter)
+            },
             mapper = { bodyText -> parseFollowedThreadListSnapshotFromBody(bodyText, context) }
         )
     }
@@ -976,11 +995,13 @@ class RealConversationRepository private constructor(
         return executeConversation(
             emptyReason = EmptyReason.NoInboxItems,
             block = {
-                networkClient.followedThreads(DataRequestPriority.Visible, limit, context.server.id, unreadOnly = true)
+                networkClient.followedThreadsWithRwOverloadRetry(DataRequestPriority.Visible, limit, context.server.id, unreadOnly = true)
             },
             emptyWhen = { it.threads.isEmpty() },
             source = "followed_threads_unread",
-            markStale = { snapshot, reason -> snapshot.copy(staleReason = reason) },
+            markStale = { snapshot, reason, retryAfter ->
+                snapshot.copy(staleReason = reason, staleRetryAfterMillis = retryAfter)
+            },
             mapper = { bodyText -> parseFollowedThreadListSnapshotFromBody(bodyText, context) }
         )
     }
@@ -1614,7 +1635,7 @@ class RealConversationRepository private constructor(
         emptyWhen: (T) -> Boolean = { false },
         source: String? = null,
         bodyEventFields: ((String) -> String)? = null,
-        markStale: ((T, RaftStaleReason) -> T)? = null,
+        markStale: ((T, RaftStaleReason, Long?) -> T)? = null,
         mapper: (String) -> T
     ): DataResult<T> =
         executeConversationWithDiagnostics(
@@ -2090,7 +2111,7 @@ private suspend fun <T> executeConversationWithDiagnostics(
     diagnosticsLogger: (String) -> Unit = {},
     bodyEventFields: ((String) -> String)? = null,
     /** Task #164: tags a body the server served from its remembered copy (`X-Raft-Stale`); always Content. */
-    markStale: ((T, RaftStaleReason) -> T)? = null,
+    markStale: ((T, RaftStaleReason, Long?) -> T)? = null,
     mapper: (String) -> T
 ): DataResult<T> {
     var statusCode: Int? = null
@@ -2119,7 +2140,7 @@ private suspend fun <T> executeConversationWithDiagnostics(
         val staleReason = markStale?.let { response.raftStaleReason() }
         val dataResult =
             when {
-                staleReason != null -> DataResult.Content(markStale(result, staleReason))
+                staleReason != null -> DataResult.Content(markStale(result, staleReason, response.raftRetryAfterMillis()))
                 emptyWhen(result) -> DataResult.Empty(emptyReason)
                 else -> DataResult.Content(result)
             }
@@ -2180,6 +2201,7 @@ private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> {
                     retryable = true,
                     serverMessage = serverMessage,
                     serverCode = serverCode,
+                    retryAfterSeconds = raftRetryAfterSecondsIfRwOverloaded(),
                 )
             )
         413 ->

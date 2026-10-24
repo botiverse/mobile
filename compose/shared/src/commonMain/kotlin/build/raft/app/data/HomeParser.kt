@@ -321,7 +321,8 @@ fun parseRaftHome(
             // prior badges instead of clobbering them to zero when the unread
             // endpoints were unavailable.
             unreadEnrichmentAvailable = payload.unreadEnrichmentAvailable,
-            unreadStale = payload.unreadStale
+            unreadStale = payload.unreadStale,
+            unreadRetryAfterMillis = payload.unreadRetryAfterMillis
         )
     )
 }

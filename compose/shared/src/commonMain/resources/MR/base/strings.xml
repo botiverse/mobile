@@ -901,8 +901,8 @@
     <string name="composer_state_no_matching_channels">No matching channels</string>
     <string name="inbox_action_mark_all_read">Mark All Read</string>
     <string name="inbox_error_load_activity">Could not load activity</string>
-    <string name="activity_stale_notice">Activity may be out of date. It updates automatically when Raft recovers.</string>
-    <string name="home_unread_stale_notice">Unread counts may be out of date. They update automatically when Raft recovers.</string>
+    <string name="activity_stale_notice">Activity may be out of date. It\'ll update on its own when Raft catches up.</string>
+    <string name="home_unread_stale_notice">Unread counts may be out of date. They\'ll update on their own when Raft catches up.</string>
     <string name="inbox_state_activity_empty">No conversations</string>
     <string name="inbox_state_no_mentions">No mentions</string>
     <string name="inbox_state_no_unread_chats">No unread conversations</string>

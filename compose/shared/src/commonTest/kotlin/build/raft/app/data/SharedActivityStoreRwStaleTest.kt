@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.ServerId
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -120,6 +121,27 @@ class SharedActivityStoreRwStaleTest {
         assertTrue(state.stale)
     }
 
+    /** A normal open shows the cache without the notice; only the server's answer may raise it. */
+    @Test
+    fun coldStartShowsTheCacheWithoutTheNoticeUntilTheServerSaysItIsStale() = runTest {
+        val storage = InMemoryPersistStorage()
+        val first = store(ScriptedInbox(this, listOf(fresh("general" to 3))), storage)
+        first.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+
+        val answer = CompletableDeferred<Unit>()
+        val reopened = store(ScriptedInbox(this, listOf(stale(fresh("general" to 9))), gate = answer), storage)
+        reopened.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        assertEquals(listOf("channel:general"), reopened.state.value.items.map(InboxItem::key), "the cache is shown")
+        assertFalse(reopened.state.value.stale, "no notice before the server answers")
+
+        answer.complete(Unit)
+        runCurrent()
+        assertTrue(reopened.state.value.stale)
+        assertEquals(3, reopened.state.value.totalUnreadCount, "the cache stays over the remembered page")
+    }
+
     @Test
     fun noCacheAndAnOverloadIsTheLoadFailedStateNotAnEmptyList() = runTest {
         val store = store(ScriptedInbox(this, listOf(overloaded(), overloaded())))
@@ -151,7 +173,7 @@ class SharedActivityStoreRwStaleTest {
             inboxRepository = RealInboxRepository(session, network),
             authStore = session,
             persistSlices = listOfNotNull(storage?.let(::createSharedActivityPersistSlice)),
-            staleRecoveryDelayMillis = { RecoveryDelayMillis },
+            staleRecoveryDelayMillis = { _, _ -> RecoveryDelayMillis },
         )
     }
 
@@ -192,7 +214,8 @@ class SharedActivityStoreRwStaleTest {
 
     private class ScriptedInbox(
         private val testScope: TestScope,
-        private val responses: List<HomeNetworkResponse>
+        private val responses: List<HomeNetworkResponse>,
+        private val gate: CompletableDeferred<Unit>? = null
     ) : RaftNetworkClient {
         val requestTimes = mutableListOf<Long>()
 
@@ -206,6 +229,7 @@ class SharedActivityStoreRwStaleTest {
         ): HomeNetworkResponse {
             check(path == "channels/inbox" && method == "GET") { "unexpected $method $path" }
             requestTimes += testScope.testScheduler.currentTime
+            gate?.await()
             return responses.getOrElse(requestTimes.size - 1) { responses.last() }
         }
     }

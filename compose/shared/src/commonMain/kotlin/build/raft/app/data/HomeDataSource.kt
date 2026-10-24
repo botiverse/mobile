@@ -543,7 +543,9 @@ data class HomeNetworkPayload(
      * server's remembered body (`X-Raft-Stale`) or as `503 rw_overloaded`. The data that did
      * arrive is still here; the store decides whether it may replace what Home shows.
      */
-    val unreadStale: Boolean = false
+    val unreadStale: Boolean = false,
+    /** The server's `Retry-After` on a stale or overloaded unread read; the first recovery read waits for it. */
+    val unreadRetryAfterMillis: Long? = null
 )
 
 data class HomeNetworkResponse(
@@ -665,7 +667,9 @@ internal class RaftHomeApiClient(
                 serverUnreadSummary = serverUnreadSummary,
                 serverUnreadSummaryAvailable = serverUnreadSummaryAvailable,
                 unreadEnrichmentAvailable = unreadEnrichmentAvailable,
-                unreadStale = unreadCountsStale.stale || serverUnreadSummaryStale.stale
+                unreadStale = unreadCountsStale.stale || serverUnreadSummaryStale.stale,
+                unreadRetryAfterMillis =
+                    listOfNotNull(unreadCountsStale.retryAfterMillis, serverUnreadSummaryStale.retryAfterMillis).maxOrNull()
             )
         )
     }
@@ -753,6 +757,7 @@ internal class RaftHomeApiClient(
         if (staleness != null) {
             val staleReason = response.raftStaleReason()
             staleness.stale = staleReason != null || response.isRwOverloaded()
+            if (staleness.stale) staleness.retryAfterMillis = response.raftRetryAfterMillis()
             if (staleness.stale) {
                 diagnosticsLogger(
                     "home_endpoint_stale category=$category code=${response.code} " +
@@ -816,7 +821,8 @@ private fun <T> HomeNetworkResponse.toHomeApiFailure(serverMessage: String?): Da
                 code = "home_http_$code",
                 retryable = true,
                 serverMessage = serverMessage,
-                serverCode = RwOverloadedErrorCode.takeIf { isRwOverloaded() }
+                serverCode = RwOverloadedErrorCode.takeIf { isRwOverloaded() },
+                retryAfterSeconds = raftRetryAfterSecondsIfRwOverloaded()
             )
         )
     }
@@ -825,6 +831,9 @@ private fun <T> HomeNetworkResponse.toHomeApiFailure(serverMessage: String?): Da
 private class HomeSectionStaleness {
     @kotlin.concurrent.Volatile
     var stale: Boolean = false
+
+    @kotlin.concurrent.Volatile
+    var retryAfterMillis: Long? = null
 }
 
 @Serializable

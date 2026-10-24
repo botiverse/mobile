@@ -2,7 +2,9 @@ package build.raft.app.data
 
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
@@ -133,6 +135,30 @@ class SharedHomeStoreRwStaleTest {
         assertTrue(reopened.state.value.unreadStale)
     }
 
+    /** A normal open shows the last-known counts without the notice; only the server's answer may raise it. */
+    @Test
+    fun coldStartShowsTheLastKnownCountsWithoutTheNoticeUntilTheServerSaysTheyAreStale() = runTest {
+        val storage = InMemoryRaftKeyValueStore()
+        homeStore(ScriptedUnreadHomeApi(channelUnread = mutableListOf(channelUnread(5))), storage)
+            .accept(SharedHomeIntent.Start)
+
+        val answer = CompletableDeferred<Unit>()
+        val reopened =
+            homeStore(
+                ScriptedUnreadHomeApi(channelUnread = mutableListOf(overloaded()), gate = answer),
+                storage
+            )
+        val start = backgroundScope.launch { reopened.accept(SharedHomeIntent.Start) }
+        runCurrent()
+        assertEquals(5, reopened.content().displayRowHints()["channel-1"]?.unreadCount, "the cache is shown")
+        assertFalse(reopened.state.value.unreadStale, "no notice before the server answers")
+
+        answer.complete(Unit)
+        start.join()
+        assertTrue(reopened.state.value.unreadStale)
+        assertEquals(5, reopened.content().displayRowHints()["channel-1"]?.unreadCount)
+    }
+
     @Test
     fun noCacheAndAnOverloadLeavesTheCountsUnknownNotZero() = runTest {
         val store =
@@ -167,7 +193,7 @@ class SharedHomeStoreRwStaleTest {
             authStore = InMemoryRaftAuthSessionStore(session()),
             dataSource = dataSource,
             scope = backgroundScope,
-            staleRecoveryDelayMillis = { RecoveryDelayMillis },
+            staleRecoveryDelayMillis = { _, _ -> RecoveryDelayMillis },
             persistSlices =
                 storage?.let {
                     listOf(
@@ -220,6 +246,8 @@ class SharedHomeStoreRwStaleTest {
             mutableListOf(HomeNetworkResponse(200, channelUnreadSummaryBody(mapOf("channel-1" to 5)))),
         private val serverUnread: MutableList<HomeNetworkResponse> =
             mutableListOf(HomeNetworkResponse(200, """[{"serverId":"server-1","unreadCount":5}]""")),
+        /** Holds the unread answer until completed: a Home still waiting on the network. */
+        private val gate: CompletableDeferred<Unit>? = null,
     ) : RaftHomeApi {
         val unreadPriorities = mutableListOf<DataRequestPriority>()
         private var serverUnreadCalls = 0
@@ -232,6 +260,7 @@ class SharedHomeStoreRwStaleTest {
 
         override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse {
             unreadPriorities += priority
+            gate?.await()
             return channelUnread.getOrElse(unreadPriorities.size - 1) { channelUnread.last() }
         }
 

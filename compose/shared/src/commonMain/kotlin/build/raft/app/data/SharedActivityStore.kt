@@ -122,7 +122,8 @@ class SharedActivityStore internal constructor(
     /** See [ActivityRefreshCoalesceWindowMillis]. */
     private val refreshCoalesceWindowMillis: Long = ActivityRefreshCoalesceWindowMillis,
     /** Task #164: the backoff of the stale-Activity recovery read; injectable for virtual time. */
-    staleRecoveryDelayMillis: (attempt: Int) -> Long = { attempt -> raftStaleRecoveryDelayMillis(attempt) },
+    staleRecoveryDelayMillis: (attempt: Int, retryAfterMillis: Long?) -> Long =
+        { attempt, retryAfter -> raftStaleRecoveryDelayMillis(attempt, retryAfter) },
     localMutationHoldMillis: Long = ActivityLocalMutationHoldMillis,
     private val beforeRealtimeHighWaterFold: () -> Unit = {},
     private val onRealtimePatchOwnerEntered: () -> Unit = {},
@@ -1969,20 +1970,28 @@ class SharedActivityStore internal constructor(
      */
     private fun settleStaleRecovery(nextState: SharedActivityState, result: DataResult<InboxSnapshot>) {
         when {
-            nextState.stale -> staleRecovery.schedule { recoverStaleActivity() }
+            nextState.stale -> {
+                val retryAfterMillis =
+                    (result as? DataResult.Content)?.data?.staleRetryAfterMillis
+                        ?: (result as? DataResult.Error)?.error?.rwRetryAfterMillis
+                staleRecovery.schedule(retryAfterMillis) { recoverStaleActivity() }
+            }
             result is DataResult.Content || result is DataResult.Empty -> staleRecovery.reset()
         }
     }
 
-    private fun recoverStaleActivity() {
+    /** Returns whether a load runs whose answer settles recovery. */
+    private fun recoverStaleActivity(): Boolean {
         val current = _state.value
-        if (!current.stale) return
+        if (!current.stale) return false
         if (activitySurfaceHidden) {
-            // Entering Activity always refreshes; that read re-arms recovery if still stale.
+            // Entering Activity always refreshes; that read settles recovery.
             diagnosticsLogger("store_load domain=activity phase=stale_recovery_skip reason=surface_hidden")
-            return
+            return false
         }
+        // Single-flight: a background load joins nothing while another load runs (that one settles).
         load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh)
+        return true
     }
 
     private fun applyCanonicalLoadResult(
