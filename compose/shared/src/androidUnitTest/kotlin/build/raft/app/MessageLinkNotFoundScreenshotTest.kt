@@ -32,14 +32,42 @@ class MessageLinkNotFoundScreenshotTest {
     @Test
     fun messageLinkNotFoundDark() = capture("message-link.not-found.dark", RaftAppAppearance.Dark)
 
-    private fun capture(name: String, appearance: RaftAppAppearance) =
+    @Test
+    fun messageLinkPublicPreviewLight() = capture("message-link.public-preview", RaftAppAppearance.Light) { PublicPreviewFixture() }
+
+    @Test
+    fun messageLinkPublicPreviewDark() = capture("message-link.public-preview.dark", RaftAppAppearance.Dark) { PublicPreviewFixture() }
+
+    @androidx.compose.runtime.Composable
+    private fun PublicPreviewFixture() =
+        RaftMessageLinkPublicPreviewScreen(
+            state =
+                RaftPublicPreviewState.Content(
+                    channelName = "release-notes",
+                    serverName = "Open Source Club",
+                    messages =
+                        listOf(
+                            build.raft.app.data.RaftPublicMessage("m1", "Sam", "The crash rate is back to normal.", null, null, 0),
+                            build.raft.app.data.RaftPublicMessage("m2", "Theo", "Release checklist updated: confirm your three items below.", null, "t1", 4),
+                            build.raft.app.data.RaftPublicMessage("m3", "Builder", "Synced the checklist to tasks.", null, null, 0),
+                        ),
+                    highlightMessageId = "m2",
+                    thread = false,
+                ),
+            onBack = {},
+            onRetry = {},
+        )
+
+    private fun capture(
+        name: String,
+        appearance: RaftAppAppearance,
+        content: @androidx.compose.runtime.Composable () -> Unit = { RaftMessageLinkNotFoundScreen(onBack = {}) },
+    ) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =
                 remember {
                     object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
                 }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
-                RaftMessageLinkNotFoundScreen(onBack = {})
-            }
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) { content() }
         }
 }

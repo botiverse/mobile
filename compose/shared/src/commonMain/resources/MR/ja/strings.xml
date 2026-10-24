@@ -89,6 +89,8 @@
     <string name="message_link_not_found_title">メッセージが見つかりません</string>
     <string name="message_link_not_found_body">リンクが間違っているか、閲覧する権限がありません。</string>
     <string name="message_link_switched_server">%1$s に切り替えました</string>
+    <string name="message_link_public_preview_title">公開プレビュー</string>
+    <string name="message_link_public_preview_notice">このサーバーにはまだ参加していません。公開プレビューを表示しています。</string>
     <string name="home_error_conversation_unavailable">この会話は利用できなくなりました</string>
     <string name="home_error_direct_message_unavailable">ダイレクトメッセージを利用できません</string>
     <string name="home_error_open_direct_message_failed_prefix">ダイレクトメッセージを開けませんでした:&#160;</string>

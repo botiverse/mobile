@@ -11,6 +11,8 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 /** What the app shell does with a [RaftMessageLink]. */
 internal sealed interface RaftMessageLinkResolution {
@@ -24,8 +26,16 @@ internal sealed interface RaftMessageLinkResolution {
     ) : RaftMessageLinkResolution
 
     /**
-     * Not a member of the server, or the conversation/message is not there or not for this reader
-     * (403/404/bad id/deleted). One answer for all of them: the empty state never says which.
+     * {slug} is not one of the account's servers: the link opens the read-only public preview
+     * ([RaftPublicConversationPreviewStore]), which reads it through the anonymous public routes
+     * and shows the same not-found state when a stranger may not read it either.
+     */
+    data class PublicPreview(val link: RaftMessageLink) : RaftMessageLinkResolution
+
+    /**
+     * The conversation/message is not there or not for this reader (400/403/404: no access,
+     * deleted, a well-formed id that names nothing). One answer for all of them: the empty state
+     * never says which, and all of them made the same requests.
      */
     data class NotFound(val reason: String) : RaftMessageLinkResolution
 }
@@ -36,8 +46,12 @@ internal sealed interface RaftMessageLinkResolution {
  * server. Only what the API returns for this reader becomes identity; ids from the link that the
  * API did not confirm are never opened.
  *
- * A transport failure or 5xx does not decide "not found": the link opens and the conversation
- * page shows its own load/error state, as a notification tap would.
+ * A transient failure (5xx, 408/429, timeout, offline, DNS) never decides "not found": the
+ * link opens and the conversation page shows its own load/retry/offline state, as a
+ * notification tap would (slock #11126 review rule 1).
+ *
+ * Both probes are always sent together, whatever the first answers, so a deleted message, a
+ * conversation without access and an id that names nothing make identical requests.
  */
 internal class RaftMessageLinkResolver(
     private val networkClient: RaftNetworkClient,
@@ -46,37 +60,46 @@ internal class RaftMessageLinkResolver(
     suspend fun resolve(link: RaftMessageLink, servers: List<StoredAuthServer>): RaftMessageLinkResolution {
         val server =
             servers.firstOrNull { it.slug?.equals(link.serverSlug, ignoreCase = true) == true }
-                ?: return notFound("server_not_member")
+                ?: run {
+                    diagnosticsLogger("message_link_resolved result=public_preview")
+                    return RaftMessageLinkResolution.PublicPreview(link)
+                }
         val serverId = ServerId(server.id)
+        val focusMessageId = link.focusMessageId
+        val (channelResponse, contextResponse) =
+            coroutineScope {
+                val channel = async { request(serverId, path = "channels/${link.channelId}") }
+                val context =
+                    focusMessageId?.let { messageId ->
+                        async {
+                            request(
+                                serverId,
+                                path = "messages/context/$messageId",
+                                query = listOf("channelId" to link.channelId, "before" to "0", "after" to "0"),
+                            )
+                        }
+                    }
+                channel.await() to context?.await()
+            }
 
-        val channelResponse =
-            request(serverId, path = "channels/${link.channelId}")
-                ?: return open(server.id, link, conversationKind = link.routeKind, threadChannelId = null)
         val conversationKind =
-            when (channelResponse.outcome()) {
-                ProbeOutcome.Found -> {
-                    val probe = parseRaftMessageLinkChannelProbe(channelResponse.bodyText)
+            when (channelResponse.linkOutcome()) {
+                RaftLinkProbeOutcome.Found -> {
+                    val probe = parseRaftMessageLinkChannelProbe(channelResponse?.bodyText)
                     when {
                         probe == null -> link.routeKind
                         probe.id != link.channelId -> return notFound("channel_identity_mismatch")
                         else -> link.routeKind.confirmedBy(probe.type) ?: return notFound("route_kind_mismatch")
                     }
                 }
-                ProbeOutcome.NotFound -> return notFound("channel_${channelResponse.code}")
-                ProbeOutcome.Unavailable -> link.routeKind
+                RaftLinkProbeOutcome.NotFound -> return notFound("channel_${channelResponse?.code}")
+                RaftLinkProbeOutcome.Unavailable -> link.routeKind
             }
+        if (focusMessageId == null) return open(server.id, link, conversationKind, threadChannelId = null)
 
-        val focusMessageId = link.focusMessageId
-            ?: return open(server.id, link, conversationKind, threadChannelId = null)
-        val contextResponse =
-            request(
-                serverId,
-                path = "messages/context/$focusMessageId",
-                query = listOf("channelId" to link.channelId, "before" to "0", "after" to "0"),
-            ) ?: return open(server.id, link, conversationKind, threadChannelId = null)
-        return when (contextResponse.outcome()) {
-            ProbeOutcome.Found -> {
-                val context = parseSharedMessageContext(contextResponse.bodyText.orEmpty(), ThreadId(link.channelId))
+        return when (contextResponse.linkOutcome()) {
+            RaftLinkProbeOutcome.Found -> {
+                val context = parseSharedMessageContext(contextResponse?.bodyText.orEmpty(), ThreadId(link.channelId))
                 val target = context.canonicalTarget?.takeIf { it.kind == "thread" }
                 val targetParentId = target?.threadParentMessageId?.value
                 when {
@@ -105,14 +128,17 @@ internal class RaftMessageLinkResolver(
                     else -> open(server.id, link, conversationKind, threadChannelId = null)
                 }
             }
-            ProbeOutcome.NotFound ->
-                if (contextResponse.code == 404 && isRaftMessageContextHistoryLimited(contextResponse.bodyText ?: contextResponse.errorBodyText)) {
+            RaftLinkProbeOutcome.NotFound ->
+                if (
+                    contextResponse?.code == 404 &&
+                    isRaftMessageContextHistoryLimited(contextResponse.bodyText ?: contextResponse.errorBodyText)
+                ) {
                     // Readable but behind the plan's history window: open on the paywall.
                     open(server.id, link, conversationKind, threadChannelId = null)
                 } else {
-                    notFound("message_${contextResponse.code}")
+                    notFound("message_${contextResponse?.code}")
                 }
-            ProbeOutcome.Unavailable -> open(server.id, link, conversationKind, threadChannelId = null)
+            RaftLinkProbeOutcome.Unavailable -> open(server.id, link, conversationKind, threadChannelId = null)
         }
     }
 
@@ -157,17 +183,19 @@ internal class RaftMessageLinkResolver(
     }
 }
 
-private enum class ProbeOutcome { Found, NotFound, Unavailable }
+internal enum class RaftLinkProbeOutcome { Found, NotFound, Unavailable }
 
 /**
- * 2xx: readable. 400/403/404/410: not found for this reader (bad id, not a member, deleted, no
- * access). Anything else (401 is the auth layer's, 408/429/5xx/transport) is not an answer.
+ * 2xx: readable. 400/403/404 only: not found for this reader (bad id, deleted, no access).
+ * Anything else, including no response at all (timeout, offline, DNS), 401 (the auth layer's),
+ * 408, 429 and 5xx, is not an answer and must never show the not-found state.
  */
-private fun HomeNetworkResponse.outcome(): ProbeOutcome =
-    when (code) {
-        in 200..299 -> ProbeOutcome.Found
-        400, 403, 404, 410 -> ProbeOutcome.NotFound
-        else -> ProbeOutcome.Unavailable
+internal fun HomeNetworkResponse?.linkOutcome(): RaftLinkProbeOutcome =
+    when (this?.code) {
+        null -> RaftLinkProbeOutcome.Unavailable
+        in 200..299 -> RaftLinkProbeOutcome.Found
+        400, 403, 404 -> RaftLinkProbeOutcome.NotFound
+        else -> RaftLinkProbeOutcome.Unavailable
     }
 
 /**

@@ -5001,6 +5001,8 @@ private fun RaftAppShellReadyContent(
                 }
                 is RaftMessageLinkResolution.NotFound ->
                     pager.openRaftMessageLinkNotFoundPage(navigationStoreScope)
+                is RaftMessageLinkResolution.PublicPreview ->
+                    pager.openRaftMessageLinkPublicPreviewPage(resolution.link, navigationStoreScope)
             }
         }
     }

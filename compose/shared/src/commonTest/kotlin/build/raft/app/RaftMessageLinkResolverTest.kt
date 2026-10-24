@@ -51,23 +51,32 @@ class RaftMessageLinkResolverTest {
         """{"kind":"thread","channelId":"$cid","messageId":"$mid","threadParentMessageId":"$parent","threadChannelId":"$threadChannelId"}"""
 
     @Test
-    fun serverTheAccountIsNotAMemberOfIsNotFoundWithoutAnyRequest() = runTest {
+    fun serverTheAccountHasNotJoinedGoesToThePublicPreviewWithoutMemberRequests() = runTest {
         val network = FakeMessageLinkNetwork()
-        val result = RaftMessageLinkResolver(network).resolve(link(slug = "someone-elses"), servers)
-        assertEquals(RaftMessageLinkResolution.NotFound("server_not_member"), result)
+        val target = link(slug = "someone-elses", msg = mid)
+        val result = RaftMessageLinkResolver(network).resolve(target, servers)
+        assertEquals(RaftMessageLinkResolution.PublicPreview(target), result)
         assertTrue(network.requests.isEmpty())
     }
 
     @Test
-    fun noAccessDeletedOrBadIdsAreOneNotFoundAnswer() = runTest {
-        for (code in listOf(400, 403, 404, 410)) {
+    fun noAccessDeletedOrBadIdsAreOneNotFoundAnswerWithIdenticalRequests() = runTest {
+        val requestShapes = mutableSetOf<List<Pair<String, List<Pair<String, String>>>>>()
+        for (code in listOf(400, 403, 404)) {
+            // No access to the conversation (or an id naming none) …
             val channelDenied = FakeMessageLinkNetwork(channel = HomeNetworkResponse(code, """{"error":"Channel not found"}"""))
             assertIs<RaftMessageLinkResolution.NotFound>(RaftMessageLinkResolver(channelDenied).resolve(link(msg = mid), servers))
+            requestShapes += channelDenied.requests.map { it.path to it.query }
 
+            // … or a deleted / unknown message in a readable one.
             val messageDenied =
                 FakeMessageLinkNetwork(context = HomeNetworkResponse(code, """{"error":"Message not found"}"""))
             assertIs<RaftMessageLinkResolution.NotFound>(RaftMessageLinkResolver(messageDenied).resolve(link(msg = mid), servers))
+            requestShapes += messageDenied.requests.map { it.path to it.query }
         }
+        // Every not-found case sent exactly the same two requests.
+        assertEquals(1, requestShapes.size, "requests differ between not-found cases: $requestShapes")
+        assertEquals(listOf("channels/$cid", "messages/context/$mid"), requestShapes.single().map { it.first })
     }
 
     @Test
@@ -184,13 +193,22 @@ class RaftMessageLinkResolverTest {
     }
 
     @Test
-    fun transportFailureOrServerErrorDoesNotClaimNotFound() = runTest {
-        for (code in listOf(0, 401, 429, 500, 503)) {
-            val network = FakeMessageLinkNetwork(context = HomeNetworkResponse(code, null))
-            assertIs<RaftMessageLinkResolution.Open>(RaftMessageLinkResolver(network).resolve(link(msg = mid), servers), "code=$code")
+    fun serverErrorTimeoutOrOfflineNeverShowsNotFoundButOpensTheConversation() = runTest {
+        // 500/502/503, 408 timeout, 429, 401 (auth layer), 0 = no HTTP status (offline/DNS).
+        for (code in listOf(500, 502, 503, 408, 429, 401, 0)) {
+            for (network in listOf(
+                FakeMessageLinkNetwork(context = HomeNetworkResponse(code, null)),
+                FakeMessageLinkNetwork(channel = HomeNetworkResponse(code, null)),
+            )) {
+                val result = RaftMessageLinkResolver(network).resolve(link(msg = mid), servers)
+                // Open: the conversation page keeps its own retry/offline UI.
+                assertIs<RaftMessageLinkResolution.Open>(result, "code=$code")
+            }
         }
-        val throwing = FakeMessageLinkNetwork(throwOnContext = true)
-        assertIs<RaftMessageLinkResolution.Open>(RaftMessageLinkResolver(throwing).resolve(link(msg = mid), servers))
+        // A thrown transport error (socket timeout, DNS failure) is the same.
+        for (network in listOf(FakeMessageLinkNetwork(throwOnContext = true), FakeMessageLinkNetwork(throwOnChannel = true))) {
+            assertIs<RaftMessageLinkResolution.Open>(RaftMessageLinkResolver(network).resolve(link(msg = mid), servers))
+        }
     }
 
     @Test
@@ -243,6 +261,7 @@ private class FakeMessageLinkNetwork(
     private val channel: HomeNetworkResponse? = null,
     private val context: HomeNetworkResponse? = null,
     private val throwOnContext: Boolean = false,
+    private val throwOnChannel: Boolean = false,
 ) : RaftNetworkClient {
     val requests = mutableListOf<RecordedMessageLinkRequest>()
 
@@ -257,7 +276,7 @@ private class FakeMessageLinkNetwork(
         requests += RecordedMessageLinkRequest(path, query, serverIdOverride, priority)
         return when {
             path.startsWith("channels/") ->
-                channel ?: HomeNetworkResponse(200, """{"id":"${path.removePrefix("channels/")}","name":"release-notes","type":"channel"}""")
+                if (throwOnChannel) error("timeout") else channel ?: HomeNetworkResponse(200, """{"id":"${path.removePrefix("channels/")}","name":"release-notes","type":"channel"}""")
             path.startsWith("messages/context/") -> {
                 if (throwOnContext) error("socket closed")
                 context ?: HomeNetworkResponse(200, """{"channelId":null,"messages":[]}""")
