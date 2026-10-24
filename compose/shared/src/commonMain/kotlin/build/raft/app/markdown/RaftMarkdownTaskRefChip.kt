@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import build.raft.app.RaftAppRadius
 import build.raft.app.RaftAppThemeState
@@ -94,9 +95,9 @@ internal data class RaftTaskStatusPixelStyle(
 /**
  * Inline task-ref chip geometry and colours.
  *
- * Known status (raft-ui `TaskChip variant="inline"`): `bg-task-status-*-soft`, `rounded-sticker`,
- * no edge, `pl-[3px] pr-1.5 gap-1.5`, a 9px status pixel, `font-semibold text-foreground`,
- * `leading-[1.2em]`.
+ * Known status (raft-ui `TaskChip variant="inline"`, the inline chip box of `lib/inline-chip.ts`):
+ * `bg-task-status-*-soft`, `rounded-sticker`, no edge, 4.5px at each end and 4px from the 10px
+ * status pixel to the text, 0.875em `font-semibold text-foreground`.
  * Unknown task (web `<Badge variant="muted">`, solid appearance): `bg-inactive`, 1.5px sticker-ink
  * edge, `rounded-sticker`, `px-1.5`, bold sticker-ink text, no pixel.
  *
@@ -119,15 +120,16 @@ internal const val RaftMarkdownTaskChipWordJoiner = "\u2060"
 internal val RaftMarkdownTaskChipPixelSize = 10.dp
 private val RaftMarkdownTaskChipPixelStroke = 1.5.dp
 private val RaftMarkdownTaskChipPixelRadius = 1.25.dp
-private val RaftMarkdownTaskChipPaddingStart = 3.dp
-private val RaftMarkdownTaskChipIconGap = 6.dp
-private val RaftMarkdownTaskChipPaddingEnd = 6.dp
+// raft-ui inline chip with a leading mark: `px-[4.5px]`, `gap-1`.
+private val RaftMarkdownTaskChipPaddingStart = 4.5.dp
+private val RaftMarkdownTaskChipIconGap = 4.dp
+private val RaftMarkdownTaskChipPaddingEnd = 4.5.dp
 private val RaftMarkdownTaskBadgePaddingX = 6.dp
 private val RaftMarkdownTaskBadgeEdge = 1.5.dp
-private val RaftMarkdownTaskChipVerticalPadding = 1.dp
+private val RaftMarkdownTaskChipVerticalPadding = RaftRichTextInlineChipVerticalPaddingDp.dp
 // Outer gap reserved by withRaftInlineChipGaps so adjacent chips / CJK punctuation never touch the
-// chip (web `mx-0.5`-sized breathing room; the chip padding itself lives in the lead/trail gaps).
-private val RaftMarkdownTaskChipMargin = 2.dp
+// chip (the chip padding itself lives in the lead/trail gaps). Shared with the reference chips.
+private val RaftMarkdownTaskChipMargin = RaftRichTextInlineChipMarginDp.dp
 
 internal fun raftMarkdownTaskChipStyle(
     status: TaskStatus?,
@@ -227,14 +229,17 @@ internal fun AnnotatedString.Builder.appendRaftMarkdownTaskChip(
     trailing: AnnotatedString.Builder.() -> Unit = {},
 ) {
     // Word joiners keep the pixel, label and trailing pad on one line: a chip
-    // never wraps between its status pixel and its number.
+    // never wraps between its status pixel and its number. The whole chip is set at the inline
+    // chip's 0.875em, so the painted box measures the chip's own text.
     withRaftInlineBox(style.box) {
-        appendInlineContent(style.leadingInlineId(), "\uFFFC")
-        append(RaftMarkdownTaskChipWordJoiner)
-        withStyle(style.textSpanStyle()) { append(label) }
-        trailing()
-        append(RaftMarkdownTaskChipWordJoiner)
-        appendInlineContent(style.trailingInlineId(), "\uFFFC")
+        withStyle(SpanStyle(fontSize = RAFT_RICHTEXT_INLINE_CHIP_FONT_SIZE_EM.em)) {
+            appendInlineContent(style.leadingInlineId(), "\uFFFC")
+            append(RaftMarkdownTaskChipWordJoiner)
+            withStyle(style.textSpanStyle()) { append(label) }
+            trailing()
+            append(RaftMarkdownTaskChipWordJoiner)
+            appendInlineContent(style.trailingInlineId(), "\uFFFC")
+        }
     }
 }
 

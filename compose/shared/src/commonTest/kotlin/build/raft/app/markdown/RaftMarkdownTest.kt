@@ -21,6 +21,9 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.TextUnit
+import build.raft.app.RaftAppThemeState
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -150,10 +153,14 @@ class RaftMarkdownTest {
         val linkRange = resolved.getLinkAnnotations(0, resolved.length).single()
         val chipBox = resolved.raftInlineBoxWithin(linkRange.start, linkRange.end)
         assertEquals(raftMessagePermalinkChipBoxStyle(), chipBox)
-        assertEquals(Color(0xFFFCEFBD), chipBox?.backgroundColor)
-        assertEquals(RaftColor.BorderBlack, chipBox?.borderColor)
-        assertEquals(1.dp, chipBox?.borderWidth)
+        // web PermalinkReferenceChip (variant="link"): `bg-info-soft`, no edge, sticker radius.
+        assertEquals(RaftColor.InfoSoft, chipBox?.backgroundColor)
+        assertEquals(0.dp, chipBox?.borderWidth)
+        assertEquals(4.dp, chipBox?.cornerRadius)
+        assertEquals(4.5.dp, chipBox?.paddingStart)
         assertEquals(null, link.styles?.style?.textDecoration)
+        // A chip is not a web link: no link underline over it.
+        assertTrue(resolved.withRaftMarkdownLinkUnderlines().raftInlineUnderlineRanges().isEmpty())
     }
 
     @Test
@@ -725,7 +732,7 @@ class RaftMarkdownTest {
             assertEquals(0, box.start)
             assertEquals(code.length, box.end)
             assertEquals(
-                RaftColor.TextBlack.copy(alpha = 0.05f),
+                RaftColor.FillMuted,
                 box.item.backgroundColor,
             )
             assertTrue(box.item.paddingStart > 0.dp)
@@ -824,10 +831,10 @@ class RaftMarkdownTest {
         assertEquals(
             listOf(
                 RaftColor.BrandYellow,
-                RaftColor.AccentPink.copy(alpha = 0.3f),
-                RaftColor.AccentCyan.copy(alpha = 0.3f),
-                RaftColor.BrandYellow.copy(alpha = 0.4f),
-                RaftColor.BrandYellow.copy(alpha = 0.4f)
+                RaftColor.AttentionSoft,
+                RaftColor.InfoSoft,
+                RaftColor.InactiveSoft,
+                RaftColor.InactiveSoft
             ),
             plan.tagTokens().map { token ->
                 annotated.raftMarkdownClickableTagInlineBoxBackground(token.id)
@@ -838,14 +845,14 @@ class RaftMarkdownTest {
 
     @Test
     fun markdownReferenceTagsUseReactChipColors() {
-        assertEquals(RaftColor.AccentPink.copy(alpha = 0.3f), raftMarkdownTagColor(ThreadMarkdownTagKind.Channel))
-        assertEquals(RaftColor.AccentCyan.copy(alpha = 0.3f), raftMarkdownTagColor(ThreadMarkdownTagKind.ChannelThread))
-        assertEquals(RaftColor.BrandYellow.copy(alpha = 0.4f), raftMarkdownTagColor(ThreadMarkdownTagKind.Task))
+        assertEquals(RaftColor.AttentionSoft, raftMarkdownTagColor(ThreadMarkdownTagKind.Channel))
+        assertEquals(RaftColor.InfoSoft, raftMarkdownTagColor(ThreadMarkdownTagKind.ChannelThread))
+        assertEquals(RaftColor.InactiveSoft, raftMarkdownTagColor(ThreadMarkdownTagKind.Task))
         assertEquals(RaftColor.BrandYellow, raftMarkdownTagColor(ThreadMarkdownTagKind.UserMention, highlighted = true))
         assertEquals("channel", RaftRichTextChromeKind.Channel.styleToken.id)
-        assertEquals(RaftRichTextColorToken.AccentPink30, RaftRichTextChromeKind.Channel.styleToken.chipFill)
-        assertEquals(RaftRichTextColorToken.AccentCyan30, RaftRichTextChromeKind.Thread.styleToken.chipFill)
-        assertEquals(RaftRichTextColorToken.BrandYellow40, RaftRichTextChromeKind.Task.styleToken.chipFill)
+        assertEquals(RaftRichTextColorToken.AttentionSoft, RaftRichTextChromeKind.Channel.styleToken.chipFill)
+        assertEquals(RaftRichTextColorToken.InfoSoft, RaftRichTextChromeKind.Thread.styleToken.chipFill)
+        assertEquals(RaftRichTextColorToken.InactiveSoft, RaftRichTextChromeKind.Task.styleToken.chipFill)
         assertEquals(RAFT_RICHTEXT_INLINE_CHIP_HORIZONTAL_CHROME_SP, RaftRichTextChromeKind.Channel.styleToken.horizontalChromeSp)
 
         assertFalse(raftMarkdownTagColor(ThreadMarkdownTagKind.Channel) == RaftColor.BrandYellow)
@@ -855,67 +862,66 @@ class RaftMarkdownTest {
     }
 
     @Test
-    fun referenceTagsUseUnderlineAndSelfMentionUsesSoftSignalChip() {
-        // React (MentionLink.tsx): task refs, #channels and non-self @mentions all render
-        // as the bold-black underline; only the self-mention gets the soft-signal chip.
+    fun referenceTagsAreSolidChipsAndOnlyThePlainMentionIsBareText() {
+        // raft-ui message-reference.recipe.ts: #channel / thread / task refs are solid inline
+        // chips (0.875em semibold, 6px sides, sticker radius, no underline); the reader's own
+        // @mention is the yellow sticker with a 1.5px ink ring; anyone else's @mention is bold ink
+        // at the sentence's size, underlined only while pressed.
         val taskStyle = raftMarkdownTagSpanStyle(ThreadMarkdownTagKind.Task)
         val channelStyle = raftMarkdownTagSpanStyle(ThreadMarkdownTagKind.Channel)
         val threadStyle = raftMarkdownTagSpanStyle(ThreadMarkdownTagKind.ChannelThread)
         val selfMentionStyle = raftMarkdownTagSpanStyle(ThreadMarkdownTagKind.UserMention, highlighted = true)
         val ordinaryMentionStyle = raftMarkdownTagSpanStyle(ThreadMarkdownTagKind.UserMention, highlighted = false)
-
-        // CMP switch: upstream SpanStyle has no inlineBoxStyle / textDecorationColor/Thickness/Offset.
-        // The tag text style carries colour/font only; the reference underline and the self-mention
-        // chip travel as RaftInlineUnderlineStyle / RaftInlineBoxStyle annotations (painted by
-        // raftInlineDecorations). Non-self tags lower through the OrdinaryMention chrome token.
-        val referenceUnderline =
-            raftMarkdownRichTextTagInlineUnderlineStyle(RaftRichTextChromeKind.OrdinaryMention)
+        val channelBox = raftMarkdownRichTextTagInlineBoxStyle(RaftRichTextChromeKind.Channel)
         val selfMentionBox = raftMarkdownRichTextTagInlineBoxStyle(RaftRichTextChromeKind.SelfMention)
 
         assertEquals(14.sp, RaftMarkdownTagFontSize)
-        assertEquals(Color.Unspecified, taskStyle.background)
-        assertEquals(null, taskStyle.textDecoration)
+        listOf(taskStyle, channelStyle, threadStyle, selfMentionStyle, ordinaryMentionStyle).forEach { style ->
+            assertEquals(Color.Unspecified, style.background)
+            assertEquals(null, style.textDecoration)
+            // The size is a 0.875em span inside the chip box, not a fixed link-style size.
+            assertEquals(TextUnit.Unspecified, style.fontSize)
+        }
         assertEquals(RaftColor.TextBlack, taskStyle.color)
-        assertEquals(RaftMarkdownTagFontSize, taskStyle.fontSize)
+        assertEquals(RaftColor.StickerInk, selfMentionStyle.color)
 
-        assertEquals(Color.Unspecified, channelStyle.background)
-        assertEquals(null, channelStyle.textDecoration)
-        assertEquals(RaftMarkdownTagFontSize, channelStyle.fontSize)
-
-        assertEquals(Color.Unspecified, threadStyle.background)
-        assertEquals(null, threadStyle.textDecoration)
-
-        assertEquals(RaftColor.BorderBlack.copy(alpha = 0.3f), referenceUnderline?.color)
-        assertEquals(2.sp, referenceUnderline?.thickness)
-        assertEquals(2.sp, referenceUnderline?.offset)
-        assertEquals(null, raftMarkdownRichTextTagInlineBoxStyle(RaftRichTextChromeKind.OrdinaryMention))
+        assertEquals(RaftColor.AttentionSoft, channelBox?.backgroundColor)
+        assertEquals(0.dp, channelBox?.borderWidth)
+        assertEquals(6.dp, channelBox?.paddingStart)
+        assertEquals(6.dp, channelBox?.paddingEnd)
+        assertEquals(4.dp, channelBox?.cornerRadius)
 
         assertEquals(RaftColor.SoftSignal, RaftColor.BrandYellow)
-        // The box paints the chip fill; a span background would cover its border.
-        assertEquals(Color.Unspecified, selfMentionStyle.background)
         assertEquals(RaftColor.BrandYellow, selfMentionBox?.backgroundColor)
-        assertEquals(RaftColor.BorderBlack, selfMentionBox?.borderColor)
-        assertEquals(1.dp, selfMentionBox?.borderWidth)
-        assertEquals(4.dp, selfMentionBox?.paddingStart)
-        assertEquals(4.dp, selfMentionBox?.paddingEnd)
-        assertEquals(2.dp, selfMentionBox?.paddingTop)
-        assertEquals(2.dp, selfMentionBox?.paddingBottom)
+        assertEquals(RaftColor.StickerInk, selfMentionBox?.borderColor)
+        assertEquals(1.5.dp, selfMentionBox?.borderWidth)
+        assertEquals(6.dp, selfMentionBox?.paddingStart)
+        assertEquals(6.dp, selfMentionBox?.paddingEnd)
+        assertEquals(2.75.dp, selfMentionBox?.paddingTop)
+        assertEquals(2.75.dp, selfMentionBox?.paddingBottom)
         assertEquals(2.dp, selfMentionBox?.marginStart)
         assertEquals(2.dp, selfMentionBox?.marginEnd)
-        assertEquals(null, raftMarkdownRichTextTagInlineUnderlineStyle(RaftRichTextChromeKind.SelfMention))
-        assertEquals(null, selfMentionStyle.textDecoration)
-        assertEquals(RaftMarkdownTagFontSize, selfMentionStyle.fontSize)
-        assertEquals(null, ordinaryMentionStyle.textDecoration)
-        assertEquals(Color.Unspecified, ordinaryMentionStyle.background)
-        assertEquals(RaftMarkdownTagFontSize, ordinaryMentionStyle.fontSize)
+        assertEquals(null, raftMarkdownRichTextTagInlineBoxStyle(RaftRichTextChromeKind.OrdinaryMention))
+
+        assertEquals(0.875.em, raftMarkdownRichTextTagFontSizeStyle(RaftRichTextChromeKind.Channel)?.fontSize)
+        assertEquals(0.875.em, raftMarkdownRichTextTagFontSizeStyle(RaftRichTextChromeKind.SelfMention)?.fontSize)
+        assertEquals(null, raftMarkdownRichTextTagFontSizeStyle(RaftRichTextChromeKind.OrdinaryMention))
 
         val activeMentionStyle = raftMarkdownTagSpanStyle(ThreadMarkdownTagKind.UserMention, active = true)
-        assertEquals(null, activeMentionStyle.textDecoration)
-        // Active tags reuse the self-mention chip: fill comes from the box, not a span background.
+        // Active tags reuse the self-mention sticker.
         assertEquals(selfMentionStyle, activeMentionStyle)
-        assertEquals(RaftRichTextTextDecorationToken.Underline, RaftRichTextChromeKind.OrdinaryMention.styleToken.textDecoration)
-        assertEquals(2f, RaftRichTextChromeKind.OrdinaryMention.styleToken.textDecorationThicknessSp)
-        assertEquals(2f, RaftRichTextChromeKind.OrdinaryMention.styleToken.textDecorationOffsetSp)
+
+        // Pressed: the plain mention underlines; chips take the press wash.
+        val ordinaryPressed = raftMarkdownRichTextTagLinkStyles(RaftRichTextChromeKind.OrdinaryMention).pressedStyle
+        assertEquals(TextDecoration.Underline, ordinaryPressed?.textDecoration)
+        assertEquals(Color.Unspecified, ordinaryPressed?.background)
+        val channelPressed = raftMarkdownRichTextTagLinkStyles(RaftRichTextChromeKind.Channel).pressedStyle
+        assertEquals(null, channelPressed?.textDecoration)
+        assertEquals(RaftAppThemeState.colors.fillPressed, channelPressed?.background)
+        assertEquals(
+            RaftColor.StickerPressed,
+            raftMarkdownRichTextTagLinkStyles(RaftRichTextChromeKind.SelfMention).pressedStyle?.background
+        )
     }
 
     @Test
@@ -957,7 +963,7 @@ class RaftMarkdownTest {
             annotated.raftMarkdownClickableTagBackground(taskToken.id)
         )
         assertEquals(
-            RaftColor.BrandYellow.copy(alpha = 0.4f),
+            RaftColor.InactiveSoft,
             annotated.raftMarkdownClickableTagInlineBoxBackground(taskToken.id)
         )
         assertEquals(
@@ -999,9 +1005,9 @@ class RaftMarkdownTest {
             listOf(
                 RaftColor.BrandYellow,
                 null,
-                RaftColor.AccentPink.copy(alpha = 0.3f),
-                RaftColor.AccentCyan.copy(alpha = 0.3f),
-                RaftColor.BrandYellow.copy(alpha = 0.4f)
+                RaftColor.AttentionSoft,
+                RaftColor.InfoSoft,
+                RaftColor.InactiveSoft
             ),
             listOf("slock:5", "slock:16", "slock:43", "slock:55", "slock:80").map { tag ->
                 annotated.raftMarkdownClickableTagInlineBoxBackground(tag)
@@ -1080,8 +1086,8 @@ class RaftMarkdownTest {
         assertEquals(
             listOf(
                 RaftColor.BrandYellow,
-                RaftColor.AccentCyan.copy(alpha = 0.3f),
-                RaftColor.BrandYellow.copy(alpha = 0.4f)
+                RaftColor.InfoSoft,
+                RaftColor.InactiveSoft
             ),
             refTokens.map { token ->
                 annotated.raftMarkdownClickableTagInlineBoxBackground(token.actionId!!)
@@ -1153,7 +1159,7 @@ class RaftMarkdownTest {
         assertEquals(setOf("slock:17", "slock:26"), annotated.raftMarkdownClickableTags())
         assertEquals(
             listOf(
-                RaftColor.AccentPink.copy(alpha = 0.3f),
+                RaftColor.AttentionSoft,
                 RaftColor.BrandYellow
             ),
             listOf("slock:17", "slock:26").map { tag ->
@@ -1194,34 +1200,29 @@ class RaftMarkdownTest {
         assertEquals(
             listOf(
                 RaftColor.BrandYellow,
-                RaftColor.AccentPink.copy(alpha = 0.3f),
-                RaftColor.AccentCyan.copy(alpha = 0.3f),
-                RaftColor.BrandYellow.copy(alpha = 0.4f)
+                RaftColor.AttentionSoft,
+                RaftColor.InfoSoft,
+                RaftColor.InactiveSoft
             ),
             tokens.map { token -> raftMarkdownTagColor(token.tag!!.kind, token.highlighted) }
         )
     }
 
     @Test
-    fun referenceChipsUseReactBoldFontFamily() {
+    fun referenceChipsAreSemiboldAndPlainMentionsBold() {
         val channelStyle = raftMarkdownTagSpanStyle(ThreadMarkdownTagKind.Channel)
         val richChannelStyle =
             requireNotNull(raftMarkdownRichTextTagLinkStyles(RaftRichTextChromeKind.Channel).style)
 
-        assertEquals(RaftType.ButtonBold.fontFamily, channelStyle.fontFamily)
-        assertEquals(RaftType.ButtonBold.fontWeight, channelStyle.fontWeight)
-        assertEquals(RaftType.ButtonBold.fontFamily, richChannelStyle.fontFamily)
-        assertEquals(RaftType.ButtonBold.fontWeight, richChannelStyle.fontWeight)
+        assertEquals(raftFontFamilyForWeight(FontWeight.SemiBold), channelStyle.fontFamily)
+        assertEquals(raftFontFamilyForWeight(FontWeight.SemiBold), richChannelStyle.fontFamily)
         assertEquals(null, richChannelStyle.textDecoration)
-        assertEquals(RaftRichTextFontWeightToken.Bold, RaftRichTextChromeKind.Channel.styleToken.fontWeight)
+        assertEquals(RaftRichTextFontWeightToken.SemiBold, RaftRichTextChromeKind.Channel.styleToken.fontWeight)
 
-        // CMP switch: the ordinary-mention underline is a RaftInlineUnderlineStyle annotation.
         val ordinaryMention = raftMarkdownTagSpanStyle(ThreadMarkdownTagKind.UserMention)
+        assertEquals(raftFontFamilyForWeight(FontWeight.Bold), ordinaryMention.fontFamily)
         assertEquals(null, ordinaryMention.textDecoration)
-        assertEquals(
-            2.sp,
-            raftMarkdownRichTextTagInlineUnderlineStyle(RaftRichTextChromeKind.OrdinaryMention)?.thickness,
-        )
+        assertEquals(RaftRichTextFontWeightToken.Bold, RaftRichTextChromeKind.OrdinaryMention.styleToken.fontWeight)
     }
 
     // Product ruling (task #816): message prose keeps the shared product font;
@@ -1248,26 +1249,27 @@ class RaftMarkdownTest {
         assertEquals(RaftRichTextFontFamilyToken.RaftMono, RaftRichTextChromeKind.InlineCode.styleToken.fontFamily)
         assertEquals(RaftRichTextFontWeightToken.Normal, RaftRichTextChromeKind.InlineCode.styleToken.fontWeight)
         assertEquals(null, RaftRichTextChromeKind.InlineCode.styleToken.background)
-        assertEquals(RaftRichTextColorToken.Black5, RaftRichTextChromeKind.InlineCode.styleToken.chipFill)
-        assertEquals(RaftColor.TextBlack.copy(alpha = 0.05f), inlineBox.backgroundColor)
+        assertEquals(RaftRichTextColorToken.FillMuted, RaftRichTextChromeKind.InlineCode.styleToken.chipFill)
+        assertEquals(RaftColor.FillMuted, inlineBox.backgroundColor)
         assertEquals(0.dp, inlineBox.borderWidth)
         assertEquals(4.dp, inlineBox.paddingStart)
         assertEquals(4.dp, inlineBox.paddingEnd)
-        assertEquals(1.dp, inlineBox.paddingTop)
-        assertEquals(1.dp, inlineBox.paddingBottom)
+        // raft-ui InlineCode message: a fill 1px past Space Mono's content area, `rounded-sticker`.
+        assertEquals(3.25.dp, inlineBox.paddingTop)
+        assertEquals(2.75.dp, inlineBox.paddingBottom)
         assertEquals(0.dp, inlineBox.marginStart)
         assertEquals(0.dp, inlineBox.marginEnd)
-        assertEquals(0.dp, inlineBox.cornerRadius)
+        assertEquals(4.dp, inlineBox.cornerRadius)
         assertEquals(4.dp, leadingEdge.paddingStart)
         assertEquals(0.dp, leadingEdge.paddingEnd)
         assertEquals(0.dp, trailingEdge.paddingStart)
         assertEquals(4.dp, trailingEdge.paddingEnd)
-        assertEquals(1.dp, leadingEdge.paddingTop)
-        assertEquals(1.dp, leadingEdge.paddingBottom)
-        assertEquals(1.dp, trailingEdge.paddingTop)
-        assertEquals(1.dp, trailingEdge.paddingBottom)
-        assertEquals(RaftColor.TextBlack.copy(alpha = 0.05f), leadingEdge.backgroundColor)
-        assertEquals(RaftColor.TextBlack.copy(alpha = 0.05f), trailingEdge.backgroundColor)
+        assertEquals(inlineBox.paddingTop, leadingEdge.paddingTop)
+        assertEquals(inlineBox.paddingBottom, leadingEdge.paddingBottom)
+        assertEquals(inlineBox.paddingTop, trailingEdge.paddingTop)
+        assertEquals(inlineBox.paddingBottom, trailingEdge.paddingBottom)
+        assertEquals(RaftColor.FillMuted, leadingEdge.backgroundColor)
+        assertEquals(RaftColor.FillMuted, trailingEdge.backgroundColor)
 
         val body = "before `effective-family` after"
         val rendered =
@@ -1285,7 +1287,8 @@ class RaftMarkdownTest {
         val effectiveAtCode = effectiveSpanStyleAt(codeStart)
         assertEquals(raftMonoFamilyForWeight(FontWeight.Normal), effectiveAtCode.fontFamily)
         assertEquals(FontWeight.Normal, effectiveAtCode.fontWeight)
-        assertEquals(RaftType.Body.fontSize * 0.875f, effectiveAtCode.fontSize)
+        // 0.875em of the paragraph, so it follows the message font-size setting.
+        assertEquals(0.875.em, effectiveAtCode.fontSize)
         assertEquals(RaftType.Body.letterSpacing, effectiveAtCode.letterSpacing)
         assertTrue(
             rendered.spanStyles.none { range ->
@@ -1363,10 +1366,11 @@ class RaftMarkdownTest {
         assertEquals(RaftType.Body.fontFamily, typography.paragraph.fontFamily)
         assertEquals(RaftType.Body.fontFamily, typography.textLink.style?.fontFamily)
         assertEquals(expectedLinkBlue, typography.textLink.style?.color)
-        assertEquals(TextDecoration.Underline, typography.textLink.style?.textDecoration)
+        // The link underline is a RaftInlineUnderlineStyle annotation, not the span decoration.
+        assertEquals(null, typography.textLink.style?.textDecoration)
         assertEquals(RaftType.Body.fontWeight, typography.textLink.style?.fontWeight)
         assertEquals(expectedLinkBlue, typography.link.color)
-        assertEquals(TextDecoration.Underline, typography.link.textDecoration)
+        assertEquals(null, typography.link.textDecoration)
         assertEquals(RaftType.Body.fontWeight, typography.link.fontWeight)
         // web pre `font-mono [font-size:inherit]`: bundled Space Mono at the body size.
         assertEquals(raftMonoFamilyForWeight(FontWeight.Normal), typography.code.fontFamily)
@@ -1388,29 +1392,28 @@ class RaftMarkdownTest {
         assertEquals("Open Raft now", annotated.text)
         assertEquals("https://raft.build", link.url)
         assertEquals(expectedLinkBlue, linkStyle?.color)
-        assertEquals(TextDecoration.Underline, linkStyle?.textDecoration)
+        assertEquals(null, linkStyle?.textDecoration)
         assertEquals(RaftType.Body.fontWeight, linkStyle?.fontWeight)
     }
 
-    @Ignore // TODO(cmp-switch): markdown links lost the 2sp underline thickness/offset (upstream
-    // SpanStyle has none; see raftMarkdownLinkSpanStyle). Re-enable once links carry a
-    // RaftInlineUnderlineStyle annotation like reference tags do.
     @Test
-    fun markdownLinksUseTwoSpUnderlineThicknessAndOffset() {
+    fun markdownLinksUseTwoSpUnderlineAtFortyPercentLinkColour() {
         val body = "Open [Raft](https://raft.build) now"
         val annotated =
             buildRaftMarkdownParagraphAnnotatedString(
                 content = body,
                 annotator = raftMarkdownAnnotator(body)
-            )
+            ).withRaftMarkdownLinkUnderlines()
         val link = annotated.getLinkAnnotations(0, annotated.length).single()
         val underline =
             annotated.raftInlineUnderlineRanges()
-                .firstOrNull { it.start >= link.start && it.end <= link.end }
-                ?.item
+                .single { it.start == link.start && it.end == link.end }
+                .item
 
-        assertEquals(2.sp, underline?.thickness)
-        assertEquals(2.sp, underline?.offset)
+        // raft-ui markdown link: `decoration-2 underline-offset-2 decoration-foreground-link/40`.
+        assertEquals(2.sp, underline.thickness)
+        assertEquals(2.sp, underline.offset)
+        assertEquals(expectedLinkBlue.copy(alpha = 0.4f), underline.color)
     }
 
     @Test
@@ -2346,7 +2349,7 @@ class RaftMarkdownTest {
         assertEquals(expectedLeading, annotated.text.substring(splitRange.start, splitRange.end))
         assertTrue(annotated.text.endsWith(expectedTrailing))
         assertEquals(
-            RaftColor.TextBlack.copy(alpha = 0.05f),
+            RaftColor.FillMuted,
             boxRanges.single().item.backgroundColor,
         )
     }

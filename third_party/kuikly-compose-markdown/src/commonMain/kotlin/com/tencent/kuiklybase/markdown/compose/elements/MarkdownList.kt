@@ -271,8 +271,8 @@ data class MarkdownBulletMetrics(
  * - marker box: Chromium paints disc/circle/square at `ascent / 3` (≈ 1/3 em) for every level;
  * - circle stroke: 1px (kept ≥ 1dp, grows with large fonts);
  * - gap: the outside marker sits ~0.5em before the text (Chromium's 7px at 16px);
- * - indent: each list level moves the text 1.5em right (`padding-left: 1.5em`); the list's
- *   own [listIndent] is part of that 1.5em, the marker slot fills the rest.
+ * - indent: each list level moves the text 1.25em right (Slock web `pl-5`, 20px at the 16px
+ *   phone body); the list's own [listIndent] is part of that, the marker slot fills the rest.
  */
 fun markdownBulletMetrics(fontSize: Dp, lineHeight: Dp, listIndent: Dp): MarkdownBulletMetrics {
     val markerSize = fontSize * MarkdownBulletSizeEm
@@ -291,7 +291,8 @@ fun markdownBulletMetrics(fontSize: Dp, lineHeight: Dp, listIndent: Dp): Markdow
 private const val MarkdownBulletSizeEm = 1f / 3f
 private const val MarkdownBulletCircleStrokeRatio = 0.2f
 private const val MarkdownBulletGapEm = 0.5f
-private const val MarkdownListIndentEm = 1.5f
+/** Text indent of one list level, in em of the list text (shared by bullet and number markers). */
+const val MarkdownListIndentEm = 1.25f
 private const val MarkdownBulletFallbackLineHeightEm = 1.5f
 private val MarkdownBulletFallbackFontSize = 14.sp
 

@@ -63,30 +63,37 @@ val RaftRichTextChromeKind.styleToken: RaftRichTextChromeStyleToken
             RaftRichTextChromeKind.Active -> RaftRichTextChromeStyleTokens.Active
         }
 
+/**
+ * Text and box chrome of one inline kind. raft-ui (`lib/inline-chip.ts`, `message-reference.recipe.ts`):
+ * every chip in message text (reference chip, the reader's own mention sticker, inline task chip)
+ * is 0.875em semibold on a solid fill, 6px at each end, `rounded-sticker`, no underline. Someone
+ * else's @mention is plain bold ink at the sentence's size, underlined only while pressed.
+ *
+ * [fontSizeEm] is relative to the message body size, so chips follow the message font-size
+ * setting; `null` keeps the surrounding size.
+ */
 data class RaftRichTextChromeStyleToken(
     val id: String,
     val foreground: RaftRichTextColorToken = RaftRichTextColorToken.TextBlack,
     val background: RaftRichTextColorToken? = null,
     val chipFill: RaftRichTextColorToken? = background,
     val fontFamily: RaftRichTextFontFamilyToken = RaftRichTextFontFamilyToken.RaftUi,
-    val fontWeight: RaftRichTextFontWeightToken = RaftRichTextFontWeightToken.Bold,
-    val fontSizeSp: Float? = 14f,
+    val fontWeight: RaftRichTextFontWeightToken = RaftRichTextFontWeightToken.SemiBold,
+    val fontSizeEm: Float? = RAFT_RICHTEXT_INLINE_CHIP_FONT_SIZE_EM,
     val textDecoration: RaftRichTextTextDecorationToken? = null,
-    val textDecorationColor: RaftRichTextColorToken? = null,
-    val textDecorationThicknessSp: Float? = null,
-    val textDecorationOffsetSp: Float? = null,
+    val pressedTextDecoration: RaftRichTextTextDecorationToken? = null,
+    val inkEdge: Boolean = false,
     val horizontalChromeSp: Float? = null
 )
 
 enum class RaftRichTextColorToken(val wireValue: String) {
     TextBlack("textBlack"),
-    Black5("black5"),
+    FillMuted("fillMuted"),
     BrandYellow("brandYellow"),
-    BrandYellow40("brandYellow40"),
-    AccentPink30("accentPink30"),
-    AccentCyan30("accentCyan30"),
-    SoftSignal("softSignal"),
-    BorderBlack30("borderBlack30")
+    AttentionSoft("attentionSoft"),
+    InfoSoft("infoSoft"),
+    InactiveSoft("inactiveSoft"),
+    SoftSignal("softSignal")
 }
 
 enum class RaftRichTextFontFamilyToken(val wireValue: String) {
@@ -105,63 +112,76 @@ enum class RaftRichTextTextDecorationToken(val wireValue: String) {
 }
 
 object RaftRichTextChromeStyleTokens {
+    // raft-ui InlineCode appearance="message": `rounded-sticker bg-fill-muted px-1`, Space Mono
+    // 0.875em regular (the size is applied with the mono family, see withRaftMarkdownSpanFonts).
     val InlineCode =
         RaftRichTextChromeStyleToken(
             id = "inlineCode",
             foreground = RaftRichTextColorToken.TextBlack,
             background = null,
-            chipFill = RaftRichTextColorToken.Black5,
+            chipFill = RaftRichTextColorToken.FillMuted,
             fontFamily = RaftRichTextFontFamilyToken.RaftMono,
-            fontWeight = RaftRichTextFontWeightToken.Normal
+            fontWeight = RaftRichTextFontWeightToken.Normal,
+            fontSizeEm = null
         )
+
+    // A place (channel, DM) is pink: MessageReferenceChip variant="accent", `bg-attention-soft`.
     val Channel =
-        referenceUnderline(
-            id = "channel",
-            chipFill = RaftRichTextColorToken.AccentPink30
-        )
-    val Thread =
-        referenceUnderline(
-            id = "thread",
-            chipFill = RaftRichTextColorToken.AccentCyan30
-        )
-    val Task =
-        referenceUnderline(
-            id = "task",
-            chipFill = RaftRichTextColorToken.BrandYellow40
-        )
-    val OrdinaryMention =
-        referenceUnderline(
-            id = "ordinaryMention",
-            chipFill = RaftRichTextColorToken.BrandYellow40
-        )
-    val SelfMention =
         referenceChip(
+            id = "channel",
+            chipFill = RaftRichTextColorToken.AttentionSoft
+        )
+
+    // A thing in it (thread, message) is cyan: variant="info", `bg-info-soft`.
+    val Thread =
+        referenceChip(
+            id = "thread",
+            chipFill = RaftRichTextColorToken.InfoSoft
+        )
+
+    // A task ref on a surface with no task source: the muted chip that claims no status.
+    val Task =
+        referenceChip(
+            id = "task",
+            chipFill = RaftRichTextColorToken.InactiveSoft
+        )
+
+    // MessageReferenceText variant="secondary": `font-bold text-foreground`, the sentence's size,
+    // `hover:underline` only.
+    val OrdinaryMention =
+        RaftRichTextChromeStyleToken(
+            id = "ordinaryMention",
+            fontWeight = RaftRichTextFontWeightToken.Bold,
+            fontSizeEm = null,
+            pressedTextDecoration = RaftRichTextTextDecorationToken.Underline
+        )
+
+    // MessageReferenceText variant="primary": the reader's own mention is a yellow `bg-brand`
+    // sticker with a 1.5px `sticker-ink` inset ring, in the inline chip's box.
+    val SelfMention =
+        stickerChip(
             id = "selfMention"
         )
     val Active =
-        referenceChip(
+        stickerChip(
             id = "active"
         )
 
-    private fun referenceUnderline(
+    private fun referenceChip(
         id: String,
         chipFill: RaftRichTextColorToken
     ): RaftRichTextChromeStyleToken =
         RaftRichTextChromeStyleToken(
             id = id,
             chipFill = chipFill,
-            textDecoration = RaftRichTextTextDecorationToken.Underline,
-            textDecorationColor = RaftRichTextColorToken.BorderBlack30,
-            textDecorationThicknessSp = RAFT_RICHTEXT_REFERENCE_UNDERLINE_THICKNESS_SP,
-            textDecorationOffsetSp = RAFT_RICHTEXT_REFERENCE_UNDERLINE_OFFSET_SP,
             horizontalChromeSp = RAFT_RICHTEXT_INLINE_CHIP_HORIZONTAL_CHROME_SP
         )
 
-    private fun referenceChip(id: String): RaftRichTextChromeStyleToken =
+    private fun stickerChip(id: String): RaftRichTextChromeStyleToken =
         RaftRichTextChromeStyleToken(
             id = id,
-            background = RaftRichTextColorToken.SoftSignal,
             chipFill = RaftRichTextColorToken.SoftSignal,
+            inkEdge = true,
             horizontalChromeSp = RAFT_RICHTEXT_INLINE_CHIP_HORIZONTAL_CHROME_SP
         )
 }
@@ -174,9 +194,13 @@ const val RAFT_RICHTEXT_INLINE_CODE_ANNOTATION_TAG = "raft.build.markdown.inline
 const val RAFT_RICHTEXT_INLINE_CODE_TRAILING_MARGIN_ANNOTATION_TAG =
     "raft.build.markdown.inlineCodeTrailingMarginMetadata"
 const val RAFT_RICHTEXT_INLINE_CODE_CHAR_WRAP_BREAK = '\u200B'
+// raft-ui inline chip: `px-1.5` (6px at each end), no outer margin.
 const val RAFT_RICHTEXT_INLINE_CHIP_HORIZONTAL_CHROME_SP = 12f
-const val RAFT_RICHTEXT_REFERENCE_UNDERLINE_THICKNESS_SP = 2f
-const val RAFT_RICHTEXT_REFERENCE_UNDERLINE_OFFSET_SP = 2f
+// raft-ui inline chip: `[font-size:0.875em]` of the sentence.
+const val RAFT_RICHTEXT_INLINE_CHIP_FONT_SIZE_EM = 0.875f
+// raft-ui markdown link: `underline decoration-2 underline-offset-2`.
+const val RAFT_RICHTEXT_LINK_UNDERLINE_THICKNESS_SP = 2f
+const val RAFT_RICHTEXT_LINK_UNDERLINE_OFFSET_SP = 2f
 
 enum class RaftRichTextRefKind(val wireValue: String) {
     Channel("channel"),

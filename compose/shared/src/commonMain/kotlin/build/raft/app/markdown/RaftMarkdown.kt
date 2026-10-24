@@ -96,6 +96,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.tencent.kuiklybase.markdown.annotator.LocalUriHandler
 import com.tencent.kuiklybase.markdown.annotator.UriHandler
@@ -145,6 +146,12 @@ import com.tencent.kuiklybase.markdown.compose.elements.MarkdownHeader
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownTable
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownTableHeader
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownParagraph
+import com.tencent.kuiklybase.markdown.compose.elements.MarkdownBlockQuote
+import com.tencent.kuiklybase.markdown.compose.elements.MarkdownListIndentEm
+import com.tencent.kuiklybase.markdown.compose.elements.MarkdownListItems
+import com.tencent.kuiklybase.markdown.compose.elements.listDepth
+import androidx.compose.ui.platform.LocalDensity
+import org.intellij.markdown.ast.findChildOfType
 import com.tencent.kuiklybase.markdown.compose.components.MarkdownComponentModel
 import com.tencent.kuiklybase.markdown.model.MarkdownDimens
 import com.tencent.kuiklybase.markdown.model.markdownPadding
@@ -1171,11 +1178,10 @@ private fun AnnotatedString.Builder.appendRaftRichTextToken(
                 linkInteractionListener = LinkInteractionListener { onOpenAction(action) }
             )
         ) {
-            // Chip box / coloured underline are annotations painted by raftInlineDecorations.
+            // The chip box is an annotation painted by raftInlineDecorations.
             withRaftInlineBox(boxStyle) {
-                withRaftInlineUnderline(raftMarkdownRichTextTagInlineUnderlineStyle(token.chrome)) {
-                    append(label)
-                }
+                val fontSizeStyle = raftMarkdownRichTextTagFontSizeStyle(token.chrome)
+                if (fontSizeStyle == null) append(label) else withStyle(fontSizeStyle) { append(label) }
             }
             if (token.active && token.trailingIndicator.isEmpty()) {
                 append(" ")
@@ -1365,8 +1371,8 @@ private object RaftMarkdownTextProvider : TextProvider {
                     permalinkCoroutineScope.launch { permalinkUriHandler.openUri(url) }
                 }
             }
-        val styledText = remember(permalinkContent.text, resolvedStyle) {
-            permalinkContent.text.withRaftMarkdownSpanFonts(resolvedStyle)
+        val styledText = remember(permalinkContent.text, resolvedStyle, permalinkDark) {
+            permalinkContent.text.withRaftMarkdownSpanFonts(resolvedStyle).withRaftMarkdownLinkUnderlines()
         }
         val resolvedText =
             remember(styledText, bodyClick) {
@@ -1535,8 +1541,6 @@ internal fun AnnotatedString.filteredRaftMarkdownInlineContent(
 
 private const val RaftMarkdownInlineContentTag = "androidx.compose.foundation.text.inlineContent"
 internal const val RaftMarkdownTagAnnotationTag = "raft.build.markdown.tag"
-private val RaftMessagePermalinkChipBackground: Color
-    get() = if (RaftAppThemeState.isDark) RaftColor.BrandSoft else Color(0xFFFCEFBD) // raft-color: light legacy permalink chip fill
 // Chrome-related fields are platform-derived (task #441): declaring
 // consumesChromeTokens/hasDrawAdapter=true in commonMain overclaimed platforms
 // whose native renderer doesn't draw the chip chrome (it was hardcoded true
@@ -1614,7 +1618,9 @@ internal fun AnnotatedString.withRaftMarkdownSpanFonts(baseStyle: TextStyle): An
             SpanStyle(
                 fontFamily = raftMonoFamilyForWeight(FontWeight.Normal),
                 fontWeight = FontWeight.Normal,
-                fontSize = RaftMarkdownBodyFontSize * 0.875f,
+                // raft-ui InlineCode appearance="message": 0.875em of the sentence, so it
+                // follows the message font-size setting and headings.
+                fontSize = RAFT_RICHTEXT_INLINE_CHIP_FONT_SIZE_EM.em,
             ),
             range.start,
             range.end,
@@ -1693,33 +1699,33 @@ private fun AnnotatedString.withRaftMessagePermalinkChipContent(
                 }
             )
         ) {
-            appendInlineContent(iconId, "\uFFFC")
-            appendInlineContent(iconGapId, "\uFFFC")
-            withStyle(
-                raftSpanStyleForWeight(FontWeight.Bold).copy(
-                    color = RaftColor.TextBlack,
-                    fontSize = 14.sp,
-                )
-            ) {
-                append(targetLabel)
-            }
-            appendInlineContent(suffixGapId, " ")
-            withStyle(
-                SpanStyle(
-                    color = RaftColor.TextBlack.copy(alpha = 0.5f),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Normal,
-                    fontFamily = raftFontFamilyForWeight(FontWeight.Normal),
-                )
-            ) {
-                append(kindLabel)
+            // web PermalinkReferenceChip: MessageReferenceChip variant="link" — a 0.875em inline
+            // chip with the Link icon, the label and a mono "msg" note, each 4px apart.
+            withStyle(SpanStyle(fontSize = RAFT_RICHTEXT_INLINE_CHIP_FONT_SIZE_EM.em)) {
+                appendInlineContent(iconId, "\uFFFC")
+                appendInlineContent(iconGapId, "\uFFFC")
+                withStyle(raftSpanStyleForWeight(FontWeight.SemiBold).copy(color = RaftColor.TextBlack)) {
+                    append(targetLabel)
+                }
+                appendInlineContent(suffixGapId, " ")
+                withStyle(
+                    SpanStyle(
+                        color = RaftColor.ForegroundHint,
+                        // raft-ui `font-mono text-label font-normal`.
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Normal,
+                        fontFamily = raftMonoFamilyForWeight(FontWeight.Normal),
+                    )
+                ) {
+                    append(kindLabel)
+                }
             }
           }
         }
         }
         inlineContent[iconId] = raftMessagePermalinkIconInlineContent()
         inlineContent[iconGapId] = raftMessagePermalinkSpacerInlineContent(4.sp)
-        inlineContent[suffixGapId] = raftMessagePermalinkSpacerInlineContent(6.sp)
+        inlineContent[suffixGapId] = raftMessagePermalinkSpacerInlineContent(4.sp)
         cursor = range.end
     }
     builder.append(source, cursor, source.length)
@@ -1741,7 +1747,8 @@ private fun raftMessagePermalinkIconInlineContent(): InlineTextContent {
         RaftLucideIcon(
             name = RaftLucideIconName.Link,
             modifier = Modifier.size(12.dp),
-            color = RaftColor.TextBlackArgb,
+            // raft-ui reference chip: `[&_svg]:text-foreground-muted`.
+            color = raftArgbHex(RaftColor.ForegroundMuted),
             strokeWidth = 2f,
         )
     }
@@ -1809,32 +1816,32 @@ private fun AnnotatedString.withoutLinksInsideRaftInlineCode(): AnnotatedString 
         .toAnnotatedString()
 }
 
+// raft-ui inline chip with a leading mark: `bg-info-soft`, 4.5px at each end, `rounded-sticker`,
+// no edge (plus mobile's 2dp outer gap, see toInlineBoxSpanStyle).
 internal fun raftMessagePermalinkChipBoxStyle(): RaftInlineBoxStyle =
     RaftInlineBoxStyle(
-        backgroundColor = RaftMessagePermalinkChipBackground,
-        borderColor = RaftColor.BorderBlack,
-        borderWidth = 1.dp,
-        paddingStart = 4.dp,
-        paddingEnd = 4.dp,
-        paddingTop = 1.dp,
-        paddingBottom = 1.dp,
-        marginStart = 2.dp,
-        marginEnd = 2.dp
+        backgroundColor = RaftColor.InfoSoft,
+        paddingStart = 4.5.dp,
+        paddingEnd = 4.5.dp,
+        paddingTop = RaftRichTextInlineChipVerticalPaddingDp.dp,
+        paddingBottom = RaftRichTextInlineChipVerticalPaddingDp.dp,
+        marginStart = RaftRichTextInlineChipMarginDp.dp,
+        marginEnd = RaftRichTextInlineChipMarginDp.dp,
+        cornerRadius = RaftAppRadius.Sticker,
     )
 
 private fun raftMessagePermalinkChipLinkStyles(): TextLinkStyles {
     val base =
-        raftMarkdownTagBaseSpanStyle().copy(
+        raftSpanStyleForWeight(FontWeight.SemiBold).copy(
             color = RaftColor.TextBlack,
             textDecoration = null,
             background = Color.Unspecified,
         )
-    // The chip box itself is a RaftInlineBoxStyle annotation (see raftMessagePermalinkChipBoxStyle).
-    // TODO(cmp-switch): Kuikly swapped the box fill to BrandYellow while pressed; link styles
-    // cannot reach the annotation, so the pressed state paints a span background instead.
+    // raft-ui `active:overlay-medium`; link styles cannot reach the box annotation, so a span wash
+    // over the chip's text stands in for the overlay.
     return TextLinkStyles(
         style = base,
-        pressedStyle = base.copy(color = RaftColor.StickerInk, background = RaftColor.BrandYellow)
+        pressedStyle = base.copy(background = RaftAppThemeState.colors.fillPressed)
     )
 }
 
@@ -2371,7 +2378,8 @@ fun RaftMarkdownBody(
             }
         )
     }
-    val annotator: MarkdownAnnotator = remember(richTextDocument, performanceKey, softLineBreaksAsNewLines) {
+    val mentionReadFontSize = markdownTextStyle.fontSize.takeIf { it.isSp } ?: RaftMarkdownBodyFontSize
+    val annotator: MarkdownAnnotator = remember(richTextDocument, performanceKey, softLineBreaksAsNewLines, mentionReadFontSize) {
         raftMarkdownAnnotator(
             document = richTextDocument,
             onOpenAction = { action: RaftRichTextAction ->
@@ -2396,8 +2404,8 @@ fun RaftMarkdownBody(
             softLineBreaksAsNewLines = softLineBreaksAsNewLines,
             taskStatuses = { currentTaskStatuses },
             mentionReadStates = { currentMentionReadStates },
-            // The mention is set in its own chip size, so the mark follows that, not the body size.
-            mentionReadFontSize = RaftMarkdownTagFontSize
+            // A read mark follows someone else's @mention, which is set at the sentence's size.
+            mentionReadFontSize = mentionReadFontSize
         )
     }
     if (DEBUG_RAFT_MARKDOWN_PERF_LOG && performanceKey != null) {
@@ -2444,17 +2452,19 @@ fun RaftMarkdownBody(
             block = 0.dp,
             paragraphVerPadding = PaddingValues(vertical = 0.dp),
             codeBlock = PaddingValues(RaftAppSpacing.Sm),
+            // web `li mb-0.5`. The marker slot carries the whole `pl-5` indent
+            // (MarkdownListIndentEm), so the list adds none of its own.
+            listItemBottom = 2.dp,
+            listIndent = 0.dp,
             // Blockquote rail must span EXACTLY the quoted content's height
-            // (task #62): the library defaults pad the quote text by 4dp
-            // vertically and inset the bar by 2dp, so the rail overshot the
-            // text above and below. Web renders border-l-2 with no vertical
-            // padding — the border is precisely the content box.
+            // (task #62): web renders border-l-2 with no vertical padding — the
+            // border is precisely the content box.
             blockQuoteText = PaddingValues(0.dp),
-            // Horizontal geometry mirrors web too (artin, task #62 follow-up):
-            // border-l-2 sits flush at the quote origin and pl-3 puts the text
-            // 12dp after it — total 14dp indent, not the library's 4+2+4+16.
-            blockQuote = PaddingValues(start = 12.dp, top = 0.dp, end = 0.dp, bottom = 0.dp),
-            blockQuoteBar = PaddingValues.Absolute(left = 0.dp, top = 0.dp, right = 0.dp, bottom = 0.dp)
+            // web `border-l-2 pl-2.5 my-1`: the rail flush at the quote origin,
+            // the text 10dp after it, and 4dp above and below the whole quote
+            // (the rail is inset by the same 4dp so it stays the text's height).
+            blockQuote = PaddingValues(start = 10.dp, top = 4.dp, end = 0.dp, bottom = 4.dp),
+            blockQuoteBar = PaddingValues.Absolute(left = 0.dp, top = 4.dp, right = 0.dp, bottom = 4.dp)
         )
     }
     val components = remember(sectionHeadingTopPadding, onSectionHeadingPositioned) {
@@ -2494,6 +2504,18 @@ fun RaftMarkdownBody(
             },
             horizontalRule = {
                 RaftMarkdownHorizontalRule()
+            },
+            // web blockquote: `border-l-2 border-line-seam`, text `text-foreground-muted`.
+            blockQuote = { model ->
+                MarkdownBlockQuote(
+                    model.content,
+                    model.node,
+                    style = model.typography.quote,
+                    barColor = RaftColor.BorderSeam
+                )
+            },
+            orderedList = { model ->
+                RaftMarkdownOrderedList(model)
             },
             // task #212: upstream's table header derives its own style by setting
             // fontWeight to Bold, which changes the weight but leaves the font FAMILY
@@ -2777,8 +2799,9 @@ internal val RaftMarkdownTableCellPadding = PaddingValues(horizontal = 8.dp, ver
 // The end column holds the 28dp copy action 6dp from the edge, plus 6dp before the code.
 private val RaftMarkdownCodeBlockPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 40.dp, bottom = 8.dp)
 internal val RaftMarkdownMinimumInlineLineHeight = 22.sp
-private val RaftMarkdownDividerColor: Color get() = RaftColor.BorderBlack.copy(alpha = 0.22f)
-private val RaftMarkdownDividerThickness = 2.dp
+// web hr: raft-ui Separator (1px `line-hairline`) with `my-2`.
+private val RaftMarkdownDividerColor: Color get() = RaftColor.BorderHairline
+private val RaftMarkdownDividerThickness = 1.dp
 private val RaftMarkdownDividerVerticalPadding = RaftAppSpacing.Sm
 
 // task #66: persistent transparent copy affordance on code blocks — the old
@@ -2885,6 +2908,52 @@ private fun RaftMarkdownCodeSurface(code: String, style: TextStyle) {
     }
 }
 
+/**
+ * web `ol list-decimal pl-5`: the number hangs outside the text, right-aligned in the same
+ * 1.25em marker slot the bullets use, so numbered and bulleted items start their text at the same
+ * indent. Numbering starts at the first item's number, as `<ol start>` does.
+ */
+@Composable
+private fun RaftMarkdownOrderedList(model: MarkdownComponentModel) {
+    val style = model.typography.ordered
+    val density = LocalDensity.current
+    val fontSize = with(density) { (if (style.fontSize.isSpecified) style.fontSize else RaftMarkdownBodyFontSize).toDp() }
+    val start = remember(model.node, model.content) { raftMarkdownOrderedListStart(model.node, model.content) }
+    MarkdownListItems(
+        content = model.content,
+        node = model.node,
+        depth = model.listDepth,
+        markerModifier = { Modifier.width(fontSize * MarkdownListIndentEm) },
+    ) { index, _ ->
+        MarkdownBasicText(
+            text = raftMarkdownOrderedListMarker(start, index),
+            style = style,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(end = fontSize * RaftMarkdownOrderedMarkerGapEm)
+                    .wrapContentWidth(Alignment.End, unbounded = true),
+            softWrap = false,
+        )
+    }
+}
+
+// Chromium's outside decimal marker ends with a space before the text (about 0.25em).
+private const val RaftMarkdownOrderedMarkerGapEm = 0.25f
+
+internal fun raftMarkdownOrderedListStart(node: ASTNode, content: String): Int =
+    node.children
+        .firstOrNull { it.type == MarkdownElementTypes.LIST_ITEM }
+        ?.findChildOfType(MarkdownTokenTypes.LIST_NUMBER)
+        ?.getTextInNode(content)
+        ?.toString()
+        ?.trim()
+        ?.takeWhile(Char::isDigit)
+        ?.toIntOrNull()
+        ?: 1
+
+internal fun raftMarkdownOrderedListMarker(start: Int, index: Int): String = "${start + index}."
+
 @Composable
 private fun RaftMarkdownHorizontalRule() {
     Box(
@@ -2902,13 +2971,42 @@ private fun RaftMarkdownHorizontalRule() {
     }
 }
 
+// raft-ui markdown link: `text-foreground-link underline decoration-2 underline-offset-2
+// decoration-foreground-link/40`. Upstream SpanStyle has no underline colour, thickness or offset,
+// so the underline is a RaftInlineUnderlineStyle annotation ([withRaftMarkdownLinkUnderlines]).
 internal fun raftMarkdownLinkSpanStyle(base: TextStyle): SpanStyle =
     base.toSpanStyle().copy(
         color = RaftMarkdownLinkBlue,
-        // TODO(cmp-switch): upstream SpanStyle has no underline thickness/offset; Kuikly drew
-        // RAFT_RICHTEXT_REFERENCE_UNDERLINE_THICKNESS_SP / _OFFSET_SP here.
-        textDecoration = TextDecoration.Underline,
+        textDecoration = null,
     )
+
+internal fun raftMarkdownLinkUnderlineStyle(): RaftInlineUnderlineStyle =
+    RaftInlineUnderlineStyle(
+        color = RaftMarkdownLinkBlue.copy(alpha = 0.4f),
+        thickness = RAFT_RICHTEXT_LINK_UNDERLINE_THICKNESS_SP.sp,
+        offset = RAFT_RICHTEXT_LINK_UNDERLINE_OFFSET_SP.sp,
+    )
+
+/**
+ * Underlines every web link (a [LinkAnnotation.Url] outside a chip box) with
+ * [raftMarkdownLinkUnderlineStyle]. Chips (permalinks) keep no underline; tags are
+ * [LinkAnnotation.Clickable] and are left alone.
+ */
+internal fun AnnotatedString.withRaftMarkdownLinkUnderlines(): AnnotatedString {
+    val links = getLinkAnnotations(0, length).filter { it.item is LinkAnnotation.Url && it.end > it.start }
+    if (links.isEmpty()) return this
+    val boxes = raftInlineBoxRanges()
+    val underlined = links.filter { link -> boxes.none { box -> box.start < link.end && link.start < box.end } }
+    if (underlined.isEmpty()) return this
+    val encoded = raftMarkdownLinkUnderlineStyle().encode()
+    return AnnotatedString.Builder(this)
+        .apply {
+            underlined.forEach { link ->
+                addStringAnnotation(RAFT_INLINE_UNDERLINE_ANNOTATION_TAG, encoded, link.start, link.end)
+            }
+        }
+        .toAnnotatedString()
+}
 
 // A getter, not a val: text/line colours follow RaftAppThemeState.
 internal val RaftMarkdownColorsDefault: DefaultMarkdownColors
@@ -2992,10 +3090,7 @@ internal fun raftMarkdownTypography(
         ordered = resolvedBase,
         bullet = resolvedBase,
         list = resolvedBase,
-        link = resolvedBase.copy(
-            color = RaftMarkdownLinkBlue,
-            textDecoration = TextDecoration.Underline
-        ),
+        link = resolvedBase.copy(color = RaftMarkdownLinkBlue),
         textLink = TextLinkStyles(style = raftMarkdownLinkSpanStyle(resolvedBase)),
         table = resolvedBase
     )
@@ -3105,9 +3200,13 @@ internal fun raftMarkdownTagColor(kind: ThreadMarkdownTagKind, highlighted: Bool
     raftRichTextChromeKind(kind, highlighted = highlighted)
         .styleToken
         .chipFill
-        .toRaftMarkdownColor()
+        .toRaftMarkdownColorOrUnspecified()
 
-internal val RaftMarkdownTagFontSize = RaftRichTextChromeKind.OrdinaryMention.styleToken.fontSizeSp.orZero().sp
+/**
+ * Chip text size at the default 16sp message body (raft-ui inline chip: 0.875em). Chips render at
+ * [RAFT_RICHTEXT_INLINE_CHIP_FONT_SIZE_EM] of the message body size, so this is only the default.
+ */
+internal val RaftMarkdownTagFontSize = (16f * RAFT_RICHTEXT_INLINE_CHIP_FONT_SIZE_EM).sp
 
 internal fun threadMarkdownTagActivationKey(tag: ThreadMarkdownTag): String =
     buildString {
@@ -3128,72 +3227,43 @@ internal fun threadMarkdownTagActivationKey(tag: ThreadMarkdownTag): String =
         }
     }
 
-private fun raftMarkdownTagBaseSpanStyle(): SpanStyle =
-    RaftType.ButtonBold
-        .withRaftFontWeight(FontWeight.Bold)
-        .toSpanStyle()
-        .copy(fontSize = RaftMarkdownTagFontSize)
-
-// Mention/ref visual styling mirrors react (packages/web/src/components/message/MentionLink.tsx):
-// every non-self reference — a normal @mention, a #channel, a channel-thread and a task
-// ref — renders as bold black text with a 2sp underline in black-at-30%-opacity offset
-// ~2sp below the baseline (react: `underline decoration-black/30 decoration-2
-// underline-offset-2`). Only the current-user self-mention gets the soft-signal chip
-// (react: `MSG_REF_CHIP bg-palette-yellow`). A text SpanStyle can express the chip fill but
-// not react's 1px black border / px-1 padding / square corners, so the fill is the closest
-// platform match; a bordered inline chip would require a dedicated composable.
+// Reference styling mirrors raft-ui (message-reference.recipe.ts, lib/inline-chip.ts):
+// - a #channel / DM ref is a solid `attention-soft` chip, a thread / message ref an `info-soft`
+//   one: 0.875em semibold ink, 6px at each end, `rounded-sticker`, no underline;
+// - the reader's own @mention is the yellow `bg-brand` sticker with a 1.5px `sticker-ink` inset
+//   ring in the same box;
+// - anyone else's @mention is bold ink at the sentence's size, underlined only while pressed.
+// The chip box is a RaftInlineBoxStyle annotation; the 0.875em size is a span inside it
+// ([raftMarkdownRichTextTagFontSizeStyle]) so the box painter measures the chip's own text.
 internal fun raftMarkdownTagSpanStyle(
     kind: ThreadMarkdownTagKind,
     highlighted: Boolean = false,
     active: Boolean = false
-): SpanStyle {
-    if (active) {
-        return raftMarkdownSelfMentionChipSpanStyle()
-    }
-    val isSelfMention = kind == ThreadMarkdownTagKind.UserMention && highlighted
-    return if (isSelfMention) {
-        raftMarkdownSelfMentionChipSpanStyle()
-    } else {
-        raftMarkdownTagUnderlineSpanStyle()
-    }
-}
-
-private fun raftMarkdownTagUnderlineSpanStyle(): SpanStyle =
-    RaftRichTextChromeKind.OrdinaryMention.styleToken.toTagSpanStyle()
-
-private fun raftMarkdownSelfMentionChipSpanStyle(): SpanStyle =
-    RaftRichTextChromeKind.SelfMention.styleToken.toTagSpanStyle()
+): SpanStyle =
+    raftRichTextChromeKind(kind, highlighted = highlighted, active = active)
+        .styleToken
+        .toTagSpanStyle()
 
 internal fun raftMarkdownTagLinkStyles(
     kind: ThreadMarkdownTagKind,
     highlighted: Boolean = false,
     active: Boolean = false
-): TextLinkStyles {
-    val defaultStyle = raftMarkdownTagSpanStyle(kind, highlighted = highlighted, active = active)
-    val pressedStyle = RaftRichTextChromeKind.Active.styleToken.toPressedTagSpanStyle()
-    return TextLinkStyles(
-        style = defaultStyle,
-        pressedStyle = pressedStyle
-    )
-}
+): TextLinkStyles =
+    raftMarkdownRichTextTagLinkStyles(raftRichTextChromeKind(kind, highlighted = highlighted, active = active))
 
 internal fun raftMarkdownRichTextTagLinkStyles(
     chromeKind: RaftRichTextChromeKind?
 ): TextLinkStyles {
-    val defaultStyle = raftMarkdownRichTextTagSpanStyle(chromeKind)
-    val pressedStyle = RaftRichTextChromeKind.Active.styleToken.toPressedTagSpanStyle()
+    val token = (chromeKind ?: RaftRichTextChromeKind.OrdinaryMention).styleToken
     return TextLinkStyles(
-        style = defaultStyle,
-        pressedStyle = pressedStyle
+        style = token.toTagSpanStyle(),
+        pressedStyle = token.toPressedTagSpanStyle()
     )
 }
 
-private fun raftMarkdownRichTextTagSpanStyle(
-    chromeKind: RaftRichTextChromeKind?
-): SpanStyle =
-    (chromeKind ?: RaftRichTextChromeKind.OrdinaryMention)
-        .styleToken
-        .toTagSpanStyle()
+/** The chip's 0.875em text size, or null when the tag keeps the sentence's size. */
+internal fun raftMarkdownRichTextTagFontSizeStyle(chromeKind: RaftRichTextChromeKind?): SpanStyle? =
+    (chromeKind ?: RaftRichTextChromeKind.OrdinaryMention).styleToken.fontSizeEm?.let { SpanStyle(fontSize = it.em) }
 
 private fun raftRichTextChromeKind(
     kind: ThreadMarkdownTagKind,
@@ -3221,49 +3291,35 @@ private fun RaftRichTextChromeStyleToken.applyToTextStyle(base: TextStyle): Text
     )
 
 /**
- * Text attributes of a tag. The box chrome ([toInlineBoxSpanStyle]) and the coloured reference
- * underline ([toRaftInlineUnderlineStyle]) are not SpanStyle attributes on upstream Compose: they
- * travel as annotations (see [appendRaftRichTextToken]) and [raftInlineDecorations] paints them.
+ * Text attributes of a tag. The box chrome ([toInlineBoxSpanStyle]) is not a SpanStyle attribute on
+ * upstream Compose: it travels as an annotation (see [appendRaftRichTextToken]) and
+ * [raftInlineDecorations] paints it.
  */
-private fun RaftRichTextChromeStyleToken.toTagSpanStyle(): SpanStyle {
-    val inlineBoxStyle = toInlineBoxSpanStyle()
-    return raftMarkdownTagBaseSpanStyle()
-        .copy(
-            // Ink type on an opaque sticker chip (self mention / active) stays dark in dark mode.
-            color = if ((chipFill ?: background).isRaftStickerFill()) RaftColor.StickerInk else foreground.toRaftMarkdownColor(),
-            textDecoration = null,
-            // The box paints the chip fill; a span background would cover its border.
-            background =
-                if (inlineBoxStyle == null) background.toRaftMarkdownColorOrUnspecified()
-                else Color.Unspecified,
-        )
-}
+private fun RaftRichTextChromeStyleToken.toTagSpanStyle(): SpanStyle =
+    raftSpanStyleForWeight(fontWeight.toRaftFontWeight()).copy(
+        // Ink type on the yellow sticker stays dark in dark mode.
+        color = if (inkEdge) RaftColor.StickerInk else foreground.toRaftMarkdownColor(),
+        textDecoration = textDecoration.toComposeTextDecoration(),
+    )
 
-/** Pressed-state tag style: a span background stands in for the Active chip box. */
+/**
+ * Pressed tag: raft-ui presses a chip with `overlay-medium` (`overlay-sticker-medium` on the
+ * sticker) and underlines a plain mention. Link styles cannot reach the box annotation, so a span
+ * wash over the chip's text stands in for the overlay.
+ */
 private fun RaftRichTextChromeStyleToken.toPressedTagSpanStyle(): SpanStyle =
     toTagSpanStyle().copy(
-        // TODO(cmp-switch): Kuikly swapped to the Active chip box (fill + ink edge + padding).
-        background = (chipFill ?: background).toRaftMarkdownColorOrUnspecified()
+        textDecoration = pressedTextDecoration.toComposeTextDecoration() ?: textDecoration.toComposeTextDecoration(),
+        background =
+            when {
+                chipFill == null -> Color.Unspecified
+                inkEdge -> RaftColor.StickerPressed
+                else -> RaftAppThemeState.colors.fillPressed
+            },
     )
-
-internal fun RaftRichTextChromeStyleToken.toRaftInlineUnderlineStyle(): RaftInlineUnderlineStyle? {
-    if (toInlineBoxSpanStyle() != null) return null
-    if (textDecoration.toComposeTextDecoration() == null) return null
-    return RaftInlineUnderlineStyle(
-        color = textDecorationColor.toRaftMarkdownColorOrUnspecified()
-            .takeIf { it != Color.Unspecified } ?: foreground.toRaftMarkdownColor(),
-        thickness = textDecorationThicknessSp?.sp ?: 1.sp,
-        offset = textDecorationOffsetSp?.sp ?: 0.sp,
-    )
-}
 
 internal fun raftMarkdownRichTextTagInlineBoxStyle(chromeKind: RaftRichTextChromeKind?): RaftInlineBoxStyle? =
     (chromeKind ?: RaftRichTextChromeKind.OrdinaryMention).styleToken.toInlineBoxSpanStyle()
-
-internal fun raftMarkdownRichTextTagInlineUnderlineStyle(
-    chromeKind: RaftRichTextChromeKind?
-): RaftInlineUnderlineStyle? =
-    (chromeKind ?: RaftRichTextChromeKind.OrdinaryMention).styleToken.toRaftInlineUnderlineStyle()
 
 /**
  * Compatibility lowering for the original Slock semantic chrome tokens.
@@ -3279,47 +3335,45 @@ internal fun raftMarkdownInlineCodeEdgeStyle(
     leading: Boolean,
     trailing: Boolean = !leading,
 ): RaftInlineBoxStyle =
-    RaftInlineBoxStyle(
-        backgroundColor = RaftRichTextChromeKind.InlineCode.styleToken.chipFill.toRaftMarkdownColor(),
-        borderColor = Color.Transparent,
-        borderWidth = 0.dp,
-        paddingStart = if (leading) 4.dp else 0.dp,
-        paddingEnd = if (trailing) 4.dp else 0.dp,
-        paddingTop = RaftRichTextInlineCodeVerticalPaddingDp.dp,
-        paddingBottom = RaftRichTextInlineCodeVerticalPaddingDp.dp,
-        marginStart = 0.dp,
-        marginEnd = 0.dp,
-        cornerRadius = 0.dp,
+    raftMarkdownInlineBoxStyle(RaftRichTextChromeKind.InlineCode).copy(
+        paddingStart = if (leading) RaftRichTextInlineCodePaddingXDp.dp else 0.dp,
+        paddingEnd = if (trailing) RaftRichTextInlineCodePaddingXDp.dp else 0.dp,
     )
 
 private fun RaftRichTextChromeStyleToken.toInlineBoxSpanStyle(): RaftInlineBoxStyle? {
-    if (id == RaftRichTextChromeStyleTokens.OrdinaryMention.id) return null
     val fill = chipFill ?: return null
     val isInlineCode = id == RaftRichTextChromeStyleTokens.InlineCode.id
-    val verticalPadding =
-        if (isInlineCode) RaftRichTextInlineCodeVerticalPaddingDp
-        else RaftRichTextInlineBoxVerticalPaddingDp
-    // raft-ui reference chips (channel / thread / task) are soft fills on the
-    // sticker radius with no ink edge; only the self-mention / active sticker
-    // keeps its ink outline.
-    val inkEdge = !isInlineCode && chipFill == background
+    val paddingX = if (isInlineCode) RaftRichTextInlineCodePaddingXDp else RaftRichTextInlineChipPaddingXDp
     return RaftInlineBoxStyle(
         backgroundColor = fill.toRaftMarkdownColor(),
         borderColor = if (inkEdge) RaftColor.StickerInk else Color.Transparent,
-        borderWidth = if (inkEdge) RaftRichTextInlineBoxBorderWidthDp.dp else 0.dp,
-        paddingStart = 4.dp,
-        paddingEnd = 4.dp,
-        paddingTop = verticalPadding.dp,
-        paddingBottom = verticalPadding.dp,
-        marginStart = if (isInlineCode) 0.dp else 2.dp,
-        marginEnd = if (isInlineCode) 0.dp else 2.dp,
-        cornerRadius = if (isInlineCode) 0.dp else RaftAppRadius.Sticker
+        borderWidth = if (inkEdge) RaftRichTextInlineChipInkEdgeDp.dp else 0.dp,
+        paddingStart = paddingX.dp,
+        paddingEnd = paddingX.dp,
+        paddingTop = (if (isInlineCode) RaftRichTextInlineCodePaddingTopDp else RaftRichTextInlineChipVerticalPaddingDp).dp,
+        paddingBottom = (if (isInlineCode) RaftRichTextInlineCodePaddingBottomDp else RaftRichTextInlineChipVerticalPaddingDp).dp,
+        // Mobile keeps a 2dp outer gap so a chip glued to CJK text or punctuation, or to another
+        // chip, never touches it (the web chip has none; see RaftMarkdownTaskChipMargin).
+        marginStart = if (isInlineCode) 0.dp else RaftRichTextInlineChipMarginDp.dp,
+        marginEnd = if (isInlineCode) 0.dp else RaftRichTextInlineChipMarginDp.dp,
+        cornerRadius = RaftAppRadius.Sticker
     )
 }
 
-private const val RaftRichTextInlineBoxBorderWidthDp = 1f
-private const val RaftRichTextInlineCodeVerticalPaddingDp = 1f
-private const val RaftRichTextInlineBoxVerticalPaddingDp = 2f
+// raft-ui inline chip: `px-1.5`, and `inset-ring-[1.5px]` on the sticker.
+private const val RaftRichTextInlineChipPaddingXDp = 6f
+private const val RaftRichTextInlineChipInkEdgeDp = 1.5f
+internal const val RaftRichTextInlineChipMarginDp = 2f
+// raft-ui inline chip: the body line less 2px (22 on the phone's 16/24 body) with no padding of
+// its own. The painter boxes the chip's 0.875em text at 1.18em (see drawRaftInlineBoxSegment), so
+// (22 - 1.18 * 14) / 2 is left above and below.
+internal const val RaftRichTextInlineChipVerticalPaddingDp = 2.75f
+// raft-ui InlineCode appearance="message": `px-1`, and a fill one pixel past Space Mono's content
+// area (1.12em ascent, 0.36em descent), nudged 0.0275em down. The painter estimates the sans
+// 0.92em / 0.26em box, so the extra Space Mono extent is added here.
+private const val RaftRichTextInlineCodePaddingXDp = 4f
+private const val RaftRichTextInlineCodePaddingTopDp = 3.25f
+private const val RaftRichTextInlineCodePaddingBottomDp = 2.75f
 
 /**
  * Top-level Markdown nodes do not reserve space for inline-box paint outside
@@ -3331,9 +3385,6 @@ internal fun raftMarkdownSectionHeadingGapClearsInlineCodeChrome(gap: Dp): Boole
         gap.value >= style.paddingBottom.value + style.borderWidth.value
     }
 
-private fun RaftRichTextColorToken?.isRaftStickerFill(): Boolean =
-    this == RaftRichTextColorToken.SoftSignal || this == RaftRichTextColorToken.BrandYellow
-
 private fun RaftRichTextColorToken?.toRaftMarkdownColor(): Color =
     requireNotNull(this) { "Slock richtext color token is required for this chrome path" }
         .toRaftMarkdownColorOrUnspecified()
@@ -3341,16 +3392,12 @@ private fun RaftRichTextColorToken?.toRaftMarkdownColor(): Color =
 private fun RaftRichTextColorToken?.toRaftMarkdownColorOrUnspecified(): Color =
     when (this) {
         RaftRichTextColorToken.TextBlack -> RaftColor.TextBlack
-        RaftRichTextColorToken.Black5 -> RaftColor.TextBlack.copy(alpha = 0.05f)
+        RaftRichTextColorToken.FillMuted -> RaftColor.FillMuted
         RaftRichTextColorToken.BrandYellow -> RaftColor.BrandYellow
-        // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1045
-        RaftRichTextColorToken.BrandYellow40 -> RaftColor.BrandYellow.copy(alpha = 0.4f)
-        // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1045
-        RaftRichTextColorToken.AccentPink30 -> RaftColor.AccentPink.copy(alpha = 0.3f)
-        // deliberate react-parity wash (web bg-*/N tint family); triaged token-audit #1045
-        RaftRichTextColorToken.AccentCyan30 -> RaftColor.AccentCyan.copy(alpha = 0.3f)
+        RaftRichTextColorToken.AttentionSoft -> RaftColor.AttentionSoft
+        RaftRichTextColorToken.InfoSoft -> RaftColor.InfoSoft
+        RaftRichTextColorToken.InactiveSoft -> RaftColor.InactiveSoft
         RaftRichTextColorToken.SoftSignal -> RaftColor.SoftSignal
-        RaftRichTextColorToken.BorderBlack30 -> RaftColor.BorderBlack.copy(alpha = 0.3f)
         null -> Color.Unspecified
     }
 

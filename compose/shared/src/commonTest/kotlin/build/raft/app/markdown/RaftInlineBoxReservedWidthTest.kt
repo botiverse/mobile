@@ -57,8 +57,10 @@ class RaftInlineBoxReservedWidthTest {
     @Test
     fun referenceAndPermalinkChipsReserveTheirInsets() {
         val reference = raftMarkdownRichTextTagInlineBoxStyle(RaftRichTextChromeKind.SelfMention)!!
-        assertEquals(6.dp, reference.raftInlineLeadingReservedWidth())
-        assertEquals(6.dp, reference.raftInlineTrailingReservedWidth())
-        assertEquals(6.dp, raftMessagePermalinkChipBoxStyle().raftInlineLeadingReservedWidth())
+        // raft-ui inline chip `px-1.5` plus mobile's 2dp outer gap.
+        assertEquals(8.dp, reference.raftInlineLeadingReservedWidth())
+        assertEquals(8.dp, reference.raftInlineTrailingReservedWidth())
+        // A chip with a leading icon takes 4.5px at each end.
+        assertEquals(6.5.dp, raftMessagePermalinkChipBoxStyle().raftInlineLeadingReservedWidth())
     }
 }
