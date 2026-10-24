@@ -17,6 +17,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -24,9 +25,21 @@ import kotlin.test.assertTrue
 // Every test here is runBlocking + CompletableDeferred barriers + injected wakeup capture, with
 // zero reliance on virtual time.
 class ThreadPendingSendDrainerTest {
+    /** Every drainer scope this class made: cancelled after each test so none outlives it. */
+    private val drainerScopes = mutableListOf<CoroutineScope>()
+
+    // The in-flight registry is process-global and every case sends "random-1": a drain still
+    // running from an earlier case (or class) would make this case skip its row as "in flight"
+    // (seen once in CI as emptySuccessResponseIsTreatedAsTerminalFailure). Start and end clean.
+    @BeforeTest
+    fun startWithEmptyInFlightRegistry() {
+        ThreadPendingSendInFlightRegistry.clearForTests()
+    }
 
     @AfterTest
     fun clearInFlightRegistry() {
+        drainerScopes.forEach { it.cancel() }
+        drainerScopes.clear()
         ThreadPendingSendInFlightRegistry.clearForTests()
     }
 
@@ -329,7 +342,7 @@ class ThreadPendingSendDrainerTest {
         route: ThreadRouteIdentity? = route(),
         policy: RetryPolicy = RetryPolicy(maxAttempts = 4, baseDelayMillis = 0L, maxDelayMillis = 0L),
         realtimeTriggerMinIntervalMs: Long = 0L,
-        scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+        scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also(drainerScopes::add),
         // Always capture backoff wakeups. A real wakeup would launch a second drain pass on
         // Dispatchers.Default that races the pass the test drives with drainOnceForTests and
         // can send the same row an extra time (the flaky timeoutExceptionIsClassifiedAndBackedOff).
