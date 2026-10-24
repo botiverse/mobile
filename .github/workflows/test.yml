@@ -387,73 +387,73 @@ jobs:
             caches/jars-*
             caches/transforms-*
             caches/*/transforms
-      # Compiling the unit-test source set closes the gap where a broken
-      # commonTest (or an API change that breaks tests) sailed through green
-      # CI — main sources alone do not compile test code (#198 follow-up).
-      # :androidApp:compileDebugKotlin gates the Android host too — #57 merged
-      # green while breaking every local assembleDebug because only :shared
-      # was compiled here (task #217 follow-up).
-      - name: Compile shared + Android host and unit tests
+      # One Gradle invocation for the whole Android gate: one JVM start, one configuration phase
+      # and one up-to-date pass. --continue keeps going past a failing task, so a red unit test
+      # cannot hide a compile failure elsewhere (or the reverse), and every failure is reported in
+      # the same run. No --parallel: :androidApp:generate*OssLicenses resolves :shared's
+      # configurations at execution time, which Gradle rejects under parallel project execution
+      # ("resolution ... was attempted without an exclusive lock", run 40073308446).
+      #
+      # - Compiling the unit-test source sets closes the gap where a broken commonTest (or an API
+      #   change that breaks tests) sailed through green CI (#198 follow-up).
+      #   :androidApp:compileDebugKotlin gates the Android host too: #57 merged green while breaking
+      #   every local assembleDebug because only :shared was compiled here (task #217 follow-up).
+      # - Hard run gate since #215 cleared the legacy failures: the shared JVM suite must pass, and
+      #   the androidApp unit tests run in the same gate so stale Android host tests cannot stay
+      #   hidden until a local developer run. :designsystem:desktopTest is the CMP design system's
+      #   unit tests plus its screenshot goldens in verify mode (compose/designsystem/README.md).
+      # - Connected-test APKs (BUILD_CONNECTED_APKS above): built here so the emulator jobs below
+      #   install the exact APKs without a second Gradle/Kotlin build. The visual fixture gives the
+      #   regression a deterministic empty Thread composer.
+      - name: Compile, test and package Android (one Gradle invocation)
         working-directory: compose
         run: |
-          ./gradlew \
-            :core:compileAndroidHostTest \
-            :shared:compileDebugKotlinAndroid \
-            :shared:compileDebugUnitTestKotlinAndroid \
-            :androidApp:compileDebugKotlin \
-            --no-daemon \
-            --console=plain \
-            --stacktrace
-
-      # Build once here, then let the emulator jobs below install the exact APKs
-      # without paying for a second Gradle/Kotlin build. Skipped when the plan
-      # selects no emulator job (BUILD_CONNECTED_APKS above). The visual fixture gives
-      # the regression a deterministic empty Thread composer. Keep this before
-      # unit tests so an unrelated test failure cannot mask fixture-source
-      # compilation failures.
-      - name: Build Android connected-test APKs
-        if: ${{ env.BUILD_CONNECTED_APKS == 'true' }}
-        working-directory: compose
-        env:
-          # HandsCrash installs from Application.onCreate, before the actual-host page can bind its dynamic
-          # blackhole. Keep that SDK on loopback too so the target-UID non-loopback counter is a meaningful zero.
-          SLOCK_HANDS_BASE_URL: https://127.0.0.1:1
-        run: |
-          # This step assembles three test APKs in ONE Gradle invocation, and D8 merges their dex in
-          # the same heap that compose/gradle.properties sizes for a single Kotlin/Native link (4g).
-          # On 2026-10-18 it died with "D8: java.lang.OutOfMemoryError: Java heap space" inside
-          # :androidApp:mergeLibDexConnectedTest -- while the runner reported 12 GiB available. The
-          # heap, not the machine, was the binding constraint.
-          #
-          # Raised through $GRADLE_USER_HOME/gradle.properties, which outranks the project file: the
-          # same mechanism ios-simulator-app.yml and ios-release.yml already use to lift the same 4g
-          # ceiling for their own builds. Scoped to this runner, so developer machines and the other
-          # jobs keep the conservative project value.
-          GUH="${GRADLE_USER_HOME:-$HOME/.gradle}"
-          mkdir -p "$GUH"
-          # Drop any previous line first: setup-gradle may restore this directory, and appending
-          # blindly would stack duplicate org.gradle.jvmargs entries across runs.
-          if [ -f "$GUH/gradle.properties" ]; then
-            grep -v '^org\.gradle\.jvmargs=' "$GUH/gradle.properties" > "$GUH/gradle.properties.tmp" || true
-            mv "$GUH/gradle.properties.tmp" "$GUH/gradle.properties"
+          set -euo pipefail
+          tasks=(
+            :core:compileAndroidHostTest
+            :shared:compileDebugKotlinAndroid
+            :shared:compileDebugUnitTestKotlinAndroid
+            :androidApp:compileDebugKotlin
+          )
+          if [ "$BUILD_CONNECTED_APKS" = true ]; then
+            # HandsCrash installs from Application.onCreate, before the actual-host page can bind
+            # its dynamic blackhole. Keep that SDK on loopback too so the target-UID non-loopback
+            # counter is a meaningful zero. (defaultConfig, so the debug unit-test build sees it as
+            # well on these tiers; no unit test reads BuildConfig.HANDS_BASE_URL.)
+            export SLOCK_HANDS_BASE_URL=https://127.0.0.1:1
+            # Assembling the three test APKs makes D8 merge their dex in the Gradle heap that
+            # compose/gradle.properties sizes for a single Kotlin/Native link (4g). On 2026-10-18 it
+            # died with "D8: java.lang.OutOfMemoryError: Java heap space" inside
+            # :androidApp:mergeLibDexConnectedTest while the runner reported 12 GiB available.
+            # Raised through $GRADLE_USER_HOME/gradle.properties, which outranks the project file
+            # (ios-simulator-app.yml and ios-release.yml lift the same ceiling the same way).
+            GUH="${GRADLE_USER_HOME:-$HOME/.gradle}"
+            mkdir -p "$GUH"
+            # Drop any previous line first: setup-gradle may restore this directory, and appending
+            # blindly would stack duplicate org.gradle.jvmargs entries across runs.
+            if [ -f "$GUH/gradle.properties" ]; then
+              grep -v '^org\.gradle\.jvmargs=' "$GUH/gradle.properties" > "$GUH/gradle.properties.tmp" || true
+              mv "$GUH/gradle.properties.tmp" "$GUH/gradle.properties"
+            fi
+            printf '%s\n' 'org.gradle.jvmargs=-Xmx6g -Xss4m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8' >> "$GUH/gradle.properties"
+            tasks+=(
+              :shared:assembleDebugAndroidTest
+              :androidApp:assembleConnectedTest
+              :androidApp:assembleConnectedTestAndroidTest
+            )
           fi
-          printf '%s\n' 'org.gradle.jvmargs=-Xmx6g -Xss4m -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8' >> "$GUH/gradle.properties"
-          ./gradlew \
-            :shared:assembleDebugAndroidTest \
-            :androidApp:assembleConnectedTest \
-            :androidApp:assembleConnectedTestAndroidTest \
+          tasks+=(
+            :core:testAndroidHostTest
+            :shared:testDebugUnitTest
+            :androidApp:testDebugUnitTest
+            :ui-cmp:testAndroidHostTest
+            :designsystem:desktopTest
+          )
+          ./gradlew "${tasks[@]}" \
+            --continue \
             --no-daemon \
             --console=plain \
             --stacktrace
-
-      # Hard run gate since #215 cleared the legacy failures: the shared JVM
-      # suite must pass. Run androidApp unit tests in the same gate so stale
-      # Android host tests cannot stay hidden until a local developer run.
-      # :designsystem:desktopTest is the CMP design system's unit tests plus its
-      # screenshot goldens in verify mode (compose/designsystem/README.md).
-      - name: Run core + shared + Android app unit tests
-        working-directory: compose
-        run: ./gradlew :core:testAndroidHostTest :shared:testDebugUnitTest :androidApp:testDebugUnitTest :ui-cmp:testAndroidHostTest :designsystem:desktopTest --continue --no-daemon --console=plain --stacktrace
 
       # Gradle 9 does not run buildSrc's own tests as part of a build; the hang watchdog that every
       # JVM test task installs is only checked here.
