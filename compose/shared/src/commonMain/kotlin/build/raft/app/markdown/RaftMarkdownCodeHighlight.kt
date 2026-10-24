@@ -162,7 +162,8 @@ internal fun raftCodeTokenRuns(code: String, language: SyntaxLanguage): List<Raf
  * [code] with every comment marker that is not a real comment in [language] replaced by
  * spaces (same length, so offsets carry over): markers inside a `"`/`'`/`` ` `` string on
  * the line, `#` in C-family code (`#include`, `#[derive]`, `"#fff"`), `//` and block-comment openers in
- * `#`-comment languages (Python floor division), and shell's `$#` / `${#`.
+ * `#`-comment languages (Python floor division), shell's `$#` / `${#`, and block-comment
+ * openers or closers inside a string or another comment.
  */
 internal fun raftMaskMisreadCommentMarkers(code: String, language: SyntaxLanguage): String {
     val hashComments = language in RaftHashCommentLanguages || language == SyntaxLanguage.PHP
@@ -183,14 +184,22 @@ internal fun raftMaskMisreadCommentMarkers(code: String, language: SyntaxLanguag
                 lineComment = false
                 if (quote != '`') quote = null
             }
-            lineComment -> Unit
-            blockComment -> if (char == '*' && next == '/') { blockComment = false; i++ }
+            // The scanner pairs block-comment openers and closers across the whole block, so a
+            // stray one in a line comment would grey (or un-grey) the code up to its partner.
+            lineComment -> if ((char == '/' && next == '*') || (char == '*' && next == '/')) { blank(i, 2); i++ }
+            blockComment ->
+                when {
+                    char == '*' && next == '/' -> { blockComment = false; i++ }
+                    char == '#' -> blank(i, 1)
+                    char == '/' && (next == '/' || next == '*') -> { blank(i, 2); i++ }
+                }
             quote != null ->
                 when {
                     char == '\\' -> i++
                     char == quote -> quote = null
                     char == '#' -> blank(i, 1)
                     char == '/' && (next == '/' || next == '*') -> { blank(i, 2); i++ }
+                    char == '*' && next == '/' -> { blank(i, 2); i++ }
                 }
             char == '"' || char == '\'' || char == '`' -> quote = char
             char == '/' && next == '/' ->

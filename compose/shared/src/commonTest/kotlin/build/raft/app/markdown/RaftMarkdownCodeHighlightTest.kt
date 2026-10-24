@@ -147,6 +147,17 @@ class RaftMarkdownCodeHighlightTest {
     }
 
     @Test
+    fun strayBlockCommentMarkersDoNotGreyTheCode() {
+        val code = "// see foo/*.kt\nval x = 1\nval s = \"*/\"\n/* real */ val y = 2"
+        val runs = raftCodeTokenRuns(code, SyntaxLanguage.KOTLIN)
+        assertEquals(RaftCodeTokenKind.Comment, kindOf(code, runs, "see"))
+        assertEquals(RaftCodeTokenKind.Keyword, kindOf(code, runs, "val"))
+        assertEquals(RaftCodeTokenKind.StringLiteral, kindOf(code, runs, "*/"))
+        assertEquals(RaftCodeTokenKind.Comment, kindOf(code, runs, "real"))
+        assertEquals(RaftCodeTokenKind.Keyword, kindOf(code, runs, "val", occurrence = 2))
+    }
+
+    @Test
     fun maskKeepsOffsetsAndBlanksOnlyMisreadMarkers() {
         val code = "a = \"http://x\" # note\nb = 7 // 2"
         val masked = raftMaskMisreadCommentMarkers(code, SyntaxLanguage.PYTHON)
