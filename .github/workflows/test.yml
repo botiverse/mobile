@@ -952,11 +952,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
       - name: Shared Kotlin/Native Gradle settings
         uses: ./.github/actions/ios-kn-gradle
+      # Simulator targets only. The device target (:shared:compileKotlinIosArm64,
+      # ~6 min) is compiled and linked by ios-release.yml, which builds every
+      # device release; this lane proves the shared iOS sources, the host app
+      # and the XCTests on the simulator.
       - name: Compile shared and design system iOS targets and unit tests
         working-directory: compose
         run: |
           ./gradlew \
-            :shared:compileKotlinIosArm64 \
             :shared:compileKotlinIosSimulatorArm64 \
             :shared:compileTestKotlinIosSimulatorArm64 \
             :designsystem:compileKotlinIosSimulatorArm64 \
