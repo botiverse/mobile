@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.components.RaftMessageListJumpSide
 import build.raft.designsystem.components.RaftLocatedMillis
 import build.raft.designsystem.components.RaftSpinner
@@ -4367,10 +4368,10 @@ private fun ThreadPageScreen(
                 }
             )
         }
-    val quotedPermalinkLoader: (suspend (RaftMessagePermalinkTarget) -> RaftThreadMessageItem?)? =
+    val quotedPermalinkLoader: ThreadQuotedPermalinkLoader? =
         remember(networkClient) {
             val client = RaftThreadApiClient(NetworkRaftThreadApi(networkClient))
-            val loader: suspend (RaftMessagePermalinkTarget) -> RaftThreadMessageItem? = { target ->
+            val loader: ThreadQuotedPermalinkLoader = { target ->
                 when (val result = client.messageContext(target.messageId.value, target.channelId.value)) {
                     is ThreadApiResult.Success -> {
                         val payload = result.data
@@ -4378,6 +4379,7 @@ private fun ThreadPageScreen(
                         payload.messages
                             .firstOrNull { it.id.value == targetId }
                             ?.toRaftThreadMessageItem(null)
+                            ?.let { item -> ThreadQuotedPermalinkMessage(item, channelArchived = payload.channelArchived) }
                     }
                     is ThreadApiResult.Failure -> null
                 }
@@ -17329,7 +17331,7 @@ private class ThreadChatTabCallbacks(
     val onMentionAuthor: (RaftThreadMessageItem) -> Unit,
     val onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     val onOpenMarkdownUrl: (String) -> Unit,
-    val quotedPermalinkLoader: (suspend (RaftMessagePermalinkTarget) -> RaftThreadMessageItem?)?,
+    val quotedPermalinkLoader: ThreadQuotedPermalinkLoader?,
     val diagnosticsLogger: (String) -> Unit,
     val onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit,
     val onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject?,
@@ -17385,7 +17387,7 @@ fun ThreadChatTab(
     onMentionAuthor: (RaftThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
-    quotedPermalinkLoader: (suspend (RaftMessagePermalinkTarget) -> RaftThreadMessageItem?)? = null,
+    quotedPermalinkLoader: ThreadQuotedPermalinkLoader? = null,
     diagnosticsLogger: (String) -> Unit = {},
     onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit = { _, _ -> },
     onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject? = { _, _, _, _, _ -> null },
@@ -18220,7 +18222,7 @@ private class ThreadMessagesListCallbacks(
     val onMentionAuthor: (RaftThreadMessageItem) -> Unit,
     val onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     val onOpenMarkdownUrl: (String) -> Unit,
-    val quotedPermalinkLoader: (suspend (RaftMessagePermalinkTarget) -> RaftThreadMessageItem?)?,
+    val quotedPermalinkLoader: ThreadQuotedPermalinkLoader?,
     val diagnosticsLogger: (String) -> Unit,
     val onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit,
     val onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject?,
@@ -18277,7 +18279,7 @@ fun ThreadMessagesList(
     onMentionAuthor: (RaftThreadMessageItem) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
-    quotedPermalinkLoader: (suspend (RaftMessagePermalinkTarget) -> RaftThreadMessageItem?)? = null,
+    quotedPermalinkLoader: ThreadQuotedPermalinkLoader? = null,
     diagnosticsLogger: (String) -> Unit = {},
     onComposerLayoutProbe: (phase: String, metadata: Map<String, String>) -> Unit = { _, _ -> },
     onComposerPixelProbe: suspend (Float, Float, Float, Float, Long) -> JSONObject? = { _, _, _, _, _ -> null },
@@ -24569,83 +24571,131 @@ private fun ThreadMessageGeometryTintBox(tint: Color?, content: @Composable () -
     }
 }
 
+/** The message a pasted permalink points to, and whether its channel is archived (web QuoteCardContent). */
+internal data class ThreadQuotedPermalinkMessage(
+    val item: RaftThreadMessageItem,
+    val channelArchived: Boolean = false
+)
+
+internal typealias ThreadQuotedPermalinkLoader = suspend (RaftMessagePermalinkTarget) -> ThreadQuotedPermalinkMessage?
+
 internal sealed interface ThreadQuotedPermalinkUiState {
     data object Loading : ThreadQuotedPermalinkUiState
-    data class Loaded(val item: RaftThreadMessageItem) : ThreadQuotedPermalinkUiState
+    data class Loaded(val message: ThreadQuotedPermalinkMessage) : ThreadQuotedPermalinkUiState
     data object Unavailable : ThreadQuotedPermalinkUiState
 }
 
+/**
+ * artin #20 gap 17: the message a pasted permalink points to, as the web's QuotedMessageCard
+ * (raft-ui MessageQuotedPreview in the preview card): where it was posted, the author's face and
+ * name, a thread marker, an Archived tag, the time in Space Mono, two lines of text and an
+ * attachment count chip. Loading is the web's skeleton card; a message that can't be loaded keeps
+ * mobile's muted "unavailable" line (the web shows nothing).
+ */
 @Composable
-private fun ThreadQuotedPermalinkCard(
+internal fun ThreadQuotedPermalinkCard(
     state: ThreadQuotedPermalinkUiState,
+    target: RaftMessagePermalinkTarget?,
+    memberAvatarResolver: RaftMemberAvatarResolver,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
-        modifier =
-            modifier
-                // raft-ui quoted preview: inset layer, hairline, control radius.
-                .raftCardSurface(fill = RaftColor.FillMuted, radius = RaftAppRadius.Control)
-                .clickable(enabled = state is ThreadQuotedPermalinkUiState.Loaded, onClick = onOpen)
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        when (state) {
-            ThreadQuotedPermalinkUiState.Loading -> {
-                RaftChipLoadingIndicator(size = 14.dp)
-                Text(
-                    text = stringResource(MR.strings.thread_quoted_permalink_loading),
-                    style = RaftType.Caption,
-                    color = RaftColor.TextMutedGray
-                )
-            }
-            is ThreadQuotedPermalinkUiState.Loaded -> {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            text = state.item.authorName,
-                            style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp),
-                            color = RaftColor.TextBlack,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
-                        // RFC 077 (web QuoteCardContent): "(sent by Friday)" after the author,
-                        // words only, no face.
-                        state.item.delegatedBy?.let { delegatedBy ->
+    when (state) {
+        ThreadQuotedPermalinkUiState.Loading ->
+            build.raft.designsystem.components.RaftMessageQuotedPreviewLoading(
+                label = stringResource(MR.strings.thread_quoted_permalink_loading),
+                modifier = modifier
+            )
+        ThreadQuotedPermalinkUiState.Unavailable ->
+            build.raft.designsystem.components.RaftMessageQuotedPreviewUnavailable(
+                text = stringResource(MR.strings.thread_quoted_permalink_unavailable),
+                modifier = modifier
+            )
+        is ThreadQuotedPermalinkUiState.Loaded -> {
+            val item = state.message.item
+            val direct = target?.routeKind == ConversationKind.DirectMessage
+            val resolvedChannel = target?.let { LocalRaftMessagePermalinkLabelResolver.current(it) }
+            val channel =
+                resolvedChannel?.trim()?.removePrefix("#")?.removePrefix("@")?.takeIf { it.isNotBlank() }
+                    ?: if (direct) {
+                        stringResource(MR.strings.thread_quoted_permalink_direct_message)
+                    } else {
+                        stringResource(MR.strings.thread_quoted_permalink_channel_fallback)
+                    }
+            val senderKind = item.authorKind.parsedMemberKindOrNull()
+            val avatarWireValue =
+                resolveThreadRowAvatarWireValue(rememberRaftMemberAvatarWireValue(memberAvatarResolver, item.authorId))
+                    ?: item.avatarWireValue
+            val liveTimeContext = LocalRaftTimeContextProvider.current?.current
+            build.raft.designsystem.components.RaftMessageQuotedPreview(
+                authorName = item.authorName.ifBlank { stringResource(MR.strings.thread_comments_unknown_author) },
+                text = markdownToPreviewText(item.body).takeIf { it.isNotBlank() }
+                    ?: stringResource(MR.strings.thread_quoted_permalink_no_content),
+                modifier = modifier,
+                // A resolved DM title names the peer; without one the fallback reads as a place.
+                channel = channel,
+                direct = direct && resolvedChannel != null,
+                threadLabel =
+                    if (target?.threadParentMessageId != null) {
+                        stringResource(MR.strings.thread_quoted_permalink_thread)
+                    } else {
+                        null
+                    },
+                archivedLabel =
+                    if (state.message.channelArchived) stringResource(MR.strings.thread_quoted_permalink_archived) else null,
+                avatar = {
+                    RaftAppAvatar(
+                        avatarWireValue = avatarWireValue,
+                        label = item.authorName,
+                        avatarSize = build.raft.designsystem.components.RaftMessageQuotedPreviewDefaults.AvatarSize.edge,
+                        cacheSubject = raftMemberAvatarCacheSubject(senderKind, item.authorId),
+                        fallbackFill = raftAvatarFallbackFill(senderKind)
+                    )
+                },
+                // RFC 077 (web QuoteCardContent): "(sent by Friday)" after the author, words only.
+                authorDelegatedBy =
+                    item.delegatedBy?.let { delegatedBy ->
+                        {
                             ThreadMessageDelegatedByLabel(
                                 delegatedBy = delegatedBy,
-                                placement = DelegatedLabelPlacement.InBody,
-                                modifier = Modifier.weight(1f, fill = false)
+                                placement = DelegatedLabelPlacement.InBody
                             )
                         }
-                        Text(
-                            text = state.item.timestampLabel,
-                            style = RaftType.Caption,
-                            color = RaftColor.TextMutedGray
-                        )
-                    }
-                    Text(
-                        text = markdownToPreviewText(state.item.body).takeIf { it.isNotBlank() }
-                            ?: stringResource(MR.strings.thread_quoted_permalink_no_content),
-                        style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-            ThreadQuotedPermalinkUiState.Unavailable -> {
-                Text(
-                    text = stringResource(MR.strings.thread_quoted_permalink_unavailable),
-                    style = RaftType.Caption,
-                    color = RaftColor.TextMutedGray
-                )
-            }
+                    },
+                authorMeta = item.authorDescription?.trim()?.takeIf { it.isNotBlank() },
+                time =
+                    if (item.timestampLabel.isNotBlank()) {
+                        {
+                            RaftRelativeTimestampText(
+                                value = item.timestampLabel,
+                                timeContext = liveTimeContext,
+                                displayGroup = RaftTimestampDisplayGroup.Conversation,
+                                style = build.raft.designsystem.components.RaftMessageQuotedPreviewDefaults.TimeStyle,
+                                color = build.raft.designsystem.components.RaftMessageQuotedPreviewDefaults.TimeInk,
+                                maxLines = 1,
+                                toggleEnabled = false
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                attachments = listOfNotNull(threadQuotedAttachmentLabel(item.attachments)),
+                onClick = onOpen
+            )
         }
+    }
+}
+
+/** web `buildQuotedMessageAttachmentLabel`: "1 image", "1 file", "3 images" or "3 attachments". */
+@Composable
+private fun threadQuotedAttachmentLabel(attachments: List<RaftThreadAttachmentItem>): String? {
+    if (attachments.isEmpty()) return null
+    val images = attachments.count { it.mimeType.startsWith("image/") }
+    return when {
+        attachments.size == 1 && images == 1 -> stringResource(MR.strings.thread_quoted_permalink_one_image)
+        attachments.size == 1 -> stringResource(MR.strings.thread_quoted_permalink_one_file)
+        images == attachments.size -> stringResource(MR.strings.thread_quoted_permalink_images, images)
+        else -> stringResource(MR.strings.thread_quoted_permalink_attachments, attachments.size)
     }
 }
 
@@ -24731,7 +24781,7 @@ private class ThreadMessageCardCallbacks(
     val onOpenForwardBundle: (String) -> Unit,
     val onToggleLongMessage: () -> Unit,
     val onLongPressInputReady: ((String) -> Unit)?,
-    val quotedPermalinkLoader: (suspend (RaftMessagePermalinkTarget) -> RaftThreadMessageItem?)?,
+    val quotedPermalinkLoader: ThreadQuotedPermalinkLoader?,
     val onShowAuthorDescription: ((String, RaftPopoverAnchor) -> Unit)? = null,
 )
 
@@ -24804,7 +24854,7 @@ fun ThreadMessageCard(
     onToggleLongMessage: () -> Unit = {},
     onLongPressInputReady: ((String) -> Unit)? = null,
     longPressGestureInstanceKey: Any = message.id,
-    quotedPermalinkLoader: (suspend (RaftMessagePermalinkTarget) -> RaftThreadMessageItem?)? = null,
+    quotedPermalinkLoader: ThreadQuotedPermalinkLoader? = null,
     onShowAuthorDescription: ((String, RaftPopoverAnchor) -> Unit)? = null,
     outerPadding: androidx.compose.ui.unit.Dp = RaftAppSpacing.Sm
 )
@@ -25580,11 +25630,15 @@ private fun ThreadMessageCardContent(
                                 quotedPermalinkState.value?.let { state ->
                                     ThreadQuotedPermalinkCard(
                                         state = state,
+                                        target = quotedPermalinkTarget,
+                                        memberAvatarResolver = memberAvatarResolver,
                                         onOpen = {
                                             quotedPermalinkTarget?.let { target ->
                                                 onOpenMarkdownUrl(target.rawUrl)
                                             }
-                                        }
+                                        },
+                                        // web `mt-1.5`: 6dp under the body (the column adds 4).
+                                        modifier = Modifier.padding(top = RaftAppSpacing.Xxs)
                                     )
                                 }
                             }
@@ -31426,72 +31480,87 @@ private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
     }
 }
 
-// Mirrors web ForwardedBundleCard's attachment chips: FileText icon + filename
-// + "· KIND" (mime subtype, uppercased). Legacy payloads without snapshots fall
-// back to the muted count label.
-@OptIn(ExperimentalLayoutApi::class)
+// web ForwardedBundleCard attachments (artin #20 gap 18): projected images as the bundle's
+// gallery (raft-ui MessageForwardedBundleGallery, loaded by snapshot id), then the other files
+// as raft-ui's 22dp chips ("release-notes.md · markdown"). Legacy payloads without snapshots
+// fall back to the muted count label.
 @Composable
-private fun ThreadForwardAttachmentChips(item: ForwardMessageItem, modifier: Modifier = Modifier) {
+private fun ThreadForwardAttachments(item: ForwardMessageItem, modifier: Modifier = Modifier) {
     if (item.attachments.isNotEmpty()) {
-        FlowRow(
-            modifier = modifier,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            item.attachments.forEach { attachment ->
-                Row(
-                    modifier =
-                        Modifier
-                            .raftControlSurface(
-                                fill = RaftColor.Card,
-                                border = RaftColor.BorderHairline,
-                                radius = RaftAppRadius.Chip,
-                                borderWidth = RaftAppStroke.Thin
-                            )
-                            .padding(horizontal = 6.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    RaftLucideIcon(
-                        name = RaftLucideIconName.FileText,
-                        color = RaftColor.TextBlackArgb,
-                        modifier = Modifier.size(12.dp)
+        val images =
+            if (item.attachmentsProjected) {
+                item.attachments.filter { it.id != null && it.isForwardImagePreview() }
+            } else {
+                emptyList()
+            }
+        val files = item.attachments.filterNot { it in images }
+        Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (images.isNotEmpty()) {
+                build.raft.designsystem.components.RaftMessageForwardedBundleGallery(count = images.size) { index ->
+                    val image = images[index]
+                    ThreadImageAttachmentContent(
+                        attachment =
+                            RaftThreadAttachmentItem(
+                                id = image.id.orEmpty(),
+                                name = image.filename,
+                                mimeType = image.mimeType.orEmpty(),
+                                width = image.width,
+                                height = image.height
+                            ),
+                        fit = RaftMessageImageFit.Cover
                     )
-                    Text(
-                        text = attachment.filename,
-                        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp).withRaftFontWeight(FontWeight.Bold),
-                        color = RaftColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    Text(
-                        text = "· ${forwardAttachmentKindLabel(attachment.mimeType)}",
-                        style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                        color = RaftColor.TextMutedGray,
-                        maxLines = 1
-                    )
+                }
+            }
+            if (files.isNotEmpty()) {
+                build.raft.designsystem.components.RaftMessageForwardedBundleAttachments {
+                    files.forEach { attachment ->
+                        build.raft.designsystem.components.RaftMessageForwardedBundleAttachment(
+                            name = attachment.filename,
+                            meta = "· ${forwardAttachmentKindLabel(attachment.mimeType)}"
+                        )
+                    }
                 }
             }
         }
     } else if (item.attachmentCount > 0) {
-        Text(
+        RaftText(
             text = item.localizedForwardAttachmentLabel(),
-            style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-            color = RaftColor.TextMutedGray,
+            style = RaftTheme.typography.caption,
+            color = RaftTheme.colors.foregroundHint,
             modifier = modifier
         )
     }
 }
 
+/**
+ * web `isForwardedImagePreview`: an image the gallery can draw. SVG (active content) and HEIC
+ * stay file chips.
+ */
+internal fun ForwardMessageAttachment.isForwardImagePreview(): Boolean {
+    val mime = mimeType?.substringBefore(';')?.trim()?.lowercase()
+    if (mime == "image/svg+xml" || mime == "image/heic" || mime == "image/heif") return false
+    if (mime?.startsWith("image/") == true) return true
+    return Regex("""\.(avif|gif|jpe?g|png|webp)$""", RegexOption.IGNORE_CASE).containsMatchIn(filename)
+}
+
+/** The chip's type: the mime subtype in lower case ("markdown", "pdf"), or "file". */
 private fun forwardAttachmentKindLabel(mimeType: String?): String {
-    if (mimeType.isNullOrBlank()) return "FILE"
+    if (mimeType.isNullOrBlank()) return "file"
     val subtype = mimeType.substringAfter('/', mimeType)
-    return subtype.split('+', '.', '-').firstOrNull()?.uppercase()?.takeIf { it.isNotBlank() } ?: "FILE"
+    return subtype.split('+', '.', '-', ';').firstOrNull()?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: "file"
 }
 
 internal const val ThreadForwardBundleInlinePreviewLimit = 3
 
+/**
+ * The forwarded bundle under a message (artin #20 gap 18): raft-ui MessageForwardedBundle as the
+ * web's ForwardedBundleCard draws it. A `forward` icon and "Forwarded", the count in Space Mono
+ * and the public source ("from #launch-week"); each message's author in footnote bold, its time
+ * in Space Mono, its Markdown text and attachments; past 8 lines of text the list folds with a
+ * fade. Mobile keeps its first [ThreadForwardBundleInlinePreviewLimit] messages inline and the
+ * footer as the entry to the whole bundle on its own page (the web's phone layout hands the
+ * footer to the same detail view), so the footer always shows.
+ */
 @Composable
 internal fun ThreadForwardBundleCard(
     bundle: ForwardMessageBundle,
@@ -31500,80 +31569,69 @@ internal fun ThreadForwardBundleCard(
     onOpenUrl: (String) -> Unit = {},
     onOpenAll: (() -> Unit)? = null
 ) {
-    // Aligned to the react ForwardedBundleCard: an inline bordered white card that
-    // renders the forwarded messages in place (header title + count, then each message's
-    // author / Space-Mono timestamp / body / attachment label, divided by hairlines) —
-    // instead of a summary that opened a separate modal. No avatars (react shows author
-    // text). Space Mono stays on the timestamp only. See visual case components.thread.forward-bundle.
-    Column(
-        modifier = modifier
-            .raftCardSurface()
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Box(modifier = Modifier.width(3.dp).height(16.dp).background(RaftColor.BrandYellow))
-            Text(
-                text = bundle.localizedForwardTitle(),
-                style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
-                color = RaftColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            Text(
-                text =
-                    if (bundle.displayCount() == 1) {
-                        stringResource(MR.strings.thread_message_count_one)
-                    } else {
-                        stringResource(MR.strings.thread_message_count_many, bundle.displayCount())
-                    },
-                style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                color = RaftColor.TextMutedGray,
-                maxLines = 1
-            )
+    val count = bundle.displayCount()
+    val lineHeight =
+        with(LocalDensity.current) {
+            messageBodyTextStyle.lineHeight.takeIf { it.isSp }?.toDp()
         }
-        // Keep Web's long-content threshold (420 chars / 8 lines), but use the
-        // mobile navigation contract requested for 1.6.0: every bundle has a
-        // full-page entry, including a single forwarded message.
-        val previewMessages = bundle.inlinePreviewMessages()
-        val liveTimeContext = LocalRaftTimeContextProvider.current?.current
-        previewMessages.forEach { preview ->
-            val item = preview.item
-            Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = item.authorName.ifBlank { stringResource(MR.strings.thread_comments_unknown_author) },
-                        style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
-                        color = RaftColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    if (item.timestampLabel.isNotBlank()) {
-                        RaftRelativeTimestampText(
-                            value = item.timestampLabel,
-                            timeContext = liveTimeContext,
-                            displayGroup = RaftTimestampDisplayGroup.Conversation,
-                            style = RaftType.Caption.copy(fontFamily = RaftMonoFamily, fontSize = 10.sp, lineHeight = 13.sp),
-                            color = RaftColor.TextMutedGray,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.End,
-                            modifier = threadMessageHeaderTimestampLayoutSpec().toTimestampModifier()
-                        )
-                    }
+    val foldHeight =
+        lineHeight?.times(build.raft.designsystem.components.RaftMessageForwardedBundleDefaults.FoldLineLimit)
+            ?: build.raft.designsystem.components.RaftMessageForwardedBundleDefaults.FallbackFoldHeight
+    val source =
+        bundle.visibleSource?.let { visible ->
+            if (visible.thread && !visible.label.endsWith(" · thread")) {
+                stringResource(MR.strings.thread_forward_from_thread, visible.label)
+            } else {
+                stringResource(MR.strings.thread_forward_from_source, visible.label)
+            }
+        }
+    val liveTimeContext = LocalRaftTimeContextProvider.current?.current
+    build.raft.designsystem.components.RaftMessageForwardedBundle(
+        label = stringResource(MR.strings.thread_forward_badge),
+        countLabel =
+            if (count == 1) {
+                stringResource(MR.strings.thread_forward_bundle_count_one)
+            } else {
+                stringResource(MR.strings.thread_message_count_many, count)
+            },
+        // raft-ui `mt-1`: the message column already spaces its parts 4dp apart.
+        modifier = modifier,
+        source = source,
+        footerLabel =
+            onOpenAll?.let {
+                if (count == 1) {
+                    stringResource(MR.strings.thread_forward_view_message)
+                } else {
+                    stringResource(MR.strings.thread_forward_view_all, count)
                 }
+            },
+        onFooterClick = onOpenAll,
+        footerMode = build.raft.designsystem.components.RaftMessageForwardedBundleFooterMode.Always,
+        foldHeight = foldHeight
+    ) {
+        bundle.inlinePreviewMessages().forEach { preview ->
+            val item = preview.item
+            val hasAttachments = item.attachments.isNotEmpty() || item.attachmentCount > 0
+            build.raft.designsystem.components.RaftMessageForwardedBundleItem(
+                author = item.authorName.ifBlank { stringResource(MR.strings.thread_comments_unknown_author) },
+                time =
+                    if (item.timestampLabel.isNotBlank()) {
+                        {
+                            RaftRelativeTimestampText(
+                                value = item.timestampLabel,
+                                timeContext = liveTimeContext,
+                                displayGroup = RaftTimestampDisplayGroup.Conversation,
+                                style = build.raft.designsystem.components.RaftMessageForwardedBundleDefaults.TimeStyle,
+                                color = build.raft.designsystem.components.RaftMessageForwardedBundleDefaults.TimeInk,
+                                maxLines = 1,
+                                toggleEnabled = false
+                            )
+                        }
+                    } else {
+                        null
+                    },
+                attachments = if (hasAttachments) ({ ThreadForwardAttachments(item) }) else null
+            ) {
                 if (preview.body.isNotBlank()) {
                     // Web's ForwardedBundleCard renders each forwarded body
                     // through MarkdownContent — plain Text left **bold**,
@@ -31594,36 +31652,6 @@ internal fun ThreadForwardBundleCard(
                         )
                     }
                 }
-                ThreadForwardAttachmentChips(item)
-            }
-        }
-        if (onOpenAll != null) {
-            Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
-            Row(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable(onClick = onOpenAll)
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text =
-                        if (bundle.displayCount() == 1) {
-                            stringResource(MR.strings.thread_forward_view_message)
-                        } else {
-                            stringResource(MR.strings.thread_forward_view_all, bundle.displayCount())
-                        },
-                    style = RaftType.Button.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
-                    color = RaftColor.TextBlack,
-                    maxLines = 1
-                )
-                RaftLucideIcon(
-                    name = RaftLucideIconName.ChevronRight,
-                    color = RaftColor.TextBlackArgb,
-                    modifier = Modifier.size(14.dp)
-                )
             }
         }
     }
@@ -32186,7 +32214,7 @@ private fun ThreadForwardBundleScreen() {
                                 taskStatusActionsEnabled = false
                             )
                             if (item.attachments.isNotEmpty() || item.attachmentCount > 0) {
-                                ThreadForwardAttachmentChips(
+                                ThreadForwardAttachments(
                                     item = item,
                                     modifier = Modifier.padding(start = 60.dp, end = RaftAppSpacing.Md, bottom = RaftAppSpacing.Sm)
                                 )

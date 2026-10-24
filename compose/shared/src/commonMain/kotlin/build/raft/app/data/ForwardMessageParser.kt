@@ -4,6 +4,7 @@ import build.raft.app.toRaftAvatarLabel
 import build.raft.app.model.ForwardMessageAttachment
 import build.raft.app.model.ForwardMessageBundle
 import build.raft.app.model.ForwardMessageItem
+import build.raft.app.model.ForwardMessageSource
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -51,6 +52,7 @@ internal data class WireForwardedBundleItem(
     val sourceTargetSnapshot: WireForwardedBundleTarget? = null,
     val contentSnapshot: String = "",
     val attachmentSnapshots: List<WireForwardedBundleAttachment> = emptyList(),
+    val attachmentPolicy: String? = null,
     val provenanceState: String? = null
 )
 
@@ -72,8 +74,11 @@ internal data class WireForwardedBundleTarget(
 
 @Serializable
 internal data class WireForwardedBundleAttachment(
+    val id: String? = null,
     val filename: String = "",
-    val mimeType: String? = null
+    val mimeType: String? = null,
+    val width: Int? = null,
+    val height: Int? = null
 )
 
 internal fun WireForwardMessageBundle?.toForwardMessageBundle(): ForwardMessageBundle? {
@@ -108,7 +113,8 @@ internal fun WireActionCardMetadata?.toForwardMessageBundle(): ForwardMessageBun
         title = "Forwarded",
         sourceTitle = sourceTitle,
         totalCount = forwardedMessages.size,
-        messages = forwardedMessages
+        messages = forwardedMessages,
+        visibleSource = source.forwardedItems.firstOrNull()?.visibleForwardSource()
     )
 }
 
@@ -157,7 +163,26 @@ private fun WireForwardedBundleItem.toForwardMessageItem(fallbackIndex: Int): Fo
         attachmentCount = attachmentSnapshots.size,
         attachments =
             attachmentSnapshots.map {
-                ForwardMessageAttachment(filename = it.filename, mimeType = it.mimeType)
-            }
+                ForwardMessageAttachment(
+                    filename = it.filename,
+                    mimeType = it.mimeType,
+                    id = it.id?.takeIf(String::isNotBlank),
+                    width = it.width?.takeIf { width -> width > 0 },
+                    height = it.height?.takeIf { height -> height > 0 }
+                )
+            },
+        attachmentsProjected = attachmentPolicy == "projected"
     )
+}
+
+/**
+ * web ForwardedBundleCard `sourceLabel`: a source is named only when the original is available
+ * and its target is a public conversation that is not a direct message.
+ */
+internal fun WireForwardedBundleItem.visibleForwardSource(): ForwardMessageSource? {
+    if (provenanceState != "available") return null
+    val target = sourceTargetSnapshot ?: return null
+    val label = target.label.takeIf { it.isNotBlank() } ?: return null
+    if (target.type == "dm" || target.labelVisibility != "public") return null
+    return ForwardMessageSource(label = label, thread = target.type == "thread")
 }

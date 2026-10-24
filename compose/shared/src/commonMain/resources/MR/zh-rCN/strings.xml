@@ -539,6 +539,14 @@
     <string name="thread_quoted_permalink_loading">正在加载消息…</string>
     <string name="thread_quoted_permalink_no_content">（无内容）</string>
     <string name="thread_quoted_permalink_unavailable">消息预览不可用</string>
+    <string name="thread_quoted_permalink_thread">消息列</string>
+    <string name="thread_quoted_permalink_archived">已归档</string>
+    <string name="thread_quoted_permalink_direct_message">私信</string>
+    <string name="thread_quoted_permalink_channel_fallback">频道</string>
+    <string name="thread_quoted_permalink_one_image">1 张图片</string>
+    <string name="thread_quoted_permalink_one_file">1 个文件</string>
+    <string name="thread_quoted_permalink_images">%1$d 张图片</string>
+    <string name="thread_quoted_permalink_attachments">%1$d 个附件</string>
 <string name="thread_member_role_member">成员</string>
     <string name="thread_member_role_system">系统</string>
     <string name="thread_settings_edit_channel">编辑频道</string>
@@ -787,6 +795,10 @@
     <string name="thread_forward_view_message">查看消息</string>
     <string name="thread_forward_bundle_fallback_title">转发的消息</string>
     <string name="thread_forward_bundle_unavailable">这条转发消息暂时无法查看。</string>
+    <string name="thread_forward_badge">已转发</string>
+    <string name="thread_forward_bundle_count_one">条消息</string>
+    <string name="thread_forward_from_source">来自 %1$s</string>
+    <string name="thread_forward_from_thread">来自 %1$s · 消息列</string>
     <string name="thread_forward_selected">已选择 %1$d 条</string>
     <string name="thread_forward_placeholder_one">转发 1 条消息</string>
     <string name="thread_forward_placeholder_many">转发 %1$d 条消息</string>
