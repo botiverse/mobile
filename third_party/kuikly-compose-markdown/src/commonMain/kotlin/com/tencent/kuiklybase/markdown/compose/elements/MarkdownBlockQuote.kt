@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -33,8 +34,10 @@ fun MarkdownBlockQuote(
     content: String,
     node: ASTNode,
     style: TextStyle = LocalMarkdownTypography.current.quote,
+    // Slock: the web draws the rail in `line-seam`, not the quote's text colour.
+    barColor: Color = style.color,
 ) {
-    val blockQuoteColor = style.color
+    val blockQuoteColor = barColor
 
     val blockQuoteThickness = LocalMarkdownDimens.current.blockQuoteThickness
     val blockQuote = LocalMarkdownPadding.current.blockQuote
@@ -98,7 +101,8 @@ fun MarkdownBlockQuote(
                 MarkdownBlockQuote(
                     content = content,
                     node = nestedQuote,
-                    style = style
+                    style = style,
+                    barColor = barColor
                 )
             }
         }

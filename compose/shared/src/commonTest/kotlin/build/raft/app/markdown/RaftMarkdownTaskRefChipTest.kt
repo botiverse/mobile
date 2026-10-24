@@ -52,9 +52,9 @@ class RaftMarkdownTaskRefChipTest {
                 assertEquals(4.dp, style.box.cornerRadius)
                 assertEquals(colors.foreground, style.textColor)
                 assertEquals(FontWeight.SemiBold, style.fontWeight)
-                // pl-[3px] + 10px pixel (raft-design #722) + gap-1.5 ; pr-1.5
-                assertEquals(19.dp, style.leadingGap)
-                assertEquals(6.dp, style.trailingGap)
+                // inline chip with a leading mark: px-[4.5px] + 10px pixel (raft-design #722) + gap-1
+                assertEquals(18.5.dp, style.leadingGap)
+                assertEquals(4.5.dp, style.trailingGap)
             }
         }
     }
@@ -178,7 +178,7 @@ class RaftMarkdownTaskRefChipTest {
         assertTrue(annotated.raftMarkdownInlineContentIds().all { raftInlineGapWidth(it) != null })
         assertTrue(annotator.inlineContent?.invoke().orEmpty().isEmpty())
         assertEquals(
-            RaftColor.BrandYellow.copy(alpha = 0.4f),
+            RaftColor.InactiveSoft,
             annotated.raftInlineBoxRanges().single().item.backgroundColor
         )
     }

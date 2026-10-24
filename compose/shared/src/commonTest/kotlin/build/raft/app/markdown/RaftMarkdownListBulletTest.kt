@@ -25,13 +25,13 @@ class RaftMarkdownListBulletTest {
     }
 
     @Test
-    fun markerIsAThirdEmAndTextIndentsOneAndAHalfEm() {
+    fun markerIsAThirdEmAndTextIndentsLikeWebPl5() {
         val metrics = markdownBulletMetrics(fontSize = 15.dp, lineHeight = 22.dp, listIndent = 4.dp)
         assertEquals(5f, metrics.markerSize.value, 0.01f)
         assertEquals(1f, metrics.strokeWidth.value, 0.01f)
         assertEquals(7.5f, metrics.gap.value, 0.01f)
-        // listIndent + slot = 1.5em, the same at every level.
-        assertEquals(22.5f, (metrics.slotWidth + 4.dp).value, 0.01f)
+        // listIndent + slot = 1.25em (web `pl-5`, 20px at the 16px body), the same at every level.
+        assertEquals(18.75f, (metrics.slotWidth + 4.dp).value, 0.01f)
         assertEquals(22f, metrics.lineHeight.value, 0.01f)
     }
 
@@ -41,7 +41,7 @@ class RaftMarkdownListBulletTest {
         val large = markdownBulletMetrics(fontSize = 28.dp, lineHeight = 44.dp, listIndent = 4.dp)
         assertEquals(small.markerSize.value * 2f, large.markerSize.value, 0.01f)
         assertEquals(small.gap.value * 2f, large.gap.value, 0.01f)
-        assertEquals(42f, (large.slotWidth + 4.dp).value, 0.01f)
+        assertEquals(35f, (large.slotWidth + 4.dp).value, 0.01f)
         // circle stroke never goes below a hairline-visible 1dp, and thickens for big text.
         assertEquals(1f, small.strokeWidth.value, 0.01f)
         assertEquals(28f / 3f * 0.2f, large.strokeWidth.value, 0.01f)
@@ -76,5 +76,18 @@ class RaftMarkdownListBulletTest {
         bulletItems.forEach { assertTrue(it.children.any { c -> c.type == MarkdownTokenTypes.LIST_BULLET }) }
         orderedItems.forEach { assertTrue(it.children.any { c -> c.type == MarkdownTokenTypes.LIST_NUMBER }) }
         assertEquals(2, root.children.count { it.type == MarkdownElementTypes.PARAGRAPH })
+    }
+
+    @Test
+    fun orderedListNumbersStartAtTheFirstItemsNumber() {
+        val content = "3. three\n1. four\n7. five"
+        val root = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(content)
+        val list = root.children.single { it.type == MarkdownElementTypes.ORDERED_LIST }
+        val start = raftMarkdownOrderedListStart(list, content)
+        assertEquals(3, start)
+        assertEquals(listOf("3.", "4.", "5."), (0..2).map { raftMarkdownOrderedListMarker(start, it) })
+        val plain = "- a"
+        val bullets = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeFromString(plain).children.first()
+        assertEquals(1, raftMarkdownOrderedListStart(bullets, plain))
     }
 }

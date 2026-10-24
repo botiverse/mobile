@@ -90,7 +90,7 @@ internal data class RaftInlineBoxStyle(
 /**
  * Custom underline (colour, thickness and offset below the baseline). Kuikly's SpanStyle had
  * `textDecorationColor/Thickness/Offset`; upstream only draws a text-coloured hairline, so the
- * reference underline is painted by [raftInlineDecorations] instead.
+ * link underline is painted by [raftInlineDecorations] instead.
  */
 @Immutable
 internal data class RaftInlineUnderlineStyle(
@@ -260,8 +260,19 @@ internal class RaftInlineDecorations(
 ) {
     val isEmpty: Boolean get() = boxes.isEmpty() && underlines.isEmpty()
 
-    fun fontSizeAt(offset: Int): TextUnit =
-        fontSizes.lastOrNull { offset >= it.start && offset < it.end }?.item ?: baseFontSize
+    /**
+     * Font size at [offset] in sp, resolving the covering spans in order as Android does: an sp
+     * size replaces the size so far, an em size (a 0.875em chip) scales it.
+     */
+    fun fontSizeAt(offset: Int): TextUnit {
+        var size = baseFontSize.value
+        fontSizes.forEach { range ->
+            if (offset < range.start || offset >= range.end) return@forEach
+            val item = range.item
+            if (item.isEm) size *= item.value else if (item.isSp) size = item.value
+        }
+        return size.sp
+    }
 
     companion object {
         val Empty = RaftInlineDecorations(emptyList(), emptyList(), emptyList(), 14.sp)
@@ -280,7 +291,7 @@ internal fun AnnotatedString.raftInlineDecorations(baseFontSize: TextUnit): Raft
         boxes = boxes,
         underlines = underlines,
         fontSizes = fontSizes,
-        baseFontSize = if (baseFontSize.isSpecified) baseFontSize else 14.sp,
+        baseFontSize = if (baseFontSize.isSp) baseFontSize else 14.sp,
     )
 }
 
