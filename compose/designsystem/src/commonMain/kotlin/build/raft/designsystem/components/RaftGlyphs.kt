@@ -24,7 +24,8 @@ import build.raft.designsystem.theme.RaftTheme
  * the check of a checkbox and of a menu's current value, the dialog's close, a menu's search,
  * the top bar's Back arrow, the jump pills' arrows, a sidebar channel's `hash` / `lock`, a group header's sort
  * arrows and an action card's default `zap`, a thread
- * summary's draft `pencil` and a saved message's `bookmark`. Each is the 24x24 outline drawn with Lucide's
+ * summary's draft `pencil`, a saved message's `bookmark`, a forwarded bundle's `forward` and `file`
+ * and a quoted message's thread `message-square`. Each is the 24x24 outline drawn with Lucide's
  * 2-unit round stroke. App icons are not this module's business: pass them through the components' icon
  * slots.
  */
@@ -88,6 +89,22 @@ enum class RaftGlyph(internal vararg val paths: String) {
     Bookmark(
         "M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5" +
             "a2 2 0 0 1 2-2z",
+    ),
+
+    /** Lucide `forward`: a forwarded bundle's header label (raft-ui MessageForwardedBundleHeaderLabel). */
+    Forward("m15 17 5-5-5-5", "M4 18v-2a4 4 0 0 1 4-4h12"),
+
+    /** Lucide `message-square`: the thread marker of a quoted message (raft-ui MessageQuotedPreviewThread). */
+    MessageSquare(
+        "M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16" +
+            "a2 2 0 0 1 2 2z",
+    ),
+
+    /** Lucide `file`: a forwarded file's attachment chip (raft-ui MessageForwardedBundleAttachment). */
+    File(
+        "M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12" +
+            "a2 2 0 0 1-2 2z",
+        "M14 2v5a1 1 0 0 0 1 1h5",
     ),
     ;
 

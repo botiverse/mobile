@@ -548,6 +548,14 @@
     <string name="thread_message_loading_full">Loading full message…</string>
     <string name="thread_quoted_permalink_no_content">(no content)</string>
     <string name="thread_quoted_permalink_unavailable">Message preview unavailable</string>
+    <string name="thread_quoted_permalink_thread">Thread</string>
+    <string name="thread_quoted_permalink_archived">Archived</string>
+    <string name="thread_quoted_permalink_direct_message">Direct message</string>
+    <string name="thread_quoted_permalink_channel_fallback">Channel</string>
+    <string name="thread_quoted_permalink_one_image">1 image</string>
+    <string name="thread_quoted_permalink_one_file">1 file</string>
+    <string name="thread_quoted_permalink_images">%1$d images</string>
+    <string name="thread_quoted_permalink_attachments">%1$d attachments</string>
 <string name="thread_member_role_member">Member</string>
     <string name="thread_member_role_system">System</string>
     <string name="thread_settings_edit_channel">Edit Channel</string>
@@ -796,6 +804,10 @@
     <string name="thread_forward_view_message">View message</string>
     <string name="thread_forward_bundle_fallback_title">Forwarded messages</string>
     <string name="thread_forward_bundle_unavailable">This forwarded message is unavailable.</string>
+    <string name="thread_forward_badge">Forwarded</string>
+    <string name="thread_forward_bundle_count_one">message</string>
+    <string name="thread_forward_from_source">from %1$s</string>
+    <string name="thread_forward_from_thread">from %1$s · thread</string>
     <string name="thread_forward_selected">%1$d selected</string>
     <string name="thread_forward_placeholder_one">FORWARDED 1 MESSAGE</string>
     <string name="thread_forward_placeholder_many">FORWARDED %1$d MESSAGES</string>
