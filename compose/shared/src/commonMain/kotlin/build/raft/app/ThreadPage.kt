@@ -25217,6 +25217,10 @@ private fun ThreadMessageCardContent(
             isSaved = message.isSaved
         )
     val reserveInlineTrailingSpace = richContentEnabled && message.isSendingLocalSend() && !alignOwnMessageRight
+    // artin: the sending spinner (row and image overlay) only draws once a send has been in flight
+    // for 5 s; its space stays reserved meanwhile, so it appears without a layout jump.
+    val sendingIndicatorVisible =
+        rememberDelayedSendingVisible(localId = message.id, isSending = message.isSendingLocalSend())
     val hasPendingReaction =
         LocalThreadPendingReactionVisuals.current.any { (key, visual) ->
             key.messageId == message.id && visual.reaction.count > 0
@@ -25683,7 +25687,7 @@ private fun ThreadMessageCardContent(
                                     ) {
                                         if (richContentEnabled && message.isSendingLocalSend()) {
                                             ThreadMessageGeometryTintBox(geometryTints?.statusTint) {
-                                                ThreadMessageSendingIndicator()
+                                                ThreadMessageSendingIndicator(visible = sendingIndicatorVisible)
                                             }
                                         }
                                         ThreadMessageGeometryTintBox(geometryTints?.bodyTint) {
@@ -25735,6 +25739,7 @@ private fun ThreadMessageCardContent(
                                     attachments = message.attachments,
                                     alignEnd = alignOwnMessageRight,
                                     pending = message.isSendingLocalSend(),
+                                    pendingIndicatorVisible = sendingIndicatorVisible,
                                     attachmentOpenStates = attachmentOpenStates,
                                     onOpenAttachment = onOpenAttachment,
                                     onDownloadAttachment = onDownloadAttachment
@@ -25795,7 +25800,10 @@ private fun ThreadMessageCardContent(
                     if (richContentEnabled) {
                         when {
                             message.isSendingLocalSend() && !alignOwnMessageRight -> {
-                                ThreadMessageSendingIndicator(modifier = Modifier.align(Alignment.TopEnd))
+                                ThreadMessageSendingIndicator(
+                                    visible = sendingIndicatorVisible,
+                                    modifier = Modifier.align(Alignment.TopEnd)
+                                )
                             }
                         }
                     }
@@ -26345,7 +26353,7 @@ private fun ThreadMessageLocalSendStatus(
 }
 
 @Composable
-private fun ThreadMessageSendingIndicator(modifier: Modifier = Modifier) {
+private fun ThreadMessageSendingIndicator(visible: Boolean, modifier: Modifier = Modifier) {
     Box(
         modifier =
             modifier
@@ -26353,12 +26361,15 @@ private fun ThreadMessageSendingIndicator(modifier: Modifier = Modifier) {
                 .background(Color.Transparent),
         contentAlignment = Alignment.Center
     ) {
-        RaftLucideIcon(
-            RaftLucideIconName.LoaderCircle,
-            modifier = Modifier.size(14.dp),
-            color = RaftColor.TextMutedGrayArgb,
-            spinning = true
-        )
+        // Hidden: the 24dp slot stays, so the delayed spinner never moves the bubble.
+        if (visible) {
+            RaftLucideIcon(
+                RaftLucideIconName.LoaderCircle,
+                modifier = Modifier.size(14.dp),
+                color = RaftColor.TextMutedGrayArgb,
+                spinning = true
+            )
+        }
     }
 }
 
@@ -30728,8 +30739,10 @@ internal fun PlatformFile.isComposerImageOwnedTemporary(): Boolean {
 internal fun ThreadMessageAttachments(
     attachments: List<RaftThreadAttachmentItem>,
     alignEnd: Boolean,
-    /** The message is still sending (web `isOptimistic`): images dim under a spinner and do not open. */
+    /** The message is still sending (web `isOptimistic`): images do not open. */
     pending: Boolean = false,
+    /** Images dim under a spinner; only once the send is slow ([rememberDelayedSendingVisible]). */
+    pendingIndicatorVisible: Boolean = pending,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     onOpenAttachment: (String) -> Unit,
     onDownloadAttachment: (String) -> Unit = {}
@@ -30761,7 +30774,7 @@ internal fun ThreadMessageAttachments(
             ) {
                 RaftMessageImageGallery(
                     images = imageDimensions,
-                    pending = { pending },
+                    pending = { pendingIndicatorVisible },
                     onClick = if (pending) null else { index -> onOpenAttachment(imageAttachments[index].id) }
                 ) { layout ->
                     ThreadImageAttachmentContent(
