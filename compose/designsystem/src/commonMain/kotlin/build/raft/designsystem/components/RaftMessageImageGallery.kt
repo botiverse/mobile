@@ -168,7 +168,8 @@ fun raftMessageImageSingleSize(image: RaftMessageImageDimensions, availableWidth
  * One image cell (`message-image-gallery-item`): `fill-muted` behind the media (the
  * letterbox of a `contain` image), a `line-hairline` border, `rounded-control`, or
  * `rounded-container` for a lone image. Size it with [modifier]; [content] fills it.
- * Pressing dims the image a step; keyboard focus draws the inset outline.
+ * Pressing dims the image a step; keyboard focus draws the inset outline. [pending] (an image
+ * still sending) dims the cell to 70% under an inverse spinner.
  */
 @Composable
 fun RaftMessageImageFrame(
@@ -211,6 +212,13 @@ fun RaftMessageImageFrame(
     ) {
         content()
         if (pressed) Box(Modifier.matchParentSize().background(RaftMessageImageGalleryDefaults.PressedScrim))
+        // `MessageImageGalleryOverlay` + `Spinner md inverse` (web GalleryImageItem): an image
+        // still sending sits dimmed under a spinner.
+        if (pending) {
+            Box(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
+                RaftSpinner(size = RaftSpinnerSize.Md, variant = RaftSpinnerVariant.Inverse)
+            }
+        }
     }
 }
 

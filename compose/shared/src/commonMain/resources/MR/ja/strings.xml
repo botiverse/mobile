@@ -444,6 +444,7 @@
     <string name="thread_error_remove_saved_message">保存済みメッセージを削除できませんでした</string>
     <string name="thread_attachment_skipped_one">1 個の添付ファイルを読み取れなかったため、スキップしました。</string>
     <string name="thread_attachment_skipped_many">%1$s 個の添付ファイルを読み取れなかったため、スキップしました。</string>
+    <string name="thread_attachment_meta_file">ファイル</string>
     <string name="thread_composer_payload_failed">コンポーザーのペイロード解析に失敗しました</string>
     <string name="thread_composer_placeholder_message">メッセージ</string>
     <string name="thread_composer_placeholder_dm">@%1$s にメッセージを送信</string>

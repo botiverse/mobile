@@ -32,6 +32,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.text.font.FontWeight
@@ -491,11 +495,35 @@ private fun ThreadFileThumbnail(item: RaftThreadFileItem) {
     }
 }
 
-// raft-ui `FilePreviewBadge` (`placement="inline"`): a 28x14dp chip, sticker radius,
-// `bg-fill-muted` with a 1dp `line-hairline` ring, Space Mono 10sp bold `foreground-muted`.
+// raft-ui `FilePreviewBadge`: a 28x14dp chip, sticker radius, `bg-fill-muted` with a 1dp
+// `line-hairline` ring, Space Mono 10sp bold `foreground-muted`. [inline] is the chip before a
+// name (the message attachment card), with the ring drawn all round outside it; otherwise it
+// tags a file icon's corner.
 @Composable
-private fun ThreadFileTypeBadge(label: String, modifier: Modifier = Modifier) {
+internal fun ThreadFileTypeBadge(label: String, modifier: Modifier = Modifier, inline: Boolean = false) {
     val shape = RoundedCornerShape(RaftAppRadius.Sticker)
+    if (inline) {
+        val ring = RaftColor.BorderHairline
+        Box(
+            modifier = modifier
+                .size(width = 28.dp, height = 14.dp)
+                .drawBehind {
+                    // `ring-1` is a box-shadow: outside the chip, taking no layout space.
+                    val stroke = RaftAppStroke.Thin.toPx()
+                    drawRoundRect(
+                        color = ring,
+                        topLeft = Offset(-stroke, -stroke),
+                        size = Size(size.width + stroke * 2, size.height + stroke * 2),
+                        cornerRadius = CornerRadius(RaftAppRadius.Sticker.toPx() + stroke)
+                    )
+                }
+                .background(RaftColor.FillMuted, shape),
+            contentAlignment = Alignment.Center
+        ) {
+            ThreadFileTypeBadgeLabel(label)
+        }
+        return
+    }
     val ringShape = RoundedCornerShape(RaftAppRadius.Sticker + RaftAppStroke.Thin)
     // `ring-1` is drawn outside the chip; in the corner of the clipped visual only its top and
     // end edges show, so the ring is a 1dp-larger plate behind the chip's top-end.
@@ -511,21 +539,26 @@ private fun ThreadFileTypeBadge(label: String, modifier: Modifier = Modifier) {
                 .background(RaftColor.FillMuted, shape),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = label,
-                style = RaftType.Caption.copy(
-                    fontFamily = raftMonoFamilyForWeight(FontWeight.Bold),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 10.sp,
-                    lineHeight = 10.sp,
-                    color = RaftColor.TextMuted
-                ),
-                color = RaftColor.TextMuted,
-                maxLines = 1,
-                softWrap = false
-            )
+            ThreadFileTypeBadgeLabel(label)
         }
     }
+}
+
+@Composable
+private fun ThreadFileTypeBadgeLabel(label: String) {
+    Text(
+        text = label,
+        style = RaftType.Caption.copy(
+            fontFamily = raftMonoFamilyForWeight(FontWeight.Bold),
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.sp,
+            lineHeight = 10.sp,
+            color = RaftColor.TextMuted
+        ),
+        color = RaftColor.TextMuted,
+        maxLines = 1,
+        softWrap = false
+    )
 }
 
 private val ThreadFileBadgedExtensions =

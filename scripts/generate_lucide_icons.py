@@ -184,6 +184,7 @@ LUCIDE_ICONS = [
     "heart",
     "house",
     "image",
+    "image-off",
     "image-plus",
     "inbox",
     "info",
