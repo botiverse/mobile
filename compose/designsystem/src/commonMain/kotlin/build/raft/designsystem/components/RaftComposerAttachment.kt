@@ -197,7 +197,8 @@ fun RaftComposerAttachmentImage(
  * - [Checking][RaftComposerAttachmentPhase.Checking], [Uploading][RaftComposerAttachmentPhase.Uploading]
  *   and [Finishing][RaftComposerAttachmentPhase.Finishing]: `layer-card` at 80% over the whole
  *   tile, then centred a small spinner and 4dp under it [label] ("Checking file…", "Uploading",
- *   "42%", "Finishing upload…") in Space Mono meta bold `foreground`. A [percent] (the bar's
+ *   "42%", "Finishing upload…") in Space Mono meta bold `foreground`, wrapping between words
+ *   (centred above the bar when there is one). A [percent] (the bar's
  *   value; null for no bar) runs the 4dp bar inset 6dp from the sides and bottom (2dp radius,
  *   `layer-card` track, `info` fill, at least 4% so it is visible from the start).
  * - [Failed][RaftComposerAttachmentPhase.Failed]: `layer-card` at 90% inside a 1dp
@@ -251,7 +252,8 @@ fun BoxScope.RaftComposerAttachmentOverlay(
             modifier
                 .matchParentSize()
                 .background(colors.layerCard.copy(alpha = 0.8f), shape)
-                .padding(horizontal = 4.dp),
+                // Centred above the bar, so a two-line label on an image tile never runs into it.
+                .padding(start = 4.dp, end = 4.dp, bottom = if (percent != null) ProgressInset + ProgressHeight else 0.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
