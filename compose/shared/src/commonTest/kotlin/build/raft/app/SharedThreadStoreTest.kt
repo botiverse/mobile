@@ -5724,7 +5724,7 @@ class SharedThreadStoreTest {
             contentPayload("cached body").copy(
                 selectedTab = "tasks",
                 showModeTabs = false,
-                showReplyActions = false,
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
                 settingsActions = listOf(RaftThreadSettingsAction(id = "current-action")),
                 showMembersAction = false,
                 showSettingsAction = false,
@@ -5738,7 +5738,7 @@ class SharedThreadStoreTest {
             contentPayload("network body").copy(
                 selectedTab = "chat",
                 showModeTabs = true,
-                showReplyActions = true,
+                surfaceKind = RaftThreadSurfaceKind.Channel,
                 settingsActions = listOf(RaftThreadSettingsAction(id = "network-action")),
                 showMembersAction = true,
                 showSettingsAction = true,
@@ -18563,8 +18563,7 @@ class SharedThreadStoreTest {
             originParentMessageId = parentMessageId,
             title = ThreadReplyPageTitle,
             subtitle = "#general",
-            showModeTabs = false,
-            showReplyActions = false
+            showModeTabs = false
         )
 
     private fun activityReplyPayload(
@@ -18632,8 +18631,7 @@ class SharedThreadStoreTest {
             originParentMessageId = parentMessageId,
             title = ThreadReplyPageTitle,
             subtitle = "#general",
-            showModeTabs = false,
-            showReplyActions = false
+            showModeTabs = false
         )
 
     private fun contentPayload(body: String, id: String = "m1"): RaftThreadScreenPayload =

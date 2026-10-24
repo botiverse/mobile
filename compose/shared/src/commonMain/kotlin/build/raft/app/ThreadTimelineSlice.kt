@@ -32,7 +32,7 @@ internal data class ThreadTimelineSlice(
     val sourceThreadId: String?,
     val alignOwnMessagesRight: Boolean,
     val compactConsecutiveMessages: Boolean,
-    val showReplyActions: Boolean,
+    val surfaceKind: String,
     val showMessageSaveAction: Boolean,
     val showReactionActions: Boolean,
     val showTaskOpenActions: Boolean,
@@ -54,7 +54,10 @@ internal data class ThreadTimelineSlice(
     val showForwardAction: Boolean = false,
     /** The viewer's role on this conversation's server is `guest` (web `currentUserServerRole`). */
     val viewerIsGuest: Boolean = false
-)
+) {
+    /** Derived from [surfaceKind]; the menu's `reply` capability reads this single source. */
+    val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind)
+}
 
 internal data class ThreadInlineSearchMatch(
     val messageId: String,
@@ -91,7 +94,7 @@ internal fun RaftThreadScreenPayload.toThreadTimelineSlice(): ThreadTimelineSlic
         durableReachedOldest = durableReachedOldest,
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
-        showReplyActions = showReplyActions,
+        surfaceKind = surfaceKind,
         showMessageSaveAction = showMessageSaveAction,
         showReactionActions = showReactionActions,
         showTaskOpenActions = showTaskOpenActions,

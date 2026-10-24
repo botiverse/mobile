@@ -52,7 +52,7 @@ class ThreadRenderSignatureTest {
         selectedTab: String = "chat",
         messages: List<RaftThreadMessageItem> = emptyList(),
         tasks: List<RaftThreadTaskItem> = emptyList(),
-        showReplyActions: Boolean = true,
+        surfaceKind: String = RaftThreadSurfaceKind.Channel,
         members: List<RaftThreadMemberItem> = emptyList(),
         settingsActions: List<RaftThreadSettingsAction> = emptyList()
     ): RaftThreadScreenPayload = RaftThreadScreenPayload(
@@ -62,7 +62,7 @@ class ThreadRenderSignatureTest {
         selectedTab = selectedTab,
         messages = messages,
         tasks = tasks,
-        showReplyActions = showReplyActions,
+        surfaceKind = surfaceKind,
         members = members,
         settingsActions = settingsActions
     )
@@ -180,8 +180,8 @@ class ThreadRenderSignatureTest {
 
     @Test
     fun showReplyActionsChange_changesSignature() {
-        val a = payload(showReplyActions = true)
-        val b = payload(showReplyActions = false)
+        val a = payload(surfaceKind = RaftThreadSurfaceKind.Channel)
+        val b = payload(surfaceKind = RaftThreadSurfaceKind.ReplyThread)
         assertNotEquals(a.toRenderSignature(), b.toRenderSignature())
     }
 

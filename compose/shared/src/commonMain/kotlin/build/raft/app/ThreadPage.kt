@@ -2067,7 +2067,6 @@ internal data class RaftThreadScreenPayload(
     val selectedTab: String = "chat",
     val navigationLabel: String = "Back",
     val showModeTabs: Boolean = true,
-    val showReplyActions: Boolean = true,
     val alignOwnMessagesRight: Boolean = false,
     val compactConsecutiveMessages: Boolean = false,
     val localOffsetMinutes: Int = 0,
@@ -2128,7 +2127,10 @@ internal data class RaftThreadScreenPayload(
     @Transient
     val replySummariesAuthority: build.raft.app.data.ThreadReplySummariesAuthority =
         build.raft.app.data.ThreadReplySummariesAuthority.Unavailable,
-)
+) {
+    /** Derived from [surfaceKind]; never stored, so no constructor can forget it. */
+    val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind)
+}
 
 internal data class ThreadMembersPageRoute(
     val instanceId: String,
@@ -13833,7 +13835,6 @@ private fun RaftThreadScreenPayload.commentHostLoadingPayload(
             navigationLabel = "Close",
             selectedTab = RaftThreadTab.Chat.wireValue,
             showModeTabs = false,
-            showReplyActions = false,
             showOpenInChannelAction = true,
             originMessage = null,
             originPreview = null,
@@ -14019,7 +14020,6 @@ internal fun RaftThreadScreenPayload.replyThreadLoadingPayload(
         navigationLabel = "Close",
         selectedTab = "chat",
         showModeTabs = false,
-        showReplyActions = false,
         showOpenInChannelAction = true,
         originMessage = null,
         originParentMessageId = knownParentMessageId,
@@ -14075,7 +14075,6 @@ internal fun RaftThreadScreenPayload.parentMessageContextLoadingPayload(
         navigationLabel = "Back",
         selectedTab = RaftThreadTab.Chat.wireValue,
         showModeTabs = true,
-        showReplyActions = true,
         showOpenInChannelAction = false,
         originMessage = null,
         originPreview = null,

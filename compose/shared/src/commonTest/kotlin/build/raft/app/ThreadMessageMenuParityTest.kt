@@ -89,10 +89,10 @@ class ThreadMessageMenuParityTest {
     fun followNeedsAThreadConversationOnAThreadActionSurface() {
         val withThread = message(threadChannelId = "thread-1", replyCount = 2)
         assertTrue(capabilities(withThread).follow)
-        assertFalse(capabilities(withThread, slice = slice(showReplyActions = false)).follow)
+        assertFalse(capabilities(withThread, slice = slice(surfaceKind = RaftThreadSurfaceKind.ReplyThread)).follow)
         // The thread panel's parent keeps Follow (web showThreadFollowAction).
         assertTrue(
-            capabilities(withThread, slice = slice(showReplyActions = false, originMessage = withThread)).follow
+            capabilities(withThread, slice = slice(surfaceKind = RaftThreadSurfaceKind.ReplyThread, originMessage = withThread)).follow
         )
         assertFalse(capabilities(withThread, writeActionsEnabled = false).follow)
     }
@@ -325,7 +325,7 @@ class ThreadMessageMenuParityTest {
         RaftThreadPendingSendContext(channelId = "channel-1", body = "Hello")
 
     private fun slice(
-        showReplyActions: Boolean = true,
+        surfaceKind: String = RaftThreadSurfaceKind.Channel,
         originMessage: RaftThreadMessageItem? = null
     ): ThreadTimelineSlice =
         ThreadTimelineSlice(
@@ -344,7 +344,7 @@ class ThreadMessageMenuParityTest {
             sourceThreadId = null,
             alignOwnMessagesRight = false,
             compactConsecutiveMessages = false,
-            showReplyActions = showReplyActions,
+            surfaceKind = surfaceKind,
             showMessageSaveAction = true,
             showReactionActions = true,
             showTaskOpenActions = true,
