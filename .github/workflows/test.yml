@@ -906,15 +906,26 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
       - name: Shared Kotlin/Native Gradle settings
         uses: ./.github/actions/ios-kn-gradle
+      # The device target (:shared:compileKotlinIosArm64, ~1.5 min on top of the simulator
+      # compile) runs only on the full tier (full-ci PRs, nightly, scope=full dispatch) and on
+      # release-* pushes. Main pushes and merge-queue runs compile the simulator targets only;
+      # ios-release.yml still compiles and links the device target for every device release.
       - name: Compile shared and design system iOS targets and unit tests
         working-directory: compose
+        env:
+          IOS_DEVICE_COMPILE: ${{ needs.plan.outputs.run_device_suite == 'true' || startsWith(github.ref, 'refs/heads/release-') }}
         run: |
-          ./gradlew \
-            :shared:compileKotlinIosArm64 \
-            :shared:compileKotlinIosSimulatorArm64 \
-            :shared:compileTestKotlinIosSimulatorArm64 \
-            :designsystem:compileKotlinIosSimulatorArm64 \
-            :ui-cmp:compileKotlinIosSimulatorArm64 \
+          set -euo pipefail
+          tasks=(
+            :shared:compileKotlinIosSimulatorArm64
+            :shared:compileTestKotlinIosSimulatorArm64
+            :designsystem:compileKotlinIosSimulatorArm64
+            :ui-cmp:compileKotlinIosSimulatorArm64
+          )
+          if [ "$IOS_DEVICE_COMPILE" = true ]; then
+            tasks+=(:shared:compileKotlinIosArm64)
+          fi
+          ./gradlew "${tasks[@]}" \
             --no-daemon \
             --console=plain \
             --stacktrace
