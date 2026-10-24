@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.*
+import build.raft.app.transfer.RaftTransferMeter
 import kotlin.test.*
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -14,17 +15,27 @@ class UpdateDownloadProgressTest {
         put("downloadedBytes", downloaded)
     }
 
-    @Test fun realByteCountsProduceBoundedPercent() {
-        assertEquals(25, payload(100).toSharedUpdateDownloadProgress()?.percent)
-        assertEquals(100, payload(100, 101).toSharedUpdateDownloadProgress()?.percent)
-        assertEquals(0, payload(100, -1).toSharedUpdateDownloadProgress()?.percent)
-        assertEquals(100, payload(Long.MAX_VALUE, Long.MAX_VALUE).toSharedUpdateDownloadProgress()?.percent)
+    private fun observed(vararg samples: SharedUpdateDownloadProgress) =
+        RaftTransferMeter().let { meter -> samples.map { meter.observe(it) }.last() }
+
+    @Test fun realByteCountsProduceBoundedPercentAndHundredOnlyWhenReady() {
+        assertEquals(25, observed(assertNotNull(payload(100).toSharedUpdateDownloadProgress())).percent)
+        // Every byte in, the APK is not ready yet: 99.
+        assertEquals(99, observed(assertNotNull(payload(100, 101).toSharedUpdateDownloadProgress())).percent)
+        assertNull(observed(assertNotNull(payload(100, -1).toSharedUpdateDownloadProgress())).percent)
+        assertEquals(99, observed(assertNotNull(payload(Long.MAX_VALUE, Long.MAX_VALUE).toSharedUpdateDownloadProgress())).percent)
+        val ready = SharedUpdateDownloadProgress("42", 100, 100, "ready")
+        assertEquals(100, observed(SharedUpdateDownloadProgress("42", 60, 100, "downloading"), ready).percent)
+        // A paused poll keeps the bar where it was.
+        val paused = observed(SharedUpdateDownloadProgress("42", 60, 100, "downloading"), SharedUpdateDownloadProgress("42", 60, 100, "paused"))
+        assertEquals(60, paused.percent)
+        assertEquals(build.raft.app.transfer.RaftTransferPhase.Paused, paused.phase)
     }
 
     @Test fun unknownLengthDoesNotInventPercent() {
         for (total in listOf(0L, -1L)) {
             val progress = assertNotNull(payload(total).toSharedUpdateDownloadProgress())
-            assertNull(progress.percent)
+            assertNull(observed(progress).percent)
             assertEquals(25L, progress.downloadedBytes)
         }
     }

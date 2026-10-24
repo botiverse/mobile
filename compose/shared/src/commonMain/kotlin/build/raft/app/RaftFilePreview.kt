@@ -60,7 +60,7 @@ import build.raft.kuiklybase.datetime.Clock
 import build.raft.app.downloads.RaftBridgeSaveAttachmentTask
 import build.raft.app.downloads.RaftDownloadCenterProcess
 import build.raft.app.downloads.RaftDownloadDescriptor
-import build.raft.app.downloads.rememberThrottledSpeed
+import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.downloads.RaftDownloadOutcome
 import build.raft.app.downloads.RaftDownloadStatus
 import build.raft.app.downloads.raftDownloadCenterEntryId
@@ -2960,7 +2960,8 @@ private fun RaftFilePreviewStandalonePageContent() {
                     } else if (error == null) {
                         downloadStatus = "idle"
                         downloadMessage = ""
-                        downloadProgress = null
+                        // The host saved the file: this page's transfer is done (100%, not before).
+                        downloadProgress = downloadProgress?.completed()
                         activeDownloadId = null
                         activeAttachmentOperation = null
                     } else {
@@ -3036,7 +3037,7 @@ private fun RaftFilePreviewStandalonePageContent() {
                     if (error == null) {
                         downloadStatus = "idle"
                         downloadMessage = ""
-                        downloadProgress = null
+                        downloadProgress = downloadProgress?.completed()
                         activeDownloadId = null
                         activeAttachmentOperation = null
                     } else {
@@ -4098,7 +4099,6 @@ private fun RaftFilePreviewStandalonePageContent() {
                         },
                     downloadInProgress = downloadActive,
                     downloadPaused = shownDownloadStatus == "paused",
-                    downloadProgressPercent = downloadView.percent ?: downloadProgress?.percent,
                     downloadView = downloadView,
                     downloadState = downloadUiState,
                     primaryActionEnabled = primaryActionEnabled,
@@ -7960,7 +7960,6 @@ internal fun RaftFilePreviewPayloadContent(
     downloadStatusLabel: String? = null,
     downloadInProgress: Boolean = false,
     downloadPaused: Boolean = false,
-    downloadProgressPercent: Int? = null,
     downloadView: RaftFilePreviewDownloadView? = null,
     downloadState: RaftFilePreviewDownloadUiState? = RaftFilePreviewDownloadUiState.NotDownloaded,
     primaryActionEnabled: Boolean = true,
@@ -8009,7 +8008,6 @@ internal fun RaftFilePreviewPayloadContent(
                     RaftFilePreviewDownloadStatusOverlay(
                         statusLabel = downloadStatusLabel.takeIf { selected && pagePayload.kind == "image" },
                         showProgress = selected && pagePayload.kind == "image" && downloadInProgress,
-                        progressPercent = downloadProgressPercent,
                         downloadView = downloadView,
                         downloadPaused = downloadPaused,
                         onToggleDownload = onToggleDownload,
@@ -8049,7 +8047,6 @@ internal fun RaftFilePreviewPayloadContent(
                             },
                         statusLabel = downloadStatusLabel.takeIf { selected },
                         showProgress = selected && downloadInProgress,
-                        progressPercent = downloadProgressPercent,
                         downloadView = downloadView,
                         secondaryActionLabel =
                             onExternalBrowserOpen
@@ -8085,7 +8082,6 @@ internal fun RaftFilePreviewPayloadContent(
             RaftFilePreviewDownloadStatusOverlay(
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
-                progressPercent = downloadProgressPercent,
                 downloadView = downloadView,
                 downloadPaused = downloadPaused,
                 onToggleDownload = onToggleDownload,
@@ -8110,7 +8106,6 @@ internal fun RaftFilePreviewPayloadContent(
             RaftFilePreviewDownloadStatusOverlay(
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
-                progressPercent = downloadProgressPercent,
                 downloadView = downloadView,
                 downloadPaused = downloadPaused,
                 onToggleDownload = onToggleDownload,
@@ -8130,7 +8125,6 @@ internal fun RaftFilePreviewPayloadContent(
             RaftFilePreviewDownloadStatusOverlay(
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
-                progressPercent = downloadProgressPercent,
                 downloadView = downloadView,
                 downloadPaused = downloadPaused,
                 onToggleDownload = onToggleDownload,
@@ -8160,7 +8154,6 @@ internal fun RaftFilePreviewPayloadContent(
             RaftFilePreviewDownloadStatusOverlay(
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
-                progressPercent = downloadProgressPercent,
                 downloadView = downloadView,
                 downloadPaused = downloadPaused,
                 onToggleDownload = onToggleDownload,
@@ -8195,7 +8188,6 @@ internal fun RaftFilePreviewPayloadContent(
             RaftFilePreviewDownloadStatusOverlay(
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
-                progressPercent = downloadProgressPercent,
                 downloadView = downloadView,
                 downloadPaused = downloadPaused,
                 onToggleDownload = onToggleDownload,
@@ -8250,7 +8242,6 @@ internal fun RaftFilePreviewPayloadContent(
             RaftFilePreviewDownloadStatusOverlay(
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
-                progressPercent = downloadProgressPercent,
                 downloadView = downloadView,
                 downloadPaused = downloadPaused,
                 onToggleDownload = onToggleDownload,
@@ -8270,7 +8261,6 @@ internal fun RaftFilePreviewPayloadContent(
             RaftFilePreviewDownloadStatusOverlay(
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
-                progressPercent = downloadProgressPercent,
                 downloadView = downloadView,
                 downloadPaused = downloadPaused,
                 onToggleDownload = onToggleDownload,
@@ -8312,7 +8302,6 @@ internal fun RaftFilePreviewPayloadContent(
                     },
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
-                progressPercent = downloadProgressPercent,
                 downloadView = downloadView,
                 secondaryActionLabel =
                     onExternalBrowserOpen?.let { stringResource(MR.strings.file_preview_action_open_in_browser) },
@@ -9913,9 +9902,8 @@ internal fun raftFilePreviewLocalizedActiveDownloadStatusLabel(
     progress: BridgeAttachmentDownloadProgress?,
     status: String
 ): String {
-    val shownSpeed = rememberThrottledSpeed(progress?.bytesPerSecond)
     return raftFilePreviewActiveDownloadStatusLabel(
-        progress = progress?.copy(bytesPerSecond = shownSpeed),
+        progress = progress,
         status = status,
         terms =
             RaftFilePreviewDownloadStatusTerms(
@@ -9949,10 +9937,7 @@ internal val RaftFilePreviewInitialDownloadProgress =
         sequence = 0L,
         phase = "preparing",
         status = "progress",
-        percent = null,
-        downloadedBytes = 0L,
-        totalBytes = null,
-        bytesPerSecond = null
+        transfer = RaftTransferProgress.notStarted()
     )
 
 internal data class RaftFilePreviewActionTerms(
@@ -10266,7 +10251,6 @@ internal fun RaftFilePreviewGenericCard(
     message: String,
     statusLabel: String? = null,
     showProgress: Boolean = false,
-    progressPercent: Int? = null,
     downloadView: RaftFilePreviewDownloadView? = null,
     actionLabel: String? = null,
     actionIcon: RaftLucideIconName? = null,
@@ -10290,8 +10274,7 @@ internal fun RaftFilePreviewGenericCard(
                         showProgress && downloadPaused -> RaftFilePreviewDownloadPhase.Paused
                         showProgress -> RaftFilePreviewDownloadPhase.Active
                         else -> RaftFilePreviewDownloadPhase.Idle
-                    },
-                percent = progressPercent
+                    }
             )
     // A failure keeps its words: the status label carries the host's message.
     val shown =
@@ -10326,7 +10309,6 @@ internal fun RaftFilePreviewGenericCard(
 private fun RaftFilePreviewDownloadStatusOverlay(
     statusLabel: String?,
     showProgress: Boolean,
-    progressPercent: Int?,
     downloadView: RaftFilePreviewDownloadView? = null,
     downloadPaused: Boolean = false,
     onToggleDownload: (() -> Unit)? = null,
@@ -10340,7 +10322,6 @@ private fun RaftFilePreviewDownloadStatusOverlay(
             RaftFilePreviewDownloadStatusBar(
                 statusLabel = statusLabel,
                 showProgress = showProgress,
-                progressPercent = progressPercent,
                 downloadView = downloadView,
                 downloadPaused = downloadPaused,
                 onToggleDownload = onToggleDownload,
@@ -10356,7 +10337,6 @@ private fun RaftFilePreviewDownloadStatusOverlay(
 private fun RaftFilePreviewDownloadStatusBar(
     statusLabel: String?,
     showProgress: Boolean,
-    progressPercent: Int?,
     downloadView: RaftFilePreviewDownloadView? = null,
     downloadPaused: Boolean = false,
     onToggleDownload: (() -> Unit)? = null,
@@ -10371,8 +10351,7 @@ private fun RaftFilePreviewDownloadStatusBar(
                         showProgress && downloadPaused -> RaftFilePreviewDownloadPhase.Paused
                         showProgress -> RaftFilePreviewDownloadPhase.Active
                         else -> RaftFilePreviewDownloadPhase.Failed
-                    },
-                percent = progressPercent
+                    }
             )
     RaftDesignSystemTheme {
         Box(modifier.fillMaxWidth().padding(12.dp)) {

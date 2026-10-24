@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.format.RaftFormat
+import build.raft.app.transfer.RaftTransferMeter
+import build.raft.app.transfer.RaftTransferProgress
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -88,6 +90,7 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
     var actionRunning by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableStateOf<SharedUpdateDownloadProgress?>(null) }
+    var transfer by remember { mutableStateOf<RaftTransferProgress?>(null) }
     val downloadFailedMessage = stringResource(MR.strings.app_update_download_failed)
 
     fun refresh() {
@@ -111,7 +114,10 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
     val progressToken = snapshot?.downloadProgressToken.orEmpty()
     LaunchedEffect(progressToken, pageVisible) {
         progress = null
+        transfer = null
         if (!pageVisible || progressToken.isBlank()) return@LaunchedEffect
+        // The page owns this download's meter: one per attempt token.
+        val meter = RaftTransferMeter()
         while (true) {
             val observed = environment.settingsCapabilities.readHandsDownloadProgress(progressToken)
             if (observed == null || observed.token != progressToken) {
@@ -121,6 +127,7 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
                 continue
             }
             progress = observed
+            transfer = meter.observe(observed)
             if (!observed.active) {
                 snapshot = snapshot?.withLocalDownloadTerminal(observed)
                 errorMessage = if (observed.phase == "failed") downloadFailedMessage else null
@@ -152,6 +159,7 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
         AppUpdateSummary(
             snapshot = snapshot,
             progress = progress?.takeIf { it.token == progressToken },
+            transfer = transfer.takeIf { progress?.token == progressToken },
             loading = loading && progress?.takeIf { it.token == progressToken }?.active != false,
             actionRunning = actionRunning,
             errorMessage = errorMessage,
@@ -327,7 +335,8 @@ internal fun AppUpdateSummary(
     onRetry: () -> Unit,
     onSkipVersion: () -> Unit,
     onAction: () -> Unit,
-    progress: SharedUpdateDownloadProgress? = null
+    progress: SharedUpdateDownloadProgress? = null,
+    transfer: RaftTransferProgress? = null
 ) {
     val versionLabels =
         appUpdateVersionLabels(
@@ -404,8 +413,9 @@ internal fun AppUpdateSummary(
             )
         }
         if (progress?.active == true) {
-            val bytes = RaftFormat.bytes(progress.downloadedBytes)
-            val total = progress.totalBytes?.let { RaftFormat.bytes(it) }
+            val bytes = RaftFormat.bytes(transfer?.bytesDone ?: progress.downloadedBytes)
+            val total = (transfer?.bytesTotal ?: progress.totalBytes)?.let { RaftFormat.bytes(it) }
+            val percent = transfer?.percent
             val label = if (total != null) "$bytes / $total" else bytes
             Text(
                 text = stringResource(if (progress.phase == "paused") MR.strings.app_update_download_paused else MR.strings.app_update_downloading),
@@ -413,8 +423,8 @@ internal fun AppUpdateSummary(
                 color = RaftColor.TextMutedGray
             )
             // Unknown response length has no fabricated percentage/bar fill.
-            if (progress.percent != null) {
-                RaftProgressBar(value = progress.percent, label = label, showPercent = true)
+            if (percent != null) {
+                RaftProgressBar(value = percent, label = label, showPercent = true)
             } else {
                 Text(text = label, style = RaftType.Caption, color = RaftColor.TextMutedGray)
             }
@@ -648,6 +658,26 @@ internal fun appUpdateCanSkipVersion(snapshot: SharedSettingsUpdateCheckSnapshot
         SharedSettingsUpdateTransactionState.InstallerOpened,
         SharedSettingsUpdateTransactionState.Installed -> false
     }
+}
+
+/**
+ * One poll of the host's update download into the page's meter. "ready" (the APK is complete in
+ * Downloads) is the only Done; until then the bar stops at 99.
+ */
+internal fun RaftTransferMeter.observe(sample: SharedUpdateDownloadProgress): RaftTransferProgress {
+    when (sample.phase) {
+        "paused" -> {
+            bytes(sample.downloadedBytes, sample.totalBytes)
+            pause()
+        }
+        "downloading" -> {
+            resume()
+            bytes(sample.downloadedBytes, sample.totalBytes)
+        }
+        "ready" -> done(sample.totalBytes ?: sample.downloadedBytes)
+        "failed" -> failed()
+    }
+    return progress
 }
 
 /** Local completion remains actionable even when the subsequent offer refresh fails. */

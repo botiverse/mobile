@@ -12,6 +12,7 @@ import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedSettingsStorageRow
 import build.raft.app.data.SharedSettingsStorageSnapshot
 import build.raft.app.downloads.RaftDownloadEntry
+import build.raft.app.transfer.testTransfer
 import build.raft.app.downloads.RaftDownloadErrorKind
 import build.raft.app.downloads.RaftDownloadStatus
 import build.raft.app.model.RaftTimeContext
@@ -83,6 +84,8 @@ private val storageFixtureDownloads =
             status = RaftDownloadStatus.Downloading,
             downloadedBytes = 41_200_000L,
             totalBytes = 102_760_448L,
+            // The owner's meter state for these bytes (40%).
+            transfer = testTransfer(downloadedBytes = 41_200_000L, totalBytes = 102_760_448L, percent = 40),
             createdAtMillis = StorageFixtureNowMillis - Minute,
             updatedAtMillis = StorageFixtureNowMillis,
         ),

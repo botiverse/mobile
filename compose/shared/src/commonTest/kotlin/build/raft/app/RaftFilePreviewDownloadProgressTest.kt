@@ -13,6 +13,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 
 /** The file page's download progress: the host's samples reach it, and a fast download is seen. */
@@ -28,6 +29,7 @@ class RaftFilePreviewDownloadProgressTest {
         )
     private val activeDownloadId = "attempt-1:thread_attachment:att-1:archive.zip"
 
+    /** A host `progress` event: bytes plus the percent its meter computed for them. */
     private fun hostSample(downloadId: String, sequence: Long, phase: String, downloadedBytes: Long): BridgeAttachmentDownloadProgress =
         JSONObject().apply {
             put("status", "progress")
@@ -37,6 +39,7 @@ class RaftFilePreviewDownloadProgressTest {
             put("phase", phase)
             put("downloadedBytes", downloadedBytes.toString())
             put("totalBytes", "3000000")
+            if (downloadedBytes > 0L) put("percent", (downloadedBytes * 100L / 3_000_000L).toString())
         }.toBridgeAttachmentDownloadProgress()
 
     @Test
@@ -96,16 +99,35 @@ class RaftFilePreviewDownloadProgressTest {
         advanceTimeBy(150L)
         frames.value = RaftFilePreviewDownloadHoldInput(halfway)
         advanceTimeBy(150L)
-        frames.value = RaftFilePreviewDownloadHoldInput(idle)
+        // The host saved the file: the page completed its transfer (Done, 100%).
+        val saved = idle.copy(transfer = halfway.transfer.completed())
+        frames.value = RaftFilePreviewDownloadHoldInput(saved)
         runCurrent()
-        val finished = halfway.copy(percent = 100, downloadedBytes = 3_000_000L, bytesPerSecond = null)
+        val finished = halfway.copy(transfer = saved.transfer)
+        assertEquals(100, finished.percent)
+        assertEquals(3_000_000L, finished.downloadedBytes)
+        assertNull(finished.bytesPerSecond)
         assertEquals(listOf(indeterminate, halfway, finished), shown, "done at 300 ms: the bar fills and stays")
 
         advanceTimeBy(299L)
         assertEquals(finished, shown.last(), "still within 600 ms of the panel showing")
         advanceTimeBy(1L)
         runCurrent()
-        assertEquals(idle, shown.last(), "after 600 ms the finished page follows")
+        assertEquals(saved, shown.last(), "after 600 ms the finished page follows")
+    }
+
+    @Test
+    fun thePanelNeverFillsTheBarItself() = runTest {
+        val frames = MutableStateFlow(RaftFilePreviewDownloadHoldInput(halfway))
+        val shown = mutableListOf<RaftFilePreviewDownloadView>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            frames.raftHoldingDownloadPanel(minVisibleMillis = 600L, timeSource = testScheduler.timeSource).collect { shown += it }
+        }
+        advanceTimeBy(100L)
+        // Idle without a completed transfer (no fact that the file was committed): no 100%.
+        frames.value = RaftFilePreviewDownloadHoldInput(idle)
+        runCurrent()
+        assertEquals(listOf(halfway, halfway), shown)
     }
 
     @Test

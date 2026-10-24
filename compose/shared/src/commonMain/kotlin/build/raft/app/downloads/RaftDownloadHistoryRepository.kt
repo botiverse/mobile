@@ -27,7 +27,7 @@ class RaftDownloadHistoryRepository internal constructor(
     fun save(entries: List<RaftDownloadEntry>) {
         val document =
             PersistedRaftDownloadHistory(
-                entries = entries.take(maxEntries.coerceAtLeast(0)).map { it.copy(bytesPerSecond = null) }
+                entries = entries.take(maxEntries.coerceAtLeast(0))
             )
         store.putString(
             RAFT_DOWNLOAD_HISTORY_STORAGE_KEY,

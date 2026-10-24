@@ -11,22 +11,30 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlin.math.max
 import kotlin.time.TimeSource
+import build.raft.app.transfer.RaftTransferMeter
+import build.raft.app.transfer.RaftTransferProgress
+import build.raft.app.transfer.raftMillisTimeSource
 
 private val AttachmentDownloadMonotonicOrigin = TimeSource.Monotonic.markNow()
 
-/** Progress emitted by the common download owner. Platform hosts only render this state. */
+/**
+ * One sample of an attempt, emitted by the common download owner: the attempt identity, the wire
+ * [phase] word the hosts forward, and the attempt meter's [transfer]. Platform hosts only forward
+ * this state; the byte, percent and speed getters read [transfer] for the ObjC / bridge payloads.
+ */
 data class AttachmentDownloadProgress(
     val downloadId: String,
     val attemptToken: String,
     val sequence: Long,
     val phase: String,
-    val downloadedBytes: Long,
-    val totalBytes: Long?,
-    val percent: Int?,
-    val bytesPerSecond: Long?
-)
+    val transfer: RaftTransferProgress
+) {
+    val downloadedBytes: Long get() = transfer.bytesDone
+    val totalBytes: Long? get() = transfer.bytesTotal
+    val percent: Int? get() = transfer.percent
+    val bytesPerSecond: Long? get() = transfer.bytesPerSecond
+}
 
 data class AttachmentDownloadResult(
     val downloadId: String,
@@ -536,8 +544,8 @@ private class AttachmentDownloadAttempt(
     private var totalBytes: Long? = null
     private var responseStarted = false
     private var contentType: String? = null
-    private var previousSampleAtMillis: Long? = null
-    private var previousSampleBytes = 0L
+    /** The attempt's meter: percent, rate and the shown speed of every sample (under [operationLock]). */
+    private val meter = RaftTransferMeter(timeSource = raftMillisTimeSource(nowMillis))
     private var lastEmittedAtMillis: Long? = null
     private var lastEmittedPercent: Int? = null
     private val observerEventQueue = mutableListOf<() -> Unit>()
@@ -590,6 +598,7 @@ private class AttachmentDownloadAttempt(
         synchronized(sinkLock) {
             if (state.value != StateActive) return@synchronized false
             paused.value = true
+            synchronized(operationLock) { meter.pause() }
             true
         }
 
@@ -598,8 +607,7 @@ private class AttachmentDownloadAttempt(
             if (state.value != StateActive) return false
             val now = nowMillis()
             synchronized(operationLock) {
-                previousSampleAtMillis = now
-                previousSampleBytes = downloadedBytes
+                meter.resume()
                 lastEmittedAtMillis = null
                 lastActivityAtMillis.value = now
             }
@@ -670,8 +678,8 @@ private class AttachmentDownloadAttempt(
                 publishedContentType.value = contentType
                 responseStartedAtMillis.value = nowMillis()
                 lastActivityAtMillis.value = responseStartedAtMillis.value ?: startedAtMillis
-                previousSampleAtMillis = nowMillis()
-                progressLocked(phase = "response_wait", percent = null, bytesPerSecond = null)
+                meter.total(totalBytes)
+                progressLocked(phase = "response_wait")
             }
         deliverProgress(progress)
     }
@@ -710,7 +718,8 @@ private class AttachmentDownloadAttempt(
                     publishedDownloadedBytes.value = downloadedBytes
                     lastActivityAtMillis.value = nowMillis()
                     val now = nowMillis()
-                    val percent = attachmentDownloadPercent(downloadedBytes, totalBytes)
+                    val sample = meter.bytes(downloadedBytes, totalBytes)
+                    val percent = sample.percent
                     val lastAt = lastEmittedAtMillis
                     val lastPercent = lastEmittedPercent
                     // A sample at least every 100 ms or every whole percent, whichever comes first.
@@ -720,20 +729,9 @@ private class AttachmentDownloadAttempt(
                             (percent != null && (lastPercent == null || percent > lastPercent)) ||
                             (percent != null && percent >= 99)
                     if (shouldEmit) {
-                        val previousAt = previousSampleAtMillis
-                        val deltaMillis = previousAt?.let { now - it } ?: 0L
-                        val deltaBytes = downloadedBytes - previousSampleBytes
-                        val bytesPerSecond =
-                            if (previousSampleBytes > 0L && deltaMillis > 0L && deltaBytes > 0L) {
-                                max(1L, saturatingMultiply(deltaBytes, 1_000L) / deltaMillis)
-                            } else {
-                                null
-                            }
-                        previousSampleAtMillis = now
-                        previousSampleBytes = downloadedBytes
                         lastEmittedAtMillis = now
                         lastEmittedPercent = percent
-                        progressLocked("receiving", percent, bytesPerSecond)
+                        progressLocked("receiving")
                     } else {
                         null
                     }
@@ -775,11 +773,10 @@ private class AttachmentDownloadAttempt(
                 contentType = contentType ?: response.headers.contentTypeHeader()
                 publishedContentType.value = contentType
                 if (!state.compareAndSet(expect = StateActive, update = StateFinishing)) return
-                progressLocked(
-                    phase = "complete",
-                    percent = totalBytes?.let { 100 },
-                    bytesPerSecond = null
-                )
+                // Every byte is staged, the file is not published yet: 99%, not 100%. The host's
+                // completion (status "complete") is what makes it Done.
+                meter.finishing()
+                progressLocked(phase = "complete")
             }
         enqueueObserverEvent { finishSuccessAfterFinalProgress(finalProgress) }
     }
@@ -928,16 +925,13 @@ private class AttachmentDownloadAttempt(
         }
     }
 
-    private fun progressLocked(phase: String, percent: Int?, bytesPerSecond: Long?): AttachmentDownloadProgress =
+    private fun progressLocked(phase: String): AttachmentDownloadProgress =
         AttachmentDownloadProgress(
             downloadId = request.downloadId,
             attemptToken = attemptToken,
             sequence = ++sequence,
             phase = phase,
-            downloadedBytes = downloadedBytes,
-            totalBytes = totalBytes,
-            percent = percent,
-            bytesPerSecond = bytesPerSecond
+            transfer = meter.progress
         )
 
     private fun abortSinkSerialized() {
@@ -995,25 +989,9 @@ private fun Map<String, List<String>>.contentTypeHeader(): String? =
 /** Longest gap between two `receiving` samples of a running transfer. */
 internal const val AttachmentDownloadProgressIntervalMillis = 100L
 
-internal fun attachmentDownloadPercent(downloadedBytes: Long, totalBytes: Long?): Int? {
-    val total = totalBytes?.takeIf { it > 0L } ?: return null
-    if (downloadedBytes <= 0L) return null
-    if (downloadedBytes >= total) return 100
-    return ((downloadedBytes.toDouble() / total.toDouble()) * 100.0).toInt().coerceIn(1, 99)
-}
-
 internal fun saturatingAdd(left: Long, right: Long): Long =
     when {
         right > 0L && left > Long.MAX_VALUE - right -> Long.MAX_VALUE
         right < 0L && left < Long.MIN_VALUE - right -> Long.MIN_VALUE
         else -> left + right
     }
-
-internal fun saturatingMultiply(left: Long, right: Long): Long {
-    if (left == 0L || right == 0L) return 0L
-    if (left > 0L && right > 0L && left > Long.MAX_VALUE / right) return Long.MAX_VALUE
-    if (left < 0L && right < 0L && left < Long.MAX_VALUE / right) return Long.MAX_VALUE
-    if (left > 0L && right < 0L && right < Long.MIN_VALUE / left) return Long.MIN_VALUE
-    if (left < 0L && right > 0L && left < Long.MIN_VALUE / right) return Long.MIN_VALUE
-    return left * right
-}

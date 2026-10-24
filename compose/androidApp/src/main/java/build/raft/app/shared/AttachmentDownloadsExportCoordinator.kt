@@ -1,5 +1,7 @@
 package build.raft.app.shared
 
+import build.raft.app.transfer.RaftTransferMeter
+import build.raft.app.transfer.RaftTransferProgress
 import java.io.File
 import java.io.FileInputStream
 import java.io.OutputStream
@@ -27,14 +29,13 @@ internal data class AttachmentDownloadsExportRequest(
     val owner: AndroidAttachmentOwnerLease? = null
 )
 
+/** One sample of a MediaStore export: identity, the wire [phase] word and the export's meter state. */
 internal data class AttachmentDownloadsExportProgress(
     val downloadId: String,
     val attemptToken: String,
     val sequence: Long,
     val phase: String,
-    val downloadedBytes: Long,
-    val totalBytes: Long,
-    val percent: Int?
+    val transfer: RaftTransferProgress
 )
 
 internal data class AttachmentDownloadsExportResult(
@@ -564,11 +565,14 @@ internal class AttachmentDownloadsExportCoordinator(
         synchronized(state.deliveryLock) {
             if (state.isStopped()) return
             val total = state.request.source.length().coerceAtLeast(0L)
-            val snapshot = ProgressSnapshot(
-                phase = phase,
-                downloadedBytes = downloadedBytes.coerceIn(0L, total),
-                totalBytes = total
-            )
+            val transfer =
+                when (phase) {
+                    "export_copy" -> state.meter.bytes(downloadedBytes.coerceIn(0L, total), total)
+                    // Bytes copied, the row is not published yet: still 99%.
+                    "export_publish" -> state.meter.finishing()
+                    else -> state.meter.total(total)
+                }
+            val snapshot = ProgressSnapshot(phase = phase, transfer = transfer)
             state.snapshot.set(snapshot)
             state.observers.forEach { it.admit(snapshot) }
         }
@@ -777,6 +781,8 @@ internal class AttachmentDownloadsExportCoordinator(
         val phase = AtomicReference("export_insert")
         val phaseEpoch = AtomicLong(0L)
         val snapshot = AtomicReference<ProgressSnapshot?>()
+        /** The export's meter (under [deliveryLock]): the copy's percent and its 99 cap until published. */
+        val meter = RaftTransferMeter()
         val workerFuture = AtomicReference<Future<*>?>()
         val wholeWatchdog = AtomicReference<Future<*>?>()
         val insertAdmission = CompletableFuture<Unit>()
@@ -873,8 +879,7 @@ internal class AttachmentDownloadsExportCoordinator(
 
     private data class ProgressSnapshot(
         val phase: String,
-        val downloadedBytes: Long,
-        val totalBytes: Long
+        val transfer: RaftTransferProgress
     )
 
     private class ObserverRegistration(
@@ -930,14 +935,6 @@ internal class AttachmentDownloadsExportCoordinator(
         }
 
         private fun deliver(snapshot: ProgressSnapshot) {
-            val percent =
-                if (snapshot.totalBytes > 0L && snapshot.phase == "export_copy") {
-                    ((snapshot.downloadedBytes.toDouble() * 100.0) / snapshot.totalBytes.toDouble())
-                        .toInt()
-                        .coerceIn(0, 100)
-                } else {
-                    null
-                }
             runCatching {
                 observer?.invoke(
                     AttachmentDownloadsExportProgress(
@@ -945,9 +942,7 @@ internal class AttachmentDownloadsExportCoordinator(
                         attemptToken = attemptToken,
                         sequence = sequence.incrementAndGet(),
                         phase = snapshot.phase,
-                        downloadedBytes = snapshot.downloadedBytes,
-                        totalBytes = snapshot.totalBytes,
-                        percent = percent
+                        transfer = snapshot.transfer
                     )
                 )
             }

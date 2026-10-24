@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import build.raft.app.transfer.testTransfer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -68,6 +69,19 @@ class RaftDownloadCenterTest {
             accountKey = account
         )
 
+    /** A host meter's sample: the percent it would report for these bytes. */
+    private fun progressSample(downloadedBytes: Long, totalBytes: Long?, bytesPerSecond: Long? = null, saving: Boolean = false) =
+        RaftDownloadProgressUpdate(
+            transfer =
+                testTransfer(
+                    downloadedBytes = downloadedBytes,
+                    totalBytes = totalBytes,
+                    percent = totalBytes?.let { (downloadedBytes * 100L / it).toInt() },
+                    bytesPerSecond = bytesPerSecond
+                ),
+            saving = saving
+        )
+
     private fun RaftDownloadCenter.row(id: String = "a1"): RaftDownloadEntry =
         state.value.entries.firstOrNull { it.id == id } ?: error("no row $id in ${state.value.entries}")
 
@@ -84,7 +98,7 @@ class RaftDownloadCenterTest {
         pageScope.cancel()
         runCurrent()
 
-        task.progress!!(RaftDownloadProgressUpdate(downloadedBytes = 512, totalBytes = 1024, bytesPerSecond = 256))
+        task.progress!!(progressSample(downloadedBytes = 512, totalBytes = 1024, bytesPerSecond = 256))
         assertEquals(RaftDownloadStatus.Downloading, center.row().status, "page exit must not cancel the centre run")
         assertEquals(50, center.row().percent)
 
@@ -103,12 +117,12 @@ class RaftDownloadCenterTest {
         center.start(descriptor(id = "a1", owner = "server-a", account = "account-1"), task)
         center.start(descriptor(id = "x1", owner = "server-x", account = "account-2"), ScriptedTask())
         runCurrent()
-        task.progress!!(RaftDownloadProgressUpdate(downloadedBytes = 256, totalBytes = 1024))
+        task.progress!!(progressSample(downloadedBytes = 256, totalBytes = 1024))
 
         // The shell now shows server B of the same account: the centre lists the running row.
         val onServerB = center.entries(ownerKey = "server-b", accountKey = "account-1").first()
         assertEquals(listOf("a1"), onServerB.map { it.id }, "another account's row never shows")
-        task.progress!!(RaftDownloadProgressUpdate(downloadedBytes = 768, totalBytes = 1024))
+        task.progress!!(progressSample(downloadedBytes = 768, totalBytes = 1024))
         assertEquals(RaftDownloadStatus.Downloading, center.row("a1").status)
         assertEquals(75, center.row("a1").percent)
 
@@ -127,7 +141,7 @@ class RaftDownloadCenterTest {
         center.start(descriptor(), task)
         runCurrent()
 
-        task.progress!!(RaftDownloadProgressUpdate(downloadedBytes = 100, totalBytes = 400, bytesPerSecond = 50))
+        task.progress!!(progressSample(downloadedBytes = 100, totalBytes = 400, bytesPerSecond = 50))
         assertEquals(25, center.row().percent)
         assertEquals(50L, center.row().bytesPerSecond)
 
@@ -135,12 +149,12 @@ class RaftDownloadCenterTest {
         assertEquals(RaftDownloadStatus.Paused, center.row().status)
         assertNull(center.row().bytesPerSecond)
         // A late sample of the paused transfer keeps the row paused.
-        task.progress!!(RaftDownloadProgressUpdate(downloadedBytes = 120, totalBytes = 400))
+        task.progress!!(progressSample(downloadedBytes = 120, totalBytes = 400))
         assertEquals(RaftDownloadStatus.Paused, center.row().status)
 
         center.resume("a1")
         assertEquals(RaftDownloadStatus.Downloading, center.row().status)
-        task.progress!!(RaftDownloadProgressUpdate(downloadedBytes = 400, totalBytes = 400, saving = true))
+        task.progress!!(progressSample(downloadedBytes = 400, totalBytes = 400, saving = true))
         assertTrue(center.row().saving)
         assertEquals(listOf(RaftDownloadControl.Pause, RaftDownloadControl.Resume), task.controls)
 
@@ -279,7 +293,7 @@ class RaftDownloadCenterTest {
                     attachmentId = "a$index",
                     fileName = "f$index",
                     status = RaftDownloadStatus.Completed,
-                    bytesPerSecond = 10,
+                    transfer = testTransfer(downloadedBytes = 10L, totalBytes = 20L, percent = 50, bytesPerSecond = 10L),
                     createdAtMillis = index.toLong(),
                     updatedAtMillis = index.toLong()
                 )
@@ -287,7 +301,7 @@ class RaftDownloadCenterTest {
         repository.save(rows)
         val loaded = repository.load()
         assertEquals(listOf("r1", "r2"), loaded.map { it.id })
-        assertNull(loaded.first().bytesPerSecond, "speed is not persisted")
+        assertNull(loaded.first().transfer, "the live meter state (speed) is not persisted")
 
         store.putString(RAFT_DOWNLOAD_HISTORY_STORAGE_KEY, "{not json")
         assertEquals(emptyList(), repository.load())
@@ -308,7 +322,7 @@ class RaftDownloadCenterTest {
         assertEquals("Downloading...", raftThreadAttachmentCardDownloadLabel(entry(), terms), "no total yet")
         assertNull(center.attachmentEntry(ownerKey = "owner-2", attachmentId = "att-a1").first(), "another principal sees nothing")
 
-        task.progress!!(RaftDownloadProgressUpdate(downloadedBytes = 256, totalBytes = 1024, bytesPerSecond = 128))
+        task.progress!!(progressSample(downloadedBytes = 256, totalBytes = 1024, bytesPerSecond = 128))
         assertEquals("Downloading 25%", raftThreadAttachmentCardDownloadLabel(entry(), terms))
         val active = entry()!!.toFilePreviewDownloadView()
         assertEquals(RaftFilePreviewDownloadPhase.Active, active.phase)
@@ -322,8 +336,9 @@ class RaftDownloadCenterTest {
         assertEquals(RaftFilePreviewDownloadPhase.Paused, entry()!!.toFilePreviewDownloadView().phase)
 
         center.resume("a1")
-        task.progress!!(RaftDownloadProgressUpdate(downloadedBytes = 1024, totalBytes = 1024, saving = true))
-        assertEquals("Saving 100%", raftThreadAttachmentCardDownloadLabel(entry(), terms))
+        task.progress!!(progressSample(downloadedBytes = 1024, totalBytes = 1024, saving = true))
+        // Bytes all copied, the Downloads row is not published yet: 99, not 100.
+        assertEquals("Saving 99%", raftThreadAttachmentCardDownloadLabel(entry(), terms))
         assertEquals(RaftFilePreviewDownloadPhase.Saving, entry()!!.toFilePreviewDownloadView().phase)
 
         task.finish(RaftDownloadOutcome.Completed())

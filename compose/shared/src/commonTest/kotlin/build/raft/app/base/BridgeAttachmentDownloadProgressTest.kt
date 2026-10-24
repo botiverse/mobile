@@ -20,14 +20,20 @@ class BridgeAttachmentDownloadProgressTest {
     }
 
     @Test
-    fun firstPositiveBytesFallbackToAtLeastOnePercent() {
-        val progress =
-            JSONObject(
-                """{"downloadId":"attempt-1","sequence":2,"downloadedBytes":1,"totalBytes":10000}"""
-            ).toBridgeAttachmentDownloadProgress()
-
-        assertEquals(1, progress.percent)
-        assertEquals("receiving", progress.phase)
+    fun theBridgeKeepsTheHostMetersPercentAndNeverDerivesOne() {
+        data class Case(val json: String, val percent: Int?, val why: String)
+        val cases =
+            listOf(
+                Case("""{"downloadId":"a","sequence":2,"downloadedBytes":1,"totalBytes":10000,"percent":0}""", 1, "first byte reads 1%"),
+                Case("""{"downloadId":"a","sequence":2,"downloadedBytes":5000,"totalBytes":10000}""", null, "no percent sent: none invented"),
+                Case("""{"downloadId":"a","sequence":2,"downloadedBytes":10000,"totalBytes":10000,"percent":100}""", 99, "100 before Done is capped"),
+                Case("""{"downloadId":"a","sequence":2,"phase":"complete","downloadedBytes":10000,"totalBytes":10000,"percent":100}""", 99, "staged, not committed")
+            )
+        for (case in cases) {
+            val progress = JSONObject(case.json).toBridgeAttachmentDownloadProgress()
+            assertEquals(case.percent, progress.percent, case.why)
+        }
+        assertEquals("receiving", JSONObject(cases.first().json).toBridgeAttachmentDownloadProgress().phase)
     }
 
     @Test
