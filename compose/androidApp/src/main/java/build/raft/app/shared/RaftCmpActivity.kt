@@ -1106,6 +1106,9 @@ internal open class RaftCmpActivity :
             removeHomeColdStartNativeHold(reason = "cmp_first_frame")
             RaftAppLog.d("SlockBoot", "home_content_splash_released source=cmp_first_frame page=$pageName")
         }
+        // task #6: warm the WebView provider once the first page has drawn, at the next main
+        // idle slot (single shot per process, failure-silent; nothing waits for it).
+        RaftAndroidWebViewWarmup.schedule(applicationContext)
     }
 
     private fun androidSystemDark(): Boolean = isAndroidSystemDark(resources.configuration.uiMode)
