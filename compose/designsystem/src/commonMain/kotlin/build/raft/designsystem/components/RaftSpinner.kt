@@ -61,9 +61,10 @@ private val ClockwiseCells = intArrayOf(0, 1, 3, 2)
 
 /**
  * Freezes every [RaftSpinner] in the subtree that has no `stillStep` of its own on this
- * step: screenshot fixtures of components that hold a spinner (a busy button).
+ * step: screenshot fixtures of components that hold a spinner (a busy button, the app's
+ * composer attachment tray).
  */
-internal val LocalRaftSpinnerStillStep = staticCompositionLocalOf<Int?> { null }
+val LocalRaftSpinnerStillStep = staticCompositionLocalOf<Int?> { null }
 
 /**
  * raft-ui 0.8.0 Spinner: four square pixels (1dp radius) in a 2x2 grid, in the current

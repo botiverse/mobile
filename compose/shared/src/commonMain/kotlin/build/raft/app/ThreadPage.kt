@@ -15915,57 +15915,49 @@ private fun ThreadPageContentContent(
                     )
                 }
             } else if (showComposerForSelectedTab) {
-                Column(modifier = Modifier.fillMaxWidth().background(RaftColor.Canvas)) {
-                    Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
-                    Box(
-                        modifier = Modifier.fillMaxWidth()
-                            .padding(
-                                start = RaftAppSpacing.Sm,
-                                top = 12.dp,
-                                end = RaftAppSpacing.Sm
-                            )
-                            // Bottom padding follows WindowInsets.ime in the layout phase of the
-                            // same frame; composerKeyboardInsetDp (two frames late) only feeds the
-                            // page's decision state (see RaftThreadImeLayout.kt).
-                            .raftThreadComposerLiveKeyboardPadding(
-                                bottomSafeArea = composerBottomSafeArea,
-                                keyboardInsetExcludesBottomSafeArea =
-                                    composerKeyboardInsetExcludesBottomSafeArea
-                            )
+                ThreadComposerDock(
+                    // Bottom padding follows WindowInsets.ime in the layout phase of the
+                    // same frame; composerKeyboardInsetDp (two frames late) only feeds the
+                    // page's decision state (see RaftThreadImeLayout.kt).
+                    composerModifier =
+                        Modifier.raftThreadComposerLiveKeyboardPadding(
+                            bottomSafeArea = composerBottomSafeArea,
+                            keyboardInsetExcludesBottomSafeArea =
+                                composerKeyboardInsetExcludesBottomSafeArea
+                        )
+                ) {
+                    CompositionLocalProvider(
+                        LocalThreadComposerSuggestionPortal provides composerSuggestionPortal
                     ) {
-                        CompositionLocalProvider(
-                            LocalThreadComposerSuggestionPortal provides composerSuggestionPortal
-                        ) {
-                            ThreadComposerRoute(
-                                baseComposerState = baseComposerState,
-                                composerDraftViewModel = composerDraftViewModel,
-                                renderedPayload = payload,
-                                timelineSlice = timelineSlice,
-                                resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
-                                surface = composerSurface,
-                                memberSuggestionsFlow = memberSuggestionsFlow,
-                                channelSuggestionsFlow = channelSuggestionsFlow,
-                                agentStatusResolver = agentStatusResolver,
-                                onEvent = onComposerEvent,
-                                onSendRequest = onComposerSendRequest,
-                                insertMentionRequest = insertMentionRequest,
-                                onInsertMentionConsumed = { request ->
-                                    if (insertMentionRequest?.nonce == request.nonce) {
-                                        insertMentionRequest = null
-                                    }
-                                },
-                                onSuggestionDemandChanged = onSuggestionDemandChanged,
-                                composerSendKeyEnabled = composerSendKeyEnabled,
-                                onKeyboardHeightChange = { nextInset ->
-                                    if (nextInset != composerKeyboardInsetDp) {
-                                        composerKeyboardInsetDp = nextInset
-                                        onComposerKeyboardInsetChanged(nextInset)
-                                    }
-                                },
-                                adaptiveNativeEditingStateReader =
-                                    LocalThreadAdaptiveNativeEditingReader.current
-                            )
-                        }
+                        ThreadComposerRoute(
+                            baseComposerState = baseComposerState,
+                            composerDraftViewModel = composerDraftViewModel,
+                            renderedPayload = payload,
+                            timelineSlice = timelineSlice,
+                            resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
+                            surface = composerSurface,
+                            memberSuggestionsFlow = memberSuggestionsFlow,
+                            channelSuggestionsFlow = channelSuggestionsFlow,
+                            agentStatusResolver = agentStatusResolver,
+                            onEvent = onComposerEvent,
+                            onSendRequest = onComposerSendRequest,
+                            insertMentionRequest = insertMentionRequest,
+                            onInsertMentionConsumed = { request ->
+                                if (insertMentionRequest?.nonce == request.nonce) {
+                                    insertMentionRequest = null
+                                }
+                            },
+                            onSuggestionDemandChanged = onSuggestionDemandChanged,
+                            composerSendKeyEnabled = composerSendKeyEnabled,
+                            onKeyboardHeightChange = { nextInset ->
+                                if (nextInset != composerKeyboardInsetDp) {
+                                    composerKeyboardInsetDp = nextInset
+                                    onComposerKeyboardInsetChanged(nextInset)
+                                }
+                            },
+                            adaptiveNativeEditingStateReader =
+                                LocalThreadAdaptiveNativeEditingReader.current
+                        )
                     }
                 }
             }
@@ -22454,6 +22446,23 @@ private fun ThreadMessagesListContent(
         }
     }
     }
+    }
+}
+
+/**
+ * The dock under a conversation's messages (channel, thread, DM) that holds its composer: the
+ * page canvas with the composer 12dp under the list and [RaftAppSpacing.Sm] from the sides. No
+ * seam above it: on the web the composer's own box sits on the canvas.
+ */
+@Composable
+internal fun ThreadComposerDock(composerModifier: Modifier = Modifier, composer: @Composable () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().background(RaftColor.Canvas)) {
+        Box(
+            modifier =
+                Modifier.fillMaxWidth()
+                    .padding(start = RaftAppSpacing.Sm, top = 12.dp, end = RaftAppSpacing.Sm)
+                    .then(composerModifier)
+        ) { composer() }
     }
 }
 

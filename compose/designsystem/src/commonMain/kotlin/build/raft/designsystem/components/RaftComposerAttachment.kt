@@ -23,14 +23,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -70,52 +69,33 @@ private val ProgressRadius = 2.dp
 
 /**
  * raft-ui `ComposerAttachment`: one tile in the tray. Put a [RaftComposerAttachmentFile] or
- * [RaftComposerAttachmentImage] in it, then any [RaftComposerAttachmentUploading] /
- * [RaftComposerAttachmentFailed] overlay, then the [RaftComposerAttachmentRemove] sticker.
+ * [RaftComposerAttachmentImage] in it, then any [RaftComposerAttachmentOverlay], then the
+ * [RaftComposerAttachmentRemove] sticker.
  */
 @Composable
 fun RaftComposerAttachment(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
     Box(modifier, content = content)
 }
 
-/** Where a file tile's upload stands: [Ready], [Uploading] or [Failed]. */
-sealed interface RaftComposerAttachmentStatus {
-    /** Nothing in flight: the meta line shows the file's kind and size. */
-    data object Ready : RaftComposerAttachmentStatus
-
-    /**
-     * Uploading: a small spinner takes the icon's place, [label] ("42%", "Uploading…") takes
-     * the meta line in Space Mono meta bold ink, and with a known [progress] (0..100) the 4dp
-     * bar runs inset along the bottom.
-     */
-    data class Uploading(val label: String, val progress: Int?, val spinnerStillStep: Int? = null) : RaftComposerAttachmentStatus
-
-    /**
-     * Failed: the edge turns 1dp `danger-strong` and the meta line reads [text] then, after a
-     * dot, the underlined [action] ("Retry"), caption 12/16 semibold `danger-strong`. The
-     * tile's onClick retries.
-     */
-    data class Failed(val text: String, val action: String? = null) : RaftComposerAttachmentStatus
-}
+/**
+ * Where a tile's transfer stands, for [RaftComposerAttachmentOverlay] (web MessageInput
+ * `uploadStatus`): [Checking] the file before it is sent ("validating"), [Uploading] it,
+ * [Finishing] (the bytes are sent, the server is confirming) or [Failed].
+ */
+enum class RaftComposerAttachmentPhase { Checking, Uploading, Finishing, Failed }
 
 /**
  * raft-ui `ComposerAttachmentFile`: a 176 x 64dp `fill-muted` tile with a hairline edge and
  * control radius, 8dp of padding; the [icon] (16dp, `foreground-muted`) 10dp before the
  * [title] (footnote 13/18 semibold, one line) over the [meta] (Space Mono meta,
- * `foreground-hint`, one line), 2dp apart. [onClick] opens a preview (or retries, when
- * [status] is [RaftComposerAttachmentStatus.Failed]).
- *
- * The upload [status] is written into the tile rather than laid over it as raft-ui's
- * `ComposerAttachmentUploadingOverlay` / `FailedOverlay` do: over a file's name, a scrim at
- * 80-90% leaves the name ghosting through the status text, so the title stays readable and the
- * status takes the meta line (and the spinner the icon's place). Image tiles keep the overlays.
+ * `foreground-hint`, one line), 2dp apart. [onClick] opens a preview. While it uploads or after
+ * it fails, a [RaftComposerAttachmentOverlay] goes over the whole tile.
  */
 @Composable
 fun RaftComposerAttachmentFile(
     title: String,
     meta: String?,
     modifier: Modifier = Modifier,
-    status: RaftComposerAttachmentStatus = RaftComposerAttachmentStatus.Ready,
     onClick: (() -> Unit)? = null,
     onClickLabel: String? = null,
     icon: @Composable () -> Unit,
@@ -123,76 +103,40 @@ fun RaftComposerAttachmentFile(
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val shape = RoundedCornerShape(RaftRadius.Control)
-    val failed = status as? RaftComposerAttachmentStatus.Failed
-    val uploading = status as? RaftComposerAttachmentStatus.Uploading
-    Box(
+    Row(
         modifier =
             modifier
                 .width(RaftComposerAttachmentFileWidth)
                 .height(RaftComposerAttachmentTileSize)
                 .clip(shape)
                 .background(colors.fillMuted)
-                .border(RaftStroke.Hairline, if (failed != null) colors.dangerStrong else colors.lineHairline, shape)
-                .tileClick(onClick, onClickLabel),
+                .border(RaftStroke.Hairline, colors.lineHairline, shape)
+                .tileClick(onClick, onClickLabel)
+                .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(
-            modifier = Modifier.matchParentSize().padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) {
-                if (uploading != null) {
-                    RaftSpinner(size = RaftSpinnerSize.Sm, color = colors.foreground, stillStep = uploading.spinnerStillStep)
-                } else {
-                    CompositionLocalProvider(LocalRaftContentColor provides colors.foregroundMuted, content = icon)
-                }
-            }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)) {
+        Box(Modifier.size(16.dp), contentAlignment = Alignment.Center) {
+            CompositionLocalProvider(LocalRaftContentColor provides colors.foregroundMuted, content = icon)
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)) {
+            RaftText(
+                text = title,
+                style = typography.footnote.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.foreground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (!meta.isNullOrBlank()) {
                 RaftText(
-                    text = title,
-                    style = typography.footnote.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.foreground,
+                    text = meta,
+                    style = typography.monoMeta,
+                    color = colors.foregroundHint,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                when {
-                    uploading != null ->
-                        RaftText(
-                            text = uploading.label,
-                            style = typography.monoMeta.copy(fontWeight = FontWeight.Bold),
-                            color = colors.foreground,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    failed != null -> {
-                        val style = typography.caption.copy(fontWeight = FontWeight.SemiBold)
-                        RaftText(
-                            text =
-                                buildAnnotatedString {
-                                    append(failed.text)
-                                    if (!failed.action.isNullOrBlank()) {
-                                        append(" · ")
-                                        withStyle(SpanStyle(textDecoration = TextDecoration.Underline)) { append(failed.action) }
-                                    }
-                                },
-                            style = style,
-                            color = colors.dangerStrong,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    !meta.isNullOrBlank() ->
-                        RaftText(
-                            text = meta,
-                            style = typography.monoMeta,
-                            color = colors.foregroundHint,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                }
             }
         }
-        if (uploading?.progress != null) RaftComposerAttachmentProgressBar(uploading.progress)
     }
 }
 
@@ -246,83 +190,99 @@ fun RaftComposerAttachmentImage(
 }
 
 /**
- * raft-ui `ComposerAttachmentUploadingOverlay` + `ComposerAttachmentUploadProgressBar`, for an
- * image tile: the thumbnail under `layer-card` at 80%, a small spinner, and 4dp under it an
- * optional [label] (Space Mono meta bold, `foreground`) — keep it short ("42%"); pass null
- * while the percentage is unknown and the spinner says it alone. When [progress] (0..100) is
- * known, a 4dp bar inset 6dp from the sides and bottom (2dp radius, `layer-card` track,
- * `info` fill, at least 4% so it is visible from the start). [spinnerStillStep] freezes the
- * spinner (screenshots). File tiles write the status in: [RaftComposerAttachmentStatus].
+ * The web's upload overlays on any tile, file or image (web MessageInput `SortableAttachment`
+ * on raft-ui `ComposerAttachmentUploadingOverlay`, `ComposerAttachmentUploadProgressBar` and
+ * `ComposerAttachmentFailedOverlay`). The tile keeps its own layout underneath.
+ *
+ * - [Checking][RaftComposerAttachmentPhase.Checking], [Uploading][RaftComposerAttachmentPhase.Uploading]
+ *   and [Finishing][RaftComposerAttachmentPhase.Finishing]: `layer-card` at 80% over the whole
+ *   tile, then centred a small spinner and 4dp under it [label] ("Checking file…", "Uploading",
+ *   "42%", "Finishing upload…") in Space Mono meta bold `foreground`, wrapping between words
+ *   (centred above the bar when there is one). A [percent] (the bar's
+ *   value; null for no bar) runs the 4dp bar inset 6dp from the sides and bottom (2dp radius,
+ *   `layer-card` track, `info` fill, at least 4% so it is visible from the start).
+ * - [Failed][RaftComposerAttachmentPhase.Failed]: `layer-card` at 90% inside a 1dp
+ *   `danger-strong` edge, [label] ("Upload failed") centred in caption 12/16 semibold
+ *   `danger-strong`. Mobile adds the underlined [action] ("Retry") under it; tapping the tile
+ *   does [onAction].
+ *
+ * [spinnerStillStep] freezes the spinner (screenshots).
  */
 @Composable
-fun BoxScope.RaftComposerAttachmentUploading(
-    label: String?,
-    progress: Int?,
+fun BoxScope.RaftComposerAttachmentOverlay(
+    phase: RaftComposerAttachmentPhase,
+    percent: Int?,
+    label: String,
     modifier: Modifier = Modifier,
+    action: String? = null,
+    onAction: (() -> Unit)? = null,
     spinnerStillStep: Int? = null,
 ) {
     val colors = RaftTheme.colors
+    val shape = RoundedCornerShape(RaftRadius.Control)
+    if (phase == RaftComposerAttachmentPhase.Failed) {
+        val style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.SemiBold)
+        Column(
+            modifier =
+                modifier
+                    .matchParentSize()
+                    .clip(shape)
+                    .background(colors.layerCard.copy(alpha = 0.9f))
+                    .border(RaftStroke.Hairline, colors.dangerStrong, shape)
+                    .tileClick(onAction, action)
+                    .padding(horizontal = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            RaftText(text = label, style = style, color = colors.dangerStrong, textAlign = TextAlign.Center)
+            if (!action.isNullOrBlank()) {
+                RaftText(
+                    text = action,
+                    style = style.copy(textDecoration = TextDecoration.Underline),
+                    color = colors.dangerStrong,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                )
+            }
+        }
+        return
+    }
     Column(
         modifier =
             modifier
                 .matchParentSize()
-                .background(colors.layerCard.copy(alpha = 0.8f), RoundedCornerShape(RaftRadius.Control))
-                .padding(horizontal = 4.dp),
+                .background(colors.layerCard.copy(alpha = 0.8f), shape)
+                // Centred above the bar, so a two-line label on an image tile never runs into it.
+                .padding(start = 4.dp, end = 4.dp, bottom = if (percent != null) ProgressInset + ProgressHeight else 0.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         RaftSpinner(size = RaftSpinnerSize.Sm, color = colors.foreground, stillStep = spinnerStillStep)
-        if (!label.isNullOrBlank()) {
-            RaftText(
-                text = label,
-                modifier = Modifier.padding(top = 4.dp),
-                style = RaftTheme.typography.monoMeta.copy(fontWeight = FontWeight.Bold),
-                color = colors.foreground,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                softWrap = false,
-            )
-        }
+        // Like the web's span: it wraps between words ("Checking / file…" on a 64dp image
+        // tile), and a single word wider than the tile ("Uploading") stays whole, centred.
+        val style = RaftTheme.typography.monoMeta.copy(fontWeight = FontWeight.Bold)
+        val measurer = rememberTextMeasurer()
+        val longestWord =
+            remember(label, style, measurer) {
+                label.split(' ').filter { it.isNotEmpty() }.maxOfOrNull { word ->
+                    measurer.measure(word, style, softWrap = false, maxLines = 1).size.width
+                } ?: 0
+            }
+        RaftText(
+            text = label,
+            modifier =
+                Modifier.padding(top = 4.dp).layout { measurable, constraints ->
+                    val placeable =
+                        measurable.measure(constraints.copy(minWidth = 0, maxWidth = maxOf(constraints.maxWidth, longestWord + 1)))
+                    val width = placeable.width.coerceAtMost(constraints.maxWidth)
+                    layout(width, placeable.height) { placeable.place((width - placeable.width) / 2, 0) }
+                },
+            style = style,
+            color = colors.foreground,
+            textAlign = TextAlign.Center,
+        )
     }
-    if (progress != null) RaftComposerAttachmentProgressBar(progress)
-}
-
-/**
- * raft-ui `ComposerAttachmentFailedOverlay`, for an image tile: the thumbnail under
- * `layer-card` at 90% inside a 1dp `danger-strong` edge. A 64dp tile has no room for "Upload
- * failed" beside the remove sticker, so it shows a 16dp alert in `danger-strong` 4dp over the
- * underlined [action] ("Retry", caption 12/16 semibold `danger-strong`) and announces [text]
- * ("Upload failed"); tapping the tile retries: [onClick]. File tiles write the failure in:
- * [RaftComposerAttachmentStatus.Failed].
- */
-@Composable
-fun BoxScope.RaftComposerAttachmentFailed(
-    text: String,
-    modifier: Modifier = Modifier,
-    action: String? = null,
-    onClick: (() -> Unit)? = null,
-) {
-    val colors = RaftTheme.colors
-    val shape = RoundedCornerShape(RaftRadius.Control)
-    val style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.SemiBold, textDecoration = TextDecoration.Underline)
-    Column(
-        modifier =
-            modifier
-                .matchParentSize()
-                .clip(shape)
-                .background(colors.layerCard.copy(alpha = 0.9f))
-                .border(RaftStroke.Hairline, colors.dangerStrong, shape)
-                .tileClick(onClick, action)
-                .semantics { contentDescription = text }
-                .padding(horizontal = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
-    ) {
-        RaftGlyphIcon(RaftGlyph.TriangleAlert, size = 16.dp, color = colors.dangerStrong)
-        if (!action.isNullOrBlank()) {
-            RaftText(text = action, style = style, color = colors.dangerStrong, textAlign = TextAlign.Center, maxLines = 1, softWrap = false)
-        }
-    }
+    if (percent != null) RaftComposerAttachmentProgressBar(percent)
 }
 
 /**

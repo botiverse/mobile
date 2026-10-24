@@ -11,14 +11,13 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.components.LocalRaftFocusedPreview
 import build.raft.designsystem.components.LocalRaftPressedPreview
 import build.raft.designsystem.components.RaftComposerAttachment
-import build.raft.designsystem.components.RaftComposerAttachmentFailed
 import build.raft.designsystem.components.RaftComposerAttachmentFile
 import build.raft.designsystem.components.RaftComposerAttachmentGap
 import build.raft.designsystem.components.RaftComposerAttachmentImage
 import build.raft.designsystem.components.RaftComposerAttachmentRemove
 import build.raft.designsystem.components.RaftComposerAttachmentRemoveOverhang
-import build.raft.designsystem.components.RaftComposerAttachmentStatus
-import build.raft.designsystem.components.RaftComposerAttachmentUploading
+import build.raft.designsystem.components.RaftComposerAttachmentOverlay
+import build.raft.designsystem.components.RaftComposerAttachmentPhase
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.text.RaftText
@@ -28,9 +27,9 @@ import kotlin.test.Test
 
 /**
  * raft-ui Composer > attachments: a file tile (short and truncated title) and an image tile at
- * rest, uploading (42%, and before the first byte at the 4% floor; the bar inset 6dp), failed
- * (with the mobile "Tap to retry" line), and the remove sticker at rest, pressed, focused and
- * disabled.
+ * rest; the web's overlays on both in every phase (checking, uploading at 42% and before the
+ * first byte with the bar at its 4% floor, finishing, failed with the mobile Retry), spinners
+ * held still; and the remove sticker at rest, pressed, focused and disabled.
  */
 class ComposerAttachmentScreenshotTest {
     private val appearances = listOf(RaftAppearance.Light, RaftAppearance.Dark)
@@ -50,32 +49,15 @@ class ComposerAttachmentScreenshotTest {
                     FileTile("release-notes-october-final-v2.pdf", "application/pdf · 1.2 MB")
                     ImageTile()
                 }
-                Caption("Uploading: file 42%, file first byte, image 73%, image unknown")
-                Tray {
-                    FileTile(
-                        "android-smoke-log.zip",
-                        "application/zip · 8.4 MB",
-                        RaftComposerAttachmentStatus.Uploading(label = "42%", progress = 42, spinnerStillStep = 0),
-                    )
-                    ImageTile(placeholder = false) { RaftComposerAttachmentUploading(label = "73%", progress = 73, spinnerStillStep = 0) }
-                }
-                Tray {
-                    FileTile(
-                        "trace.json",
-                        "application/json",
-                        RaftComposerAttachmentStatus.Uploading(label = "Uploading…", progress = 0, spinnerStillStep = 0),
-                    )
-                    ImageTile(placeholder = false) { RaftComposerAttachmentUploading(label = null, progress = 0, spinnerStillStep = 0) }
-                }
+                Caption("Checking: file, image")
+                PhaseRow(RaftComposerAttachmentPhase.Checking, null, "Checking file…")
+                Caption("Uploading: 42%, first byte")
+                PhaseRow(RaftComposerAttachmentPhase.Uploading, 42, "42%")
+                PhaseRow(RaftComposerAttachmentPhase.Uploading, 0, "Uploading")
+                Caption("Finishing: file, image")
+                PhaseRow(RaftComposerAttachmentPhase.Finishing, 99, "Finishing upload…")
                 Caption("Failed: file, image")
-                Tray {
-                    FileTile(
-                        "oversized-trace.jsonl",
-                        "application/json · 52 MB",
-                        RaftComposerAttachmentStatus.Failed(text = "Upload failed", action = "Retry"),
-                    )
-                    ImageTile(placeholder = false) { RaftComposerAttachmentFailed(text = "Upload failed", action = "Retry", onClick = {}) }
-                }
+                PhaseRow(RaftComposerAttachmentPhase.Failed, null, "Upload failed", action = "Retry")
                 Caption("Remove: rest, pressed, focused, disabled")
                 Tray {
                     listOf("rest", "pressed", "focused", "disabled").forEach { state ->
@@ -102,13 +84,32 @@ class ComposerAttachmentScreenshotTest {
     }
 
     @Composable
+    private fun PhaseRow(phase: RaftComposerAttachmentPhase, percent: Int?, label: String, action: String? = null) {
+        val overlay: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit = {
+            RaftComposerAttachmentOverlay(
+                phase = phase,
+                percent = percent,
+                label = label,
+                action = action,
+                onAction = action?.let { { } },
+                spinnerStillStep = 0,
+            )
+        }
+        Tray {
+            FileTile("ScreenRecording_10-24.mov", "video · 31 MB", overlay)
+            ImageTile(placeholder = false, overlay = overlay)
+        }
+    }
+
+    @Composable
     private fun FileTile(
         title: String,
         meta: String,
-        status: RaftComposerAttachmentStatus = RaftComposerAttachmentStatus.Ready,
+        overlay: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit = {},
     ) {
         RaftComposerAttachment {
-            RaftComposerAttachmentFile(title = title, meta = meta, status = status, onClick = {}) { RaftGlyphIcon(RaftGlyph.Copy, size = 16.dp) }
+            RaftComposerAttachmentFile(title = title, meta = meta, onClick = {}) { RaftGlyphIcon(RaftGlyph.Copy, size = 16.dp) }
+            overlay()
             RaftComposerAttachmentRemove(onClick = {}, contentDescription = "Remove $title")
         }
     }
