@@ -51,7 +51,8 @@ import org.robolectric.annotation.GraphicsMode
  * artin #20 lane I (gaps 17, 18): a quoted message and a forwarded bundle as the web draws them,
  * light and dark.
  *  - `thread.quoted-message`: a channel message, a thread reply in an archived channel with
- *    files, loading and unavailable.
+ *    files, and unavailable (the
+ *    loading skeleton pulses forever, so it is captured in the design system's desktop test).
  *  - `thread.forwarded-bundle`: a bundle from a public channel with a long first message (the
  *    list folds at 8 lines with a fade), and one with a gallery of projected images and a file.
  * Verify / record as [RaftRobolectricScreenshot].
@@ -194,12 +195,6 @@ private fun QuotedRows() {
                 ),
             ),
         target = permalink("c-old", thread = true),
-        memberAvatarResolver = EmptyRaftMemberAvatarResolver,
-        onOpen = {},
-    )
-    ThreadQuotedPermalinkCard(
-        state = ThreadQuotedPermalinkUiState.Loading,
-        target = null,
         memberAvatarResolver = EmptyRaftMemberAvatarResolver,
         onOpen = {},
     )
