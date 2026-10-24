@@ -288,6 +288,15 @@ class RaftProductEventsRecorder(
         )
     }
 
+    /** The header pager settled on [tab] after a user swipe: always a different tab, so `was_active` is false. */
+    fun channelTabSwiped(tab: RaftChannelTab) {
+        client.track(
+            RaftProductEvent.ChannelTabSelected(
+                RaftChannelTabSelectedProperties(tab = tab, surface = RaftChannelTabSurface.HeaderSwipe, wasActive = false)
+            )
+        )
+    }
+
     /** One long-press message menu action; [inThread] is true for a thread reply, false for any other message (including a thread's parent). */
     fun messageActionSelected(action: RaftMessageAction, inThread: Boolean) {
         client.track(

@@ -63,6 +63,8 @@ internal fun <T> RaftTabbedScaffold(
     itemKeyPrefix: String = "top-tab",
     /** A tap on a tab in the strip (not a swipe), with whether that tab was already selected. */
     onTabTapped: (key: T, wasSelected: Boolean) -> Unit = { _, _ -> },
+    /** The pager settled on [key] after a user swipe from another tab (never for taps, restores or spring-backs). */
+    onTabSwiped: (key: T) -> Unit = {},
     content: @Composable (T, Modifier, Boolean) -> Unit
 ) {
     // task #232 PR3: mode tabs in RaftTabbedScaffold (Thread Chat/Tasks/Files)
@@ -81,6 +83,7 @@ internal fun <T> RaftTabbedScaffold(
             raftTabbedScaffoldPageKey(tabs, index)?.let(onSelectedKeyChange)
         },
         pageCount = tabs.size.coerceAtLeast(1),
+        onUserSwipeSettled = { index -> raftTabbedScaffoldPageKey(tabs, index)?.let(onTabSwiped) },
         gesturePolicy = TabPagerGesturePolicy(
             startEdgeInset = raftPlatformTabPagerStartEdgeInsetDp().dp,
         ),

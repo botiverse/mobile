@@ -50,6 +50,19 @@ class RaftProductEntryEventsRecorderTest {
         }
 
     @Test
+    fun channelTabSwipedCarriesHeaderSwipeSurfaceAndWasActiveFalse() =
+        runTest {
+            listOf(RaftChannelTab.Chat to "chat", RaftChannelTab.Tasks to "tasks", RaftChannelTab.Files to "files").forEach { (tab, wire) ->
+                val (recorder, transport) = recorderWithTransport()
+                recorder.channelTabSwiped(tab)
+                val event = single(transport, recorder)
+                assertEquals("channel_tab_selected", event.event)
+                assertEquals(mapOf("tab" to wire, "surface" to "header_swipe", "was_active" to "false"), event.props())
+                assertEquals(false, event.properties.getValue("was_active").jsonPrimitive.boolean)
+            }
+        }
+
+    @Test
     fun messageActionSelectedIsLongPressAndSetsInThreadPerMessage() =
         runTest {
             val reply = recorderWithTransport()

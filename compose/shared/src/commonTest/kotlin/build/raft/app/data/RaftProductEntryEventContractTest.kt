@@ -25,7 +25,7 @@ class RaftProductEntryEventContractTest {
         val AppClients = setOf("web", "desktop", "android", "ios", "harmonyos")
 
         val ChannelTabs = setOf("chat", "tasks", "files")
-        val ChannelTabSurfaces = setOf("header_tabs", "side_card_toggle", "side_column_tabs", "side_card_close")
+        val ChannelTabSurfaces = setOf("header_tabs", "header_swipe", "side_card_toggle", "side_column_tabs", "side_card_close")
         val MessageActions =
             setOf(
                 "open_menu", "open_reaction_picker", "react_quick", "reply_in_thread", "follow_thread", "unfollow_thread",
@@ -82,7 +82,9 @@ class RaftProductEntryEventContractTest {
 
     private fun allEvents(): List<RaftProductEvent<*>> =
         RaftChannelTab.entries.flatMap { tab ->
-            listOf(true, false).map { RaftProductEvent.ChannelTabSelected(RaftChannelTabSelectedProperties(tab, RaftChannelTabSurface.HeaderTabs, it)) }
+            RaftChannelTabSurface.entries.flatMap { surface ->
+                listOf(true, false).map { RaftProductEvent.ChannelTabSelected(RaftChannelTabSelectedProperties(tab, surface, it)) }
+            }
         } +
             RaftMessageAction.entries.flatMap { action ->
                 listOf(true, false).map { RaftProductEvent.MessageActionSelected(RaftMessageActionSelectedProperties(action, RaftMessageActionSurface.LongPress, it)) }

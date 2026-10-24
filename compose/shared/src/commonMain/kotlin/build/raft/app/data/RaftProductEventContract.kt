@@ -37,6 +37,12 @@ const val RAFT_PRODUCT_EVENTS_SLOCK_SHA: String = "9fdf630244561c770e7223ed190b9
  */
 const val RAFT_PRODUCT_ENTRY_EVENTS_SLOCK_SHA: String = "36b076b0ca196bbeccd695c05d4df5a587e6602e"
 
+/**
+ * botiverse/slock #11070 (staging @ 86f1a6a3477068ca53946c0578cd65889a8ffedf, live in server v1.21.32):
+ * `CHANNEL_TAB_SURFACES` gained `header_swipe`.
+ */
+const val RAFT_PRODUCT_EVENTS_HEADER_SWIPE_SLOCK_SHA: String = "86f1a6a3477068ca53946c0578cd65889a8ffedf"
+
 /** botiverse/slock #11045 merge commit on staging: `channel_tab_selected`, `message_action_selected`. */
 const val RAFT_PRODUCT_ENTRY_EVENTS_BASE_SLOCK_SHA: String = "3e959613eeeaa80607e826792c1f72bd17459191"
 
@@ -159,10 +165,11 @@ enum class RaftChannelTab(val wire: String) {
     @SerialName("files") Files("files"),
 }
 
-/** `CHANNEL_TAB_SURFACES` the app has: the header's Chat / Tasks / Files strip. */
+/** `CHANNEL_TAB_SURFACES` the app has: the header's Chat / Tasks / Files strip, tapped or swiped. */
 @Serializable
 enum class RaftChannelTabSurface(val wire: String) {
     @SerialName("header_tabs") HeaderTabs("header_tabs"),
+    @SerialName("header_swipe") HeaderSwipe("header_swipe"),
 }
 
 /** `MESSAGE_ACTION_SURFACES` the app has: the long-press message menu. */
