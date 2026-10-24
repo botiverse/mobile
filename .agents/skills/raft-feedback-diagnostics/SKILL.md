@@ -30,8 +30,11 @@ app_logs/raft-diagnostics.jsonl (+ .1 .. .N rotations), recent-memory.jsonl
 auth_logs/raft-auth-critical.jsonl   (when present)
 ```
 iOS (separate attachments, not one zip): summary, then
-`launch-<session>/raft-diagnostics.jsonl*` and `flat/raft-diagnostics.jsonl`.
-Collisions keep `-2`, `-3` suffixes.
+`launch-<session>/launch-<UTC yyyyMMddTHHmmssZ>-raft-diagnostics.jsonl[.N]` and
+`flat/raft-diagnostics.jsonl`. The leaf name carries the launch time, so names
+are unique across launches and sort oldest to newest; glob
+`*raft-diagnostics.jsonl*`, not a bare `raft-diagnostics.jsonl*`. Collisions
+keep `-2`, `-3` suffixes.
 
 ## 3. Read the summary first
 

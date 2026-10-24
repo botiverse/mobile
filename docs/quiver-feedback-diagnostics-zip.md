@@ -56,12 +56,21 @@ copies grouped by launch session:
 ```
 raft-feedback-<snapshot>/
   raft-diagnostics-summary.txt
-  launch-<current-session>/
-    raft-diagnostics.jsonl
-    raft-diagnostics.jsonl.1
+  launch-<session>/
+    launch-20261024T003012Z-raft-diagnostics.jsonl
+    launch-20261024T003012Z-raft-diagnostics.jsonl.1
+  launch-<newer-session>/
+    launch-20261025T091500Z-raft-diagnostics.jsonl
   flat/
     raft-diagnostics.jsonl
 ```
+
+Each launch-session log leaf is prefixed with `launch-<UTC yyyyMMddTHHmmssZ>-`
+(derived from the session directory) so attachments from different launches are
+distinguishable by name and sort oldest to newest. Readers must match
+`*raft-diagnostics.jsonl*`, not a bare `raft-diagnostics.jsonl*` prefix. `flat/`
+logs keep the bare name. Android keeps the `launch-<session>/` directory in the
+zip entry path, so it has no duplicate-name issue and is unchanged.
 
 Name collisions are preserved with stable suffixes such as
 `raft-diagnostics-2.jsonl` and `raft-diagnostics-3.jsonl`; source bytes are

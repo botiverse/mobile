@@ -306,6 +306,10 @@ jobs:
         shell: bash
         run: compose/iosApp/scripts/test_diagnostics_path_admission.sh
 
+      - name: Test diagnostics snapshot names
+        shell: bash
+        run: compose/iosApp/scripts/test_diagnostics_snapshot_names.sh
+
       - name: Test diagnostics environment rows
         shell: bash
         run: compose/iosApp/scripts/test_diagnostics_environment_rows.sh
