@@ -363,7 +363,7 @@ final class RaftIosRealtimeHost: NSObject {
                 self.acceptStartingHorizonLocked(runtime: runtime, ack: data.first)
             }
         }
-        record("info", "sync_horizon_request serverId=\(serverId) result=sent")
+        log("sync_horizon_request serverId=\(serverId) result=sent")
     }
 
     private func acceptStartingHorizonLocked(runtime: Runtime, ack: Any?) {
@@ -380,7 +380,7 @@ final class RaftIosRealtimeHost: NSObject {
             runtime.horizon = horizon
             reason = "accepted"
         }
-        record("info", "sync_horizon_ack serverId=\(runtime.serverId) accepted=\(reason == "accepted") reason=\(reason)")
+        log("sync_horizon_ack serverId=\(runtime.serverId) accepted=\(reason == "accepted") reason=\(reason)")
     }
 
     private func installSocketHandlers(_ socket: SocketIOClient, serverId: String, generation: UInt64) {
@@ -442,7 +442,7 @@ final class RaftIosRealtimeHost: NSObject {
                 if let horizon = runtime.horizon {
                     payload[Self.syncSinceHorizonKey] = horizon
                 }
-                record("info", "sync_resume_emit serverId=\(runtime.serverId) lastSeq=\(runtime.resumeLastSeq) sinceHorizon=\(runtime.horizon != nil)")
+                log("sync_resume_emit serverId=\(runtime.serverId) lastSeq=\(runtime.resumeLastSeq) sinceHorizon=\(runtime.horizon != nil)")
                 emit(
                     runtime: runtime,
                     eventName: GeneratedRealtimeContract.SocketEvent.syncResume,
@@ -513,7 +513,7 @@ final class RaftIosRealtimeHost: NSObject {
             runtime.horizon = horizon
         }
         let reset = (payload["horizonReset"] as? Bool) ?? false
-        record("info", "sync_resume_response serverId=\(runtime.serverId) horizon=\(runtime.horizon != nil) horizonReset=\(reset)")
+        log("sync_resume_response serverId=\(runtime.serverId) horizon=\(runtime.horizon != nil) horizonReset=\(reset)")
         guard reset else { return }
         postRawEvent(
             runtime: runtime,
@@ -850,8 +850,6 @@ final class RaftIosRealtimeHost: NSObject {
 
     // task #191: connection lifecycle also goes to raft-diagnostics.jsonl (NSLog alone never
     // reaches a Hands feedback bundle). Low volume, so it is marked critical to survive pressure.
-    // The catch-up handshake (sync_horizon_*, sync_resume_*: a few lines per connect) is recorded too,
-    // so a bundle shows when a reconnect resumed and how long it took (Hands 1b6dd022).
     private func record(_ level: String, _ message: String) {
         log(message)
         RaftIosDiagnosticsRecordWithContext(level, "SlockIosRealtime", message, 0, false, true)

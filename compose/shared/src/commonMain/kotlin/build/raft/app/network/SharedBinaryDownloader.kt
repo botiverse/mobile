@@ -1,7 +1,5 @@
 package build.raft.app.network
 
-import build.raft.app.raftLogInfo
-import build.raft.app.raftLogWarn
 import kotlinx.coroutines.CancellationException
 import kotlin.time.TimeSource
 
@@ -68,20 +66,6 @@ fun interface BinaryDownloadDiagnosticsLogger {
 }
 
 /**
- * The downloader's logger until a host installs its own: the shared platform log, which reaches the
- * diagnostics JSONL on every platform. iOS never installed one, so its downloads (and the truncated-body
- * `network_error`) left no line in a Hands bundle (Hands 1b6dd022). Failures and cancels log as warnings.
- */
-internal val SharedPlatformBinaryDownloadLogger =
-    BinaryDownloadDiagnosticsLogger { tag, message ->
-        if ("status=failed" in message || "status=canceled" in message) {
-            raftLogWarn(tag, message)
-        } else {
-            raftLogInfo(tag, message)
-        }
-    }
-
-/**
  * Binary downloads (images, avatars, attachments) on the app's Ktor client, Visible lane
  * (artin 2026-10-23; NetworkKMM before). [download] streams the body chunk by chunk ([raftStreamingGet])
  * so the whole payload is never held in memory, and the total comes from Content-Length, so progress
@@ -90,11 +74,10 @@ internal val SharedPlatformBinaryDownloadLogger =
 object SharedBinaryDownloader {
     private const val DIAGNOSTICS_TAG = "SlockBinaryDownload"
 
-    private var diagnosticsLogger: BinaryDownloadDiagnosticsLogger = SharedPlatformBinaryDownloadLogger
+    private var diagnosticsLogger: BinaryDownloadDiagnosticsLogger? = null
 
-    /** Replaces the default shared-log logger; null restores it. */
     fun setDiagnosticsLogger(logger: BinaryDownloadDiagnosticsLogger?) {
-        diagnosticsLogger = logger ?: SharedPlatformBinaryDownloadLogger
+        diagnosticsLogger = logger
     }
 
     suspend fun fetchBytes(url: String): SharedDownloadedBytes {
@@ -293,7 +276,7 @@ object SharedBinaryDownloader {
         }
 
     private fun recordDiagnostics(message: String) {
-        diagnosticsLogger.record(DIAGNOSTICS_TAG, message)
+        diagnosticsLogger?.record(DIAGNOSTICS_TAG, message)
     }
 
 }
