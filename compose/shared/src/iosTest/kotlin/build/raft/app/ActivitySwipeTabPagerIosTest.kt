@@ -23,7 +23,9 @@ import build.raft.app.components.TabPager
 import build.raft.app.components.TabPagerGesturePolicy
 import build.raft.designsystem.gesture.LocalRaftBackSwipeRegions
 import build.raft.designsystem.gesture.RaftBackSwipeRegions
+import androidx.compose.ui.text.font.FontFamily
 import build.raft.designsystem.theme.RaftAppearance
+import build.raft.designsystem.theme.RaftFonts
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.math.abs
 import kotlin.test.Test
@@ -44,7 +46,8 @@ class ActivitySwipeTabPagerIosTest {
     private fun ComposeUiTest.setActivityPager() {
         setContent {
             CompositionLocalProvider(LocalRaftBackSwipeRegions provides RaftBackSwipeRegions()) {
-                RaftTheme(appearance = RaftAppearance.Light) {
+                // System faces: the test binary does not bundle the design system's font resources.
+                RaftTheme(appearance = RaftAppearance.Light, fonts = RaftFonts(FontFamily.Default, FontFamily.Monospace)) {
                     TabPager(
                         selectedIndex = selectedPage,
                         onSelectedIndexChange = { selectedPage = it },
@@ -58,7 +61,8 @@ class ActivitySwipeTabPagerIosTest {
                                 val key = "p$page-$index"
                                 ActivitySwipeActionsBox(
                                     gestureKey = key,
-                                    buttons = listOf(ActivitySwipeButton.Done, ActivitySwipeButton.Unfollow),
+                                    // Done only: its glyph is drawn in code; the Lucide icons of the others are resources.
+                                    buttons = listOf(ActivitySwipeButton.Done),
                                     open = openKey == key,
                                     onOpenChange = { open -> openKey = if (open) key else openKey.takeIf { it != key } },
                                     onDone = {},
@@ -90,9 +94,9 @@ class ActivitySwipeTabPagerIosTest {
         dragRow("row-p0-2", startXFraction = 0.6f, stepPx = -3f, steps = 60)
         assertEquals("p0-2", openKey, "the row opened on its buttons")
         assertEquals(0, selectedPage, "the filter pager did not move")
-        val buttonsPx = with(density) { (ActivitySwipeButtonWidth * 2).toPx() }
+        val buttonsPx = with(density) { ActivitySwipeButtonWidth.toPx() }
         val rowX = onNodeWithTag("row-p0-2").fetchSemanticsNode().positionInRoot.x
-        assertTrue(abs(rowX + buttonsPx) < 2f, "the row slid by both buttons' width (x=$rowX, buttons=$buttonsPx)")
+        assertTrue(abs(rowX + buttonsPx) < 2f, "the row slid by the Done button's width (x=$rowX, buttons=$buttonsPx)")
     }
 
     @Test
