@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -24,10 +23,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -255,16 +256,28 @@ fun BoxScope.RaftComposerAttachmentOverlay(
         verticalArrangement = Arrangement.Center,
     ) {
         RaftSpinner(size = RaftSpinnerSize.Sm, color = colors.foreground, stillStep = spinnerStillStep)
-        // The web's span neither wraps nor truncates: a word wider than a 64dp image tile
-        // ("Uploading") stays on one line, centred on the tile.
+        // Like the web's span: it wraps between words ("Checking / file…" on a 64dp image
+        // tile), and a single word wider than the tile ("Uploading") stays whole, centred.
+        val style = RaftTheme.typography.monoMeta.copy(fontWeight = FontWeight.Bold)
+        val measurer = rememberTextMeasurer()
+        val longestWord =
+            remember(label, style, measurer) {
+                label.split(' ').filter { it.isNotEmpty() }.maxOfOrNull { word ->
+                    measurer.measure(word, style, softWrap = false, maxLines = 1).size.width
+                } ?: 0
+            }
         RaftText(
             text = label,
-            modifier = Modifier.padding(top = 4.dp).wrapContentWidth(unbounded = true),
-            style = RaftTheme.typography.monoMeta.copy(fontWeight = FontWeight.Bold),
+            modifier =
+                Modifier.padding(top = 4.dp).layout { measurable, constraints ->
+                    val placeable =
+                        measurable.measure(constraints.copy(minWidth = 0, maxWidth = maxOf(constraints.maxWidth, longestWord + 1)))
+                    val width = placeable.width.coerceAtMost(constraints.maxWidth)
+                    layout(width, placeable.height) { placeable.place((width - placeable.width) / 2, 0) }
+                },
+            style = style,
             color = colors.foreground,
             textAlign = TextAlign.Center,
-            maxLines = 1,
-            softWrap = false,
         )
     }
     if (percent != null) RaftComposerAttachmentProgressBar(percent)
