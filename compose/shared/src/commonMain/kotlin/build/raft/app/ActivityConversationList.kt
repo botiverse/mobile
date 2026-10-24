@@ -84,7 +84,7 @@ import com.tencent.tmm.kmmresource.compose.stringResource
  * Activity conversation list, the only Activity layout: the KMP port of the web
  * `ThreadsInbox` `layout="list"` branch (slock packages/web/src/components/thread/ThreadsInbox.tsx,
  * raft-ui InboxItem density="compact"). One row per conversation: a leading avatar or channel tile, the
- * name, a one-line preview, the time and the unread count, in the order the server lists them.
+ * name, a preview that always reserves two lines (artin: every row the same height), the time and the unread count, in the order the server lists them.
  *
  * This file is presentation only. Opening, Done, read/unread and the press-and-hold menu stay the
  * Activity list's own intents (SharedActivityList); this layout never changes how Done is applied. The
@@ -576,9 +576,9 @@ internal fun ActivityConversationListRow(
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val hairline = colors.lineHairline
-    // Every compact row is the same height (raft-ui InboxItem density="compact": one line each for the
-    // title and the latest message): each line is a slot of its style's line height, so a task badge,
-    // an inline face or a fallback CJK glyph cannot make one row taller than its neighbours.
+    // Every row is the same height (artin): one title line and two excerpt lines, each a slot of its
+    // style's line height, so a one-line excerpt still reserves its second line and a task badge, an
+    // inline face or a fallback CJK glyph cannot make one row taller than its neighbours.
     val density = LocalDensity.current
     val titleLine = with(density) { typography.subhead.lineHeight.toDp() }
     val bodyLine = with(density) { typography.callout.lineHeight.toDp() }
@@ -757,7 +757,7 @@ internal fun ActivityConversationListRow(
     }
 }
 
-/** The body wraps to a second line before it ellipsizes; a one-line body keeps the row height. */
+/** The body wraps to a second line before it ellipsizes; a one-line body still reserves both lines. */
 internal const val ActivityConversationPreviewMaxLines = 2
 
 internal const val ActivityConversationSenderAvatarInlineId = "activity-conversation-sender-avatar"
@@ -923,7 +923,8 @@ internal fun ActivityConversationRowModel.unreadCountLabel(): String? =
 /**
  * The excerpt with [marks] beside its first line only (web `InboxItemMarks` rides the first line):
  * line 1 wraps at the width left of the marks, line 2 takes the rest of the text at the full width,
- * then ellipsizes. Without marks it is one two-line text at the full width.
+ * then ellipsizes. Without marks it is one two-line text at the full width. Either way it is always
+ * [ActivityConversationPreviewMaxLines] lines tall, top-aligned, so every row has the same height.
  */
 @Composable
 private fun ActivityExcerptBesideMarks(
@@ -964,9 +965,9 @@ private fun ActivityExcerptBesideMarks(
                         )
                     }
                 }.first().measure(loose)
-            val height = maxOf(body.height, minLine)
+            val height = maxOf(body.height, minLine * ActivityConversationPreviewMaxLines)
             return@SubcomposeLayout layout(width, height) {
-                body.place(0, (height - body.height).coerceAtLeast(0) / 2)
+                body.place(0, 0)
             }
         }
         var firstLineEnd = text.length
@@ -1004,7 +1005,8 @@ private fun ActivityExcerptBesideMarks(
                     }
                 }.first().measure(loose)
             }
-        layout(width, firstRow + (second?.height ?: 0)) {
+        // An excerpt that fits on line 1 still reserves line 2.
+        layout(width, firstRow + maxOf(second?.height ?: 0, minLine * (ActivityConversationPreviewMaxLines - 1))) {
             first.place(0, (firstRow - first.height) / 2)
             var x = width
             marksPlaceables.forEach { marksPlaceable ->
