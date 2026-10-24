@@ -15,6 +15,7 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.designsystem.components.LocalRaftSpinnerStillStep
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -24,13 +25,14 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * The composer's attachment tray (web MessageInput on raft-ui ComposerAttachment), light and
  * dark, at the composer's 321dp: an image with no preview yet, a ready file, a file uploading at
- * 42%, an image waiting for its first byte, and a file whose upload failed. Each has its remove
- * sticker. Fixed fixture data. Reports land in `build/reports/home-screenshots/`; verify /
+ * 42% and one before its first byte, an image waiting for its first byte, and a file and an image
+ * whose upload failed, under the web's overlays. Each has its remove sticker. Fixed fixture data;
+ * spinners held still. Reports land in `build/reports/home-screenshots/`; verify /
  * record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w390dp-h320dp-xxhdpi")
+@Config(sdk = [34], qualifiers = "w390dp-h400dp-xxhdpi")
 class ThreadComposerAttachmentTrayScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
@@ -44,7 +46,7 @@ class ThreadComposerAttachmentTrayScreenshotTest {
     private fun capture(name: String, appearance: RaftAppAppearance) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager), LocalRaftSpinnerStillStep provides 0) {
                 RaftDesignSystemTheme {
                     Box(Modifier.fillMaxSize().background(RaftColor.Canvas).padding(16.dp)) {
                         Box(Modifier.width(321.dp)) {
@@ -72,6 +74,13 @@ private val trayAttachments =
             sizeBytes = 8_400_000L,
             status = "uploading",
             uploadProgress = 42,
+        ),
+        RaftPendingAttachmentItem(
+            id = "recording",
+            fileName = "ScreenRecording_10-24.mov",
+            mimeType = "video/quicktime",
+            sizeBytes = 31_000_000L,
+            status = "uploading",
         ),
         RaftPendingAttachmentItem(id = "photo", fileName = "whiteboard.jpg", mimeType = "image/jpeg", status = "uploading"),
         RaftPendingAttachmentItem(

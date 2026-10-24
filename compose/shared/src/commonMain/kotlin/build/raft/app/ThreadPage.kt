@@ -15916,8 +15916,8 @@ private fun ThreadPageContentContent(
                     )
                 }
             } else if (showComposerForSelectedTab) {
+                // No seam above the composer: on the web its box sits on the page's canvas.
                 Column(modifier = Modifier.fillMaxWidth().background(RaftColor.Canvas)) {
-                    Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderSeam))
                     Box(
                         modifier = Modifier.fillMaxWidth()
                             .padding(
