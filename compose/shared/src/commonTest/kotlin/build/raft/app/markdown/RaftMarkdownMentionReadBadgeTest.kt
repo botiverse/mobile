@@ -31,14 +31,14 @@ class RaftMarkdownMentionReadBadgeTest {
         assertEquals(setOf("raft-mention-read:read"), content.keys)
         val placeholder = content.getValue("raft-mention-read:read").placeholder
         assertEquals(10f, placeholder.width.value)
-        // Baseline up to the mark's top: the name's cap height (0.7em of 14sp = 9.8).
-        assertEquals(9.8f, placeholder.height.value, 0.001f)
+        // Baseline up to the mark's top: the name's cap height (0.7em of 14sp = 9.8) plus the check's 2.5 ink inset.
+        assertEquals(12.3f, placeholder.height.value, 0.001f)
         assertEquals(PlaceholderVerticalAlign.AboveBaseline, placeholder.placeholderVerticalAlign)
     }
 
     @Test
     fun markRiseScalesWithFontSize() {
-        assertEquals(14.0f, raftMarkdownMentionReadMarkRiseSp(20.sp), 0.001f)
+        assertEquals(16.5f, raftMarkdownMentionReadMarkRiseSp(20.sp), 0.001f)
     }
 
     @Test

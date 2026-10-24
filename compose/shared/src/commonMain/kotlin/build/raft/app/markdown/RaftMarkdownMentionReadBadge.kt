@@ -53,19 +53,25 @@ private const val MentionReadInlineId = "raft-mention-read:read"
 
 /**
  * raft-design #794: the read mark is a bare 10dp check. Its box's left edge sits 2dp right of the
- * mention's last glyph and its top aligns with the top of the name (cap height); 10dp are reserved
+ * mention's last glyph and its ink top sits at the name's cap height (box top 2.5dp above); 10dp are reserved
  * after the mention, so the box's last 2dp fall into the following space. Unread draws nothing at
  * all, so no placeholder is appended for it. The line height is unchanged.
  */
 private val MentionReadBadgeReserve = RaftMessageReferenceReadMarkDefaults.Reserve
 private val MentionReadBadgeGap = RaftMessageReferenceReadMarkDefaults.GapAfterName
 
-/** Space Grotesk's OS/2 sCapHeight is 700 / 1000 em: the name's top above the baseline. */
+/** Space Grotesk's OS/2 sCapHeight is 700 / 1000 em. */
 private const val SansCapHeightEm = 0.7f
 
-/** Distance from the baseline up to the mark's top (the name's top) for text of [fontSize] (sp ~ dp at the default scale). */
+/**
+ * Lucide's check ink starts at y=6 of 24, so 2.5dp below the 10dp box's top. The box top sits on the
+ * text box's top (web), which puts the ink's top at the name's cap height: the box rises that far above it.
+ */
+private val MentionReadCheckInkInset = 2.5.dp
+
+/** Distance from the baseline up to the mark's box top for text of [fontSize] (sp ~ dp at the default scale). */
 internal fun raftMarkdownMentionReadMarkRiseSp(fontSize: TextUnit): Float =
-    fontSize.value * SansCapHeightEm
+    fontSize.value * SansCapHeightEm + MentionReadCheckInkInset.value
 
 /** Appends the read mark placeholder right after a mention (kept on its line by a word joiner); unread appends nothing. */
 internal fun AnnotatedString.Builder.appendRaftMarkdownMentionReadBadge(read: Boolean) {
