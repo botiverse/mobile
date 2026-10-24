@@ -12,6 +12,8 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -48,6 +50,8 @@ internal fun MembersAgentRuntimeChip(
     kind: MembersAgentRuntimeChipKind,
     modifier: Modifier = Modifier,
     statusColor: Color? = null,
+    /** Accessible name of the status dot (web `aria-label`); never drawn as text. */
+    statusDescription: String? = null,
     textStyle: TextStyle =
         if (kind == MembersAgentRuntimeChipKind.Runtime || kind == MembersAgentRuntimeChipKind.Model) {
             // `font-mono text-mono-meta font-normal`.
@@ -76,7 +80,11 @@ internal fun MembersAgentRuntimeChip(
                 overflow = TextOverflow.Ellipsis
             )
             statusColor?.let { color ->
-                RaftStatusIndicator(color = color, size = RaftStatusIndicatorTokens.InlineSize)
+                RaftStatusIndicator(
+                    color = color,
+                    size = RaftStatusIndicatorTokens.InlineSize,
+                    modifier = Modifier.semantics { statusDescription?.let { contentDescription = it } }
+                )
             }
         }
     }
