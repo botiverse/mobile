@@ -1,6 +1,7 @@
 package build.raft.app.markdown
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
@@ -114,23 +115,17 @@ private val RaftHashCommentLanguages =
  * Non-overlapping, ordered token runs for [code]; empty when nothing is highlighted or the
  * scanner fails. Pure, so it may run on any thread.
  *
- * The scanner treats both `//` and `#` as line comments in every language and does not see
- * that a comment marker sits inside a string; those comments are dropped here, so
- * `#include` or `"https://…"` stay plain instead of turning grey.
+ * The scanner treats `//`, `#` and `/*` as comment markers in every language, even inside a
+ * string, and then loses the string and the line's keywords. It scans a copy of [code] with
+ * the markers it would misread blanked out ([raftMaskMisreadCommentMarkers]), so
+ * `"https://…"` stays a string, `#include` and Python's `//` stay code, and offsets match.
  */
 internal fun raftCodeTokenRuns(code: String, language: SyntaxLanguage): List<RaftCodeTokenRun> {
     if (code.isEmpty()) return emptyList()
+    val scanned = raftMaskMisreadCommentMarkers(code, language)
     val structure =
-        runCatching { Highlights.Builder(code = code, language = language).build().getCodeStructure() }
+        runCatching { Highlights.Builder(code = scanned, language = language).build().getCodeStructure() }
             .getOrNull() ?: return emptyList()
-    val hashComments = language in RaftHashCommentLanguages || language == SyntaxLanguage.PHP
-    val slashComments = language !in RaftHashCommentLanguages
-    fun keepComment(location: PhraseLocation): Boolean {
-        val start = location.start
-        val isHash = code.startsWith("#", start)
-        val allowed = if (isHash) hashComments else slashComments
-        return allowed && !code.isInsideStringOnLine(start)
-    }
     val kinds = arrayOfNulls<RaftCodeTokenKind>(code.length)
     fun paint(locations: Collection<PhraseLocation>, kind: RaftCodeTokenKind) {
         for (location in locations) {
@@ -144,8 +139,8 @@ internal fun raftCodeTokenRuns(code: String, language: SyntaxLanguage): List<Raf
     paint(structure.annotations, RaftCodeTokenKind.Annotation)
     paint(structure.keywords, RaftCodeTokenKind.Keyword)
     paint(structure.strings, RaftCodeTokenKind.StringLiteral)
-    paint(structure.comments.filter(::keepComment), RaftCodeTokenKind.Comment)
-    if (slashComments) paint(structure.multilineComments, RaftCodeTokenKind.Comment)
+    paint(structure.comments, RaftCodeTokenKind.Comment)
+    paint(structure.multilineComments, RaftCodeTokenKind.Comment)
 
     val runs = ArrayList<RaftCodeTokenRun>()
     var index = 0
@@ -163,20 +158,54 @@ internal fun raftCodeTokenRuns(code: String, language: SyntaxLanguage): List<Raf
     return runs
 }
 
-/** True when an unclosed `"`, `'` or `` ` `` precedes [index] on its line. */
-private fun String.isInsideStringOnLine(index: Int): Boolean {
+/**
+ * [code] with every comment marker that is not a real comment in [language] replaced by
+ * spaces (same length, so offsets carry over): markers inside a `"`/`'`/`` ` `` string on
+ * the line, `#` in C-family code (`#include`, `#[derive]`, `"#fff"`), `//` and `/*` in
+ * `#`-comment languages (Python floor division), and shell's `$#` / `${#`.
+ */
+internal fun raftMaskMisreadCommentMarkers(code: String, language: SyntaxLanguage): String {
+    val hashComments = language in RaftHashCommentLanguages || language == SyntaxLanguage.PHP
+    val slashComments = language !in RaftHashCommentLanguages
+    val out = code.toCharArray()
+    fun blank(from: Int, length: Int) {
+        for (i in from until (from + length).coerceAtMost(out.size)) out[i] = ' '
+    }
     var quote: Char? = null
-    var i = lastIndexOf('\n', index - 1) + 1
-    while (i < index) {
-        val char = this[i]
+    var lineComment = false
+    var blockComment = false
+    var i = 0
+    while (i < code.length) {
+        val char = code[i]
+        val next = code.getOrNull(i + 1)
         when {
-            quote != null && char == '\\' -> i++
-            quote != null && char == quote -> quote = null
-            quote == null && (char == '"' || char == '\'' || char == '`') -> quote = char
+            char == '\n' -> {
+                lineComment = false
+                if (quote != '`') quote = null
+            }
+            lineComment -> Unit
+            blockComment -> if (char == '*' && next == '/') { blockComment = false; i++ }
+            quote != null ->
+                when {
+                    char == '\\' -> i++
+                    char == quote -> quote = null
+                    char == '#' -> blank(i, 1)
+                    char == '/' && (next == '/' || next == '*') -> { blank(i, 2); i++ }
+                }
+            char == '"' || char == '\'' || char == '`' -> quote = char
+            char == '/' && next == '/' ->
+                if (slashComments) lineComment = true else { blank(i, 2); i++ }
+            char == '/' && next == '*' ->
+                if (slashComments) { blockComment = true; i++ } else { blank(i, 2); i++ }
+            char == '#' -> {
+                val before = code.getOrNull(i - 1)
+                val shellParameter = language == SyntaxLanguage.SHELL && (before == '$' || before == '{')
+                if (hashComments && !shellParameter) lineComment = true else blank(i, 1)
+            }
         }
         i++
     }
-    return quote != null
+    return out.concatToString()
 }
 
 /** [code] with each run painted in its raft-ui colour; the rest inherits the text colour. */
@@ -197,6 +226,12 @@ internal fun raftHighlightedCode(
  * Recently tokenized blocks, keyed by language and code, so a message list scrolling back
  * over a block does not tokenize it again. Read and written on the main thread only.
  */
+private class RaftCodeHighlightLast {
+    var syntax: SyntaxLanguage? = null
+    var code: String = ""
+    var runs: List<RaftCodeTokenRun>? = null
+}
+
 internal object RaftCodeTokenCache {
     private const val MaxEntries = 64
     private val entries = LinkedHashMap<Pair<SyntaxLanguage, String>, List<RaftCodeTokenRun>>()
@@ -226,7 +261,11 @@ internal object RaftCodeTokenCache {
 internal fun rememberRaftHighlightedCode(code: String, language: String?): AnnotatedString? {
     val syntax = remember(language) { raftCodeSyntaxLanguage(language) } ?: return null
     if (!raftCodeHighlightEligible(code)) return null
-    val runs =
+    // The last tokenized version of this block: while a streamed reply grows a large block
+    // and the longer code is tokenized off the main thread, its runs still fit the prefix,
+    // so the block keeps its colours instead of flashing plain.
+    val last = remember { RaftCodeHighlightLast() }
+    val fresh =
         key(syntax, code) {
             val immediate =
                 remember {
@@ -245,7 +284,18 @@ internal fun rememberRaftHighlightedCode(code: String, language: String?): Annot
                 }
             }
             produced
-        } ?: return null
+        }
+    SideEffect {
+        if (fresh != null) {
+            last.syntax = syntax
+            last.code = code
+            last.runs = fresh
+        }
+    }
+    val runs =
+        fresh
+            ?: last.runs.takeIf { last.syntax == syntax && code.startsWith(last.code) }
+            ?: return null
     if (runs.isEmpty()) return null
     val colors = RaftAppThemeState.colors
     return remember(code, runs, colors) { raftHighlightedCode(code, runs, colors) }

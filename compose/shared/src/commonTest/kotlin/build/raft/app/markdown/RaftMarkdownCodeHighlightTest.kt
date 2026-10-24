@@ -130,8 +130,30 @@ class RaftMarkdownCodeHighlightTest {
     fun aCommentMarkerInsideAStringIsNotAComment() {
         val code = "val url = \"https://raft.build\""
         val runs = raftCodeTokenRuns(code, SyntaxLanguage.KOTLIN)
-        assertNotEquals(RaftCodeTokenKind.Comment, kindOf(code, runs, "//raft"))
-        assertNotEquals(RaftCodeTokenKind.Comment, kindOf(code, runs, "build"))
+        assertEquals(RaftCodeTokenKind.StringLiteral, kindOf(code, runs, "//raft"))
+        assertEquals(RaftCodeTokenKind.StringLiteral, kindOf(code, runs, "build"))
+    }
+
+    @Test
+    fun aStringWithAMarkerDoesNotSwallowTheNextLine() {
+        val code = "val color = \"#fff\"\nval glob = \"src/**/*.ts\"\nval name = \"a\" // real"
+        val runs = raftCodeTokenRuns(code, SyntaxLanguage.KOTLIN)
+        assertEquals(RaftCodeTokenKind.StringLiteral, kindOf(code, runs, "#fff"))
+        assertEquals(RaftCodeTokenKind.StringLiteral, kindOf(code, runs, "/*.ts"))
+        assertEquals(RaftCodeTokenKind.Keyword, kindOf(code, runs, "val", occurrence = 1))
+        assertEquals(RaftCodeTokenKind.Keyword, kindOf(code, runs, "val", occurrence = 2))
+        assertNull(kindOf(code, runs, "name"))
+        assertEquals(RaftCodeTokenKind.Comment, kindOf(code, runs, "// real"))
+    }
+
+    @Test
+    fun maskKeepsOffsetsAndBlanksOnlyMisreadMarkers() {
+        val code = "a = \"http://x\" # note\nb = 7 // 2"
+        val masked = raftMaskMisreadCommentMarkers(code, SyntaxLanguage.PYTHON)
+        assertEquals(code.length, masked.length)
+        assertEquals("a = \"http:  x\" # note\nb = 7    2", masked)
+        val shell = "echo \${#arr} \$#  # n"
+        assertEquals("echo \${ arr} \$   # n", raftMaskMisreadCommentMarkers(shell, SyntaxLanguage.SHELL))
     }
 
     @Test
@@ -145,6 +167,15 @@ class RaftMarkdownCodeHighlightTest {
         val cRuns = raftCodeTokenRuns(c, SyntaxLanguage.C)
         assertNotEquals(RaftCodeTokenKind.Comment, kindOf(c, cRuns, "#include"))
         assertEquals(RaftCodeTokenKind.Keyword, kindOf(c, cRuns, "return"))
+
+        val floorDivision = "q = a // b if c else d"
+        val floorRuns = raftCodeTokenRuns(floorDivision, SyntaxLanguage.PYTHON)
+        assertEquals(RaftCodeTokenKind.Keyword, kindOf(floorDivision, floorRuns, "if"))
+        assertEquals(RaftCodeTokenKind.Keyword, kindOf(floorDivision, floorRuns, "else"))
+
+        val define = "#define DONE return 0"
+        val defineRuns = raftCodeTokenRuns(define, SyntaxLanguage.C)
+        assertEquals(RaftCodeTokenKind.Keyword, kindOf(define, defineRuns, "return"))
     }
 
     @Test
