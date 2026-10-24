@@ -52,9 +52,11 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.rememberRaftActivitySwipeHaptic
 import build.raft.app.data.InboxItem
+import build.raft.app.data.RaftActivityMarkAction
 import build.raft.app.data.SharedActivityIntent
 import build.raft.app.data.activityDoneRequestFrontier
 import build.raft.app.data.isFollowedActivityThread
+import build.raft.app.data.isUnfollowedActivityThread
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
 import build.raft.app.resources.MR
@@ -89,7 +91,14 @@ import kotlinx.coroutines.launch
  *   ([ActivitySwipeOpenRow], held by the list): a tap anywhere else, a scroll, a swipe back, opening
  *   another row or system Back closes it. A tap on the open row itself closes it rather than opening the
  *   conversation.
- * - No right swipe: every action is on one side, and nothing competes with the system back gesture.
+ * - Toward the end (right in LTR; raft-design #793): one button at the row's start for the action that
+ *   only changes how the row reads ([activitySwipeStartButton]): Read on an unread row, Unread on a read
+ *   one, with the menu item's icon (`message-square-check` / `message-square-dot`), `fill-muted` with
+ *   `foreground`, the same cell as the end buttons. Same distances: released past half its width it stays
+ *   open (tap to act), pulled past [ActivitySwipeFullDoneFraction] the release applies it at once, with the
+ *   same tick ([activitySwipeStartReleaseTarget]). The row stays where it is: no toast, no Undo; swiping
+ *   again switches it back. The write is the menu's Mark as read / unread ([activityReadToggleIntent]).
+ *   A row whose menu has no read toggle (an unfollowed thread) has no start button.
  *
  * The row has no Done button at rest (artin 2026-10-23). The swipe is never the only way: the press-and-
  * hold menu (Done, Unfollow, Mute Activity) stays, and screen readers use it, so the buttons are
@@ -103,16 +112,16 @@ import kotlinx.coroutines.launch
  *   [RaftBackSwipeEdgeWidth]; at the trailing edge, the larger of 24dp and the system-gesture inset.
  * - Inside the row, the row claims a drag only on clear horizontal intent ([activitySwipeDragDecision]):
  *   past [activitySwipeClaimThresholdPx] (twice the touch slop, 16-24dp) AND |dx| > [ActivitySwipeDominanceRatio]
- *   (2) x |dy|, toward the start, or toward the end only while the row is open (the swipe back that closes
- *   it). Any movement past the touch slop that is not on track for that hands the gesture to the list and
+ *   (2) x |dy|, toward the start when the row has end buttons or its start button is open, toward the end
+ *   when it has a start button or its end buttons are open. Any movement past the touch slop that is not on track for that hands the gesture to the list and
  *   locks the swipe out for the rest of that pointer stream ([ActivitySwipeDragPolicy]).
  * - Filter pager: the rows sit in the Activity filter TabPager, whose drag would otherwise claim at 1x the
  *   touch slop, before the row's gate (iOS 1.15.5: the list slid toward the next filter, the row never
  *   opened). The row registers [raftClaimsHorizontalDragFirst] with its claim distance (0 in its edge
  *   zones), so over a row the pager waits until the row has claimed or released.
- * - iOS full-page pop: only an open row registers a back-swipe region (without its leading
- *   [RaftBackSwipeEdgeWidth] strip), so the swipe back that closes it is not taken for a page pop. A closed
- *   row leaves every drag toward the end to the host.
+ * - iOS full-page pop: an open row, and every row with a start button, registers a back-swipe region
+ *   (without its leading [RaftBackSwipeEdgeWidth] strip), so its own drag toward the end is not taken for a
+ *   page pop. A closed row without a start button leaves every drag toward the end to the host.
  *
  * Undo, Done: Done is applied by the Activity store (SharedActivityIntent.MarkDone), which has no un-done
  * path for every row kind. So a Done row is hidden locally and the MarkDone is committed when the toast
@@ -254,18 +263,46 @@ internal fun activitySwipeStartsInEdgeZone(
     return fromStart < startEdgePx || fromEnd < endEdgePx
 }
 
-/** One button the swipe uncovers. */
+/** One button the swipe uncovers: Done, Unfollow, Mute at the row's end; Read or Unread at its start. */
 internal enum class ActivitySwipeButton {
     Done,
     Unfollow,
     Mute,
+    Read,
+    Unread,
 }
+
+/** Which side of the row is open: its start button, or its end buttons. */
+internal enum class ActivitySwipeSide {
+    Start,
+    End,
+}
+
+/**
+ * The button a swipe toward the end uncovers at [this] row's start (raft-design #793): Read on an unread
+ * row, Unread on a read one. Null where the row menu has no read toggle (`activityContextMenuActionIds`:
+ * an unfollowed thread, whose attention the server zeroes).
+ */
+internal fun InboxItem.activitySwipeStartButton(): ActivitySwipeButton? =
+    when {
+        isUnfollowedActivityThread -> null
+        unreadCount > 0 -> ActivitySwipeButton.Read
+        else -> ActivitySwipeButton.Unread
+    }
+
+/** The menu's Mark as read / unread write for [item] (`toggle-read`), which the start button shares. */
+internal fun activityReadToggleIntent(item: InboxItem): SharedActivityIntent =
+    if (item.unreadCount > 0) SharedActivityIntent.MarkRead(item) else SharedActivityIntent.MarkUnread(item)
+
+/** The `activity_mark` analytics value of [activityReadToggleIntent] (#3615): `read` or `unread`. */
+internal fun activityReadToggleMarkAction(item: InboxItem): RaftActivityMarkAction =
+    if (item.unreadCount > 0) RaftActivityMarkAction.Read else RaftActivityMarkAction.Unread
 
 /** The action a non-Done button applies. */
 internal val ActivitySwipeButton.endAction: ActivitySwipeEndAction?
     get() =
         when (this) {
-            ActivitySwipeButton.Done -> null
+            ActivitySwipeButton.Done, ActivitySwipeButton.Read, ActivitySwipeButton.Unread -> null
             ActivitySwipeButton.Unfollow -> ActivitySwipeEndAction.UnfollowThread
             ActivitySwipeButton.Mute -> ActivitySwipeEndAction.MuteActivity
         }
@@ -285,12 +322,13 @@ internal enum class ActivitySwipeDragDecision {
     /** Not past the claim distance yet. */
     Undecided,
 
-    /** Horizontal toward the start (opening), or toward the end on an open row (closing): the row takes it. */
+    /** Horizontal in a direction the row can slide ([activitySwipeDragDecision]): the row takes it. */
     Claim,
 
     /**
-     * Vertical (the list scrolls), from an edge zone (system / host back), or toward the end on a closed
-     * row (the host's back swipe): never consumed.
+     * Vertical (the list scrolls), from an edge zone (system / host back), or toward a side the row
+     * cannot slide (toward the end on a closed row without a start button: the host's back swipe):
+     * never consumed.
      */
     Release,
 }
@@ -300,8 +338,9 @@ internal enum class ActivitySwipeDragDecision {
  *
  * - Past the touch slop vertically while |dx| is not more than [ActivitySwipeDominanceRatio] x |dy|
  *   (vertical-dominant or diagonal), or past the slop at all from an edge zone: [ActivitySwipeDragDecision.Release].
- * - Horizontal past [claimThresholdPx] with |dx| > ratio x |dy|: claim toward the start when the row has
- *   buttons ([canOpen]), toward the end only when the row is open ([canClose]); otherwise release.
+ * - Horizontal past [claimThresholdPx] with |dx| > ratio x |dy|: claim toward the start when [canOpen]
+ *   (the row has end buttons, or its start button is open), toward the end when [canClose] (its end
+ *   buttons are open, or it has a start button); otherwise release.
  * - Otherwise [ActivitySwipeDragDecision.Undecided].
  *
  * Stateless; [ActivitySwipeDragPolicy] adds the lock for the rest of the stream.
@@ -360,10 +399,21 @@ internal class ActivitySwipeDragPolicy(
 
 /**
  * The reveal (how far the row has slid toward its start, in px) after a finger movement of [dxPx]. Toward
- * the start opens further, toward the end closes; it stays within [0, widthPx].
+ * the start uncovers the end buttons, toward the end covers them and then, with a start button
+ * ([hasStart]), uncovers it as a negative reveal. It stays within [-widthPx, widthPx], at 0 on a side
+ * with no button ([hasEnd], [hasStart]).
  */
-internal fun activitySwipeRevealPx(currentRevealPx: Float, dxPx: Float, widthPx: Float, isLtr: Boolean): Float =
-    (currentRevealPx + if (isLtr) -dxPx else dxPx).coerceIn(0f, widthPx.coerceAtLeast(0f))
+internal fun activitySwipeRevealPx(
+    currentRevealPx: Float,
+    dxPx: Float,
+    widthPx: Float,
+    isLtr: Boolean,
+    hasStart: Boolean = false,
+    hasEnd: Boolean = true,
+): Float {
+    val width = widthPx.coerceAtLeast(0f)
+    return (currentRevealPx + if (isLtr) -dxPx else dxPx).coerceIn(if (hasStart) -width else 0f, if (hasEnd) width else 0f)
+}
 
 /** Whether the pull is past [ActivitySwipeFullDoneFraction] of the row: Done covers the area and release applies it. */
 internal fun activitySwipeFullDone(revealPx: Float, widthPx: Float): Boolean =
@@ -408,6 +458,63 @@ internal fun activitySwipeReleaseTarget(
         else -> ActivitySwipeRelease.Close
     }
 
+/** Where a row released with its start button uncovered goes. */
+internal enum class ActivitySwipeStartRelease {
+    /** Springs back closed. */
+    Close,
+
+    /** Stays open on the button. */
+    Open,
+
+    /** Marks the row read or unread at once and springs back (the pull was past [ActivitySwipeFullDoneFraction]). */
+    Toggle,
+}
+
+/**
+ * The release with the start button uncovered by [revealPx] (> 0, raft-design #793), the left swipe's
+ * distances: past [ActivitySwipeFullDoneFraction] of the row's width, toggle; past half the button's
+ * width ([buttonWidthPx]), open; otherwise closed. A flick opens or closes by direction
+ * ([revealVelocityPxPerSec], positive while uncovering the button) but never toggles.
+ */
+internal fun activitySwipeStartReleaseTarget(
+    revealPx: Float,
+    buttonWidthPx: Float,
+    widthPx: Float,
+    revealVelocityPxPerSec: Float = 0f,
+    flickVelocityPxPerSec: Float = Float.POSITIVE_INFINITY,
+): ActivitySwipeStartRelease =
+    when {
+        widthPx <= 0f || buttonWidthPx <= 0f || revealPx <= 0f -> ActivitySwipeStartRelease.Close
+        activitySwipeFullDone(revealPx, widthPx) -> ActivitySwipeStartRelease.Toggle
+        revealVelocityPxPerSec >= flickVelocityPxPerSec -> ActivitySwipeStartRelease.Open
+        revealVelocityPxPerSec <= -flickVelocityPxPerSec -> ActivitySwipeStartRelease.Close
+        revealPx > buttonWidthPx / 2f -> ActivitySwipeStartRelease.Open
+        else -> ActivitySwipeStartRelease.Close
+    }
+
+/**
+ * The side a claimed drag works on, from the reveal when it was claimed and its direction: toward the
+ * start it covers an open start button or uncovers the end buttons, toward the end it covers open end
+ * buttons or uncovers the start button.
+ */
+internal fun activitySwipeDragSide(revealPx: Float, towardStart: Boolean): ActivitySwipeSide =
+    if (towardStart) {
+        if (revealPx < 0f) ActivitySwipeSide.Start else ActivitySwipeSide.End
+    } else {
+        if (revealPx > 0f) ActivitySwipeSide.End else ActivitySwipeSide.Start
+    }
+
+/**
+ * Whether a drag at [revealPx] is past the release point that applies at once: full Done toward the
+ * start (with Done), the read toggle toward the end (with a start button). Feeds the tick.
+ */
+internal fun activitySwipeArmed(revealPx: Float, widthPx: Float, doneEnabled: Boolean, hasStart: Boolean): Boolean =
+    when {
+        revealPx > 0f -> doneEnabled && activitySwipeFullDone(revealPx, widthPx)
+        revealPx < 0f -> hasStart && activitySwipeFullDone(-revealPx, widthPx)
+        else -> false
+    }
+
 /**
  * Fires the full-Done tick: true exactly once each time the pull crosses into full Done (outward). Going
  * back under re-arms it silently; the next outward crossing ticks again.
@@ -442,16 +549,23 @@ internal fun activitySwipeButtonWidthsPx(revealPx: Float, count: Int, fullDonePr
  * becomes the open one at once, so the previously open row closes as the new one starts to slide.
  */
 @Immutable
-internal data class ActivitySwipeOpenRow(val key: String? = null) {
+internal data class ActivitySwipeOpenRow(val key: String? = null, val side: ActivitySwipeSide = ActivitySwipeSide.End) {
     fun isOpen(rowKey: String): Boolean = key == rowKey
 
-    /** Row [rowKey] opened (or started a swipe), or settled closed. */
-    fun change(rowKey: String, open: Boolean): ActivitySwipeOpenRow =
+    /** The side row [rowKey] is open on, or null when it is closed. */
+    fun openSide(rowKey: String): ActivitySwipeSide? = side.takeIf { key == rowKey }
+
+    /** Row [rowKey] opened on [side] (or started a swipe), or settled closed. */
+    fun change(rowKey: String, open: Boolean, side: ActivitySwipeSide = ActivitySwipeSide.End): ActivitySwipeOpenRow =
         when {
-            open -> if (key == rowKey) this else ActivitySwipeOpenRow(rowKey)
+            open -> if (key == rowKey && this.side == side) this else ActivitySwipeOpenRow(rowKey, side)
             key == rowKey -> ActivitySwipeOpenRow(null)
             else -> this
         }
+
+    /** [change] from a side, or null for closed. */
+    fun change(rowKey: String, side: ActivitySwipeSide?): ActivitySwipeOpenRow =
+        if (side == null) change(rowKey, open = false) else change(rowKey, open = true, side = side)
 
     /** A tap elsewhere, a scroll, Back, the long-press menu or the list owner going away. */
     fun close(): ActivitySwipeOpenRow = if (key == null) this else ActivitySwipeOpenRow(null)
@@ -608,26 +722,30 @@ internal class ActivitySwipeOpenRowGeometry {
 }
 
 /**
- * Hosts one conversation-list row with its swipe buttons. Empty [buttons]: no swipe, the row renders as is.
- * [open] is whether the list has this row open ([ActivitySwipeOpenRow]); the row reports a claimed swipe,
- * and how it settles, through [onOpenChange]. [onDone] applies Done (8 s Undo); [onAction] Unfollow or
- * Mute. [gestureKey] resets the drag when the row's slot changes owner. [previewRevealFraction] slides the
- * row by that share of its width on top of [open], for screenshots only.
+ * Hosts one conversation-list row with its swipe buttons: [buttons] at its end (a swipe toward the start)
+ * and [startButton] at its start (a swipe toward the end). Neither: no swipe, the row renders as is.
+ * [openSide] is the side the list has this row open on ([ActivitySwipeOpenRow]), null when closed; the
+ * row reports a claimed swipe, and how it settles, through [onOpenChange]. [onDone] applies Done (8 s
+ * Undo); [onAction] Unfollow or Mute; [onToggleRead] the start button's Mark as read / unread.
+ * [gestureKey] resets the drag when the row's slot changes owner. [previewRevealFraction] slides the row
+ * by that share of its width on top of [openSide] (negative: toward the end), for screenshots only.
  */
 @Composable
 internal fun ActivitySwipeActionsBox(
     gestureKey: String,
     buttons: List<ActivitySwipeButton>,
-    open: Boolean,
-    onOpenChange: (Boolean) -> Unit,
+    openSide: ActivitySwipeSide?,
+    onOpenChange: (ActivitySwipeSide?) -> Unit,
     onDone: () -> Unit,
     onAction: (ActivitySwipeEndAction) -> Unit,
     modifier: Modifier = Modifier,
+    startButton: ActivitySwipeButton? = null,
+    onToggleRead: () -> Unit = {},
     onOpenRowPlaced: ((LayoutCoordinates) -> Unit)? = null,
     previewRevealFraction: Float = 0f,
     content: @Composable () -> Unit,
 ) {
-    if (buttons.isEmpty()) {
+    if (buttons.isEmpty() && startButton == null) {
         Box(modifier) { content() }
         return
     }
@@ -635,6 +753,9 @@ internal fun ActivitySwipeActionsBox(
     val isLtr = layoutDirection == LayoutDirection.Ltr
     val density = LocalDensity.current
     val buttonsWidthPx = with(density) { ActivitySwipeButtonWidth.toPx() } * buttons.size
+    val startButtonWidthPx = if (startButton != null) with(density) { ActivitySwipeButtonWidth.toPx() } else 0f
+    val hasEnd = buttons.isNotEmpty()
+    val hasStart = startButton != null
     val doneEnabled = ActivitySwipeButton.Done in buttons
     val hostHasBackSwipe = LocalRaftBackSwipeRegions.current != null
     val systemGestures = WindowInsets.systemGestures
@@ -648,16 +769,24 @@ internal fun ActivitySwipeActionsBox(
             hostBackSwipeEdgePx = if (hostHasBackSwipe) with(density) { RaftBackSwipeEdgeWidth.toPx() } else 0f,
         )
     // The row decides at 2x the touch slop, later than the tab pager it sits in would take the drag (1x);
-    // the pager waits for this distance over the row (outside its edge zones), then the row has claimed or
-    // released. Without it the whole list slid toward the next filter page on iOS (1.15.5).
+    // the pager waits for this distance over the row (outside its edge zones), in either direction, then
+    // the row has claimed or released. Without it the whole list slid toward the next filter page on iOS
+    // (1.15.5), and a swipe toward the end would turn the filter page instead of uncovering Read / Unread.
     val claimThresholdPx =
         activitySwipeClaimThresholdPx(
             LocalViewConfiguration.current.touchSlop,
             with(density) { ActivitySwipeMinClaimDistance.toPx() },
             with(density) { ActivitySwipeMaxClaimDistance.toPx() },
         )
+    fun restReveal(side: ActivitySwipeSide?): Float =
+        when (side) {
+            ActivitySwipeSide.End -> if (hasEnd) buttonsWidthPx else 0f
+            ActivitySwipeSide.Start -> if (hasStart) -startButtonWidthPx else 0f
+            null -> 0f
+        }
     // Starts where the list says the row is, so an open row recomposed (or captured) shows open at once.
-    val reveal = remember(gestureKey) { Animatable(if (open) buttonsWidthPx else 0f) }
+    // Signed: positive uncovers the end buttons, negative the start button.
+    val reveal = remember(gestureKey) { Animatable(restReveal(openSide)) }
     // True while a finger drives the row or a Done is completing: the row then owns its reveal.
     var busy by remember(gestureKey) { mutableStateOf(false) }
     val fullDoneTick = rememberRaftActivitySwipeHaptic()
@@ -666,19 +795,21 @@ internal fun ActivitySwipeActionsBox(
     val currentOnOpenChange by rememberUpdatedState(onOpenChange)
     val currentOnDone by rememberUpdatedState(onDone)
     val currentOnAction by rememberUpdatedState(onAction)
-    val currentOpen by rememberUpdatedState(open)
+    val currentOnToggleRead by rememberUpdatedState(onToggleRead)
+    val currentOpenSide by rememberUpdatedState(openSide)
+    val currentHasStart by rememberUpdatedState(hasStart)
     var widthPx by remember { mutableIntStateOf(0) }
-    // At rest the row follows the list: open on its buttons, or closed (another row opened, a tap
-    // elsewhere, a scroll, Back).
-    LaunchedEffect(reveal, open, busy, buttonsWidthPx) {
+    // At rest the row follows the list: open on a side, or closed (another row opened, a tap elsewhere,
+    // a scroll, Back).
+    LaunchedEffect(reveal, openSide, busy, buttonsWidthPx, startButtonWidthPx) {
         if (busy) return@LaunchedEffect
-        val rest = if (open) buttonsWidthPx else 0f
+        val rest = restReveal(openSide)
         if (reveal.value != rest) reveal.animateTo(rest)
     }
     fun completeDone() {
         scope.launch {
             busy = true
-            currentOnOpenChange(false)
+            currentOnOpenChange(null)
             reveal.animateTo(widthPx.toFloat())
             currentOnDone()
             // The list drops the row in the same frame; if it stays, it comes back closed.
@@ -686,13 +817,31 @@ internal fun ActivitySwipeActionsBox(
             busy = false
         }
     }
+    fun completeToggle() {
+        scope.launch {
+            busy = true
+            currentOnOpenChange(null)
+            // The row stays in the list (#793): it switches read state and springs back in place.
+            currentOnToggleRead()
+            reveal.animateTo(0f)
+            busy = false
+        }
+    }
+    val swipeOpen = openSide != null
     Box(
         modifier
             .onSizeChanged { widthPx = it.width }
-            .then(if (open && onOpenRowPlaced != null) Modifier.onPlaced(onOpenRowPlaced) else Modifier)
-            // iOS full-page pop: an open row keeps the swipe back that closes it; the leading edge strip
-            // still pops the page. Inert on hosts without a content back swipe.
-            .then(if (open) Modifier.raftBackSwipeRegion(RaftBackSwipeEdgeWidth) { currentOpen } else Modifier)
+            .then(if (swipeOpen && onOpenRowPlaced != null) Modifier.onPlaced(onOpenRowPlaced) else Modifier)
+            // iOS full-page pop: an open row, and a row whose swipe toward the end uncovers its start
+            // button, keep that drag; the leading edge strip still pops the page. Inert on hosts without a
+            // content back swipe.
+            .then(
+                if (swipeOpen || hasStart) {
+                    Modifier.raftBackSwipeRegion(RaftBackSwipeEdgeWidth) { currentOpenSide != null || currentHasStart }
+                } else {
+                    Modifier
+                }
+            )
             .clipToBounds()
             .raftClaimsHorizontalDragFirst { down, size ->
                 val inEdgeZone = activitySwipeStartsInEdgeZone(down.x, size.width.toFloat(), startEdgePx, endEdgePx, isLtr)
@@ -701,10 +850,11 @@ internal fun ActivitySwipeActionsBox(
             // On the box that does not move, so finger positions are not shifted by the row's own offset.
             // Children (the row's tap / long press, the buttons) see each event first; consuming a claimed
             // drag here cancels their tap, and the list above never sees a claimed drag.
-            .pointerInput(gestureKey, isLtr, buttonsWidthPx, doneEnabled, startEdgePx, endEdgePx) {
+            .pointerInput(gestureKey, isLtr, buttonsWidthPx, startButtonWidthPx, doneEnabled, startEdgePx, endEdgePx) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Main)
                     val slop = viewConfiguration.touchSlop
+                    val atDown = reveal.value
                     val policy =
                         ActivitySwipeDragPolicy(
                             touchSlopPx = slop,
@@ -715,12 +865,15 @@ internal fun ActivitySwipeActionsBox(
                                     ActivitySwipeMaxClaimDistance.toPx(),
                                 ),
                             isLtr = isLtr,
-                            canOpen = true,
-                            canClose = reveal.value > 0f,
+                            // Toward the start: uncovers the end buttons, or covers an open start button.
+                            canOpen = hasEnd || atDown < 0f,
+                            // Toward the end: covers open end buttons, or uncovers the start button.
+                            canClose = atDown > 0f || hasStart,
                             startsInEdgeZone =
                                 activitySwipeStartsInEdgeZone(down.position.x, size.width.toFloat(), startEdgePx, endEdgePx, isLtr),
                         )
                     var claimed = false
+                    var claimedTowardStart = true
                     while (!claimed) {
                         val event = awaitPointerEvent(PointerEventPass.Main)
                         val change = event.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
@@ -732,18 +885,22 @@ internal fun ActivitySwipeActionsBox(
                             ActivitySwipeDragDecision.Release -> return@awaitEachGesture
                             ActivitySwipeDragDecision.Claim -> {
                                 claimed = true
+                                claimedTowardStart = if (isLtr) total.x < 0f else total.x > 0f
                                 change.consume()
                             }
                         }
                     }
                     busy = true
-                    // This row is the open one now: any other open row closes as this one slides.
-                    currentOnOpenChange(true)
                     var target = reveal.value
-                    var release = ActivitySwipeRelease.Close
+                    // This row is the open one now: any other open row closes as this one slides.
+                    currentOnOpenChange(activitySwipeDragSide(target, claimedTowardStart))
+                    // Where the row goes on release (a value, not a lambda: Kotlin/Native miscasts a captured
+                    // function-typed var here).
+                    var settleSide: ActivitySwipeSide? = null
+                    var applyOnRelease = false
                     val tickGate = ActivitySwipeFullDoneTickGate()
                     val velocity = VelocityTracker()
-                    tickGate.update(doneEnabled && activitySwipeFullDone(target, widthPx.toFloat()))
+                    tickGate.update(activitySwipeArmed(target, widthPx.toFloat(), doneEnabled, hasStart))
                     try {
                         while (true) {
                             val event = awaitPointerEvent(PointerEventPass.Main)
@@ -751,35 +908,53 @@ internal fun ActivitySwipeActionsBox(
                             if (!change.pressed) {
                                 change.consume()
                                 velocity.addPointerInputChange(change)
-                                // Positive while uncovering the buttons: leftward in LTR, rightward in RTL.
+                                // Positive while uncovering the end buttons: leftward in LTR, rightward in RTL.
                                 val dragVelocityX = velocity.calculateVelocity().x
-                                release =
-                                    activitySwipeReleaseTarget(
-                                        target,
-                                        buttonsWidthPx,
-                                        widthPx.toFloat(),
-                                        doneEnabled,
-                                        revealVelocityPxPerSec = if (isLtr) -dragVelocityX else dragVelocityX,
-                                        flickVelocityPxPerSec = ActivitySwipeFlickVelocity.toPx(),
-                                    )
+                                val revealVelocity = if (isLtr) -dragVelocityX else dragVelocityX
+                                val flick = ActivitySwipeFlickVelocity.toPx()
+                                if (target < 0f) {
+                                    when (activitySwipeStartReleaseTarget(-target, startButtonWidthPx, widthPx.toFloat(), -revealVelocity, flick)) {
+                                        ActivitySwipeStartRelease.Toggle -> {
+                                            settleSide = ActivitySwipeSide.Start
+                                            applyOnRelease = true
+                                        }
+                                        ActivitySwipeStartRelease.Open -> settleSide = ActivitySwipeSide.Start
+                                        ActivitySwipeStartRelease.Close -> Unit
+                                    }
+                                } else {
+                                    when (
+                                        activitySwipeReleaseTarget(
+                                            target, buttonsWidthPx, widthPx.toFloat(), doneEnabled, revealVelocity, flick,
+                                        )
+                                    ) {
+                                        ActivitySwipeRelease.Done -> {
+                                            settleSide = ActivitySwipeSide.End
+                                            applyOnRelease = true
+                                        }
+                                        ActivitySwipeRelease.Open -> settleSide = ActivitySwipeSide.End
+                                        ActivitySwipeRelease.Close -> Unit
+                                    }
+                                }
                                 break
                             }
                             velocity.addPointerInputChange(change)
-                            target = activitySwipeRevealPx(target, change.position.x - change.previousPosition.x, widthPx.toFloat(), isLtr)
+                            target =
+                                activitySwipeRevealPx(
+                                    target, change.position.x - change.previousPosition.x, widthPx.toFloat(), isLtr, hasStart, hasEnd,
+                                )
                             change.consume()
-                            if (tickGate.update(doneEnabled && activitySwipeFullDone(target, widthPx.toFloat()))) currentFullDoneTick.tick()
+                            if (tickGate.update(activitySwipeArmed(target, widthPx.toFloat(), doneEnabled, hasStart))) {
+                                currentFullDoneTick.tick()
+                            }
                             scope.launch { reveal.snapTo(target) }
                         }
                     } finally {
                         // Also on cancellation (pointer input reset): never leave a row half open.
-                        when (release) {
-                            ActivitySwipeRelease.Done -> completeDone()
-                            ActivitySwipeRelease.Open -> {
-                                currentOnOpenChange(true)
-                                busy = false
-                            }
-                            ActivitySwipeRelease.Close -> {
-                                currentOnOpenChange(false)
+                        when {
+                            applyOnRelease && settleSide == ActivitySwipeSide.End -> completeDone()
+                            applyOnRelease -> completeToggle()
+                            else -> {
+                                currentOnOpenChange(settleSide)
                                 busy = false
                             }
                         }
@@ -787,8 +962,9 @@ internal fun ActivitySwipeActionsBox(
                 }
             }
     ) {
-        val shownReveal = (reveal.value + previewRevealFraction * widthPx).coerceIn(0f, widthPx.toFloat().coerceAtLeast(0f))
-        if (shownReveal > 0f) {
+        val maxReveal = widthPx.toFloat().coerceAtLeast(0f)
+        val shownReveal = (reveal.value + previewRevealFraction * widthPx).coerceIn(-maxReveal, maxReveal)
+        if (shownReveal > 0f && hasEnd) {
             ActivitySwipeButtonsLayer(
                 buttons = buttons,
                 revealPx = shownReveal,
@@ -797,10 +973,21 @@ internal fun ActivitySwipeActionsBox(
                     when (val action = button.endAction) {
                         null -> completeDone()
                         else -> {
-                            currentOnOpenChange(false)
+                            currentOnOpenChange(null)
                             currentOnAction(action)
                         }
                     }
+                },
+                modifier = Modifier.matchParentSize(),
+            )
+        }
+        if (shownReveal < 0f && startButton != null) {
+            ActivitySwipeStartButtonLayer(
+                button = startButton,
+                revealPx = -shownReveal,
+                onTap = {
+                    currentOnOpenChange(null)
+                    currentOnToggleRead()
                 },
                 modifier = Modifier.matchParentSize(),
             )
@@ -809,18 +996,18 @@ internal fun ActivitySwipeActionsBox(
         Box(
             Modifier
                 .offset {
-                    val value = reveal.value + previewRevealFraction * widthPx
+                    val value = (reveal.value + previewRevealFraction * widthPx).coerceIn(-maxReveal, maxReveal)
                     IntOffset((if (isLtr) -value else value).roundToInt(), 0)
                 }
                 .background(RaftColor.SurfaceWhite)
                 .then(
-                    if (open) {
+                    if (swipeOpen) {
                         // A tap on the open row closes it instead of opening the conversation; a drag
                         // still reaches the swipe (and a vertical one the list).
                         Modifier.pointerInput(Unit) {
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                                if (activitySwipeSwallowTap(down.id, down.position)) currentOnOpenChange(false)
+                                if (activitySwipeSwallowTap(down.id, down.position)) currentOnOpenChange(null)
                             }
                         }
                     } else {
@@ -870,11 +1057,32 @@ private fun ActivitySwipeButtonsLayer(
     }
 }
 
+/**
+ * The Read / Unread button behind a row slid toward its end, at its start, as wide as the uncovered
+ * width; its icon and word sit at its inner edge (beside the row) once it is wider than
+ * [ActivitySwipeButtonWidth]. Decorative to accessibility (the menu has Mark as read / unread).
+ */
+@Composable
+private fun ActivitySwipeStartButtonLayer(
+    button: ActivitySwipeButton,
+    revealPx: Float,
+    onTap: () -> Unit,
+    modifier: Modifier,
+) {
+    Box(modifier.clearAndSetSemantics {}) {
+        Box(Modifier.align(Alignment.CenterStart).fillMaxHeight()) {
+            ActivitySwipeButtonCell(button = button, widthPx = revealPx, onTap = { onTap() }, innerEdgeAtEnd = true)
+        }
+    }
+}
+
 @Composable
 private fun ActivitySwipeButtonCell(
     button: ActivitySwipeButton,
     widthPx: Float,
     onTap: (ActivitySwipeButton) -> Unit,
+    /** The edge beside the row: the cell's start for the end buttons, its end for the start button. */
+    innerEdgeAtEnd: Boolean = false,
 ) {
     val colors = RaftTheme.colors
     val density = LocalDensity.current
@@ -887,24 +1095,37 @@ private fun ActivitySwipeButtonCell(
     val label =
         when {
             testLabels != null -> testLabels(button)
-            button == ActivitySwipeButton.Done -> stringResource(MR.strings.activity_swipe_layer_done)
-            button == ActivitySwipeButton.Unfollow -> stringResource(MR.strings.activity_swipe_layer_unfollow)
-            else -> stringResource(MR.strings.activity_swipe_layer_mute)
+            else ->
+                when (button) {
+                    ActivitySwipeButton.Done -> stringResource(MR.strings.activity_swipe_layer_done)
+                    ActivitySwipeButton.Unfollow -> stringResource(MR.strings.activity_swipe_layer_unfollow)
+                    ActivitySwipeButton.Mute -> stringResource(MR.strings.activity_swipe_layer_mute)
+                    ActivitySwipeButton.Read -> stringResource(MR.strings.activity_swipe_layer_read)
+                    ActivitySwipeButton.Unread -> stringResource(MR.strings.activity_swipe_layer_unread)
+                }
         }
+    val innerAlignment = if (innerEdgeAtEnd) Alignment.CenterEnd else Alignment.CenterStart
     Box(
         Modifier
             .width(with(density) { widthPx.toDp() })
             .fillMaxHeight()
             .background(background)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onTap(button) },
-        contentAlignment = if (narrow) Alignment.Center else Alignment.CenterStart,
+        contentAlignment = if (narrow) Alignment.Center else innerAlignment,
     ) {
         // A fixed 72dp column, so the icon and word never squeeze: centred while the button slides in
         // narrower than that, and at the inner edge (beside the row) once it is wider, as Done is past
         // full Done (mock v1, #785).
         Column(
             Modifier
-                .wrapContentWidth(if (narrow) Alignment.CenterHorizontally else Alignment.Start, unbounded = true)
+                .wrapContentWidth(
+                    when {
+                        narrow -> Alignment.CenterHorizontally
+                        innerEdgeAtEnd -> Alignment.End
+                        else -> Alignment.Start
+                    },
+                    unbounded = true,
+                )
                 .width(ActivitySwipeButtonWidth),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
@@ -916,6 +1137,11 @@ private fun ActivitySwipeButtonCell(
                     RaftLucideIcon(RaftLucideIconName.MessageCircleOff, Modifier.size(18.dp), color = raftArgbHex(foreground))
                 ActivitySwipeButton.Mute ->
                     RaftLucideIcon(RaftLucideIconName.BellOff, Modifier.size(18.dp), color = raftArgbHex(foreground))
+                // Mark as read / unread (web InboxContextMenu): message-square-check / message-square-dot.
+                ActivitySwipeButton.Read ->
+                    RaftLucideIcon(RaftLucideIconName.MessageSquareCheck, Modifier.size(18.dp), color = raftArgbHex(foreground))
+                ActivitySwipeButton.Unread ->
+                    RaftLucideIcon(RaftLucideIconName.MessageSquareDot, Modifier.size(18.dp), color = raftArgbHex(foreground))
             }
             RaftText(
                 text = label,

@@ -933,6 +933,8 @@
     <string name="activity_swipe_layer_done">Done</string>
     <string name="activity_swipe_layer_unfollow">Unfollow</string>
     <string name="activity_swipe_layer_mute">Mute</string>
+    <string name="activity_swipe_layer_read">Read</string>
+    <string name="activity_swipe_layer_unread">Unread</string>
     <string name="activity_swipe_unfollowed_thread">Unfollowed thread in %1$s</string>
     <string name="activity_swipe_muted_activity">Muted activity in %1$s</string>
     <string name="activity_fallback_thread_update">Thread update</string>

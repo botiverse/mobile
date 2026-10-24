@@ -37,10 +37,13 @@ import kotlin.test.assertTrue
  * iOS 1.15.5 (artin): swiping an Activity row left did nothing; the whole list slid toward the next
  * filter page instead. Runs the real filter [TabPager] and [ActivitySwipeActionsBox] on the simulator,
  * on a host with a full-page back swipe as RaftIosPage provides it, and drags with small finger steps.
+ * raft-design #793 adds the swipe toward the end (Read / Unread): the pager must not take that one either.
  */
 @OptIn(ExperimentalTestApi::class)
 class ActivitySwipeTabPagerIosTest {
     private var openKey by mutableStateOf<String?>(null)
+    private var openSide by mutableStateOf<ActivitySwipeSide?>(null)
+    private var toggles by mutableStateOf(0)
     private var selectedPage by mutableStateOf(0)
 
     private fun ComposeUiTest.setActivityPager() {
@@ -65,12 +68,22 @@ class ActivitySwipeTabPagerIosTest {
                                 val key = "p$page-$index"
                                 ActivitySwipeActionsBox(
                                     gestureKey = key,
-                                    // Done only: its glyph is drawn in code; the Lucide icons of the others are resources.
                                     buttons = listOf(ActivitySwipeButton.Done),
-                                    open = openKey == key,
-                                    onOpenChange = { open -> openKey = if (open) key else openKey.takeIf { it != key } },
+                                    openSide = openSide.takeIf { openKey == key },
+                                    onOpenChange = { side ->
+                                        if (side != null) {
+                                            openKey = key
+                                            openSide = side
+                                        } else if (openKey == key) {
+                                            openKey = null
+                                            openSide = null
+                                        }
+                                    },
                                     onDone = {},
                                     onAction = {},
+                                    // raft-design #793: the swipe toward the end uncovers Read.
+                                    startButton = ActivitySwipeButton.Read,
+                                    onToggleRead = { toggles += 1 },
                                 ) {
                                     Box(Modifier.fillMaxWidth().height(72.dp).testTag("row-$key"))
                                 }
@@ -111,6 +124,40 @@ class ActivitySwipeTabPagerIosTest {
         dragRow("row-p1-3", startXFraction = 0.6f, stepPx = -3f, steps = 60)
         assertEquals("p1-3", openKey)
         assertEquals(1, selectedPage)
+    }
+
+    @Test
+    fun rightSwipeOnARowUncoversReadAndLeavesTheFilterPage() = runComposeUiTest {
+        // From the middle of a row on the second filter page, where a rightward page swipe would go back.
+        selectedPage = 1
+        setActivityPager()
+        waitForIdle()
+        dragRow("row-p1-2", startXFraction = 0.4f, stepPx = 3f, steps = 30)
+        assertEquals("p1-2", openKey, "the row opened on its start button")
+        assertEquals(ActivitySwipeSide.Start, openSide)
+        assertEquals(1, selectedPage, "the filter pager did not move")
+        assertEquals(0, toggles, "opening is not toggling")
+        val buttonPx = with(density) { ActivitySwipeButtonWidth.toPx() }
+        val rowX = onNodeWithTag("row-p1-2").fetchSemanticsNode().positionInRoot.x
+        assertTrue(abs(rowX - buttonPx) < 2f, "the row slid right by the Read button's width (x=$rowX, button=$buttonPx)")
+    }
+
+    @Test
+    fun aFullRightPullTogglesReadInPlaceWithoutTurningThePage() = runComposeUiTest {
+        selectedPage = 1
+        setActivityPager()
+        waitForIdle()
+        // 3px steps over 75% of the row: past 60% at the release.
+        val widthPx = with(density) { 390.dp.toPx() }
+        val steps = (widthPx * 0.75f / 3f).toInt()
+        dragRow("row-p1-3", startXFraction = 0.2f, stepPx = 3f, steps = steps)
+        assertEquals(1, toggles, "the release past 60% toggled once")
+        assertNull(openKey, "the row closed again")
+        assertEquals(1, selectedPage, "the filter pager did not move")
+        mainClock.advanceTimeBy(1_000)
+        waitForIdle()
+        val rowX = onNodeWithTag("row-p1-3").fetchSemanticsNode().positionInRoot.x
+        assertTrue(abs(rowX) < 2f, "the row is back in place (x=$rowX)")
     }
 
     @Test

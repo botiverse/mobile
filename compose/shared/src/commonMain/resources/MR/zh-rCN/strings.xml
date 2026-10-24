@@ -931,6 +931,8 @@
     <string name="activity_swipe_layer_done">完成</string>
     <string name="activity_swipe_layer_unfollow">取消关注</string>
     <string name="activity_swipe_layer_mute">静音</string>
+    <string name="activity_swipe_layer_read">已读</string>
+    <string name="activity_swipe_layer_unread">未读</string>
     <string name="activity_swipe_unfollowed_thread">已取消关注 %1$s 中的消息列</string>
     <string name="activity_swipe_muted_activity">已静音 %1$s 的动态</string>
     <string name="activity_fallback_thread_update">消息列更新</string>
