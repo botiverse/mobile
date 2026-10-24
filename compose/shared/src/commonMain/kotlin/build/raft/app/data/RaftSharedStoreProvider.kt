@@ -444,6 +444,19 @@ internal class RaftSharedStoreProvider private constructor(
         )
     }
 
+    /**
+     * App link previews of the messages on screen and the viewer's answers to their prompts
+     * (artin #20 lane L): one per process, in memory for the session, keyed by viewer and Server.
+     */
+    val appLinkPreviewStore: SharedAppLinkPreviewStore by lazy {
+        SharedAppLinkPreviewStore(
+            api = NetworkRaftAppLinkPreviewApi(networkClient),
+            scope = RaftStoreThreading.newScope(),
+            resolveIcon = { icon -> resolveAppLinkIconUrl(icon, apiEnvironmentStore.current().apiBaseUrl) },
+            diagnosticsLogger = sharedInfoLogger("SlockAppLinkPreviews", "shared_app_link_previews"),
+        )
+    }
+
     /** Joint channel Connected-servers pages (data-layer plan step 5): memory + durable. */
     internal val jointConnectionsCache: build.raft.app.RaftJointConnectionsCache by lazy {
         RaftKeyedSnapshotCache(

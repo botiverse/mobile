@@ -195,6 +195,7 @@ import build.raft.app.data.RealtimeScopeAuthority
 import build.raft.app.data.RealtimeRoomLeaseOwner
 import build.raft.app.data.AGENT_CREATE_NAME_TAKEN
 import build.raft.app.data.SharedMessageTranslationStore
+import build.raft.app.data.appLinkViewerKey
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.PendingMentionAction
 import build.raft.app.data.PendingMentionActionExecuteResult
@@ -11287,8 +11288,28 @@ private fun SharedThreadRouteContentContent(
                 serverId = currentServerId,
                 serverMembersStore = serverMembersStore,
             )
+        // App link previews (artin #20 lane L): this viewer on this Server, asked once per conversation.
+        val appLinkPreviewViewerId = currentSession?.user?.id?.takeIf(String::isNotBlank)
+        val appLinkPreviewConversationId = renderedThread.streamChannelId ?: initialRouteIdentity.instanceKey
+        val appLinkPreviewHost =
+            remember(sharedStores, appLinkPreviewViewerId, currentServerId, appLinkPreviewConversationId) {
+                val viewerId = appLinkPreviewViewerId
+                val serverId = currentServerId
+                if (viewerId == null || serverId == null) {
+                    null
+                } else {
+                    ThreadAppLinkPreviewHost(
+                        store = sharedStores.appLinkPreviewStore,
+                        viewerKey = appLinkViewerKey(viewerId, serverId),
+                        serverId = serverId,
+                        conversationId = appLinkPreviewConversationId,
+                        toast = { message -> bridge.toast(message) },
+                    )
+                }
+            }
         val threadProvidedValues = raftMarkdownProvidedValuesWith(
             arrayOf(
+                LocalThreadAppLinkPreviewHost provides appLinkPreviewHost,
                 LocalThreadInPlaceTextSelectionHost provides inPlaceTextSelectionHost,
                 LocalThreadPeerReadReceipts provides peerReadReceipts,
                 LocalThreadAgentTyping provides agentTyping,
@@ -25523,6 +25544,13 @@ private fun ThreadMessageCardContent(
                                                             taskStatus = message.taskStatus,
                                                         ) {
                                                           RaftMarkdownMentionReadStateScope(mentionReadStates) {
+                                                          // artin #20 lane L: App links as chips, read
+                                                          // for a sent message only (web MessageItem).
+                                                          ThreadAppLinkPreviewScope(
+                                                              messageId = message.id,
+                                                              body = message.body,
+                                                              enabled = message.pendingSendContext == null,
+                                                          ) {
                                                             RaftMarkdownBody(
                                                                 body = bodyForRender,
                                                                 fillWidth = !alignOwnMessageRight,
@@ -25543,6 +25571,7 @@ private fun ThreadMessageCardContent(
                                                                 performanceKey = messagePerformanceKey,
                                                                 performanceLogger = diagnosticsLogger
                                                             )
+                                                          }
                                                           }
                                                         }
                                                     }

@@ -3077,4 +3077,15 @@
     <string name="file_preview_download_background_hint">可以离开此页面，下载会继续。可在 设置 › 存储 › 下载 中查看。</string>
     <string name="file_preview_download_completed_hint">已保存。可在 设置 › 存储 › 下载 中找到。</string>
     <string name="home_server_switcher_other_unread">其他服务器有未读消息</string>
+    <string name="thread_link_preview_prompt_title">%1$s 想在这里显示链接预览</string>
+    <string name="thread_link_preview_prompt_disclosure">允许后，%1$s 会知道你查看了它的哪些链接。</string>
+    <string name="thread_link_preview_prompt_allow">允许</string>
+    <string name="thread_link_preview_prompt_dont_allow">不允许</string>
+    <string name="thread_link_preview_prompt_allowing">正在允许…</string>
+    <string name="thread_link_preview_prompt_saving">保存中…</string>
+    <string name="thread_link_preview_prompt_allow_failed">没能允许 %1$s。请检查网络后重试。</string>
+    <string name="thread_link_preview_prompt_declined">%1$s 的链接保持原样。可在网页版设置中更改。</string>
+    <string name="thread_link_preview_prompt_decline_failed">没能保存你对 %1$s 的选择。请检查网络后重试。</string>
+    <string name="thread_link_preview_prompt_unavailable">%1$s 无法在这个服务器上显示链接预览。</string>
+    <string name="thread_link_preview_open_link">打开链接</string>
 </resources>

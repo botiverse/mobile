@@ -1372,17 +1372,25 @@ private object RaftMarkdownTextProvider : TextProvider {
                     permalinkCoroutineScope.launch { permalinkUriHandler.openUri(url) }
                 }
             }
-        val styledText = remember(permalinkContent.text, resolvedStyle, permalinkDark) {
-            permalinkContent.text.withRaftMarkdownSpanFonts(resolvedStyle).withRaftMarkdownLinkUnderlines()
+        // App links the message's previews turned into chips (artin #20 lane L).
+        val appLinkChips = LocalRaftAppLinkChips.current
+        val appLinkContent =
+            remember(permalinkContent.text, appLinkChips, permalinkUriHandler, permalinkDark) {
+                permalinkContent.text.withRaftAppLinkChipContent(appLinkChips) { url ->
+                    permalinkCoroutineScope.launch { permalinkUriHandler.openUri(url) }
+                }
+            }
+        val styledText = remember(appLinkContent.text, resolvedStyle, permalinkDark) {
+            appLinkContent.text.withRaftMarkdownSpanFonts(resolvedStyle).withRaftMarkdownLinkUnderlines()
         }
         val resolvedText =
             remember(styledText, bodyClick) {
                 styledText.withRaftMarkdownBodyClick(bodyClick)
             }
         val resolvedInlineContent =
-            remember(resolvedText, inlineContent, permalinkContent) {
+            remember(resolvedText, inlineContent, permalinkContent, appLinkContent) {
                 resolvedText.filteredRaftMarkdownInlineContent(
-                    inlineContent + permalinkContent.inlineContent +
+                    inlineContent + permalinkContent.inlineContent + appLinkContent.inlineContent +
                         raftInlineGapInlineContent(resolvedText.raftMarkdownInlineContentIds())
                 )
             }
