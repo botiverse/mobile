@@ -151,6 +151,7 @@ import com.tencent.kuiklybase.markdown.compose.elements.MarkdownListIndentEm
 import com.tencent.kuiklybase.markdown.compose.elements.MarkdownListItems
 import com.tencent.kuiklybase.markdown.compose.elements.listDepth
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.widthIn
 import org.intellij.markdown.ast.findChildOfType
 import com.tencent.kuiklybase.markdown.compose.components.MarkdownComponentModel
 import com.tencent.kuiklybase.markdown.model.MarkdownDimens
@@ -826,7 +827,7 @@ internal fun raftMarkdownAnnotator(
     softLineBreaksAsNewLines: Boolean = true,
     taskStatuses: () -> Map<Int, TaskStatus>? = { null },
     mentionReadStates: () -> RaftMarkdownMentionReadStates? = { null },
-    mentionReadFontSize: TextUnit = RaftMarkdownTagFontSize
+    mentionReadFontSize: TextUnit = RaftTextSize.Content
 ): MarkdownAnnotator {
     val diagnosticsStartedAt = onDiagnostics?.let { TimeSource.Monotonic.markNow() }
     val rendererInput = RaftRichTextRendererInput(document, capabilities, taskStatuses, mentionReadStates, mentionReadFontSize)
@@ -882,7 +883,7 @@ private data class RaftRichTextRendererInput(
     val capabilities: RaftRichTextCapabilities,
     val taskStatuses: () -> Map<Int, TaskStatus>? = { null },
     val mentionReadStates: () -> RaftMarkdownMentionReadStates? = { null },
-    val mentionReadFontSize: TextUnit = RaftMarkdownTagFontSize
+    val mentionReadFontSize: TextUnit = RaftTextSize.Content
 ) {
     val raftRefTokens: List<RaftRichTextInlineToken> =
         document.inlineTokens
@@ -2923,16 +2924,16 @@ private fun RaftMarkdownOrderedList(model: MarkdownComponentModel) {
         content = model.content,
         node = model.node,
         depth = model.listDepth,
-        markerModifier = { Modifier.width(fontSize * MarkdownListIndentEm) },
     ) { index, _ ->
+        // At least the slot; a long number ("100.") widens it rather than spilling out.
         MarkdownBasicText(
             text = raftMarkdownOrderedListMarker(start, index),
             style = style,
             modifier =
                 Modifier
-                    .fillMaxWidth()
-                    .padding(end = fontSize * RaftMarkdownOrderedMarkerGapEm)
-                    .wrapContentWidth(Alignment.End, unbounded = true),
+                    .widthIn(min = fontSize * MarkdownListIndentEm)
+                    .padding(end = fontSize * RaftMarkdownOrderedMarkerGapEm),
+            textAlign = TextAlign.End,
             softWrap = false,
         )
     }
@@ -2988,15 +2989,16 @@ internal fun raftMarkdownLinkUnderlineStyle(): RaftInlineUnderlineStyle =
     )
 
 /**
- * Underlines every web link (a [LinkAnnotation.Url] outside a chip box) with
- * [raftMarkdownLinkUnderlineStyle]. Chips (permalinks) keep no underline; tags are
- * [LinkAnnotation.Clickable] and are left alone.
+ * Underlines every web link (a [LinkAnnotation.Url] that is not itself a chip) with
+ * [raftMarkdownLinkUnderlineStyle]. A permalink chip (a link wholly inside a chip box) keeps no
+ * underline; a link around inline code keeps its underline. Tags are [LinkAnnotation.Clickable]
+ * and are left alone.
  */
 internal fun AnnotatedString.withRaftMarkdownLinkUnderlines(): AnnotatedString {
     val links = getLinkAnnotations(0, length).filter { it.item is LinkAnnotation.Url && it.end > it.start }
     if (links.isEmpty()) return this
     val boxes = raftInlineBoxRanges()
-    val underlined = links.filter { link -> boxes.none { box -> box.start < link.end && link.start < box.end } }
+    val underlined = links.filter { link -> boxes.none { box -> box.start <= link.start && link.end <= box.end } }
     if (underlined.isEmpty()) return this
     val encoded = raftMarkdownLinkUnderlineStyle().encode()
     return AnnotatedString.Builder(this)
@@ -3072,7 +3074,9 @@ internal fun raftMarkdownTypography(
             fontFamily = raftMonoFamilyForWeight(FontWeight.Normal),
             fontWeight = FontWeight.Normal,
         )
-    val inlineCode = raftMarkdownInlineCodeTextStyle(resolvedBase)
+    // The code span carries no size of its own: withRaftMarkdownSpanFonts sets it to 0.875em of
+    // the paragraph (body or heading), and an sp size here would compound with that em.
+    val inlineCode = raftMarkdownInlineCodeTextStyle(resolvedBase).copy(fontSize = TextUnit.Unspecified)
     return DefaultMarkdownTypography(
         h1 = raftMarkdownHeadingStyle(resolvedBase, RaftMarkdownHeadingScale[0]),
         h2 = raftMarkdownHeadingStyle(resolvedBase, RaftMarkdownHeadingScale[1]),

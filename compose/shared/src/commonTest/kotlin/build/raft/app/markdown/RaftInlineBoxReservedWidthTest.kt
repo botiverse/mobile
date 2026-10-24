@@ -1,7 +1,10 @@
 package build.raft.app.markdown
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.test.Test
@@ -62,5 +65,19 @@ class RaftInlineBoxReservedWidthTest {
         assertEquals(8.dp, reference.raftInlineTrailingReservedWidth())
         // A chip with a leading icon takes 4.5px at each end.
         assertEquals(6.5.dp, raftMessagePermalinkChipBoxStyle().raftInlineLeadingReservedWidth())
+    }
+
+    @Test
+    fun emSizesScaleTheSizeSoFarAndSpSizesReplaceIt() {
+        val text =
+            buildAnnotatedString {
+                withStyle(SpanStyle(fontSize = 20.sp)) {
+                    withRaftInlineBox(chip) { withStyle(SpanStyle(fontSize = 0.875.em)) { append("code") } }
+                }
+                withRaftInlineBox(chip) { withStyle(SpanStyle(fontSize = 0.875.em)) { append("chip") } }
+            }
+        val decorations = text.raftInlineDecorations(16.sp)
+        assertEquals(17.5f, decorations.fontSizeAt(0).value, 0.001f)
+        assertEquals(14f, decorations.fontSizeAt(4).value, 0.001f)
     }
 }

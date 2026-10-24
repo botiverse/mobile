@@ -1318,7 +1318,8 @@ class RaftMarkdownTest {
         assertEquals(22.sp, typography.text.lineHeight)
         assertEquals(22.sp, typography.paragraph.lineHeight)
         assertEquals(22.sp, typography.inlineCode.lineHeight)
-        assertEquals(14.sp, typography.inlineCode.fontSize)
+        // The code span's 0.875em size is set by withRaftMarkdownSpanFonts, not here.
+        assertEquals(TextUnit.Unspecified, typography.inlineCode.fontSize)
         assertEquals(0.sp, typography.inlineCode.letterSpacing)
         assertEquals(RaftType.Body.fontFamily, resolvedStyle.fontFamily)
     }

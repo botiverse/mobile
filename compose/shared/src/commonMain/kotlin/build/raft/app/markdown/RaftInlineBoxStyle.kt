@@ -260,10 +260,18 @@ internal class RaftInlineDecorations(
 ) {
     val isEmpty: Boolean get() = boxes.isEmpty() && underlines.isEmpty()
 
-    /** Font size at [offset] in sp; an em span (a 0.875em chip) resolves against the text's base size. */
+    /**
+     * Font size at [offset] in sp, resolving the covering spans in order as Android does: an sp
+     * size replaces the size so far, an em size (a 0.875em chip) scales it.
+     */
     fun fontSizeAt(offset: Int): TextUnit {
-        val size = fontSizes.lastOrNull { offset >= it.start && offset < it.end }?.item ?: return baseFontSize
-        return if (size.isEm) (baseFontSize.value * size.value).sp else size
+        var size = baseFontSize.value
+        fontSizes.forEach { range ->
+            if (offset < range.start || offset >= range.end) return@forEach
+            val item = range.item
+            if (item.isEm) size *= item.value else if (item.isSp) size = item.value
+        }
+        return size.sp
     }
 
     companion object {
