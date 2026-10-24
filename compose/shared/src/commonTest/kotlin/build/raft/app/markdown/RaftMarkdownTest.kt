@@ -199,11 +199,11 @@ class RaftMarkdownTest {
         }
 
         val resolved = source.withRaftMessagePermalinkChips { "proj-server-management" }
+        // The label is semibold ink inside the chip's 0.875em; the note is mono 11sp.
         val labelStyle =
-            resolved.spanStyles.first {
-                it.item.fontSize == 14.sp && it.item.fontFamily == raftFontFamilyForWeight(FontWeight.Bold)
-            }
-        val suffixStyle = resolved.spanStyles.first { it.item.fontSize == 10.sp }
+            resolved.spanStyles.first { it.item.fontFamily == raftFontFamilyForWeight(FontWeight.SemiBold) }
+        val suffixStyle = resolved.spanStyles.first { it.item.fontSize == 11.sp }
+        assertTrue(resolved.spanStyles.any { it.item.fontSize == 0.875.em && it.start <= labelStyle.start && it.end >= suffixStyle.end })
 
         assertEquals("#proj-server-management", resolved.text.substring(labelStyle.start, labelStyle.end))
         assertEquals("msg", resolved.text.substring(suffixStyle.start, suffixStyle.end))
