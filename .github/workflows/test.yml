@@ -39,7 +39,11 @@ permissions:
   packages: read
 
 concurrency:
-  group: test-${{ github.ref }}
+  # The nightly gets its own group. It runs on refs/heads/main, and in the shared
+  # test-refs/heads/main group GitHub keeps only the newest pending run, so a main push
+  # queued behind a running push replaced the pending nightly and the full readback
+  # (device suite, canonical-final, attachment legs) silently did not run.
+  group: test-${{ github.ref }}${{ github.event_name == 'schedule' && '-nightly' || '' }}
   # Preserve the running post-merge record on protected branches. GitHub still
   # coalesces multiple pending runs in the same group to the newest commit.
   # PR and merge-queue refs keep superseding stale work for that exact ref.
@@ -411,6 +415,25 @@ jobs:
           )
           ./gradlew "${tasks[@]}" \
             --continue \
+            --no-daemon \
+            --console=plain \
+            --stacktrace
+
+      # The gate above compiles with the visual fixtures on (SLOCK_VISUAL_FIXTURES, job env), so it
+      # never sees the configuration that ships: release, fixtures off (src/visualFixturesOff,
+      # fixture data back in commonTest). On the full tier (nightly, full-ci, scope=full) compile
+      # that configuration too, so a break shows up before release day. Its own invocation: the
+      # fixture flag changes :shared's source sets.
+      - name: Compile Android release configuration (fixtures off)
+        if: ${{ env.BUILD_CONNECTED_APKS == 'true' }}
+        working-directory: compose
+        env:
+          SLOCK_VISUAL_FIXTURES: "false"
+        run: |
+          ./gradlew \
+            -PslockVisualFixtures=false \
+            :shared:compileReleaseKotlinAndroid \
+            :androidApp:compileReleaseKotlin \
             --no-daemon \
             --console=plain \
             --stacktrace
