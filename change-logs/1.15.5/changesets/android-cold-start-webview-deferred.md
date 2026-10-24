@@ -3,7 +3,7 @@ type: fixed
 area: performance
 platforms:
   - android
-pull_request: 0
+pull_request: 3663
 rollout: full
 ---
 
