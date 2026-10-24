@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftSpinnerSize
+import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -701,7 +703,7 @@ private fun SettingsProfileAvatar(
                         .border(RaftStroke.Hairline, RaftTheme.colors.lineHairline, RaftTheme.shapes.control),
                 contentAlignment = Alignment.Center
             ) {
-                RaftLucideIcon(RaftLucideIconName.LoaderCircle, modifier = Modifier.size(16.dp), spinning = true)
+                RaftSpinner(size = RaftSpinnerSize.Md)
             }
         }
     }

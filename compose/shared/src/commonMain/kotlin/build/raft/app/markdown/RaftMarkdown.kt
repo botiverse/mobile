@@ -1,5 +1,6 @@
 package build.raft.app.markdown
 
+import build.raft.app.components.RaftIconSpinner
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import build.raft.app.RaftTextSize
@@ -963,13 +964,7 @@ internal fun raftMarkdownActionSpinnerInlineTextContent(): InlineTextContent =
                 placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
             )
     ) {
-        RaftLucideIcon(
-            name = RaftLucideIconName.LoaderCircle,
-            modifier = Modifier.size(12.dp),
-            color = RaftColor.TextBlackArgb,
-            strokeWidth = 2f,
-            spinning = true,
-        )
+        RaftIconSpinner(size = 12.dp, color = RaftColor.TextBlack)
     }
 
 private data class RaftRichTextSplitTagStart(

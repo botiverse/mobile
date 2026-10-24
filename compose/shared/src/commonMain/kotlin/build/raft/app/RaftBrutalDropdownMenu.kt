@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.components.RaftIconSpinner
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,7 +58,9 @@ internal data class RaftBrutalDropdownMenuItem(
     val trailing: String? = null,
     val trailingIcon: RaftLucideIconName? = null,
     val destructive: Boolean = false,
-    val enabled: Boolean = true
+    val enabled: Boolean = true,
+    /** In progress: a spinner in place of [icon]. */
+    val loading: Boolean = false
 )
 
 /**
@@ -262,7 +265,12 @@ internal fun RaftBrutalDropdownMenuRow(
             onClick = onClick,
             enabled = item.enabled,
             checked = emphasized || item.trailingIcon == RaftLucideIconName.Check,
-            leadingIcon = item.icon?.let { icon -> { RaftSlotIcon(icon) } },
+            leadingIcon =
+                if (item.loading) {
+                    { RaftIconSpinner() }
+                } else {
+                    item.icon?.let { icon -> { RaftSlotIcon(icon) } }
+                },
             shortcut = item.trailing
         )
         return
@@ -350,8 +358,12 @@ private fun RaftDropdownMenuRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(RaftMetrics.MenuItemGap)
     ) {
-        item.icon?.let { icon ->
-            RaftLucideIcon(icon, modifier = Modifier.size(iconSize), color = raftArgbHex(iconInk))
+        if (item.loading) {
+            RaftIconSpinner(size = iconSize, color = iconInk)
+        } else {
+            item.icon?.let { icon ->
+                RaftLucideIcon(icon, modifier = Modifier.size(iconSize), color = raftArgbHex(iconInk))
+            }
         }
         Text(
             text = item.label,

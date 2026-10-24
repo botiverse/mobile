@@ -102,7 +102,9 @@ internal data class RaftUiMenuItem(
     val selected: Boolean = false,
     val destructive: Boolean = false,
     val enabled: Boolean = true,
-    val dividerBefore: Boolean = false
+    val dividerBefore: Boolean = false,
+    /** In progress: a spinner in place of [icon]. */
+    val loading: Boolean = false
 )
 
 @Composable
@@ -703,7 +705,8 @@ internal fun RaftUiMenuSurface(
                     trailing = item.trailing,
                     trailingIcon = if (item.selected && item.trailing == null) RaftLucideIconName.Check else null,
                     destructive = item.destructive,
-                    enabled = item.enabled
+                    enabled = item.enabled,
+                    loading = item.loading
                 )
             },
         onSelect = onSelect,

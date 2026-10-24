@@ -64,11 +64,12 @@ internal fun SettingsLanguageRegionContent(
             ScreenLoadState.Loading ->
                 item {
                     SettingsLoadStateCard(
-                        RaftLucideIconName.LoaderCircle,
+                        RaftLucideIconName.Languages,
                         stringResource(MR.strings.common_loading),
                         stringResource(MR.strings.settings_language_loading),
                         null,
-                        onRetry
+                        onRetry,
+                        loading = true
                     )
                 }
             is ScreenLoadState.Empty ->

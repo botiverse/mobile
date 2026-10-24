@@ -418,7 +418,8 @@ internal fun ScreenLoadState<SharedSettingsOpenSourceLicensesSnapshot>.toOpenSou
                             listOf(
                                 RaftSharedSettingsRow(
                                     key = "loading",
-                                    iconName = RaftLucideIconName.LoaderCircle,
+                                    iconName = RaftLucideIconName.TriangleAlert,
+                                    loading = this == ScreenLoadState.Loading,
                                     title = if (this == ScreenLoadState.Loading) copy.loading else copy.unavailable,
                                     detail = detail,
                                     status = if (this == ScreenLoadState.Loading) copy.wait else copy.unavailable

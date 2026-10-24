@@ -9,6 +9,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.isSpecified
@@ -27,6 +28,8 @@ import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftPickerTriggerButton
+import build.raft.designsystem.components.RaftSpinner
+import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
 
@@ -40,17 +43,50 @@ internal fun RaftSlotIcon(
     name: RaftLucideIconName,
     modifier: Modifier = Modifier,
     size: Dp? = null,
-    color: Color? = null,
-    spinning: Boolean = name == RaftLucideIconName.Loader || name == RaftLucideIconName.LoaderCircle
+    color: Color? = null
 ) {
     val ink = color ?: LocalRaftContentColor.current.takeIf { it.isSpecified } ?: RaftTheme.colors.foreground
     RaftLucideIcon(
         name,
         modifier = modifier.then(if (size != null) Modifier.size(size) else Modifier.fillMaxSize()),
-        color = raftArgbHex(ink),
-        spinning = spinning
+        color = raftArgbHex(ink)
     )
 }
+
+/**
+ * The design system's [RaftSpinner] where an icon of [size] would be (a row's, chip's or
+ * tile's loading state): centred in that box, at the largest spinner that fits it
+ * ([raftSpinnerSizeFor]). Without a [size] it fills a slot's icon box at `md`. [color]
+ * overrides the ink; otherwise the slot's ink ([LocalRaftContentColor]), then the app's
+ * foreground (it follows the app theme outside a `RaftDesignSystemTheme`).
+ */
+@Composable
+internal fun RaftIconSpinner(
+    modifier: Modifier = Modifier,
+    size: Dp? = null,
+    color: Color? = null,
+    contentDescription: String? = null
+) {
+    val ink = color ?: LocalRaftContentColor.current.takeIf { it.isSpecified } ?: RaftColor.TextBlack
+    Box(
+        modifier = modifier.then(if (size != null) Modifier.size(size) else Modifier.fillMaxSize()),
+        contentAlignment = Alignment.Center
+    ) {
+        val spinnerSize = size?.let(::raftSpinnerSizeFor) ?: RaftSpinnerSize.Md
+        if (contentDescription != null) {
+            RaftSpinner(size = spinnerSize, color = ink, contentDescription = contentDescription)
+        } else {
+            RaftSpinner(size = spinnerSize, color = ink)
+        }
+    }
+}
+
+/**
+ * The largest [RaftSpinnerSize] whose grid fits an icon box of [box] (xs 9.5, sm 12, md 14,
+ * lg 19dp): a 12 / 13dp glyph becomes `sm`, a 14 to 18dp glyph `md`.
+ */
+internal fun raftSpinnerSizeFor(box: Dp): RaftSpinnerSize =
+    RaftSpinnerSize.entries.lastOrNull { it.extent <= box } ?: RaftSpinnerSize.Xs
 
 /**
  * The raft-ui button variant for a legacy brutal fill (see [raftButtonChrome]): the pink /

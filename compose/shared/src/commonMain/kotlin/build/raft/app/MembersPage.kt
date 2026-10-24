@@ -4,6 +4,8 @@ import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
 import build.raft.app.components.raftSoftWash
+import build.raft.app.components.RaftIconSpinner
+import build.raft.app.compat.ui.raftColorFromArgbHex
 import build.raft.app.components.raftControlSurface
 import build.raft.app.components.raftCardSurface
 import build.raft.designsystem.components.RaftBanner
@@ -7514,11 +7516,11 @@ private fun MembersLifecycleConfirmation(
                     action == MembersAgentLifecycleAction.Stop -> stringResource(MR.strings.member_action_stop_confirm)
                     else -> membersLifecycleConfirmTitle(action, agentName)
                 },
-                enabled = !busy,
+                loading = busy,
                 backgroundColor = accent,
                 // Web ConfirmDialog carries confirmIcon=<Archive> on the archive
                 // confirm; other actions stay icon-less.
-                leadingIcon = if (busy) RaftLucideIconName.Loader else if (isArchive) RaftLucideIconName.Archive else null,
+                leadingIcon = if (isArchive) RaftLucideIconName.Archive else null,
                 onClick = onConfirm
             )
         }
@@ -7757,9 +7759,9 @@ private fun MembersAgentArchiveSection(
                     )
                     RaftBrutalActionButton(
                         label = stringResource(MR.strings.member_archive_delete_workspace_confirm),
-                        enabled = !deleting,
+                        loading = deleting,
                         backgroundColor = RaftColor.AccentRed,
-                        leadingIcon = if (deleting) RaftLucideIconName.Loader else RaftLucideIconName.Trash2,
+                        leadingIcon = RaftLucideIconName.Trash2,
                         onClick = {
                             deleting = true
                             deleteError = null
@@ -7985,8 +7987,9 @@ private fun MembersAgentIssueReportDialog(
                     } else {
                         stringResource(MR.strings.member_report_issue_submit)
                     },
-                leadingIcon = if (busy) RaftLucideIconName.Loader else RaftLucideIconName.Bug,
-                enabled = consented && !busy,
+                leadingIcon = RaftLucideIconName.Bug,
+                enabled = consented,
+                loading = busy,
                 // Web ReportIssueDialog submits with the pink primary action.
                 backgroundColor = RaftColor.AccentPink,
                 onClick = {
@@ -9250,12 +9253,12 @@ private fun MembersAgentAvatarChoiceGrid(
                     fallbackFill = raftAvatarFallbackFill(MemberKind.Agent)
                 )
             } else {
-                RaftLucideIcon(
-                    if (uploading) RaftLucideIconName.LoaderCircle else RaftLucideIconName.Upload,
-                    modifier = Modifier.size(16.dp),
-                    color = if (RaftAppThemeState.isDark) RaftColor.TextMutedGrayArgb else "#99000000",
-                    spinning = uploading
-                )
+                val ink = if (RaftAppThemeState.isDark) RaftColor.TextMutedGrayArgb else "#99000000"
+                if (uploading) {
+                    RaftIconSpinner(size = 16.dp, color = raftColorFromArgbHex(ink))
+                } else {
+                    RaftLucideIcon(RaftLucideIconName.Upload, modifier = Modifier.size(16.dp), color = ink)
+                }
             }
         }
         MembersAgentAvatarPickerCell(
@@ -13334,13 +13337,13 @@ private fun MembersWorkspaceNodeRow(
             Spacer(Modifier.width((row.depth * 16).dp))
             if (node.kind == RaftWorkspaceFileKind.Folder) {
                 if (loading) {
-                    // #70: replace the chevron with a rotating Loader spinner
+                    // #70: replace the chevron with a RaftSpinner
                     // while the directory contents are being fetched. Mirrors
                     // React's `AgentWorkspace.tsx` spinner pattern (but KMP
                     // per @artin's 06-23 20:51 directive shows the spinner
                     // inline as the chevron substitute instead of alongside
                     // a "Loading..." text label).
-                    RaftSpinnerIcon(size = 14.dp)
+                    RaftIconSpinner(size = 14.dp, color = RaftColor.TextBlack)
                 } else {
                     RaftLucideIcon(
                         if (expanded) RaftLucideIconName.ChevronDown else RaftLucideIconName.ChevronRight,
@@ -15367,19 +15370,6 @@ private fun ErrorBanner(text: String, action: String? = null, onAction: (() -> U
             )
         }
     }
-}
-
-@Composable
-private fun RaftSpinnerIcon(
-    size: Dp = 14.dp,
-    color: String = RaftColor.TextBlackArgb
-) {
-    RaftLucideIcon(
-        RaftLucideIconName.LoaderCircle,
-        modifier = Modifier.size(size),
-        color = color,
-        spinning = true
-    )
 }
 
 /**
