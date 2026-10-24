@@ -60,7 +60,9 @@ data class RaftDownloadEntry(
     /** Host location of the finished file (Android `content://` URI in Downloads), if known. */
     val localUri: String? = null,
     val createdAtMillis: Long,
-    val updatedAtMillis: Long
+    val updatedAtMillis: Long,
+    /** The account (environment + user) of [ownerKey]; empty for rows saved before it existed. */
+    val accountKey: String = ""
 ) {
     /** 0..100 when the total is known, else null. */
     val percent: Int?
@@ -78,7 +80,8 @@ data class RaftDownloadDescriptor(
     val attachmentId: String,
     val fileName: String,
     val mimeType: String? = null,
-    val totalBytes: Long? = null
+    val totalBytes: Long? = null,
+    val accountKey: String = ""
 )
 
 /** One progress sample reported by a running [RaftDownloadTask]. */
@@ -123,8 +126,20 @@ data class RaftDownloadCenterState(
     /** Newest first. */
     val entries: List<RaftDownloadEntry> = emptyList()
 ) {
-    fun forOwner(ownerKey: String?): List<RaftDownloadEntry> =
-        if (ownerKey.isNullOrBlank()) emptyList() else entries.filter { it.ownerKey == ownerKey }
+    /**
+     * The rows [ownerKey] (the current server's principal) sees: its own, plus every download of
+     * the same account still running on another server. A download outlives a server switch, so
+     * the centre keeps showing it until it ends.
+     */
+    fun forOwner(ownerKey: String?, accountKey: String? = null): List<RaftDownloadEntry> =
+        if (ownerKey.isNullOrBlank()) {
+            emptyList()
+        } else {
+            entries.filter { entry ->
+                entry.ownerKey == ownerKey ||
+                    (entry.status.isActive && !accountKey.isNullOrBlank() && entry.accountKey == accountKey)
+            }
+        }
 }
 
 /**
@@ -169,8 +184,8 @@ class RaftDownloadCenter internal constructor(
             .distinctUntilChanged()
 
     /** Selector for one principal's rows. */
-    fun entries(ownerKey: String?): Flow<List<RaftDownloadEntry>> =
-        state.map { it.forOwner(ownerKey) }.distinctUntilChanged()
+    fun entries(ownerKey: String?, accountKey: String? = null): Flow<List<RaftDownloadEntry>> =
+        state.map { it.forOwner(ownerKey, accountKey) }.distinctUntilChanged()
 
     fun isActive(id: String): Boolean = running.containsKey(id)
 
@@ -242,7 +257,8 @@ class RaftDownloadCenter internal constructor(
                 status = RaftDownloadStatus.Downloading,
                 totalBytes = descriptor.totalBytes ?: previous?.totalBytes,
                 createdAtMillis = previous?.createdAtMillis ?: now,
-                updatedAtMillis = now
+                updatedAtMillis = now,
+                accountKey = descriptor.accountKey
             )
         update { entries -> listOf(entry) + entries.filterNot { it.id == descriptor.id } }
         persist()

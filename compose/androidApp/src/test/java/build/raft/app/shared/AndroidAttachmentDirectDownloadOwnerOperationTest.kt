@@ -71,6 +71,31 @@ class AndroidAttachmentDirectDownloadOwnerOperationTest {
         assertNull(registry.runIfCurrent(lease) { "install" })
     }
 
+    @Test
+    fun serverSwitchDuringTransferLetsTheDownloadRunAndComplete() {
+        val registry = AndroidAttachmentOwnerRegistry()
+        val serverA = lease()
+        val serverB = serverA.copy(scopeId = "scope-server-b", principalKey = "b".repeat(64), generation = 2L)
+        val cancelledToken = AtomicReference<String?>()
+        registry.bind(serverA)
+        val operation =
+            AndroidAttachmentDirectDownloadOwnerOperation(
+                registry = registry,
+                owner = serverA,
+                operationId = "direct-download:download-1",
+                cleanupAttempt = cancelledToken::set
+            )
+        assertTrue(operation.start { "attempt-1" })
+
+        // The user picks another server of the same account while the bytes are still coming.
+        registry.bind(serverB)
+
+        assertNull("the switch must not cancel the transfer", cancelledToken.get())
+        assertTrue("progress samples stay admitted", registry.admit(serverA))
+        assertEquals("ready", operation.finishIfCurrent { "ready" })
+        assertNull(cancelledToken.get())
+    }
+
     private fun lease() =
         AndroidAttachmentOwnerLease(
             shellInstanceId = "shell",

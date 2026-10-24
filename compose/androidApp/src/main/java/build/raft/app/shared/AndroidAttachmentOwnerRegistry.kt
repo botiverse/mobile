@@ -24,11 +24,22 @@ internal class AndroidAttachmentOwnerRegistration(
     fun close() = closeAction()
 }
 
-/** Lock order: registry read/write lease -> scope gate. Target locks are never nested with either. */
+/**
+ * Lock order: registry read/write lease -> scope gate. Target locks are never nested with either.
+ *
+ * A scope is one (shell, account, server) owner. Switching the shell to another server of the same
+ * account *detaches* the previous scope instead of retiring it: its transfers (downloads, the
+ * MediaStore export) keep running and may finish, but it can no longer launch UI
+ * ([runIfLaunchable]). Signing out / another account ([retireAccount], a newer auth epoch) and a
+ * retired shell ([retireShell]) retire every scope they own, detached ones included, which
+ * cancels their transfers.
+ */
 internal class AndroidAttachmentOwnerRegistry {
     private val registryLock = ReentrantReadWriteLock(true)
     private val scopes = ConcurrentHashMap<String, ScopeState>()
     private val currentScopeByShell = mutableMapOf<String, String>()
+    /** Scopes a server switch detached from their shell, kept alive for their running transfers. */
+    private val detachedScopesByShell = mutableMapOf<String, MutableSet<String>>()
     private val tombstones = mutableSetOf<String>()
     private var currentAuthEpoch: Long? = null
     private var retiredThroughAuthEpoch: Long = Long.MIN_VALUE
@@ -41,6 +52,7 @@ internal class AndroidAttachmentOwnerRegistry {
             if (epoch != null && lease.authEpoch < epoch) return@write
             if (epoch != null && lease.authEpoch > epoch) {
                 currentScopeByShell.clear()
+                detachedScopesByShell.clear()
                 scopes.values.forEach { state ->
                     tombstones += state.lease.scopeId
                     state.retireLocked(cleanup)
@@ -49,8 +61,15 @@ internal class AndroidAttachmentOwnerRegistry {
             currentAuthEpoch = lease.authEpoch
             val previousScopeId = currentScopeByShell.put(lease.shellInstanceId, lease.scopeId)
             if (previousScopeId != null && previousScopeId != lease.scopeId) {
-                tombstones += previousScopeId
-                scopes[previousScopeId]?.retireLocked(cleanup)
+                val previous = scopes[previousScopeId]
+                if (previous != null && previous.lease.authEpoch == lease.authEpoch) {
+                    // Server switch within the account: transfers outlive the selected server.
+                    previous.detachLocked()
+                    detachedScopesByShell.getOrPut(lease.shellInstanceId) { mutableSetOf() } += previousScopeId
+                } else {
+                    tombstones += previousScopeId
+                    previous?.retireLocked(cleanup)
+                }
             }
             val state = scopes.computeIfAbsent(lease.scopeId) { ScopeState(lease) }
             synchronized(state.gate) {
@@ -67,7 +86,9 @@ internal class AndroidAttachmentOwnerRegistry {
     fun retireShell(shellInstanceId: String) {
         val cleanup = mutableListOf<() -> Unit>()
         registryLock.write {
-            currentScopeByShell.remove(shellInstanceId)?.let { scopeId ->
+            val retiring = listOfNotNull(currentScopeByShell.remove(shellInstanceId)) +
+                detachedScopesByShell.remove(shellInstanceId).orEmpty()
+            retiring.forEach { scopeId ->
                 tombstones += scopeId
                 scopes[scopeId]?.retireLocked(cleanup)
             }
@@ -80,6 +101,7 @@ internal class AndroidAttachmentOwnerRegistry {
         registryLock.write {
             currentAuthEpoch?.let { retiredThroughAuthEpoch = maxOf(retiredThroughAuthEpoch, it) }
             currentScopeByShell.clear()
+            detachedScopesByShell.clear()
             scopes.values.forEach { state ->
                 tombstones += state.lease.scopeId
                 state.retireLocked(cleanup)
@@ -89,17 +111,29 @@ internal class AndroidAttachmentOwnerRegistry {
         cleanup.forEach { it() }
     }
 
+    /** The lease's transfers may run and finish (current or detached by a server switch). */
     fun admit(lease: AndroidAttachmentOwnerLease): Boolean =
         registryLock.read {
             val state = scopes[lease.scopeId] ?: return@read false
             synchronized(state.gate) { state.currentLocked(lease) }
         }
 
+    /** Runs [block] (a transfer's completion step) while the lease is alive, current or detached. */
     fun <T> runIfCurrent(lease: AndroidAttachmentOwnerLease, block: () -> T): T? =
         registryLock.read {
             val state = scopes[lease.scopeId] ?: return@read null
             synchronized(state.gate) {
                 if (!state.currentLocked(lease)) return@synchronized null
+                block()
+            }
+        }
+
+    /** Runs [block] (a UI launch: open, install) only while the lease is its shell's current scope. */
+    fun <T> runIfLaunchable(lease: AndroidAttachmentOwnerLease, block: () -> T): T? =
+        registryLock.read {
+            val state = scopes[lease.scopeId] ?: return@read null
+            synchronized(state.gate) {
+                if (!state.currentLocked(lease) || state.detached) return@synchronized null
                 block()
             }
         }
@@ -134,6 +168,11 @@ internal class AndroidAttachmentOwnerRegistry {
         val gate = Any()
         val hooks = linkedMapOf<String, AndroidAttachmentRetirementHook>()
         var retired = false
+        var detached = false
+
+        fun detachLocked() {
+            synchronized(gate) { detached = true }
+        }
 
         fun currentLocked(expected: AndroidAttachmentOwnerLease): Boolean = !retired && lease == expected
 
