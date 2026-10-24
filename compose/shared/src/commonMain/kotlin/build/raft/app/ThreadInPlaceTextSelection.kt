@@ -203,7 +203,7 @@ internal val LocalThreadInPlaceTextSelectionHost =
 
 /**
  * The text the "Select Text" page offers for a message (`ThreadMessageTextSelectionDialog` binds
- * `message.body`, locked by scripts/ci/check_source_constraints.py) and the menu's Copy action
+ * `message.body`) and the menu's Copy action
  * copies. A whole-message in-place copy must match it.
  */
 internal fun threadMessageSelectionSourceText(message: RaftThreadMessageItem): String = message.body

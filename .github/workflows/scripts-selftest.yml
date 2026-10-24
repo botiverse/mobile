@@ -2,10 +2,21 @@ name: Scripts Self-test
 
 on:
   pull_request:
+    paths:
+      - "scripts/**"
+      - ".github/**"
+      # Also exercised below: the mobile-use iOS tests and assert_xctest_ran.py.
+      - "tools/mobile-use/**"
+      - "compose/iosApp/scripts/**"
   push:
     branches:
       - main
       - "release-*"
+    paths:
+      - "scripts/**"
+      - ".github/**"
+      - "tools/mobile-use/**"
+      - "compose/iosApp/scripts/**"
   workflow_dispatch:
 
 permissions:

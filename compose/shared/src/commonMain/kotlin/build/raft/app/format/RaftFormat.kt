@@ -7,9 +7,8 @@ import kotlin.math.roundToLong
 
 /**
  * The one formatter for byte sizes and transfer speeds in UI text (attachments, file pages,
- * downloads, app update, storage, computers, migration). Do not add another: a size label built
- * anywhere else fails `scripts/ci/check_source_constraints.py` (byte-unit literals are only
- * allowed in this file).
+ * downloads, app update, storage, computers, migration). Do not add another: build every size
+ * label through this file instead of writing byte-unit literals elsewhere.
  *
  * Units are binary (1 KB = 1024 B) and labelled `B`, `KB`, `MB`, `GB`, the same as the Web's
  * `formatFileSizeBytes` (`packages/web/src/utils/fileSizePresentation.ts`, botiverse/slock

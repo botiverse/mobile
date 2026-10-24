@@ -1,53 +1,39 @@
 name: Source constraints lint
 
 # Incident-born static constraints as an explicit gate (test-discipline
-# announcement, #all 2026-07-25): tasks #800 / #803 / #361 / #161 / #924 /
-# #82 / #183 / #127 structural faces.
+# announcement, #all 2026-07-25). check_source_constraints.py now holds the
+# 1.15.0 conditional-interaction-state crash guard and the task #82 native
+# Sign in with Apple contract; the other steps below
+# are the visual fixture census, string edge spaces and no-production-visual-pages.
 # Behavior stays proven by behavior tests; this only blocks silent structural
 # regressions a refactor could reintroduce.
 
 on:
   pull_request:
     paths:
-      # check_label_facing_resolver_has_no_production_callers scans every .kt under
-      # commonMain, so the trigger has to match that scope. An enumerated file list here
-      # reintroduces exactly the hole it was written to close: SettingsHomePage.kt held a
-      # live task #256 defect and was absent from this list, so a PR touching only that
-      # file would not have run the check at all.
+      # check_no_conditional_interaction_state scans every .kt under these roots.
+      - "compose/designsystem/src/commonMain/kotlin/**/*.kt"
       - "compose/shared/src/commonMain/kotlin/**/*.kt"
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadPage.kt"
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/MembersPage.kt"
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/ThreadComposerPage.kt"
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/BasicWidget.kt"
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/markdown/RaftMarkdown.kt"
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/BridgeAuth.kt"
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/AuthDataSource.kt"
-      - "compose/shared/src/commonMain/kotlin/build/raft/app/data/IosMobileOAuth.kt"
-      - "compose/androidApp/src/main/java/build/raft/app/shared/RaftCmpActivity.kt"
-      - "compose/iosApp/iosApp/RaftIosMobileOAuthHost.swift"
-      - "compose/iosApp/iosApp/iosApp.entitlements"
-      - "compose/iosApp/iosApp.xcodeproj/project.pbxproj"
-      - "compose/shared/src/commonMain/resources/MR/base/strings.xml"
-      - "compose/shared/src/commonMain/resources/MR/zh-rCN/strings.xml"
-      - "compose/shared/src/commonMain/resources/MR/ja/strings.xml"
       # Same glob as check_string_edge_spaces.py: a fourth locale must trigger
       # this job on its own PR, not only after it lands (LiBai, #2327 review).
       - "compose/shared/src/commonMain/resources/MR/*/strings.xml"
-      - "third_party/kuikly-compose-markdown/**"
       - "scripts/ci/check_source_constraints.py"
+      # check_native_apple_authentication_services (task #82) reads these iOS files.
+      - "compose/iosApp/iosApp/RaftIosMobileOAuthHost.swift"
+      - "compose/iosApp/iosApp/iosApp.entitlements"
+      - "compose/iosApp/iosApp.xcodeproj/project.pbxproj"
       - "scripts/ci/check_string_edge_spaces.py"
+      - "scripts/ci/visual_fixture_split_census.py"
       - "scripts/ci/verify_no_production_visual_pages.py"
-      # verify_no_production_visual_pages.py also scans the platform production
-      # source sets and the generated CMP page registries.
+      # visual_fixture_split_census.py and verify_no_production_visual_pages.py
+      # also scan the platform production source sets, the visual fixture source
+      # sets and the generated CMP page registries.
       - "compose/shared/src/androidMain/kotlin/**/*.kt"
       - "compose/shared/src/iosMain/kotlin/**/*.kt"
       - "compose/shared/src/visualFixtures/**"
+      - "compose/shared/src/visualFixtureData/**"
       - "compose/shared/src/visualFixturesOff/**"
       - "compose/androidApp/src/main/java/**/*.kt"
-      # check_single_byte_size_formatter scans every production Kotlin file and the iOS host.
-      - "compose/**/*.kt"
-      - "compose/iosApp/**/*.m"
-      - "compose/iosApp/**/*.swift"
       - "scripts/cmp_generate_page_registry.py"
       - ".github/workflows/source-constraints-lint.yml"
   push:
