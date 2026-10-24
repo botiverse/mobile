@@ -94,6 +94,9 @@ internal class SharedHomeStore(
      * forever): the list un-dims and the UI shows the failure; a late load still lands.
      */
     private val serverSwitchTimeoutMillis: Long = SERVER_SWITCH_TIMEOUT_MS,
+    /** Task #164: the backoff of the stale-unread recovery read; injectable for virtual time. */
+    staleRecoveryDelayMillis: (attempt: Int, retryAfterMillis: Long?) -> Long =
+        { attempt, retryAfter -> raftStaleRecoveryDelayMillis(attempt, retryAfter) },
     /**
      * #211: load the current server's sidebar-order snapshot. The store
      * calls this in parallel with the home payload load to populate the
@@ -240,6 +243,14 @@ internal class SharedHomeStore(
         linkedMapOf<BackgroundUnreadScopeKey, BackgroundUnreadScopeProjection>()
     private var homeSurfaceVisible: Boolean = true
     private var hiddenHomeSnapshotDirty: Boolean = false
+    /** Task #164: the one pending recovery read while Home's unread is stale. */
+    private val unreadStaleRecovery =
+        RaftStaleReadRecovery(
+            scope = scope,
+            label = "home_unread",
+            diagnosticsLogger = { diagnosticsLogger(it) },
+            delayMillis = staleRecoveryDelayMillis
+        )
     private val dismissedLocalNotificationIds = mutableSetOf<String>()
     private var readPredictionRevisions: Map<ChannelId, Long> = emptyMap()
     // Process read predictions and local realtime message patches are concurrent producers.
@@ -1288,6 +1299,14 @@ internal class SharedHomeStore(
         if (homeSurfaceVisible == visible) return
         homeSurfaceVisible = visible
         if (!visible) return
+        // Task #164: a recovery read skipped while Home was hidden runs now.
+        if (_state.value.unreadStale) {
+            if (unreadStaleRecovery.armed) {
+                unreadStaleRecovery.nudge("home_visible")
+            } else {
+                unreadStaleRecovery.schedule(retryAfterMillis = null) { recoverStaleHomeUnread() }
+            }
+        }
         if (visible && current.homeRealtimeDirty) {
             val currentContent = current.content as? SharedHomeContentState.Content
             if (hiddenHomeSnapshotDirty) {
@@ -1429,6 +1448,13 @@ internal class SharedHomeStore(
                 return
             }
         val summary = (result as? DataResult.Content)?.data
+        // Task #164: a remembered summary may predate the reply that asked for this read, and an
+        // overload has none: both leave the marks as they are and raise the stale notice.
+        if (summary?.stale == true || result.isRwOverloadedError) {
+            diagnosticsLogger("home_followed_thread_refresh result=stale")
+            markHomeUnreadStale()
+            return
+        }
         if (summary == null) {
             diagnosticsLogger("home_followed_thread_refresh result=unavailable")
             return
@@ -1541,6 +1567,62 @@ internal class SharedHomeStore(
     /** Drop dirty marks of loads a session reset or server switch has orphaned. */
     private fun clearRealtimeUnreadWatches() {
         synchronized(realtimeUnreadDirtyLock) { realtimeUnreadDirtyByLoad.clear() }
+    }
+
+    /** Task #164: a read outside the Home load found the unread stale; the next fresh load clears it. */
+    private fun markHomeUnreadStale() {
+        val current = _state.value
+        if (!current.unreadStale) reduceState(current.copy(unreadStale = true))
+        unreadStaleRecovery.schedule(retryAfterMillis = null) { recoverStaleHomeUnread() }
+    }
+
+    /**
+     * Task #164: while Home's unread is stale, one background recovery load is armed (backoff, see
+     * [RaftStaleReadRecovery]); a load that reached fresh unread reads disarms it. A failed load
+     * (channels / DMs) changes nothing.
+     */
+    private fun settleUnreadStaleRecovery(dataResult: DataResult<HomeSnapshot>, retryAfterMillis: Long?) {
+        when {
+            _state.value.unreadStale ->
+                unreadStaleRecovery.schedule(retryAfterMillis) { recoverStaleHomeUnread() }
+            dataResult is DataResult.Content -> unreadStaleRecovery.reset()
+        }
+    }
+
+    /**
+     * The recovery read: one Home load at background priority. Skipped while Home is hidden (made
+     * visible, it reads at once) and while a load is in flight (its answer settles recovery). Returns
+     * whether it started a load.
+     */
+    private fun recoverStaleHomeUnread(): Boolean {
+        if (!_state.value.unreadStale) return false
+        val skipReason =
+            when {
+                !homeSurfaceVisible -> "surface_hidden"
+                loadJob?.isActive == true -> "load_in_flight"
+                _state.value.content !is SharedHomeContentState.Content -> "no_content"
+                else -> null
+            }
+        if (skipReason != null) {
+            diagnosticsLogger("home_unread_stale_recovery_skip reason=$skipReason")
+            // A load in flight settles recovery itself; otherwise nothing started.
+            return skipReason == "load_in_flight"
+        }
+        diagnosticsLogger("home_unread_stale_recovery_load")
+        val nextSwitch = _state.value.serverSwitchState.refresh()
+        reduceState(_state.value.copy(serverSwitchState = nextSwitch))
+        loadJobLaunchIntent = null
+        loadJob =
+            scope.launch {
+                val previousReason = stateDiagnosticsReason
+                stateDiagnosticsReason = "UnreadStaleRecovery"
+                try {
+                    load(nextSwitch, showRefreshAffordance = false, priority = DataRequestPriority.Background)
+                } finally {
+                    stateDiagnosticsReason = previousReason
+                }
+            }
+        return true
     }
 
     private fun scheduleRealtimeUnreadReconcileLoad(
@@ -2053,6 +2135,7 @@ internal class SharedHomeStore(
         request: HomeServerSwitchState,
         showRefreshAffordance: Boolean,
         realtimeUnreadRound: Int = 0,
+        priority: DataRequestPriority = DataRequestPriority.Visible,
     ) {
         val sessionGeneration = homeSessionGeneration.value
         val generation = request.requestGeneration
@@ -2061,7 +2144,7 @@ internal class SharedHomeStore(
         }
         var othersInFlight = false
         try {
-            loadUnsettled(request, showRefreshAffordance, realtimeUnreadRound)
+            loadUnsettled(request, showRefreshAffordance, realtimeUnreadRound, priority)
         } finally {
             othersInFlight =
                 synchronized(loadsInFlightLock) {
@@ -2117,6 +2200,7 @@ internal class SharedHomeStore(
         request: HomeServerSwitchState,
         showRefreshAffordance: Boolean,
         realtimeUnreadRound: Int,
+        priority: DataRequestPriority,
     ) {
         val sessionGeneration = homeSessionGeneration.value
         diagnosticsLogger("home_ui_load_start refreshAffordance=$showRefreshAffordance")
@@ -2188,7 +2272,7 @@ internal class SharedHomeStore(
                 request = request,
                 activeSession = activeSession,
                 activeServer = activeServer,
-                priority = DataRequestPriority.Visible,
+                priority = priority,
                 forceNetwork = false,
                 refreshNotificationsAfterLoad = true,
                 sessionGeneration = sessionGeneration,
@@ -2310,7 +2394,24 @@ internal class SharedHomeStore(
             (dataResult as? DataResult.Content)?.data?.let { snapshot ->
                 prepareReadStateV1Hydrates(snapshot)
             }
-        val rawSnapshot = preparedHydrates?.snapshot
+        val fetchedSnapshot = preparedHydrates?.snapshot
+        // Task #164: unread the server served from its remembered body (`X-Raft-Stale`, at most
+        // 5 minutes old) never replaces counts Home already shows live; it is treated like the
+        // unavailable unread of task #831 (frozen to the prior counts). It does fill a Home that
+        // has no live counts yet (the durable cache's last-known hints are older than it).
+        val keepShownUnreadOverStale =
+            fetchedSnapshot != null &&
+                fetchedSnapshot.unreadStale &&
+                fetchedSnapshot.unreadEnrichmentAvailable &&
+                previousContent != null &&
+                previousContent.showsLiveUnread()
+        val rawSnapshot =
+            if (keepShownUnreadOverStale) {
+                diagnosticsLogger("home_unread_keep_shown reason=stale_read")
+                fetchedSnapshot?.copy(unreadEnrichmentAvailable = false)
+            } else {
+                fetchedSnapshot
+            }
         // task #831: when the unread enrichment was unavailable, atomically
         // freeze ALL unread-bearing fields (per-row channel/DM unread, aggregate
         // total/source, server counts) to the prior committed baseline. Fresh
@@ -2404,6 +2505,9 @@ internal class SharedHomeStore(
                         session = activeSession,
                         contentRefreshing = false,
                         previousContent = previousContent
+                    ).keepingLastKnownRowHintsFrom(
+                        previous = previousContent,
+                        unreadFrozen = rawSnapshot?.unreadEnrichmentAvailable == false
                     )
                 is DataResult.Empty -> SharedHomeContentState.Empty(activeSession)
                 is DataResult.Error -> {
@@ -2442,7 +2546,12 @@ internal class SharedHomeStore(
             val nextActivityUnread =
                 if (
                     activityUnreadRequestOwner != null &&
-                    activityUnreadRequestOwner == liveActivityUnreadOwner
+                    activityUnreadRequestOwner == liveActivityUnreadOwner &&
+                    // Task #164: while the read warehouse is behind (an overloaded or remembered
+                    // summary) the known per-server Activity counts stay as they were. Any other
+                    // unavailable summary still makes them unknown, as before.
+                    !keepShownUnreadOverStale &&
+                    !(fetchedSnapshot?.unreadStale == true && fetchedSnapshot.serverUnreadSummaryAvailable == false)
                 ) {
                     HomeServerActivityUnreadProjection(
                         requestOwner = activityUnreadRequestOwner,
@@ -2533,7 +2642,15 @@ internal class SharedHomeStore(
                             _state.value.serverUnreadCounts
                         },
                     serverActivityUnread = nextActivityUnread,
-                    appBadgeCount = nextBadge
+                    appBadgeCount = nextBadge,
+                    // Task #164: only a Home load that reached the unread reads decides; a
+                    // failed load (channels / DMs) leaves the notice as it was.
+                    unreadStale =
+                        if (dataResult is DataResult.Content) {
+                            fetchedSnapshot?.unreadStale == true
+                        } else {
+                            _state.value.unreadStale
+                        }
                 )
             val published =
                 if (preparedHydrates?.selectedAdjudication == true) {
@@ -2551,6 +2668,7 @@ internal class SharedHomeStore(
                 diagnosticsLogger("read_state_v1_home_publish rejected=stale_witness")
                 return
             }
+            settleUnreadStaleRecovery(dataResult, fetchedSnapshot?.unreadRetryAfterMillis)
             if (refreshNotificationsAfterLoad) {
                 loadNotifications()
             } else {
@@ -5179,7 +5297,14 @@ data class SharedHomeState(
      * receives this through `bridge.appBadge(count, source)` and MUST NOT
      * branch on `source` to decide which UI to show.
      */
-    val appBadgeCount: AppBadgeCount = AppBadgeCount.UNKNOWN
+    val appBadgeCount: AppBadgeCount = AppBadgeCount.UNKNOWN,
+    /**
+     * Task #164: the unread counts Home shows may be old because the read warehouse is behind
+     * (`X-Raft-Stale` or `503 rw_overloaded` on `channels/unread` / `servers/unread-summary`). The
+     * counts themselves stay as they were; the phone Home shows the stale notice until a load
+     * with fresh unread reads clears it.
+     */
+    val unreadStale: Boolean = false
 )
 
 /**
@@ -5493,7 +5618,12 @@ sealed interface SharedHomeContentState {
          * durable identity cache (task #166). Never fed into rows, badges or read state; see
          * [displayRowHints].
          */
-        val restoredRowHints: Map<String, HomeRowRestoredHint> = emptyMap()
+        val restoredRowHints: Map<String, HomeRowRestoredHint> = emptyMap(),
+        /**
+         * Task #164: the first network Home after a cold start could not get fresh unread (stale
+         * or overloaded), so the restored last-known counts stay on screen until it can.
+         */
+        val rowHintsRetained: Boolean = false
     ) : SharedHomeContentState
 }
 

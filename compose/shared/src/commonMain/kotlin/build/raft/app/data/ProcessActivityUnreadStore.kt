@@ -33,7 +33,9 @@ import kotlinx.coroutines.sync.withLock
 
 internal data class ActivityUnreadSummarySnapshot(
     val totalUnreadCount: Int,
-    val totalCount: Int
+    val totalCount: Int,
+    /** Task #164: the server answered from its remembered inbox body (`X-Raft-Stale`). */
+    val staleReason: RaftStaleReason? = null
 )
 
 internal data class ProcessActivityUnreadOwner(
@@ -439,7 +441,19 @@ internal class ProcessActivityUnreadStore(
                         return@withLock false
                     }
                     val factChanged = entry.factRevision != attempt.factRevision
-                    if (!factChanged) {
+                    // Task #164: a remembered (stale) server body never replaces a count this
+                    // process already knows; it only fills a count it does not have yet.
+                    val keepKnownOverStale =
+                        result is DataResult.Content && result.data.staleReason != null && entry.projection.hasValue
+                    if (!factChanged && keepKnownOverStale) {
+                        entry.projection =
+                            entry.projection.copy(
+                                freshness = ActivityUnreadSummaryFreshness.Stale,
+                                revision = nextProjectionRevision(),
+                                source = attempt.reason
+                            )
+                        publish(owner, entry)
+                    } else if (!factChanged) {
                         if (result is DataResult.Content) {
                             // Raw aggregates include suppressed rows; reuse the latest
                             // non-authoritative fact (suppression-aware) to deduct the
@@ -468,7 +482,12 @@ internal class ProcessActivityUnreadStore(
                                     totalUnreadCount = (rawUnread - suppressedUnread).coerceAtLeast(0),
                                     totalCount = (rawTotal - suppressedTotal).coerceAtLeast(0),
                                     hasValue = true,
-                                    freshness = ActivityUnreadSummaryFreshness.Fresh,
+                                    freshness =
+                                        if (result.data.staleReason != null) {
+                                            ActivityUnreadSummaryFreshness.Stale
+                                        } else {
+                                            ActivityUnreadSummaryFreshness.Fresh
+                                        },
                                     revision = nextProjectionRevision(),
                                     errorCode = null,
                                     source = attempt.reason

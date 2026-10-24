@@ -74,20 +74,8 @@ private suspend fun RaftNetworkClient.inboxWithRwOverloadRetry(
 private const val RwOverloadDefaultRetryAfterMillis = 2_000L
 private const val RwOverloadMaxRetryAfterMillis = 10_000L
 
-/** Server overload body (routes/errorResponse.ts): `{error, code:"rw_overloaded", retryable:true}`. */
-@Serializable
-private data class RwOverloadedErrorDto(
-    val code: String? = null,
-    val retryable: Boolean? = null
-)
-
 internal fun HomeNetworkResponse.rwOverloadRetryDelayMillis(): Long? {
-    if (code != 503) return null
-    val payload = errorBodyText?.takeIf { it.isNotBlank() } ?: bodyText?.takeIf { it.isNotBlank() } ?: return null
-    val error =
-        runCatching { inboxSavedSearchRepositoryJson.decodeFromString(RwOverloadedErrorDto.serializer(), payload) }
-            .getOrNull() ?: return null
-    if (error.code != "rw_overloaded" || error.retryable != true) return null
+    if (!isRetryableRwOverload()) return null
     val seconds =
         responseHeaders.entries
             .firstOrNull { (name, _) -> name.equals("retry-after", ignoreCase = true) }
@@ -244,6 +232,9 @@ class RealInboxRepository(
             mapOnDefault = false,
             diagnosticsLogger = logger,
             warningLogger = warningLogger,
+            markStale = { snapshot, reason, retryAfter ->
+                snapshot.copy(staleReason = reason, staleRetryAfterMillis = retryAfter)
+            },
             mapper = { bodyText ->
                 val parsed = parseSharedInboxSnapshot(bodyText)
                     ?: throw IllegalStateException("Inbox response missing items")
@@ -304,6 +295,7 @@ internal class ProcessActivityUnreadRepository(
             mapOnDefault = false,
             diagnosticsLogger = logger,
             warningLogger = warningLogger,
+            markStale = { snapshot, reason, _ -> snapshot.copy(staleReason = reason) },
             mapper = { bodyText ->
                 val parsed = parseSharedInboxSnapshot(bodyText)
                     ?: throw IllegalStateException("Activity unread response missing summary")
@@ -541,6 +533,12 @@ private suspend fun <T> executeInboxLike(
     mapOnDefault: Boolean = true,
     diagnosticsLogger: (String) -> Unit = {},
     warningLogger: (String) -> Unit = {},
+    /**
+     * Task #164: tags a page the server served from its remembered body (`X-Raft-Stale`). A stale
+     * page is always Content, even when it has no rows: the store keeps what it showed instead of
+     * replacing it with "nothing".
+     */
+    markStale: ((T, RaftStaleReason, Long?) -> T)? = null,
     mapper: (String) -> T
 ): DataResult<T> {
     var statusCode: Int? = null
@@ -562,7 +560,12 @@ private suspend fun <T> executeInboxLike(
                 resultLabel = { parsed -> if (emptyWhen(parsed)) "empty" else "content" },
                 parser = { mapper(body) }
             )
-        if (emptyWhen(result)) DataResult.Empty(emptyReason) else DataResult.Content(result)
+        val staleReason = markStale?.let { response.raftStaleReason() }
+        when {
+            staleReason != null -> DataResult.Content(markStale(result, staleReason, response.raftRetryAfterMillis()))
+            emptyWhen(result) -> DataResult.Empty(emptyReason)
+            else -> DataResult.Content(result)
+        }
     } catch (cancellation: CancellationException) {
         throw cancellation
     } catch (exception: Exception) {
@@ -591,7 +594,15 @@ private fun <T> HomeNetworkResponse.toInboxLikeDataError(serverMessage: String?,
                 )
             )
         in 500..599 ->
-            DataResult.Error(ScreenError(code = "server_unavailable", retryable = true, serverMessage = serverMessage))
+            DataResult.Error(
+                ScreenError(
+                    code = "server_unavailable",
+                    retryable = true,
+                    serverMessage = serverMessage,
+                    serverCode = RwOverloadedErrorCode.takeIf { isRwOverloaded() },
+                    retryAfterSeconds = raftRetryAfterSecondsIfRwOverloaded()
+                )
+            )
         else ->
             DataResult.Error(ScreenError(code = publicCode ?: "http_$code", retryable = code != 404, serverMessage = serverMessage))
     }

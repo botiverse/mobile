@@ -3,6 +3,9 @@ package build.raft.app
 import build.raft.app.data.DataResult
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.InboxItem
+import build.raft.app.data.RaftStaleReason
+import build.raft.app.data.RaftStaleRecoveryMaxDelayMillis
+import build.raft.app.data.ScreenError
 import build.raft.app.data.ThreadListSnapshot
 import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.authSessionFixture
@@ -25,7 +28,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -81,6 +86,58 @@ class SharedThreadUnreadThreadJumpTest {
             scopeJob.cancelAndJoin()
         }
     }
+
+    /**
+     * Task #164: while the followed-threads list is overloaded (`503 rw_overloaded`) or a remembered
+     * list may predate the thread, the ids it could not resolve are asked again on the shared
+     * recovery backoff (and by the next trigger); a fresh answer stops it. Any other failure stays
+     * final for the page (above). Virtual time only: the recovery keeps re-arming while overloaded.
+     */
+    @Test
+    fun idsTheOverloadedListCouldNotResolveAreAskedAgainUntilAFreshAnswer() = runTest {
+        val scopeJob = SupervisorJob()
+        val scope = CoroutineScope(scopeJob + StandardTestDispatcher(testScheduler))
+        val repository = repository()
+        repository.unreadFollowedResult =
+            DataResult.Error(ScreenError(code = "server_unavailable", retryable = true, serverCode = "rw_overloaded"))
+        val store = SharedThreadStore(dataSource = dataSource(repository), scope = scope, initialPayload = channelWindow())
+
+        try {
+            store.dispatch(SharedThreadIntent.ResolveUnreadThreadParents(setOf("t-old")))
+            runCurrent()
+            assertEquals(1, repository.unreadFollowedRequests.size)
+            assertEquals(emptyMap(), store.state.value.unreadThreadParents)
+
+            // Still behind: a remembered list without the thread is not final either.
+            repository.unreadFollowedResult = followedList(staleReason = RaftStaleReason.RwOverloaded)
+            // The first two waits are 5 s each, ±20 %: one step is at most 6 s, two at least 8 s.
+            advanceTimeBy(OneStepMaxMillis)
+            runCurrent()
+            assertEquals(2, repository.unreadFollowedRequests.size, "one recovery read per backoff step")
+
+            repository.unreadFollowedResult =
+                followedList(followedRow("t-old", parentChannel = ChannelIdValue, parentMessage = "p-old", unread = 3))
+            advanceTimeBy(OneStepMaxMillis)
+            runCurrent()
+            assertEquals(3, repository.unreadFollowedRequests.size)
+            assertEquals(setOf("t-old"), store.state.value.unreadThreadParents.keys)
+
+            advanceTimeBy(10 * RaftStaleRecoveryMaxDelayMillis)
+            runCurrent()
+            assertEquals(3, repository.unreadFollowedRequests.size, "a fresh answer stops recovery")
+        } finally {
+            scopeJob.cancelAndJoin()
+        }
+    }
+
+    private fun followedList(vararg rows: InboxItem, staleReason: RaftStaleReason? = null): DataResult<ThreadListSnapshot> =
+        DataResult.Content(
+            ThreadListSnapshot(
+                server = ServerSummary(id = ServerId(ServerIdValue), name = "Slock"),
+                threads = rows.toList(),
+                staleReason = staleReason,
+            )
+        )
 
     @Test
     fun jumpingToALoadedParentFocusesItWithoutLoading() = runTest {
@@ -236,6 +293,7 @@ class SharedThreadUnreadThreadJumpTest {
 
     private companion object {
         const val ChannelIdValue = "channel-1"
+        const val OneStepMaxMillis = 6_000L
         const val ServerIdValue = "server-1"
     }
 }

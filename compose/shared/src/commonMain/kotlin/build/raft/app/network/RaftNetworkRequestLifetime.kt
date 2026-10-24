@@ -324,10 +324,13 @@ internal object RaftProcessNetworkRequestLifetime {
 }
 
 /** Platform hosts call this only from their process/application-level visibility owner. */
-fun updateRaftProcessNetworkVisibility(foreground: Boolean): Int =
-    RaftProcessNetworkRequestLifetime.coordinator
+fun updateRaftProcessNetworkVisibility(foreground: Boolean): Int {
+    // Task #164: stale unread / Activity reads recover only in the foreground, and at once on return.
+    build.raft.app.data.RaftStaleReadRecoverySignals.onProcessVisibility(foreground)
+    return RaftProcessNetworkRequestLifetime.coordinator
         .onProcessVisibilityChanged(foreground)
         .retiredRequestCount
+}
 
 /** True only after a platform host has reported the process as visible. */
 fun raftProcessIsForeground(): Boolean =

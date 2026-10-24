@@ -2,9 +2,6 @@ package build.raft.app.data
 
 import build.raft.app.model.ServerId
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.builtins.serializer
-import kotlinx.serialization.json.Json
 
 /**
  * Last-known per-row unread count and last-message preview, shown on cold start while Home is
@@ -51,51 +48,13 @@ internal fun createSharedHomeRowHintPersistSlice(
     )
 
 /**
- * Tracks every key written through it so the whole family can be removed without key
- * enumeration (MMKV access here is get/put only).
+ * The row hints' storage: the last-known copy family (task #164 limits: 7 days, 5 servers per user,
+ * the whole family removed by [RaftLastCountsPersistStorage.clearAll] when the session ends).
  */
 internal class HomeRowHintPersistStorage(
-    private val store: SharedPreferenceStore
-) : MviPersistStorage {
-    override fun read(key: String): String? = store.getString(key)
-
-    override fun write(key: String, value: String) {
-        store.putString(key, value)
-        val keys = indexedKeys()
-        if (key !in keys) writeIndex(keys + key)
-    }
-
-    override fun remove(key: String) {
-        store.putString(key, null)
-        val keys = indexedKeys()
-        if (key in keys) writeIndex(keys - key)
-    }
-
-    /** Removes every hint written on this device (only one account is signed in at a time). */
-    fun clearAll() {
-        indexedKeys().forEach { store.putString(it, null) }
-        store.putString(IndexKey, null)
-    }
-
-    private fun indexedKeys(): List<String> =
-        store.getString(IndexKey)
-            ?.let { encoded -> runCatching { IndexJson.decodeFromString(IndexSerializer, encoded) }.getOrNull() }
-            .orEmpty()
-
-    private fun writeIndex(keys: List<String>) {
-        if (keys.isEmpty()) {
-            store.putString(IndexKey, null)
-        } else {
-            store.putString(IndexKey, IndexJson.encodeToString(IndexSerializer, keys.distinct()))
-        }
-    }
-
-    private companion object {
-        const val IndexKey = "mvi:persist:home:hints:index"
-        val IndexSerializer = ListSerializer(String.serializer())
-        val IndexJson = Json { ignoreUnknownKeys = true }
-    }
-}
+    store: SharedPreferenceStore,
+    nowMillis: () -> Long = ::defaultNowMillis,
+) : RaftLastCountsPersistStorage(store, indexKey = "mvi:persist:home:hints:index", nowMillis = nowMillis)
 
 private object SharedHomeRowHintPersistSpec :
     MviPersistSpec<SharedHomeState, SharedHomeIntent, HomeRowHintsSnapshot> {
@@ -194,7 +153,30 @@ internal fun SharedHomeContentState.Content.toRowHintsSnapshot(): HomeRowHintsSn
  * or realtime event), because that is newer than anything restored.
  */
 internal fun SharedHomeContentState.Content.displayRowHints(): Map<String, HomeRowRestoredHint> =
-    if (isDurableIdentityCache) restoredRowHints else emptyMap()
+    if (isDurableIdentityCache || rowHintsRetained) restoredRowHints else emptyMap()
+
+/**
+ * Task #164: true when this content's row counts came from a network Home (live), false while it
+ * shows only the durable cache's last-known hints (cold start, server switch, sign-in).
+ */
+internal fun SharedHomeContentState.Content.showsLiveUnread(): Boolean =
+    !isDurableIdentityCache && !rowHintsRetained
+
+/**
+ * Task #164: a network Home whose unread was frozen (stale or unavailable) over content that still
+ * showed the restored last-known counts keeps showing them, instead of rows with no count, until
+ * a load with fresh unread replaces the content.
+ */
+internal fun SharedHomeContentState.Content.keepingLastKnownRowHintsFrom(
+    previous: SharedHomeContentState.Content?,
+    unreadFrozen: Boolean
+): SharedHomeContentState.Content {
+    if (!unreadFrozen || previous == null) return this
+    if (previous.baseSnapshot.server.id != baseSnapshot.server.id || previous.session.user.id != session.user.id) return this
+    val hints = previous.displayRowHints()
+    if (hints.isEmpty()) return this
+    return copy(restoredRowHints = hints, rowHintsRetained = true)
+}
 
 private fun HomeSnapshot.homeRowIds(): Set<String> =
     (channels.map { it.threadId.value } + directMessages.map { it.threadId.value }).toSet()

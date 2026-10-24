@@ -128,6 +128,8 @@ data class ChannelUnreadSummary(
     val followedThreadUnread: Map<String, HomeFollowedThreadUnread>,
     /** The server's own fold of [followedThreadUnread] (`threadUnread`). */
     val threadUnreadByParent: Map<ChannelId, HomeParentThreadUnread>,
+    /** Task #164: served from the server's remembered summary (`X-Raft-Stale`); may be old. */
+    val stale: Boolean = false,
 )
 
 fun ChannelUnreadSummaryWireDto.toChannelUnreadSummary(): ChannelUnreadSummary {

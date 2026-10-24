@@ -771,6 +771,10 @@ internal class RaftSharedStoreProvider private constructor(
                     // Cached previews are message content: they leave with the session. Losing a
                     // successor's hints to a late terminal event only costs one cold-start hint.
                     homeRowHintPersistStorage.clearAll()
+                    // Task #164: the Activity first pages (row previews) are last-known copies
+                    // too: same lifetime (web lastCounts logout clear). The Activity badge counts
+                    // leave through activityUnreadSummaryStore.invalidateAll on AuthSessionEvent.Cleared.
+                    SharedActivityPersistStorage(sharedPreferenceStore).clearAll()
                     // Avatar references are account-visible directory data: same lifetime.
                     memberAvatarRefStore.clearAll()
                     // Durable rosters (data-layer plan step 3): same lifetime; the epoch bump inside
@@ -857,6 +861,8 @@ internal class RaftSharedStoreProvider private constructor(
                         grant.durablePartition(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID),
                         transportEpoch,
                     )
+                    // Task #164: realtime is back; a stale unread / Activity read tries again now.
+                    RaftStaleReadRecoverySignals.onRealtimeRoomsJoined()
                 }
             },
             // Task #14c: the server's answer to a `join:channel` (a reply thread's room): the canary may make a
@@ -2703,7 +2709,7 @@ internal class RaftSharedStoreProvider private constructor(
                     ),
                 activityPersistSlice =
                     createSharedActivityPersistSlice(
-                        storage = SharedPreferencePersistStorage(sharedPreferenceStore),
+                        storage = SharedActivityPersistStorage(sharedPreferenceStore),
                         diagnosticsLogger = sharedInfoLogger("SlockActivityPersist", "shared_activity_persist"),
                         failureLogger = sharedErrorLogger("SlockActivityPersist", "shared_activity_persist")
                     ),

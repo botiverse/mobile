@@ -986,6 +986,10 @@ private fun SharedActivityPanelContent(
             }
         )
         RaftAppShellBodyTopBanner()
+        // Task #164 (stdrc O2): under the head, above the filters; the rows and counts stay.
+        if (state.stale) {
+            RaftReadWarehouseStaleNotice(stringResource(MR.strings.activity_stale_notice))
+        }
         // task #232: filter tabs are a TabPager — the filter bar stays the tap
         // surface (its SetFilter flows back in as selectedIndex and animates
         // the pager); a horizontal swipe settling on a page dispatches the

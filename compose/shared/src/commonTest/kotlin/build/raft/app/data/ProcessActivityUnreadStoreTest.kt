@@ -75,6 +75,32 @@ class ProcessActivityUnreadStoreTest {
         assertEquals(7L, projection.lastForegroundEpoch)
     }
 
+    /** Task #164: the server's remembered inbox (`X-Raft-Stale`) never replaces a count already known. */
+    @Test
+    fun aRememberedSummaryKeepsTheKnownCountAndMarksItStale() = runBlocking {
+        val ownerFlow = MutableStateFlow<ProcessActivityUnreadOwner?>(owner())
+        val answers =
+            ArrayDeque(
+                listOf(
+                    ActivityUnreadSummarySnapshot(totalUnreadCount = 4, totalCount = 9),
+                    ActivityUnreadSummarySnapshot(totalUnreadCount = 0, totalCount = 0, staleReason = RaftStaleReason.RwOverloaded),
+                )
+            )
+        val store = store(ownerFlow) { _, _ -> DataResult.Content(answers.removeFirst()) }
+
+        store.onForeground(ServerId("server-1"), epoch = 1L, reason = "app_shell_resume")
+        assertEquals(4, awaitFresh(store).totalUnreadCount)
+        store.onForeground(ServerId("server-1"), epoch = 2L, reason = "app_shell_resume")
+
+        val projection =
+            withTimeout(2_000) {
+                store.projectionFlow(ServerId("server-1"))
+                    .first { it.freshness == ActivityUnreadSummaryFreshness.Stale }
+            }
+        assertEquals(4, projection.totalUnreadCount, "never the remembered zero")
+        assertEquals(9, projection.totalCount)
+    }
+
     @Test
     fun multipleSurfaceEnsuresShareOneInFlightFetch() = runBlocking {
         val ownerFlow = MutableStateFlow<ProcessActivityUnreadOwner?>(owner())

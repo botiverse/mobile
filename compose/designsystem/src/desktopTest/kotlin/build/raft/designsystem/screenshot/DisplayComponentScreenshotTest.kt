@@ -761,6 +761,8 @@ class DisplayComponentScreenshotTest {
                 RaftPanelNotice("Wug's memory was deleted and can't be restored.", status = RaftBannerStatus.Destructive)
                 RaftPanelNotice("Saved.", status = RaftBannerStatus.Success)
                 RaftPanelNotice("This panel shows the last 24 hours.", status = RaftBannerStatus.Default)
+                Caption("Panel notice, pending: a spinner leads (info)")
+                RaftPanelNotice("Activity may be out of date. It'll update on its own when Raft catches up.", status = RaftBannerStatus.Info, pending = true)
                 Caption("Panel notice, stacked actions")
                 RaftPanelNotice(
                     "Wug couldn't start: the runtime exited with code 1 after loading the workspace. Check the computer's log for the missing dependency and restart the agent.",

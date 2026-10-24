@@ -121,6 +121,9 @@ class SharedActivityStore internal constructor(
     private val nowMillis: () -> Long = activityMonotonicClock(),
     /** See [ActivityRefreshCoalesceWindowMillis]. */
     private val refreshCoalesceWindowMillis: Long = ActivityRefreshCoalesceWindowMillis,
+    /** Task #164: the backoff of the stale-Activity recovery read; injectable for virtual time. */
+    staleRecoveryDelayMillis: (attempt: Int, retryAfterMillis: Long?) -> Long =
+        { attempt, retryAfter -> raftStaleRecoveryDelayMillis(attempt, retryAfter) },
     localMutationHoldMillis: Long = ActivityLocalMutationHoldMillis,
     private val beforeRealtimeHighWaterFold: () -> Unit = {},
     private val onRealtimePatchOwnerEntered: () -> Unit = {},
@@ -132,6 +135,16 @@ class SharedActivityStore internal constructor(
 
     private var loadJob: Job? = null
     private var loadGeneration: Long = 0L
+    /** Task #164: the one pending recovery read while the shown Activity is stale. */
+    private val staleRecovery =
+        RaftStaleReadRecovery(
+            scope = scope,
+            label = "activity",
+            diagnosticsLogger = { diagnosticsLogger(it) },
+            delayMillis = staleRecoveryDelayMillis
+        )
+    /** Between [SharedActivityIntent.SurfaceHidden] and the next load the surface asks for. */
+    private var activitySurfaceHidden = false
     private var onUnreadCountsChanged: () -> Unit = onUnreadCountsChanged
     private var onSummaryFact: (ActivityUnreadSummaryFact) -> Unit = onSummaryFact
     private var onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = onSummaryInvalidated
@@ -262,9 +275,16 @@ class SharedActivityStore internal constructor(
         when (intent) {
             // On the store scope: the shell dispatches from its UI thread, and the switch writes state.
             is SharedActivityIntent.ServerSelected -> scope.launch { selectServer(intent) }
-            SharedActivityIntent.LoadInitial -> load(refresh = true, intent = intent)
-            SharedActivityIntent.Refresh -> load(refresh = true, pullRefresh = false, intent = intent)
+            SharedActivityIntent.LoadInitial -> {
+                activitySurfaceHidden = false
+                load(refresh = true, intent = intent)
+            }
+            SharedActivityIntent.Refresh -> {
+                activitySurfaceHidden = false
+                load(refresh = true, pullRefresh = false, intent = intent)
+            }
             SharedActivityIntent.PullRefresh -> {
+                activitySurfaceHidden = false
                 // Pull-to-refresh is the user moving on: the rows read this visit leave with it.
                 releaseRetainedReadRows(intent)
                 load(refresh = true, pullRefresh = true, intent = intent)
@@ -326,6 +346,7 @@ class SharedActivityStore internal constructor(
     }
 
     private fun onSurfaceHidden() {
+        activitySurfaceHidden = true
         synchronized(realtimeOwnerLock) {
             foregroundResetLoadStartedAtMillis = null
         }
@@ -459,6 +480,7 @@ class SharedActivityStore internal constructor(
             realtimeBackgroundReconcileJob?.cancel()
             realtimeBackgroundReconcileJob = null
             realtimeBackgroundReconcileDirty = false
+            staleRecovery.reset()
             channelAccessChecks.values.forEach(Job::cancel)
             channelAccessChecks.clear()
             channelAccessGenerations.clear()
@@ -1881,10 +1903,107 @@ class SharedActivityStore internal constructor(
         backgroundRefresh: Boolean = false
     ) {
         val current = _state.value
+        // Task #164: the server's remembered page (at most 5 minutes old) never replaces rows this
+        // filter already shows; it only fills a list that has nothing yet.
+        val keepShownOverStale =
+            !append && result is DataResult.Content && result.data.staleReason != null && current.snapshot != null
         val projectedContentData =
             (result as? DataResult.Content)?.data?.projectActivityFilter(current.selectedFilter)
         val owner = overlayOwner(current)
         val nextState =
+            when {
+                keepShownOverStale ->
+                    current.copy(
+                        loaded = true,
+                        loading = false,
+                        refreshing = false,
+                        pullRefreshing = false,
+                        loadingMore = false,
+                        errorCode = null,
+                        loadMoreErrorCode = null,
+                        stale = true
+                    )
+                else -> applyCanonicalLoadResult(
+                    result = result,
+                    current = current,
+                    projectedContentData = projectedContentData,
+                    owner = owner,
+                    server = server,
+                    append = append,
+                    senderProfiles = senderProfiles,
+                    backgroundRefresh = backgroundRefresh
+                )
+            }
+        acceptCanonicalReplyThreadFacts(nextState)
+        val freshAnswer = !keepShownOverStale && (result as? DataResult.Content)?.data?.staleReason == null
+        reduceState(
+            intent = intent,
+            nextState = nextState,
+            summaryAuthoritative =
+                !append &&
+                    freshAnswer &&
+                    current.selectedFilter == InboxFilter.All &&
+                    (result is DataResult.Content || result is DataResult.Empty),
+            summaryFactCounts =
+                if (!append && freshAnswer && current.selectedFilter == InboxFilter.All) {
+                    when (result) {
+                        // The app badge / Home summary gets exactly the counts the
+                        // snapshot shows: overlay-suppressed rows subtracted and the
+                        // realtime unread floor respected, so totals do not bounce.
+                        is DataResult.Content -> nextState.totalUnreadCount to nextState.totalCount
+                        is DataResult.Empty -> 0 to 0
+                        is DataResult.Error,
+                        is DataResult.NoPermission -> null
+                    }
+                } else {
+                    null
+                },
+            summarySource = "activity_canonical:${current.selectedFilter.wireValue}"
+        )
+        if (!append) settleStaleRecovery(nextState, result)
+    }
+
+    /**
+     * Task #164: while the shown Activity is stale, one background recovery read is armed (backoff,
+     * see [RaftStaleReadRecovery]); a fresh canonical answer (Content or Empty) disarms it. Other
+     * failures change nothing: they are not the read warehouse.
+     */
+    private fun settleStaleRecovery(nextState: SharedActivityState, result: DataResult<InboxSnapshot>) {
+        when {
+            nextState.stale -> {
+                val retryAfterMillis =
+                    (result as? DataResult.Content)?.data?.staleRetryAfterMillis
+                        ?: (result as? DataResult.Error)?.error?.rwRetryAfterMillis
+                staleRecovery.schedule(retryAfterMillis) { recoverStaleActivity() }
+            }
+            result is DataResult.Content || result is DataResult.Empty -> staleRecovery.reset()
+        }
+    }
+
+    /** Returns whether a load runs whose answer settles recovery. */
+    private fun recoverStaleActivity(): Boolean {
+        val current = _state.value
+        if (!current.stale) return false
+        if (activitySurfaceHidden) {
+            // Entering Activity always refreshes; that read settles recovery.
+            diagnosticsLogger("store_load domain=activity phase=stale_recovery_skip reason=surface_hidden")
+            return false
+        }
+        // Single-flight: a background load joins nothing while another load runs (that one settles).
+        load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh)
+        return true
+    }
+
+    private fun applyCanonicalLoadResult(
+        result: DataResult<InboxSnapshot>,
+        current: SharedActivityState,
+        projectedContentData: InboxSnapshot?,
+        owner: ActivityOverlayOwner?,
+        server: ServerSummary,
+        append: Boolean,
+        senderProfiles: Map<String, SharedActivitySenderProfile>,
+        backgroundRefresh: Boolean
+    ): SharedActivityState =
             when (result) {
                 is DataResult.Content -> {
                     val projectedData = projectedContentData
@@ -1946,7 +2065,9 @@ class SharedActivityStore internal constructor(
                             pullRefreshing = false,
                             loadingMore = false,
                             errorCode = null,
-                            loadMoreErrorCode = null
+                            loadMoreErrorCode = null,
+                            // A page appended after the first is never remembered by the server.
+                            stale = if (append) current.stale else result.data.staleReason != null
                         )
                     nextState
                 }
@@ -2001,13 +2122,17 @@ class SharedActivityStore internal constructor(
                             pullRefreshing = false,
                             loadingMore = false,
                             errorCode = null,
-                            loadMoreErrorCode = null
+                            loadMoreErrorCode = null,
+                            stale = if (append) current.stale else false
                         )
                     nextState
                 }
-                is DataResult.Error ->
+                is DataResult.Error -> {
+                    // Task #164: an overload while rows are shown keeps them and marks them stale;
+                    // with nothing shown the page keeps its load-failed state with Retry.
+                    val stale = current.stale || (!append && result.error.isRwOverloaded && current.snapshot != null)
                     if (backgroundRefresh) {
-                        current
+                        current.copy(stale = stale)
                     } else {
                         current.copy(
                             loading = false,
@@ -2015,9 +2140,11 @@ class SharedActivityStore internal constructor(
                             pullRefreshing = false,
                             loadingMore = false,
                             errorCode = if (append) null else result.error.code,
-                            loadMoreErrorCode = if (append) result.error.code else null
+                            loadMoreErrorCode = if (append) result.error.code else null,
+                            stale = stale
                         )
                     }
+                }
                 is DataResult.NoPermission ->
                     if (backgroundRefresh) {
                         current
@@ -2032,31 +2159,6 @@ class SharedActivityStore internal constructor(
                         )
                     }
             }
-        acceptCanonicalReplyThreadFacts(nextState)
-        reduceState(
-            intent = intent,
-            nextState = nextState,
-            summaryAuthoritative =
-                !append &&
-                    current.selectedFilter == InboxFilter.All &&
-                    (result is DataResult.Content || result is DataResult.Empty),
-            summaryFactCounts =
-                if (!append && current.selectedFilter == InboxFilter.All) {
-                    when (result) {
-                        // The app badge / Home summary gets exactly the counts the
-                        // snapshot shows: overlay-suppressed rows subtracted and the
-                        // realtime unread floor respected, so totals do not bounce.
-                        is DataResult.Content -> nextState.totalUnreadCount to nextState.totalCount
-                        is DataResult.Empty -> 0 to 0
-                        is DataResult.Error,
-                        is DataResult.NoPermission -> null
-                    }
-                } else {
-                    null
-                },
-            summarySource = "activity_canonical:${current.selectedFilter.wireValue}"
-        )
-    }
 
     private fun acceptCanonicalReplyThreadFacts(nextState: SharedActivityState) {
         val serverId = nextState.ownerServerId ?: return
@@ -3134,7 +3236,14 @@ data class SharedActivityState(
      * reconciles and realtime keep them; Done removes a row at once. Gmail / Apple Mail unread view
      * (stdrc 10-23).
      */
-    val retainedReadRowKeys: Set<String> = emptySet()
+    val retainedReadRowKeys: Set<String> = emptySet(),
+    /**
+     * Task #164: the rows and counts shown may be old because the read warehouse is behind: the
+     * last canonical read was the server's remembered body (`X-Raft-Stale`) or a `503
+     * rw_overloaded` while rows were shown. The list keeps its last good rows; the page shows the
+     * stale notice until a fresh read clears it.
+     */
+    val stale: Boolean = false
 ) {
     val items: List<InboxItem>
         get() = snapshot?.items.orEmpty()
