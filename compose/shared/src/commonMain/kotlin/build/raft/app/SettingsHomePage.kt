@@ -12939,7 +12939,7 @@ internal fun sharedHomeSearchTimestampTextStyle() =
 // Badge, `text-callout` `foreground-muted` description; hairline separators from 55dp;
 // pressed lays `fill-pressed`. An archived channel mutes its title and description.
 @Composable
-private fun SharedHomeSearchEntityRow(
+internal fun SharedHomeSearchEntityRow(
     result: SearchEntityResult,
     query: String,
     agentStatusResolver: RaftAgentStatusResolver,
@@ -13230,7 +13230,7 @@ private fun SharedHomeThreadResultGroup(
 // (14dp avatar, `text-callout` bold `foreground`), then #channel, thread, and the time at
 // the end; the body is `text-callout` `foreground-muted`, two lines, 2dp below.
 @Composable
-private fun SharedHomeSearchMessageResultRow(
+internal fun SharedHomeSearchMessageResultRow(
     item: InboxItem,
     query: String,
     nested: Boolean = false,
@@ -13397,9 +13397,11 @@ internal fun homeSearchHighlightRanges(
                 continue
             }
             val endExclusive = start + term.length
-            if ((start until endExclusive).none { occupied[it] }) {
-                ranges += start until endExclusive
-                for (index in start until endExclusive) {
+            // A hit on a handle takes its "@" ("@Remy" is one unit, as when the query has it).
+            val hitStart = if (term.startsWith('@') || !isHandleStart(text, start - 1)) start else start - 1
+            if ((hitStart until endExclusive).none { occupied[it] }) {
+                ranges += hitStart until endExclusive
+                for (index in hitStart until endExclusive) {
                     occupied[index] = true
                 }
             }
@@ -13408,6 +13410,10 @@ internal fun homeSearchHighlightRanges(
     }
     return mergeAbuttingHighlightRanges(ranges.sortedBy { it.first })
 }
+
+/** True when [index] is an "@" that opens a handle: not glued to a preceding word ("a@b.com"). */
+private fun isHandleStart(text: String, index: Int): Boolean =
+    index >= 0 && text[index] == '@' && (index == 0 || !text[index - 1].isLetterOrDigit())
 
 /** Joins sorted, non-overlapping ranges that touch (`a.last + 1 == b.first`). */
 private fun mergeAbuttingHighlightRanges(sorted: List<IntRange>): List<IntRange> {

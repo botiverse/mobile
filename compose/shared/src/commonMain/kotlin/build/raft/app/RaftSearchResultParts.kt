@@ -266,7 +266,7 @@ internal fun RaftSearchHitText(
                 modifier.drawBehind {
                     val result = layout ?: return@drawBehind
                     if (result.layoutInput.text.text != text) return@drawBehind
-                    drawRaftSearchHits(result, ranges, style, fill, edge, dieCut)
+                    drawRaftSearchHits(result, ranges, fill, edge, dieCut)
                 }
             },
     )
@@ -287,7 +287,6 @@ private val RaftSearchHitPadX = 3.dp
 private fun DrawScope.drawRaftSearchHits(
     layout: TextLayoutResult,
     ranges: List<IntRange>,
-    style: TextStyle,
     fill: Color,
     edge: Color,
     dieCut: Color,
@@ -296,9 +295,6 @@ private fun DrawScope.drawRaftSearchHits(
     val stroke = RaftAppStroke.Control.toPx()
     val padX = RaftSearchHitPadX.toPx()
     val layoutWidth = layout.size.width.toFloat()
-    // CSS paints an inline background over the content area (~1.28em for these faces),
-    // not the whole line box.
-    val contentHeight = if (style.fontSize.isSp) style.fontSize.toPx() * 1.28f else Float.NaN
     val text = layout.layoutInput.text.text
     val textLength = text.length
     // Free room beside a hit: a line edge allows the full pad, a space half its advance (so
@@ -341,8 +337,8 @@ private fun DrawScope.drawRaftSearchHits(
                 ) ?: continue
             val top = layout.getLineTop(line)
             val bottom = layout.getLineBottom(line)
-            val inset = if (contentHeight.isNaN()) 0f else ((bottom - top - contentHeight) / 2f).coerceAtLeast(0f)
-            val box = Rect(extent.start, top + inset, extent.endInclusive, bottom - inset)
+            // The whole line box (ascent to descent), so descenders ("y", "g") sit inside it.
+            val box = Rect(extent.start, top, extent.endInclusive, bottom)
             if (dieCut.alpha > 0f) {
                 drawRoundRect(
                     dieCut,

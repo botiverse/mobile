@@ -55,6 +55,28 @@ class SettingsHomeSearchHighlightTest {
     }
 
     @Test
+    fun highlightRangesTakeTheAtSignOfAHandleHit() {
+        data class Case(val text: String, val query: String, val expected: List<IntRange>)
+        listOf(
+            // The handle is one unit: "@Remy", not "@" + "Remy".
+            Case("Agent · @Remy", "remy", listOf(8 until 13)),
+            Case("Agent · @Remy", "REMY", listOf(8 until 13)),
+            // A query that carries the "@" matches the same range.
+            Case("Agent · @Remy", "@remy", listOf(8 until 13)),
+            // The title has no "@": unchanged.
+            Case("Remy", "remy", listOf(0 until 4)),
+            // An "@" glued to a word (an email) is not a handle.
+            Case("mail a@remy.dev", "remy", listOf(7 until 11)),
+            // Several terms: each handle hit keeps its "@".
+            Case("@Remy and @Lagoon", "remy lagoon", listOf(0 until 5, 10 until 17)),
+            // Not a handle hit at all.
+            Case("@Lagoon", "remy", emptyList()),
+        ).forEach { case ->
+            assertEquals(case.expected, homeSearchHighlightRanges(case.text, case.query), "${case.text} / ${case.query}")
+        }
+    }
+
+    @Test
     fun highlightedAnnotatedStringKeepsOneTextNodeWithSearchHitRanges() {
         val annotated = homeSearchHighlightedAnnotatedString(
             text = "Find keyword here",
