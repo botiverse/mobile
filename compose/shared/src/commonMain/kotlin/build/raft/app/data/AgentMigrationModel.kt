@@ -66,6 +66,8 @@ internal data class AgentMigrationNotice(
     val abortReason: String? = null,
     val transportErrorCode: String? = null,
     val transportErrorMessage: String? = null,
+    val transportLostAt: String? = null,
+    val prepDeadlineAt: String? = null,
     val sourceQuiescedAt: String? = null,
     val sourceBuildProgress: AgentMigrationSourceBuildProgress? = null,
     val transferProgress: AgentMigrationTransferProgress? = null,

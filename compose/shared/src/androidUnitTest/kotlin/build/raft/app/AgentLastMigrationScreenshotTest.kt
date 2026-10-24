@@ -45,7 +45,14 @@ class AgentLastMigrationScreenshotTest {
     @Test
     fun lastMigrationDark() = capture("members.agent-migration.last.dark", RaftAppAppearance.Dark)
 
-    private fun capture(name: String, appearance: RaftAppAppearance) {
+    /** A failed move whose server text is a raw zod issue array (xxchan's report): friendly copy, no JSON. */
+    @Test
+    fun lastMigrationRawErrorLight() = capture("members.agent-migration.raw-error", RaftAppAppearance.Light, rawError = true)
+
+    @Test
+    fun lastMigrationRawErrorDark() = capture("members.agent-migration.raw-error.dark", RaftAppAppearance.Dark, rawError = true)
+
+    private fun capture(name: String, appearance: RaftAppAppearance, rawError: Boolean = false) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager =
                 remember {
@@ -54,7 +61,7 @@ class AgentLastMigrationScreenshotTest {
                     }
                 }
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
-                RaftDesignSystemTheme { AgentLastMigrationVisualContent() }
+                RaftDesignSystemTheme { if (rawError) AgentMigrationRawErrorVisualContent() else AgentLastMigrationVisualContent() }
             }
         }
     }
@@ -124,6 +131,45 @@ private fun AgentLastMigrationVisualContent() {
         )
         AgentMigrationSection(
             state = AgentMigrationState(agentId = MemberId("agent-1"), notice = lastMigrationFailedNotice(), loaded = true),
+            inputs = inputs,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+internal fun lastMigrationRawErrorNotice(): AgentMigrationNotice =
+    lastMigrationFailedNotice().copy(
+        migrationRef = "mig_tMwe1xb0VTjxWxt9sSr6kw",
+        sourceMachineId = "machine-armbian",
+        failureReason = "MIGRATION_PACK_FAILED",
+        transportErrorMessage =
+            "[\n  {\n    \"origin\": \"number\",\n    \"code\": \"too_big\",\n    \"maximum\": 10737418240,\n" +
+                "    \"inclusive\": true,\n    \"path\": [\"includedBytes\"],\n" +
+                "    \"message\": \"Too big: expected number to be <=10737418240\"\n  }\n]",
+    )
+
+@Composable
+private fun AgentMigrationRawErrorVisualContent() {
+    val inputs =
+        remember {
+            lastMigrationInputs().let {
+                AgentMigrationSectionInputs(
+                    sourceMachineId = "machine-armbian",
+                    computers = it.computers + AgentMigrationComputer(id = "machine-armbian", name = "armbian-gx", isComputer = true),
+                    hostedAvailable = false,
+                    proGate = RaftProGateDecision.Allowed,
+                    proGateChecking = false,
+                    onIntent = {},
+                    onOpenBilling = {},
+                    onCopy = {},
+                    formatTimestamp = { "Oct 21, 2:05 PM" },
+                    onAgentPlacementChanged = {},
+                )
+            }
+        }
+    Column(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
+        AgentMigrationSection(
+            state = AgentMigrationState(agentId = MemberId("agent-1"), notice = lastMigrationRawErrorNotice(), loaded = true),
             inputs = inputs,
             modifier = Modifier.fillMaxWidth(),
         )
