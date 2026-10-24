@@ -232,6 +232,44 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "STAGING=$staging" >> "$GITHUB_ENV"
 
+      - name: Capture launch screenshots (light and dark)
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/launch-shots"; mkdir -p "$out"
+          app=$(find compose/iosApp/build/DerivedData/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' ! -name '*Runner*' -print -quit)
+          bid=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")
+          UDID=$(xcrun simctl list devices available -j \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(u for devs in d["devices"].values() for u in [x["udid"] for x in devs if "iPhone 1" in x["name"] and "Pro" in x["name"]]))')
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "$app"
+          for mode in light dark; do
+            xcrun simctl ui "$UDID" appearance "$mode"
+            sleep 3
+            xcrun simctl terminate "$UDID" "$bid" || true
+            # Process is held before main, so the static launch screen stays up.
+            xcrun simctl launch --wait-for-debugger "$UDID" "$bid" || true
+            sleep 4
+            xcrun simctl io "$UDID" screenshot "$out/launch-$mode.png"
+            xcrun simctl terminate "$UDID" "$bid" || true
+            sleep 2
+            xcrun simctl launch "$UDID" "$bid" || true
+            sleep 1
+            xcrun simctl io "$UDID" screenshot "$out/inapp-1s-$mode.png"
+            sleep 6
+            xcrun simctl io "$UDID" screenshot "$out/inapp-7s-$mode.png"
+            xcrun simctl terminate "$UDID" "$bid" || true
+          done
+          echo "SHOTS=$out" >> "$GITHUB_ENV"
+
+      - name: Upload launch screenshots
+        uses: actions/upload-artifact@v6
+        with:
+          name: launch-shots-${{ github.run_id }}
+          path: ${{ env.SHOTS }}
+          if-no-files-found: error
+
       - name: Upload Simulator app artifact
         uses: actions/upload-artifact@v6
         with:
