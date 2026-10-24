@@ -3077,4 +3077,15 @@
     <string name="file_preview_download_background_hint">You can leave this page: the download keeps going. Find it in Settings › Storage › Downloads.</string>
     <string name="file_preview_download_completed_hint">Saved. You can find it in Settings › Storage › Downloads.</string>
     <string name="home_server_switcher_other_unread">Other servers have unread messages</string>
+    <string name="thread_link_preview_prompt_title">%1$s wants to show link previews here</string>
+    <string name="thread_link_preview_prompt_disclosure">After you allow, %1$s will know which of its links you view.</string>
+    <string name="thread_link_preview_prompt_allow">Allow</string>
+    <string name="thread_link_preview_prompt_dont_allow">Don’t Allow</string>
+    <string name="thread_link_preview_prompt_allowing">Allowing…</string>
+    <string name="thread_link_preview_prompt_saving">Saving…</string>
+    <string name="thread_link_preview_prompt_allow_failed">Couldn’t allow %1$s. Check your connection and try again.</string>
+    <string name="thread_link_preview_prompt_declined">%1$s links stay as they are. You can change this in Settings on the web.</string>
+    <string name="thread_link_preview_prompt_decline_failed">Couldn’t save your choice for %1$s. Check your connection and try again.</string>
+    <string name="thread_link_preview_prompt_unavailable">%1$s can’t show link previews on this server.</string>
+    <string name="thread_link_preview_open_link">Open Link</string>
 </resources>
