@@ -14863,7 +14863,6 @@ internal fun buildAppShellThreadPayload(
         selectedTab = "chat",
         navigationLabel = "Back",
         showModeTabs = !isReplyThread,
-        showReplyActions = !isReplyThread,
         alignOwnMessagesRight = alignOwnMessagesRight,
         compactConsecutiveMessages = compactConsecutiveMessages,
         showOpenInChannelAction = isReplyThread && parentMessageId != null && parentSurfaceKind != null,

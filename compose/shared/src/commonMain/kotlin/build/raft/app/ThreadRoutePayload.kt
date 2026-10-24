@@ -146,7 +146,6 @@ internal data class WireThreadLaunchPayload(
             selectedTab = selectedTab,
             navigationLabel = navigationLabel,
             showModeTabs = !isReplyThread,
-            showReplyActions = !isReplyThread,
             alignOwnMessagesRight = alignOwnMessagesRight,
             compactConsecutiveMessages = compactConsecutiveMessages,
             showReactionActions = showReactionActions,

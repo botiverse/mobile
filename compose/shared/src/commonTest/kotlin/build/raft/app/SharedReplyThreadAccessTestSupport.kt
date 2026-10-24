@@ -247,7 +247,6 @@ internal fun unresolvedReplyThreadAccessPayload(
         parentChannelKind = "channel",
         status = "loading",
         showModeTabs = false,
-        showReplyActions = false,
         canSend = true
     )
 

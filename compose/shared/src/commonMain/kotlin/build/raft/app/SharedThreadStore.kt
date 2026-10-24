@@ -5492,7 +5492,6 @@ internal class SharedThreadDataSource(
                 navigationLabel = "Close",
                 selectedTab = "chat",
                 showModeTabs = false,
-                showReplyActions = false,
                 showOpenInChannelAction = true,
                 focusedMessageId = basePayload.focusedMessageId,
                 originMessage = resolvedOrigin,

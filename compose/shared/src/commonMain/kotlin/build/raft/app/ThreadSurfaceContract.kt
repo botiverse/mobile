@@ -7,6 +7,14 @@ internal object RaftThreadSurfaceKind {
     const val Channel = "channel"
     const val DirectMessage = "dm"
     const val ReplyThread = "thread"
+
+    /**
+     * Whether "Reply in Thread" (and the thread-opening affordances behind it) is offered on rows of
+     * this surface. Threads cannot be nested, so a reply thread never offers it (web hides it with
+     * `hideThreadActions` in ThreadPanel). This is the single source: payloads and slices derive
+     * from it instead of storing a flag every constructor must remember to set.
+     */
+    fun allowsReplyInThread(surfaceKind: String): Boolean = surfaceKind != ReplyThread
 }
 
 /** Wire value for a joint channel's kind (not a surface — joints render on the channel surface). */
