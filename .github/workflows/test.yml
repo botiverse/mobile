@@ -377,46 +377,7 @@ jobs:
       # :androidApp:compileDebugKotlin gates the Android host too — #57 merged
       # green while breaking every local assembleDebug because only :shared
       # was compiled here (task #217 follow-up).
-      # task #26: file-content-hash-keyed build output cache. Gradle's own build
-      # cache key for :shared:kspDebugKotlinAndroid / compileDebugKotlinAndroid is
-      # non-deterministic across same-commit CI runs (input set identical, order
-      # varies), so unchanged modules miss the build cache and recompile fully.
-      # This caches the build output keyed by a deterministic hash of the input
-      # files; on a hit the compile step is skipped entirely (~3m saved). The
-      # unit-test step may still recompile (~1m) because .gradle incremental state
-      # is machine-local and intentionally not cached; route B (reproducible jars
-      # -> stable build-cache key) is tracked as a follow-up. The vendored
-      # markdown sources are :shared srcDirs, so they are part of the key too.
-      - name: Compute build input file hash
-        id: build-input-hash
-        working-directory: compose
-        run: |
-          HASH=$(git ls-files -s \
-            core/src shared/src androidApp/src designsystem/src ui-cmp/src \
-            core/build.gradle.kts shared/build.gradle.kts androidApp/build.gradle.kts \
-            designsystem/build.gradle.kts ui-cmp/build.gradle.kts \
-            gradle/libs.versions.toml gradle/wrapper/gradle-wrapper.properties \
-            gradle.properties buildSrc \
-            build.gradle.kts settings.gradle.kts \
-            ../third_party/kuikly-compose-markdown ../third_party/markdown-parser \
-            | git hash-object --stdin)
-          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
-          echo "build input file hash: $HASH"
-
-      - name: Restore build output cache (file hash key)
-        id: build-cache-restore
-        uses: actions/cache/restore@v5
-        with:
-          path: |
-            compose/core/build
-            compose/designsystem/build
-            compose/ui-cmp/build
-            compose/shared/build
-            compose/androidApp/build
-          key: build-output-${{ steps.build-input-hash.outputs.hash }}
-
       - name: Compile shared + Android host and unit tests
-        if: steps.build-cache-restore.outputs.cache-hit != 'true'
         working-directory: compose
         run: |
           ./gradlew \
@@ -427,18 +388,6 @@ jobs:
             --no-daemon \
             --console=plain \
             --stacktrace
-
-      - name: Save build output cache (file hash key)
-        if: steps.build-cache-restore.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: |
-            compose/core/build
-            compose/designsystem/build
-            compose/ui-cmp/build
-            compose/shared/build
-            compose/androidApp/build
-          key: build-output-${{ steps.build-input-hash.outputs.hash }}
 
       # Build once here, then let the emulator job below install the exact APKs
       # without paying for a second Gradle/Kotlin build. The visual fixture gives
