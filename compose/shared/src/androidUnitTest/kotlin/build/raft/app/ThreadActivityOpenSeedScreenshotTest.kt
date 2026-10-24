@@ -20,6 +20,7 @@ import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageId
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.model.RaftTimeFormat12Hour
 import build.raft.app.model.raftEpochDayForDate
 import kotlin.test.Test
 import org.junit.runner.RunWith
@@ -62,6 +63,8 @@ class ThreadActivityOpenSeedScreenshotTest {
                             localOffsetMinutes = 8 * 60,
                             todayEpochDay = raftEpochDayForDate(2026, 10, 24),
                             nowEpochMillis = SeedNowEpochMillis,
+                            // The user's 12-hour preference: chat and system rows both follow it.
+                            timeFormat = RaftTimeFormat12Hour,
                         ),
                     )
                 }
@@ -121,18 +124,22 @@ private fun StandInLoadingRows() {
     val payload =
         RaftThreadScreenPayload(sourceThreadId = "channel-1", status = "loading").withActivityOpenSeed(listOf(humanSeed))
     ThreadHistoryStatusRow(threadOlderMessagesStatusSpec(payload), loadingRevealDelayMs = 0L, spinnerStillStep = 0)
-    SeedMessageRow(humanSeed, "2:45 PM")
+    SeedMessageRow(humanSeed)
 }
 
 @Composable
 private fun SystemMessageRows() {
-    SeedMessageRow(humanSeed, "2:45 PM")
-    SeedMessageRow(systemSeed, "3:13 PM")
+    SeedMessageRow(humanSeed)
+    SeedMessageRow(systemSeed)
 }
 
-/** The message list's row branch: a system message is the system line, anything else the card. */
+/**
+ * The message list's row branch: a system message is the system line, anything else the card. Both
+ * get the message's own wire timestamp, as the list passes it, so both format it through the same
+ * conversation time formatter and the user's 12/24-hour preference.
+ */
 @Composable
-private fun SeedMessageRow(message: RaftThreadMessageItem, timestampLabel: String) {
+private fun SeedMessageRow(message: RaftThreadMessageItem) {
     if (message.isSystemMessage()) {
         ThreadSystemMessageRow(message = message, timestampValue = message.timestampLabel)
     } else {
@@ -141,7 +148,7 @@ private fun SeedMessageRow(message: RaftThreadMessageItem, timestampLabel: Strin
             messageBodyTextStyle = raftMessageBodyTextStyle("md"),
             compactConsecutiveMessages = true,
             suppressRepeatedAuthor = false,
-            timestampLabel = timestampLabel,
+            timestampLabel = message.timestampLabel,
             onShowActions = {},
             onOpenMember = {},
             onOpenThread = {},
