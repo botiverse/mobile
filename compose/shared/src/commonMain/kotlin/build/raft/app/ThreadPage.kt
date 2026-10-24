@@ -30,6 +30,9 @@ import build.raft.app.data.AttachmentUploadCapabilities
 import build.raft.app.data.KnownEntityScope
 import build.raft.app.data.homeStateForPage
 import build.raft.app.data.RaftKnownEntityResolver
+import build.raft.app.data.RaftAgentCreateEntry
+import build.raft.app.data.RaftMessageAction
+import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.RAFT_SHELL_OVERLAY_REQUEST_EVENT
 import build.raft.app.data.RAFT_SHELL_OVERLAY_RESULT_EVENT
 import build.raft.app.data.SHELL_OVERLAY_SELECTED_ID
@@ -4071,7 +4074,7 @@ private fun requestKuiklyThreadPerformanceSnapshot(
     }
 }
 
-private enum class RaftThreadTab(val wireValue: String, val label: String) {
+internal enum class RaftThreadTab(val wireValue: String, val label: String) {
     Chat("chat", "Chat"),
     Tasks("tasks", "Tasks"),
     Files("files", "Files");
@@ -5093,6 +5096,7 @@ private fun ThreadMembersPageScreen() {
             localServerId = route.serverId.value,
             onCreateAgent = { name, mode ->
                 if (canCreateAgents && liveOwner == routeOwner) {
+                    RaftProductEvents.agentCreateOpened(RaftAgentCreateEntry.ChannelMembers)
                     createAgentName = name
                     createAgentMode = mode
                 }
@@ -15787,6 +15791,9 @@ private fun ThreadPageContentContent(
                     tabs = availableTabs.map { it.toRaftTabSpec() },
                     selectedKey = selectedTab,
                     onSelectedKeyChange = selectThreadTab,
+                    onTabTapped = { tab, wasSelected ->
+                        RaftProductEvents.channelTabSelected(tab.productChannelTab(), wasSelected)
+                    },
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     itemKeyPrefix = "thread-tab",
                     content = renderThreadTabContent
@@ -18986,6 +18993,9 @@ private fun ThreadMessagesListContent(
     var actionMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
     var actionMenuAnchor by remember(threadInstanceKey) { mutableStateOf<RaftPopoverAnchor?>(null) }
     var classicMenuOverrideMessageId by remember(threadInstanceKey) { mutableStateOf<String?>(null) }
+    // Product analytics: the open menu came from a long press (not the reaction "+" chip), so its
+    // chosen items are `message_action_selected` with surface long_press.
+    var actionMenuFromLongPress by remember(threadInstanceKey) { mutableStateOf(false) }
     // task #569: long-press on a reaction chip shows who reacted.
     var reactionDetails by remember(threadInstanceKey) { mutableStateOf<ThreadReactionDetailsRequest?>(null) }
     var authorDescriptionPopover by remember(threadInstanceKey) {
@@ -21472,7 +21482,14 @@ private fun ThreadMessagesListContent(
                             actionMenuAnchor = anchor
                             actionMessageId = message.id
                             classicMenuOverrideMessageId = null
+                            actionMenuFromLongPress = false
                             diagnosticsLogger("thread_origin_menu_tap messageId=${message.id}")
+                        },
+                        onLongPressMenuOpened = { message ->
+                            if (actionMessageId == message.id) {
+                                actionMenuFromLongPress = true
+                                RaftProductEvents.messageActionSelected(RaftMessageAction.OpenMenu, inThread = false)
+                            }
                         },
                         onOpenTaskStatusMenu = { message, anchor ->
                             taskStatusMenuMessageId = message.id
@@ -21756,7 +21773,21 @@ private fun ThreadMessagesListContent(
                                         actionMenuAnchor = anchor
                                         actionMessageId = message.id
                                         classicMenuOverrideMessageId = null
+                                        actionMenuFromLongPress = false
                                         diagnosticsLogger("thread_message_menu_tap messageId=${message.id}")
+                                    }
+                                },
+                                onLongPressMenuOpened = {
+                                    if (actionMessageId == message.id) {
+                                        actionMenuFromLongPress = true
+                                        RaftProductEvents.messageActionSelected(
+                                            RaftMessageAction.OpenMenu,
+                                            threadMessageIsReplyInThread(
+                                                renderPayload.replyThreadSurface,
+                                                renderPayload.originMessage?.id,
+                                                message.id
+                                            )
+                                        )
                                     }
                                 },
                                 onOpenMember = onOpenMember,
@@ -22117,55 +22148,87 @@ private fun ThreadMessagesListContent(
                 onDismiss = { authorDescriptionPopover = null }
             )
         }
+        // Product analytics: one chosen long-press menu item (`message_action_selected`, surface
+        // long_press). Nothing is sent for a menu that did not come from a long press.
+        fun trackLongPressMenuAction(message: RaftThreadMessageItem, action: RaftMessageAction?) {
+            if (action == null || !actionMenuFromLongPress) return
+            RaftProductEvents.messageActionSelected(
+                action,
+                threadMessageIsReplyInThread(renderPayload.replyThreadSurface, renderPayload.originMessage?.id, message.id)
+            )
+        }
         // The Compact menu's message actions, shared by the long-press menu and the in-place
-        // selection menu; [close] dismisses whichever surface showed them.
+        // selection menu; [close] dismisses whichever surface showed them. [track] is off for the
+        // in-place selection menu, which is not the long-press menu.
         fun compactMenuMessageActions(
             message: RaftThreadMessageItem,
             replyMetadata: ThreadReplyMetadata,
-            close: () -> Unit
+            close: () -> Unit,
+            track: Boolean = true
         ): ThreadNewMessageMenuMessageActions {
             val followThreadChannelId = replyMetadata.threadChannelId?.takeIf { it.isNotBlank() }
+            fun trackTool(tool: ThreadNewMessageMenuTool) {
+                if (!track) return
+                trackLongPressMenuAction(
+                    message,
+                    tool.productMessageAction(
+                        isSaved = message.isSaved,
+                        isThreadFollowed = replyMetadata.isThreadFollowed && followThreadChannelId != null,
+                        isTaskDone = message.isThreadTaskDone()
+                    )
+                )
+            }
             return ThreadNewMessageMenuMessageActions(
                 onReact = { emoji ->
                     close()
+                    if (track) trackLongPressMenuAction(message, RaftMessageAction.ReactQuick)
                     onThreadEvent("toggleReaction", message.id, null, emoji)
                 },
                 tools =
                     ThreadNewMessageMenuToolCallbacks(
                         onCopy = {
                             close()
+                            trackTool(ThreadNewMessageMenuTool.Copy)
                             onThreadEvent("copyMessage", message.id, null, null)
                         },
                         onReply = {
                             close()
+                            trackTool(ThreadNewMessageMenuTool.Reply)
                             onThreadEvent("openMessageThread", message.id, null, null)
                         },
                         onForward = {
                             close()
+                            trackTool(ThreadNewMessageMenuTool.Forward)
                             onForwardMessage(message.id)
                         },
                         onSave = {
                             close()
+                            trackTool(ThreadNewMessageMenuTool.Save)
                             onThreadEvent("toggleMessageSaved", message.id, null, null)
                         },
                         onTranslate = {
                             close()
+                            trackTool(ThreadNewMessageMenuTool.Translate)
                             translationStore?.translateNow(message.toTranslationCandidate())
                         },
                         onSelect = {
                             close()
+                            trackTool(ThreadNewMessageMenuTool.Select)
                             onEnterShareSelection(message.id)
                         },
                         onAddReaction = {
                             close()
+                            trackTool(ThreadNewMessageMenuTool.AddReaction)
                             reactionPickerMessageId = message.id
                         },
                         onCopyLink = {
                             close()
+                            trackTool(ThreadNewMessageMenuTool.CopyLink)
                             onThreadEvent("copyMessageLink", message.id, null, null)
                         },
                         onFollowThread = {
                             close()
+                            trackTool(ThreadNewMessageMenuTool.FollowThread)
                             if (replyMetadata.isThreadFollowed && followThreadChannelId != null) {
                                 onThreadEvent(UNFOLLOW_THREAD_ACTION, message.id, followThreadChannelId, null)
                             } else {
@@ -22174,6 +22237,7 @@ private fun ThreadMessagesListContent(
                         },
                         onTaskStatus = {
                             close()
+                            trackTool(ThreadNewMessageMenuTool.TaskStatus)
                             onThreadEvent(
                                 if (message.isThreadTaskDone()) "reopenTask" else "markTaskDone",
                                 message.taskId,
@@ -22183,6 +22247,7 @@ private fun ThreadMessagesListContent(
                         },
                         onConvertToTask = {
                             close()
+                            trackTool(ThreadNewMessageMenuTool.ConvertToTask)
                             onThreadEvent("convertMessageToTask", message.id, null, null)
                         }
                     )
@@ -22212,7 +22277,7 @@ private fun ThreadMessagesListContent(
             val selectionMenu: @Composable (ThreadInPlaceSelectionMenuRequest) -> Unit = { request ->
                 renderPayload.threadActionMessage(request.messageId, linkedTasksProjection)?.let { message ->
                     val replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message)
-                    val actions = compactMenuMessageActions(message, replyMetadata, close = request.dismiss)
+                    val actions = compactMenuMessageActions(message, replyMetadata, close = request.dismiss, track = false)
                     ThreadNewMessageMenuChrome(
                         availability =
                             threadInPlaceSelectionMenuAvailability(
@@ -22274,26 +22339,32 @@ private fun ThreadMessagesListContent(
                 }
                 val onAddReaction: () -> Unit = {
                     closeActionMenu()
+                    trackLongPressMenuAction(message, RaftMessageAction.OpenReactionPicker)
                     reactionPickerMessageId = message.id
                 }
                 val onTranslate: () -> Unit = {
                     closeActionMenu()
+                    trackLongPressMenuAction(message, RaftMessageAction.Translate)
                     translationStore?.translateNow(message.toTranslationCandidate())
                 }
                 val onFollowThread: () -> Unit = {
                     closeActionMenu()
+                    trackLongPressMenuAction(message, RaftMessageAction.FollowThread)
                     onThreadEvent(FOLLOW_THREAD_ACTION, message.id, null, null)
                 }
                 val onUnfollowThread: (String) -> Unit = { threadChannelId ->
                     closeActionMenu()
+                    trackLongPressMenuAction(message, RaftMessageAction.UnfollowThread)
                     onThreadEvent(UNFOLLOW_THREAD_ACTION, message.id, threadChannelId, null)
                 }
                 val onTaskStatusChange: (String) -> Unit = { action ->
                     closeActionMenu()
+                    trackLongPressMenuAction(message, threadTaskStatusEventProductAction(action))
                     onThreadEvent(action, message.taskId, null, null)
                 }
                 val onConvertToTask: () -> Unit = {
                     closeActionMenu()
+                    trackLongPressMenuAction(message, RaftMessageAction.ConvertToTask)
                     onThreadEvent("convertMessageToTask", message.id, null, null)
                 }
                 val variant =
@@ -22350,14 +22421,17 @@ private fun ThreadMessagesListContent(
                         onDismiss = closeActionMenu,
                         onCopyLink = {
                             closeActionMenu()
+                            trackLongPressMenuAction(message, RaftMessageAction.CopyLink)
                             onThreadEvent("copyMessageLink", message.id, null, null)
                         },
                         onReply = {
                             closeActionMenu()
+                            trackLongPressMenuAction(message, RaftMessageAction.ReplyInThread)
                             onThreadEvent("openMessageThread", message.id, null, null)
                         },
                         onCopy = {
                             closeActionMenu()
+                            trackLongPressMenuAction(message, RaftMessageAction.CopyMarkdown)
                             onThreadEvent("copyMessage", message.id, null, null)
                         },
                         onSelectText = {
@@ -22366,16 +22440,22 @@ private fun ThreadMessagesListContent(
                         },
                         onShareMessages = {
                             closeActionMenu()
+                            trackLongPressMenuAction(message, RaftMessageAction.Select)
                             onEnterShareSelection(message.id)
                         },
                         onSave = {
                             closeActionMenu()
+                            trackLongPressMenuAction(
+                                message,
+                                if (message.isSaved) RaftMessageAction.Unsave else RaftMessageAction.Save
+                            )
                             onThreadEvent("toggleMessageSaved", message.id, null, null)
                         },
                         onFollowThread = onFollowThread,
                         onUnfollowThread = onUnfollowThread,
                         onReact = { emoji ->
                             closeActionMenu()
+                            trackLongPressMenuAction(message, RaftMessageAction.ReactQuick)
                             onThreadEvent("toggleReaction", message.id, null, emoji)
                         },
                         onTaskStatusChange = onTaskStatusChange,
@@ -22391,6 +22471,7 @@ private fun ThreadMessagesListContent(
                         onTranslate = onTranslate,
                         onForward = {
                             closeActionMenu()
+                            trackLongPressMenuAction(message, RaftMessageAction.Forward)
                             onForwardMessage(message.id)
                         },
                         onAddReaction = onAddReaction,
@@ -24727,6 +24808,8 @@ private class ThreadMessageCardCallbacks(
     val resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
     val isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean,
     val onShowActions: (RaftPopoverAnchor) -> Unit,
+    /** Called right after a long press opened the message menu (not the reaction "+" chip). */
+    val onLongPressMenuOpened: () -> Unit,
     val onOpenMember: (MemberDetailIdentity) -> Unit,
     val onExternalAuthor: (RaftThreadMessageItem) -> Unit,
     val onOpenThread: (String) -> Unit,
@@ -24786,6 +24869,7 @@ fun ThreadMessageCard(
     compactTimestampLabel: String = timestampLabel,
     actionCardExecutedTimeLabel: String? = null,
     onShowActions: (RaftPopoverAnchor) -> Unit,
+    onLongPressMenuOpened: () -> Unit = {},
     onOpenMember: (MemberDetailIdentity) -> Unit,
     onExternalAuthor: (RaftThreadMessageItem) -> Unit = {},
     onOpenThread: (String) -> Unit,
@@ -24880,6 +24964,7 @@ fun ThreadMessageCard(
                 resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                 isMarkdownTagValid = isMarkdownTagValid,
                 onShowActions = onShowActions,
+                onLongPressMenuOpened = onLongPressMenuOpened,
                 onOpenMember = onOpenMember,
                 onExternalAuthor = onExternalAuthor,
                 onOpenThread = onOpenThread,
@@ -24944,6 +25029,7 @@ private fun ThreadMessageCardContent(
     val timestampLabel = data.timestampLabel
     val compactTimestampLabel = data.compactTimestampLabel
     val onShowActions = callbacks.onShowActions
+    val onLongPressMenuOpened = callbacks.onLongPressMenuOpened
     val onOpenMember = callbacks.onOpenMember
     val onExternalAuthor = callbacks.onExternalAuthor
     val onOpenThread = callbacks.onOpenThread
@@ -25227,7 +25313,10 @@ private fun ThreadMessageCardContent(
                                         "touchSlop=${decision.touchSlop} pointers=${decision.pointerCount}"
                                 )
                             },
-                            onShowActions = onShowActions,
+                            onShowActions = { anchor ->
+                                onShowActions(anchor)
+                                onLongPressMenuOpened()
+                            },
                             onInputReady = onLongPressInputReady,
                             deferLongPressAt =
                                 inPlaceSelection?.let { selection ->
@@ -29688,6 +29777,7 @@ private fun ThreadOriginCard(
     onOpenMember: (MemberDetailIdentity) -> Unit,
     onExternalAuthor: (RaftThreadMessageItem) -> Unit = {},
     onShowActions: (RaftThreadMessageItem, RaftPopoverAnchor) -> Unit,
+    onLongPressMenuOpened: (RaftThreadMessageItem) -> Unit = {},
     onOpenTaskStatusMenu: (RaftThreadMessageItem, RaftPopoverAnchor) -> Unit,
     onShowReactionDetails: ((RaftThreadReactionItem, RaftPopoverAnchor) -> Unit)? = null,
     onShowAuthorDescription: ((String, RaftPopoverAnchor) -> Unit)? = null,
@@ -29782,6 +29872,7 @@ private fun ThreadOriginCard(
                                 showSaveAction = timelineSlice.showMessageSaveAction,
                                 isMarkdownTagValid = isMarkdownTagValid,
                                 onShowActions = { anchor -> onShowActions(origin, anchor) },
+                                onLongPressMenuOpened = { onLongPressMenuOpened(origin) },
                                 onOpenMember = onOpenMember,
                                 onExternalAuthor = onExternalAuthor,
                                 onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },

@@ -61,6 +61,8 @@ internal fun <T> RaftTabbedScaffold(
     onSelectedKeyChange: (T) -> Unit,
     modifier: Modifier = Modifier,
     itemKeyPrefix: String = "top-tab",
+    /** A tap on a tab in the strip (not a swipe), with whether that tab was already selected. */
+    onTabTapped: (key: T, wasSelected: Boolean) -> Unit = { _, _ -> },
     content: @Composable (T, Modifier, Boolean) -> Unit
 ) {
     // task #232 PR3: mode tabs in RaftTabbedScaffold (Thread Chat/Tasks/Files)
@@ -89,6 +91,7 @@ internal fun <T> RaftTabbedScaffold(
                 selectedKey = selectedKey.toString(),
                 onSelectedKeyChange = { key ->
                     tabs.firstOrNull { it.key.toString() == key }?.let { tab ->
+                        onTabTapped(tab.key, tab.key == selectedKey)
                         onSelectedKeyChange(tab.key)
                     }
                 },

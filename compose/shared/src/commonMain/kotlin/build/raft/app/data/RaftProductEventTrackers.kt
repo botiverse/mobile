@@ -280,6 +280,39 @@ class RaftProductEventsRecorder(
         )
     }
 
+    fun channelTabSelected(tab: RaftChannelTab, wasActive: Boolean) {
+        client.track(
+            RaftProductEvent.ChannelTabSelected(
+                RaftChannelTabSelectedProperties(tab = tab, surface = RaftChannelTabSurface.HeaderTabs, wasActive = wasActive)
+            )
+        )
+    }
+
+    /** One long-press message menu action; [inThread] is true for a thread reply, false for any other message (including a thread's parent). */
+    fun messageActionSelected(action: RaftMessageAction, inThread: Boolean) {
+        client.track(
+            RaftProductEvent.MessageActionSelected(
+                RaftMessageActionSelectedProperties(
+                    action = action,
+                    surface = RaftMessageActionSurface.LongPress,
+                    inThread = inThread,
+                )
+            )
+        )
+    }
+
+    fun activityItemOpen(itemKind: RaftActivityItemKind) {
+        client.track(RaftProductEvent.ActivityItemOpen(RaftActivityItemOpenProperties(itemKind)))
+    }
+
+    fun activityMark(action: RaftActivityMarkAction) {
+        client.track(RaftProductEvent.ActivityMark(RaftActivityMarkProperties(action)))
+    }
+
+    fun agentCreateOpened(entry: RaftAgentCreateEntry) {
+        client.track(RaftProductEvent.AgentCreateOpened(RaftAgentCreateOpenedProperties(entry)))
+    }
+
     /** The next thread page with [instanceId] opens a task (a task opens as a thread on phones). */
     fun markTaskThreadOpening(instanceId: String) {
         val key = instanceId.trim().takeIf { it.isNotEmpty() } ?: return
