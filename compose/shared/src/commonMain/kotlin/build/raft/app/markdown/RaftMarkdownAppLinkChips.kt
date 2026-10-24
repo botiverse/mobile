@@ -139,14 +139,18 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
             withRaftInlineBox(box) {
                 val chip: AnnotatedString.Builder.() -> Unit = {
                     withStyle(SpanStyle(fontSize = RAFT_RICHTEXT_INLINE_CHIP_FONT_SIZE_EM.em)) {
-                        appendInlineContent(iconId, "￼")
-                        appendInlineContent(iconGapId, "￼")
+                        appendInlineContent(iconId, "\uFFFC")
+                        append(RaftInlineWordJoiner)
+                        appendInlineContent(iconGapId, "\uFFFC")
+                        append(RaftInlineWordJoiner)
                         val ink = if (result is AppLinkResult.Pending) RaftColor.ForegroundMuted else RaftColor.TextBlack
                         withStyle(raftSpanStyleForWeight(FontWeight.SemiBold).copy(color = ink)) {
-                            append(label)
+                            append(raftAppLinkUnbreakable(label))
                         }
                         suffix?.let { domainText ->
+                            append(RaftInlineWordJoiner)
                             appendInlineContent(suffixGapId, " ")
+                            append(RaftInlineWordJoiner)
                             withStyle(
                                 SpanStyle(
                                     color = RaftColor.ForegroundHint,
@@ -156,7 +160,7 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
                                     fontFamily = raftMonoFamilyForWeight(FontWeight.Normal),
                                 ),
                             ) {
-                                append(domainText)
+                                append(raftAppLinkUnbreakable(domainText))
                             }
                         }
                     }
@@ -179,6 +183,18 @@ internal const val RaftAppLinkConsentTag = "raft.build.markdown.appLinkConsent"
 internal const val RaftAppLinkChipMaxChars = 40
 internal const val RaftAppLinkDomainMaxChars = 24
 internal const val RaftAppLinkTitleMinChars = 12
+
+/**
+ * A chip is one unbreakable run, as the web's `inline-flex` chip: spaces become no-break
+ * spaces and a word joiner follows each `/`, `-` and `.`, so the line breaks around the chip,
+ * never inside it.
+ */
+internal fun raftAppLinkUnbreakable(text: String): String = buildString {
+    for (char in text) {
+        if (char == ' ') append('\u00A0') else append(char)
+        if (char == '/' || char == '-' || char == '.') append(RaftInlineWordJoiner)
+    }
+}
 
 /** The label cut at the end with an ellipsis. */
 internal fun raftAppLinkCap(text: String, maxChars: Int): String =

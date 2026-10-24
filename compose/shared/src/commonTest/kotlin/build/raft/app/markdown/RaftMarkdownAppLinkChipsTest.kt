@@ -25,7 +25,7 @@ class RaftMarkdownAppLinkChipsTest {
             append(" now")
         }
 
-    private fun AnnotatedString.visibleText(): String = text.replace("￼", "").replace("⁠", "")
+    private fun AnnotatedString.visibleText(): String = text.replace("\uFFFC", "").replace("\u2060", "").replace('\u00A0', ' ')
 
     private fun host(result: AppLinkResult, onAsk: (AppLinkResult.Consent) -> Unit = {}) =
         RaftAppLinkChipHost(mapOf(result.url to result), onAsk)

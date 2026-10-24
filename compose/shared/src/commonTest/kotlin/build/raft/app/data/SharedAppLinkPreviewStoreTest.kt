@@ -1,10 +1,9 @@
 package build.raft.app.data
 
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -29,14 +28,12 @@ private const val CardsBody =
 private class FakeAppLinkPreviewApi : RaftAppLinkPreviewApi {
     val reads = mutableListOf<String>()
     val readResponses = ArrayDeque<HomeNetworkResponse>()
-    var gate: CompletableDeferred<Unit>? = null
     var allowResponse = HomeNetworkResponse(200, "{}")
     var declineResponse = HomeNetworkResponse(200, "{}")
     val answers = mutableListOf<String>()
 
     override suspend fun readPreviews(messageId: String, serverId: String): HomeNetworkResponse {
         reads += messageId
-        gate?.await()
         return readResponses.removeFirstOrNull() ?: HomeNetworkResponse(200, """{"previews":[],"prompts":[]}""")
     }
 
@@ -66,9 +63,9 @@ class SharedAppLinkPreviewStoreTest {
         assertTrue(store.view().wantsRead)
         store.read(Viewer, Server, MessageA, Content, Conversation)
         store.read(Viewer, Server, MessageA, Content, Conversation)
-        advanceUntilIdle()
+        runCurrent()
         store.read(Viewer, Server, MessageA, Content, Conversation)
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(listOf(MessageA), api.reads)
         val view = store.view()
         assertFalse(view.wantsRead)
@@ -80,7 +77,7 @@ class SharedAppLinkPreviewStoreTest {
         val api = FakeAppLinkPreviewApi()
         val store = store(api)
         store.read(Viewer, Server, MessageA, "see http://example.com and #general", Conversation)
-        advanceUntilIdle()
+        runCurrent()
         assertTrue(api.reads.isEmpty())
     }
 
@@ -92,9 +89,9 @@ class SharedAppLinkPreviewStoreTest {
         }
         val store = store(api)
         store.read(Viewer, Server, MessageA, Content, Conversation)
-        advanceUntilIdle()
+        runCurrent()
         store.read(Viewer, Server, MessageB, Content, Conversation)
-        advanceUntilIdle()
+        runCurrent()
         assertTrue(store.view(MessageA).results["https://alpha.example.test/pr/1"] is AppLinkResult.Consent)
         // The second message keeps the author's link.
         assertTrue(store.view(MessageB).results.isEmpty())
@@ -108,7 +105,7 @@ class SharedAppLinkPreviewStoreTest {
         val store = store(api)
         val worded = "[the PR](https://alpha.example.test/pr/1)"
         store.read(Viewer, Server, MessageA, worded, Conversation)
-        advanceUntilIdle()
+        runCurrent()
         assertTrue(store.view(content = worded).results.isEmpty())
         assertTrue(store.state.value.claims.isEmpty())
     }
@@ -121,7 +118,7 @@ class SharedAppLinkPreviewStoreTest {
         }
         val store = store(api)
         store.read(Viewer, Server, MessageA, Content, Conversation)
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(AppLinkConsentAnswer.Allowed, store.allow(Viewer, Server, alpha).await())
         assertEquals(listOf("allow:client-alpha"), api.answers)
         val waiting = store.view()
@@ -132,7 +129,7 @@ class SharedAppLinkPreviewStoreTest {
             waiting.results.values.toList(),
         )
         store.read(Viewer, Server, MessageA, Content, Conversation)
-        advanceUntilIdle()
+        runCurrent()
         assertEquals(listOf(MessageA, MessageA), api.reads)
         val read = store.view()
         assertFalse(read.wantsRead)
@@ -147,10 +144,10 @@ class SharedAppLinkPreviewStoreTest {
         }
         val store = store(api)
         store.read(Viewer, Server, MessageA, Content, Conversation)
-        advanceUntilIdle()
+        runCurrent()
         store.allow(Viewer, Server, alpha).await()
         store.read(Viewer, Server, MessageA, Content, Conversation)
-        advanceUntilIdle()
+        runCurrent()
         val view = store.view()
         assertTrue(view.results.isEmpty())
         assertFalse(view.wantsRead)
@@ -161,7 +158,7 @@ class SharedAppLinkPreviewStoreTest {
         val api = FakeAppLinkPreviewApi().apply { readResponses += HomeNetworkResponse(200, PromptBody) }
         val store = store(api)
         store.read(Viewer, Server, MessageA, Content, Conversation)
-        advanceUntilIdle()
+        runCurrent()
         api.declineResponse = HomeNetworkResponse(500, null)
         assertEquals(AppLinkConsentAnswer.Failed, store.decline(Viewer, Server, alpha).await())
         assertTrue(store.view().results.values.single() is AppLinkResult.Consent)
@@ -176,7 +173,7 @@ class SharedAppLinkPreviewStoreTest {
         val api = FakeAppLinkPreviewApi().apply { readResponses += HomeNetworkResponse(200, PromptBody) }
         val store = store(api)
         store.read(Viewer, Server, MessageA, Content, Conversation)
-        advanceUntilIdle()
+        runCurrent()
         api.allowResponse = HomeNetworkResponse(502, null)
         assertEquals(AppLinkConsentAnswer.Failed, store.allow(Viewer, Server, alpha).await())
         assertEquals(AppLinkConsentStatus.Failed, store.state.value.status[appLinkAppKey(Viewer, alpha.id)])
@@ -191,7 +188,7 @@ class SharedAppLinkPreviewStoreTest {
         val api = FakeAppLinkPreviewApi().apply { readResponses += HomeNetworkResponse(200, CardsBody) }
         val store = store(api)
         store.read(Viewer, Server, MessageA, Content, Conversation)
-        advanceUntilIdle()
+        runCurrent()
         assertTrue(store.state.value.messageView("user-1:server-2", MessageA, Content, Conversation).wantsRead)
         // An edited message is another read.
         assertTrue(store.view(content = "$Content edited").wantsRead)
