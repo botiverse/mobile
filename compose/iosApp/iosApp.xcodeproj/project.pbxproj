@@ -24,6 +24,9 @@
 		A12900010000000000000001 /* RaftIosNetworkRequestLifetimeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000001 /* RaftIosNetworkRequestLifetimeAdapter.swift */; };
 		A12900010000000000000002 /* RaftIosNetworkRequestLifetimeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000001 /* RaftIosNetworkRequestLifetimeAdapter.swift */; };
 		A12900010000000000000003 /* RaftIosNetworkRequestLifetimeAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A12900020000000000000002 /* RaftIosNetworkRequestLifetimeAdapterTests.swift */; };
+		A13700010000000000000001 /* RaftIosRealtimeLifecyclePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13700020000000000000001 /* RaftIosRealtimeLifecyclePolicy.swift */; };
+		A13700010000000000000002 /* RaftIosRealtimeLifecyclePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13700020000000000000001 /* RaftIosRealtimeLifecyclePolicy.swift */; };
+		A13700010000000000000003 /* RaftIosRealtimeLifecyclePolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13700020000000000000002 /* RaftIosRealtimeLifecyclePolicyTests.swift */; };
 		A13000010000000000000001 /* RaftIosAdaptivePanePublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000001 /* RaftIosAdaptivePanePublisher.swift */; };
 		A13000010000000000000002 /* RaftIosAdaptivePanePublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000001 /* RaftIosAdaptivePanePublisher.swift */; };
 		A13000010000000000000003 /* RaftIosAdaptivePanePublisherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A13000020000000000000002 /* RaftIosAdaptivePanePublisherTests.swift */; };
@@ -104,6 +107,8 @@
 		7A2F2C0A7ECD160D0FE049EB /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
 		A12900020000000000000001 /* RaftIosNetworkRequestLifetimeAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosNetworkRequestLifetimeAdapter.swift; sourceTree = "<group>"; };
 		A12900020000000000000002 /* RaftIosNetworkRequestLifetimeAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosNetworkRequestLifetimeAdapterTests.swift; sourceTree = "<group>"; };
+		A13700020000000000000001 /* RaftIosRealtimeLifecyclePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosRealtimeLifecyclePolicy.swift; sourceTree = "<group>"; };
+		A13700020000000000000002 /* RaftIosRealtimeLifecyclePolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosRealtimeLifecyclePolicyTests.swift; sourceTree = "<group>"; };
 		A12900020000000000000003 /* iosAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iosAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A13000020000000000000001 /* RaftIosAdaptivePanePublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosAdaptivePanePublisher.swift; sourceTree = "<group>"; };
 		A13000020000000000000002 /* RaftIosAdaptivePanePublisherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaftIosAdaptivePanePublisherTests.swift; sourceTree = "<group>"; };
@@ -299,6 +304,7 @@
 				A39700020000000000000001 /* Localizable.strings */,
 				2152FB032600AC8F00CF470E /* iOSApp.swift */,
 				A12900020000000000000001 /* RaftIosNetworkRequestLifetimeAdapter.swift */,
+				A13700020000000000000001 /* RaftIosRealtimeLifecyclePolicy.swift */,
 				A13000020000000000000001 /* RaftIosAdaptivePanePublisher.swift */,
 				A53100020000000000000001 /* RaftIosTabBarController.swift */,
 				A53100020000000000000002 /* RaftIosTabBarItemMapping.swift */,
@@ -320,6 +326,7 @@
 			children = (
 				A42400020000000000000002 /* RaftIosAvatarCacheProviderTests.swift */,
 				A12900020000000000000002 /* RaftIosNetworkRequestLifetimeAdapterTests.swift */,
+				A13700020000000000000002 /* RaftIosRealtimeLifecyclePolicyTests.swift */,
 				A13000020000000000000002 /* RaftIosAdaptivePanePublisherTests.swift */,
 				A53100020000000000000003 /* RaftIosTabBarItemMappingTests.swift */,
 				A42700020000000000000001 /* RaftAdaptiveEditorSnapshotTests.m */,
@@ -727,6 +734,7 @@
 				0474A3F329F6A41000F43E31 /* UINavigationController+FDFullscreenPopGesture.m in Sources */,
 				2152FB042600AC8F00CF470E /* iOSApp.swift in Sources */,
 				A12900010000000000000001 /* RaftIosNetworkRequestLifetimeAdapter.swift in Sources */,
+				A13700010000000000000001 /* RaftIosRealtimeLifecyclePolicy.swift in Sources */,
 				A13000010000000000000001 /* RaftIosAdaptivePanePublisher.swift in Sources */,
 				A53100010000000000000001 /* RaftIosTabBarController.swift in Sources */,
 				A53100010000000000000002 /* RaftIosTabBarItemMapping.swift in Sources */,
@@ -760,6 +768,8 @@
 				A42400010000000000000003 /* RaftIosAvatarCacheProviderTests.swift in Sources */,
 				A12900010000000000000002 /* RaftIosNetworkRequestLifetimeAdapter.swift in Sources */,
 				A12900010000000000000003 /* RaftIosNetworkRequestLifetimeAdapterTests.swift in Sources */,
+				A13700010000000000000002 /* RaftIosRealtimeLifecyclePolicy.swift in Sources */,
+				A13700010000000000000003 /* RaftIosRealtimeLifecyclePolicyTests.swift in Sources */,
 				A13000010000000000000002 /* RaftIosAdaptivePanePublisher.swift in Sources */,
 				A13000010000000000000003 /* RaftIosAdaptivePanePublisherTests.swift in Sources */,
 				A53100010000000000000003 /* RaftIosTabBarItemMapping.swift in Sources */,
