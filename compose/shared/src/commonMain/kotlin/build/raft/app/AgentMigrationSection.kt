@@ -47,6 +47,9 @@ import build.raft.app.data.AgentMigrationState
 import build.raft.app.data.AgentMigrationTarget
 import build.raft.app.data.ComputerSizeStatus
 import build.raft.app.data.HOSTED_ARRIVAL_ATTENTION_REASONS
+import build.raft.app.data.MigrationErrorContext
+import build.raft.app.data.MigrationFailureComputers
+import build.raft.app.data.migrationFailurePresentation
 import build.raft.app.data.RaftProGateDecision
 import build.raft.app.data.canCancel
 import build.raft.app.data.endedComputerMigration
@@ -222,11 +225,10 @@ internal fun AgentMigrationSection(
                 )
             }
             state.statusError?.let { error ->
-                RaftBanner(
+                AgentMigrationActionErrorBanner(
+                    error = error,
+                    context = MigrationErrorContext.Status,
                     title = stringResource(MR.strings.agent_migration_detail_migration_status_unavailable),
-                    description = agentMigrationErrorText(error),
-                    status = RaftBannerStatus.Warning,
-                    size = RaftBannerSize.Sm,
                     modifier = Modifier.padding(top = AgentMigrationBlockGap)
                 )
             }
@@ -325,6 +327,11 @@ internal fun AgentMigrationSection(
 private fun agentMigrationComputerLabel(inputs: AgentMigrationSectionInputs, machineId: String?): String {
     if (machineId.isNullOrBlank()) return stringResource(MR.strings.agent_migration_detail_unknown_computer)
     return inputs.computers.firstOrNull { it.id == machineId }?.name ?: machineId.take(8)
+}
+
+private fun agentMigrationComputerOnline(inputs: AgentMigrationSectionInputs, machineId: String?): Boolean? {
+    val computer = inputs.computers.firstOrNull { it.id == machineId } ?: return null
+    return if (computer.offline) false else if (computer.online) true else null
 }
 
 @Composable
@@ -429,14 +436,14 @@ private fun AgentLastMigration(
     }
 }
 
-@Composable
-private fun agentMigrationErrorText(error: AgentMigrationActionError): String {
-    val base = error.serverMessage ?: stringResource(MR.strings.agent_migration_generic_error)
-    return base + "\n" + stringResource(MR.strings.agent_migration_error_code, error.code)
-}
-
 /** Web `migrationNoticePresentation`: a title (when the state has one) and the line under it. */
-private data class AgentMigrationNoticeCopy(val title: String?, val placement: String?, val message: String)
+private data class AgentMigrationNoticeCopy(
+    val title: String?,
+    val placement: String?,
+    val message: String,
+    /** Safe error code for the collapsed "Technical details"; null hides it. */
+    val technicalCode: String? = null
+)
 
 @Composable
 private fun agentMigrationNoticeCopy(notice: AgentMigrationNotice, inputs: AgentMigrationSectionInputs): AgentMigrationNoticeCopy {
@@ -472,26 +479,23 @@ private fun agentMigrationNoticeCopy(notice: AgentMigrationNotice, inputs: Agent
             stringResource(
                 if (notice.isAborted) MR.strings.agent_migration_detail_migration_aborted else MR.strings.agent_migration_detail_migration_failed
             )
-        return if (notice.flippedAt != null) {
-            AgentMigrationNoticeCopy(
-                title,
-                null,
-                if (notice.isHosted) {
-                    stringResource(MR.strings.agent_migration_hosted_failed_after_move)
-                } else {
-                    stringResource(MR.strings.agent_migration_detail_migration_failed_after_move, source, target)
-                }
+        val presentation =
+            migrationFailurePresentation(
+                notice,
+                MigrationFailureComputers(
+                    sourceName = source,
+                    targetName = target,
+                    sourceOnline = agentMigrationComputerOnline(inputs, notice.sourceMachineId),
+                    targetOnline = agentMigrationComputerOnline(inputs, notice.targetMachineId)
+                ),
+                inputs.formatTimestamp
             )
-        } else {
-            val reason = notice.transportErrorCode ?: notice.failureReason ?: notice.abortReason
-            AgentMigrationNoticeCopy(
-                title,
-                stringResource(MR.strings.agent_migration_detail_migration_still_on_source, source),
-                notice.transportErrorMessage?.takeIf { it.isNotBlank() }
-                    ?: reason?.let { stringResource(MR.strings.agent_migration_error_code, it) }
-                    ?: stringResource(MR.strings.agent_migration_generic_error)
-            )
-        }
+        return AgentMigrationNoticeCopy(
+            title,
+            presentation.placement?.resolve(),
+            presentation.resolvedMessage(),
+            presentation.technicalCode
+        )
     }
     return when (notice.state) {
         "cancel_requested_pre_flip" ->
@@ -692,6 +696,7 @@ private fun AgentMigrationProgressPanel(
                 status = RaftBannerStatus.Warning,
                 size = RaftBannerSize.Sm
             )
+            copy.technicalCode?.let { AgentMigrationTechnicalDetails(it) }
             RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
                 Item(term = stringResource(MR.strings.agent_migration_reference_label)) {
                     AgentMigrationReferenceValue(notice, inputs)
@@ -736,6 +741,7 @@ private fun AgentMigrationProgressPanel(
                 status = RaftBannerStatus.Warning,
                 size = RaftBannerSize.Sm
             )
+            copy.technicalCode?.takeIf { notice.isFailed }?.let { AgentMigrationTechnicalDetails(it) }
             // The reference is for support, so it only appears when something needs attention.
             AgentMigrationReference(notice, inputs)
         } else {
@@ -898,7 +904,7 @@ private fun AgentMigrationHostedReviewCard(
                 )
             }
             state.confirmError?.let { error ->
-                RaftBanner(description = agentMigrationErrorText(error), status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
+                AgentMigrationActionErrorBanner(error, MigrationErrorContext.Start)
             }
         }
     }
@@ -1086,7 +1092,7 @@ internal fun ColumnScope.AgentMigrationStartForm(
             }
         }
         state.startError?.let { error ->
-            RaftBanner(description = agentMigrationErrorText(error), status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
+            AgentMigrationActionErrorBanner(error, MigrationErrorContext.Start)
         }
     }
 }
