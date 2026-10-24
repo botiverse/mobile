@@ -8,7 +8,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** iOS upload progress comes from NSURLSession's sent-byte counts, keyed by a marker that never hits the wire. */
-class RaftDarwinUploadProgressTest {
+class RaftDarwinUploadProgressIosTest {
     @Test
     fun markerLeavesTheWireRequestAndRoutesSentBytesToItsListener() {
         val received = mutableListOf<RaftTransferProgress>()
