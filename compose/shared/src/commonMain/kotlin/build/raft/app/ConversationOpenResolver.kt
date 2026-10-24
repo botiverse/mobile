@@ -20,7 +20,10 @@ internal enum class ConversationOpenSource {
     ParentConversation,
     AuthResume,
     HistoryForward,
-    AppShortcut
+    AppShortcut,
+    // An external Raft message link (Android App Link / iOS Universal Link), resolved and
+    // access-checked by RaftMessageLinkResolver before it reaches the window coordinator.
+    MessageLink
 }
 
 internal data class ConversationOpenSourceMessageIdentity(
@@ -366,7 +369,8 @@ private fun ConversationOpenSourceMessageIdentity.resolveOpenAnchorMessageId(
         ConversationOpenSource.Task,
         ConversationOpenSource.Markdown,
         ConversationOpenSource.ParentConversation,
-        ConversationOpenSource.AuthResume -> messageId
+        ConversationOpenSource.AuthResume,
+        ConversationOpenSource.MessageLink -> messageId
         ConversationOpenSource.AppShortcut -> null
     }?.takeIf { it.isNotBlank() }
 

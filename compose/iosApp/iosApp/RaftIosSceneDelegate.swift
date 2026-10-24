@@ -1,4 +1,5 @@
 import Foundation
+import SafariServices
 import shared
 import SwiftUI
 import UIKit
@@ -79,6 +80,11 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
                 source: "scene_connect"
             )
         }
+        // Cold launch from a Universal Link (a Raft message link).
+        for activity in connectionOptions.userActivities
+        where activity.activityType == NSUserActivityTypeBrowsingWeb {
+            acceptBrowsingWebActivity(activity, source: "scene_connect")
+        }
         if let shortcutItem = connectionOptions.shortcutItem {
             RaftIosDesktopShortcutHost.acceptShortcutItem(
                 shortcutItem,
@@ -99,6 +105,10 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+        if userActivity.activityType == NSUserActivityTypeBrowsingWeb {
+            acceptBrowsingWebActivity(userActivity, source: "scene_continue")
+            return
+        }
         guard let context = RaftIosShellWindowContract.context(from: userActivity) else {
             return
         }
@@ -108,6 +118,29 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
             "RaftIosShellWindow",
             "scene_identity_updated source=continue_activity shell=\(context.shellInstanceId)"
         )
+    }
+
+    /// #proj-mobile #26: a Universal Link on app.raft.build / open.raft.build (or the Developer
+    /// environment's web host). The shared inbox keeps a message link until the app shell has a
+    /// ready session (through sign-in), then opens it through the same window navigation queue as
+    /// a notification tap. Anything else the AASA routed here goes back to the web, in an in-app
+    /// Safari view: `UIApplication.open` on our own Universal Link could route it straight back.
+    private func acceptBrowsingWebActivity(_ activity: NSUserActivity, source: String) {
+        guard let url = activity.webpageURL else { return }
+        if RaftMessageLinkIngress.shared.accept(url: url.absoluteString, source: "ios_\(source)", configuredWebUrl: nil) {
+            RaftIosDiagnosticsRecord("info", "RaftMessageLink", "universal_link_accepted source=\(source)")
+            return
+        }
+        RaftIosDiagnosticsRecord("info", "RaftMessageLink", "universal_link_not_claimed source=\(source)")
+        guard url.scheme == "https" else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let root = self?.window?.rootViewController else { return }
+            var presenter = root
+            while let presented = presenter.presentedViewController {
+                presenter = presented
+            }
+            presenter.present(SFSafariViewController(url: url), animated: true)
+        }
     }
 
     func windowScene(

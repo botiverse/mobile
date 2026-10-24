@@ -29,6 +29,7 @@ internal val raftProductPageFactories: Map<String, () -> Pager> =
         "compose_member_detail" to { build.raft.app.ComposeMemberDetailPage() },
         "compose_members" to { build.raft.app.ComposeMembersPage() },
         "compose_members_smoke" to { build.raft.app.ComposeMembersSmokePage() },
+        "compose_message_link_not_found" to { build.raft.app.ComposeRaftMessageLinkNotFoundPage() },
         "compose_pager_scroll_probe" to { build.raft.app.RaftPagerScrollProbePage() },
         "compose_release_notes" to { build.raft.app.ComposeReleaseNotesPage() },
         "compose_settings_account" to { build.raft.app.ComposeSettingsAccountPage() },

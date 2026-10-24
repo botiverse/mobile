@@ -172,18 +172,39 @@
 
                 <data android:mimeType="*/*" />
             </intent-filter>
+            <!--
+                Raft message links (#proj-mobile #25): verified App Links on both hosts, which serve the
+                same assetlinks.json. Only the conversation permalink prefix is claimed; MainActivity
+                parses the exact /s/{slug}/channel|dm/{id} shape and leaves anything else to the browser.
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="https" />
+                <data android:host="app.raft.build" />
+                <data android:host="open.raft.build" />
+                <data android:pathPrefix="/s/" />
+            </intent-filter>
+            <!--
+                The web origin root only: email verification (`/?verify=`) and the social auth callback
+                (`/?auth_callback=social`) land there. Not the whole origin: once app.raft.build is a
+                verified App Link host, every path an intent filter names opens the app, and other web
+                pages must stay in the browser.
+            -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data
-                    android:host="app.slock.ai"
-                    android:scheme="https" />
-                <data
-                    android:host="app.raft.build"
-                    android:scheme="https" />
+                <data android:scheme="https" />
+                <data android:host="app.slock.ai" />
+                <data android:host="app.raft.build" />
+                <data android:path="/" />
+                <data android:path="" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

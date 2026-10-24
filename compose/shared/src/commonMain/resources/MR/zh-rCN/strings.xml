@@ -85,6 +85,10 @@
     <string name="home_error_conversation_not_ready">会话尚未就绪，请重试</string>
     <string name="home_error_notification_server_unavailable">通知服务器不可用</string>
     <string name="home_error_notification_sign_in">请登录后打开此通知</string>
+    <string name="message_link_title">消息链接</string>
+    <string name="message_link_not_found_title">找不到这条消息</string>
+    <string name="message_link_not_found_body">链接可能有误，或者你没有权限查看。</string>
+    <string name="message_link_switched_server">已切换到 %1$s</string>
     <string name="home_error_conversation_unavailable">此会话已不可用</string>
     <string name="home_error_direct_message_unavailable">私信不可用</string>
     <string name="home_error_open_direct_message_failed_prefix">无法打开私信：</string>

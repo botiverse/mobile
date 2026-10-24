@@ -546,6 +546,9 @@ private const val AppShellNotificationParentChannelIdKey = "slockNotificationPar
 private const val AppShellNotificationParentMessageIdKey = "slockNotificationParentMessageId"
 private const val AppShellNotificationKindKey = "slockNotificationKind"
 private const val AppShellNotificationCategoryKey = "slockNotificationCategory"
+/** WindowNavigationIntent.source of an external message link (#proj-mobile #25/#26). */
+internal const val MessageLinkNavigationSource = "message_link"
+private const val MessageLinkServerNamePlaceholder = "__raft_message_link_server__"
 // AppShell child pages fill the native window. A floating bottom tab bar may
 // overlay that page, but it does not turn the full-screen page into an inset
 // card. Applying the iOS `liquid` host style here clips every screen edge to a
@@ -2972,6 +2975,13 @@ private fun RaftAppShellReadyContent(
         }
     var systemNotificationNavigationTick by remember { mutableStateOf(0) }
     var desktopShortcutNavigationTick by remember { mutableStateOf(0) }
+    // #proj-mobile #25/#26: external message links wait in the process inbox (through sign-in)
+    // and, once resolved for this account, enter the same window navigation queue as a
+    // notification tap.
+    var messageLinkNavigationTick by remember { mutableStateOf(0) }
+    val pendingMessageLink by RaftMessageLinkInbox.Process.pending.collectAsState()
+    val messageLinkSwitchedServerTemplate =
+        stringResource(MR.strings.message_link_switched_server, MessageLinkServerNamePlaceholder)
     DisposableEffect(eventBus, windowNavigationCoordinator, bridge) {
         val subscription =
             eventBus.observe(build.raft.app.data.RaftDesktopShortcutContract.OpenEventName) { eventData ->
@@ -4855,6 +4865,7 @@ private fun RaftAppShellReadyContent(
         desktopShortcutWindowNavigationIntent?.key,
         systemNotificationNavigationTick,
         desktopShortcutNavigationTick,
+        messageLinkNavigationTick,
         readySession?.currentServerId,
         readySession?.servers,
         homeState.content,
@@ -4886,12 +4897,23 @@ private fun RaftAppShellReadyContent(
                         authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(result.data))
                         resetAppShellSessionState()
                         bridge.log("window_navigation_server_activated targetServerId=${action.intent.serverId}")
+                        if (action.intent.source == MessageLinkNavigationSource) {
+                            result.data.servers.firstOrNull { it.id == action.intent.serverId }?.name
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { name ->
+                                    bridge.toast(messageLinkSwitchedServerTemplate.replace(MessageLinkServerNamePlaceholder, name))
+                                }
+                        }
                     }
                     is SharedAuthResult.Failure -> {
                         windowNavigationCoordinator.rejectActivation(action.intent.key, result.code.name)
                             ?.let { rejection ->
                                 bridge.logWarn("window_navigation_drop reason=${rejection.reason}")
-                                bridge.toast(notificationServerUnavailableMessage)
+                                if (rejection.intent.source == MessageLinkNavigationSource) {
+                                    pager.openRaftMessageLinkNotFoundPage(navigationStoreScope)
+                                } else {
+                                    bridge.toast(notificationServerUnavailableMessage)
+                                }
                             }
                     }
                     SharedAuthResult.Unauthenticated -> {
@@ -4927,6 +4949,10 @@ private fun RaftAppShellReadyContent(
                     "window_navigation_drop source=${action.intent.source} reason=${action.reason} " +
                         "targetServerId=${action.intent.serverId}"
                 )
+                if (action.intent.source == MessageLinkNavigationSource) {
+                    pager.openRaftMessageLinkNotFoundPage(navigationStoreScope)
+                    return@LaunchedEffect
+                }
                 bridge.toast(
                     if (action.reason == "server_unavailable") {
                         "Notification server unavailable"
@@ -4936,6 +4962,46 @@ private fun RaftAppShellReadyContent(
                 )
             }
             null -> Unit
+        }
+    }
+    // An external message link (Android App Link / iOS Universal Link). It waits in the process
+    // inbox while signed out or restoring; with a ready session this shell takes it once,
+    // resolves {slug}/conversation/message for this account, and either queues the same
+    // identity-only WindowNavigationIntent a notification tap queues, or shows the one
+    // "Message not found" page. The resolve runs in the shell scope so a session/key change
+    // after the take cannot drop the link half-way.
+    val messageLinkSessionReady = authoritativeHomeStartAllowed && readySession != null
+    LaunchedEffect(pendingMessageLink?.id, messageLinkSessionReady) {
+        val pending = pendingMessageLink
+        if (!raftMessageLinkShouldTake(pending, messageLinkSessionReady)) return@LaunchedEffect
+        val taken = RaftMessageLinkInbox.Process.take(pending!!.id)
+        if (taken == null) {
+            bridge.log("message_link_take_skipped id=${pending.id} reason=taken_replaced_or_expired")
+            return@LaunchedEffect
+        }
+        val servers = readySession?.servers.orEmpty()
+        bridge.log("message_link_take id=${taken.id} source=${taken.source} servers=${servers.size}")
+        val resolver = RaftMessageLinkResolver(appShellNetworkClient, diagnosticsLogger = bridge::log)
+        appShellCoroutineScope.launch {
+            when (val resolution = resolver.resolve(taken.link, servers)) {
+                is RaftMessageLinkResolution.Open -> {
+                    val intent =
+                        WindowNavigationIntent(
+                            serverId = resolution.serverId,
+                            sourceIdentity = resolution.sourceIdentity,
+                            source = MessageLinkNavigationSource,
+                            launchId = "message-link-${taken.id}"
+                        )
+                    val enqueued = windowNavigationCoordinator.enqueue(intent)
+                    bridge.log(
+                        "window_navigation_received source=$MessageLinkNavigationSource enqueued=$enqueued " +
+                            "targetServerId=${intent.serverId}"
+                    )
+                    messageLinkNavigationTick += 1
+                }
+                is RaftMessageLinkResolution.NotFound ->
+                    pager.openRaftMessageLinkNotFoundPage(navigationStoreScope)
+            }
         }
     }
     LaunchedEffect(
