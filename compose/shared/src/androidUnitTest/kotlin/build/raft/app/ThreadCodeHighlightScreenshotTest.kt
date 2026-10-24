@@ -5,14 +5,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import build.raft.app.base.BridgeModule
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.compat.pager.IModuleCreator
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
+import build.raft.app.compat.pager.PagerManager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -32,6 +36,18 @@ class ThreadCodeHighlightScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
 
+    // The code block's copy action reaches the clipboard through the live page's bridge.
+    private val livePager =
+        object : Pager() {}.apply {
+            pagerId = "thread-code-highlight-screenshot"
+            pageData = PageData(JSONObject())
+            registerModule(BridgeModule.MODULE_NAME, IModuleCreator { BridgeModule() })
+        }
+
+    @BeforeTest fun registerPager() = PagerManager.register(livePager)
+
+    @AfterTest fun unregisterPager() = PagerManager.unregister(livePager)
+
     @Test fun codeBlocksLight() = capture("thread.code-highlight", RaftAppAppearance.Light)
 
     @Test fun codeBlocksDark() = capture("thread.code-highlight.dark", RaftAppAppearance.Dark)
@@ -43,8 +59,7 @@ class ThreadCodeHighlightScreenshotTest {
             reportDir = "build/reports/home-screenshots",
             activities = activities,
         ) {
-            val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+            CompositionLocalProvider(LocalActivity provides RaftPageActivity(livePager)) {
                 RaftDesignSystemTheme { CodeBlockRows() }
             }
         }
