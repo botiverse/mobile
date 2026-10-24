@@ -20,7 +20,9 @@ internal data class AttachmentOwnerLease(
     val scopeId: String,
     val authEpoch: Long,
     val principalKey: AttachmentPrincipalKey,
-    val generation: Long
+    val generation: Long,
+    /** Environment + account (no server): a server switch keeps it, another account changes it. */
+    val accountKey: String = ""
 )
 
 internal data class AttachmentOperationToken(
@@ -69,7 +71,8 @@ internal class AttachmentAuthScopeRegistry {
                 scopeId = "${storeScope.shellInstanceId}:$scopeSerial",
                 authEpoch = authEpoch,
                 principalKey = principalKey,
-                generation = generation
+                generation = generation,
+                accountKey = accountKey
             ).also { lease ->
                 activeByShell[storeScope.shellInstanceId] = lease
                 bumpVersionLocked()

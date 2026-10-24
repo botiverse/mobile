@@ -7774,7 +7774,7 @@ internal class RaftBridgeModule(
                                     .isNotEmpty()
                         },
                         runIfOwnerCurrent = { block ->
-                            ProcessAndroidAttachmentOwners.runIfCurrent(owner, block)
+                            ProcessAndroidAttachmentOwners.runIfLaunchable(owner, block)
                         },
                         launchSource = {
                             executeAndroidAttachmentPlatformLaunch(

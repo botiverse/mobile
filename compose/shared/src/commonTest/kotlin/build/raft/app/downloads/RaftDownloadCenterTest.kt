@@ -58,8 +58,15 @@ class RaftDownloadCenterTest {
     private fun TestScope.center(scope: CoroutineScope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))) =
         RaftDownloadCenter(scope = scope, repository = RaftDownloadHistoryRepository(store), nowMillis = { now })
 
-    private fun descriptor(id: String = "a1", owner: String = "owner-1") =
-        RaftDownloadDescriptor(id = id, ownerKey = owner, attachmentId = "att-$id", fileName = "$id.pdf", mimeType = "application/pdf")
+    private fun descriptor(id: String = "a1", owner: String = "owner-1", account: String = "") =
+        RaftDownloadDescriptor(
+            id = id,
+            ownerKey = owner,
+            attachmentId = "att-$id",
+            fileName = "$id.pdf",
+            mimeType = "application/pdf",
+            accountKey = account
+        )
 
     private fun RaftDownloadCenter.row(id: String = "a1"): RaftDownloadEntry =
         state.value.entries.firstOrNull { it.id == id } ?: error("no row $id in ${state.value.entries}")
@@ -87,6 +94,30 @@ class RaftDownloadCenterTest {
         assertEquals(RaftDownloadOutcome.Completed(), result.await())
         assertNull(pageSaw, "the cancelled page must not receive the outcome")
         assertTrue(task.controls.isEmpty(), "page exit sent no control to the host: ${task.controls}")
+    }
+
+    @Test
+    fun serverSwitchKeepsTheDownloadRunningAndListedUntilItCompletes() = runTest {
+        val center = center()
+        val task = ScriptedTask()
+        center.start(descriptor(id = "a1", owner = "server-a", account = "account-1"), task)
+        center.start(descriptor(id = "x1", owner = "server-x", account = "account-2"), ScriptedTask())
+        runCurrent()
+        task.progress!!(RaftDownloadProgressUpdate(downloadedBytes = 256, totalBytes = 1024))
+
+        // The shell now shows server B of the same account: the centre lists the running row.
+        val onServerB = center.entries(ownerKey = "server-b", accountKey = "account-1").first()
+        assertEquals(listOf("a1"), onServerB.map { it.id }, "another account's row never shows")
+        task.progress!!(RaftDownloadProgressUpdate(downloadedBytes = 768, totalBytes = 1024))
+        assertEquals(RaftDownloadStatus.Downloading, center.row("a1").status)
+        assertEquals(75, center.row("a1").percent)
+
+        task.finish(RaftDownloadOutcome.Completed())
+        runCurrent()
+        assertEquals(RaftDownloadStatus.Completed, center.row("a1").status)
+        // Finished, it belongs to its own server's list again.
+        assertEquals(emptyList(), center.entries(ownerKey = "server-b", accountKey = "account-1").first())
+        assertEquals(listOf("a1"), center.entries(ownerKey = "server-a", accountKey = "account-1").first().map { it.id })
     }
 
     @Test

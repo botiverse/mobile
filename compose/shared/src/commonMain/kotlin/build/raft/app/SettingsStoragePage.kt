@@ -158,7 +158,10 @@ private fun SettingsStorageScreen() {
         currentAttachmentOwnerLease(storeScope)
     }
     val ownerKey = attachmentOwner?.principalKey?.value
-    val downloadEntries by remember(ownerKey) { downloadCenter.entries(ownerKey) }.collectAsState(initial = emptyList())
+    val accountKey = attachmentOwner?.accountKey
+    val downloadEntries by remember(ownerKey, accountKey) {
+        downloadCenter.entries(ownerKey, accountKey)
+    }.collectAsState(initial = emptyList())
     val coroutineScope = rememberCoroutineScope()
     val openResultTerms =
         RaftAttachmentOpenResultTerms(

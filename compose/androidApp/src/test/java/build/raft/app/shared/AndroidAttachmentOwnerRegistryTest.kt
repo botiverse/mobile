@@ -55,7 +55,7 @@ class AndroidAttachmentOwnerRegistryTest {
         val oldThread = thread {
             ready.countDown()
             release.await()
-            oldResult = registry.runIfCurrent(old) { launches.incrementAndGet(); true }
+            oldResult = registry.runIfLaunchable(old) { launches.incrementAndGet(); true }
         }
         assertTrue(ready.await(2, TimeUnit.SECONDS))
         registry.bind(fresh)
@@ -64,8 +64,48 @@ class AndroidAttachmentOwnerRegistryTest {
 
         assertNull(oldResult)
         assertEquals(0, launches.get())
-        assertEquals(true, registry.runIfCurrent(fresh) { launches.incrementAndGet(); true })
+        assertEquals(true, registry.runIfLaunchable(fresh) { launches.incrementAndGet(); true })
         assertEquals(1, launches.get())
+    }
+
+    @Test
+    fun serverSwitchKeepsTheOldScopesTransfersAliveUntilSignOut() {
+        val registry = AndroidAttachmentOwnerRegistry()
+        val serverA = lease("shell", "scope-a", generation = 1L)
+        val serverB = lease("shell", "scope-b", generation = 2L)
+        val invalidated = AtomicInteger(0)
+        registry.bind(serverA)
+        registry.registerOperation(serverA, "download", AndroidAttachmentRetirementHook { invalidated.incrementAndGet(); null }) { Unit }
+
+        registry.bind(serverB)
+
+        assertEquals("a server switch must not cancel the old server's transfer", 0, invalidated.get())
+        assertTrue(registry.admit(serverA))
+        assertEquals("published", registry.runIfCurrent(serverA) { "published" })
+        assertNull("the old server can no longer launch UI", registry.runIfLaunchable(serverA) { "open" })
+        assertTrue(registry.admit(serverB))
+
+        registry.retireShell("shell")
+
+        assertEquals(1, invalidated.get())
+        assertFalse(registry.admit(serverA))
+        assertFalse(registry.admit(serverB))
+    }
+
+    @Test
+    fun anotherAccountRetiresTheDetachedScopes() {
+        val registry = AndroidAttachmentOwnerRegistry()
+        val serverA = lease("shell", "scope-a", authEpoch = 1L, generation = 1L)
+        val serverB = lease("shell", "scope-b", authEpoch = 1L, generation = 2L)
+        val otherAccount = lease("shell", "scope-c", authEpoch = 2L, generation = 3L)
+        registry.bind(serverA)
+        registry.bind(serverB)
+
+        registry.bind(otherAccount)
+
+        assertFalse(registry.admit(serverA))
+        assertFalse(registry.admit(serverB))
+        assertTrue(registry.admit(otherAccount))
     }
 
     @Test

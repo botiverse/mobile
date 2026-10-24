@@ -26,7 +26,8 @@ class AttachmentDownloadsExportCoordinatorTest {
         withSourceFile(4096) { source ->
             val registry = AndroidAttachmentOwnerRegistry()
             val old = ownerLease("scope-a", 1L)
-            val fresh = ownerLease("scope-b", 2L)
+            // Another account signs in on the shell (a server switch keeps exports: see below).
+            val fresh = ownerLease("scope-b", 2L, authEpoch = 2L)
             val registrationReady = CountDownLatch(1)
             val releaseRegistration = CountDownLatch(1)
             registry.bind(old)
@@ -73,7 +74,7 @@ class AttachmentDownloadsExportCoordinatorTest {
         withSourceFile(1024 * 1024) { source ->
             val registry = AndroidAttachmentOwnerRegistry()
             val old = ownerLease("scope-a", 1L)
-            val fresh = ownerLease("scope-b", 2L)
+            val fresh = ownerLease("scope-b", 2L, authEpoch = 2L)
             val writeEntered = CountDownLatch(1)
             val releaseWrite = CountDownLatch(1)
             registry.bind(old)
@@ -93,6 +94,34 @@ class AttachmentDownloadsExportCoordinatorTest {
             assertEquals("cancelled", result.get()?.status)
             assertEquals(0, backend.publishCount.get())
             assertTrue(backend.awaitDelete())
+        }
+
+    @Test
+    fun serverSwitchDuringExportLetsItPublish() =
+        withSourceFile(1024 * 1024) { source ->
+            val registry = AndroidAttachmentOwnerRegistry()
+            val serverA = ownerLease("scope-a", 1L)
+            val serverB = ownerLease("scope-b", 2L)
+            val writeEntered = CountDownLatch(1)
+            val releaseWrite = CountDownLatch(1)
+            registry.bind(serverA)
+            val backend = FakeExportBackend(writeEntered = writeEntered, writeBlock = releaseWrite)
+            val coordinator = coordinator(ownerRegistry = registry, stageTimeoutMs = 5_000L)
+            val result = AtomicReference<AttachmentDownloadsExportResult>()
+            val exportThread = thread {
+                result.set(coordinator.export(request(source, "server-switch").copy(owner = serverA), backend))
+            }
+            assertTrue(writeEntered.await(2, TimeUnit.SECONDS))
+
+            // Same account, another server: the save keeps going (artin, 1.15.5).
+            registry.bind(serverB)
+            releaseWrite.countDown()
+            exportThread.join(2_000L)
+
+            assertFalse(exportThread.isAlive)
+            assertEquals("saved", result.get()?.status)
+            assertEquals(1, backend.publishCount.get())
+            assertEquals(0, backend.deleteCount.get())
         }
 
     @Test
@@ -915,11 +944,11 @@ class AttachmentDownloadsExportCoordinatorTest {
             mimeType = "application/octet-stream"
         )
 
-    private fun ownerLease(scopeId: String, generation: Long) =
+    private fun ownerLease(scopeId: String, generation: Long, authEpoch: Long = 1L) =
         AndroidAttachmentOwnerLease(
             shellInstanceId = "shell",
             scopeId = scopeId,
-            authEpoch = 1L,
+            authEpoch = authEpoch,
             principalKey = "a".repeat(64),
             generation = generation
         )

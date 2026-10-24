@@ -2692,7 +2692,8 @@ private fun RaftFilePreviewStandalonePageContent() {
                                 ownerKey = operation.owner.principalKey.value,
                                 attachmentId = currentPayload.attachmentCacheId(),
                                 fileName = currentPayload.attachmentCacheFileName(),
-                                mimeType = currentPayload.externalMimeType
+                                mimeType = currentPayload.externalMimeType,
+                                accountKey = operation.owner.accountKey
                             ),
                         task =
                             RaftBridgeSaveAttachmentTask(
