@@ -406,6 +406,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.geometry.Rect
@@ -15489,51 +15490,27 @@ private fun AppShellCachedHomePreviewContent(
     }
 }
 
+/**
+ * First in-app frame while the stored session restores. Matches the static iOS launch screen
+ * (iosApp Info.plist UILaunchScreen: RaftLaunchLogo on RaftLaunchBackground) and Android's
+ * splash hold: the app-icon mark, 108dp, centred on the app canvas (cream in light, layer
+ * canvas in dark). No tagline, tilt or border, so the launch -> app hand-off does not jump.
+ */
 @Composable
 internal fun AppShellRestoreSplashContent() {
-    Column(
+    Box(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(RaftColor.SurfaceCream)
-                .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+                .background(if (RaftAppThemeState.isDark) RaftColor.Canvas else RaftColor.SurfaceCream),
+        contentAlignment = Alignment.Center
     ) {
-        AppShellRestoreLogoBadge("RAFT")
-        Spacer(Modifier.height(34.dp))
-        Text(
-            text = stringResource(MR.strings.auth_restore_tagline),
-            style =
-                RaftType.SectionLabel
-                    .withRaftFontWeight(FontWeight.Bold)
-                    .copy(
-                        fontSize = 15.sp,
-                        lineHeight = 22.sp,
-                        letterSpacing = 1.2.sp,
-                        color = RaftColor.TextMutedGray
-                    ),
-            color = RaftColor.TextMutedGray,
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.widthIn(max = 360.dp)
+        RaftCachedImage(
+            source = "assets://raft/raft-launch-logo.png",
+            contentDescription = null,
+            modifier = Modifier.size(108.dp),
+            contentScale = ContentScale.Fit
         )
-    }
-}
-
-@Composable
-private fun AppShellRestoreLogoBadge(text: String, modifier: Modifier = Modifier) {
-    RaftTiltedBadgeSurface(modifier = modifier.width(214.dp).height(68.dp)) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(
-                text = text,
-                style = RaftType.PageTitle.copy(fontSize = 32.sp, lineHeight = 38.sp, color = RaftColor.BrandYellow),
-                color = RaftColor.BrandYellow,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
     }
 }
 

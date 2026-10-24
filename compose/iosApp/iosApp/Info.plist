@@ -97,6 +97,8 @@
         <dict>
             <key>UIColorName</key>
             <string>RaftLaunchBackground</string>
+            <key>UIImageName</key>
+            <string>RaftLaunchLogo</string>
         </dict>
         <key>ITSAppUsesNonExemptEncryption</key>
         <false/>
