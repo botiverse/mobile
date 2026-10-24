@@ -94,23 +94,6 @@ class SettingsHomeSearchHighlightTest {
     }
 
     @Test
-    fun excerptStartsALittleBeforeTheFirstHit() {
-        data class Case(val text: String, val query: String, val expected: String)
-        listOf(
-            Case("Working group: richer message rendering for the remy rollout", "remy", "…e rendering for the remy rollout"),
-            // A hit near the start, or none, leaves the text as is.
-            Case("remy rollout plans", "remy", "remy rollout plans"),
-            Case("no match here", "remy", "no match here"),
-            // CJK counts 2 columns each: 10 chars of context.
-            Case("这是一个很长的频道描述用来测试摘录功能remy在后面", "remy", "…描述用来测试摘录功能remy在后面"),
-            // Whitespace collapses.
-            Case("a  b\n c " + "x".repeat(30) + " remy", "remy", "…" + "x".repeat(19) + " remy"),
-        ).forEach { case ->
-            assertEquals(case.expected, raftSearchExcerptAroundHit(case.text, case.query), case.text)
-        }
-    }
-
-    @Test
     fun highlightedAnnotatedStringKeepsOneTextNodeWithSearchHitRanges() {
         val annotated = homeSearchHighlightedAnnotatedString(
             text = "Find keyword here",

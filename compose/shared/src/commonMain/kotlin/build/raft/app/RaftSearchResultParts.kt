@@ -272,33 +272,6 @@ internal fun RaftSearchHitText(
     )
 }
 
-/** Context kept before the first hit by [raftSearchExcerptAroundHit], in display columns. */
-private const val RaftSearchExcerptColumnsBeforeHit = 20
-
-private fun Char.isWideColumn(): Boolean =
-    code in 0x1100..0x115F || code in 0x2E80..0xA4CF || code in 0xAC00..0xD7A3 ||
-        code in 0xF900..0xFAFF || code in 0xFE30..0xFE4F || code in 0xFF00..0xFF60 || code in 0xFFE0..0xFFE6
-
-/**
- * [text] (whitespace collapsed) from a little before its first hit, so a one-line subtitle
- * shows it: up to 20 display columns of context (a CJK / fullwidth char counts 2), led by "…".
- * Text with no hit, or a hit already near the start, comes back unchanged. Web: `excerptAroundSearchHit`.
- */
-internal fun raftSearchExcerptAroundHit(text: String, query: String): String {
-    val compact = text.replace(Regex("\\s+"), " ").trim()
-    val hit = homeSearchHighlightRanges(compact, query).firstOrNull()?.first ?: return compact
-    if (hit <= 0) return compact
-    var width = 0
-    var keepFrom = hit
-    while (keepFrom > 0) {
-        width += if (compact[keepFrom - 1].isWideColumn()) 2 else 1
-        if (width > RaftSearchExcerptColumnsBeforeHit) break
-        keepFrom--
-    }
-    if (keepFrom == 0) return compact
-    return "…" + compact.substring(keepFrom, hit).trimStart() + compact.substring(hit)
-}
-
 internal fun raftSearchHitAnnotatedString(text: String, ranges: List<IntRange>): AnnotatedString {
     if (ranges.isEmpty()) return AnnotatedString(text)
     return buildAnnotatedString {
