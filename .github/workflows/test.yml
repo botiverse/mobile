@@ -266,6 +266,10 @@ jobs:
       # runners are fresh VMs and the step below rebuilds this dir clean, so only
       # setup-gradle's restore populates it.
       GRADLE_USER_HOME: /tmp/android-compile-gradle-home
+      # Only the emulator jobs consume the connected-test APKs. PR and main-push
+      # plans schedule none of them, so those runs skip the ~8 min APK build;
+      # full-ci, nightly and scope=full dispatch runs still build and upload.
+      BUILD_CONNECTED_APKS: ${{ needs.plan.outputs.run_device_suite == 'true' || needs.plan.outputs.run_canonical_final == 'true' || needs.plan.outputs.attachment_api_levels != '[]' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -394,12 +398,14 @@ jobs:
             --console=plain \
             --stacktrace
 
-      # Build once here, then let the emulator job below install the exact APKs
-      # without paying for a second Gradle/Kotlin build. The visual fixture gives
+      # Build once here, then let the emulator jobs below install the exact APKs
+      # without paying for a second Gradle/Kotlin build. Skipped when the plan
+      # selects no emulator job (BUILD_CONNECTED_APKS above). The visual fixture gives
       # the regression a deterministic empty Thread composer. Keep this before
       # unit tests so an unrelated test failure cannot mask fixture-source
       # compilation failures.
       - name: Build Android connected-test APKs
+        if: ${{ env.BUILD_CONNECTED_APKS == 'true' }}
         working-directory: compose
         env:
           # HandsCrash installs from Application.onCreate, before the actual-host page can bind its dynamic
@@ -471,7 +477,20 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      # Every tier: the merged debug manifest (written by the unit-test build) carries the same
+      # defaultConfig minSdk the connected-test APK ships with.
+      - name: Verify Android app min SDK (merged manifest)
+        shell: bash
+        run: |
+          set -euo pipefail
+          MANIFEST=compose/androidApp/build/intermediates/merged_manifest/debug/processDebugMainManifest/AndroidManifest.xml
+          test -s "${MANIFEST}"
+          # AGP writes <uses-sdk> over several lines; print it, then assert the attribute.
+          grep -A3 '<uses-sdk' "${MANIFEST}"
+          grep -Fq 'android:minSdkVersion="29"' "${MANIFEST}"
+
       - name: Verify connected-test APK min SDK
+        if: ${{ env.BUILD_CONNECTED_APKS == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -483,6 +502,7 @@ jobs:
           grep -Fq "sdkVersion:'29'" connectedtest-app-badging.txt
 
       - name: Upload Android connected-test APKs
+        if: ${{ env.BUILD_CONNECTED_APKS == 'true' }}
         uses: actions/upload-artifact@v6
         with:
           name: android-connected-test-apks
@@ -493,6 +513,7 @@ jobs:
           retention-days: 7
 
       - name: Upload shared atomic-sink test APK
+        if: ${{ env.BUILD_CONNECTED_APKS == 'true' }}
         uses: actions/upload-artifact@v6
         with:
           name: android-shared-atomic-sink-test-apk
