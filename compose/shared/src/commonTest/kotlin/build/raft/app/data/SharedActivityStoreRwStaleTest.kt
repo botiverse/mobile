@@ -1,6 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.model.ServerId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
@@ -28,7 +27,7 @@ class SharedActivityStoreRwStaleTest {
 
     @Test
     fun overloadKeepsTheShownRowsAndMarksThemStale() = runTest {
-        val network = ScriptedInbox(this, listOf(fresh("general" to 3, "random" to 2), overloaded(), overloaded()))
+        val network = ScriptedInboxNetwork(this, listOf(fresh("general" to 3, "random" to 2), rwOverloadedInboxResponse(), rwOverloadedInboxResponse()))
         val store = store(network)
         store.dispatch(SharedActivityIntent.LoadInitial)
         runCurrent()
@@ -45,7 +44,7 @@ class SharedActivityStoreRwStaleTest {
 
     @Test
     fun aRememberedPageNeverReplacesShownRowsButMarksThemStale() = runTest {
-        val network = ScriptedInbox(this, listOf(fresh("general" to 3), stale(fresh())))
+        val network = ScriptedInboxNetwork(this, listOf(fresh("general" to 3), rwStaleInboxResponse(fresh())))
         val store = store(network)
         store.dispatch(SharedActivityIntent.LoadInitial)
         runCurrent()
@@ -63,7 +62,7 @@ class SharedActivityStoreRwStaleTest {
     @Test
     fun aFreshAnswerClearsStaleThroughOneBackgroundRecoveryRead() = runTest {
         val network =
-            ScriptedInbox(this, listOf(fresh("general" to 3), stale(fresh("general" to 9)), fresh("general" to 1)))
+            ScriptedInboxNetwork(this, listOf(fresh("general" to 3), rwStaleInboxResponse(fresh("general" to 9)), fresh("general" to 1)))
         val store = store(network)
         store.dispatch(SharedActivityIntent.LoadInitial)
         runCurrent()
@@ -89,7 +88,7 @@ class SharedActivityStoreRwStaleTest {
 
     @Test
     fun recoveryWaitsWhileActivityIsHidden() = runTest {
-        val network = ScriptedInbox(this, listOf(fresh("general" to 3), overloaded(), overloaded(), fresh("general" to 3)))
+        val network = ScriptedInboxNetwork(this, listOf(fresh("general" to 3), rwOverloadedInboxResponse(), rwOverloadedInboxResponse(), fresh("general" to 3)))
         val store = store(network)
         store.dispatch(SharedActivityIntent.LoadInitial)
         runCurrent()
@@ -107,11 +106,11 @@ class SharedActivityStoreRwStaleTest {
     @Test
     fun coldStartWithACacheAndAnOverloadShowsTheCacheAsStale() = runTest {
         val storage = InMemoryPersistStorage()
-        val first = store(ScriptedInbox(this, listOf(fresh("general" to 3, "random" to 2))), storage)
+        val first = store(ScriptedInboxNetwork(this, listOf(fresh("general" to 3, "random" to 2))), storage)
         first.dispatch(SharedActivityIntent.LoadInitial)
         runCurrent()
 
-        val reopened = store(ScriptedInbox(this, listOf(overloaded(), overloaded())), storage)
+        val reopened = store(ScriptedInboxNetwork(this, listOf(rwOverloadedInboxResponse(), rwOverloadedInboxResponse())), storage)
         reopened.dispatch(SharedActivityIntent.LoadInitial)
         settleOverloadRetry()
 
@@ -125,12 +124,12 @@ class SharedActivityStoreRwStaleTest {
     @Test
     fun coldStartShowsTheCacheWithoutTheNoticeUntilTheServerSaysItIsStale() = runTest {
         val storage = InMemoryPersistStorage()
-        val first = store(ScriptedInbox(this, listOf(fresh("general" to 3))), storage)
+        val first = store(ScriptedInboxNetwork(this, listOf(fresh("general" to 3))), storage)
         first.dispatch(SharedActivityIntent.LoadInitial)
         runCurrent()
 
         val answer = CompletableDeferred<Unit>()
-        val reopened = store(ScriptedInbox(this, listOf(stale(fresh("general" to 9))), gate = answer), storage)
+        val reopened = store(ScriptedInboxNetwork(this, listOf(rwStaleInboxResponse(fresh("general" to 9))), gate = answer), storage)
         reopened.dispatch(SharedActivityIntent.LoadInitial)
         runCurrent()
         assertEquals(listOf("channel:general"), reopened.state.value.items.map(InboxItem::key), "the cache is shown")
@@ -144,7 +143,7 @@ class SharedActivityStoreRwStaleTest {
 
     @Test
     fun noCacheAndAnOverloadIsTheLoadFailedStateNotAnEmptyList() = runTest {
-        val store = store(ScriptedInbox(this, listOf(overloaded(), overloaded())))
+        val store = store(ScriptedInboxNetwork(this, listOf(rwOverloadedInboxResponse(), rwOverloadedInboxResponse())))
         store.dispatch(SharedActivityIntent.LoadInitial)
         settleOverloadRetry()
 
@@ -156,7 +155,7 @@ class SharedActivityStoreRwStaleTest {
 
     @Test
     fun noCacheAndARememberedPageFillsTheListAsStale() = runTest {
-        val store = store(ScriptedInbox(this, listOf(stale(fresh("general" to 4)))))
+        val store = store(ScriptedInboxNetwork(this, listOf(rwStaleInboxResponse(fresh("general" to 4)))))
         store.dispatch(SharedActivityIntent.LoadInitial)
         runCurrent()
 
@@ -166,7 +165,7 @@ class SharedActivityStoreRwStaleTest {
         assertTrue(state.stale)
     }
 
-    private fun TestScope.store(network: ScriptedInbox, storage: InMemoryPersistStorage? = null): SharedActivityStore {
+    private fun TestScope.store(network: ScriptedInboxNetwork, storage: InMemoryPersistStorage? = null): SharedActivityStore {
         val session = InMemoryRaftAuthSessionStore(sampleSession())
         return activityStore(
             scope = backgroundScope,
@@ -199,40 +198,6 @@ class SharedActivityStoreRwStaleTest {
             """{"items":[${rows.joinToString(",") { (id, unread) -> channelRow(id, unread) }}],""" +
                 """"hasMore":false,"totalCount":${rows.size},"totalUnreadCount":${rows.sumOf { it.second }}}"""
         )
-
-    /** The same body served from the server's remembered copy (`rwStaleRead.ts`). */
-    private fun stale(response: HomeNetworkResponse): HomeNetworkResponse =
-        response.copy(responseHeaders = mapOf("X-Raft-Stale" to listOf("rw_overloaded")))
-
-    private fun overloaded(): HomeNetworkResponse =
-        HomeNetworkResponse(
-            code = 503,
-            bodyText = null,
-            errorBodyText = """{"error":"Temporarily overloaded, retry shortly","code":"rw_overloaded","retryable":true}""",
-            responseHeaders = mapOf("Retry-After" to listOf("2"))
-        )
-
-    private class ScriptedInbox(
-        private val testScope: TestScope,
-        private val responses: List<HomeNetworkResponse>,
-        private val gate: CompletableDeferred<Unit>? = null
-    ) : RaftNetworkClient {
-        val requestTimes = mutableListOf<Long>()
-
-        override suspend fun request(
-            priority: DataRequestPriority,
-            path: String,
-            method: String,
-            query: List<Pair<String, String>>,
-            serverIdOverride: ServerId?,
-            bodyText: String?
-        ): HomeNetworkResponse {
-            check(path == "channels/inbox" && method == "GET") { "unexpected $method $path" }
-            requestTimes += testScope.testScheduler.currentTime
-            gate?.await()
-            return responses.getOrElse(requestTimes.size - 1) { responses.last() }
-        }
-    }
 
     private companion object {
         const val RecoveryDelayMillis = 15_000L

@@ -32,6 +32,13 @@ internal const val ActivityLocalMutationRequestTimeoutMillis: Long = 30_000L
 internal const val ActivityRealtimeBackgroundRefreshIntervalMillis: Long = 2_500L
 
 /**
+ * #triage 84d44d75: after a realtime-triggered Activity read answers behind the newest
+ * `message:new` seq (the warehouse view lags the write by ~1-2 s), re-read after these waits, at
+ * most once each, then stop.
+ */
+internal val ActivityRealtimeCatchUpRetryDelaysMillis: List<Long> = listOf(1_500L, 3_000L)
+
+/**
  * A visible `Refresh` (tab entry, return from a pushed page, app resume) joins a foreground reset
  * load only while that load is younger than this window; an older one is superseded. Every
  * Activity tab entry used to fire up to three Refreshes in one frame (shell SetSelectedTab, the

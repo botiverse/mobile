@@ -39,6 +39,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestCoroutineScheduler
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
@@ -435,5 +436,44 @@ internal class InMemoryPersistStorage : MviPersistStorage {
 
     override fun remove(key: String) {
         values.remove(key)
+    }
+}
+
+/** The same inbox body served from the server's remembered copy (slock `routes/rwStaleRead.ts`). */
+internal fun rwStaleInboxResponse(response: HomeNetworkResponse): HomeNetworkResponse =
+    response.copy(responseHeaders = mapOf("X-Raft-Stale" to listOf("rw_overloaded")))
+
+/** slock `routes/errorResponse.ts`: `503` + `Retry-After: 2` + code `rw_overloaded`. */
+internal fun rwOverloadedInboxResponse(): HomeNetworkResponse =
+    HomeNetworkResponse(
+        code = 503,
+        bodyText = null,
+        errorBodyText = """{"error":"Temporarily overloaded, retry shortly","code":"rw_overloaded","retryable":true}""",
+        responseHeaders = mapOf("Retry-After" to listOf("2"))
+    )
+
+/**
+ * `GET channels/inbox` answered from [responses] in order (the last one repeats), for the real
+ * [RealInboxRepository] under virtual time; [requestTimes] records each request's virtual time.
+ */
+internal class ScriptedInboxNetwork(
+    private val testScope: TestScope,
+    private val responses: List<HomeNetworkResponse>,
+    private val gate: CompletableDeferred<Unit>? = null
+) : RaftNetworkClient {
+    val requestTimes = mutableListOf<Long>()
+
+    override suspend fun request(
+        priority: DataRequestPriority,
+        path: String,
+        method: String,
+        query: List<Pair<String, String>>,
+        serverIdOverride: ServerId?,
+        bodyText: String?
+    ): HomeNetworkResponse {
+        check(path == "channels/inbox" && method == "GET") { "unexpected $method $path" }
+        requestTimes += testScope.testScheduler.currentTime
+        gate?.await()
+        return responses.getOrElse(requestTimes.size - 1) { responses.last() }
     }
 }
