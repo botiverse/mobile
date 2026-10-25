@@ -22043,7 +22043,14 @@ private fun ThreadMessagesListContent(
             )
         }
         val nextUnreadThread = unreadThreadJump?.takeIf { it.direction == ThreadUnreadThreadJumpDirection.Next }
-        if (agentTyping != null && !inlineSearchVisible) {
+        val agentTypingLineShown = agentTyping != null && !inlineSearchVisible
+        // The list's end fade (raft-ui MessageListEndFade), always on; while the typing line shows it
+        // grows by the line's height, solid under the line (web ChatPanel / ThreadPanel).
+        ThreadMessageListEndFade(
+            typingLineShown = agentTypingLineShown,
+            modifier = Modifier.align(Alignment.BottomCenter).zIndex(ThreadMessageListEndFadeZIndex),
+        )
+        if (agentTyping != null && agentTypingLineShown) {
             ThreadAgentTypingLine(
                 typing = agentTyping,
                 modifier = Modifier.align(Alignment.BottomCenter).zIndex(ThreadAgentTypingLineZIndex),
@@ -22056,7 +22063,7 @@ private fun ThreadMessagesListContent(
                 // While the typing line shows, the pills sit above it, not over it (web
                 // `--message-list-bottom-inset`).
                 modifier = Modifier.align(Alignment.BottomCenter)
-                    .padding(bottom = if (agentTyping != null && !inlineSearchVisible) ThreadAgentTypingLineHeight else 0.dp)
+                    .padding(bottom = if (agentTypingLineShown) ThreadAgentTypingLineHeight else 0.dp)
                     .zIndex(ThreadJumpControlsZIndex).raftNativeDispatchCapture(),
             ) {
                 if (backToBottomMounted) {
@@ -22590,6 +22597,8 @@ private val ThreadNewerMessagesBoundaryHeight = 36.dp
 private val ThreadShareCaptureBottomScrollPaddingHeight = 1200.dp
 private val ThreadInlineSearchBarBottomInset = 58.dp
 private const val ThreadInlineSearchBarZIndex = 2f
+/** Over the messages, under the typing line, the inline search bar and the jump pills. */
+private const val ThreadMessageListEndFadeZIndex = 1f
 /** Over the messages, under the jump pills and the inline search bar's popups. */
 private const val ThreadAgentTypingLineZIndex = 1.5f
 internal data class ThreadInlineActionSpec(
