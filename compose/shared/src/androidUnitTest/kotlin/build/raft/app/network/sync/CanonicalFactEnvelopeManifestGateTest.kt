@@ -30,15 +30,12 @@ class CanonicalFactEnvelopeManifestGateTest {
 
     private val manifest by lazy { Json.parseToJsonElement(manifestBytes.decodeToString()).jsonObject }
 
-    private fun manifestCanonicalFieldNames(): Set<String> =
+    private fun canonicalFieldNames(): Set<String> =
         manifest["fields"]!!.jsonArray
             .map { it.jsonObject }
             .filter { it["class"]!!.jsonPrimitive.content in setOf("canonicalRequired", "optionalAggregate") }
             .map { it["name"]!!.jsonPrimitive.content }
             .toSet()
-
-    /** The manifest canonical set the shadow-only V1 envelope carries (see [V1_DEFERRED_CANONICAL_FIELDS]). */
-    private fun canonicalFieldNames(): Set<String> = manifestCanonicalFieldNames() - V1_DEFERRED_CANONICAL_FIELDS
 
     private fun declaredFieldNames(cls: Class<*>): Set<String> =
         cls.declaredFields.asSequence()
@@ -74,9 +71,7 @@ class CanonicalFactEnvelopeManifestGateTest {
         // NOT via bare Set arithmetic, which would stay green even if the gate itself were made vacuous.
         val canonical = canonicalFieldNames()
         // manifest-load guard: an empty set (resource missing / parse error) would false-green the gate.
-        assertEquals(21, manifestCanonicalFieldNames().size, "manifest v7 canonical set must be the pinned 21 (10 required + 11 aggregate)")
-        assertEquals(V1_DEFERRED_CANONICAL_FIELDS, V1_DEFERRED_CANONICAL_FIELDS intersect manifestCanonicalFieldNames(), "every deferred field must be a manifest canonical field")
-        assertEquals(20, canonical.size, "the V1 envelope closes over 20 (21 minus the deferred externalAuthor)")
+        assertEquals(21, canonical.size, "manifest v7 canonical set must be the pinned 21 (10 required + 11 aggregate)")
         assertNull(closureError("positive-control", canonical, canonical), "identical sets must be closed")
         assertNotNull(closureError("missing", canonical - canonical.first(), canonical), "a missing field must fail closure")
         assertNotNull(closureError("extra", canonical + "phantomCanonicalField", canonical), "an extra field must fail closure")
@@ -85,7 +80,7 @@ class CanonicalFactEnvelopeManifestGateTest {
     @Test
     fun envelopeFieldsEqualManifestCanonicalSet() {
         val envelope = declaredFieldNames(CanonicalMessagePersistedV1::class.java) - "version" // version = codec meta
-        assertNull(closureError("CanonicalMessagePersistedV1 (minus version) vs manifest canonical(21 - deferred)", envelope, canonicalFieldNames()))
+        assertNull(closureError("CanonicalMessagePersistedV1 (minus version) vs manifest canonical(21)", envelope, canonicalFieldNames()))
     }
 
     @Test
@@ -96,9 +91,11 @@ class CanonicalFactEnvelopeManifestGateTest {
             CanonicalCommentRefV1::class.java to "commentRef",
             CanonicalCommentHostSourceV1::class.java to "commentRefHostSource",
             CanonicalConversationContextV1::class.java to "conversationContext",
+            CanonicalExternalAuthorV1::class.java to "externalAuthor",
             CanonicalMentionV1::class.java to "mention",
             CanonicalReactionV1::class.java to "reaction",
         )
+        assertEquals(nested.keys, dtoToShape.values.toSet(), "every manifest nested wire shape must have a V1 DTO")
         dtoToShape.forEach { (dto, shapeKey) ->
             val manifestFields = nested[shapeKey]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
             assertNull(closureError("$shapeKey V1 DTO vs manifest nestedWireShapes.$shapeKey", declaredFieldNames(dto), manifestFields))

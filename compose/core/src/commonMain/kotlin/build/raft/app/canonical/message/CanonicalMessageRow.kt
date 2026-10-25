@@ -59,6 +59,28 @@ data class CanonicalMentionWire(
 )
 
 /**
+ * externalAuthor (14) — raw wire attribution frozen on a `senderType=external_projection` message (slock
+ * `ExternalMessageAuthorProjection`, e.g. a Slack-bridged sender); `null` for every user/agent/system sender.
+ * actorKind is string-union-raw; avatarDigest/avatarUrl/workspaceName are the only nullable leaves.
+ */
+data class CanonicalExternalAuthorWire(
+    val actorKind: String,
+    val actorProjectionRevision: Long,
+    val appRegistrationId: String,
+    val avatarDigest: String? = null,
+    val avatarUrl: String? = null,
+    val displayName: String,
+    val externalActorId: String,
+    val externalConversationId: String,
+    val externalMessageId: String,
+    val installId: String,
+    val projectionId: String,
+    val provider: String,
+    val workspaceId: String,
+    val workspaceName: String? = null,
+)
+
+/**
  * reaction (4) — raw wire. A dedicated wire DTO (NOT the app-domain `MessageReaction`): the canonical
  * fold row must stay wire-shaped so no UI-convenience field can silently change the persisted canonical
  * shape (LiBai §6.3). Field-identical to the manifest `nestedWireShapes.reaction`.
@@ -77,7 +99,7 @@ data class CanonicalReactionWire(
  */
 enum class MessageAggregateField {
     SenderName, SenderDescription, SenderMembershipStatus, Mentions, Attachments, Reactions, CommentRef,
-    ActionMetadata, ConversationContext,
+    ActionMetadata, ConversationContext, ExternalAuthor,
 }
 
 /**
@@ -117,4 +139,10 @@ data class CanonicalMessageRow(
      * fold never lets a later null/absent value clear it (web `keepDelegationFacts`).
      */
     val deletedAt: String? = null,
+    /**
+     * Manifest v5+ optionalAggregate (`present-overwrite`, nullable): the frozen external author of an
+     * `external_projection` message, else null. Present on messageNew + enrichedUpdated, absent on the
+     * task-status projector (absent = preserve; present null = clear).
+     */
+    val externalAuthor: CanonicalExternalAuthorWire? = null,
 )

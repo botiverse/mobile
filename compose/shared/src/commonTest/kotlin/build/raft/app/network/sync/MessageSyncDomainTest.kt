@@ -20,6 +20,7 @@ package build.raft.app.network.sync
 import build.raft.app.canonical.message.CanonicalAttachmentWire
 import build.raft.app.canonical.message.CanonicalCommentRefWire
 import build.raft.app.canonical.message.CanonicalConversationContextWire
+import build.raft.app.canonical.message.CanonicalExternalAuthorWire
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.CanonicalMentionWire
 import build.raft.app.canonical.message.CanonicalReactionWire
@@ -176,6 +177,62 @@ class MessageSyncDomainTest {
         s = new(s, row("m1", seq = 5, commentRef = commentRef("a1")))
         s = updated(s, row("m1", seq = 5, content = "e", commentRef = null), TASK) // absent
         assertEquals("a1", bucket(s).single().commentRef?.attachmentId)
+    }
+
+    // --- externalAuthor = present-overwrite (nullable) ------------------------------------------
+
+    private fun externalAuthor(displayName: String = "jinlu", revision: Long = 1) = CanonicalExternalAuthorWire(
+        actorKind = "human",
+        actorProjectionRevision = revision,
+        appRegistrationId = "app-1",
+        displayName = displayName,
+        externalActorId = "U123",
+        externalConversationId = "C42",
+        externalMessageId = "1700000000.000100",
+        installId = "inst-1",
+        projectionId = "proj-1",
+        provider = "slack",
+        workspaceId = "T1",
+    )
+
+    private fun externalRow(author: CanonicalExternalAuthorWire?, content: String = "b") =
+        row("m1", seq = 5, content = content, senderType = "external_projection", senderId = "ext_slack_U123")
+            .copy(externalAuthor = author)
+
+    @Test
+    fun externalAuthorPresentValueOverwrites() {
+        var s = createInitialMessageDomainState()
+        s = new(s, externalRow(externalAuthor()))
+        assertEquals(externalAuthor(), bucket(s).single().externalAuthor)
+        s = updated(s, externalRow(externalAuthor("jinlu (renamed)", revision = 2)), ENRICHED)
+        assertEquals(externalAuthor("jinlu (renamed)", revision = 2), bucket(s).single().externalAuthor)
+    }
+
+    @Test
+    fun externalAuthorAbsentOnTaskStatusFacePreserves() {
+        assertFalse(MessageAggregateField.ExternalAuthor in TASK)
+        var s = createInitialMessageDomainState()
+        s = new(s, externalRow(externalAuthor()))
+        s = updated(s, externalRow(null, content = "task-updated"), TASK)
+        val r = bucket(s).single()
+        assertEquals("task-updated", r.content)
+        assertEquals(externalAuthor(), r.externalAuthor)
+    }
+
+    @Test
+    fun externalAuthorPresentNullClears() {
+        // Unlike commentRef (shared-null-preserve) and deletedAt (one-way), a present null clears.
+        assertTrue(MessageAggregateField.ExternalAuthor in ENRICHED && MessageAggregateField.ExternalAuthor in MESSAGE_NEW)
+        var s = createInitialMessageDomainState()
+        s = new(s, externalRow(externalAuthor()))
+        s = updated(s, externalRow(null), ENRICHED)
+        assertNull(bucket(s).single().externalAuthor)
+    }
+
+    @Test
+    fun externalAuthorAbsentOnABrandNewRowIsNull() {
+        val s = new(createInitialMessageDomainState(), externalRow(externalAuthor()), TASK)
+        assertNull(bucket(s).single().externalAuthor)
     }
 
     // --- identity + purity ---------------------------------------------------------------------

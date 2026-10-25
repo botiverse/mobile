@@ -5,6 +5,7 @@ import build.raft.app.canonical.message.CanonicalAttachmentWire
 import build.raft.app.canonical.message.CanonicalCommentHostSourceWire
 import build.raft.app.canonical.message.CanonicalCommentRefWire
 import build.raft.app.canonical.message.CanonicalConversationContextWire
+import build.raft.app.canonical.message.CanonicalExternalAuthorWire
 import build.raft.app.canonical.message.CanonicalMentionWire
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.CanonicalReactionWire
@@ -94,6 +95,11 @@ data class CanonicalMessagePersistedV1(
     @OptIn(ExperimentalSerializationApi::class)
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val deletedAt: String? = null,
+    // Manifest v5+ externalAuthor. Omitted when null (every non-external sender) so pre-existing BLOBs and
+    // their golden pins stay byte-identical; a stored BLOB without the key decodes as no external author.
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val externalAuthor: CanonicalExternalAuthorV1? = null,
 )
 
 @Serializable
@@ -146,6 +152,24 @@ data class CanonicalConversationContextV1(
     val parentMessageId: String? = null,
 )
 
+@Serializable
+data class CanonicalExternalAuthorV1(
+    val actorKind: String,
+    val actorProjectionRevision: Long,
+    val appRegistrationId: String,
+    val avatarDigest: String? = null,
+    val avatarUrl: String? = null,
+    val displayName: String,
+    val externalActorId: String,
+    val externalConversationId: String,
+    val externalMessageId: String,
+    val installId: String,
+    val projectionId: String,
+    val provider: String,
+    val workspaceId: String,
+    val workspaceName: String? = null,
+)
+
 // ── domain <-> envelope (total field mapping; completeness is enforced by the gate triangle G6 + (甲),
 //    NOT the compiler — a new default-valued field would compile and silently drop) ──
 
@@ -185,6 +209,24 @@ fun CanonicalMessageRow.toPersistedV1(): CanonicalMessagePersistedV1 = Canonical
         CanonicalConversationContextV1(it.channelType, it.parentChannelId, it.parentChannelType, it.parentMessageId)
     },
     deletedAt = deletedAt,
+    externalAuthor = externalAuthor?.let {
+        CanonicalExternalAuthorV1(
+            actorKind = it.actorKind,
+            actorProjectionRevision = it.actorProjectionRevision,
+            appRegistrationId = it.appRegistrationId,
+            avatarDigest = it.avatarDigest,
+            avatarUrl = it.avatarUrl,
+            displayName = it.displayName,
+            externalActorId = it.externalActorId,
+            externalConversationId = it.externalConversationId,
+            externalMessageId = it.externalMessageId,
+            installId = it.installId,
+            projectionId = it.projectionId,
+            provider = it.provider,
+            workspaceId = it.workspaceId,
+            workspaceName = it.workspaceName,
+        )
+    },
 )
 
 fun CanonicalMessagePersistedV1.toCanonicalRow(): CanonicalMessageRow = CanonicalMessageRow(
@@ -223,6 +265,24 @@ fun CanonicalMessagePersistedV1.toCanonicalRow(): CanonicalMessageRow = Canonica
         CanonicalConversationContextWire(it.channelType, it.parentChannelId, it.parentChannelType, it.parentMessageId)
     },
     deletedAt = deletedAt,
+    externalAuthor = externalAuthor?.let {
+        CanonicalExternalAuthorWire(
+            actorKind = it.actorKind,
+            actorProjectionRevision = it.actorProjectionRevision,
+            appRegistrationId = it.appRegistrationId,
+            avatarDigest = it.avatarDigest,
+            avatarUrl = it.avatarUrl,
+            displayName = it.displayName,
+            externalActorId = it.externalActorId,
+            externalConversationId = it.externalConversationId,
+            externalMessageId = it.externalMessageId,
+            installId = it.installId,
+            projectionId = it.projectionId,
+            provider = it.provider,
+            workspaceId = it.workspaceId,
+            workspaceName = it.workspaceName,
+        )
+    },
 )
 
 /** Encode the resolved canonical fact to its stored BLOB string. Byte-stable (golden-pinned). */

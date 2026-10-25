@@ -164,6 +164,8 @@ fun mergeCanonicalRow(
         // RFC 077 retraction is one-way: a null or absent deletedAt never clears an earlier one
         // (web `mergeIncomingMessage` / `keepDelegationFacts`).
         deletedAt = incoming.deletedAt ?: existing.deletedAt,
+        // present-overwrite (nullable): absent preserves, present null clears.
+        externalAuthor = gate(MessageAggregateField.ExternalAuthor, incoming.externalAuthor, existing.externalAuthor),
     )
     return if (merged == existing) existing else merged
 }
@@ -180,6 +182,7 @@ private fun CanonicalMessageRow.withAbsentAggregatesCleared(present: Set<Message
         actionMetadata = if (MessageAggregateField.ActionMetadata in present) actionMetadata else null,
         conversationContext = if (MessageAggregateField.ConversationContext in present) conversationContext else null,
         commentRef = if (MessageAggregateField.CommentRef in present) commentRef else null,
+        externalAuthor = if (MessageAggregateField.ExternalAuthor in present) externalAuthor else null,
     )
 
 /** Server-backed order: seq orders, ties break by id. (All canonical rows have a non-null seq.) */
