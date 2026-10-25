@@ -3142,6 +3142,7 @@
     <string name="message_delegated_sent_by_deleted_in_body">（由已删除的助理代发）</string>
     <string name="message_delegated_preview_sender">%1$s（由 %2$s 代发）</string>
     <string name="message_delegated_preview_sender_deleted">%1$s（由已删除的助理代发）</string>
+    <string name="message_delegated_retracted">这条消息已撤回。</string>
     <string name="download_center_title">下载</string>
     <string name="download_center_entry">下载</string>
     <string name="download_center_entry_detail">已下载的文件，以及仍在后台进行的下载。</string>

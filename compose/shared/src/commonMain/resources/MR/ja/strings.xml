@@ -3142,6 +3142,7 @@
     <string name="message_delegated_sent_by_deleted_in_body">（削除済みのアシスタントが代理送信）</string>
     <string name="message_delegated_preview_sender">%1$s（%2$s が代理送信）</string>
     <string name="message_delegated_preview_sender_deleted">%1$s（削除済みのアシスタントが代理送信）</string>
+    <string name="message_delegated_retracted">このメッセージは取り消されました。</string>
     <string name="download_center_title">ダウンロード</string>
     <string name="download_center_entry">ダウンロード</string>
     <string name="download_center_entry_detail">ダウンロードしたファイルと、バックグラウンドで実行中のダウンロード。</string>

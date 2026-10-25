@@ -1182,15 +1182,19 @@ class SharedActivityStore internal constructor(
      * ([reconcileRealtimeChannelRow] copies them from the shown row) then keep the new text until
      * the server catches up. Sender, time, seq, counts and order stay: a message's author and
      * creation time never change. A blank body is a sparse update and keeps the preview (thread
-     * page merge, `body.ifBlank { body }`), except on a retraction (RFC 077, `deletedAt` set): the
-     * server's placeholder `content` is authoritative and the old text must not stay on the row
-     * (web socketBridge.messageUpdated -> inboxStore.retractPreview). No filter/mute gate: the update moves no row in or out, it only corrects text already shown.
+     * page merge, `body.ifBlank { body }`). A retraction (RFC 077, `deletedAt` set) goes to
+     * [applyRetractedMessagePatch]: the server's placeholder `content` is authoritative there.
+     * No filter/mute gate: the update moves no row in or out, it only corrects text already shown.
      */
     private fun applyChannelMessageUpdatedPatch(
         message: Message,
         intent: SharedActivityIntent.ApplyRealtimeEvent
     ) {
-        val body = message.body.takeIf { it.isNotBlank() || message.deletedAt != null } ?: return
+        if (!message.deletedAt.isNullOrBlank()) {
+            applyRetractedMessagePatch(message, intent)
+            return
+        }
+        val body = message.body.takeIf { it.isNotBlank() } ?: return
         val current = _state.value
         val snapshot = current.snapshot ?: return
         val existingIndex =
@@ -1199,6 +1203,23 @@ class SharedActivityStore internal constructor(
         val existing = snapshot.items[existingIndex]
         if (existing.lastMessagePreview == body) return
         val items = snapshot.items.toMutableList().apply { set(existingIndex, existing.copy(lastMessagePreview = body)) }
+        reduceState(intent, current.copy(snapshot = snapshot.copy(items = items)))
+    }
+
+    /**
+     * RFC 077 PR 2b, web socketBridge.messageUpdated -> inboxStore.retractPreview: a retracted
+     * message's server placeholder replaces every preview of it — a channel/DM row's last message,
+     * a thread row's latest reply and its parent, and the thread row's reply window that seeds
+     * the thread page. No filter/mute gate, like [applyChannelMessageUpdatedPatch].
+     */
+    private fun applyRetractedMessagePatch(
+        message: Message,
+        intent: SharedActivityIntent.ApplyRealtimeEvent
+    ) {
+        val current = _state.value
+        val snapshot = current.snapshot ?: return
+        val items = snapshot.items.map { item -> item.withRetractedPreview(message.id, message.body) }
+        if (items.indices.none { index -> items[index] !== snapshot.items[index] }) return
         reduceState(intent, current.copy(snapshot = snapshot.copy(items = items)))
     }
 
@@ -3916,6 +3937,30 @@ internal fun InboxItem.readReceiptChannelId(): ChannelId? =
 
 private fun InboxItem.activityUnreadAnchor(): MessageId? =
     firstUnreadMessageId ?: latestActivityMessageId ?: lastMessageId ?: parentMessageId
+
+/** Web inboxStore `retractInboxItemPreview`: this row with [placeholder] for [messageId]'s previews. */
+internal fun InboxItem.withRetractedPreview(messageId: MessageId, placeholder: String): InboxItem {
+    val next =
+        when {
+            isChannelOrDmRow() ->
+                if (lastMessageId == messageId) copy(lastMessagePreview = placeholder, latestRetracted = true) else this
+            kind == InboxItemKind.Thread ->
+                copy(
+                    lastMessagePreview = if (lastMessageId == messageId) placeholder else lastMessagePreview,
+                    latestActivityPreview =
+                        if (latestActivityMessageId == messageId) placeholder else latestActivityPreview,
+                    latestRetracted = latestRetracted || latestActivityMessageId == messageId,
+                    parentMessagePreview = if (parentMessageId == messageId) placeholder else parentMessagePreview,
+                    parentRetracted = parentRetracted || parentMessageId == messageId,
+                    latestReplies =
+                        latestReplies.map { reply ->
+                            if (reply.messageId == messageId.value) reply.copy(content = placeholder) else reply
+                        },
+                )
+            else -> this
+        }
+    return if (next == this) this else next
+}
 
 private fun InboxItem.isChannelOrDmRow(): Boolean =
     kind == InboxItemKind.Channel || kind == InboxItemKind.DirectMessage

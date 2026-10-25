@@ -129,6 +129,38 @@ class ThreadActivityOpenSeedIdentityTest {
         assertFalse(threadOlderMessagesStatusSpec(seeded.copy(mainLoadFailed = true)).loading)
     }
 
+    @Test
+    fun aRetractedLatestMessageSeedsAsRetracted() {
+        // RFC 077 PR 2b: the row's `latestRetracted` (messageService.ts `withLatestMessageFacts`) names
+        // the thread row's latest reply; its reply-window entry and its row copy both seed retracted,
+        // another reply in the window does not.
+        val thread =
+            threadRow(senderId = "u-jasper", senderKind = MemberKind.Human).copy(
+                latestRetracted = true,
+                latestReplies = listOf(reply("r8", "u-jasper", "user", "Jasper"), reply("r9", "u-jasper", "user", "Jasper")),
+            )
+        val seeded = seed(source(thread), replyRoute()).associateBy { it.id }
+        assertTrue(seeded.getValue("r9").isRetracted, "the latest reply")
+        assertFalse(seeded.getValue("r8").isRetracted, "another reply")
+        assertFalse(seed(source(thread.copy(latestRetracted = false)), replyRoute()).any { it.isRetracted })
+
+        // A channel row names its `lastMessageId`.
+        val channel =
+            InboxItem(
+                key = "channel-proj-mobile",
+                kind = InboxItemKind.Channel,
+                channelId = ChannelId("channel-1"),
+                channelName = "proj-mobile",
+                lastMessageId = MessageId("m1"),
+                lastMessagePreview = "This message was retracted by its sender.",
+                lastMessageAt = "2026-10-24T07:13:00Z",
+                lastMessageSenderId = "u-jasper",
+                lastMessageSenderKind = MemberKind.Human,
+                latestRetracted = true,
+            )
+        assertTrue(seed(source(channel), channelRoute()).single().isRetracted)
+    }
+
     private fun seed(
         source: ThreadActivityOpenSeedSource,
         route: RaftThreadScreenPayload,

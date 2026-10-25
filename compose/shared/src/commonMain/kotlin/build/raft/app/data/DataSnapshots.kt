@@ -55,6 +55,12 @@ data class InboxItem(
      * text next to the sender ("Alice (sent by Friday)"), never as a face.
      */
     val latestDelegatedBy: MessageDelegatedBy? = null,
+    /**
+     * RFC 077 PR 2b, wire `latestRetracted` / `parentRetracted`: the latest message (thread:
+     * `latestActivityMessageId`, else `lastMessageId`) / the thread's parent was retracted.
+     */
+    val latestRetracted: Boolean = false,
+    val parentRetracted: Boolean = false,
     val replyCount: Int = 0,
     /** Bounded server-derived latest replies; never a second message authority. */
     val latestReplies: List<ReplyPreview> = emptyList(),

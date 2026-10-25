@@ -2994,6 +2994,8 @@ internal data class RaftThreadMessageItem(
     val externalAuthor: ExternalMessageAuthor? = null,
     /** RFC 077: the assistant that sent this message for its (human) author. */
     val delegatedBy: MessageDelegatedBy? = null,
+    /** RFC 077 PR 2b: set when the owner retracted this message (wire `deletedAt`); see [isRetracted]. */
+    val deletedAt: String? = null,
     val senderMembershipStatus: String? = null,
     val authorDeletedAt: String? = null,
     val timestampLabel: String = "",
@@ -15602,8 +15604,10 @@ private fun ThreadPageContentContent(
                             }
                         },
                         onEnterShareSelection = { messageId ->
-                            selectedShareMessageIds = setOf(messageId)
-                            activeModal = null
+                            if (!payload.isRetractedMessage(messageId)) {
+                                selectedShareMessageIds = setOf(messageId)
+                                activeModal = null
+                            }
                         },
                         onForwardMessage = { messageId ->
                             openForwardPickerForMessageIds(setOf(messageId))
@@ -15612,6 +15616,9 @@ private fun ThreadPageContentContent(
                             selectedShareMessageIds =
                                 if (messageId in selectedShareMessageIds) {
                                     selectedShareMessageIds - messageId
+                                } else if (payload.isRetractedMessage(messageId)) {
+                                    // RFC 077 PR 2b: nothing of a retracted message can be shared.
+                                    selectedShareMessageIds
                                 } else {
                                     selectedShareMessageIds + messageId
                                 }
@@ -24708,6 +24715,8 @@ internal sealed interface ThreadQuotedPermalinkUiState {
     data object Loading : ThreadQuotedPermalinkUiState
     data class Loaded(val item: RaftThreadMessageItem) : ThreadQuotedPermalinkUiState
     data object Unavailable : ThreadQuotedPermalinkUiState
+    /** RFC 077 (web QuoteCardContent `unavailable`): the quoted message was retracted. */
+    data object Retracted : ThreadQuotedPermalinkUiState
 }
 
 @Composable
@@ -24776,6 +24785,14 @@ private fun ThreadQuotedPermalinkCard(
             ThreadQuotedPermalinkUiState.Unavailable -> {
                 Text(
                     text = stringResource(MR.strings.thread_quoted_permalink_unavailable),
+                    style = RaftType.Caption,
+                    color = RaftColor.TextMutedGray
+                )
+            }
+            ThreadQuotedPermalinkUiState.Retracted -> {
+                // Quoted as one muted line, like an unavailable quote (web QuoteCardContent).
+                Text(
+                    text = stringResource(MR.strings.message_delegated_retracted),
                     style = RaftType.Caption,
                     color = RaftColor.TextMutedGray
                 )
@@ -24947,15 +24964,19 @@ fun ThreadMessageCard(
     outerPadding: androidx.compose.ui.unit.Dp = RaftAppSpacing.Sm
 )
  {
+    // RFC 077 PR 2b (web MessageItem `retracted`): a retracted message is one non-interactive
+    // record. Its sender, time, delegated mark and thread replies stay; its words, attachments,
+    // quotes, reactions, translation and message menu go (the long press opens nothing).
+    val retracted = message.isRetracted
     ThreadMessageCardContent(
         modifier = Modifier,
         data =
             ThreadMessageCardData(
-                message = message,
+                message = if (retracted) message.withoutRetractedContent() else message,
                 messageBodyTextStyle = messageBodyTextStyle,
                 replyMetadata = replyMetadata,
                 hasReplyDraft = hasReplyDraft,
-                actionCard = actionCard,
+                actionCard = if (retracted) null else actionCard,
                 messageIndex = messageIndex,
                 highlightedMentions = highlightedMentions,
                 alignOwnMessageRight = alignOwnMessageRight,
@@ -24969,7 +24990,7 @@ fun ThreadMessageCard(
                 taskOpenEnabled = taskOpenEnabled,
                 taskStatusActionsEnabled = taskStatusActionsEnabled,
                 showSaveAction = showSaveAction,
-                showReactionAddAction = showReactionAddAction,
+                showReactionAddAction = showReactionAddAction && !retracted,
                 activeMarkdownTagKey = activeMarkdownTagKey,
                 timestampLabel = timestampLabel,
                 compactTimestampLabel = compactTimestampLabel,
@@ -24983,9 +25004,9 @@ fun ThreadMessageCard(
                 searchMatch = searchMatch,
                 popupOpen = popupOpen,
                 inlineReplyParticipantsById = inlineReplyParticipantsById,
-                shareSelectionActive = shareSelectionActive,
-                selectedForShare = selectedForShare,
-                translation = translation,
+                shareSelectionActive = shareSelectionActive && !retracted,
+                selectedForShare = selectedForShare && !retracted,
+                translation = if (retracted) null else translation,
                 longMessageCollapse = longMessageCollapse,
                 longPressGestureInstanceKey = longPressGestureInstanceKey,
                 outerPadding = outerPadding,
@@ -24996,8 +25017,8 @@ fun ThreadMessageCard(
                 agentStatusResolver = agentStatusResolver,
                 resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                 isMarkdownTagValid = isMarkdownTagValid,
-                onShowActions = onShowActions,
-                onLongPressMenuOpened = onLongPressMenuOpened,
+                onShowActions = if (retracted) ({ _ -> }) else onShowActions,
+                onLongPressMenuOpened = if (retracted) ({}) else onLongPressMenuOpened,
                 onOpenMember = onOpenMember,
                 onExternalAuthor = onExternalAuthor,
                 onOpenThread = onOpenThread,
@@ -25170,7 +25191,9 @@ private fun ThreadMessageCardContent(
         quotedPermalinkTarget = target
         quotedPermalinkState.value = ThreadQuotedPermalinkUiState.Loading
         quotedPermalinkState.value =
-            loader(target)?.let { ThreadQuotedPermalinkUiState.Loaded(it) }
+            loader(target)?.let { item ->
+                if (item.isRetracted) ThreadQuotedPermalinkUiState.Retracted else ThreadQuotedPermalinkUiState.Loaded(item)
+            }
                 ?: ThreadQuotedPermalinkUiState.Unavailable
     }
     val jointAuthor =
@@ -25290,7 +25313,9 @@ private fun ThreadMessageCardContent(
     val inPlaceSelection =
         rememberThreadInPlaceSelectionController(
             messageId = message.id,
-            enabled = !shareSelectionActive && threadMessageUsesFullRowLongPressActions(shareSelectionActive)
+            enabled =
+                !shareSelectionActive && !message.isRetracted &&
+                    threadMessageUsesFullRowLongPressActions(shareSelectionActive)
         )
     val baseRowTapAction =
         if (
@@ -25344,7 +25369,8 @@ private fun ThreadMessageCardContent(
                     }
                 )
                 .then(
-                    if (threadMessageUsesFullRowLongPressActions(shareSelectionActive)) {
+                    // RFC 077 PR 2b: a retracted message has no long-press gesture at all.
+                    if (!message.isRetracted && threadMessageUsesFullRowLongPressActions(shareSelectionActive)) {
                         Modifier.threadMessageLongPressActions(
                             messageId = message.id,
                             pointerSessionKey = pointerSessionKey,
@@ -25603,6 +25629,11 @@ private fun ThreadMessageCardContent(
                                 modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
                                 onOpenUrl = onOpenMarkdownUrl,
                                 onOpenAll = { onOpenForwardBundle(message.id) }
+                            )
+                        } else if (message.isRetracted) {
+                            ThreadMessageRetractedBody(
+                                textStyle = messageBodyTextStyle,
+                                modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)
                             )
                         } else if (message.body.isNotBlank()) {
                             if (richContentEnabled) {

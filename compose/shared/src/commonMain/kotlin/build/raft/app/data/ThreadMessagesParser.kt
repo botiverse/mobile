@@ -123,6 +123,11 @@ internal data class WireMessage(
     val externalAuthor: WireExternalAuthor? = null,
     /** RFC 077 `DelegatedByLabel | null`: the assistant that sent it for the sender. */
     val delegatedBy: WireDelegatedBy? = null,
+    /**
+     * RFC 077 PR 2b: set when the owner retracted the message; `content` is then the placeholder.
+     * The server spreads the full `messages` row (`messageService.ts` `...visibleRow`), ISO or null.
+     */
+    val deletedAt: String? = null,
     /** Resolved mention facts; see [WireMessageMention]. */
     val mentions: List<WireMessageMention> = emptyList(),
 )
@@ -322,6 +327,7 @@ private fun WireMessage.toMessageItem(
         avatarWireValue = resolvedExternalAuthor?.avatarUrl,
         externalAuthor = resolvedExternalAuthor,
         delegatedBy = delegatedBy.toMessageDelegatedBy(authorKind),
+        deletedAt = deletedAt?.takeIf { it.isNotBlank() },
         senderMembershipStatus = senderMembershipStatus?.takeIf { it.isNotBlank() },
         timestampLabel = createdAt.orEmpty(),
         createdAtEpochMillis = parseRaftTimestampEpochMillisOrNull(createdAt),

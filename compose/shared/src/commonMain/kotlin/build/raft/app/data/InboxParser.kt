@@ -80,6 +80,10 @@ private data class WireInboxItem(
     // RFC 077 (`withLatestDelegatedBy`, channels.ts GET /inbox): the assistant that sent the
     // row's latest message (thread: `latestActivityMessageId`, else `lastMessageId`).
     val latestDelegatedBy: WireDelegatedBy? = null,
+    // RFC 077 PR 2b (messageService.ts `withLatestMessageFacts`): the row's latest message
+    // (thread: `latestActivityMessageId`, else `lastMessageId`) / a thread's parent was retracted.
+    val latestRetracted: Boolean = false,
+    val parentRetracted: Boolean = false,
     val lastActivityAt: String? = null,
     val lastReplyAt: String? = null,
     val replyCount: Int = 0,
@@ -320,6 +324,7 @@ private fun WireInboxItem.toChannelOrDmDomain(diagnostics: (String) -> Unit): In
         doneFrontierSeq = doneFrontierSeq,
         firstMentionMessageId = firstMentionMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
         latestDelegatedBy = latestDelegatedBy.toMessageDelegatedBy(),
+        latestRetracted = latestRetracted,
     )
 }
 
@@ -355,6 +360,8 @@ private fun WireInboxItem.toThreadDomain(diagnostics: (String) -> Unit): InboxIt
         latestActivitySenderId = latestActivitySenderId,
         latestActivitySenderAvatarWireValue = senderAvatarWireValueOrNull(),
         latestDelegatedBy = latestDelegatedBy.toMessageDelegatedBy(),
+        latestRetracted = latestRetracted,
+        parentRetracted = parentRetracted,
         latestActivitySenderKind =
             latestActivitySenderType.toSenderKind(
                 source = "inbox_latest_activity_sender",

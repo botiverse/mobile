@@ -133,12 +133,39 @@ class SharedActivityStoreChannelRowLagTest {
         store.dispatch(updatedMessage(id = "m-42", seq = 42, body = placeholder, deletedAt = "2026-10-25T10:05:00Z"))
         runCurrent()
 
-        assertEquals(patched.copy(lastMessagePreview = placeholder), store.state.value.items.single())
+        assertEquals(patched.copy(lastMessagePreview = placeholder, latestRetracted = true), store.state.value.items.single())
         assertEquals(3, store.state.value.totalUnreadCount)
 
         store.dispatch(updatedMessage(id = "m-42", seq = 42, body = "", deletedAt = "2026-10-25T10:05:00Z"))
         runCurrent()
         assertEquals("", store.state.value.items.single().lastMessagePreview, "a retraction never keeps old text")
+    }
+
+    @Test
+    fun aRetractionReplacesAThreadRowsLatestReplyAndParentPreviews() = runTest {
+        // RFC 077 PR 2b, web inboxStore.retractInboxItemPreview: thread rows too. The latest reply
+        // and the parent are each replaced when they are the retracted message; so is the
+        // reply window that seeds the thread page. Another thread's row is left alone.
+        val placeholder = "This message was retracted by its sender."
+        val network = ScriptedInboxNetwork(this, listOf(inbox(threadRow("t-1", parent = "p-1", latest = "r-1"), threadRow("t-2", parent = "p-2", latest = "r-2"))))
+        val store = loadedStore(network, initialKeys = listOf("thread:t-1", "thread:t-2"))
+        fun row(key: String) = store.state.value.items.single { it.key == key }
+        val other = row("thread:t-2")
+
+        store.dispatch(updatedMessage(id = "r-1", seq = 8, body = placeholder, channelId = "t-1", deletedAt = "2026-10-25T10:05:00Z"))
+        runCurrent()
+        val reply = row("thread:t-1")
+        assertEquals(placeholder, reply.latestActivityPreview)
+        assertEquals("parent p-1", reply.parentMessagePreview, "the parent was not retracted")
+        assertEquals(listOf(placeholder), reply.latestReplies.map { it.content })
+        assertEquals(true to false, reply.latestRetracted to reply.parentRetracted)
+
+        store.dispatch(updatedMessage(id = "p-1", seq = 3, body = placeholder, deletedAt = "2026-10-25T10:06:00Z"))
+        runCurrent()
+        val parent = row("thread:t-1")
+        assertEquals(placeholder, parent.parentMessagePreview)
+        assertEquals(reply.copy(parentMessagePreview = placeholder, parentRetracted = true), parent, "nothing else on the row moves")
+        assertEquals(other, row("thread:t-2"))
     }
 
     @Test
@@ -502,6 +529,17 @@ class SharedActivityStoreChannelRowLagTest {
          "lastMessageSenderType":"user","lastMessageSenderId":"u-9","lastMessageSenderName":"Server",
          "unreadCount":$unread,"hasMention":false}
         """.trimIndent() to unread
+
+    private fun threadRow(threadChannelId: String, parent: String, latest: String): Pair<String, Int> =
+        """
+        {"kind":"thread","threadChannelId":"$threadChannelId","parentMessageId":"$parent","parentChannelId":"general",
+         "parentChannelName":"general","parentChannelType":"channel","parentMessagePreview":"parent $parent",
+         "latestActivityMessageId":"$latest","latestActivityPreview":"reply $latest",
+         "latestActivitySeq":"7","doneFrontierSeq":"7","firstUnreadMessageId":null,"firstMentionMessageId":null,
+         "lastActivityAt":"2026-10-25T09:50:00Z","replyCount":1,"unreadCount":0,"hasMention":false,
+         "latestReplies":[{"messageId":"$latest","seq":7,"preview":"reply $latest","senderId":"u-9",
+           "senderType":"user","senderName":"Server","createdAt":"2026-10-25T09:50:00Z"}]}
+        """.trimIndent() to 0
 
     private fun inbox(vararg rows: Pair<String, Int>): HomeNetworkResponse =
         HomeNetworkResponse(

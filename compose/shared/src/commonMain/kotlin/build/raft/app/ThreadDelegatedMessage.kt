@@ -118,3 +118,21 @@ internal fun ThreadMessageDelegatedByLabel(
 
 private fun threadDelegatedLabelStyle(): TextStyle =
     RaftType.Caption.copy(fontWeight = FontWeight.Normal, color = RaftColor.ForegroundMuted)
+
+/**
+ * RFC 077 PR 2b, web MessageItem `message-retracted-*` (`text-foreground-hint`): a retracted
+ * message keeps its place in the timeline; its body is the localized retracted line in the
+ * message body type, never the server's English placeholder or the old words. Not selectable.
+ */
+@Composable
+internal fun ThreadMessageRetractedBody(
+    textStyle: TextStyle,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = stringResource(MR.strings.message_delegated_retracted),
+        style = textStyle,
+        color = RaftColor.ForegroundHint,
+        modifier = modifier,
+    )
+}
