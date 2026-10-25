@@ -22514,7 +22514,7 @@ internal fun ThreadComposerDock(composerModifier: Modifier = Modifier, composer:
         Box(
             modifier =
                 Modifier.fillMaxWidth()
-                    .padding(start = RaftAppSpacing.Sm, top = 12.dp, end = RaftAppSpacing.Sm)
+                    .padding(start = RaftAppSpacing.Sm, top = ThreadComposerDockTopInset, end = RaftAppSpacing.Sm)
                     .then(composerModifier)
         ) { composer() }
     }

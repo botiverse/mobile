@@ -157,17 +157,29 @@ internal fun agentTypingSentenceTemplates(): AgentTypingSentenceTemplates =
         many = stringResource(MR.strings.thread_agent_typing_many),
     )
 
-/** raft-ui `MessageListEndFade` `h-timeline-section`: the list end fade, the section step. */
-internal val ThreadMessageListEndFadeHeight = 24.dp
+/** raft-design `timeline-gap-section`: the section step, from the last line to the composer's frame. */
+internal val ThreadTimelineSectionStep = 24.dp
+
+/** The strip of panel color [ThreadComposerDock] keeps above the composer's card. */
+internal val ThreadComposerDockTopInset = 12.dp
+
+/**
+ * The list end fade's length: the section step less the composer dock's strip of panel color,
+ * which lies outside the list, so the strip and the fade together span the section step (web
+ * `composerHost.ts` `END_FADE_ABOVE_COMPOSER`, a section step less the composer's 8px). At the end
+ * of the list the fade then covers only the empty end, never the last line.
+ */
+internal val ThreadMessageListEndFadeHeight = ThreadTimelineSectionStep - ThreadComposerDockTopInset
 
 /**
  * The list's bottom edge over the composer (raft-ui `MessageListEndFade`, raft-design
  * `spacing.md` "Timeline rhythm"): always on, the panel color at the bottom to transparent upward
- * over the section step, so a message scrolled under the edge softens instead of being cut, and at
- * the end of the list it lies over the empty end. While the typing line shows, the fade grows by
- * exactly the line's height: a solid strip of panel color under the line, the same fade above it.
- * The switch is instant, like the line itself. Under the typing line and the jump controls; takes
- * no pointer input and is hidden from accessibility.
+ * over [ThreadMessageListEndFadeHeight], which with the composer dock's strip under it makes one
+ * section step. A message scrolled under the edge softens instead of being cut, and at the end of
+ * the list the fade lies over the empty end. While the typing line shows, the fade grows by exactly
+ * the line's height: a solid strip of panel color under the line, the same fade above it. The
+ * switch is instant, like the line itself. Under the typing line and the jump controls; takes no
+ * pointer input and is hidden from accessibility.
  */
 @Composable
 internal fun ThreadMessageListEndFade(typingLineShown: Boolean, modifier: Modifier = Modifier) {
