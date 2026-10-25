@@ -90,6 +90,24 @@ class MessageDelegatedByContractTest {
 
         assertNull(restMessage(aliceMessage()).deletedAt, "absent")
         assertNull(restMessage(aliceMessage(""", "deletedAt": null""")).deletedAt, "null")
+
+        // The thread/channel page (cold open of an already-retracted message): botiverse/slock
+        // staging a11434ae messageService.ts spreads the full row (`...visibleRow`) into the page.
+        fun threadItem(row: String) =
+            buildSharedThreadPayloadFromMessagesPage(
+                basePayload = RaftThreadScreenPayload(sourceThreadId = "channel-qa-x", status = "loading"),
+                page =
+                    ThreadMessagesPage(
+                        messages = listOf(Json { ignoreUnknownKeys = true }.decodeFromString(WireMessage.serializer(), row)),
+                        canLoadMoreBefore = false,
+                        canLoadMoreAfter = null,
+                    ),
+                session = null,
+            ).messages.single()
+        val page = threadItem(retracted)
+        assertEquals("2026-10-25T12:00:00.000Z", page.deletedAt)
+        assertEquals(placeholder, page.body)
+        assertNull(threadItem(aliceMessage(""", "deletedAt": null""")).deletedAt, "page null")
     }
 
     @Test

@@ -133,7 +133,7 @@ class SharedActivityStoreChannelRowLagTest {
         store.dispatch(updatedMessage(id = "m-42", seq = 42, body = placeholder, deletedAt = "2026-10-25T10:05:00Z"))
         runCurrent()
 
-        assertEquals(patched.copy(lastMessagePreview = placeholder), store.state.value.items.single())
+        assertEquals(patched.copy(lastMessagePreview = placeholder, latestRetracted = true), store.state.value.items.single())
         assertEquals(3, store.state.value.totalUnreadCount)
 
         store.dispatch(updatedMessage(id = "m-42", seq = 42, body = "", deletedAt = "2026-10-25T10:05:00Z"))
@@ -158,12 +158,13 @@ class SharedActivityStoreChannelRowLagTest {
         assertEquals(placeholder, reply.latestActivityPreview)
         assertEquals("parent p-1", reply.parentMessagePreview, "the parent was not retracted")
         assertEquals(listOf(placeholder), reply.latestReplies.map { it.content })
+        assertEquals(true to false, reply.latestRetracted to reply.parentRetracted)
 
         store.dispatch(updatedMessage(id = "p-1", seq = 3, body = placeholder, deletedAt = "2026-10-25T10:06:00Z"))
         runCurrent()
         val parent = row("thread:t-1")
         assertEquals(placeholder, parent.parentMessagePreview)
-        assertEquals(reply.copy(parentMessagePreview = placeholder), parent, "nothing else on the row moves")
+        assertEquals(reply.copy(parentMessagePreview = placeholder, parentRetracted = true), parent, "nothing else on the row moves")
         assertEquals(other, row("thread:t-2"))
     }
 

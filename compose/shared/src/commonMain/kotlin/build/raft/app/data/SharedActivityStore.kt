@@ -3943,13 +3943,15 @@ internal fun InboxItem.withRetractedPreview(messageId: MessageId, placeholder: S
     val next =
         when {
             isChannelOrDmRow() ->
-                if (lastMessageId == messageId) copy(lastMessagePreview = placeholder) else this
+                if (lastMessageId == messageId) copy(lastMessagePreview = placeholder, latestRetracted = true) else this
             kind == InboxItemKind.Thread ->
                 copy(
                     lastMessagePreview = if (lastMessageId == messageId) placeholder else lastMessagePreview,
                     latestActivityPreview =
                         if (latestActivityMessageId == messageId) placeholder else latestActivityPreview,
+                    latestRetracted = latestRetracted || latestActivityMessageId == messageId,
                     parentMessagePreview = if (parentMessageId == messageId) placeholder else parentMessagePreview,
+                    parentRetracted = parentRetracted || parentMessageId == messageId,
                     latestReplies =
                         latestReplies.map { reply ->
                             if (reply.messageId == messageId.value) reply.copy(content = placeholder) else reply

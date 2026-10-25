@@ -15604,8 +15604,10 @@ private fun ThreadPageContentContent(
                             }
                         },
                         onEnterShareSelection = { messageId ->
-                            selectedShareMessageIds = setOf(messageId)
-                            activeModal = null
+                            if (!payload.isRetractedMessage(messageId)) {
+                                selectedShareMessageIds = setOf(messageId)
+                                activeModal = null
+                            }
                         },
                         onForwardMessage = { messageId ->
                             openForwardPickerForMessageIds(setOf(messageId))
@@ -15614,6 +15616,9 @@ private fun ThreadPageContentContent(
                             selectedShareMessageIds =
                                 if (messageId in selectedShareMessageIds) {
                                     selectedShareMessageIds - messageId
+                                } else if (payload.isRetractedMessage(messageId)) {
+                                    // RFC 077 PR 2b: nothing of a retracted message can be shared.
+                                    selectedShareMessageIds
                                 } else {
                                     selectedShareMessageIds + messageId
                                 }
@@ -24999,8 +25004,8 @@ fun ThreadMessageCard(
                 searchMatch = searchMatch,
                 popupOpen = popupOpen,
                 inlineReplyParticipantsById = inlineReplyParticipantsById,
-                shareSelectionActive = shareSelectionActive,
-                selectedForShare = selectedForShare,
+                shareSelectionActive = shareSelectionActive && !retracted,
+                selectedForShare = selectedForShare && !retracted,
                 translation = if (retracted) null else translation,
                 longMessageCollapse = longMessageCollapse,
                 longPressGestureInstanceKey = longPressGestureInstanceKey,
@@ -25308,7 +25313,9 @@ private fun ThreadMessageCardContent(
     val inPlaceSelection =
         rememberThreadInPlaceSelectionController(
             messageId = message.id,
-            enabled = !shareSelectionActive && threadMessageUsesFullRowLongPressActions(shareSelectionActive)
+            enabled =
+                !shareSelectionActive && !message.isRetracted &&
+                    threadMessageUsesFullRowLongPressActions(shareSelectionActive)
         )
     val baseRowTapAction =
         if (
@@ -25362,7 +25369,8 @@ private fun ThreadMessageCardContent(
                     }
                 )
                 .then(
-                    if (threadMessageUsesFullRowLongPressActions(shareSelectionActive)) {
+                    // RFC 077 PR 2b: a retracted message has no long-press gesture at all.
+                    if (!message.isRetracted && threadMessageUsesFullRowLongPressActions(shareSelectionActive)) {
                         Modifier.threadMessageLongPressActions(
                             messageId = message.id,
                             pointerSessionKey = pointerSessionKey,

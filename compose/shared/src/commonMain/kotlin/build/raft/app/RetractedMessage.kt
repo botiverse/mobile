@@ -13,6 +13,12 @@ import build.raft.app.model.Message
 // Web source of truth: `packages/web/src/components/message/delegatedMessage.ts`
 // `isRetractedMessage` and `MessageItem.tsx` (`content: "", attachments: [], reactions: []`).
 
+/**
+ * The `deletedAt` of a copy known to be retracted only from a boolean flag (Activity
+ * `latestRetracted`); never shown, it only makes [isRetracted] true until a full row replaces it.
+ */
+internal const val RetractedAtUnknown = "retracted"
+
 /** Web `isRetractedMessage`: `deletedAt` alone is the signal (only delegated messages retract). */
 internal val RaftThreadMessageItem.isRetracted: Boolean
     get() = !deletedAt.isNullOrBlank()
@@ -31,6 +37,10 @@ internal fun RaftThreadMessageItem.withoutRetractedContent(): RaftThreadMessageI
     } else {
         copy(attachments = emptyList(), reactions = emptyList(), forwardBundle = null)
     }
+
+/** Whether this payload's timeline or origin message [messageId] is retracted. */
+internal fun RaftThreadScreenPayload.isRetractedMessage(messageId: String): Boolean =
+    messages.any { it.id == messageId && it.isRetracted } || originMessage?.let { it.id == messageId && it.isRetracted } == true
 
 /** The domain-message form of [withoutRetractedContent] (shared thread message cache). */
 internal fun Message.withoutRetractedContent(): Message =

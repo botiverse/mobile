@@ -128,7 +128,9 @@ private fun InboxItem.activitySeedMessages(
 ): List<RaftThreadMessageItem> =
     when (kind) {
         InboxItemKind.Thread ->
-            latestReplies.mapNotNull { reply -> reply.toActivitySeedMessage(principalId, names) } +
+            latestReplies.mapNotNull { reply ->
+                reply.toActivitySeedMessage(principalId, names)?.withActivityRetraction(this)
+            } +
                 listOfNotNull(
                     activitySeedMessage(
                         id = latestActivityMessageId?.value,
@@ -194,7 +196,17 @@ private fun InboxItem.activitySeedMessage(
         createdAtEpochMillis = parseRaftTimestampEpochMillisOrNull(at),
         messageType = if (system) "System" else "Chat",
         body = text,
-    )
+    ).withActivityRetraction(this)
+}
+
+/**
+ * RFC 077 PR 2b: a seeded copy of the row's latest message is retracted when the row says so
+ * (wire `latestRetracted`; it names the thread row's `latestActivityMessageId`, else
+ * `lastMessageId`). The row carries only the flag, so the item gets [RetractedAtUnknown].
+ */
+private fun RaftThreadMessageItem.withActivityRetraction(row: InboxItem): RaftThreadMessageItem {
+    val latestId = if (row.kind == InboxItemKind.Thread) row.latestActivityMessageId else row.lastMessageId
+    return if (row.latestRetracted && id == latestId?.value) copy(deletedAt = RetractedAtUnknown) else this
 }
 
 private fun ReplyPreview.toActivitySeedMessage(
