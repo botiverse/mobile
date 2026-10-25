@@ -170,4 +170,24 @@ class JointBillingNoticeTest {
             )
         )
     }
+
+    @Test
+    fun messageRowsResolveOtherServerSendersOnlyOnJointSurfaces() {
+        val projections = mapOf("joint-1" to jointProjection("joint-1"))
+        fun joint(payload: RaftThreadScreenPayload, lookupIds: List<String> = emptyList()) =
+            threadMessageSurfaceIsJoint(payload, lookupIds, projections)
+
+        assertEquals(true, joint(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel, channelKind = "joint")))
+        assertEquals(true, joint(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel), listOf("joint-1")))
+        assertEquals(
+            true,
+            joint(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.ReplyThread, parentChannelKind = "joint"))
+        )
+        assertEquals(
+            true,
+            joint(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.ReplyThread, parentChannelId = "joint-1"))
+        )
+        assertEquals(false, joint(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel), listOf("chan-1")))
+        assertEquals(false, joint(RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.DirectMessage), listOf("joint-1")))
+    }
 }

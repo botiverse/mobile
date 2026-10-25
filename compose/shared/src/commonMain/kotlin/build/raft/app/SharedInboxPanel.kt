@@ -2257,7 +2257,12 @@ internal data class ActivitySenderAvatarIdentity(
     val senderKind: MemberKind?,
     val avatarWireValue: String?,
     val label: String,
-    val senderId: String? = null
+    val senderId: String? = null,
+    /**
+     * The row is a joint channel's (or a thread in one): its sender may live on the other server,
+     * in neither of this server's rosters, and may be resolved through `POST /api/actors/resolve`.
+     */
+    val jointSurface: Boolean = false,
 )
 
 internal fun InboxItem.activitySenderAvatarIdentity(
@@ -2289,9 +2294,19 @@ internal fun InboxItem.activitySenderAvatarIdentity(
         senderKind = senderKind,
         avatarWireValue = avatarWireValue,
         label = senderDisplayName(senderProfiles).orEmpty(),
-        senderId = senderId
+        senderId = senderId,
+        jointSurface = isJointActivityRow(),
     )
 }
+
+/** Web ThreadsInbox `jointRow`: a thread of a joint channel, or a joint channel row. */
+internal fun InboxItem.isJointActivityRow(): Boolean =
+    when (kind) {
+        InboxItemKind.Thread ->
+            parentChannelKind == ConversationKind.Joint || parentChannelType.equals("joint", ignoreCase = true)
+        InboxItemKind.MentionAction -> false
+        else -> channelKind == ConversationKind.Joint || channelType.equals("joint", ignoreCase = true)
+    }
 
 /**
  * Web always offers Done, including on an unfollowed thread row (slock

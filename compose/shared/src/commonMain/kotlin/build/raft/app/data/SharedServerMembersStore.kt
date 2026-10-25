@@ -23,6 +23,7 @@ import build.raft.app.model.isAgentFallbackAvatarWireValue
 import build.raft.app.raftAvatarDiagnosticsHash
 import build.raft.app.raftAvatarDiagnosticsSource
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +36,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.sync.Mutex
@@ -543,9 +545,43 @@ class SharedServerMembersStore internal constructor(
      */
     private val durableStore: RaftServerMembersDurableStore? = null,
     /** Tenny rule 3: rosters kept in memory, least recently refreshed / written evicted first. */
-    private val maxCachedServers: Int = SharedServerMembersMaxCachedServers
+    private val maxCachedServers: Int = SharedServerMembersMaxCachedServers,
+    /**
+     * `POST /api/actors/resolve` for joint-channel senders of the other server ([jointActors]).
+     * Null (tests, fixtures) keeps the directory off: such senders keep today's fallback face.
+     */
+    actorResolve: (suspend (ServerId, List<ActorResolveRef>) -> ActorResolveOutcome)? = null,
+    /** Where [jointActors] runs its batches; required with [actorResolve]. */
+    actorResolveScope: CoroutineScope? = null,
 ) {
     private val mutex = Mutex()
+
+    /**
+     * Display identities of joint-channel senders no roster of this server carries. Kept apart
+     * from the member directory and profile cache: they are not members of this server and must
+     * not reach member lists, mentions or status. Read only as an avatar fallback.
+     */
+    val jointActors: SharedJointActorDirectory? =
+        if (actorResolve != null && actorResolveScope != null) {
+            SharedJointActorDirectory(
+                coroutineScope = actorResolveScope,
+                owner = { serverId -> presenceOwner(serverId) },
+                ownerFlow = { serverId -> presenceOwnerFlow(serverId) },
+                knownLocally = { serverId, ref -> knowsActorLocally(serverId, ref.id) },
+                resolve = actorResolve,
+                logger = { message -> logger("joint_actor_directory $message") },
+            )
+        } else {
+            null
+        }
+
+    /** This server's members, agents (deleted ones too) or channel rosters already know [memberId]. */
+    private fun knowsActorLocally(serverId: ServerId, memberId: String): Boolean {
+        val key = serverId.value.normalizedServerMembersId() ?: return false
+        val id = memberId.normalizedServerMembersId() ?: return false
+        return _state.value.memberProfile(ServerId(key), id) != null ||
+            id in deletedAgentIdsByServerId.value[key].orEmpty()
+    }
 
     /**
      * Presence transport each channel slice's peer-agent presence facts were written under.
@@ -566,7 +602,9 @@ class SharedServerMembersStore internal constructor(
     // Server ids, least recently used first. Guarded by [recencyLock].
     private val serverRecency = LinkedHashSet<String>()
     private val publishedProcessVersionsByOwner = mutableMapOf<SharedServerChannelMembersOwnerBinding, Long>()
-    private val deletedAgentIdsByServerId = mutableMapOf<String, Set<String>>()
+    // Immutable snapshots behind an atomic reference: read off-thread by the joint actor
+    // directory's batch loop (knowsActorLocally) while markAgentDeleted / dropServer write it.
+    private val deletedAgentIdsByServerId = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
     private val _state = MutableStateFlow(SharedServerMembersState())
     val state: StateFlow<SharedServerMembersState> = _state.asStateFlow()
 
@@ -915,6 +953,8 @@ class SharedServerMembersStore internal constructor(
             memberStatusFlows.clear()
             memberProfileFlows.clear()
         }
+        // Same lifetime: resolved joint-channel senders belong to the retiring owner.
+        jointActors?.clear()
     }
 
     fun memberStatusFlow(
@@ -1358,8 +1398,9 @@ class SharedServerMembersStore internal constructor(
         val serverKey = serverId.value.trim()
         val agentKey = agentId.value.trim()
         if (serverKey.isBlank() || agentKey.isBlank()) return false
-        val currentDeleted = deletedAgentIdsByServerId[serverKey].orEmpty()
-        deletedAgentIdsByServerId[serverKey] = currentDeleted + agentKey
+        deletedAgentIdsByServerId.update { current ->
+            current + (serverKey to (current[serverKey].orEmpty() + agentKey))
+        }
         return removeMember(serverId = ServerId(serverKey), memberId = MemberId(agentKey), memberKind = MemberKind.Agent)
     }
 
@@ -3103,9 +3144,10 @@ class SharedServerMembersStore internal constructor(
         val key = serverId.value.normalizedServerMembersId() ?: return
         val binding = currentDirectoryOwnerBinding(ServerId(key))
         processOwner(ServerId(key))?.let { owner -> processCore.invalidate(owner, reason = "server_access_lost") }
+        jointActors?.clearServer(ServerId(key))
         mutex.withLock {
             publishedProcessVersionsByOwner.keys.removeAll { it.serverId == key }
-            deletedAgentIdsByServerId.remove(key)
+            deletedAgentIdsByServerId.update { it - key }
             _state.value =
                 _state.value.let { current ->
                     current.copy(
@@ -3198,6 +3240,7 @@ class SharedServerMembersStore internal constructor(
      */
     private fun removeLostAccessRoster(key: String, binding: SharedServerChannelMembersOwnerBinding) {
         removeEntry(key)
+        jointActors?.clearServer(ServerId(key))
         publishedProcessVersionsByOwner.remove(binding)
         synchronized(recencyLock) { serverRecency.remove(key) }
         logger("shared_server_members_load_result serverId=$key result=access_lost")
@@ -3290,7 +3333,7 @@ class SharedServerMembersStore internal constructor(
     }
 
     private fun List<MemberProfile>.filterDeletedAgents(serverKey: String): List<MemberProfile> {
-        val deletedAgentIds = deletedAgentIdsByServerId[serverKey].orEmpty()
+        val deletedAgentIds = deletedAgentIdsByServerId.value[serverKey].orEmpty()
         if (deletedAgentIds.isEmpty()) return this
         return filterNot { it.kind == MemberKind.Agent && it.id.value.trim() in deletedAgentIds }
     }
@@ -3304,7 +3347,7 @@ class SharedServerMembersStore internal constructor(
     }
 
     private fun MemberProfile.isDeletedAgentProfile(serverKey: String): Boolean =
-        kind == MemberKind.Agent && id.value.trim() in deletedAgentIdsByServerId[serverKey].orEmpty()
+        kind == MemberKind.Agent && id.value.trim() in deletedAgentIdsByServerId.value[serverKey].orEmpty()
 }
 
 // task #136: presence replacement rules moved to ProcessMemberPresenceRegistry

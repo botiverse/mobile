@@ -490,9 +490,16 @@ internal val LocalActivityAvatarSource =
 internal fun activityFaceAvatarWireValue(
     memberAvatarWireValue: String?,
     identity: ActivitySenderAvatarIdentity,
+    /**
+     * A joint channel's sender from the other server, resolved through `POST /api/actors/resolve`:
+     * fills only a row that carries no avatar of its own (a realtime update, or an older server).
+     */
+    jointActorAvatarWireValue: String? = null,
 ): String? {
     memberAvatarWireValue?.takeIf { it.isNotBlank() }?.let { return it }
-    val itemAvatar = identity.avatarWireValue?.takeIf { it.isNotBlank() }
+    val itemAvatar =
+        identity.avatarWireValue?.takeIf { it.isNotBlank() }
+            ?: jointActorAvatarWireValue?.takeIf { it.isNotBlank() }
     val kind = identity.senderKind
     val id = identity.senderId?.trim()?.takeIf { it.isNotEmpty() }
     return if ((kind == MemberKind.Agent || kind == MemberKind.Human) && id != null) {
@@ -517,8 +524,15 @@ internal fun ActivityMemberFace(
 ) {
     val source = LocalActivityAvatarSource.current
     val memberAvatar = rememberRaftMemberAvatarWireValue(source.memberAvatarResolver, identity.senderId)
+    val jointActor =
+        rememberRaftJointActor(
+            memberAvatarResolver = source.memberAvatarResolver,
+            kind = identity.senderKind,
+            memberId = identity.senderId,
+            enabled = identity.jointSurface,
+        )
     RaftAppAvatar(
-        avatarWireValue = activityFaceAvatarWireValue(memberAvatar, identity),
+        avatarWireValue = activityFaceAvatarWireValue(memberAvatar, identity, jointActor?.explicitAvatarWireValue()),
         // Empty: a face that does not load shows the placeholder person, as on web, not a letter.
         label = "",
         modifier = modifier,

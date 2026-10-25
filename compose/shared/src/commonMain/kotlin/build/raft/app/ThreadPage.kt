@@ -1519,6 +1519,28 @@ internal fun threadComposerEventRequiresWriteAccess(action: String): Boolean =
 internal enum class JointBillingNotice { None, Grace, Locked }
 
 /**
+ * The rendered surface is a joint channel, or a reply thread in one: the route's own kinds first,
+ * then the conversation directory projection of the parent or any lookup id.
+ */
+internal fun threadMessageSurfaceIsJoint(
+    payload: RaftThreadScreenPayload,
+    lookupIds: List<String>,
+    projections: Map<String, SharedConversationDirectoryProjection>
+): Boolean {
+    if (payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage) return false
+    if (parseConversationKindOrNull(payload.channelKind) == ConversationKind.Joint) return true
+    if (
+        payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+        typedReplyParentConversationKindOrNull(payload.parentSurfaceKind, payload.parentChannelKind) == ConversationKind.Joint
+    ) {
+        return true
+    }
+    return (listOfNotNull(payload.parentChannelId) + lookupIds).any { id ->
+        projections[id]?.conversationKind == ConversationKind.Joint
+    }
+}
+
+/**
  * Resolve the joint over-limit state for the rendered surface. Reply threads
  * inherit the notice from their parent joint channel (thread projections carry
  * no billing metadata). `parentChannelId` takes precedence for reply threads;
@@ -6785,6 +6807,27 @@ private fun SharedThreadRouteContentContent(
                         ?.jointOverLimitGraceEndsAt
                 }
         }
+    // Joint channel (or a reply thread in one): message rows may resolve senders from the other
+    // server, who are in neither of this server's rosters, through `POST /api/actors/resolve`.
+    val jointMessageSurface =
+        remember(
+            billingDirectoryProjections,
+            conversationDirectoryLookupIds,
+            payload.channelKind,
+            payload.parentSurfaceKind,
+            payload.parentChannelKind,
+            payload.parentChannelId
+        ) {
+            threadMessageSurfaceIsJoint(
+                payload = payload,
+                lookupIds = conversationDirectoryLookupIds,
+                projections = billingDirectoryProjections
+            )
+        }
+    val messageAvatarResolver =
+        remember(memberAvatarResolver, jointMessageSurface) {
+            memberAvatarResolver.forJointSurface(jointMessageSurface)
+        }
     // §18.8: flip Grace -> Locked locally at the deadline without waiting for a
     // new server snapshot. Recompute `jointBillingNotice` via a state bump.
     LaunchedEffect(jointGraceDeadlineLabel, payload.instanceId) {
@@ -11414,7 +11457,7 @@ private fun SharedThreadRouteContentContent(
             onExternalAuthor = onExternalAuthorHint,
             highlightedMentions = highlightedMentions,
             agentStatusResolver = agentStatusResolver,
-            memberAvatarResolver = memberAvatarResolver,
+            memberAvatarResolver = messageAvatarResolver,
             memberModelLabelResolver = memberModelLabelResolver,
             diagnosticsLogger = { bridge.log(it) },
             onLayoutGeneration = { width, height ->
@@ -25130,10 +25173,17 @@ private fun ThreadMessageCardContent(
             loader(target)?.let { ThreadQuotedPermalinkUiState.Loaded(it) }
                 ?: ThreadQuotedPermalinkUiState.Unavailable
     }
+    val jointAuthor =
+        rememberRaftJointActor(
+            memberAvatarResolver = memberAvatarResolver,
+            kind = message.authorKind.projectedMemberKindOrNull(),
+            memberId = message.authorId,
+            enabled = memberAvatarResolver.jointSurface && message.externalAuthor == null
+        )
     val avatarWireValue =
         resolveThreadRowAvatarWireValue(
             rememberRaftMemberAvatarWireValue(memberAvatarResolver, message.authorId)
-        )
+        ) ?: jointAuthor?.renderedAvatarWireValue()
     val avatarDiagnostics =
         remember(message.id, message.authorId, diagnosticsLogger) {
             raftAvatarRowDiagnostics(
@@ -28349,7 +28399,21 @@ private fun ThreadInlineReplyRow(
     rowHeight: Dp,
 ) {
     val timestampPositionReporter = LocalThreadInlineReplyTimestampReporter.current
-    val resolvedAvatar = rememberRaftMemberAvatarWireValue(memberAvatarResolver, reply.senderId)
+    val jointSender =
+        rememberRaftJointActor(
+            memberAvatarResolver = memberAvatarResolver,
+            kind =
+                when (reply.senderType.trim().lowercase()) {
+                    "user", "human" -> MemberKind.Human
+                    "agent" -> MemberKind.Agent
+                    else -> null
+                },
+            memberId = reply.senderId,
+            enabled = memberAvatarResolver.jointSurface
+        )
+    val resolvedAvatar =
+        rememberRaftMemberAvatarWireValue(memberAvatarResolver, reply.senderId)
+            ?: jointSender?.renderedAvatarWireValue()
     val displayName =
         reply.senderDisplayName?.trim()?.takeIf { it.isNotBlank() }
             ?: participant?.displayName?.trim()?.takeIf { it.isNotBlank() }
