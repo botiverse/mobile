@@ -4,6 +4,7 @@ import build.raft.app.canonical.message.CanonicalAttachmentWire
 import build.raft.app.canonical.message.CanonicalCommentHostSourceWire
 import build.raft.app.canonical.message.CanonicalCommentRefWire
 import build.raft.app.canonical.message.CanonicalConversationContextWire
+import build.raft.app.canonical.message.CanonicalExternalAuthorWire
 import build.raft.app.canonical.message.CanonicalMentionWire
 import build.raft.app.canonical.message.CanonicalMessageCarry
 import build.raft.app.canonical.message.CanonicalMessageRow
@@ -55,6 +56,7 @@ private val AGGREGATE_WIRE_KEYS = mapOf(
     "commentRef" to MessageAggregateField.CommentRef,
     "actionMetadata" to MessageAggregateField.ActionMetadata,
     "conversationContext" to MessageAggregateField.ConversationContext,
+    "externalAuthor" to MessageAggregateField.ExternalAuthor,
 )
 
 private val TASK_WIRE_KEYS = setOf(
@@ -123,6 +125,8 @@ fun decodeCanonicalMessageWire(
         conversationContext = (rawJson["conversationContext"] as? JsonObject)?.toCanonicalConversationContext(),
         // RFC 077: `null` = live, absent on the task-status projector; neither is a retraction.
         deletedAt = normalizeCanonicalRetraction(rawJson.nullableString("deletedAt")),
+        // `null` for every non-external sender; a malformed object decodes to null like the other nested shapes.
+        externalAuthor = (rawJson["externalAuthor"] as? JsonObject)?.toCanonicalExternalAuthor(),
     )
 
     return CanonicalMessageCarry(
@@ -214,6 +218,24 @@ private fun JsonObject.toCanonicalConversationContext(): CanonicalConversationCo
         parentMessageId = nullableString("parentMessageId"),
     )
 }
+
+private fun JsonObject.toCanonicalExternalAuthor(): CanonicalExternalAuthorWire? =
+    CanonicalExternalAuthorWire(
+        actorKind = strictString("actorKind") ?: return null,
+        actorProjectionRevision = strictLong("actorProjectionRevision") ?: return null,
+        appRegistrationId = strictString("appRegistrationId") ?: return null,
+        avatarDigest = nullableString("avatarDigest"),
+        avatarUrl = nullableString("avatarUrl"),
+        displayName = strictString("displayName") ?: return null,
+        externalActorId = strictString("externalActorId") ?: return null,
+        externalConversationId = strictString("externalConversationId") ?: return null,
+        externalMessageId = strictString("externalMessageId") ?: return null,
+        installId = strictString("installId") ?: return null,
+        projectionId = strictString("projectionId") ?: return null,
+        provider = strictString("provider") ?: return null,
+        workspaceId = strictString("workspaceId") ?: return null,
+        workspaceName = nullableString("workspaceName"),
+    )
 
 private fun JsonObject.objectArray(key: String): List<JsonObject> =
     (this[key] as? JsonArray)?.mapNotNull { it as? JsonObject }.orEmpty()

@@ -18,6 +18,7 @@ import build.raft.app.canonical.message.CanonicalAttachmentWire
 import build.raft.app.canonical.message.CanonicalCommentHostSourceWire
 import build.raft.app.canonical.message.CanonicalCommentRefWire
 import build.raft.app.canonical.message.CanonicalConversationContextWire
+import build.raft.app.canonical.message.CanonicalExternalAuthorWire
 import build.raft.app.canonical.message.CanonicalMentionWire
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.CanonicalReactionWire
@@ -58,6 +59,28 @@ class CanonicalFactCodecTest {
         ),
         actionMetadata = buildJsonObject { put("kind", JsonPrimitive("card")) },
         conversationContext = CanonicalConversationContextWire("channel", "pc-1", "channel", "pm-2"),
+        externalAuthor = externalAuthor(),
+    )
+
+    private fun externalAuthor(
+        avatarUrl: String? = "https://avatars.slack-edge.com/u123.png",
+        avatarDigest: String? = "sha256:abc",
+        workspaceName: String? = "Acme",
+    ) = CanonicalExternalAuthorWire(
+        actorKind = "human",
+        actorProjectionRevision = 7,
+        appRegistrationId = "app-1",
+        avatarDigest = avatarDigest,
+        avatarUrl = avatarUrl,
+        displayName = "jinlu",
+        externalActorId = "U123",
+        externalConversationId = "C42",
+        externalMessageId = "1700000000.000100",
+        installId = "inst-1",
+        projectionId = "proj-1",
+        provider = "slack",
+        workspaceId = "T1",
+        workspaceName = workspaceName,
     )
 
     @Test
@@ -112,6 +135,27 @@ class CanonicalFactCodecTest {
                 "\"senderMembershipStatus\":null,\"mentions\":[],\"attachments\":[],\"reactions\":[]," +
                 "\"commentRef\":null,\"actionMetadata\":null,\"conversationContext\":null}"
         assertEquals(golden, encodeCanonicalFact(row))
+    }
+
+    @Test
+    fun externalAuthorRoundTripsWithNullableLeavesAndIsOmittedWhenNull() {
+        val base = CanonicalMessageRow(
+            id = "m1", channelId = "c1", seq = 1,
+            senderType = "external_projection", senderId = "ext_slack_U123", content = "hi", messageType = "chat",
+            createdAt = "t", senderName = "jinlu",
+        )
+        // Populated, and with every nullable leaf null: both survive encode -> decode exactly.
+        for (author in listOf(externalAuthor(), externalAuthor(avatarUrl = null, avatarDigest = null, workspaceName = null))) {
+            val row = base.copy(externalAuthor = author)
+            val encoded = encodeCanonicalFact(row)
+            assertTrue(encoded.contains("\"externalAuthor\":{\"actorKind\":\"human\",\"actorProjectionRevision\":7,"), encoded)
+            assertEquals(row, decodeCanonicalFact(encoded))
+        }
+        assertTrue(encodeCanonicalFact(base.copy(externalAuthor = externalAuthor(workspaceName = null))).contains("\"workspaceName\":null"))
+        // Null (every user/agent/system sender) omits the key, so pre-existing BLOBs stay byte-identical.
+        val none = encodeCanonicalFact(base)
+        assertTrue("externalAuthor" !in none, none)
+        assertNull(decodeCanonicalFact(none)?.externalAuthor)
     }
 
     @Test

@@ -4,6 +4,7 @@ import build.raft.app.canonical.message.CanonicalAttachmentWire
 import build.raft.app.canonical.message.CanonicalCommentHostSourceWire
 import build.raft.app.canonical.message.CanonicalCommentRefWire
 import build.raft.app.canonical.message.CanonicalConversationContextWire
+import build.raft.app.canonical.message.CanonicalExternalAuthorWire
 import build.raft.app.canonical.message.CanonicalMentionWire
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.CanonicalReactionWire
@@ -201,6 +202,45 @@ class CanonicalMessageRowProjectionTest {
                 "projection_value_rejected source=canonical_message_sender " +
                     "field=member_kind value=future_sender_kind_with_secret_s",
             ),
+            diagnostics,
+        )
+    }
+
+    @Test
+    fun externalProjectionSenderProjectsItsFrozenAuthorLikeTheRealtimeMapper() {
+        val author = CanonicalExternalAuthorWire(
+            actorKind = "human",
+            actorProjectionRevision = 3,
+            appRegistrationId = "app-1",
+            avatarUrl = "https://avatars.slack-edge.com/u123.png",
+            displayName = "jinlu",
+            externalActorId = "U123",
+            externalConversationId = "C42",
+            externalMessageId = "1700000000.000100",
+            installId = "inst-1",
+            projectionId = "proj-1",
+            provider = "slack",
+            workspaceId = "T1",
+            workspaceName = "Acme",
+        )
+        val message = assertNotNull(row(senderType = "external_projection").copy(externalAuthor = author).toAppMessage())
+        assertEquals(MemberKind.External, message.author.kind)
+        assertEquals("jinlu", message.author.displayName)
+        assertEquals("Slack", message.author.description)
+        assertEquals("https://avatars.slack-edge.com/u123.png", message.author.avatarUrl)
+        val projected = assertNotNull(message.externalAuthor)
+        assertEquals("slack", projected.provider)
+        assertEquals("U123", projected.externalActorId)
+        assertEquals(3L, projected.actorProjectionRevision)
+
+        // An ordinary sender never surfaces an author, even if a row carried one.
+        assertNull(assertNotNull(row().copy(externalAuthor = author).toAppMessage()).externalAuthor)
+
+        // An external sender without its author is rejected (web/realtime parity), with a payload-free diagnostic.
+        val diagnostics = mutableListOf<String>()
+        assertNull(row(senderType = "external_projection").toAppMessage(diagnostics = diagnostics::add))
+        assertEquals(
+            listOf("projection_value_rejected source=canonical_message_sender field=externalAuthor value=missing messageId=m1"),
             diagnostics,
         )
     }

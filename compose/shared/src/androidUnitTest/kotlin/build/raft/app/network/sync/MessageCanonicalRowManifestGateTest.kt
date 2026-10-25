@@ -4,6 +4,7 @@ import build.raft.app.canonical.message.CanonicalAttachmentWire
 import build.raft.app.canonical.message.CanonicalCommentHostSourceWire
 import build.raft.app.canonical.message.CanonicalCommentRefWire
 import build.raft.app.canonical.message.CanonicalConversationContextWire
+import build.raft.app.canonical.message.CanonicalExternalAuthorWire
 import build.raft.app.canonical.message.CanonicalMentionWire
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.CanonicalReactionWire
@@ -46,7 +47,7 @@ class MessageCanonicalRowManifestGateTest {
             .map { it.jsonObject }
             .filter { it["class"]!!.jsonPrimitive.content in setOf("canonicalRequired", "optionalAggregate") }
             .map { it["name"]!!.jsonPrimitive.content }
-            .toSet() - V1_DEFERRED_CANONICAL_FIELDS
+            .toSet()
 
     /** All excluded field names across the 5 exclusion classes (nested `attachment.commentCount` -> its leaf). */
     private fun excludedFieldNames(): Set<String> {
@@ -85,7 +86,7 @@ class MessageCanonicalRowManifestGateTest {
         val canonical = canonicalFieldNames()
         assertEquals(
             canonical, row,
-            "CanonicalMessageRow field set must EQUAL the manifest canonical set (21 minus deferred). Missing from row " +
+            "CanonicalMessageRow field set must EQUAL the manifest canonical set (21). Missing from row " +
                 "(manifest-has/row-no): ${canonical - row}. Extra on row (row-has/manifest-no): ${row - canonical}.",
         )
     }
@@ -97,15 +98,16 @@ class MessageCanonicalRowManifestGateTest {
         // diverge the persisted canonical shape.
         val nested = manifest["nestedWireShapes"]!!.jsonObject
         assertEquals(
-            nested.keys - V1_DEFERRED_CANONICAL_FIELDS,
-            setOf("attachment", "commentRef", "commentRefHostSource", "conversationContext", "mention", "reaction"),
-            "every non-deferred nested wire shape must have a V1 wire DTO below",
+            nested.keys,
+            setOf("attachment", "commentRef", "commentRefHostSource", "conversationContext", "externalAuthor", "mention", "reaction"),
+            "every nested wire shape must have a V1 wire DTO below",
         )
         val dtoToShape = mapOf(
             CanonicalAttachmentWire::class.java to "attachment",
             CanonicalCommentRefWire::class.java to "commentRef",
             CanonicalCommentHostSourceWire::class.java to "commentRefHostSource",
             CanonicalConversationContextWire::class.java to "conversationContext",
+            CanonicalExternalAuthorWire::class.java to "externalAuthor",
             CanonicalMentionWire::class.java to "mention",
             CanonicalReactionWire::class.java to "reaction",
         )
@@ -132,12 +134,3 @@ class MessageCanonicalRowManifestGateTest {
         )
     }
 }
-
-/**
- * Manifest v7 (slock 704d69f4) canonical fields the shadow-only V1 fold row / persisted envelope do not
- * carry yet. `externalAuthor` (manifest v5/v6) is consumed by the realtime/REST mappers
- * (`WireExternalAuthor`) but has no V1 fold DTO; V1 is shadow-only (`CANONICAL_FACT_SOLE_APPLY_ELIGIBLE`
- * = false), so it is deferred here by name — a NEW unclassified manifest field still turns both gates red.
- * `deletedAt` (v7) is NOT deferred: the row and envelope carry it.
- */
-internal val V1_DEFERRED_CANONICAL_FIELDS: Set<String> = setOf("externalAuthor")

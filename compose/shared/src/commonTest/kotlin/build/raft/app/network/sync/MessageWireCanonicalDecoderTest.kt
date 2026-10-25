@@ -45,6 +45,7 @@ class MessageWireCanonicalDecoderTest {
                 "commentRef" to JsonNull,
                 "actionMetadata" to buildJsonObject {},
                 "conversationContext" to buildJsonObject { put("channelType", "dm") },
+                "externalAuthor" to JsonNull,
             ),
             ProductionFace.MessageNew,
         )
@@ -58,6 +59,7 @@ class MessageWireCanonicalDecoderTest {
                 "reactions" to buildJsonArray {},
                 "commentRef" to JsonNull,
                 "actionMetadata" to buildJsonObject {},
+                "externalAuthor" to JsonNull,
             ),
             ProductionFace.EnrichedUpdated,
         )
@@ -122,6 +124,51 @@ class MessageWireCanonicalDecoderTest {
         assertEquals(listOf("u1", "u2"), row.reactions.single().reactorIds)
         assertEquals("quoted", row.commentRef?.anchorQuote)
         assertEquals("thread", row.commentRef?.hostSource?.routeKind)
+    }
+
+    @Test
+    fun externalAuthorDecodesWireShapeAndKeepsAbsentDistinctFromNull() {
+        val author = buildJsonObject {
+            put("provider", "slack")
+            put("actorKind", "human")
+            put("displayName", "jinlu")
+            put("avatarUrl", JsonNull)
+            put("avatarDigest", JsonNull)
+            put("projectionId", "proj-1")
+            put("externalActorId", "U123")
+            put("externalConversationId", "C42")
+            put("externalMessageId", "1700000000.000100")
+            put("workspaceId", "T1")
+            put("workspaceName", "Acme")
+            put("installId", "inst-1")
+            put("appRegistrationId", "app-1")
+            put("actorProjectionRevision", 7)
+        }
+        val decoded = assertNotNull(
+            decodeCanonicalMessageWire(
+                requiredRow("senderType" to JsonPrimitive("external_projection"), "externalAuthor" to author),
+                ProductionFace.EnrichedUpdated,
+            ),
+        )
+        assertTrue(MessageAggregateField.ExternalAuthor in decoded.presentAggregates)
+        val wire = assertNotNull(decoded.row.externalAuthor)
+        assertEquals("jinlu", wire.displayName)
+        assertEquals(7L, wire.actorProjectionRevision)
+        assertEquals("Acme", wire.workspaceName)
+        assertNull(wire.avatarUrl)
+
+        val presentNull = assertNotNull(decodeCanonicalMessageWire(requiredRow("externalAuthor" to JsonNull), ProductionFace.EnrichedUpdated))
+        assertTrue(MessageAggregateField.ExternalAuthor in presentNull.presentAggregates)
+        assertNull(presentNull.row.externalAuthor)
+        val absent = assertNotNull(decodeCanonicalMessageWire(requiredRow(), ProductionFace.EnrichedUpdated))
+        assertFalse(MessageAggregateField.ExternalAuthor in absent.presentAggregates)
+
+        // A required leaf missing or mistyped is not a valid author (same fail-soft rule as the other nested shapes).
+        val missingLeaf = buildJsonObject { author.forEach { (k, v) -> if (k != "installId") put(k, v) } }
+        val stringRevision = buildJsonObject { author.forEach { (k, v) -> put(k, v) }; put("actorProjectionRevision", "7") }
+        for (bad in listOf(missingLeaf, stringRevision)) {
+            assertNull(assertNotNull(decodeCanonicalMessageWire(requiredRow("externalAuthor" to bad), ProductionFace.EnrichedUpdated)).row.externalAuthor)
+        }
     }
 
     @Test

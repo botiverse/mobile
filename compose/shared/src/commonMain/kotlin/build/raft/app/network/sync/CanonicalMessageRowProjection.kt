@@ -6,11 +6,14 @@ import build.raft.app.canonical.message.CanonicalAttachmentWire
 import build.raft.app.canonical.message.CanonicalCommentHostSourceWire
 import build.raft.app.canonical.message.CanonicalCommentRefWire
 import build.raft.app.canonical.message.CanonicalConversationContextWire
+import build.raft.app.canonical.message.CanonicalExternalAuthorWire
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.CanonicalReactionWire
 import build.raft.app.commentHostRouteKindOrNull
 import build.raft.app.commentHostTypeOrNull
 import build.raft.app.data.WireActionCardMetadata
+import build.raft.app.data.WireExternalAuthor
+import build.raft.app.data.toExternalMessageAuthor
 import build.raft.app.data.toForwardMessageBundle
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.toThreadActionCard
@@ -28,6 +31,7 @@ import build.raft.app.model.MessageDeliveryState
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageReaction
 import build.raft.app.model.MessageType
+import build.raft.app.model.providerLabel
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.Presence
 import build.raft.app.model.ThreadId
@@ -65,16 +69,25 @@ fun CanonicalMessageRow.toAppMessage(
         senderType.strictMemberKindOrNull(
             source = "canonical_message_sender",
             diagnostics = diagnostics,
-            contract = MemberKindWireContract.InternalActor,
+            contract = MemberKindWireContract.MessageSender,
         ) ?: return null
+    // RealtimeEventMapper parity: an external_projection sender is shown only with its frozen author.
+    val external = senderKind == MemberKind.External
+    if (external && externalAuthor == null) {
+        diagnostics("projection_value_rejected source=canonical_message_sender field=externalAuthor value=missing messageId=$id")
+        return null
+    }
+    val resolvedExternalAuthor =
+        if (external) externalAuthor?.toWireExternalAuthor()?.toExternalMessageAuthor(senderName.ifBlank { null }) else null
     val authorKind = if (resolvedMessageType == MessageType.System) MemberKind.System else senderKind
     val fallbackAuthor = MemberProfile(
         id = MemberId(senderId),
-        displayName = senderName.ifBlank { senderId },
+        displayName = resolvedExternalAuthor?.displayName ?: senderName.ifBlank { senderId },
         handle = senderName.ifBlank { senderId },
         kind = authorKind,
-        description = senderDescription,
-        avatarLabel = senderName.ifBlank { senderId }.toRaftAvatarLabel(),
+        description = resolvedExternalAuthor?.providerLabel() ?: senderDescription,
+        avatarUrl = resolvedExternalAuthor?.avatarUrl,
+        avatarLabel = (resolvedExternalAuthor?.displayName ?: senderName.ifBlank { senderId }).toRaftAvatarLabel(),
         presence = Presence.Offline,
     )
     val action = actionMetadata.toAppActionProjection()
@@ -105,8 +118,26 @@ fun CanonicalMessageRow.toAppMessage(
         randomId = randomId?.takeIf { it.isNotBlank() },
         // Same as RealtimeEventMapper (parity): flagged here, emptied where it is shown.
         deletedAt = deletedAt,
+        externalAuthor = resolvedExternalAuthor,
     )
 }
+
+/** Same lossy app projection as the REST/realtime `WireExternalAuthor` (workspaceName is not shown). */
+private fun CanonicalExternalAuthorWire.toWireExternalAuthor(): WireExternalAuthor = WireExternalAuthor(
+    displayName = displayName,
+    provider = provider,
+    actorKind = actorKind,
+    avatarUrl = avatarUrl,
+    avatarDigest = avatarDigest,
+    projectionId = projectionId,
+    externalActorId = externalActorId,
+    externalConversationId = externalConversationId,
+    externalMessageId = externalMessageId,
+    workspaceId = workspaceId,
+    installId = installId,
+    appRegistrationId = appRegistrationId,
+    actorProjectionRevision = actorProjectionRevision,
+)
 
 private fun CanonicalAttachmentWire.toAppAttachment(): Attachment = Attachment(
     id = AttachmentId(id),
