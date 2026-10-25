@@ -1242,7 +1242,9 @@ internal class RaftSharedStoreProvider private constructor(
                     presenceWrite = { serverId -> presenceWriteResolver(serverId.value) },
                     processOwner = { serverId -> processServerMembersOwner(authStore(scope), serverId) },
                     avatarRefStore = memberAvatarRefStore,
-                    durableStore = serverMembersDurableStore
+                    durableStore = serverMembersDurableStore,
+                    actorResolve = jointActorResolve(networkClient(scope)),
+                    actorResolveScope = RaftStoreThreading.newScope()
                 )
             }
         }
@@ -2587,7 +2589,9 @@ internal class RaftSharedStoreProvider private constructor(
                         }
                     },
                     avatarRefStore = memberAvatarRefStore,
-                    durableStore = serverMembersDurableStore
+                    durableStore = serverMembersDurableStore,
+                    actorResolve = jointActorResolve(networkClient),
+                    actorResolveScope = RaftStoreThreading.newScope()
                 )
             lateinit var provider: RaftSharedStoreProvider
             val foregroundReconciler =
@@ -3826,3 +3830,13 @@ private fun SharedConversationIdentityHub.applyPendingCandidatesFor(context: Pro
 private const val JointConnectionsMaxPerServer = 32
 private const val JointConnectionsMaxPerAccount = 64
 private const val JointConnectionsMaxRows = 128
+
+/**
+ * Joint-channel sender identities fill avatars only: never user-blocking, so they wait behind
+ * Foreground / Visible work.
+ */
+private fun jointActorResolve(
+    networkClient: RaftNetworkClient
+): suspend (ServerId, List<ActorResolveRef>) -> ActorResolveOutcome = { serverId, refs ->
+    networkClient.resolveActors(DataRequestPriority.Background, serverId, refs)
+}

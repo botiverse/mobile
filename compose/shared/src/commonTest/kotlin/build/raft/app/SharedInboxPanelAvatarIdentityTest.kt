@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.SharedActivitySenderProfile
+import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.agentAvatarFallbackWireValue
@@ -188,5 +189,36 @@ class SharedInboxPanelAvatarIdentityTest {
         // A person with nothing to show stays null: the placeholder person.
         assertEquals(null, activityFaceAvatarWireValue(null, human))
         assertEquals("gravatar:abc", activityFaceAvatarWireValue("gravatar:abc", human))
+    }
+
+    @Test
+    fun aJointSenderFromTheOtherServerFillsOnlyARowWithoutItsOwnAvatar() {
+        val peerAvatar = "https://cdn.example/avatars/users/0a1b2c3d.webp"
+        val human = ActivitySenderAvatarIdentity(MemberKind.Human, avatarWireValue = null, label = "Peer", senderId = "human-1", jointSurface = true)
+        val agent = ActivitySenderAvatarIdentity(MemberKind.Agent, avatarWireValue = null, label = "Peer bot", senderId = "agent-1", jointSurface = true)
+
+        // This server's directory first, then the row's own avatar, then the resolved actor.
+        assertEquals("gravatar:abc", activityFaceAvatarWireValue("gravatar:abc", human, peerAvatar))
+        assertEquals(
+            "https://cdn.example/avatars/users/ffff.webp",
+            activityFaceAvatarWireValue(null, human.copy(avatarWireValue = "https://cdn.example/avatars/users/ffff.webp"), peerAvatar)
+        )
+        assertEquals(peerAvatar, activityFaceAvatarWireValue(null, human, peerAvatar))
+        assertEquals("https://cdn.example/agent.png", activityFaceAvatarWireValue(null, agent, "https://cdn.example/agent.png"))
+        // Nothing resolved: today's faces.
+        assertEquals(null, activityFaceAvatarWireValue(null, human, null))
+        assertEquals(agentAvatarFallbackWireValue("agent-1"), activityFaceAvatarWireValue(null, agent, null))
+    }
+
+    @Test
+    fun onlyJointRowsMayResolveTheirSender() {
+        val base = fixtures.activityItem(key = "row")
+        assertEquals(true, base.copy(kind = InboxItemKind.Channel, channelKind = ConversationKind.Joint).activitySenderAvatarIdentity().jointSurface)
+        assertEquals(true, base.copy(kind = InboxItemKind.Channel, channelKind = null, channelType = "joint").isJointActivityRow())
+        assertEquals(false, base.copy(kind = InboxItemKind.Channel, channelKind = ConversationKind.Channel, channelType = "channel").isJointActivityRow())
+        assertEquals(true, base.copy(kind = InboxItemKind.Thread, parentChannelKind = ConversationKind.Joint).isJointActivityRow())
+        assertEquals(false, base.copy(kind = InboxItemKind.Thread, channelKind = ConversationKind.Joint, parentChannelKind = ConversationKind.Channel).isJointActivityRow())
+        assertEquals(false, base.copy(kind = InboxItemKind.MentionAction, channelKind = ConversationKind.Joint).isJointActivityRow())
+        assertEquals(false, base.copy(kind = InboxItemKind.DirectMessage, channelKind = ConversationKind.DirectMessage).isJointActivityRow())
     }
 }

@@ -23,6 +23,7 @@ import build.raft.app.model.isAgentFallbackAvatarWireValue
 import build.raft.app.raftAvatarDiagnosticsHash
 import build.raft.app.raftAvatarDiagnosticsSource
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -543,9 +544,42 @@ class SharedServerMembersStore internal constructor(
      */
     private val durableStore: RaftServerMembersDurableStore? = null,
     /** Tenny rule 3: rosters kept in memory, least recently refreshed / written evicted first. */
-    private val maxCachedServers: Int = SharedServerMembersMaxCachedServers
+    private val maxCachedServers: Int = SharedServerMembersMaxCachedServers,
+    /**
+     * `POST /api/actors/resolve` for joint-channel senders of the other server ([jointActors]).
+     * Null (tests, fixtures) keeps the directory off: such senders keep today's fallback face.
+     */
+    actorResolve: (suspend (ServerId, List<ActorResolveRef>) -> ActorResolveOutcome)? = null,
+    /** Where [jointActors] runs its batches; required with [actorResolve]. */
+    actorResolveScope: CoroutineScope? = null,
 ) {
     private val mutex = Mutex()
+
+    /**
+     * Display identities of joint-channel senders no roster of this server carries. Kept apart
+     * from the member directory and profile cache: they are not members of this server and must
+     * not reach member lists, mentions or status. Read only as an avatar fallback.
+     */
+    val jointActors: SharedJointActorDirectory? =
+        if (actorResolve != null && actorResolveScope != null) {
+            SharedJointActorDirectory(
+                coroutineScope = actorResolveScope,
+                owner = { serverId -> presenceOwner(serverId) },
+                knownLocally = { serverId, ref -> knowsActorLocally(serverId, ref.id) },
+                resolve = actorResolve,
+                logger = { message -> logger("joint_actor_directory $message") },
+            )
+        } else {
+            null
+        }
+
+    /** This server's members, agents (deleted ones too) or channel rosters already know [memberId]. */
+    private fun knowsActorLocally(serverId: ServerId, memberId: String): Boolean {
+        val key = serverId.value.normalizedServerMembersId() ?: return false
+        val id = memberId.normalizedServerMembersId() ?: return false
+        return _state.value.memberProfile(ServerId(key), id) != null ||
+            id in deletedAgentIdsByServerId[key].orEmpty()
+    }
 
     /**
      * Presence transport each channel slice's peer-agent presence facts were written under.
@@ -915,6 +949,8 @@ class SharedServerMembersStore internal constructor(
             memberStatusFlows.clear()
             memberProfileFlows.clear()
         }
+        // Same lifetime: resolved joint-channel senders belong to the retiring owner.
+        jointActors?.clear()
     }
 
     fun memberStatusFlow(
@@ -3198,6 +3234,7 @@ class SharedServerMembersStore internal constructor(
      */
     private fun removeLostAccessRoster(key: String, binding: SharedServerChannelMembersOwnerBinding) {
         removeEntry(key)
+        jointActors?.clearServer(ServerId(key))
         publishedProcessVersionsByOwner.remove(binding)
         synchronized(recencyLock) { serverRecency.remove(key) }
         logger("shared_server_members_load_result serverId=$key result=access_lost")
