@@ -7,6 +7,7 @@ import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -15,6 +16,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
@@ -43,6 +46,11 @@ class SharedJointActorDirectory internal constructor(
     private val coroutineScope: CoroutineScope,
     /** The current owner of [ServerId]'s data, or null while signed out. Synchronous. */
     private val owner: (ServerId) -> ProcessServerMembersOwner?,
+    /**
+     * The same owner as an observable flow: a row mounted before the auth context is ready (cold
+     * start, account switch) asks once the owner appears.
+     */
+    private val ownerFlow: (ServerId) -> Flow<ProcessServerMembersOwner?> = { serverId -> flowOf(owner(serverId)) },
     /** True when this server's members / agents (deleted agents too) already know [ActorResolveRef]. */
     private val knownLocally: (ServerId, ActorResolveRef) -> Boolean,
     private val resolve: suspend (ServerId, List<ActorResolveRef>) -> ActorResolveOutcome,
@@ -71,7 +79,11 @@ class SharedJointActorDirectory internal constructor(
 
     private fun scopeOf(serverId: ServerId): Scope? {
         val cleanServerId = serverId.value.trim().takeIf { it.isNotEmpty() } ?: return null
-        val current = owner(ServerId(cleanServerId)) ?: return null
+        return owner(ServerId(cleanServerId)).toScope(cleanServerId)
+    }
+
+    private fun ProcessServerMembersOwner?.toScope(cleanServerId: String): Scope? {
+        val current = this ?: return null
         if (current.serverId.trim() != cleanServerId) return null
         return Scope(current.environmentId.trim(), current.accountId.trim(), cleanServerId)
     }
@@ -86,20 +98,36 @@ class SharedJointActorDirectory internal constructor(
         _rows.value.rowFor(scopeOf(serverId), id.trim(), kind)
 
     /**
-     * The resolved row for [id], asking the server for it when collected and still missing. Emits
-     * again only when that row changes.
+     * The resolved row for [id] in the owner's current scope, asking the server for it whenever a
+     * scope becomes current (first collection, or the owner appearing / changing) and the row is
+     * still missing. Emits again only when that row changes.
      */
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun actorFlow(serverId: ServerId, ref: ActorResolveRef): Flow<ResolvedActor?> {
+        val cleanServerId = serverId.value.trim().takeIf { it.isNotEmpty() } ?: return flowOf(null)
         val id = ref.id.trim()
-        return _rows
-            .map { rows -> rows.rowFor(scopeOf(serverId), id, ref.kind) }
+        return ownerFlow(ServerId(cleanServerId))
+            .map { it.toScope(cleanServerId) }
             .distinctUntilChanged()
-            .onStart { request(serverId, listOf(ref)) }
+            .flatMapLatest { scope ->
+                if (scope == null) {
+                    flowOf(null)
+                } else {
+                    _rows
+                        .map { rows -> rows.rowFor(scope, id, ref.kind) }
+                        .onStart { requestIn(scope, listOf(ref)) }
+                }
+            }
+            .distinctUntilChanged()
     }
 
     /** Asks for the refs this scope has no row for and has not asked yet. Cheap to call repeatedly. */
     fun request(serverId: ServerId, refs: List<ActorResolveRef>) {
         val scope = scopeOf(serverId) ?: return
+        requestIn(scope, refs)
+    }
+
+    private fun requestIn(scope: Scope, refs: List<ActorResolveRef>) {
         synchronized(lock) {
             val state = requests.getOrPut(scope) { ScopeRequests() }
             if (state.disabled) return
@@ -129,7 +157,7 @@ class SharedJointActorDirectory internal constructor(
                 delay(debounceMillis)
                 val batch =
                     synchronized(lock) {
-                        if (!isLive(scope, state)) return
+                        if (!isLive(scope, state)) return finishLocked(state, self)
                         val stored = _rows.value[scope].orEmpty()
                         val refs =
                             state.pending.values.filter { ref ->
@@ -139,9 +167,11 @@ class SharedJointActorDirectory internal constructor(
                             }
                         state.pending.clear()
                         refs.forEach { state.asked += it.key }
+                        // Nothing to send: the loop ends here, under the same lock a request()
+                        // checks `flight` under, so a ref queued right after starts a new flight.
+                        if (refs.isEmpty()) return finishLocked(state, self)
                         refs
                     }
-                if (batch.isEmpty()) return
                 for (chunk in batch.chunked(ACTOR_RESOLVE_MAX_ACTORS)) {
                     val outcome =
                         try {
@@ -154,12 +184,13 @@ class SharedJointActorDirectory internal constructor(
                     synchronized(lock) {
                         // A sign-out, account switch or clear since the request: the answer is for
                         // a scope nobody reads now.
-                        if (!isLive(scope, state)) return
+                        if (!isLive(scope, state)) return finishLocked(state, self)
                         when (outcome) {
                             is ActorResolveOutcome.Resolved -> upsert(scope, outcome.actors)
                             ActorResolveOutcome.Unavailable -> {
                                 state.disabled = true
                                 state.pending.clear()
+                                finishLocked(state, self)
                             }
                             is ActorResolveOutcome.Failed -> Unit
                         }
@@ -175,7 +206,8 @@ class SharedJointActorDirectory internal constructor(
                     }
                 }
                 synchronized(lock) {
-                    if (!isLive(scope, state) || state.pending.isEmpty()) return
+                    // Same rule: decide "nothing queued" and release the flight in one locked step.
+                    if (!isLive(scope, state) || state.pending.isEmpty()) return finishLocked(state, self)
                 }
             }
         } finally {
@@ -183,6 +215,11 @@ class SharedJointActorDirectory internal constructor(
                 if (state.flight === self) state.flight = null
             }
         }
+    }
+
+    /** Under [lock]: this flight is over; the next request() starts a new one. */
+    private fun finishLocked(state: ScopeRequests, self: Job?) {
+        if (state.flight === self) state.flight = null
     }
 
     private fun isLive(scope: Scope, state: ScopeRequests): Boolean =

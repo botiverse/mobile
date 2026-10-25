@@ -5,6 +5,8 @@ import build.raft.app.model.ServerId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
@@ -42,15 +44,25 @@ class SharedJointActorDirectoryTest {
 
     private class Harness(
         scope: CoroutineScope,
-        var account: String? = "user-1",
         val known: MutableSet<String> = mutableSetOf(),
         var answer: suspend (List<ActorResolveRef>) -> ActorResolveOutcome,
     ) {
+        val accountFlow = MutableStateFlow<String?>("user-1")
+        var account: String?
+            get() = accountFlow.value
+            set(value) {
+                accountFlow.value = value
+            }
         val calls = mutableListOf<List<ActorResolveRef>>()
+
+        private fun ownerOf(serverId: ServerId, account: String?) =
+            account?.let { ProcessServerMembersOwner("https://api.test", it, serverId.value) }
+
         val directory =
             SharedJointActorDirectory(
                 coroutineScope = scope,
-                owner = { serverId -> account?.let { ProcessServerMembersOwner("https://api.test", it, serverId.value) } },
+                owner = { serverId -> ownerOf(serverId, account) },
+                ownerFlow = { serverId -> accountFlow.map { ownerOf(serverId, it) } },
                 knownLocally = { _, ref -> ref.id in known },
                 resolve = { _, refs ->
                     calls += refs
@@ -220,5 +232,56 @@ class SharedJointActorDirectoryTest {
         h.directory.request(server, listOf(human(1)))
         advanceUntilIdle()
         assertTrue(h.calls.isEmpty())
+    }
+
+    @Test
+    fun aRefQueuedWhileABatchIsAnsweredGoesInTheNextBatch() = runTest {
+        lateinit var h: Harness
+        h = harness { refs ->
+            // The batch is finishing: a row mounts and asks for another sender.
+            if (refs.first() == human(1)) h.directory.request(server, listOf(human(2)))
+            ActorResolveOutcome.Resolved(refs.map { resolvedActorOf(it) })
+        }
+        h.directory.request(server, listOf(human(1)))
+        advanceUntilIdle()
+        assertEquals(listOf(listOf(human(1)), listOf(human(2))), h.calls)
+        assertEquals(uuid(2), h.directory.current(server, uuid(2))?.id)
+    }
+
+    @Test
+    fun aRequestAfterABatchEndedWithNothingToSendStartsANewOne() = runTest {
+        val h = harness()
+        h.directory.request(server, listOf(human(1)))
+        // The roster learns the only queued ref: the flight ends without a request.
+        h.known += uuid(1)
+        advanceUntilIdle()
+        assertTrue(h.calls.isEmpty())
+
+        h.directory.request(server, listOf(human(2)))
+        advanceUntilIdle()
+        assertEquals(listOf(listOf(human(2))), h.calls)
+    }
+
+    @Test
+    fun aRowMountedBeforeTheOwnerIsKnownAsksOnceItAppears() = runTest {
+        val h = harness { refs -> ActorResolveOutcome.Resolved(refs.map { resolvedActorOf(it, "https://cdn.test/a.webp") }) }
+        h.account = null
+        val emissions = mutableListOf<ResolvedActor?>()
+        // A foreground collector, so advanceUntilIdle also drives its reaction to the owner.
+        val row = launch { h.directory.actorFlow(server, human(1)).toList(emissions) }
+        advanceUntilIdle()
+        assertTrue(h.calls.isEmpty(), "no owner, no scope: nothing asked")
+
+        h.account = "user-1"
+        advanceUntilIdle()
+        assertEquals(listOf(listOf(human(1))), h.calls)
+        assertEquals("https://cdn.test/a.webp", emissions.last()?.avatarUrl)
+
+        // Account switch: the new owner's scope asks for itself; the old row is not shown.
+        h.account = "user-2"
+        advanceUntilIdle()
+        assertEquals(listOf(listOf(human(1)), listOf(human(1))), h.calls)
+        assertEquals(uuid(1), emissions.last()?.id)
+        row.cancel()
     }
 }

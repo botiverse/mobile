@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.sync.Mutex
@@ -565,6 +566,7 @@ class SharedServerMembersStore internal constructor(
             SharedJointActorDirectory(
                 coroutineScope = actorResolveScope,
                 owner = { serverId -> presenceOwner(serverId) },
+                ownerFlow = { serverId -> presenceOwnerFlow(serverId) },
                 knownLocally = { serverId, ref -> knowsActorLocally(serverId, ref.id) },
                 resolve = actorResolve,
                 logger = { message -> logger("joint_actor_directory $message") },
@@ -578,7 +580,7 @@ class SharedServerMembersStore internal constructor(
         val key = serverId.value.normalizedServerMembersId() ?: return false
         val id = memberId.normalizedServerMembersId() ?: return false
         return _state.value.memberProfile(ServerId(key), id) != null ||
-            id in deletedAgentIdsByServerId[key].orEmpty()
+            id in deletedAgentIdsByServerId.value[key].orEmpty()
     }
 
     /**
@@ -600,7 +602,9 @@ class SharedServerMembersStore internal constructor(
     // Server ids, least recently used first. Guarded by [recencyLock].
     private val serverRecency = LinkedHashSet<String>()
     private val publishedProcessVersionsByOwner = mutableMapOf<SharedServerChannelMembersOwnerBinding, Long>()
-    private val deletedAgentIdsByServerId = mutableMapOf<String, Set<String>>()
+    // Immutable snapshots behind an atomic reference: read off-thread by the joint actor
+    // directory's batch loop (knowsActorLocally) while markAgentDeleted / dropServer write it.
+    private val deletedAgentIdsByServerId = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
     private val _state = MutableStateFlow(SharedServerMembersState())
     val state: StateFlow<SharedServerMembersState> = _state.asStateFlow()
 
@@ -1394,8 +1398,9 @@ class SharedServerMembersStore internal constructor(
         val serverKey = serverId.value.trim()
         val agentKey = agentId.value.trim()
         if (serverKey.isBlank() || agentKey.isBlank()) return false
-        val currentDeleted = deletedAgentIdsByServerId[serverKey].orEmpty()
-        deletedAgentIdsByServerId[serverKey] = currentDeleted + agentKey
+        deletedAgentIdsByServerId.update { current ->
+            current + (serverKey to (current[serverKey].orEmpty() + agentKey))
+        }
         return removeMember(serverId = ServerId(serverKey), memberId = MemberId(agentKey), memberKind = MemberKind.Agent)
     }
 
@@ -3139,9 +3144,10 @@ class SharedServerMembersStore internal constructor(
         val key = serverId.value.normalizedServerMembersId() ?: return
         val binding = currentDirectoryOwnerBinding(ServerId(key))
         processOwner(ServerId(key))?.let { owner -> processCore.invalidate(owner, reason = "server_access_lost") }
+        jointActors?.clearServer(ServerId(key))
         mutex.withLock {
             publishedProcessVersionsByOwner.keys.removeAll { it.serverId == key }
-            deletedAgentIdsByServerId.remove(key)
+            deletedAgentIdsByServerId.update { it - key }
             _state.value =
                 _state.value.let { current ->
                     current.copy(
@@ -3327,7 +3333,7 @@ class SharedServerMembersStore internal constructor(
     }
 
     private fun List<MemberProfile>.filterDeletedAgents(serverKey: String): List<MemberProfile> {
-        val deletedAgentIds = deletedAgentIdsByServerId[serverKey].orEmpty()
+        val deletedAgentIds = deletedAgentIdsByServerId.value[serverKey].orEmpty()
         if (deletedAgentIds.isEmpty()) return this
         return filterNot { it.kind == MemberKind.Agent && it.id.value.trim() in deletedAgentIds }
     }
@@ -3341,7 +3347,7 @@ class SharedServerMembersStore internal constructor(
     }
 
     private fun MemberProfile.isDeletedAgentProfile(serverKey: String): Boolean =
-        kind == MemberKind.Agent && id.value.trim() in deletedAgentIdsByServerId[serverKey].orEmpty()
+        kind == MemberKind.Agent && id.value.trim() in deletedAgentIdsByServerId.value[serverKey].orEmpty()
 }
 
 // task #136: presence replacement rules moved to ProcessMemberPresenceRegistry
