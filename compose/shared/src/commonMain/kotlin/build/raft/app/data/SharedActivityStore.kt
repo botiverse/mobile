@@ -1034,7 +1034,10 @@ class SharedActivityStore internal constructor(
         when (event) {
             // Not past a mute (the shell's allowLocalPatch): the served row stops there.
             is MessageNew -> if (intent.allowLocalPatch) raiseRealtimeCatchUpTargetLocked(event.message)
-            is MessageUpdated -> acceptMessageUpdatedFreshness(event.message)
+            is MessageUpdated -> {
+                acceptMessageUpdatedFreshness(event.message)
+                applyChannelMessageUpdatedPatch(event.message, intent)
+            }
             is SyncResumeResponse ->
                 _state.value.ownerServerId?.let(replyThreadFreshnessLedger::invalidateServer)
             is RealtimeRefreshRequired ->
@@ -1170,6 +1173,32 @@ class SharedActivityStore internal constructor(
             )
         applyPatchedActivityItem(patched, existingIndex, current, snapshot, intent)
         return true
+    }
+
+    /**
+     * `message:updated` for the message a channel/DM row shows (`lastMessageId`), usually one
+     * [applyChannelMessageNewPatch] put there and the lagging inbox view is still behind. The row's
+     * preview follows the updated body in place, like the patch derives it; the held fields
+     * ([reconcileRealtimeChannelRow] copies them from the shown row) then keep the new text until
+     * the server catches up. Sender, time, seq, counts and order stay: a message's author and
+     * creation time never change. A blank body is a sparse update and keeps the preview (thread
+     * page merge, `body.ifBlank { body }`); the server and the App have no retracted-message state.
+     * No filter/mute gate: the update moves no row in or out, it only corrects text already shown.
+     */
+    private fun applyChannelMessageUpdatedPatch(
+        message: Message,
+        intent: SharedActivityIntent.ApplyRealtimeEvent
+    ) {
+        val body = message.body.takeIf { it.isNotBlank() } ?: return
+        val current = _state.value
+        val snapshot = current.snapshot ?: return
+        val existingIndex =
+            snapshot.items.indexOfFirst { item -> item.isChannelOrDmRow() && item.lastMessageId == message.id }
+        if (existingIndex < 0) return
+        val existing = snapshot.items[existingIndex]
+        if (existing.lastMessagePreview == body) return
+        val items = snapshot.items.toMutableList().apply { set(existingIndex, existing.copy(lastMessagePreview = body)) }
+        reduceState(intent, current.copy(snapshot = snapshot.copy(items = items)))
     }
 
     private fun applyThreadUpdatedPatch(
