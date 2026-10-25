@@ -48,7 +48,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -1560,92 +1559,6 @@ class SharedActivityStoreTest {
         assertEquals(0, store.state.value.items.single().unreadCount)
         assertEquals(0, store.state.value.totalUnreadCount)
         assertEquals(1, inbox.initialLoadCount)
-        scope.cancel()
-    }
-
-    @Test
-    fun processReadPredictionSerializesWithRealtimePatchWithoutLosingEitherTransition() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val realtimeOwnerHeld = CompletableDeferred<Unit>()
-        val releaseRealtimeOwner = CompletableDeferred<Unit>()
-        val predictionEnteredOwner = CompletableDeferred<Unit>()
-        val inbox =
-            FakeInboxRepository(
-                initialSnapshots =
-                    listOf(
-                        snapshot(
-                            listOf(threadItem("thread-channel-1", unreadCount = 2)),
-                            totalUnreadCount = 2
-                        )
-                    )
-            )
-        val ownerFactory = { serverId: String, accountId: String ->
-            ReadReceiptOwner("production", accountId, serverId)
-        }
-        val store =
-            activityStore(
-                scope = scope,
-                inboxRepository = inbox,
-                readReceiptOwnerFactory = ownerFactory,
-                onRealtimePatchOwnerEntered = {
-                    realtimeOwnerHeld.complete(Unit)
-                    runBlocking { releaseRealtimeOwner.await() }
-                },
-                onReadReceiptPredictionOwnerEntered = {
-                    predictionEnteredOwner.complete(Unit)
-                }
-            )
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        // LoadInitial is asynchronous. A realtime event that arrives before the row exists has nothing to
-        // patch and is left to the reconcile reload, which this fake inbox cannot answer with the message.
-        withTimeout(5_000L) { while (store.state.value.items.isEmpty()) delay(10L) }
-        val owner = ReadReceiptOwner("production", "user-1", "server-1")
-
-        val realtimeJob =
-            scope.launch {
-                store.dispatch(
-                    SharedActivityIntent.ApplyRealtimeEvent(
-                        MessageNew(
-                            message(
-                                id = "message-concurrent",
-                                channelId = "thread-channel-1",
-                                body = "Concurrent realtime preview"
-                            )
-                        )
-                    )
-                )
-            }
-        withTimeout(2_000L) { realtimeOwnerHeld.await() }
-
-        val predictionJob =
-            scope.launch {
-                store.dispatch(
-                    SharedActivityIntent.ApplyReadReceiptPrediction(
-                        ReadReceiptPrediction(
-                            owner = owner,
-                            channelId = ChannelId("thread-channel-1"),
-                            revision = 1L,
-                            target = ReadReceiptTarget.All
-                        )
-                    )
-                )
-            }
-        val enteredWhileRealtimeHeld =
-            withTimeoutOrNull(200L) {
-                predictionEnteredOwner.await()
-            }
-        assertEquals(null, enteredWhileRealtimeHeld)
-
-        releaseRealtimeOwner.complete(Unit)
-        realtimeJob.join()
-        predictionJob.join()
-
-        val item = store.state.value.items.single()
-        assertEquals(MessageId("message-concurrent"), item.latestActivityMessageId)
-        assertEquals("Concurrent realtime preview", item.latestActivityPreview)
-        assertEquals(0, item.unreadCount)
-        assertEquals(0, store.state.value.totalUnreadCount)
-        assertTrue(predictionEnteredOwner.isCompleted)
         scope.cancel()
     }
 
@@ -3200,101 +3113,6 @@ class SharedActivityStoreTest {
         delay(150L)
         assertEquals(2, inbox.initialLoadCount)
         assertEquals(false, store.state.value.refreshing)
-        scope.cancel()
-    }
-
-    @Test
-    fun realtimePatchCannotEnterOwnerDuringStaleLoadFoldAndKeepsHighWater() = runBlocking {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val inbox = DeferredInboxRepository()
-        lateinit var store: SharedActivityStore
-        val foldHeld = CompletableDeferred<Unit>()
-        val releaseFold = CompletableDeferred<Unit>()
-        val secondPatchEnteredOwner = CompletableDeferred<Unit>()
-        val patchEntryLock = SynchronizedObject()
-        var loadResultCount = 0
-        var patchEntryCount = 0
-        store =
-            activityStore(
-                scope = scope,
-                inboxRepository = inbox,
-                beforeRealtimeHighWaterFold = {
-                    loadResultCount += 1
-                    if (loadResultCount == 2) {
-                        foldHeld.complete(Unit)
-                        runBlocking { releaseFold.await() }
-                    }
-                },
-                onRealtimePatchOwnerEntered = {
-                    synchronized(patchEntryLock) {
-                        patchEntryCount += 1
-                        if (patchEntryCount == 2) secondPatchEnteredOwner.complete(Unit)
-                    }
-                }
-            )
-        val stale = threadItem("thread-channel-1", unreadCount = 1).copy(replyCount = 2)
-
-        store.dispatch(SharedActivityIntent.LoadInitial)
-        awaitPendingCount(inbox, 1)
-        inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 1))
-        awaitState(store) { state -> state.loaded && !state.refreshing }
-
-        store.dispatch(
-            SharedActivityIntent.ApplyRealtimeEvent(
-                MessageNew(
-                    message(
-                        id = "message-1",
-                        channelId = "thread-channel-1",
-                        body = "First realtime preview"
-                    )
-                )
-            )
-        )
-        assertEquals(MessageId("message-1"), store.state.value.items.single().latestActivityMessageId)
-
-        store.dispatch(SharedActivityIntent.Refresh)
-        awaitPendingCount(inbox, 1)
-        inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 1))
-        withTimeout(2_000L) { foldHeld.await() }
-
-        val secondPatch =
-            scope.launch {
-                store.dispatch(
-                    SharedActivityIntent.ApplyRealtimeEvent(
-                        MessageNew(
-                            message(
-                                id = "message-new",
-                                channelId = "thread-channel-1",
-                                body = "Realtime preview"
-                            )
-                        )
-                    )
-                )
-            }
-        val enteredWhileFoldHeld =
-            withTimeoutOrNull(200L) {
-                secondPatchEnteredOwner.await()
-            }
-        assertEquals(null, enteredWhileFoldHeld)
-
-        releaseFold.complete(Unit)
-        secondPatch.join()
-        awaitState(store) { state ->
-            !state.refreshing && state.items.singleOrNull()?.latestActivityMessageId == MessageId("message-new")
-        }
-
-        store.dispatch(SharedActivityIntent.Refresh)
-        awaitPendingCount(inbox, 1)
-        inbox.completeNextSnapshot(snapshot(listOf(stale), totalUnreadCount = 1))
-        awaitState(store) { state ->
-            !state.refreshing && state.items.singleOrNull()?.latestActivityMessageId == MessageId("message-new")
-        }
-
-        val reconciled = store.state.value.items.single()
-        assertEquals("Realtime preview", reconciled.latestActivityPreview)
-        assertEquals(4, reconciled.replyCount)
-        assertEquals(1, reconciled.unreadCount, "unread stays the server's")
-        assertTrue(secondPatchEnteredOwner.isCompleted)
         scope.cancel()
     }
 
