@@ -12,13 +12,15 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 
 /**
- * #triage 84d44d75: `GET /channels/inbox` is served from a warehouse view that lags the write by
- * ~1-2 s, so the read a channel `message:new` triggers is often one message behind. The event
- * patches the existing channel row (preview / sender / time, seq-guarded), the store re-reads at
- * most twice (1.5 s, then 3 s) until the inbox reaches the event's seq, and an overloaded inbox
- * is left to Retry-After.
+ * #triage 84d44d75 (web parity: slock #11208): `GET /channels/inbox` is served from a warehouse
+ * view that lags the write by ~1-2 s, so the read a channel `message:new` triggers is often one
+ * message behind. The event patches the existing channel/DM row (preview / sender / time,
+ * seq-guarded); while a clean answer still serves that row behind the event, the list is re-read
+ * after 1.5 s and then 3 s through the realtime throttle, then the catch-up stops. A stale or
+ * overloaded answer ends it and the Retry-After recovery takes over.
  *
- * Real [RealInboxRepository] under virtual time; the throttle window is the production one.
+ * Real [RealInboxRepository] under virtual time; the throttle window is the production one
+ * (2.5 s from the last reset read), so a 1.5 s catch-up read lands on the window's edge.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SharedActivityStoreChannelRowLagTest {
@@ -48,13 +50,13 @@ class SharedActivityStoreChannelRowLagTest {
         assertEquals("42", afterStaleRead.latestActivitySeq)
         assertEquals(3, afterStaleRead.unreadCount, "counts stay the server's")
 
-        advanceTimeBy(1_500)
+        advanceTimeBy(2_500)
         runCurrent()
         assertEquals("new", store.state.value.items.single().lastMessagePreview)
         advanceTimeBy(3_000)
         runCurrent()
 
-        assertEquals(listOf(eventAt, eventAt + 1_500, eventAt + 4_500), network.requestTimes.drop(1))
+        assertEquals(listOf(eventAt, eventAt + 2_500, eventAt + 5_500), network.requestTimes.drop(1))
         val caughtUp = store.state.value.items.single()
         assertEquals("new (server)", caughtUp.lastMessagePreview, "once the server reaches the seq, its row wins")
         assertEquals(4, caughtUp.unreadCount)
@@ -73,9 +75,9 @@ class SharedActivityStoreChannelRowLagTest {
         runCurrent()
 
         assertEquals(
-            listOf(eventAt, eventAt + 1_500, eventAt + 4_500),
+            listOf(eventAt, eventAt + 2_500, eventAt + 5_500),
             network.requestTimes.drop(1),
-            "the event's read plus at most two retries"
+            "the event's read plus at most two retries, each through the throttle"
         )
         assertEquals("new", store.state.value.items.single().lastMessagePreview, "the patched row is kept")
     }
@@ -101,7 +103,7 @@ class SharedActivityStoreChannelRowLagTest {
         runCurrent()
 
         assertEquals(
-            listOf(eventAt, eventAt + 1_500),
+            listOf(eventAt, eventAt + 2_500),
             network.requestTimes.drop(1),
             "five events make one read; one retry because 45 is behind 46, none once 46 answers"
         )
@@ -109,7 +111,7 @@ class SharedActivityStoreChannelRowLagTest {
     }
 
     @Test
-    fun anOverloadedInboxFollowsRetryAfterInsteadOfTheCatchUpRetries() = runTest {
+    fun anOverloadedInboxEndsTheCatchUpAndFollowsRetryAfter() = runTest {
         val recoveryRetryAfters = mutableListOf<Long?>()
         val network =
             ScriptedInboxNetwork(
@@ -118,7 +120,7 @@ class SharedActivityStoreChannelRowLagTest {
                     inbox(row(seq = 41, preview = "hi", unread = 3)),
                     rwOverloadedInboxResponse(),
                     rwOverloadedInboxResponse(),
-                    inbox(row(seq = 42, preview = "new (server)", unread = 4))
+                    inbox(row(seq = 41, preview = "hi", unread = 3))
                 )
             )
         val store =
@@ -133,38 +135,121 @@ class SharedActivityStoreChannelRowLagTest {
         advanceTimeBy(60_000)
         runCurrent()
 
-        // The inbox's own 503 retry after `Retry-After: 2`, then the recovery read after Retry-After.
+        // The inbox's own 503 retry after `Retry-After: 2`, then one recovery read after Retry-After.
+        // That answer is still behind, but the catch-up already ended: no 1.5 s / 3 s reads.
         assertEquals(listOf(eventAt, eventAt + 2_000, eventAt + 4_000), network.requestTimes.drop(1))
         assertEquals(listOf<Long?>(2_000L), recoveryRetryAfters)
-        val row = store.state.value.items.single()
-        assertEquals("new (server)", row.lastMessagePreview)
+        assertEquals("new", store.state.value.items.single().lastMessagePreview)
         assertFalse(store.state.value.stale)
     }
 
     @Test
-    fun patchMovesOnlyMessageFieldsOnANewerSeqAndNeverCreatesARow() = runTest {
-        val network = ScriptedInboxNetwork(this, listOf(inbox(row(seq = 41, preview = "hi", unread = 3))))
+    fun aRowMissingFromTheAnswerIsNotBehind() = runTest {
+        val network =
+            ScriptedInboxNetwork(
+                this,
+                listOf(
+                    inbox(row(seq = 41, preview = "hi", unread = 3)),
+                    inbox(row(seq = 30, preview = "elsewhere", unread = 0, channelId = "random"))
+                )
+            )
         val store = loadedStore(network)
-
-        store.dispatch(newMessage(seq = 40, channelId = "general", id = "m-old"))
-        assertEquals("hi", store.state.value.items.single().lastMessagePreview, "an older seq never patches")
-
-        store.dispatch(newMessage(seq = 50, channelId = "unknown-channel", id = "m-unknown"))
-        assertEquals(listOf("channel:general"), store.state.value.items.map(InboxItem::key), "no row for an unknown channel")
+        val eventAt = testScheduler.currentTime
 
         store.dispatch(newMessage(seq = 42))
-        val patched = store.state.value.items.single()
+        runCurrent()
+        advanceTimeBy(60_000)
+        runCurrent()
+
+        assertEquals(listOf(eventAt), network.requestTimes.drop(1), "no catch-up read for a row the answer left out")
+        assertEquals(listOf("channel:random"), store.state.value.items.map(InboxItem::key), "visibility is the server's")
+    }
+
+    @Test
+    fun aPatchedRowStaysOnTopOverAnOlderServedOrder() = runTest {
+        val network =
+            ScriptedInboxNetwork(
+                this,
+                listOf(
+                    inbox(
+                        row(seq = 40, preview = "r", unread = 0, channelId = "random"),
+                        row(seq = 39, preview = "hi", unread = 3)
+                    )
+                )
+            )
+        val store = loadedStore(network, initialKeys = listOf("channel:random", "channel:general"))
+
+        store.dispatch(newMessage(seq = 42))
+        assertEquals(listOf("channel:general", "channel:random"), store.state.value.items.map(InboxItem::key))
+        runCurrent()
+
+        assertEquals(2, network.requestTimes.size, "the stale re-read answered")
+        assertEquals(
+            listOf("channel:general", "channel:random"),
+            store.state.value.items.map(InboxItem::key),
+            "the older served order does not move the patched row down"
+        )
+        assertEquals("new", store.state.value.items.first().lastMessagePreview)
+    }
+
+    @Test
+    fun aMutedChannelMessageNeverPatchesTheRow() = runTest {
+        val network = ScriptedInboxNetwork(this, listOf(inbox(row(seq = 41, preview = "hi", unread = 3))))
+        val store = loadedStore(network)
+        val eventAt = testScheduler.currentTime
+
+        // The shell's verdict for a message at or past the channel's Activity mute, a mention
+        // included (SharedHomeShellStore.allowsLocalActivityPatch): the served row stops at the mute.
+        store.dispatch(newMessage(seq = 42).copy(allowLocalPatch = false))
+        runCurrent()
+        advanceTimeBy(60_000)
+        runCurrent()
+
+        assertEquals("hi", store.state.value.items.single().lastMessagePreview)
+        assertEquals(listOf(eventAt), network.requestTimes.drop(1), "the reconcile read, and no catch-up for a muted message")
+    }
+
+    @Test
+    fun patchMovesOnlyMessageFieldsOnANewerSeqForChannelAndDmRowsAndNeverCreatesARow() = runTest {
+        val network =
+            ScriptedInboxNetwork(
+                this,
+                listOf(
+                    inbox(
+                        row(seq = 41, preview = "hi", unread = 3),
+                        row(seq = 20, preview = "dm hi", unread = 1, channelId = "dm-1", kind = "dm")
+                    )
+                )
+            )
+        val store = loadedStore(network, initialKeys = listOf("channel:general", "dm:dm-1"))
+
+        store.dispatch(newMessage(seq = 40, id = "m-old"))
+        assertEquals("hi", store.state.value.items.first { it.key == "channel:general" }.lastMessagePreview, "an older seq never patches")
+
+        store.dispatch(newMessage(seq = 50, channelId = "unknown-channel", id = "m-unknown"))
+        assertEquals(listOf("channel:general", "dm:dm-1"), store.state.value.items.map(InboxItem::key), "no row for an unknown channel")
+
+        store.dispatch(newMessage(seq = 42))
+        val patched = store.state.value.items.first { it.key == "channel:general" }
         assertEquals("new", patched.lastMessagePreview)
         assertEquals("User user-2", patched.lastMessageSenderName)
         assertEquals("2026-10-25T10:00:00Z", patched.lastMessageAt)
         assertEquals(3, patched.unreadCount, "the patch never moves unread")
         assertEquals(MessageId("first-general"), patched.firstUnreadMessageId)
         assertFalse(patched.hasMention)
-        assertEquals(3, store.state.value.totalUnreadCount)
+        assertEquals("41", patched.doneFrontierSeq, "the Done frontier stays the served one")
+
+        store.dispatch(newMessage(seq = 43, channelId = "dm-1", id = "m-dm"))
+        val dm = store.state.value.items.first()
+        assertEquals("dm:dm-1", dm.key)
+        assertEquals("m43", dm.lastMessagePreview)
+        assertEquals(1, dm.unreadCount)
+        assertEquals(4, store.state.value.totalUnreadCount)
     }
 
     private fun TestScope.loadedStore(
         network: ScriptedInboxNetwork,
+        initialKeys: List<String> = listOf("channel:general"),
         staleRecoveryDelayMillis: (attempt: Int, retryAfterMillis: Long?) -> Long = { _, _ -> 15_000L }
     ): SharedActivityStore {
         val session = InMemoryRaftAuthSessionStore(sampleSession())
@@ -178,7 +263,7 @@ class SharedActivityStoreChannelRowLagTest {
             )
         store.dispatch(SharedActivityIntent.LoadInitial)
         runCurrent()
-        check(store.state.value.items.map(InboxItem::key) == listOf("channel:general")) {
+        check(store.state.value.items.map(InboxItem::key) == initialKeys) {
             "initial load did not settle, state=${store.state.value}"
         }
         // Past the realtime throttle window, so the event's read goes out at once.
@@ -200,21 +285,26 @@ class SharedActivityStoreChannelRowLagTest {
             )
         )
 
-    private fun row(seq: Long, preview: String, unread: Int): String =
+    private fun row(
+        seq: Long,
+        preview: String,
+        unread: Int,
+        channelId: String = "general",
+        kind: String = "channel"
+    ): Pair<String, Int> =
         """
-        {"kind":"channel","channelId":"general","channelName":"general","channelType":"channel",
+        {"kind":"$kind","channelId":"$channelId","channelName":"$channelId","channelType":"$kind",
          "lastMessageId":"m-$seq","latestActivitySeq":"$seq","doneFrontierSeq":"$seq",
-         "firstUnreadMessageId":"first-general","firstMentionMessageId":null,
+         "firstUnreadMessageId":"first-$channelId","firstMentionMessageId":null,
          "lastMessageAt":"2026-10-25T09:50:00Z","lastMessagePreview":"$preview",
          "lastMessageSenderType":"user","lastMessageSenderId":"u-9","lastMessageSenderName":"Server",
          "unreadCount":$unread,"hasMention":false}
-        """.trimIndent()
+        """.trimIndent() to unread
 
-    private fun inbox(row: String): HomeNetworkResponse {
-        val unread = Regex("\"unreadCount\":(\\d+)").find(row)!!.groupValues[1]
-        return HomeNetworkResponse(
+    private fun inbox(vararg rows: Pair<String, Int>): HomeNetworkResponse =
+        HomeNetworkResponse(
             200,
-            """{"items":[$row],"hasMore":false,"totalCount":1,"totalUnreadCount":$unread}"""
+            """{"items":[${rows.joinToString(",") { it.first }}],"hasMore":false,""" +
+                """"totalCount":${rows.size},"totalUnreadCount":${rows.sumOf { it.second }}}"""
         )
-    }
 }

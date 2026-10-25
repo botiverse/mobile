@@ -60,9 +60,13 @@ private const val SharedActivityTailPrewarmDepthCap = 20
 private data class ActivityRealtimeHighWater(
     val marker: MessageId?,
     val replyCount: Int,
-    /** Channel rows only: the `message:new` seq the row was patched to (thread rows keep null). */
-    val seq: String? = null
+    /** Channel/DM rows only: the `message:new` seq the row was patched to (thread rows keep null). */
+    val seq: String? = null,
+    /** Channel/DM rows only: the patch stops holding over older served rows after this time. */
+    val holdUntilMillis: Long? = null
 )
+
+private data class ActivityRealtimeCatchUpTarget(val channelId: ChannelId, val seq: String)
 
 private data class ActivityRealtimeReconcileResult(
     val items: List<InboxItem>,
@@ -201,12 +205,12 @@ class SharedActivityStore internal constructor(
     private val channelAccessGenerations = mutableMapOf<String, Long>()
     private var realtimeBackgroundReconcileDirty = false
     /**
-     * #triage 84d44d75: the highest `message:new` seq seen since the inbox last answered at or past
-     * it (guarded by realtimeOwnerLock). One target for the whole inbox; many events raise it, they
-     * never add reads.
+     * #triage 84d44d75: the newest patchable `message:new` (channel + seq) seen since the inbox last
+     * answered at or past it (guarded by realtimeOwnerLock). One target for the whole inbox; many
+     * events raise it, they never add reads (web inboxStore `inboxCatchUpTarget`, slock #11208).
      */
-    private var realtimeCatchUpTargetSeq: String? = null
-    /** Re-reads already spent on [realtimeCatchUpTargetSeq]; bounded by [ActivityRealtimeCatchUpRetryDelaysMillis]. */
+    private var realtimeCatchUpTarget: ActivityRealtimeCatchUpTarget? = null
+    /** Re-reads already spent on [realtimeCatchUpTarget]; bounded by [ActivityRealtimeCatchUpRetryDelaysMillis]. */
     private var realtimeCatchUpRetries = 0
     /** The one pending catch-up re-read. */
     private var realtimeCatchUpRetryJob: Job? = null
@@ -1028,7 +1032,8 @@ class SharedActivityStore internal constructor(
         event.channelUpdatedId()?.let(::checkRetainedChannelReadableLocked)
         if (!event.refreshesActivity()) return null
         when (event) {
-            is MessageNew -> raiseRealtimeCatchUpTargetLocked(event.message.seq)
+            // Not past a mute (the shell's allowLocalPatch): the served row stops there.
+            is MessageNew -> if (intent.allowLocalPatch) raiseRealtimeCatchUpTargetLocked(event.message)
             is MessageUpdated -> acceptMessageUpdatedFreshness(event.message)
             is SyncResumeResponse ->
                 _state.value.ownerServerId?.let(replyThreadFreshnessLedger::invalidateServer)
@@ -1117,12 +1122,15 @@ class SharedActivityStore internal constructor(
     }
 
     /**
-     * `message:new` on an ordinary/joint channel (#triage 84d44d75). `GET /channels/inbox` is a
+     * `message:new` on an ordinary/joint channel or a DM (#triage 84d44d75; web
+     * `receiveChannelMessage`, slock #11208). `GET /channels/inbox` is a
      * warehouse view that lags the write by ~1-2 s, so the re-read right after the event is often
      * one message behind. The event moves the EXISTING row's preview, sender and time only, and
      * only on a strictly newer seq than the row's `latestActivitySeq` (fail closed when either side
      * has none, like [applyMessageNewPatch]'s thread rows). Unread, mention, mute and visibility stay
-     * with the server answer; a channel without a row gets none here.
+     * with the server answer, and so do the Done frontiers; a channel without a row gets none here.
+     * Messages past the channel's Activity mute (a mention included) never arrive here: the shell
+     * passes `allowLocalPatch = false` for them (SharedHomeShellStore.allowsLocalActivityPatch).
      */
     private fun applyChannelMessageNewPatch(
         message: Message,
@@ -1133,7 +1141,7 @@ class SharedActivityStore internal constructor(
         // A thread reply carries its thread channel as `channelId`, which never names a channel row.
         val channelId = message.channelId ?: return false
         val existingIndex =
-            snapshot.items.indexOfFirst { item -> item.kind == InboxItemKind.Channel && item.channelId == channelId }
+            snapshot.items.indexOfFirst { item -> item.isChannelOrDmRow() && item.channelId == channelId }
         if (existingIndex < 0) return false
         val existing = snapshot.items[existingIndex]
         if (existing.lastMessageId == message.id) return true
@@ -1154,7 +1162,12 @@ class SharedActivityStore internal constructor(
                 latestActivitySeq = incomingSeq
             )
         realtimeHighWater[patched.key] =
-            ActivityRealtimeHighWater(marker = patched.lastMessageId, replyCount = 0, seq = incomingSeq)
+            ActivityRealtimeHighWater(
+                marker = patched.lastMessageId,
+                replyCount = 0,
+                seq = incomingSeq,
+                holdUntilMillis = nowMillis() + ActivityLocalMutationHoldMillis
+            )
         applyPatchedActivityItem(patched, existingIndex, current, snapshot, intent)
         return true
     }
@@ -1791,6 +1804,8 @@ class SharedActivityStore internal constructor(
                                     false
                                 } else {
                                     if (!backgroundRefresh) setLoadError("activity_network", append = !refresh)
+                                    // A failed read ends the realtime catch-up (web parity, slock #11208).
+                                    if (refresh) resetRealtimeCatchUpLocked()
                                     true
                                 }
                             }
@@ -2025,75 +2040,68 @@ class SharedActivityStore internal constructor(
         }
     }
 
-    private fun raiseRealtimeCatchUpTargetLocked(seq: Long?) {
-        val incoming = seq?.takeIf { it >= 0L }?.toString() ?: return
-        if (compareActivitySeq(incoming, realtimeCatchUpTargetSeq) <= 0) return
-        realtimeCatchUpTargetSeq = incoming
+    private fun raiseRealtimeCatchUpTargetLocked(message: Message) {
+        val channelId = message.channelId ?: return
+        val incoming = message.seq?.takeIf { it >= 0L }?.toString() ?: return
+        val target = realtimeCatchUpTarget
+        if (target != null && compareActivitySeq(incoming, target.seq) <= 0) return
+        realtimeCatchUpTarget = ActivityRealtimeCatchUpTarget(channelId, incoming)
         realtimeCatchUpRetries = 0
-        // The event schedules the throttled reconcile; a pending catch-up read would only duplicate it.
-        realtimeCatchUpRetryJob?.cancel()
-        realtimeCatchUpRetryJob = null
     }
 
     private fun resetRealtimeCatchUpLocked() {
         realtimeCatchUpRetryJob?.cancel()
         realtimeCatchUpRetryJob = null
-        realtimeCatchUpTargetSeq = null
+        realtimeCatchUpTarget = null
         realtimeCatchUpRetries = 0
     }
 
     /**
-     * #triage 84d44d75: `GET /channels/inbox` lags the write by ~1-2 s, so the read a `message:new`
-     * triggers can still be one message behind. A reset answer whose newest row seq is behind the
-     * highest event seq is re-read at most twice ([ActivityRealtimeCatchUpRetryDelaysMillis]), then
-     * left to the next event or pull. An overloaded answer (`X-Raft-Stale`, 503 `rw_overloaded`)
-     * never retries here: [settleStaleRecovery] follows Retry-After, and its fresh answer is checked
-     * against the same target. An answer with no seq at all (older server) cannot be compared.
+     * #triage 84d44d75 (web `settleInboxCatchUp`, slock #11208): `GET /channels/inbox` lags the
+     * write by ~1-2 s, so the read a `message:new` triggers can still serve that channel's row one
+     * message behind. While a clean answer serves the target channel's row behind the target seq,
+     * the list is re-read after [ActivityRealtimeCatchUpRetryDelaysMillis] (at most twice), each
+     * through the realtime throttle, then the catch-up stops. A row the answer does not contain is
+     * not behind (the filter may leave it out). A stale (`X-Raft-Stale`) or failed answer, 503
+     * `rw_overloaded` included, ends it: [settleStaleRecovery] then re-reads at Retry-After pace.
      */
     private fun settleRealtimeCatchUpLocked(nextState: SharedActivityState, result: DataResult<InboxSnapshot>) {
-        val target = realtimeCatchUpTargetSeq ?: return
-        realtimeCatchUpRetryJob?.cancel()
-        realtimeCatchUpRetryJob = null
-        if (nextState.stale) {
-            diagnosticsLogger("store_load domain=activity phase=catch_up_deferred reason=stale target=$target")
-            return
-        }
-        val answered =
-            (result as? DataResult.Content)?.data?.items
-                ?.mapNotNull { item -> item.latestActivitySeq }
-                ?.reduceOrNull { left, right -> if (compareActivitySeq(left, right) >= 0) left else right }
-        if (answered == null || compareActivitySeq(answered, target) >= 0) {
+        val target = realtimeCatchUpTarget ?: return
+        val servedRow =
+            (result as? DataResult.Content)
+                ?.takeIf { !nextState.stale }
+                ?.data?.items
+                ?.firstOrNull { item -> item.isChannelOrDmRow() && item.channelId == target.channelId }
+        val servedSeq = servedRow?.latestActivitySeq
+        val behind = servedRow != null && compareActivitySeq(servedSeq, target.seq) < 0
+        if (!behind || realtimeCatchUpRetries >= ActivityRealtimeCatchUpRetryDelaysMillis.size) {
+            if (behind || nextState.stale || result !is DataResult.Content) {
+                diagnosticsLogger(
+                    "store_load domain=activity phase=catch_up_end target=${target.seq} " +
+                        "behind=$behind stale=${nextState.stale} retries=$realtimeCatchUpRetries"
+                )
+            }
             resetRealtimeCatchUpLocked()
             return
         }
-        val waitMillis = ActivityRealtimeCatchUpRetryDelaysMillis.getOrNull(realtimeCatchUpRetries)
-        if (waitMillis == null) {
-            diagnosticsLogger(
-                "store_load domain=activity phase=catch_up_gave_up target=$target answered=$answered " +
-                    "retries=$realtimeCatchUpRetries"
-            )
-            resetRealtimeCatchUpLocked()
-            return
-        }
+        if (realtimeCatchUpRetryJob != null) return
+        val waitMillis = ActivityRealtimeCatchUpRetryDelaysMillis[realtimeCatchUpRetries]
         realtimeCatchUpRetries += 1
         diagnosticsLogger(
-            "store_load domain=activity phase=catch_up_scheduled target=$target answered=$answered " +
+            "store_load domain=activity phase=catch_up_scheduled target=${target.seq} served=$servedSeq " +
                 "attempt=$realtimeCatchUpRetries waitMs=$waitMillis"
         )
         realtimeCatchUpRetryJob =
             scope.launch {
                 delay(waitMillis)
                 val self = currentCoroutineContext()[Job]
-                val run =
+                val reconcileJob =
                     synchronized(realtimeOwnerLock) {
-                        if (realtimeCatchUpRetryJob !== self) return@synchronized false
+                        if (realtimeCatchUpRetryJob !== self) return@synchronized null
                         realtimeCatchUpRetryJob = null
-                        !activitySurfaceHidden
+                        if (activitySurfaceHidden) null else scheduleRealtimeBackgroundReconcileLocked()
                     }
-                // Single-flight: while another load runs it answers instead, and is checked the same way.
-                if (run) {
-                    load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh)
-                }
+                reconcileJob?.start()
             }
     }
 
@@ -2322,15 +2330,18 @@ class SharedActivityStore internal constructor(
         val currentChannels =
             _state.value.items
                 .asSequence()
-                .filter { item -> item.kind == InboxItemKind.Channel }
+                .filter { item -> item.isChannelOrDmRow() }
                 .associateBy { item -> item.key }
+        val keptChannelKeys = mutableSetOf<String>()
         val canonicalKeys = canonicalItems.mapTo(mutableSetOf()) { item -> item.key }
         var preserveTotalUnreadFloor = false
         val reconciled =
             canonicalItems.map { canonical ->
                 val localVersion = realtimeHighWater[canonical.key] ?: return@map canonical
-                if (canonical.kind == InboxItemKind.Channel) {
-                    return@map reconcileRealtimeChannelRow(canonical, localVersion, currentChannels[canonical.key])
+                if (canonical.isChannelOrDmRow()) {
+                    val reconciledRow = reconcileRealtimeChannelRow(canonical, localVersion, currentChannels[canonical.key])
+                    if (reconciledRow !== canonical) keptChannelKeys += canonical.key
+                    return@map reconciledRow
                 }
                 val current = currentThreads[canonical.key]
                 if (current == null) {
@@ -2376,16 +2387,25 @@ class SharedActivityStore internal constructor(
             // the local high-water. Keep that row in its current position until
             // a canonical response carries the same marker; otherwise the UI
             // exposes an appear→disappear flash between the two stages.
-            items = (missingCurrent + reconciled).dedupeActivityItems(),
+            items =
+                (missingCurrent + reconciled).dedupeActivityItems().let { items ->
+                    // A kept channel row holds the newest message, which the served order (the
+                    // view's, without it) does not know: it stays on top instead of dropping back.
+                    if (keptChannelKeys.isEmpty()) {
+                        items
+                    } else {
+                        items.filter { it.key in keptChannelKeys } + items.filterNot { it.key in keptChannelKeys }
+                    }
+                },
             preserveTotalUnreadFloor = preserveTotalUnreadFloor
         )
     }
 
     /**
-     * A channel row patched from `message:new` keeps its newer message until the server's row
-     * reaches that seq (web keeps the newer thread row the same way, preserveNewerThreadActivity,
-     * inboxStore.ts:813-870, fail closed on a missing seq). Only the message fields come from the
-     * patch: unread, mention and every other server fact are the answer's.
+     * A channel/DM row patched from `message:new` keeps its newer message until the server's row
+     * reaches that seq or the stale-list bound ([ActivityLocalMutationHoldMillis]) lapses (web
+     * `preserveNewerChannelActivity`, slock #11208). Only the message fields come from the patch:
+     * unread, mention and every other server fact are the answer's.
      */
     private fun reconcileRealtimeChannelRow(
         canonical: InboxItem,
@@ -2393,7 +2413,15 @@ class SharedActivityStore internal constructor(
         current: InboxItem?
     ): InboxItem {
         val localSeq = localVersion.seq
-        if (current == null || localSeq == null || compareActivitySeq(canonical.latestActivitySeq, localSeq) >= 0) {
+        val holdLapsed = localVersion.holdUntilMillis?.let { until -> nowMillis() > until } ?: true
+        if (
+            current == null ||
+            localSeq == null ||
+            current.latestActivitySeq != localSeq ||
+            holdLapsed ||
+            canonical.latestActivitySeq == null ||
+            compareActivitySeq(canonical.latestActivitySeq, localSeq) >= 0
+        ) {
             realtimeHighWater.remove(canonical.key)
             return canonical
         }
@@ -3843,3 +3871,6 @@ internal fun InboxItem.readReceiptChannelId(): ChannelId? =
 
 private fun InboxItem.activityUnreadAnchor(): MessageId? =
     firstUnreadMessageId ?: latestActivityMessageId ?: lastMessageId ?: parentMessageId
+
+private fun InboxItem.isChannelOrDmRow(): Boolean =
+    kind == InboxItemKind.Channel || kind == InboxItemKind.DirectMessage
