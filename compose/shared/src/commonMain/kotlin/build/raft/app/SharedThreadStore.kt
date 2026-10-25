@@ -862,8 +862,9 @@ internal class SharedThreadMessageStore(
             if (existing != null && !existing.needsSharedThreadMessageStoreHydration() && message.needsSharedThreadMessageStoreHydration()) {
                 existing
             } else {
-                // RFC 077: a copy without `delegatedBy` never clears the known label.
-                message.withKnownDelegatedByFrom(existing)
+                // RFC 077: a copy without `delegatedBy` never clears the known label, and an older
+                // copy never brings back a retracted message's words or attachments.
+                message.withKnownDelegatedByFrom(existing).withKnownRetractionFrom(existing)
             }
         messages.remove(key)
         messages[key] = selected
@@ -12712,6 +12713,8 @@ internal fun RaftThreadScreenPayload.preserveStableTimelineFrom(
             }
             // RFC 077: a refreshed / catch-up copy without `delegatedBy` keeps the known label.
             .withKnownDelegatedLabelsFrom(previous.messages + listOfNotNull(previous.originMessage))
+            // RFC 077 PR 2b: a refreshed / restored copy never un-retracts a message.
+            .withKnownRetractionsFrom(previous.messages + listOfNotNull(previous.originMessage))
             .preserveStableItemsFrom(previous.messages) { item -> item.id }
     val stableStatus =
         if (stableMessages.any { it.isTransientLocalSendingMessage() } && status == "empty") {
@@ -12739,7 +12742,9 @@ internal fun RaftThreadScreenPayload.preserveStableTimelineFrom(
             }
             ?.let { origin ->
                 val known = (previous.messages + listOfNotNull(previous.originMessage)).firstOrNull { it.id == origin.id }
-                origin.withKnownDelegatedByFrom(known)
+                // RFC 077 PR 2b: whichever copy is known retracted (the kept one, the previous
+                // one, or this refresh's) wins; a retraction is never undone.
+                origin.withKnownDelegatedByFrom(known).withKnownRetractionFrom(known).withKnownRetractionFrom(originMessage)
             }
     val stableTasks =
         tasks
@@ -13053,7 +13058,7 @@ private fun List<RaftThreadMessageItem>.mergeIntoExpandedTimelineWindow(
     val incomingById = associateBy { it.id }
     val previousIds = previous.mapTo(mutableSetOf()) { it.id }
     return (
-        previous.map { message -> incomingById[message.id]?.withKnownDelegatedByFrom(message) ?: message } +
+        previous.map { message -> incomingById[message.id]?.withKnownDelegatedByFrom(message)?.withKnownRetractionFrom(message) ?: message } +
             filterNot { message -> message.id in previousIds }
         ).sortedByThreadTimeline()
 }
@@ -13554,7 +13559,11 @@ private fun RaftThreadScreenPayload.applyRealtimeMessages(
         }
     if (relevant.isEmpty()) return this
     val incoming = relevant.map { message -> message.toRaftThreadMessageItem(currentUserId) }
-    val baseMessages = this.messages.absorbingCanonicalSendEchoes(incoming).withIncomingDelegatedLabels(incoming)
+    val baseMessages =
+        this.messages.absorbingCanonicalSendEchoes(incoming)
+            .withIncomingDelegatedLabels(incoming)
+            // RFC 077 PR 2b: a resumed retracted copy replaces the loaded copy's content.
+            .withKnownRetractionsFrom(incoming)
     val merged =
         (baseMessages + incoming)
             .distinctBy { item -> item.id }
@@ -13625,7 +13634,11 @@ internal fun RaftThreadScreenPayload.mergePagedMessages(
 ): RaftThreadScreenPayload {
     // RFC 077: the loaded copy stays, but the page's explicit `delegatedBy` (newer) fills or
     // replaces its label; a page copy without one never clears a known label.
-    val baseMessages = messages.absorbingCanonicalSendEchoes(pageMessages).withIncomingDelegatedLabels(pageMessages)
+    // A retracted page copy likewise replaces the loaded copy's words, attachments and reactions.
+    val baseMessages =
+        messages.absorbingCanonicalSendEchoes(pageMessages)
+            .withIncomingDelegatedLabels(pageMessages)
+            .withKnownRetractionsFrom(pageMessages)
     val incoming = pageMessages.filterNot { pageMessage -> baseMessages.any { it.id == pageMessage.id } }
     val mergedMessages =
         if (before) {
@@ -14538,7 +14551,7 @@ private fun Message.matchesSharedThread(
         activeReplyParentMessageId?.let { parentMessageId == it } == true
 }
 
-private fun RaftThreadMessageItem.mergeRealtimeUpdate(
+internal fun RaftThreadMessageItem.mergeRealtimeUpdate(
     update: RaftThreadMessageItem,
     reactionUpdate: List<RaftThreadReactionItem>? = null,
     preserveExistingReactions: Boolean = false
@@ -14594,8 +14607,15 @@ private fun RaftThreadMessageItem.mergeRealtimeUpdate(
         commentRef = update.commentRef ?: commentRef,
         // Every message row carries `delegatedBy`; a later row wins (the assistant may since
         // have been deleted), a sparse patch without it keeps the label.
-        delegatedBy = keepKnownDelegatedBy(update.delegatedBy, delegatedBy)
-    )
+        delegatedBy = keepKnownDelegatedBy(update.delegatedBy, delegatedBy),
+        deletedAt = update.deletedAt ?: deletedAt,
+    ).let { merged ->
+        // RFC 077 PR 2b: a retraction is authoritative. The sparse-patch fallbacks above
+        // (`ifBlank`/`ifEmpty` keep the loaded body, attachments, reactions) must not keep
+        // what the owner took back: the server's row replaces the body, its attachments
+        // are revoked and its reactions deleted.
+        if (update.isRetracted) merged.copy(body = update.body).withoutRetractedContent() else merged.withoutRetractedContent()
+    }
 }
 
 private fun String.resolvedRealtimeThreadAuthorIdOrNull(): String? =
@@ -15024,6 +15044,7 @@ internal fun RaftThreadMessageItem.toMessage(
         task = taskSummary,
         externalAuthor = if (authorMemberKind == MemberKind.External) externalAuthor else null,
         delegatedBy = if (authorMemberKind == MemberKind.Human) delegatedBy else null,
+        deletedAt = deletedAt,
         replyCount = replyCount,
         unreadReplyCount = unreadReplyCount,
         firstUnreadReplyMessageId = firstUnreadReplyMessageId?.let(::MessageId),
@@ -15166,6 +15187,7 @@ internal fun Message.toRaftThreadMessageItem(currentUserId: String?): RaftThread
         avatarWireValue = resolvedAvatar.effectiveAvatarWireValue,
         externalAuthor = externalAuthor,
         delegatedBy = delegatedBy,
+        deletedAt = deletedAt,
         senderMembershipStatus =
             senderMembershipStatus?.takeIf { it.isNotBlank() }
                 ?: author.membershipStatus?.takeIf { it.isNotBlank() },
@@ -15211,7 +15233,7 @@ internal fun Message.toRaftThreadMessageItem(currentUserId: String?): RaftThread
         pendingSendContext = pendingSendContext,
         pendingSendErrorCode = metadata[ThreadLocalSendErrorMetadataKey]?.takeIf { it.isNotBlank() },
         pendingSendErrorMessage = metadata[ThreadLocalSendErrorMessageMetadataKey]?.takeIf { it.isNotBlank() }
-    )
+    ).withoutRetractedContent()
 }
 
 private const val ThreadLocalSendContextMetadataKey = "localSend.context"
