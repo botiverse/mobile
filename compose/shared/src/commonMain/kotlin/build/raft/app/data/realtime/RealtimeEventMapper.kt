@@ -432,6 +432,8 @@ private data class MessageWireDto(
     val mentions: List<MessageMentionWireDto>? = null,
     /** RFC 077 `DelegatedByLabel | null` (`messageRealtimeProducerRegistry.ts` lists `delegatedBy`). */
     val delegatedBy: WireDelegatedBy? = null,
+    /** RFC 077 PR 2b: set when the owner retracted the message; `content` is then the placeholder. */
+    val deletedAt: String? = null,
 )
 
 /** One `mentions[]` entry: `{ type: "user" | "agent" | "external"; id; name; displayName? }`. */
@@ -840,6 +842,7 @@ private fun MessageWireDto.toDomain(diagnostics: (String) -> Unit): Message? {
         conversationContext = conversationContext?.toDomain(),
         externalAuthor = resolvedExternalAuthor,
         delegatedBy = delegatedBy.toMessageDelegatedBy(authorKind),
+        deletedAt = deletedAt?.takeIf { it.isNotBlank() },
         mentions = mentions.toDomainMentions(),
     )
 }

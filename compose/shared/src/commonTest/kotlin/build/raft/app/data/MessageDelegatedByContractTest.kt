@@ -74,6 +74,25 @@ class MessageDelegatedByContractTest {
     }
 
     @Test
+    fun aRetractedMessageKeepsThePlaceholderAsBodyAndReadsDeletedAt() {
+        // botiverse/slock staging 6a0429014ffdfc87f614537ce3f9d6c576460418:
+        // assistantSendAsOwnerService.ts retractDelegatedMessage sets `deletedAt` and replaces
+        // `content` with RETRACTED_DELEGATED_MESSAGE_CONTENT, then emits the row as message:updated.
+        val placeholder = "This message was retracted by its sender."
+        val retracted =
+            aliceMessage(""", "delegatedBy": $friday, "deletedAt": "2026-10-25T12:00:00.000Z"""")
+                .replace("Hi team, the design review moves to Thursday 3pm.", placeholder)
+
+        val updated = assertIs<MessageUpdated>(RealtimeEventMapper().map(RealtimeSocketEvents.MessageUpdated, retracted)).message
+        assertEquals(placeholder, updated.body)
+        assertEquals("2026-10-25T12:00:00.000Z", updated.deletedAt)
+        assertEquals("2026-10-25T12:00:00.000Z", restMessage(retracted).deletedAt)
+
+        assertNull(restMessage(aliceMessage()).deletedAt, "absent")
+        assertNull(restMessage(aliceMessage(""", "deletedAt": null""")).deletedAt, "null")
+    }
+
+    @Test
     fun labelSurvivesTheThreadItemRoundTrip() {
         val message = restMessage(aliceMessage())
         val item = message.toRaftThreadMessageItem(currentUserId = "user-alice")

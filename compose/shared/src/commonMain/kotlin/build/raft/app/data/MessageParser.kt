@@ -131,6 +131,8 @@ private data class MessagesWireMessage(
     val externalAuthor: WireExternalAuthor? = null,
     /** RFC 077 `DelegatedByLabel | null`: the assistant that sent it for the sender. */
     val delegatedBy: WireDelegatedBy? = null,
+    /** RFC 077 PR 2b: set when the owner retracted the message; `content` is then the placeholder. */
+    val deletedAt: String? = null,
     /** Resolved mention facts (`ResolvedMentionFact[]`). */
     val mentions: List<WireMessageMention> = emptyList(),
 )
@@ -530,6 +532,7 @@ private fun MessagesWireMessage.toDomain(
         commentRef = commentRef?.toDomain(),
         externalAuthor = resolvedExternalAuthor,
         delegatedBy = delegatedBy.toMessageDelegatedBy(authorKind),
+        deletedAt = deletedAt?.takeIf { it.isNotBlank() },
         mentions = mentions.toMessageMentions(),
     )
 }

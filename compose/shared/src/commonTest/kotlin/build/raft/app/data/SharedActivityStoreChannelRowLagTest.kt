@@ -103,8 +103,8 @@ class SharedActivityStoreChannelRowLagTest {
 
     @Test
     fun aBlankUpdateOfThePatchedMessageKeepsThePreview() = runTest {
-        // Neither the server nor the App has a retracted-message state; a blank body on
-        // `message:updated` is a sparse update (thread page merge: `body.ifBlank { body }`).
+        // Without `deletedAt` (no retraction), a blank body on `message:updated` is a sparse
+        // update (thread page merge: `body.ifBlank { body }`).
         val network = ScriptedInboxNetwork(this, listOf(inbox(row(seq = 41, preview = "hi", unread = 3))))
         val store = loadedStore(network)
         store.dispatch(newMessage(seq = 42))
@@ -115,6 +115,30 @@ class SharedActivityStoreChannelRowLagTest {
         runCurrent()
 
         assertEquals(patched, store.state.value.items.single())
+    }
+
+    @Test
+    fun aRetractionOfThePatchedMessageReplacesThePreviewWithThePlaceholder() = runTest {
+        // RFC 077 PR 2b: a retraction is `message:updated` with `deletedAt` set and `content`
+        // replaced by the server placeholder (web retractPreview). It is authoritative, also when
+        // the body would be blank: the old text must leave the row.
+        val placeholder = "This message was retracted by its sender."
+        val network = ScriptedInboxNetwork(this, listOf(inbox(row(seq = 41, preview = "hi", unread = 3))))
+        val store = loadedStore(network)
+        store.dispatch(newMessage(seq = 42))
+        runCurrent()
+        val patched = store.state.value.items.single()
+        assertEquals("new", patched.lastMessagePreview)
+
+        store.dispatch(updatedMessage(id = "m-42", seq = 42, body = placeholder, deletedAt = "2026-10-25T10:05:00Z"))
+        runCurrent()
+
+        assertEquals(patched.copy(lastMessagePreview = placeholder), store.state.value.items.single())
+        assertEquals(3, store.state.value.totalUnreadCount)
+
+        store.dispatch(updatedMessage(id = "m-42", seq = 42, body = "", deletedAt = "2026-10-25T10:05:00Z"))
+        runCurrent()
+        assertEquals("", store.state.value.items.single().lastMessagePreview, "a retraction never keeps old text")
     }
 
     @Test
@@ -449,9 +473,18 @@ class SharedActivityStoreChannelRowLagTest {
             )
         )
 
-    private fun updatedMessage(id: String, seq: Long, body: String, channelId: String = "general") =
+    private fun updatedMessage(
+        id: String,
+        seq: Long,
+        body: String,
+        channelId: String = "general",
+        deletedAt: String? = null
+    ) =
         SharedActivityIntent.ApplyRealtimeEvent(
-            MessageUpdated(message(id = id, channelId = channelId, body = body, timestamp = "2026-10-25T10:00:00Z", seq = seq))
+            MessageUpdated(
+                message(id = id, channelId = channelId, body = body, timestamp = "2026-10-25T10:00:00Z", seq = seq)
+                    .copy(deletedAt = deletedAt)
+            )
         )
 
     private fun row(

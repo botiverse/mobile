@@ -1182,14 +1182,15 @@ class SharedActivityStore internal constructor(
      * ([reconcileRealtimeChannelRow] copies them from the shown row) then keep the new text until
      * the server catches up. Sender, time, seq, counts and order stay: a message's author and
      * creation time never change. A blank body is a sparse update and keeps the preview (thread
-     * page merge, `body.ifBlank { body }`); the server and the App have no retracted-message state.
-     * No filter/mute gate: the update moves no row in or out, it only corrects text already shown.
+     * page merge, `body.ifBlank { body }`), except on a retraction (RFC 077, `deletedAt` set): the
+     * server's placeholder `content` is authoritative and the old text must not stay on the row
+     * (web socketBridge.messageUpdated -> inboxStore.retractPreview). No filter/mute gate: the update moves no row in or out, it only corrects text already shown.
      */
     private fun applyChannelMessageUpdatedPatch(
         message: Message,
         intent: SharedActivityIntent.ApplyRealtimeEvent
     ) {
-        val body = message.body.takeIf { it.isNotBlank() } ?: return
+        val body = message.body.takeIf { it.isNotBlank() || message.deletedAt != null } ?: return
         val current = _state.value
         val snapshot = current.snapshot ?: return
         val existingIndex =
