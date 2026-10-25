@@ -5,6 +5,7 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.MessageConversationContext
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
+import build.raft.app.model.MessageUpdated
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -63,6 +64,81 @@ class SharedActivityStoreChannelRowLagTest {
         val caughtUp = store.state.value.items.single()
         assertEquals("new (server)", caughtUp.lastMessagePreview, "once the server reaches the seq, its row wins")
         assertEquals(4, caughtUp.unreadCount)
+        assertEquals(4, store.state.value.totalUnreadCount)
+    }
+
+    @Test
+    fun anEditOfThePatchedMessageInsideTheHoldUpdatesThePreviewAndTheHoldKeepsIt() = runTest {
+        val network =
+            ScriptedInboxNetwork(
+                this,
+                listOf(
+                    inbox(row(seq = 41, preview = "hi", unread = 3)),
+                    inbox(row(seq = 41, preview = "hi", unread = 3)),
+                    inbox(row(seq = 41, preview = "hi", unread = 3)),
+                    inbox(row(seq = 42, preview = "edited (server)", unread = 4))
+                )
+            )
+        val store = loadedStore(network)
+        store.dispatch(newMessage(seq = 42))
+        runCurrent()
+        val patched = store.state.value.items.single()
+        assertEquals("new", patched.lastMessagePreview)
+
+        store.dispatch(updatedMessage(id = "m-42", seq = 42, body = "edited"))
+        runCurrent()
+
+        val edited = store.state.value.items.single()
+        assertEquals("edited", edited.lastMessagePreview, "the shown row follows the edit")
+        assertEquals(patched.copy(lastMessagePreview = "edited"), edited, "only the preview moves")
+        assertEquals(3, store.state.value.totalUnreadCount)
+
+        advanceTimeBy(2_500)
+        runCurrent()
+        assertEquals("edited", store.state.value.items.single().lastMessagePreview, "a stale answer keeps the edit")
+        advanceTimeBy(3_000)
+        runCurrent()
+        assertEquals("edited (server)", store.state.value.items.single().lastMessagePreview)
+    }
+
+    @Test
+    fun aBlankUpdateOfThePatchedMessageKeepsThePreview() = runTest {
+        // Neither the server nor the App has a retracted-message state; a blank body on
+        // `message:updated` is a sparse update (thread page merge: `body.ifBlank { body }`).
+        val network = ScriptedInboxNetwork(this, listOf(inbox(row(seq = 41, preview = "hi", unread = 3))))
+        val store = loadedStore(network)
+        store.dispatch(newMessage(seq = 42))
+        runCurrent()
+        val patched = store.state.value.items.single()
+
+        store.dispatch(updatedMessage(id = "m-42", seq = 42, body = ""))
+        runCurrent()
+
+        assertEquals(patched, store.state.value.items.single())
+    }
+
+    @Test
+    fun anUpdateOfAnotherMessageLeavesTheRowsAlone() = runTest {
+        val network =
+            ScriptedInboxNetwork(
+                this,
+                listOf(
+                    inbox(
+                        row(seq = 41, preview = "hi", unread = 3),
+                        row(seq = 30, preview = "dm", unread = 1, channelId = "dm-1", kind = "dm")
+                    )
+                )
+            )
+        val store = loadedStore(network, initialKeys = listOf("channel:general", "dm:dm-1"))
+        store.dispatch(newMessage(seq = 42))
+        runCurrent()
+        val before = store.state.value.items
+
+        store.dispatch(updatedMessage(id = "m-41", seq = 41, body = "older edited"))
+        store.dispatch(updatedMessage(id = "m-99", seq = 99, body = "elsewhere", channelId = "dm-1"))
+        runCurrent()
+
+        assertEquals(before, store.state.value.items, "no row shows those messages: nothing moves")
         assertEquals(4, store.state.value.totalUnreadCount)
     }
 
@@ -371,6 +447,11 @@ class SharedActivityStoreChannelRowLagTest {
                     seq = seq
                 )
             )
+        )
+
+    private fun updatedMessage(id: String, seq: Long, body: String, channelId: String = "general") =
+        SharedActivityIntent.ApplyRealtimeEvent(
+            MessageUpdated(message(id = id, channelId = channelId, body = body, timestamp = "2026-10-25T10:00:00Z", seq = seq))
         )
 
     private fun row(
