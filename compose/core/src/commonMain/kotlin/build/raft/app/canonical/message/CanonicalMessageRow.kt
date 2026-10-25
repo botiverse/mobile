@@ -111,4 +111,10 @@ data class CanonicalMessageRow(
     val commentRef: CanonicalCommentRefWire? = null,
     val actionMetadata: JsonElement? = null,
     val conversationContext: CanonicalConversationContextWire? = null,
+    /**
+     * RFC 077 retraction (manifest v7 optionalAggregate): ISO time the owner retracted this message,
+     * else null. Only a canonical timestamp is kept (`normalizeCanonicalRetraction`). One-way: the
+     * fold never lets a later null/absent value clear it (web `keepDelegationFacts`).
+     */
+    val deletedAt: String? = null,
 )

@@ -34,8 +34,8 @@ import kotlin.test.assertTrue
 class MessageCanonicalRowManifestGateTest {
 
     private val manifestBytes: ByteArray by lazy {
-        checkNotNull(javaClass.getResourceAsStream("/sync/canonicalMessageManifest.v4.json")) {
-            "canonicalMessageManifest.v4.json snapshot missing from androidUnitTest resources"
+        checkNotNull(javaClass.getResourceAsStream("/sync/canonicalMessageManifest.v7.json")) {
+            "canonicalMessageManifest.v7.json snapshot missing from androidUnitTest resources"
         }.readBytes()
     }
 
@@ -46,7 +46,7 @@ class MessageCanonicalRowManifestGateTest {
             .map { it.jsonObject }
             .filter { it["class"]!!.jsonPrimitive.content in setOf("canonicalRequired", "optionalAggregate") }
             .map { it["name"]!!.jsonPrimitive.content }
-            .toSet()
+            .toSet() - V1_DEFERRED_CANONICAL_FIELDS
 
     /** All excluded field names across the 5 exclusion classes (nested `attachment.commentCount` -> its leaf). */
     private fun excludedFieldNames(): Set<String> {
@@ -72,9 +72,9 @@ class MessageCanonicalRowManifestGateTest {
         val sha = MessageDigest.getInstance("SHA-256").digest(manifestBytes)
             .joinToString("") { "%02x".format(it) }
         assertEquals(
-            "f974c41d75acb813d2dba3246a011819a9d290442091982ca70e7622e7381340",
+            "18e654cc96a0be4d274494403a4ff65ff59665c44e5a1d649efb5f768557ed09",
             sha,
-            "canonicalMessageManifest snapshot drifted from the reviewed head (#4589 @252dfebf). " +
+            "canonicalMessageManifest snapshot drifted from the reviewed head (slock 704d69f4, manifest v7). " +
                 "Re-review + update the pinned SHA before changing the resource.",
         )
     }
@@ -85,7 +85,7 @@ class MessageCanonicalRowManifestGateTest {
         val canonical = canonicalFieldNames()
         assertEquals(
             canonical, row,
-            "CanonicalMessageRow field set must EQUAL the manifest canonical set (19). Missing from row " +
+            "CanonicalMessageRow field set must EQUAL the manifest canonical set (21 minus deferred). Missing from row " +
                 "(manifest-has/row-no): ${canonical - row}. Extra on row (row-has/manifest-no): ${row - canonical}.",
         )
     }
@@ -96,6 +96,11 @@ class MessageCanonicalRowManifestGateTest {
         // nestedWireShapes entry, so a future field on a nested DTO (or the manifest) can't silently
         // diverge the persisted canonical shape.
         val nested = manifest["nestedWireShapes"]!!.jsonObject
+        assertEquals(
+            nested.keys - V1_DEFERRED_CANONICAL_FIELDS,
+            setOf("attachment", "commentRef", "commentRefHostSource", "conversationContext", "mention", "reaction"),
+            "every non-deferred nested wire shape must have a V1 wire DTO below",
+        )
         val dtoToShape = mapOf(
             CanonicalAttachmentWire::class.java to "attachment",
             CanonicalCommentRefWire::class.java to "commentRef",
@@ -127,3 +132,12 @@ class MessageCanonicalRowManifestGateTest {
         )
     }
 }
+
+/**
+ * Manifest v7 (slock 704d69f4) canonical fields the shadow-only V1 fold row / persisted envelope do not
+ * carry yet. `externalAuthor` (manifest v5/v6) is consumed by the realtime/REST mappers
+ * (`WireExternalAuthor`) but has no V1 fold DTO; V1 is shadow-only (`CANONICAL_FACT_SOLE_APPLY_ELIGIBLE`
+ * = false), so it is deferred here by name — a NEW unclassified manifest field still turns both gates red.
+ * `deletedAt` (v7) is NOT deferred: the row and envelope carry it.
+ */
+internal val V1_DEFERRED_CANONICAL_FIELDS: Set<String> = setOf("externalAuthor")

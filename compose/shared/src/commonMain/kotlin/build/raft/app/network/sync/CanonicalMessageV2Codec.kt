@@ -100,6 +100,9 @@ fun validateCanonicalMessageV2(
         envelope.kind != CANONICAL_MESSAGE_FULL_V2_ENVELOPE_KIND
     ) return CANONICAL_MESSAGE_V2_UNSUPPORTED_SCHEMA
 
+    val deletedAt = envelope.fact.deletedAt
+    if (deletedAt != null && normalizeCanonicalRetraction(deletedAt) == null) return CANONICAL_MESSAGE_V2_EXACT_KEYS
+
     val reactions = envelope.fact.reactions
     if (
         reactions.size > CANONICAL_REACTION_LIMIT ||
@@ -173,12 +176,14 @@ private fun validateExactV2Shape(root: JsonObject): String? {
         return CANONICAL_MESSAGE_V2_EXACT_KEYS
     }
     val fact = root["fact"] as? JsonObject ?: return CANONICAL_MESSAGE_V2_EXACT_KEYS
-    if (!fact.hasExactKeys(
-            "id", "seq", "senderType", "senderId", "content", "messageType", "createdAt", "randomId",
-            "senderName", "senderDescription", "senderMembershipStatus", "mentions", "attachments", "reactions",
-            "actionMetadata", "replyCount",
-        )
+    if (!fact.hasExactKeys(*CANONICAL_MESSAGE_V2_FACT_KEYS) &&
+        !fact.hasExactKeys(*CANONICAL_MESSAGE_V2_FACT_KEYS, CANONICAL_MESSAGE_V2_RETRACTION_KEY)
     ) return CANONICAL_MESSAGE_V2_EXACT_KEYS
+    // RFC 077: when present, `deletedAt` is a canonical timestamp string — never null (omit the key).
+    fact[CANONICAL_MESSAGE_V2_RETRACTION_KEY]?.let { deletedAt ->
+        val value = (deletedAt as? JsonPrimitive)?.takeIf { it.isString }?.content
+        if (normalizeCanonicalRetraction(value) == null) return CANONICAL_MESSAGE_V2_EXACT_KEYS
+    }
 
     val mentions = fact["mentions"] as? JsonArray ?: return CANONICAL_MESSAGE_V2_EXACT_KEYS
     if (mentions.any { (it as? JsonObject)?.hasExactKeys("id", "name", "type") != true }) {
@@ -204,6 +209,15 @@ private fun validateExactV2Shape(root: JsonObject): String? {
     validateActionMetadataShape(fact["actionMetadata"])?.let { return it }
     return null
 }
+
+private val CANONICAL_MESSAGE_V2_FACT_KEYS = arrayOf(
+    "id", "seq", "senderType", "senderId", "content", "messageType", "createdAt", "randomId",
+    "senderName", "senderDescription", "senderMembershipStatus", "mentions", "attachments", "reactions",
+    "actionMetadata", "replyCount",
+)
+
+/** The one optional `$.fact` key (RFC 077): present only on a retracted message. */
+private const val CANONICAL_MESSAGE_V2_RETRACTION_KEY = "deletedAt"
 
 private fun validateContextShape(element: JsonElement?): String? {
     val context = element as? JsonObject ?: return CANONICAL_MESSAGE_V2_EXACT_KEYS

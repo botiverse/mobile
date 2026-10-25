@@ -23,19 +23,22 @@ import kotlin.test.assertNull
 class CanonicalFactEnvelopeManifestGateTest {
 
     private val manifestBytes: ByteArray by lazy {
-        checkNotNull(javaClass.getResourceAsStream("/sync/canonicalMessageManifest.v4.json")) {
-            "canonicalMessageManifest.v4.json snapshot missing from androidUnitTest resources"
+        checkNotNull(javaClass.getResourceAsStream("/sync/canonicalMessageManifest.v7.json")) {
+            "canonicalMessageManifest.v7.json snapshot missing from androidUnitTest resources"
         }.readBytes()
     }
 
     private val manifest by lazy { Json.parseToJsonElement(manifestBytes.decodeToString()).jsonObject }
 
-    private fun canonicalFieldNames(): Set<String> =
+    private fun manifestCanonicalFieldNames(): Set<String> =
         manifest["fields"]!!.jsonArray
             .map { it.jsonObject }
             .filter { it["class"]!!.jsonPrimitive.content in setOf("canonicalRequired", "optionalAggregate") }
             .map { it["name"]!!.jsonPrimitive.content }
             .toSet()
+
+    /** The manifest canonical set the shadow-only V1 envelope carries (see [V1_DEFERRED_CANONICAL_FIELDS]). */
+    private fun canonicalFieldNames(): Set<String> = manifestCanonicalFieldNames() - V1_DEFERRED_CANONICAL_FIELDS
 
     private fun declaredFieldNames(cls: Class<*>): Set<String> =
         cls.declaredFields.asSequence()
@@ -59,9 +62,9 @@ class CanonicalFactEnvelopeManifestGateTest {
 
     @Test
     fun manifestSnapshotShaMatchesG6PinnedHead() {
-        // Same reviewed manifest head as G6 (#4589 @252dfebf); if it drifts, re-review both gates.
+        // Same reviewed manifest head as G6 (slock 704d69f4, manifest v7); if it drifts, re-review both gates.
         val sha = MessageDigest.getInstance("SHA-256").digest(manifestBytes).joinToString("") { "%02x".format(it) }
-        assertEquals("f974c41d75acb813d2dba3246a011819a9d290442091982ca70e7622e7381340", sha)
+        assertEquals("18e654cc96a0be4d274494403a4ff65ff59665c44e5a1d649efb5f768557ed09", sha)
     }
 
     @Test
@@ -71,7 +74,9 @@ class CanonicalFactEnvelopeManifestGateTest {
         // NOT via bare Set arithmetic, which would stay green even if the gate itself were made vacuous.
         val canonical = canonicalFieldNames()
         // manifest-load guard: an empty set (resource missing / parse error) would false-green the gate.
-        assertEquals(19, canonical.size, "manifest canonical set must be the pinned 19 (10 required + 9 aggregate)")
+        assertEquals(21, manifestCanonicalFieldNames().size, "manifest v7 canonical set must be the pinned 21 (10 required + 11 aggregate)")
+        assertEquals(V1_DEFERRED_CANONICAL_FIELDS, V1_DEFERRED_CANONICAL_FIELDS intersect manifestCanonicalFieldNames(), "every deferred field must be a manifest canonical field")
+        assertEquals(20, canonical.size, "the V1 envelope closes over 20 (21 minus the deferred externalAuthor)")
         assertNull(closureError("positive-control", canonical, canonical), "identical sets must be closed")
         assertNotNull(closureError("missing", canonical - canonical.first(), canonical), "a missing field must fail closure")
         assertNotNull(closureError("extra", canonical + "phantomCanonicalField", canonical), "an extra field must fail closure")
@@ -80,7 +85,7 @@ class CanonicalFactEnvelopeManifestGateTest {
     @Test
     fun envelopeFieldsEqualManifestCanonicalSet() {
         val envelope = declaredFieldNames(CanonicalMessagePersistedV1::class.java) - "version" // version = codec meta
-        assertNull(closureError("CanonicalMessagePersistedV1 (minus version) vs manifest canonical(19)", envelope, canonicalFieldNames()))
+        assertNull(closureError("CanonicalMessagePersistedV1 (minus version) vs manifest canonical(21 - deferred)", envelope, canonicalFieldNames()))
     }
 
     @Test

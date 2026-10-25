@@ -1,12 +1,12 @@
 {
-  "manifestVersion": 6,
+  "manifestVersion": 7,
   "schemaVersion": 6,
   "kind": "normalized-message-v2",
   "durableConsumerId": "sync-core.messages.v2",
   "canonicalOrder": "UTF-8 JSON object keys are emitted in the declared key-set order; set-like arrays sort by their declared identity key; producer-ordered arrays retain producer order",
   "shapes": [
     {"path":"$","exactKeys":["schemaVersion","kind","fact","context","childReplyScope","replyMembership"]},
-    {"path":"$.fact","exactKeys":["id","seq","senderType","senderId","content","messageType","createdAt","randomId","senderName","senderDescription","senderMembershipStatus","mentions","attachments","reactions","actionMetadata","replyCount"]},
+    {"path":"$.fact","exactKeys":["id","seq","senderType","senderId","content","messageType","createdAt","randomId","senderName","senderDescription","senderMembershipStatus","mentions","attachments","reactions","actionMetadata","replyCount","deletedAt"],"optionalKeys":["deletedAt"]},
     {"path":"$.fact.mentions[]","exactKeys":["id","name","type"]},
     {"path":"$.fact.attachments[]","exactKeys":["id","filename","mimeType","sizeBytes","width","height","thumbnailUrl"]},
     {"path":"$.fact.reactions[]","exactKeys":["emoji","count","previewK"]},
@@ -52,6 +52,7 @@
     {"path":"$.fact.reactions","kotlinType":"List<ReactionFact>","nullable":false,"provenance":"room-common","mergePolicy":"present-overwrite","producerFaces":["message:new","message:updated","snapshot","reaction:updated"],"orderPolicy":"sort-by-emoji","backing":"SyncScope","invalidationParentScope":"durable message scope","allowedCommands":["Interaction"]},
     {"path":"$.fact.actionMetadata","kotlinType":"CanonicalActionMetadataV2?","nullable":true,"provenance":"room-common","mergePolicy":"present-overwrite","producerFaces":["message:new","message:updated","task:status_updated","snapshot"],"orderPolicy":"closed-discriminator","backing":"SyncScope","invalidationParentScope":"durable message scope","allowedCommands":[]},
     {"path":"$.fact.replyCount","kotlinType":"Int","nullable":false,"provenance":"room-common","mergePolicy":"present-overwrite","producerFaces":["message:new","message:updated","snapshot","reply:updated"],"orderPolicy":"scalar","backing":"SyncScope","invalidationParentScope":"durable message scope","allowedCommands":["Reply"]},
+    {"path":"$.fact.deletedAt","kotlinType":"String?","nullable":false,"provenance":"room-common","mergePolicy":"one-way-present-overwrite","producerFaces":["message:new","message:updated","snapshot"],"orderPolicy":"scalar","backing":"SyncScope","invalidationParentScope":"durable message scope","allowedCommands":[]},
 
     {"path":"$.fact.mentions[].id","kotlinType":"String","nullable":false,"provenance":"room-common","mergePolicy":"parent-replace","producerFaces":["message:new","message:updated","snapshot"],"orderPolicy":"producer-order","backing":"SyncScope","invalidationParentScope":"durable message scope","allowedCommands":[]},
     {"path":"$.fact.mentions[].name","kotlinType":"String","nullable":false,"provenance":"room-common","mergePolicy":"parent-replace","producerFaces":["message:new","message:updated","snapshot"],"orderPolicy":"producer-order","backing":"SyncScope","invalidationParentScope":"durable message scope","allowedCommands":[]},

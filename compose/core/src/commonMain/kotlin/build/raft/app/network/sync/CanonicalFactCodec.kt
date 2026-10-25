@@ -8,6 +8,8 @@ import build.raft.app.canonical.message.CanonicalConversationContextWire
 import build.raft.app.canonical.message.CanonicalMentionWire
 import build.raft.app.canonical.message.CanonicalMessageRow
 import build.raft.app.canonical.message.CanonicalReactionWire
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -87,6 +89,11 @@ data class CanonicalMessagePersistedV1(
     val commentRef: CanonicalCommentRefV1? = null,
     val actionMetadata: JsonElement? = null,
     val conversationContext: CanonicalConversationContextV1? = null,
+    // RFC 077 retraction (manifest v7). Omitted when null so every pre-v7 BLOB (and its golden pin)
+    // stays byte-identical; a stored BLOB without the key decodes as not retracted.
+    @OptIn(ExperimentalSerializationApi::class)
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val deletedAt: String? = null,
 )
 
 @Serializable
@@ -177,6 +184,7 @@ fun CanonicalMessageRow.toPersistedV1(): CanonicalMessagePersistedV1 = Canonical
     conversationContext = conversationContext?.let {
         CanonicalConversationContextV1(it.channelType, it.parentChannelId, it.parentChannelType, it.parentMessageId)
     },
+    deletedAt = deletedAt,
 )
 
 fun CanonicalMessagePersistedV1.toCanonicalRow(): CanonicalMessageRow = CanonicalMessageRow(
@@ -214,6 +222,7 @@ fun CanonicalMessagePersistedV1.toCanonicalRow(): CanonicalMessageRow = Canonica
     conversationContext = conversationContext?.let {
         CanonicalConversationContextWire(it.channelType, it.parentChannelId, it.parentChannelType, it.parentMessageId)
     },
+    deletedAt = deletedAt,
 )
 
 /** Encode the resolved canonical fact to its stored BLOB string. Byte-stable (golden-pinned). */

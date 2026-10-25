@@ -103,6 +103,8 @@ fun CanonicalMessageRow.toAppMessage(
         forwardBundle = action.forwardBundle,
         conversationContext = conversationContext?.toAppConversationContext(),
         randomId = randomId?.takeIf { it.isNotBlank() },
+        // Same as RealtimeEventMapper (parity): flagged here, emptied where it is shown.
+        deletedAt = deletedAt,
     )
 }
 

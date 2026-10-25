@@ -121,6 +121,8 @@ fun decodeCanonicalMessageWire(
         commentRef = (rawJson["commentRef"] as? JsonObject)?.toCanonicalCommentRef(),
         actionMetadata = rawJson["actionMetadata"].takeUnless { it == null || it is JsonNull },
         conversationContext = (rawJson["conversationContext"] as? JsonObject)?.toCanonicalConversationContext(),
+        // RFC 077: `null` = live, absent on the task-status projector; neither is a retraction.
+        deletedAt = normalizeCanonicalRetraction(rawJson.nullableString("deletedAt")),
     )
 
     return CanonicalMessageCarry(

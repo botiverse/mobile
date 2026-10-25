@@ -1626,6 +1626,7 @@ internal fun CanonicalMessageFoldInput.toCanonicalMessageV2Conversion(
         reactions = normalizedReactions,
         actionMetadata = actionMetadata,
         replyCount = replyCount,
+        deletedAt = normalizeCanonicalRetraction(row.deletedAt),
     )
     return when (
         val normalized = normalizeCanonicalMessageV2(

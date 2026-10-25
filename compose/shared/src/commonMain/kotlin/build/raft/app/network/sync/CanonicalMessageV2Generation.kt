@@ -438,7 +438,7 @@ internal class SqlDelightCanonicalMessageV2Store(
                 val stored = storedRow?.takeIf { storedUnknown.isNotEmpty() || incomingUnknown.isNotEmpty() }?.let {
                     StoredFact(decodeStoredFact(scope, incoming.fact.id, it.canonicalFactJson), storedUnknown)
                 }
-                val (envelope, unknown) = when {
+                val (merged, unknown) = when {
                     stored == null -> incoming to incomingUnknown
                     // The stored fact stays as it is; only what it did not know is filled in.
                     insertOnly -> stored.envelope.withAggregatesFrom(incoming, stored.unknown - incomingUnknown) to
@@ -447,6 +447,15 @@ internal class SqlDelightCanonicalMessageV2Store(
                     else -> incoming.withAggregatesFrom(stored.envelope, incomingUnknown - stored.unknown) to
                         (incomingUnknown intersect stored.unknown)
                 }
+                // RFC 077: retraction is one-way. A frame without `deletedAt` for a fact stored as
+                // retracted is an older copy: it keeps the retraction and never brings back the words,
+                // attachments or reactions (web `keepDelegationFacts`). The key is only in a retracted
+                // fact's bytes, so a live fact is never decoded for this.
+                val storedRetraction = storedRow
+                    ?.takeIf { merged.fact.deletedAt == null && it.canonicalFactJson.contains(RETRACTION_BYTES_MARKER) }
+                    ?.let { stored?.envelope ?: decodeStoredFact(scope, incoming.fact.id, it.canonicalFactJson) }
+                    ?.fact?.takeIf { it.deletedAt != null }
+                val envelope = merged.withStoredRetraction(storedRetraction)
                 val bytes = encodeCanonicalMessageV2(envelope, scope.serverId)
                 queries.insertCanonicalFactIfAbsent(
                     environmentId = scope.environmentId,
@@ -976,6 +985,24 @@ private fun encodeUnknownFields(fields: Set<MessageAggregateField>): String? =
     CANONICAL_MESSAGE_V2_ALLOWED_UNKNOWN_FRAME_AGGREGATES.filter { it in fields }.joinToString(",").ifEmpty { null }
 
 /** This envelope with [fields] (allowed-unknown aggregates only) taken from [source]. */
+/** The `$.fact.deletedAt` key as it appears in canonical bytes (pre-filter only; the decode decides). */
+private const val RETRACTION_BYTES_MARKER = "\"deletedAt\":"
+
+/** [retracted] (the stored copy of this fact, known retracted) over a frame that does not know it. */
+private fun CanonicalMessageEnvelopeV2.withStoredRetraction(retracted: CanonicalMessageNodeV2?): CanonicalMessageEnvelopeV2 =
+    if (retracted == null || fact.deletedAt != null) {
+        this
+    } else {
+        copy(
+            fact = fact.copy(
+                deletedAt = retracted.deletedAt,
+                content = retracted.content,
+                attachments = emptyList(),
+                reactions = emptyList(),
+            ),
+        )
+    }
+
 private fun CanonicalMessageEnvelopeV2.withAggregatesFrom(
     source: CanonicalMessageEnvelopeV2,
     fields: Set<MessageAggregateField>,

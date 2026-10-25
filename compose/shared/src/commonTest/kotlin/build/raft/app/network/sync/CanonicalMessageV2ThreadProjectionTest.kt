@@ -76,6 +76,24 @@ class CanonicalMessageV2ThreadProjectionTest {
     }
 
     @Test
+    fun retractedFactProjectsFlaggedWithoutAttachmentsOrReactions() {
+        val item = assertNotNull(
+            envelope(
+                fact = fact().copy(
+                    deletedAt = "2026-10-20T08:15:30.123Z",
+                    reactions = listOf(ReactionFact("🔥", 2)),
+                    attachments = listOf(CanonicalAttachmentV2("a1", "image.png", "image/png", 1536)),
+                ),
+            ).toThreadMessageItem(currentUserId = null),
+        )
+        assertEquals("2026-10-20T08:15:30.123Z", item.deletedAt)
+        assertTrue(item.reactions.isEmpty())
+        assertTrue(item.attachments.isEmpty())
+        // Negative control: a live fact has no deletedAt.
+        assertNull(assertNotNull(envelope().toThreadMessageItem(currentUserId = null)).deletedAt)
+    }
+
+    @Test
     fun otherUsersMessageIsNotOwnAndBlankNameFallsBack() {
         val item = assertNotNull(
             envelope(fact = fact().copy(senderName = " ")).toThreadMessageItem(currentUserId = "human-z"),

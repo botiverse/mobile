@@ -6,6 +6,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
@@ -34,7 +35,7 @@ class CanonicalMessageV2ReactionVectorGateTest {
         assertEquals(CANONICAL_MESSAGE_V2_SCHEMA_VERSION, vector.int("schemaVersion"))
         assertEquals(4, cases.size)
         assertEquals(
-            "9ac66a83515df1e7eada19b864d5b41c6038a1a559de18249479455af4e9086e",
+            "905812d366f8a700753596c01c678262f0aa5b5eb158859e9b791fb3c3a7fa40",
             sha256(vectorBytes),
         )
     }
@@ -108,6 +109,33 @@ class CanonicalMessageV2ReactionVectorGateTest {
             assertEquals(case.string("canonicalFactSha256"), sha256(factBytes.encodeToByteArray()))
             assertEquals(case.string("viewerOverlayJson"), overlayBytes, "overlay bytes mismatch for ${case.string("name")}")
             assertEquals(case.string("viewerOverlaySha256"), sha256(overlayBytes.encodeToByteArray()))
+        }
+    }
+
+    @Test
+    fun retractionCasesNormalizeLikeWebIncludingBytesAndSha() {
+        val retractionCases = vector["retractionCases"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(4, retractionCases.size)
+        retractionCases.forEach { case ->
+            val name = case.string("name")
+            val raw = case["legacyRow"]!!.jsonObject["deletedAt"]
+            val legacy = (raw as? JsonPrimitive)?.takeIf { it.isString }?.content
+            val normalized = normalizeCanonicalRetraction(legacy)
+            assertEquals(case["expectedFact"]!!.jsonObject["deletedAt"]?.jsonPrimitive?.content, normalized, name)
+            // The V2 node's own encoding of the key: present only when retracted, never null.
+            val nodeJson = Json { encodeDefaults = true; explicitNulls = true }.encodeToString(
+                CanonicalMessageNodeV2.serializer(),
+                CanonicalMessageNodeV2(
+                    id = "m", seq = 1, senderType = "agent", senderId = "a", content = "", messageType = "chat",
+                    createdAt = "2026-10-20T08:00:00.000Z", senderName = "A", deletedAt = normalized,
+                ),
+            )
+            val retractionSlice = Json.parseToJsonElement(nodeJson).jsonObject
+                .filterKeys { it == "deletedAt" }
+                .let { JsonObject(it) }
+            val bytes = Json.encodeToString(JsonObject.serializer(), retractionSlice) + "\n"
+            assertEquals(case.string("retractionFactJson"), bytes, "retraction bytes mismatch for $name")
+            assertEquals(case.string("retractionFactSha256"), sha256(bytes.encodeToByteArray()), name)
         }
     }
 
