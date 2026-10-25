@@ -3,6 +3,7 @@ package build.raft.app
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -156,22 +157,48 @@ internal fun agentTypingSentenceTemplates(): AgentTypingSentenceTemplates =
         many = stringResource(MR.strings.thread_agent_typing_many),
     )
 
+/** raft-ui `MessageListEndFade` `h-timeline-section`: the list end fade, the section step. */
+internal val ThreadMessageListEndFadeHeight = 24.dp
+
 /**
- * The line itself, on the composer's 20dp edge. The list behind it fades into the panel color under
- * it (raft-ui's list end fade, which the mobile list has no other way of drawing), so messages
- * scrolled under it are softened and the sentence stays readable. The sentence is announced once,
- * politely, when it changes.
+ * The list's bottom edge over the composer (raft-ui `MessageListEndFade`, raft-design
+ * `spacing.md` "Timeline rhythm"): always on, the panel color at the bottom to transparent upward
+ * over the section step, so a message scrolled under the edge softens instead of being cut, and at
+ * the end of the list it lies over the empty end. While the typing line shows, the fade grows by
+ * exactly the line's height: a solid strip of panel color under the line, the same fade above it.
+ * The switch is instant, like the line itself. Under the typing line and the jump controls; takes
+ * no pointer input and is hidden from accessibility.
+ */
+@Composable
+internal fun ThreadMessageListEndFade(typingLineShown: Boolean, modifier: Modifier = Modifier) {
+    val panel = RaftColor.Canvas
+    Column(modifier = modifier.fillMaxWidth().clearAndSetSemantics {}) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(ThreadMessageListEndFadeHeight)
+                .background(Brush.verticalGradient(listOf(panel.copy(alpha = 0f), panel))),
+        )
+        if (typingLineShown) {
+            Box(Modifier.fillMaxWidth().height(ThreadAgentTypingLineHeight).background(panel))
+        }
+    }
+}
+
+/**
+ * The line itself, on the composer's 20dp edge. It has no fade of its own: it sits on the list's
+ * end fade ([ThreadMessageListEndFade] with `typingLineShown`), whose solid strip under it keeps the
+ * sentence readable over messages scrolled under it. The sentence is announced once, politely,
+ * when it changes.
  */
 @Composable
 internal fun ThreadAgentTypingLine(typing: ThreadAgentTypingUi, modifier: Modifier = Modifier) {
     val sentence = formatAgentTypingSentence(agentTypingSentenceTemplates(), typing.agents.map { it.name })
-    val surface = RaftColor.SurfaceWhite
     Box(
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(ThreadAgentTypingLineHeight + 12.dp)
-                .background(Brush.verticalGradient(listOf(surface.copy(alpha = 0f), surface, surface)))
+                .height(ThreadAgentTypingLineHeight)
                 .clearAndSetSemantics {
                     contentDescription = sentence
                     liveRegion = LiveRegionMode.Polite

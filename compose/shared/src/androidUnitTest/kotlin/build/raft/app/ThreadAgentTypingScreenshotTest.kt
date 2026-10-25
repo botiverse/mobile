@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -25,8 +26,10 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Agent typing line (raft-design 0042), light and dark: the conversation's last messages with the
- * line floating over the list's end, just above where the composer starts. One agent, and four (the
- * first two named, the rest counted, three faces). Reports land in `build/reports/home-screenshots/`;
+ * line floating over the list's end, just above where the composer starts, on the list's end fade
+ * (raft-ui `MessageListEndFade`). One agent, and four (the first two named, the rest counted, three
+ * faces). Then a long message scrolled under the edge: with the line (solid panel color under it,
+ * the fade above) and without it (the fade alone). Reports land in `build/reports/home-screenshots/`;
  * verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
@@ -44,17 +47,45 @@ class ThreadAgentTypingScreenshotTest {
 
     @Test fun manyAgentsDark() = capture("thread.agent-typing.many.dark", RaftAppAppearance.Dark, agents)
 
-    private fun capture(name: String, appearance: RaftAppAppearance, typing: List<ThreadTypingAgent>) =
+    @Test fun overLongMessageLight() =
+        capture("thread.agent-typing.long-message", RaftAppAppearance.Light, agents.take(1), longMessage = true)
+
+    @Test fun overLongMessageDark() =
+        capture("thread.agent-typing.long-message.dark", RaftAppAppearance.Dark, agents.take(1), longMessage = true)
+
+    @Test fun nobodyTypingLight() =
+        capture("thread.agent-typing.none", RaftAppAppearance.Light, emptyList(), longMessage = true)
+
+    @Test fun nobodyTypingDark() =
+        capture("thread.agent-typing.none.dark", RaftAppAppearance.Dark, emptyList(), longMessage = true)
+
+    private fun capture(
+        name: String,
+        appearance: RaftAppAppearance,
+        typing: List<ThreadTypingAgent>,
+        longMessage: Boolean = false,
+    ) =
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
                 RaftDesignSystemTheme {
                     Box(Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
-                        Column(Modifier.fillMaxSize().padding(top = RaftAppSpacing.Sm)) { Rows() }
-                        ThreadAgentTypingLine(
-                            typing = ThreadAgentTypingUi(serverId = "srv-1", agents = typing),
+                        // Unbounded, so a long message runs on under the bottom edge, as in a scrolled list.
+                        Column(
+                            Modifier.fillMaxSize().wrapContentHeight(Alignment.Top, unbounded = true)
+                                .padding(top = RaftAppSpacing.Sm),
+                        ) { Rows(longMessage) }
+                        // As ThreadPage stacks them: the end fade, then the line on it.
+                        ThreadMessageListEndFade(
+                            typingLineShown = typing.isNotEmpty(),
                             modifier = Modifier.align(Alignment.BottomCenter),
                         )
+                        if (typing.isNotEmpty()) {
+                            ThreadAgentTypingLine(
+                                typing = ThreadAgentTypingUi(serverId = "srv-1", agents = typing),
+                                modifier = Modifier.align(Alignment.BottomCenter),
+                            )
+                        }
                     }
                 }
             }
@@ -70,7 +101,47 @@ private val agents =
     )
 
 @Composable
-private fun Rows() {
+private fun Rows(longMessage: Boolean) {
+    val messages = if (longMessage) shortMessages.take(1) + longReply else shortMessages
+    messages.forEach { message ->
+        ThreadMessageCard(
+            message = message,
+            messageBodyTextStyle = raftMessageBodyTextStyle("md"),
+            isMarkdownTagValid = { tag -> tag.kind == ThreadMarkdownTagKind.UserMention },
+            timestampLabel = "9:${message.timestampLabel.substring(14, 16)} AM",
+            onShowActions = {},
+            onOpenMember = {},
+            onOpenThread = {},
+            onOpenTask = {},
+            onOpenTaskStatusMenu = {},
+            onToggleReaction = {},
+            onOpenAttachment = {},
+            onOpenMarkdownTag = { _, _ -> },
+            onOpenMarkdownUrl = {},
+        )
+    }
+}
+
+/** A reply long enough to run under the list's bottom edge. */
+private val longReply =
+    RaftThreadMessageItem(
+        id = "m-3",
+        authorId = "agent-niko",
+        authorName = "Niko",
+        authorKind = "agent",
+        avatarLabel = "N",
+        seq = 3,
+        timestampLabel = "2026-10-23T09:14:00Z",
+        body =
+            "Two incidents yesterday, both resolved. The first was a slow deploy of the API at 14:05: " +
+                "a migration held a lock on the messages table for six minutes, so sends queued and " +
+                "retried. The second was the push relay dropping notifications for about twenty " +
+                "minutes after a certificate rotation. I filed follow-ups for both: run long " +
+                "migrations in batches, and alert when the relay's delivery rate falls. I'll post " +
+                "the timelines and the owners for each follow-up here once they are confirmed.",
+    )
+
+private val shortMessages =
     listOf(
         RaftThreadMessageItem(
             id = "m-1",
@@ -93,21 +164,4 @@ private fun Rows() {
             timestampLabel = "2026-10-23T09:12:00Z",
             body = "On it. Two incidents, both resolved; I'll post the details here.",
         ),
-    ).forEach { message ->
-        ThreadMessageCard(
-            message = message,
-            messageBodyTextStyle = raftMessageBodyTextStyle("md"),
-            isMarkdownTagValid = { tag -> tag.kind == ThreadMarkdownTagKind.UserMention },
-            timestampLabel = "9:${message.timestampLabel.substring(14, 16)} AM",
-            onShowActions = {},
-            onOpenMember = {},
-            onOpenThread = {},
-            onOpenTask = {},
-            onOpenTaskStatusMenu = {},
-            onToggleReaction = {},
-            onOpenAttachment = {},
-            onOpenMarkdownTag = { _, _ -> },
-            onOpenMarkdownUrl = {},
-        )
-    }
-}
+    )
