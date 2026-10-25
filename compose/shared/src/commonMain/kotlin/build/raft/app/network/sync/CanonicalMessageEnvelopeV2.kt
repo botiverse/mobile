@@ -2,6 +2,8 @@
 
 package build.raft.app.network.sync
 
+import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonClassDiscriminator
@@ -13,6 +15,16 @@ const val CANONICAL_MESSAGE_FULL_V2_MANIFEST_RESOURCE: String = "sync/canonicalM
 const val CANONICAL_MESSAGE_V2_UNSUPPORTED_ACTION_METADATA_KIND: String = "unsupported_action_metadata_kind"
 const val CANONICAL_MESSAGE_V2_CONTEXT_MEMBERSHIP_MISMATCH: String = "context_reply_membership_mismatch"
 const val CANONICAL_MESSAGE_V2_BASELINE_REQUIRED: String = "v2_baseline_required"
+
+/**
+ * Web `normalizeLegacyRetraction` (slock `canonicalMessageV2.ts`): the producer row's `deletedAt`
+ * (ISO string; `null` = live; absent on the task-status projector) as the canonical retraction
+ * value — a non-empty, trimmed, parseable timestamp — else null (the V2 fact omits the key).
+ */
+fun normalizeCanonicalRetraction(deletedAt: String?): String? =
+    deletedAt?.takeIf {
+        it.isNotEmpty() && it == it.trim() && parseRaftTimestampEpochMillisOrNull(it) != null
+    }
 
 /** Durable generation identity. V2 never seeds from or writes the V1 consumer partition. */
 const val SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID: String = "sync-core.messages.v2"
@@ -229,6 +241,13 @@ data class CanonicalMessageNodeV2(
     val reactions: List<ReactionFact> = emptyList(),
     val actionMetadata: CanonicalActionMetadataV2? = null,
     val replyCount: Int = 0,
+    /**
+     * RFC 077 retraction (slock 704d69f4, web `CanonicalRetractionFact`): an additive OPTIONAL key —
+     * present only for a retracted message (a canonical ISO timestamp), omitted otherwise, never
+     * `null`. Retraction is one-way: the store keeps a stored value when a later frame omits it.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val deletedAt: String? = null,
 )
 
 /** Full schema-v6 authoritative message envelope. */

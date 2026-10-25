@@ -1,6 +1,7 @@
 package build.raft.app.network.sync
 
 import build.raft.app.toRaftAvatarLabel
+import build.raft.app.withoutRetractedContent
 import build.raft.app.RaftThreadAttachmentItem
 import build.raft.app.RaftThreadMessageItem
 import build.raft.app.RaftThreadReactionItem
@@ -81,7 +82,9 @@ internal fun CanonicalMessageEnvelopeV2.toThreadMessageItem(
         commentRef = null,
         forwardBundle = wireAction.toForwardMessageBundle(),
         deliveryState = ThreadMessageDeliverySent,
-    )
+        // RFC 077: a frame stored as retracted restores flagged, without what its owner took back.
+        deletedAt = fact.deletedAt,
+    ).withoutRetractedContent()
 }
 
 /** Count-only reaction chip. The roster is not part of the shared fact; `selected` is unknown here. */

@@ -10,9 +10,9 @@
 set -euo pipefail
 
 readonly WEB_REPOSITORY="botiverse/slock"
-readonly WEB_HEAD="e5a021210ee6977b26869a2435853522372d90b9"
+readonly WEB_HEAD="704d69f4379f4f87ea14212c3ebf03b1cf6aa55d"
 readonly WEB_PATH="packages/shared/src/canonicalMessageV2.vector.json"
-readonly EXPECTED_SHA256="9ac66a83515df1e7eada19b864d5b41c6038a1a559de18249479455af4e9086e"
+readonly EXPECTED_SHA256="905812d366f8a700753596c01c678262f0aa5b5eb158859e9b791fb3c3a7fa40"
 readonly VENDORED_PATH="compose/shared/src/androidUnitTest/resources/sync/canonical-message-v2-reaction.vector.json"
 
 if [[ ! -f "$VENDORED_PATH" ]]; then

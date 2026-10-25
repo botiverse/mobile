@@ -21,6 +21,8 @@ class CanonicalMessageV2ManifestGateTest {
     @Test
     fun manifestDiscriminatorAndDurableGenerationMatchStableConstants() {
         assertEquals(CANONICAL_MESSAGE_FULL_V2_SCHEMA_VERSION, manifest["schemaVersion"]!!.jsonPrimitive.content.toInt())
+        // v7 ledger (RFC 077): the additive optional `$.fact.deletedAt` key, same schema 6 bytes otherwise.
+        assertEquals(7, manifest["manifestVersion"]!!.jsonPrimitive.content.toInt())
         assertEquals(CANONICAL_MESSAGE_FULL_V2_ENVELOPE_KIND, manifest["kind"]!!.jsonPrimitive.content)
         assertEquals(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID, manifest["durableConsumerId"]!!.jsonPrimitive.content)
         assertEquals(
@@ -34,7 +36,7 @@ class CanonicalMessageV2ManifestGateTest {
             manifest["diagnostics"]!!.jsonArray.map { it.jsonPrimitive.content }.toSet(),
         )
         assertEquals(
-            "94ef61cc7c20515bffb7e3deaacff4860f1a37225a922dd3dfe3a5e9b7f9ee72",
+            "1f4c109336d00fc66fa0c31e476cd07118457dc5a9d074e5061d89897a6aebab",
             MessageDigest.getInstance("SHA-256").digest(manifestBytes).joinToString("") { "%02x".format(it) },
         )
     }
@@ -78,6 +80,14 @@ class CanonicalMessageV2ManifestGateTest {
         assertShape("forwardedBundle.items[].attachments[]", CanonicalForwardedAttachmentSnapshotV2::class.java)
         assertShape("viewerOverlay", VersionedViewerOverlayV1::class.java)
         assertShape("viewerOverlay.payload{reactions}", ViewerOverlayPayloadV1.Reactions::class.java, true)
+    }
+
+    @Test
+    fun retractionIsTheOnlyOptionalFactKey() {
+        val fact = manifest["shapes"]!!.jsonArray.map { it.jsonObject }.single { it["path"]!!.jsonPrimitive.content == "\$.fact" }
+        assertEquals(listOf("deletedAt"), fact["optionalKeys"]!!.jsonArray.map { it.jsonPrimitive.content })
+        val ledger = manifest["fields"]!!.jsonArray.map { it.jsonObject }.single { it["path"]!!.jsonPrimitive.content == "\$.fact.deletedAt" }
+        assertEquals("one-way-present-overwrite", ledger["mergePolicy"]!!.jsonPrimitive.content)
     }
 
     @Test

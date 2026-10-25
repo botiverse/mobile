@@ -161,6 +161,9 @@ fun mergeCanonicalRow(
         commentRef =
             if (MessageAggregateField.CommentRef in present && incoming.commentRef != null) incoming.commentRef
             else existing.commentRef,
+        // RFC 077 retraction is one-way: a null or absent deletedAt never clears an earlier one
+        // (web `mergeIncomingMessage` / `keepDelegationFacts`).
+        deletedAt = incoming.deletedAt ?: existing.deletedAt,
     )
     return if (merged == existing) existing else merged
 }
