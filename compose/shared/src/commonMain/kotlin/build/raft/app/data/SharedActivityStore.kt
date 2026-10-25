@@ -2041,7 +2041,16 @@ class SharedActivityStore internal constructor(
     }
 
     private fun raiseRealtimeCatchUpTargetLocked(message: Message) {
+        // Only a message on a channel/DM row this list shows. A thread or task reply carries its
+        // own conversation as `channelId` (web skips channelType thread/task before
+        // noteInboxCatchUpTarget, inboxStore.ts:2117-2122); as a target it would name no served
+        // channel row, read as "not behind" and end the catch-up of the channel just before it.
+        // A `task` conversation context parses to no kind here, so the row match is the guard.
+        if (message.conversationContext?.channelKind == ConversationKind.Thread) return
+        if (message.conversationContext?.parentMessageId != null || message.parentMessageId != null) return
         val channelId = message.channelId ?: return
+        val shown = _state.value.snapshot?.items.orEmpty()
+        if (shown.none { item -> item.isChannelOrDmRow() && item.channelId == channelId }) return
         val incoming = message.seq?.takeIf { it >= 0L }?.toString() ?: return
         val target = realtimeCatchUpTarget
         if (target != null && compareActivitySeq(incoming, target.seq) <= 0) return
@@ -2390,11 +2399,17 @@ class SharedActivityStore internal constructor(
             items =
                 (missingCurrent + reconciled).dedupeActivityItems().let { items ->
                     // A kept channel row holds the newest message, which the served order (the
-                    // view's, without it) does not know: it stays on top instead of dropping back.
+                    // view's, without it) does not know: it stays on top instead of dropping back
+                    // (web preserveNewerChannelActivity). Rows held from realtime (kept channel
+                    // rows and missing thread rows) keep the order they are shown in now, so a
+                    // stale answer never flips them.
                     if (keptChannelKeys.isEmpty()) {
                         items
                     } else {
-                        items.filter { it.key in keptChannelKeys } + items.filterNot { it.key in keptChannelKeys }
+                        val shownOrder = _state.value.items.withIndex().associate { (index, item) -> item.key to index }
+                        val heldKeys = keptChannelKeys + missingCurrent.map(InboxItem::key)
+                        val held = items.filter { it.key in heldKeys }.sortedBy { shownOrder[it.key] ?: Int.MAX_VALUE }
+                        held + items.filterNot { it.key in heldKeys }
                     }
                 },
             preserveTotalUnreadFloor = preserveTotalUnreadFloor

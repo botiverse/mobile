@@ -1,5 +1,8 @@
 package build.raft.app.data
 
+import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
+import build.raft.app.model.MessageConversationContext
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -247,12 +250,97 @@ class SharedActivityStoreChannelRowLagTest {
         assertEquals(4, store.state.value.totalUnreadCount)
     }
 
+    /** Review of #3692: a later thread reply must not take the target away from the channel. */
+    @Test
+    fun aLaterThreadReplyDoesNotEndTheChannelCatchUp() = runTest {
+        val network = ScriptedInboxNetwork(this, listOf(inbox(row(seq = 41, preview = "hi", unread = 3))))
+        val store = loadedStore(network)
+        val eventAt = testScheduler.currentTime
+
+        store.dispatch(newMessage(seq = 42))
+        store.dispatch(
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message(
+                        id = "reply-43",
+                        channelId = "thread-x",
+                        seq = 43,
+                        conversationContext =
+                            MessageConversationContext(
+                                channelKind = ConversationKind.Thread,
+                                parentMessageId = MessageId("m-42"),
+                                parentChannelId = ChannelId("general"),
+                                parentChannelKind = ConversationKind.Channel
+                            )
+                    )
+                )
+            )
+        )
+        runCurrent()
+        advanceTimeBy(60_000)
+        runCurrent()
+
+        assertEquals(
+            listOf(eventAt, eventAt + 2_500, eventAt + 5_500),
+            network.requestTimes.drop(1),
+            "#general is still re-read while its row is behind 42"
+        )
+    }
+
+    @Test
+    fun thePatchStopsHoldingAfterTheStaleListBound() = runTest {
+        val network = ScriptedInboxNetwork(this, listOf(inbox(row(seq = 41, preview = "hi", unread = 3))))
+        val store = loadedStore(network)
+        val eventAt = testScheduler.currentTime
+
+        store.dispatch(newMessage(seq = 42))
+        runCurrent()
+        advanceTimeBy(30_000)
+        store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals("new", store.state.value.items.single().lastMessagePreview, "held inside the bound")
+
+        advanceTimeBy(eventAt + ActivityLocalMutationHoldMillis + 1 - testScheduler.currentTime)
+        store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+
+        val row = store.state.value.items.single()
+        assertEquals("hi", row.lastMessagePreview, "past the bound the served row wins")
+        assertEquals("41", row.latestActivitySeq)
+    }
+
+    @Test
+    fun aServerSwitchCancelsThePendingCatchUpRead() = runTest {
+        fun twoServers(selected: String) =
+            sampleSession(serverId = selected).copy(
+                servers = listOf(StoredAuthServer(id = "server-1", name = "One"), StoredAuthServer(id = "server-2", name = "Two"))
+            )
+        val auth = InMemoryRaftAuthSessionStore(twoServers("server-1"))
+        val network = ScriptedInboxNetwork(this, listOf(inbox(row(seq = 41, preview = "hi", unread = 3))))
+        val store = loadedStore(network, authStore = auth)
+        val eventAt = testScheduler.currentTime
+
+        store.dispatch(newMessage(seq = 42))
+        runCurrent()
+        assertEquals(listOf(eventAt), network.requestTimes.drop(1), "behind: a catch-up read is now pending")
+
+        auth.saveSession(twoServers("server-2"))
+        store.dispatch(SharedActivityIntent.ServerSelected("server-2"))
+        runCurrent()
+        advanceTimeBy(60_000)
+        runCurrent()
+
+        assertEquals("server-2", store.state.value.ownerServerId)
+        assertEquals(listOf(eventAt, eventAt), network.requestTimes.drop(1), "only the new server's load, no catch-up read")
+    }
+
     private fun TestScope.loadedStore(
         network: ScriptedInboxNetwork,
         initialKeys: List<String> = listOf("channel:general"),
+        authStore: InMemoryRaftAuthSessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
         staleRecoveryDelayMillis: (attempt: Int, retryAfterMillis: Long?) -> Long = { _, _ -> 15_000L }
     ): SharedActivityStore {
-        val session = InMemoryRaftAuthSessionStore(sampleSession())
+        val session = authStore
         val store =
             activityStore(
                 scope = backgroundScope,
