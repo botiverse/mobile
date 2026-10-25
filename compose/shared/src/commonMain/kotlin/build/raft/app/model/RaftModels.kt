@@ -526,6 +526,11 @@ data class Message(
     val externalAuthor: ExternalMessageAuthor? = null,
     /** RFC 077: set when the sender's assistant sent this message for them (wire `delegatedBy`). */
     val delegatedBy: MessageDelegatedBy? = null,
+    /**
+     * RFC 077 PR 2b: set (ISO time) when the owner retracted this delegated message. The server
+     * keeps the row and replaces `content` with a fixed placeholder (wire `deletedAt`).
+     */
+    val deletedAt: String? = null,
     val randomId: String? = null,
     /** Canonical numeric creation time used for ordering; never derived from localized display text. */
     @Transient val createdAtEpochMillis: Long? = null,
