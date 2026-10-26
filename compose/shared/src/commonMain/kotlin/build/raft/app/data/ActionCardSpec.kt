@@ -13,7 +13,7 @@ import kotlinx.serialization.json.put
 /*
  * `action-card.v1`: Raft's first-party action cards described as data (`presentation.card`).
  *
- * Contract: botiverse/slock 2d901b90 (S0 #11226, S0.1 #11232, S0.2 #11234)
+ * Contract: botiverse/slock 1c807448 (S0 #11226, S0.1 #11232, S0.2 #11234, S0.3 #11381)
  * `packages/shared/src/actionCardSpec.ts`, pinned by
  * the vendored `actionCard.v1.vector.json` (scripts/check_action_card_v1_vector.sh). An action
  * card keeps its durable row, `confirmationVersion`, state machine and `/api/actions` endpoints;
@@ -47,6 +47,7 @@ val ACTION_CARD_SPEC_CAPABILITIES: List<String> =
         "field.text_input", "field.text_area", "field.select", "field.toggle", "field.member_picker", "field.channel_picker",
         "field.agent_picker",
         "intent.create_channel", "intent.add_members", "intent.create_agent", "intent.feedback_form", "intent.upgrade_dialog",
+        "intent.feedback_ticket",
     )
 
 /**
@@ -64,14 +65,17 @@ val ACTION_CARD_SPEC_CAPABILITIES: List<String> =
 // submitted through execute), and the four intents whose native path the App has: create_channel
 // and add_members run the card as the typed card's button does, create_agent opens the create-agent
 // dialog, feedback_form the Feedback page (dropped per viewer when that page is off:
-// [raftAppActionCardCapabilities]). Not intent.upgrade_dialog: the App has no upgrade dialog for a
-// card, so that button is "Open in web".
+// [raftAppActionCardCapabilities]). S0.3: intent.feedback_ticket, a done feedback card's "View in
+// Settings", which opens Settings › Feedback on the sender's ticket; shown only to the sender and
+// only for a ticket filed into this App (`showsFeedbackTicket`), else removed. Not
+// intent.upgrade_dialog: the App has no upgrade dialog for a card, so that button is "Open in web".
 val RAFT_APP_ACTION_CARD_CAPABILITIES: List<String> =
     listOf(
         "card.v1", "confirm.v1", "form.v1",
         "field.text_input", "field.text_area", "field.select", "field.toggle", "field.member_picker", "field.channel_picker",
         "field.agent_picker",
         "intent.create_channel", "intent.add_members", "intent.create_agent", "intent.feedback_form",
+        "intent.feedback_ticket",
     )
 
 /**
@@ -114,17 +118,30 @@ enum class ActionCardSpecIcon(val wire: String) {
     CreditCard("credit_card"),
 }
 
-/** The native dialogs an `open` button opens, prefilled from `metadata.action` as today. */
+/**
+ * The native screens an `open` button opens: the dialogs, prefilled from `metadata.action` as
+ * today, and [FeedbackTicket] (a result intent, [resultOnly]).
+ */
 enum class ActionCardSpecIntent(val wire: String) {
     CreateChannel("create_channel"),
     AddMembers("add_members"),
     CreateAgent("create_agent"),
     FeedbackForm("feedback_form"),
     UpgradeDialog("upgrade_dialog"),
+
+    /** The sender's own ticket in Settings › Feedback, from the done card's `metadata.result`
+     *  (`product-feedback`: `ticketId`, `source`); the card carries no ticket id. */
+    FeedbackTicket("feedback_ticket"),
     ;
 
     /** `intent.<wire>`. */
     val capability: String get() = "intent.$wire"
+
+    /**
+     * One of `ACTION_CARD_SPEC_RESULT_INTENTS`: it views what a done card's `metadata.result`
+     * names, so it is the only `open` a result tree may hold, and the card body refuses it.
+     */
+    val resultOnly: Boolean get() = this == FeedbackTicket
 }
 
 // ---------------------------------------------------------------------------
@@ -629,7 +646,8 @@ data class ActionCardSpecForm(
 /**
  * `presentation.card` as this App read it ([parseActionCardSpec]) or renders it
  * ([stripActionCardSpec]). The frame paints [icon] + [title] as the header; [spec] is the body;
- * [result] is shown once the card is executed (its buttons only navigate). [confirms] / [forms] are
+ * [result] is shown once the card is executed (its buttons navigate, or open a result intent:
+ * [ActionCardSpecIntent.resultOnly]). [confirms] / [forms] are
  * null when the card did not write them.
  */
 data class ActionCardSpecCard(
@@ -1027,6 +1045,14 @@ private object ActionCardSpecReader {
 
     private enum class TreeRule { Spec, Result, Confirm }
 
+    /** An `open` whose intent views a done card's result (`opensResultIntent`). */
+    private fun opensResultIntent(action: ActionCardSpecAction): Boolean = action is ActionCardSpecAction.Open && action.intent.resultOnly
+
+    /** What a result tree's button may do (`resultActionAllowed`): navigate, open a result intent, or a read's marker. */
+    private fun resultActionAllowed(action: ActionCardSpecAction): Boolean =
+        action is ActionCardSpecAction.Navigate || action is ActionCardSpecAction.NavigateUrl ||
+            action is ActionCardSpecAction.Unsupported || opensResultIntent(action)
+
     private fun tree(raw: JsonElement?, what: String, rule: TreeRule): ActionCardSpecTree {
         val obj = raw.obj(what)
         val root = matching(obj["root"], "$what.root", CARD_ELEMENT_ID)
@@ -1040,9 +1066,12 @@ private object ActionCardSpecReader {
         if (rule == TreeRule.Confirm && buttons.isNotEmpty()) invalid("$what: a confirmation has no buttons")
         if (buttons.size > ActionCardSpecLimits.MAX_BUTTONS) invalid("$what: too many buttons")
         if (rule == TreeRule.Spec && buttons.count { it.action is ActionCardSpecAction.Execute } > 1) invalid("$what: at most one execute button")
-        if (rule == TreeRule.Result && buttons.any { it.action !is ActionCardSpecAction.Navigate && it.action !is ActionCardSpecAction.NavigateUrl && it.action !is ActionCardSpecAction.Unsupported }) {
-            invalid("$what: result buttons only navigate")
+        // The tree rules see a read's marker, not the action it replaces (leniency 7): a marked
+        // `open feedback_ticket` in the body is accepted and strips to "Open in web".
+        if (rule == TreeRule.Result && buttons.any { !resultActionAllowed(it.action) }) {
+            invalid("$what: result buttons only navigate or open a result intent")
         }
+        if (rule == TreeRule.Spec && buttons.any { opensResultIntent(it.action) }) invalid("$what: a result intent opens only from a result")
         if (buttons.count { it.emphasis == ActionCardSpecEmphasis.Primary } > 1) invalid("$what: at most one primary button")
         return ActionCardSpecTree(root, elements)
     }

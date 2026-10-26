@@ -15,6 +15,9 @@ import build.raft.app.network.sync.decodeCanonicalMessageWire
 import build.raft.app.network.sync.encodeCanonicalMessageV2
 import build.raft.app.network.sync.toCanonicalMessageV2Conversion
 import build.raft.app.network.sync.toThreadMessageItem
+import build.raft.app.actionCardSpecToRender
+import build.raft.app.showsFeedbackTicket
+import build.raft.app.threadActionCard
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -152,6 +155,31 @@ class CanonicalMessageV2ActionCardResultTest {
     }
 
     @Test
+    fun aDoneFeedbackCardReadFromV2ShowsViewInSettingsToItsSenderOnTheSameApp() = runTest {
+        // S0.3: the cold-open / offline frame, before any REST page; the card as the server builds it
+        // (vector result_open_feedback_ticket's result tree: the summary and "View in Settings").
+        val stored = assertIs<CanonicalMessageV2DecodeResult.Accepted>(
+            decodeCanonicalMessageV2(encodeCanonicalMessageV2(convert(doneFeedbackCardWithSpec), partition.serverId), partition.serverId),
+        ).envelope
+        val card = assertNotNull(assertNotNull(stored.toThreadMessageItem(currentUserId = "user-1")).threadActionCard())
+        assertEquals(Triple("user-1", TICKET, "android"), Triple(card.executedByUserId, card.resultTicketId, card.resultSource))
+
+        assertTrue(card.showsFeedbackTicket(viewerUserId = "user-1", clientOs = "android", feedbackPageAvailable = true))
+        val shown = assertNotNull(
+            card.actionCardSpecToRender(specEnabled = true, capabilities = RAFT_APP_ACTION_CARD_CAPABILITIES, feedbackTicketVisible = true),
+        )
+        assertEquals(
+            ActionCardSpecAction.Open(ActionCardSpecIntent.FeedbackTicket),
+            (shown.result?.element("openTicket") as ActionCardSpecButton).action,
+        )
+        // Another viewer, or the iOS app (the ticket was filed into Android's): the summary alone.
+        assertFalse(card.showsFeedbackTicket(viewerUserId = "user-2", clientOs = "android", feedbackPageAvailable = true))
+        assertFalse(card.showsFeedbackTicket(viewerUserId = "user-1", clientOs = "ios", feedbackPageAvailable = true))
+        val hidden = assertNotNull(card.actionCardSpecToRender(true, RAFT_APP_ACTION_CARD_CAPABILITIES, feedbackTicketVisible = false))
+        assertNull(hidden.result?.element("openTicket"))
+    }
+
+    @Test
     fun aRealtimeDoneFrameConvertsInsteadOfBreakingTheWindow() = runTest {
         // message:updated when the card turns done (the canary's update path, allowPartial = true).
         val conversion = foldInput(doneFeedbackCard, ProductionFace.EnrichedUpdated, CanonicalMessageFoldKind.Updated)
@@ -269,6 +297,20 @@ class CanonicalMessageV2ActionCardResultTest {
         val doneFeedbackCard = done(
             """{"type":"feedback:submit","feedbackType":"problem","message":"Search misses old threads","draftHint":"Edit before sending"}""",
             """{"kind":"product-feedback","ticketId":"$TICKET","reference":"FB-9","source":"android"}""",
+        )
+
+        /**
+         * [doneFeedbackCard] with its `presentation.card` (S0.3 builder output, as the v4 vector's
+         * `result_open_feedback_ticket`): no ticket id in the card; the result says it.
+         */
+        val doneFeedbackCardWithSpec = doneFeedbackCard.replace(
+            """"genericApprovalAllowed":false}""",
+            """"genericApprovalAllowed":false,"card":{"catalog":"action-card.v1","title":{"key":"actionCard.test.title","text":{"en":"Test card"}},""" +
+                """"spec":{"root":"root","elements":{"root":{"type":"Stack","props":{},"children":["t"]},"t":{"type":"Text","props":{"text":"x"}}}},""" +
+                """"result":{"root":"root","elements":{"root":{"type":"Stack","props":{},"children":["summary","openTicket"]},""" +
+                """"summary":{"type":"Text","props":{"text":{"key":"actionCard.test.sent","text":{"en":"Sent to the Raft team."}}}},""" +
+                """"openTicket":{"type":"Button","props":{"label":{"key":"actionCard.test.viewTicket","text":{"en":"View in Settings"}},""" +
+                """"action":{"kind":"open","intent":"feedback_ticket"}}}}}}}""",
         )
 
         /** `integration:register_app` (`actionCardsService` register branch). */

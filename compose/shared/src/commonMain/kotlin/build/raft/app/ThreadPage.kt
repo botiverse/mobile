@@ -128,6 +128,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.ACTION_CARD_SPEC_FEATURE_FLAG_KEY
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.raftAppActionCardCapabilities
+import build.raft.app.data.featureFlagClientOs
 import build.raft.app.data.DirectAttachmentUploadOperation
 import build.raft.app.data.ThreadComposerDirectUploadDecision
 import build.raft.app.data.ThreadComposerDirectUploadPhase
@@ -8570,7 +8571,7 @@ private fun SharedThreadRouteContentContent(
     val latestActionCardDirectMessageIds by rememberUpdatedState(actionCardDirectMessageIds)
     // Keyed on flags only: each card selects its own slice of the store's state.
     val actionCardSpecHost =
-        remember(featureFlagSnapshotRevision, feedbackCardEntryEnabled, actionCardSpecStore) {
+        remember(featureFlagSnapshotRevision, feedbackCardEntryEnabled, actionCardSpecStore, currentSession?.user?.id) {
             ThreadActionCardSpecHost(
                 specEnabled = { serverId ->
                     serverId != null && sharedStores.serverFeatureFlags.isEnabled(ServerId(serverId), ACTION_CARD_SPEC_FEATURE_FLAG_KEY)
@@ -8593,6 +8594,13 @@ private fun SharedThreadRouteContentContent(
                     )
                 },
                 isDirectMessageChannel = { channelId -> channelId in latestActionCardDirectMessageIds },
+                viewerUserId = currentSession?.user?.id,
+                clientOs = featureFlagClientOs(),
+                feedbackPageAvailable = feedbackCardEntryEnabled,
+                openFeedbackTicket = { ticketId ->
+                    bridge.log("thread_feedback_ticket_open hasTicket=${ticketId != null}")
+                    pager.openSettingsFeedbackWebViewPage(storeScope, ticketId = ticketId)
+                },
             )
         }
 
@@ -25863,9 +25871,11 @@ private fun ThreadMessageCardContent(
                             val viewerServerId = LocalThreadViewerServerId.current
                             val specFlagServerId = actionCard.actionCardSpecFlagServerId(viewerServerId)
                             val specEnabled = specHost.specEnabled(specFlagServerId)
+                            val feedbackTicketVisible =
+                                actionCard.showsFeedbackTicket(specHost.viewerUserId, specHost.clientOs, specHost.feedbackPageAvailable)
                             val specCard =
-                                remember(actionCard, specEnabled, specHost.capabilities) {
-                                    actionCard.actionCardSpecToRender(specEnabled, specHost.capabilities)
+                                remember(actionCard, specEnabled, specHost.capabilities, feedbackTicketVisible) {
+                                    actionCard.actionCardSpecToRender(specEnabled, specHost.capabilities, feedbackTicketVisible)
                                 }
                             if (actionCard.presentationCardJson != null && specFlagServerId != null) {
                                 LaunchedEffect(specFlagServerId) { specHost.ensureFlags(specFlagServerId) }
@@ -25889,6 +25899,7 @@ private fun ThreadMessageCardContent(
                                             ThreadActionCardSpecPress.Store ->
                                                 specHost.onIntent(ThreadActionCardSpecIntent.Press(message.id, elementId, actionCard, specCard))
                                             ThreadActionCardSpecPress.OpenInWeb -> specHost.openInWeb(message.id)
+                                            is ThreadActionCardSpecPress.OpenFeedbackTicket -> specHost.openFeedbackTicket(press.ticketId)
                                             is ThreadActionCardSpecPress.OpenUrl -> onOpenMarkdownUrl(press.url)
                                             is ThreadActionCardSpecPress.Navigate ->
                                                 openActionCardSpecTarget(

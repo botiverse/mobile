@@ -43,8 +43,18 @@ internal data class ThreadActionCard(
     val draftHint: String? = null,
     val executedAt: String? = null,
     val executedByUserName: String? = null,
+    /**
+     * Who executed the card (wire `executedByUserId`). Read only to tell whether the viewer is the
+     * sender (a done `feedback:submit` card's "View in Settings", S0.3). Absent on the canonical V2
+     * read path, which does not carry user pointer ids: there the App treats the viewer as not the
+     * sender.
+     */
+    val executedByUserId: String? = null,
     val resultKind: String? = null,
     val resultId: String? = null,
+    /** `product-feedback` result (S0.3): the Hands ticket id, and the Hands app it was filed into (wire `source`). */
+    val resultTicketId: String? = null,
+    val resultSource: String? = null,
     val resultName: String? = null,
     val resultChannelName: String? = null,
     val resultAddedHumanIds: List<String> = emptyList(),
@@ -163,6 +173,7 @@ internal data class WireActionCardMetadata(
     val state: String = "prepared",
     val executedAt: String? = null,
     val executedByUserName: String? = null,
+    val executedByUserId: String? = null,
     val result: WireActionCardResult? = null,
     val presentation: WireActionCardPresentation? = null,
 )
@@ -209,6 +220,10 @@ internal data class WireActionCardResult(
     val ownerAgentName: String? = null,
     val addedHumanIds: List<String> = emptyList(),
     val addedAgentIds: List<String> = emptyList(),
+    /** `product-feedback`: the Hands ticket (null when Hands named none). */
+    val ticketId: String? = null,
+    /** `product-feedback` (S0.3): the Hands app the ticket was filed into (`web`, `ios`, `android`, `ohos`); absent on older cards. */
+    val source: String? = null,
 )
 
 internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
@@ -236,7 +251,10 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
         draftHint = action.draftHint?.takeIf { it.isNotBlank() },
         executedAt = meta.executedAt?.takeIf { it.isNotBlank() },
         executedByUserName = meta.executedByUserName?.takeIf { it.isNotBlank() },
+        executedByUserId = meta.executedByUserId?.takeIf { it.isNotBlank() },
         resultKind = meta.result?.kind?.takeIf { it.isNotBlank() },
+        resultTicketId = meta.result?.ticketId?.takeIf { it.isNotBlank() },
+        resultSource = meta.result?.source?.takeIf { it.isNotBlank() },
         resultId = firstNonBlank(meta.result?.id, meta.result?.channelId, meta.result?.clientId, meta.result?.ownerAgentId),
         resultName = firstNonBlank(meta.result?.name, meta.result?.clientName, meta.result?.ownerAgentName),
         resultChannelName = meta.result?.channelName?.takeIf { it.isNotBlank() },
@@ -310,7 +328,10 @@ internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
         putString("draftHint", draftHint)
         putString("executedAt", executedAt)
         putString("executedByUserName", executedByUserName)
+        putString("executedByUserId", executedByUserId)
         putString("resultKind", resultKind)
+        putString("resultTicketId", resultTicketId)
+        putString("resultSource", resultSource)
         putString("resultId", resultId)
         putString("resultName", resultName)
         putString("resultChannelName", resultChannelName)
@@ -364,7 +385,10 @@ internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): Threa
         draftHint = metadata["${ActionCardMetadataPrefix}draftHint"]?.takeIf { it.isNotBlank() },
         executedAt = metadata["${ActionCardMetadataPrefix}executedAt"]?.takeIf { it.isNotBlank() },
         executedByUserName = metadata["${ActionCardMetadataPrefix}executedByUserName"]?.takeIf { it.isNotBlank() },
+        executedByUserId = metadata["${ActionCardMetadataPrefix}executedByUserId"]?.takeIf { it.isNotBlank() },
         resultKind = metadata["${ActionCardMetadataPrefix}resultKind"]?.takeIf { it.isNotBlank() },
+        resultTicketId = metadata["${ActionCardMetadataPrefix}resultTicketId"]?.takeIf { it.isNotBlank() },
+        resultSource = metadata["${ActionCardMetadataPrefix}resultSource"]?.takeIf { it.isNotBlank() },
         resultId = metadata["${ActionCardMetadataPrefix}resultId"]?.takeIf { it.isNotBlank() },
         resultName = metadata["${ActionCardMetadataPrefix}resultName"]?.takeIf { it.isNotBlank() },
         resultChannelName = metadata["${ActionCardMetadataPrefix}resultChannelName"]?.takeIf { it.isNotBlank() },

@@ -11,9 +11,13 @@ import build.raft.app.data.ActionCardSpecEmphasis
 import build.raft.app.data.ActionCardSpecForm
 import build.raft.app.data.ActionCardSpecIntent
 import build.raft.app.data.ActionCardSpecNavigateTarget
+import build.raft.app.data.ActionCardSpecTree
+import build.raft.app.data.CardStack
 import build.raft.app.data.DataResult
 import build.raft.app.data.ExecuteActionFormBody
+import build.raft.app.data.FeedbackSubmitActionCardType
 import build.raft.app.data.ThreadActionCard
+import build.raft.app.data.isFeedbackSubmitAction
 import build.raft.app.data.stripActionCardSpec
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
@@ -48,13 +52,56 @@ internal fun ThreadActionCard.actionCardSpecFlagServerId(viewerServerId: String?
  * the card has no `presentation.card` this App can read (A1's read parse; an unknown catalog or
  * a card that fails it is already null), or its type keeps its typed card
  * ([ThreadActionCardTypedOnlyTypes]). Otherwise the card stripped to [capabilities]: every
- * button this App cannot run is "Open in web".
+ * button this App cannot run is "Open in web". A result's "View in Settings"
+ * (`open feedback_ticket`) stays only when [feedbackTicketVisible] ([showsFeedbackTicket]);
+ * otherwise it is removed, and the viewer sees the summary alone (S0.3: hidden, not "Open in web").
  */
-internal fun ThreadActionCard.actionCardSpecToRender(specEnabled: Boolean, capabilities: Collection<String>): ActionCardSpecCard? {
+internal fun ThreadActionCard.actionCardSpecToRender(
+    specEnabled: Boolean,
+    capabilities: Collection<String>,
+    feedbackTicketVisible: Boolean = false,
+): ActionCardSpecCard? {
     if (!specEnabled) return null
     if (type in ThreadActionCardTypedOnlyTypes) return null
     val read = presentationCard ?: return null
-    return stripActionCardSpec(read, actionCardSpecCapabilitiesFor(capabilities))
+    val stripped = stripActionCardSpec(read, actionCardSpecCapabilitiesFor(capabilities)) ?: return null
+    return if (feedbackTicketVisible) stripped else stripped.withoutResultIntentButtons()
+}
+
+/**
+ * Whether the viewer may follow a done `feedback:submit` card to its ticket (S0.3, slock #11381
+ * `docs/development/action-card-forms.md`): the card is done with a `product-feedback` result,
+ * the viewer ([viewerUserId]) is the one who sent it (`executedByUserId`), and the ticket was
+ * filed into this App's own Hands app (`result.source` == [clientOs], `android` / `ios`:
+ * `featureFlagClientOs`). A ticket is read only through its own app. [feedbackPageAvailable]: the
+ * App's Settings › Feedback is the page that lists this App's tickets (`product_feedback_multi_app`
+ * on for the viewing server); without it the page could not show the ticket.
+ */
+internal fun ThreadActionCard.showsFeedbackTicket(viewerUserId: String?, clientOs: String, feedbackPageAvailable: Boolean): Boolean {
+    if (!feedbackPageAvailable || !isExecuted || !isFeedbackSubmitAction()) return false
+    if (resultKind != "product-feedback") return false
+    val viewer = viewerUserId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+    val source = resultSource ?: return false
+    return executedByUserId == viewer && clientOs.isNotBlank() && source == clientOs
+}
+
+/**
+ * [this] without the result buttons that `open` a result intent (`feedback_ticket`): removed from
+ * the elements and from every Stack's children. A result whose root was such a button is dropped.
+ */
+internal fun ActionCardSpecCard.withoutResultIntentButtons(): ActionCardSpecCard {
+    val tree = result ?: return this
+    val removed =
+        tree.elements.filterValues { node ->
+            node is ActionCardSpecButton && (node.action as? ActionCardSpecAction.Open)?.intent?.resultOnly == true
+        }.keys
+    if (removed.isEmpty()) return this
+    if (tree.root in removed) return copy(result = null)
+    val elements =
+        tree.elements.filterKeys { it !in removed }.mapValues { (_, node) ->
+            if (node is CardStack && node.children.orEmpty().any { it in removed }) node.copy(children = node.children.orEmpty().filterNot { it in removed }) else node
+        }
+    return copy(result = ActionCardSpecTree(tree.root, elements))
 }
 
 /**
@@ -75,13 +122,16 @@ internal fun ActionCardSpecIntent.typedActionType(): String? =
         ActionCardSpecIntent.CreateChannel -> "channel:create"
         ActionCardSpecIntent.AddMembers -> "channel:add_member"
         ActionCardSpecIntent.CreateAgent -> "agent:create"
-        ActionCardSpecIntent.FeedbackForm -> "feedback:submit"
+        ActionCardSpecIntent.FeedbackForm -> FeedbackSubmitActionCardType
+        // A done feedback card's "View in Settings" (S0.3): Settings › Feedback on the ticket.
+        ActionCardSpecIntent.FeedbackTicket -> FeedbackSubmitActionCardType
         ActionCardSpecIntent.UpgradeDialog -> null
     }
 
-/** A Button that changes the card (as opposed to a link). */
+/** A Button that changes the card (as opposed to a link). A result intent only views what the result names. */
 internal val ActionCardSpecAction.changesCard: Boolean
-    get() = this is ActionCardSpecAction.Execute || this is ActionCardSpecAction.OpenForm || this is ActionCardSpecAction.Open
+    get() = this is ActionCardSpecAction.Execute || this is ActionCardSpecAction.OpenForm ||
+        (this is ActionCardSpecAction.Open && !intent.resultOnly)
 
 /** The Button [elementId] of the rendered card: in its body, else in its result. */
 internal fun ActionCardSpecCard.button(elementId: String): ActionCardSpecButton? =
@@ -109,7 +159,18 @@ internal sealed interface ThreadActionCardSpecPress {
 
     /** This message's web link, in the browser. */
     data object OpenInWeb : ThreadActionCardSpecPress
+
+    /**
+     * `open feedback_ticket` (S0.3): Settings › Feedback on [ticketId], the done card's
+     * `result.ticketId`; null (none, or not a UUID) opens the feedback list.
+     */
+    data class OpenFeedbackTicket(val ticketId: String?) : ThreadActionCardSpecPress
 }
+
+private val FEEDBACK_TICKET_UUID = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+/** A ticket id Settings › Feedback can open (a UUID, per S0.3), else null: the list. */
+internal fun feedbackTicketIdOrNull(raw: String?): String? = raw?.trim()?.takeIf { FEEDBACK_TICKET_UUID.matches(it) }
 
 /**
  * Routes a tap on Button [elementId] of the rendered [spec] of [card] (spec §3.3, web
@@ -125,7 +186,17 @@ internal fun threadActionCardSpecPress(
 ): ThreadActionCardSpecPress {
     val button = spec.button(elementId) ?: return ThreadActionCardSpecPress.Ignore
     if (button.disabledReason != null) return ThreadActionCardSpecPress.Ignore
-    return when (val action = button.action) {
+    val buttonAction = button.action
+    // A result intent views the done card's result: it works on a done card, where every button
+    // that changes the card is gone. Only on the card type it belongs to.
+    if (buttonAction is ActionCardSpecAction.Open && buttonAction.intent.resultOnly) {
+        return if (card.isExecuted && buttonAction.intent.typedActionType()?.equals(card.type, ignoreCase = true) == true) {
+            ThreadActionCardSpecPress.OpenFeedbackTicket(feedbackTicketIdOrNull(card.resultTicketId))
+        } else {
+            ThreadActionCardSpecPress.OpenInWeb
+        }
+    }
+    return when (val action = buttonAction) {
         is ActionCardSpecAction.Navigate ->
             if (actionCardTargetOnViewerServer(action.target, card.sourceServerId, viewerServerId)) {
                 ThreadActionCardSpecPress.Navigate(action.target)
