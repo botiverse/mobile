@@ -8,6 +8,7 @@ import build.raft.app.RaftThreadReactionItem
 import build.raft.app.MemberKindWireContract
 import build.raft.app.ThreadMessageDeliverySent
 import build.raft.app.data.WireActionCardMetadata
+import build.raft.app.data.WireActionCardPresentation
 import build.raft.app.data.WireActionCardResult
 import build.raft.app.data.WireForwardedBundleAttachment
 import build.raft.app.data.WireForwardedBundleAuthor
@@ -28,6 +29,12 @@ import kotlinx.serialization.json.jsonObject
 
 private val canonicalV2ThreadProjectionJson = Json {
     encodeDefaults = true
+}
+
+/** Reads the stored presentation object the way the REST card decode reads it. */
+private val canonicalV2PresentationJson = Json {
+    ignoreUnknownKeys = true
+    coerceInputValues = true
 }
 
 /**
@@ -119,6 +126,9 @@ private fun CanonicalActionMetadataV2.toWireActionCardMetadata(): WireActionCard
         is CanonicalActionMetadataV2.ActionCard -> WireActionCardMetadata(
             kind = "action-card",
             version = version,
+            sourceServerId = sourceServerId,
+            targetServerName = targetServerName,
+            confirmationVersion = confirmationVersion,
             action = canonicalV2ThreadProjectionJson
                 .encodeToJsonElement(CanonicalActionCardActionV2.serializer(), action)
                 .jsonObject,
@@ -135,6 +145,11 @@ private fun CanonicalActionMetadataV2.toWireActionCardMetadata(): WireActionCard
                     addedHumanIds = it.addedHumanIds,
                     addedAgentIds = it.addedAgentIds,
                 )
+            },
+            presentation = presentation?.let {
+                runCatching {
+                    canonicalV2PresentationJson.decodeFromJsonElement(WireActionCardPresentation.serializer(), it)
+                }.getOrNull()
             },
         )
         is CanonicalActionMetadataV2.ForwardedBundle -> WireActionCardMetadata(

@@ -22,7 +22,9 @@ class CanonicalMessageV2ManifestGateTest {
     fun manifestDiscriminatorAndDurableGenerationMatchStableConstants() {
         assertEquals(CANONICAL_MESSAGE_FULL_V2_SCHEMA_VERSION, manifest["schemaVersion"]!!.jsonPrimitive.content.toInt())
         // v7 ledger (RFC 077): the additive optional `$.fact.deletedAt` key, same schema 6 bytes otherwise.
-        assertEquals(7, manifest["manifestVersion"]!!.jsonPrimitive.content.toInt())
+        // v8 ledger: the additive optional action-card keys (sourceServerId, targetServerName,
+        // confirmationVersion, presentation); a card without them keeps its schema 6 bytes.
+        assertEquals(8, manifest["manifestVersion"]!!.jsonPrimitive.content.toInt())
         assertEquals(CANONICAL_MESSAGE_FULL_V2_ENVELOPE_KIND, manifest["kind"]!!.jsonPrimitive.content)
         assertEquals(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID, manifest["durableConsumerId"]!!.jsonPrimitive.content)
         assertEquals(
@@ -36,7 +38,7 @@ class CanonicalMessageV2ManifestGateTest {
             manifest["diagnostics"]!!.jsonArray.map { it.jsonPrimitive.content }.toSet(),
         )
         assertEquals(
-            "1f4c109336d00fc66fa0c31e476cd07118457dc5a9d074e5061d89897a6aebab",
+            "06654fa1753c9677d5ac985a8dae4e3bb533a740ea0e9a168e84c74e4dee8d74",
             MessageDigest.getInstance("SHA-256").digest(manifestBytes).joinToString("") { "%02x".format(it) },
         )
     }
@@ -88,6 +90,24 @@ class CanonicalMessageV2ManifestGateTest {
         assertEquals(listOf("deletedAt"), fact["optionalKeys"]!!.jsonArray.map { it.jsonPrimitive.content })
         val ledger = manifest["fields"]!!.jsonArray.map { it.jsonObject }.single { it["path"]!!.jsonPrimitive.content == "\$.fact.deletedAt" }
         assertEquals("one-way-present-overwrite", ledger["mergePolicy"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun actionCardPresentationKeysAreOptionalAndOneWay() {
+        val card = manifest["shapes"]!!.jsonArray.map { it.jsonObject }
+            .single { it["path"]!!.jsonPrimitive.content == "\$.fact.actionMetadata{action-card}" }
+        assertEquals(
+            listOf("sourceServerId", "targetServerName", "confirmationVersion", "presentation"),
+            card["optionalKeys"]!!.jsonArray.map { it.jsonPrimitive.content },
+        )
+        val ledger = manifest["fields"]!!.jsonArray.map { it.jsonObject }
+            .associate { it["path"]!!.jsonPrimitive.content to it["mergePolicy"]!!.jsonPrimitive.content }
+        assertEquals("one-way-present-overwrite", ledger["\$.fact.actionMetadata{action-card}.sourceServerId"])
+        assertEquals("one-way-present-overwrite", ledger["\$.fact.actionMetadata{action-card}.targetServerName"])
+        assertEquals("monotonic-version-gate", ledger["\$.fact.actionMetadata{action-card}.confirmationVersion"])
+        assertEquals("one-way-present-overwrite", ledger["\$.fact.actionMetadata{action-card}.presentation"])
+        val forbidden = manifest["forbiddenAuthoritativePaths"]!!.jsonArray.map { it.jsonPrimitive.content }.toSet()
+        assertTrue("\$.fact.actionMetadata{action-card}.executedByUserId" in forbidden)
     }
 
     @Test

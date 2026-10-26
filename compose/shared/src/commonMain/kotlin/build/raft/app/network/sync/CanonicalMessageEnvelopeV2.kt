@@ -7,6 +7,7 @@ import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonClassDiscriminator
+import kotlinx.serialization.json.JsonObject
 
 /** Full normalized-message V2 discriminator. Schema v5 remains the reaction-only tripwire. */
 const val CANONICAL_MESSAGE_FULL_V2_SCHEMA_VERSION: Int = 6
@@ -209,6 +210,29 @@ sealed interface CanonicalActionMetadataV2 {
         val executedAt: String? = null,
         val executedByUserName: String? = null,
         val result: CanonicalActionCardResultV2? = null,
+        /**
+         * Additive OPTIONAL keys (App manifest v8), each present only when the producer card has a value and
+         * never `null`, so a card without them keeps its earlier bytes. The store treats them one-way: a
+         * frame whose card lacks one keeps the stored value, and [confirmationVersion] never goes down.
+         *
+         * The card's own server (wire `sourceServerId`, fixed at prepare time). In a joint channel it can
+         * differ from the partition server, so it is a display/routing value, not an embedded ref.
+         */
+        @EncodeDefault(EncodeDefault.Mode.NEVER)
+        val sourceServerId: String? = null,
+        /** Display name of [sourceServerId] at prepare time (wire `targetServerName`). */
+        @EncodeDefault(EncodeDefault.Mode.NEVER)
+        val targetServerName: String? = null,
+        /** The card's optimistic credential (wire `confirmationVersion`), sent back when it is run. */
+        @EncodeDefault(EncodeDefault.Mode.NEVER)
+        val confirmationVersion: Int? = null,
+        /**
+         * The server-built presentation object (wire `presentation`: title, confirmLabel, warning,
+         * genericApprovalAllowed, displayItems, `card` (action-card.v1), ...), kept as the producer's JSON
+         * object. It is server copy for human clients; readers parse it exactly like a REST card.
+         */
+        @EncodeDefault(EncodeDefault.Mode.NEVER)
+        val presentation: JsonObject? = null,
     ) : CanonicalActionMetadataV2
 
     @Serializable
