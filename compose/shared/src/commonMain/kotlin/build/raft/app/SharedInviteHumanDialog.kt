@@ -48,7 +48,7 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
-import build.raft.kuiklybase.datetime.Clock
+import kotlin.time.Clock
 import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch

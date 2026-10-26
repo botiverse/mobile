@@ -165,7 +165,8 @@ kotlin {
                 implementation(libs.atomicfu)
                 implementation("app.cash.sqldelight:runtime:2.1.0")
                 implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.6")
-                implementation("build.raft.kuiklybase:datetime:0.1.0-raft.0")
+                // Time zone offsets (RaftDatetimeFoundation); the clock is kotlin.time.Clock.
+                implementation(libs.kotlinx.datetime)
                 // Unified network infra (task #12): all platforms' HTTP goes
                 // through NetworkKMM behind the RaftHttpExecutor seam.
                 // App HTTP transport (artin 2026-10-23): Ktor client behind the RaftHttpExecutor seam,

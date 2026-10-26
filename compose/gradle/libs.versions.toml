@@ -9,6 +9,8 @@ cmpLifecycle = "2.11.0"
 androidxComposeRuntime = "1.12.1"
 kotlinxCoroutines = "1.11.0"
 kotlinxSerialization = "1.11.0"
+# Time zones (kotlin.time.Instant API, Kotlin 2.2+).
+kotlinxDatetime = "0.7.1"
 atomicfu = "0.33.0"
 coreKtx = "1.10.1"
 media3 = "1.6.1"
@@ -114,6 +116,7 @@ hrm-latex-renderer = { group = "io.github.huarangmeng", name = "latex-renderer",
 snipme-highlights = { group = "dev.snipme", name = "highlights", version.ref = "snipmeHighlights" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
+kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime", version.ref = "kotlinxDatetime" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 atomicfu = { group = "org.jetbrains.kotlinx", name = "atomicfu", version.ref = "atomicfu" }
 

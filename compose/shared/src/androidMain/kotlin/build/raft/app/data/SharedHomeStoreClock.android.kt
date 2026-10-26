@@ -11,7 +11,7 @@ package build.raft.app.data
  * #83 follow-up) is NOT available on `kotlin-stdlib-2.0.21-KBA-010`
  * because the source jar doesn't ship a commonMain implementation.
  * Hence this JVM-only `System.currentTimeMillis()` actual remains available
- * while the selected owner reads KuiklyBase `Clock.System` by default.
+ * while the selected owner reads `kotlin.time.Clock.System` by default.
  */
 internal actual fun legacyPlatformNowMillis(): Long =
     System.currentTimeMillis()

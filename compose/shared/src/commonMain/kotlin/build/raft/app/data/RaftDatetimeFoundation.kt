@@ -1,8 +1,9 @@
 package build.raft.app.data
 
-import build.raft.kuiklybase.datetime.Clock
-import build.raft.kuiklybase.datetime.Instant
-import build.raft.kuiklybase.datetime.SystemTimeZone
+import kotlin.time.Clock
+import kotlin.time.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.offsetAt
 
 internal fun interface RaftEpochMillisSource {
     fun nowEpochMillis(): Long
@@ -69,10 +70,11 @@ private val LegacyPlatformEpochMillisSource =
 private val KuiklyBaseLocalOffsetMinutesSource =
     RaftLocalOffsetMinutesSource { epochMillis ->
         runCatching {
-            SystemTimeZone
-                .snapshot(Instant.fromEpochMilliseconds(epochMillis))
-                .offset
-                .toWholeMinutesExact()
+            val offsetSeconds =
+                TimeZone.currentSystemDefault().offsetAt(Instant.fromEpochMilliseconds(epochMillis)).totalSeconds
+            // Whole minutes only: a historical second offset must fall back, never be truncated.
+            check(offsetSeconds % 60 == 0) { "offset $offsetSeconds s is not a whole minute" }
+            offsetSeconds / 60
         }.getOrNull()
     }
 

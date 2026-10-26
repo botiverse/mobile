@@ -19,7 +19,7 @@ import coil3.getExtra
 import coil3.request.Options
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
-import build.raft.kuiklybase.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred

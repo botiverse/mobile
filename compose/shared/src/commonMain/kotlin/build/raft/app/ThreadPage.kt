@@ -6810,7 +6810,7 @@ private fun SharedThreadRouteContentContent(
                 projections = billingDirectoryProjections,
                 nowEpochMillis =
                     payload.nowEpochMillis
-                        ?: build.raft.kuiklybase.datetime.Clock.System.now().toEpochMilliseconds()
+                        ?: kotlin.time.Clock.System.now().toEpochMilliseconds()
             )
         }
     val jointGraceDeadlineLabel =
@@ -6852,7 +6852,7 @@ private fun SharedThreadRouteContentContent(
             val remaining =
                 deadline -
                     (payload.nowEpochMillis
-                        ?: build.raft.kuiklybase.datetime.Clock.System.now().toEpochMilliseconds())
+                        ?: kotlin.time.Clock.System.now().toEpochMilliseconds())
             if (remaining > 0) {
                 delay(remaining)
                 jointBillingDeadlineTick++

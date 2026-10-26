@@ -1,7 +1,7 @@
 package build.raft.app.downloads
 
 import build.raft.app.data.raftSharedPreferenceStore
-import build.raft.kuiklybase.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
