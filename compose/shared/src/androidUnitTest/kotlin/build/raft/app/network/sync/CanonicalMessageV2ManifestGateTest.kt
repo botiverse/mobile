@@ -7,6 +7,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** Commit-A structural gate for the complete schema-v6 ledger; no decoder/normalizer behavior lives here. */
@@ -24,7 +25,8 @@ class CanonicalMessageV2ManifestGateTest {
         // v7 ledger (RFC 077): the additive optional `$.fact.deletedAt` key, same schema 6 bytes otherwise.
         // v8 ledger: the additive optional action-card keys (sourceServerId, targetServerName,
         // confirmationVersion, presentation); a card without them keeps its schema 6 bytes.
-        assertEquals(8, manifest["manifestVersion"]!!.jsonPrimitive.content.toInt())
+        // v9 ledger (task #43): optional executedByUserId on the card and the per-kind optional result keys.
+        assertEquals(9, manifest["manifestVersion"]!!.jsonPrimitive.content.toInt())
         assertEquals(CANONICAL_MESSAGE_FULL_V2_ENVELOPE_KIND, manifest["kind"]!!.jsonPrimitive.content)
         assertEquals(SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID, manifest["durableConsumerId"]!!.jsonPrimitive.content)
         assertEquals(
@@ -38,7 +40,7 @@ class CanonicalMessageV2ManifestGateTest {
             manifest["diagnostics"]!!.jsonArray.map { it.jsonPrimitive.content }.toSet(),
         )
         assertEquals(
-            "06654fa1753c9677d5ac985a8dae4e3bb533a740ea0e9a168e84c74e4dee8d74",
+            "3bfa4d72cc801e74f7be6e17e1d6dcd4cd76c81bb20008995ca3832e40e780fb",
             MessageDigest.getInstance("SHA-256").digest(manifestBytes).joinToString("") { "%02x".format(it) },
         )
     }
@@ -97,7 +99,7 @@ class CanonicalMessageV2ManifestGateTest {
         val card = manifest["shapes"]!!.jsonArray.map { it.jsonObject }
             .single { it["path"]!!.jsonPrimitive.content == "\$.fact.actionMetadata{action-card}" }
         assertEquals(
-            listOf("sourceServerId", "targetServerName", "confirmationVersion", "presentation"),
+            listOf("sourceServerId", "targetServerName", "confirmationVersion", "presentation", "executedByUserId"),
             card["optionalKeys"]!!.jsonArray.map { it.jsonPrimitive.content },
         )
         val ledger = manifest["fields"]!!.jsonArray.map { it.jsonObject }
@@ -106,8 +108,38 @@ class CanonicalMessageV2ManifestGateTest {
         assertEquals("one-way-present-overwrite", ledger["\$.fact.actionMetadata{action-card}.targetServerName"])
         assertEquals("monotonic-version-gate", ledger["\$.fact.actionMetadata{action-card}.confirmationVersion"])
         assertEquals("one-way-present-overwrite", ledger["\$.fact.actionMetadata{action-card}.presentation"])
+        // Task #43 (Tenny): room-common, the card already names who ran it; parent-replace like the name.
+        assertEquals("parent-replace", ledger["\$.fact.actionMetadata{action-card}.executedByUserId"])
         val forbidden = manifest["forbiddenAuthoritativePaths"]!!.jsonArray.map { it.jsonPrimitive.content }.toSet()
-        assertTrue("\$.fact.actionMetadata{action-card}.executedByUserId" in forbidden)
+        assertFalse("\$.fact.actionMetadata{action-card}.executedByUserId" in forbidden)
+        assertTrue("\$.fact.actionMetadata{action-card}.conversionJobId" in forbidden)
+    }
+
+    @Test
+    fun actionCardResultKeysAreLedgeredPerKind() {
+        val shapes = manifest["shapes"]!!.jsonArray.map { it.jsonObject }
+            .associateBy { it["path"]!!.jsonPrimitive.content }
+        val result = shapes.getValue("actionCard.result")
+        assertEquals(
+            CANONICAL_ACTION_CARD_RESULT_OPTIONAL_KEYS,
+            result["optionalKeys"]!!.jsonArray.map { it.jsonPrimitive.content },
+        )
+        assertEquals(
+            CANONICAL_ACTION_CARD_RESULT_BASE_KEYS + CANONICAL_ACTION_CARD_RESULT_OPTIONAL_KEYS,
+            result["exactKeys"]!!.jsonArray.map { it.jsonPrimitive.content },
+        )
+        val byKind = shapes.filterKeys { it.startsWith("actionCard.result{") }.map { (path, shape) ->
+            path.removePrefix("actionCard.result{").removeSuffix("}") to
+                shape["exactKeys"]!!.jsonArray.map { it.jsonPrimitive.content }.toSet()
+        }.toMap()
+        assertEquals(CANONICAL_ACTION_CARD_RESULT_KEYS_BY_KIND, byKind)
+        val ledger = manifest["fields"]!!.jsonArray.map { it.jsonObject }.associateBy { it["path"]!!.jsonPrimitive.content }
+        (CANONICAL_ACTION_CARD_RESULT_BASE_KEYS + CANONICAL_ACTION_CARD_RESULT_OPTIONAL_KEYS).forEach { key ->
+            assertTrue("actionCard.result.$key" in ledger, "ledger entry for actionCard.result.$key")
+        }
+        CANONICAL_ACTION_CARD_RESULT_KEYS_BY_KIND.values.flatten().forEach { key ->
+            assertTrue(key in CANONICAL_ACTION_CARD_RESULT_BASE_KEYS || key in CANONICAL_ACTION_CARD_RESULT_OPTIONAL_KEYS, key)
+        }
     }
 
     @Test

@@ -142,6 +142,11 @@ private fun CanonicalActionMetadataV2.toWireActionCardMetadata(): WireActionCard
                     name = it.name,
                     channelId = it.channelId,
                     channelName = it.channelName,
+                    clientId = it.clientId,
+                    clientKey = it.clientKey,
+                    clientName = it.clientName,
+                    ownerAgentId = it.ownerAgentId,
+                    ownerAgentName = it.ownerAgentName,
                     addedHumanIds = it.addedHumanIds,
                     addedAgentIds = it.addedAgentIds,
                 )
