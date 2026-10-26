@@ -227,7 +227,7 @@ private fun RaftInAppBrowserProgress(progress: Int) {
 }
 
 @Composable
-private fun RaftInAppBrowserError(
+internal fun RaftInAppBrowserError(
     message: String,
     onRetry: (() -> Unit)?,
     onOpenSystem: (() -> Unit)?,
