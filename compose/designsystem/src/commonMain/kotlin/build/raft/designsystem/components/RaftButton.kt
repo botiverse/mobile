@@ -27,6 +27,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
@@ -398,6 +400,12 @@ val LocalRaftButtonsStacked = staticCompositionLocalOf { false }
  *   stays focusable (keyboard focus doesn't jump away when it turns busy) and ignores taps;
  *   semantics mark it disabled. Write the label as what is happening ("Creating…").
  *
+ * The label stays on one line. When the button is given less width than it needs (a long
+ * label in a narrow card), the label ends in an ellipsis; its semantics keep the full text, and
+ * a caller showing runtime labels puts the full label in a [RaftTooltip] round the button.
+ * [trailingText] is a word after the label in the label's ink at regular weight (an external
+ * link's domain), kept whole while the label gives way.
+ *
  * [leadingIcon] / [trailingIcon] are drawn in an icon-size box with
  * [LocalRaftContentColor] set to the button ink. The box is exactly 32 / 44 / 52dp: raft-ui
  * widens a 32dp button's hit area to 44dp with an overhanging `::after`; here the caller
@@ -416,6 +424,7 @@ fun RaftButton(
     leadingIcon: (@Composable () -> Unit)? = null,
     trailingIcon: (@Composable () -> Unit)? = null,
     interactionSource: MutableInteractionSource? = null,
+    trailingText: String? = null,
 ) {
     // raft-ui 0.23 (#727): stacked full width (a dialog footer that didn't fit, a sheet's
     // actions), a ghost text button takes the ink frame of `default`, so it reads as a button.
@@ -448,17 +457,48 @@ fun RaftButton(
             if (leadingIcon != null) {
                 Box(Modifier.size(metrics.iconSize), contentAlignment = Alignment.Center) { leadingIcon() }
             }
-            RaftText(
-                text = text,
-                style = textStyle,
-                color = look.ink,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Clip,
-            )
+            RaftButtonLabel(text = text, trailingText = trailingText, style = textStyle, ink = look.ink)
             if (trailingIcon != null) {
                 Box(Modifier.size(metrics.iconSize), contentAlignment = Alignment.Center) { trailingIcon() }
             }
+        }
+    }
+}
+
+/**
+ * A button's label on one line, ending in an ellipsis when it doesn't fit, then [trailingText]
+ * 6dp after it at regular weight. The trailing text is measured first and kept whole (up to
+ * the whole width); the label takes what is left.
+ */
+@Composable
+private fun RaftButtonLabel(text: String, trailingText: String?, style: TextStyle, ink: Color) {
+    if (trailingText == null) {
+        RaftText(text = text, style = style, color = ink, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+        return
+    }
+    Layout(
+        content = {
+            RaftText(text = text, style = style, color = ink, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+            RaftText(
+                text = trailingText,
+                style = style.copy(fontWeight = FontWeight.Normal),
+                color = ink,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+    ) { measurables, constraints ->
+        val gap = 6.dp.roundToPx()
+        val loose = constraints.copy(minWidth = 0)
+        val trailing = measurables[1].measure(loose)
+        val labelMax = if (constraints.hasBoundedWidth) (constraints.maxWidth - trailing.width - gap).coerceAtLeast(0) else Constraints.Infinity
+        val label = measurables[0].measure(loose.copy(maxWidth = labelMax))
+        val width = (label.width + gap + trailing.width).coerceIn(constraints.minWidth, constraints.maxWidth)
+        val height = maxOf(label.height, trailing.height)
+        layout(width, height) {
+            label.placeRelative(0, (height - label.height) / 2)
+            trailing.placeRelative(label.width + gap, (height - trailing.height) / 2)
         }
     }
 }

@@ -10,19 +10,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.AppLinkResult
-import build.raft.app.data.RAFT_APP_LINK_CARD_MAX_DEPTH
 import build.raft.app.data.RaftAppLinkCard
-import build.raft.app.data.RaftAppLinkCardElement
-import build.raft.app.data.RaftAppLinkTextTone
 import build.raft.app.data.appLinkDomain
 import build.raft.app.markdown.raftAppLinkKeepEnd
-import build.raft.designsystem.components.RaftBadge
-import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftPopoverSurface
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.text.RaftText
@@ -84,38 +80,20 @@ internal fun RaftAppLinkCardView(
 }
 
 /**
- * The App's tree, from its root (web `defineRegistry` in `AppLinkChip.tsx`): a Stack is a
- * column 6dp apart; a Text is callout in `foreground` or, `muted`, `foreground-muted`, and wraps;
- * a Badge is the item's state in the App's words, a neutral soft Badge, never a status colour
- * (DS PreviewCard rules). The tree arrives validated; a missing id, a node past depth 4 or an
- * element this client doesn't know draws nothing. [onAction] is v2's (see [RaftAppLinkCardView]).
+ * The App's tree, from its root (web `defineRegistry` in `AppLinkChip.tsx`), drawn by the card
+ * renderer link cards and action cards share ([RaftCardTree]): a Stack is a column 6dp apart; a
+ * Text is callout in `foreground` or, `muted`, `foreground-muted`, and wraps; a Badge is the
+ * item's state in the App's words, a neutral soft Badge, never a status colour (DS PreviewCard
+ * rules). The tree arrives validated; a missing id, a node past depth 4 or an element this
+ * client doesn't know draws nothing. [onAction] is v2's (see [RaftAppLinkCardView]).
  */
 @Composable
 internal fun RaftAppLinkCardBody(
     card: RaftAppLinkCard,
-    @Suppress("UNUSED_PARAMETER") onAction: (elementId: String) -> Unit,
+    onAction: (elementId: String) -> Unit,
 ) {
-    RaftAppLinkCardNode(card, card.root, depth = 0)
-}
-
-@Composable
-private fun RaftAppLinkCardNode(card: RaftAppLinkCard, id: String, depth: Int) {
-    if (depth > RAFT_APP_LINK_CARD_MAX_DEPTH) return
-    when (val node = card.element(id)) {
-        is RaftAppLinkCardElement.Stack ->
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                node.children.forEach { RaftAppLinkCardNode(card, it, depth + 1) }
-            }
-        is RaftAppLinkCardElement.Text ->
-            RaftText(
-                text = node.text,
-                style = RaftTheme.typography.callout,
-                color = if (node.tone == RaftAppLinkTextTone.Muted) RaftTheme.colors.foregroundMuted else RaftTheme.colors.foreground,
-            )
-        is RaftAppLinkCardElement.Badge -> RaftBadge(text = node.text, appearance = RaftBadgeAppearance.Soft)
-        // A missing id, or an element of a later catalog (v2) not drawn yet.
-        else -> Unit
-    }
+    val context = remember(onAction) { RaftCardTreeContext(onAction = onAction) }
+    RaftCardTree(card.root, card.elements, context)
 }
 
 /**
