@@ -52,6 +52,22 @@ compose.desktop {
                 // Same identifier as the iOS app (build.raft.app).
                 bundleID = "build.raft.app"
                 appCategory = "public.app-category.productivity"
+                // Browser sign-in returns to raft://login/callback (an app-login return URI the
+                // server allows); macOS hands it to the app's open-URI handler.
+                infoPlist {
+                    extraKeysRawXml =
+                        """
+                        <key>CFBundleURLTypes</key>
+                        <array>
+                          <dict>
+                            <key>CFBundleURLName</key>
+                            <string>build.raft.app.login</string>
+                            <key>CFBundleURLSchemes</key>
+                            <array><string>raft</string></array>
+                          </dict>
+                        </array>
+                        """.trimIndent()
+                }
                 // TODO(desktop): add an .icns app icon (iconFile).
                 // Signing and notarization run on macOS CI (DevOps): pass
                 // -Pcompose.desktop.mac.sign=true plus the identity / notarization properties

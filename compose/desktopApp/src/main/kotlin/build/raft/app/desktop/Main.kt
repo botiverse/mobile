@@ -12,7 +12,7 @@ import build.raft.app.data.raftClearLegacyFontPreference
 import build.raft.app.network.installDesktopRaftAppIdentity
 
 /** Desktop entry point: process setup as in RaftApplication (Android), then one window. */
-fun main() {
+fun main(args: Array<String>) {
     val debugBuild = System.getProperty("raft.desktop.debug") == "true"
     RaftCmpRouter.configure(debugBuild = debugBuild)
     RaftPageRegistry.install()
@@ -24,6 +24,7 @@ fun main() {
     RaftAppAppearanceRuntime.ensureLoaded()
     raftClearLegacyFontPreference()
     RaftDesktopRealtimeHost.install()
+    RaftDesktopLoginCallbacks.install(args)
 
     application {
         val navigator = RaftDesktopNavigator(onEmpty = ::exitApplication)
