@@ -12,6 +12,7 @@ import build.raft.app.base.Utils
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.ScreenError
+import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
@@ -1052,6 +1053,7 @@ private fun ChannelInfoSection(
             ) {
                 RaftTextField(
                     value = name,
+                    keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
                     onValueChange = {
                         name = it
                         clearStatusOnEdit()

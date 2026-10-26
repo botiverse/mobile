@@ -22,6 +22,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
 import build.raft.designsystem.components.RaftTextField
+import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftTextInputTrace
 import build.raft.designsystem.components.RaftTextInputTracing
 import build.raft.designsystem.components.RaftTextarea
@@ -149,6 +150,17 @@ class RaftTextFieldStateUiTest {
             waitForIdle()
             assertEquals(1, searched)
         }
+
+    /** CMP-10674 mitigation: name / ID fields turn autocorrect off and change nothing else. */
+    @Test
+    fun noAutoCorrectOptionsOnlyTurnAutocorrectOff() {
+        val options = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions
+        assertEquals(false, options.autoCorrectEnabled)
+        assertEquals(KeyboardOptions(autoCorrectEnabled = false), options)
+        assertEquals(KeyboardOptions.Default.imeAction, options.imeAction)
+        assertEquals(KeyboardOptions.Default.keyboardType, options.keyboardType)
+        assertEquals(false, options.copy(imeAction = ImeAction.Done).autoCorrectEnabled)
+    }
 
     @Test
     fun aPasswordIsShownMasked() =

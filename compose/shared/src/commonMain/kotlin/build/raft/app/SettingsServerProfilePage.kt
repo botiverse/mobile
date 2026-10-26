@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftReadOnlyField
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftButton
@@ -210,6 +211,7 @@ private fun SettingsServerProfileFormCard(
         ) {
             RaftTextField(
                 value = if (canSave) draftName else currentName,
+                keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
                 onValueChange = onNameChange,
                 placeholder = currentName.ifBlank { stringResource(MR.strings.settings_server_placeholder_name) }
             )
