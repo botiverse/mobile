@@ -140,12 +140,16 @@ private val ThreadComposerToolbarMinHeight = 32.dp
 private val ThreadComposerIconButtonSize = 32.dp
 private val ThreadComposerIconSize = 18.dp
 private val ThreadComposerActionShadowOffset = 2.dp
-// raft-ui `ComposerActions`: `gap-2`. Raft chrome casts no offset shadow, so this is the visible gap.
-private val ThreadComposerLeftActionGroupSpacing = 8.dp
 // raft-ui `Composer`: the card's padding round the text, and `--control-embedded-inset`, how far
 // the toolbar's buttons sit inside the card's outer edge (raft-design Shape > Inside a frame).
 private val ThreadComposerCardPadding = 8.dp
 private val ThreadComposerEmbeddedInset = 6.dp
+// raft-ui `ComposerActions` / `ComposerMeta`: `gap-embedded-inset`. Buttons embedded in the frame
+// sit as far apart as they sit from its edge (raft-design #810, shape.md "The space is even on
+// every side"), so 6dp, not the old `gap-2` 8dp. Raft chrome casts no offset shadow, so this is
+// the visible gap.
+private val ThreadComposerLeftActionGroupSpacing = ThreadComposerEmbeddedInset
+private val ThreadComposerRightActionGroupSpacing = ThreadComposerEmbeddedInset
 // raft-ui `ComposerAttachments`: the composer's 321dp less the tray's 6dp `pe-1.5`; 64dp image
 // tiles and 176dp file tiles (`size-16`, `w-44`), 8dp apart (`gap-2`).
 private const val ThreadComposerAttachmentTrayMaxWidthDp = 315
@@ -2981,7 +2985,7 @@ internal fun ThreadComposerContentLeaf(
                             }
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                horizontalArrangement = Arrangement.spacedBy(ThreadComposerRightActionGroupSpacing)
                             ) {
                                 if (surface.showTaskButton) {
                                     Row(
@@ -4870,6 +4874,11 @@ private fun ComposerSendButton(
 
 internal fun threadComposerVisibleLeftActionGapDp(): Float =
     ThreadComposerLeftActionGroupSpacing.value
+
+internal fun threadComposerVisibleRightActionGapDp(): Float =
+    ThreadComposerRightActionGroupSpacing.value
+
+internal fun threadComposerEmbeddedInsetDp(): Float = ThreadComposerEmbeddedInset.value
 
 internal fun threadComposerIconButtonSizeDp(): Float = ThreadComposerIconButtonSize.value
 

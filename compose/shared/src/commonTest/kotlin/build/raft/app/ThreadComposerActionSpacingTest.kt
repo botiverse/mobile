@@ -5,8 +5,11 @@ import kotlin.test.assertEquals
 
 class ThreadComposerActionSpacingTest {
     @Test
-    fun leftComposerActionsMatchWebMobileVisibleGap() {
-        assertEquals(8f, threadComposerVisibleLeftActionGapDp())
+    fun embeddedComposerButtonsSitAsFarApartAsFromTheFrameEdge() {
+        // raft-ui `ComposerActions` / `ComposerMeta` `gap-embedded-inset` (raft-design #810).
+        assertEquals(6f, threadComposerEmbeddedInsetDp())
+        assertEquals(threadComposerEmbeddedInsetDp(), threadComposerVisibleLeftActionGapDp())
+        assertEquals(threadComposerEmbeddedInsetDp(), threadComposerVisibleRightActionGapDp())
     }
 
     @Test
