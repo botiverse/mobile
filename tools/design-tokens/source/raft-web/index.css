@@ -2,6 +2,7 @@
 
 @import "tailwindcss";
 @import "@botiverse/raft-ui/styles.css";
+@import "@botiverse/raft-ui/themes.css";
 @import "./components/mermaid/mermaid.css";
 
 
@@ -626,6 +627,54 @@
   display: none;
 }
 
+/* Sections stacked in the thread's column (task #165): the thread shares the
+   column's height with them by its share (ChannelSideArea useStack), and
+   folds to its head like they do. */
+.thread-side-column[data-side-stacked="true"] > [data-slot="thread-panel-root"] {
+  height: auto;
+  min-height: 0;
+  flex: var(--side-thread-flex, 1 1 0px);
+  /* The column draws the left seam for all its sections (below). */
+  border-left-width: 0;
+}
+
+.thread-side-column[data-side-stacked="true"] {
+  border-left: 1px solid var(--line-seam);
+}
+
+.thread-layout-container:not([data-thread-maximized="true"]) > .thread-side-column[data-thread-collapsed="true"] > [data-slot="thread-panel-root"] {
+  flex: 0 0 auto;
+}
+
+.thread-layout-container:not([data-thread-maximized="true"]) > .thread-side-column[data-thread-collapsed="true"] > [data-slot="thread-panel-root"] > :not([data-slot="panel-header"]) {
+  display: none;
+}
+
+/* In Focus Mode the thread fills the row alone: nothing to fold it against. */
+.thread-layout-container[data-thread-maximized="true"] [data-testid="thread-side-collapse"] {
+  display: none;
+}
+
+/* Columns after the channel stand in their layout's order (ChannelSideArea
+   sets the thread's and the sections' columns from 10); a profile or another
+   panel keeps its place right of them all. */
+.thread-layout-container > :not(.thread-main-column):not(.thread-side-column):not([data-testid="channel-side-slot"]),
+.thread-layout-container > .thread-profile-side-column > * {
+  order: 50;
+}
+
+/* Task v2's Tasks and Files column in the row (task #165): it gives way
+   before the conversation drops under its 360px, as the thread does. */
+.thread-layout-container:has(> [data-testid="channel-side-slot"] [data-mode="beside"]) > .thread-main-column {
+  min-width: 360px;
+}
+
+/* With another floating over the messages, the channel keeps room for it and
+   for readable messages beside it (280 + 240; ChannelSideArea placeSections). */
+.thread-layout-container:has(> [data-testid="channel-side-slot"] [data-mode="beside"]):has([data-testid="channel-side-float-slot"] [data-mode="float"]) > .thread-main-column {
+  min-width: 520px;
+}
+
 .thread-layout-container:has(> .thread-side-column) > .thread-main-column {
   display: none;
 }
@@ -729,7 +778,7 @@
       border-left-width: 0;
     }
 
-    .thread-layout-container:has(> .thread-profile-side-column[data-collapse-channel="true"]) > .thread-profile-side-column > [data-testid="profile-panel"] {
+    .thread-layout-container:has(> .thread-profile-side-column[data-collapse-channel="true"]) > .thread-profile-side-column > :is([data-testid="profile-panel"], [data-profile-panel-fallback]) {
       position: relative;
       inset: auto;
       z-index: auto;
@@ -752,7 +801,7 @@
       display: none;
     }
 
-    .thread-layout-container:has(> .thread-profile-side-column[data-collapse-thread="true"]) > .thread-profile-side-column > [data-testid="profile-panel"] {
+    .thread-layout-container:has(> .thread-profile-side-column[data-collapse-thread="true"]) > .thread-profile-side-column > :is([data-testid="profile-panel"], [data-profile-panel-fallback]) {
       position: relative;
       inset: auto;
       z-index: auto;
@@ -768,7 +817,7 @@
        divider on its own box, so nothing inside the chat column (the composer
        bar stacks above the resize handle) can cover it, and the chat keeps a
        readable width instead of shrinking to a strip. */
-    .thread-layout-container:has(> .thread-profile-side-column[data-collapse-channel="false"][data-collapse-thread="false"]) > .thread-profile-side-column > [data-testid="profile-panel"] {
+    .thread-layout-container:has(> .thread-profile-side-column[data-collapse-channel="false"][data-collapse-thread="false"]) > .thread-profile-side-column > :is([data-testid="profile-panel"], [data-profile-panel-fallback]) {
       max-width: calc(100% - 360px);
       border-left: 1px solid var(--line-seam);
     }
@@ -783,7 +832,7 @@
       display: none;
     }
 
-    .thread-layout-container:has(> .thread-profile-side-column) > .thread-profile-side-column > [data-testid="profile-panel"] {
+    .thread-layout-container:has(> .thread-profile-side-column) > .thread-profile-side-column > :is([data-testid="profile-panel"], [data-profile-panel-fallback]) {
       /* ProfilePanel sets width/flex inline for its resizable desktop size. */
       flex: 1 1 auto !important;
       width: auto !important;
@@ -799,11 +848,11 @@
 
     /* The legacy task side panel folds the same way rather than going under
        its 320px minimum beside a conversation squeezed below 360px. */
-    .thread-layout-container:has(> [data-testid="legacy-task-panel"]) > .thread-main-column {
+    .thread-layout-container:has(> :is([data-testid="legacy-task-panel"], [data-legacy-task-panel-fallback])) > .thread-main-column {
       display: none;
     }
 
-    .thread-layout-container > [data-testid="legacy-task-panel"] {
+    .thread-layout-container > :is([data-testid="legacy-task-panel"], [data-legacy-task-panel-fallback]) {
       /* LegacyTaskPanel sets its resizable desktop width inline. */
       flex: 1 1 auto;
       width: auto !important;
@@ -826,9 +875,12 @@
 
 
 @layer base {
-  /* Raft Design System: a text selection is the yellow-soft highlight. */
+  /* Raft Design System: a text selection is painted with its own token
+     (raft-ui 0.23 `--selection`): brand-soft in light mode, brand at 22% in
+     dark, where brand-soft was too faint to see what was selected. brand-soft
+     stays the menu highlight. */
   ::selection {
-    background-color: var(--brand-soft);
+    background-color: var(--selection);
   }
 }
 
@@ -902,7 +954,9 @@
 @media (orientation: landscape), (min-width: 1280px) {
   @container thread-layout (min-width: 720px) {
     .thread-layout-container[data-thread-maximized="true"] { position: relative; }
-    .thread-layout-container[data-thread-maximized="true"] > .thread-main-column {
+    .thread-layout-container[data-thread-maximized="true"] > .thread-main-column,
+    .thread-layout-container[data-thread-maximized="true"] > [data-testid="channel-side-slot"] > *,
+    .thread-layout-container[data-thread-maximized="true"] > .thread-side-column > :is([data-card], [data-side-seam], [data-side-companion]) {
       visibility: hidden;
       pointer-events: none;
     }
