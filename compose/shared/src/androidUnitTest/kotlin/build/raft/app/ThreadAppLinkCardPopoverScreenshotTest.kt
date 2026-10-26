@@ -1,14 +1,13 @@
 package build.raft.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -38,34 +37,44 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * #proj-mobile: App link item cards in the thread, light and dark. Row one: a message whose
- * link's App sent a card body; its cyan chip opens the card. Row two: a preview with only its
- * title, the chip alone (a tap opens the link). Under them the sheet row one's chip opens (its
- * surface, without the window): the App's name, [RaftAppLinkCardView], Open Link. Reports land in
- * `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
+ * #proj-mobile: App link item cards in the thread, light and dark. Row one: a preview with only
+ * its title, the chip alone (a tap opens the link). Row two: a message whose link's App sent a
+ * card body; its cyan chip opens the card. Row two's card is open, as a popover under its
+ * chip, start-aligned with it: [RaftAppLinkCardView] with Open Link (drawn in the page; in the
+ * app it is its own window). Reports land in `build/reports/home-screenshots/`; verify /
+ * record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], qualifiers = "w390dp-h900dp-xxhdpi")
-class ThreadAppLinkCardSheetScreenshotTest {
+class ThreadAppLinkCardPopoverScreenshotTest {
     @get:org.junit.Rule
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun appLinkCardLight() = capture("thread.app-link-card-sheet", RaftAppAppearance.Light)
+    fun appLinkCardLight() = capture("thread.app-link-card-popover", RaftAppAppearance.Light)
 
     @Test
-    fun appLinkCardDark() = capture("thread.app-link-card-sheet.dark", RaftAppAppearance.Dark)
+    fun appLinkCardDark() = capture("thread.app-link-card-popover.dark", RaftAppAppearance.Dark)
 
     private fun capture(name: String, appearance: RaftAppAppearance) {
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
             val host = remember { cardFixtureHost() }
+            val fixture = remember { ThreadAppLinkCardFixture(LinearIssue) }
             CompositionLocalProvider(
                 LocalActivity provides RaftPageActivity(pager),
                 LocalThreadAppLinkPreviewHost provides host,
+                LocalThreadAppLinkCardFixture provides fixture,
             ) {
-                RaftDesignSystemTheme { CardRows() }
+                RaftDesignSystemTheme {
+                    Box(Modifier.fillMaxSize()) {
+                        CardRows()
+                        fixture.shown?.let { (card, anchor) ->
+                            ThreadAppLinkCardPopover(card = card, anchor = anchor, onDismiss = {}, onOpenLink = {})
+                        }
+                    }
+                }
             }
         }
     }
@@ -132,7 +141,7 @@ private object IdleAppLinkPreviewApi : RaftAppLinkPreviewApi {
 @Composable
 private fun CardRows() {
     val rows =
-        listOf(WithCardMessage to withCardBody, ChipOnlyMessage to chipOnlyBody).mapIndexed { index, (id, body) ->
+        listOf(ChipOnlyMessage to chipOnlyBody, WithCardMessage to withCardBody).mapIndexed { index, (id, body) ->
             RaftThreadMessageItem(
                 id = id,
                 authorId = "user-niko",
@@ -162,12 +171,5 @@ private fun CardRows() {
                 onOpenMarkdownUrl = {},
             )
         }
-        ThreadAppLinkCardSheet(
-            card = linearCard,
-            onDismiss = {},
-            onOpenLink = {},
-            inWindow = false,
-            modifier = Modifier.padding(top = 16.dp),
-        )
     }
 }

@@ -95,14 +95,14 @@ internal fun ThreadAppLinkPreviewScope(
         if (view.wantsRead) host.store.read(host.viewerKey, host.serverId, messageId, body, host.conversationId)
     }
     var asking by remember(messageId) { mutableStateOf<AppLinkResult.Consent?>(null) }
-    var carding by remember(messageId) { mutableStateOf<String?>(null) }
+    // #proj-mobile: a chip whose App sent a card body opens its item card beside it.
+    val cards = rememberThreadAppLinkCards(messageId)
     val chipHost =
-        remember(view.results) {
-            RaftAppLinkChipHost(view.results, onAsk = { asking = it }, onOpenCard = { carding = it.url })
+        remember(view.results, cards) {
+            RaftAppLinkChipHost(view.results, onAsk = { asking = it }, onOpenCard = cards::open, cardAnchor = cards::anchor)
         }
     CompositionLocalProvider(LocalRaftAppLinkChips provides chipHost, content = content)
-    // #proj-mobile: a chip whose App sent a card body opens its item card in a sheet.
-    ThreadAppLinkCardSheetHost(results = view.results, url = carding, onDismiss = { carding = null })
+    ThreadAppLinkCardPopoverHost(results = view.results, cards = cards)
     val prompt = asking
     // The prompt closes itself once its chip is gone (answered, or asked on another message).
     val promptShown = prompt != null && view.results[prompt.url] is AppLinkResult.Consent
