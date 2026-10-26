@@ -9,6 +9,8 @@ import build.raft.app.RaftColor
 import build.raft.app.data.AppLinkApp
 import build.raft.app.data.AppLinkPromptApp
 import build.raft.app.data.AppLinkResult
+import build.raft.app.data.RaftAppLinkCard
+import build.raft.app.data.RaftAppLinkCardElement
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
@@ -49,6 +51,37 @@ class RaftMarkdownAppLinkChipsTest {
         assertEquals(3, chip.inlineContent.size)
         // A chip is not a web link: no underline.
         assertTrue(chip.text.withRaftMarkdownLinkUnderlines().raftInlineUnderlineRanges().isEmpty())
+    }
+
+    @Test
+    fun aPreviewWithACardBodyOpensItsCardInsteadOfTheLink() {
+        val body = RaftAppLinkCard(root = "state", elements = mapOf("state" to RaftAppLinkCardElement.Badge("Merged")))
+        val withBody = AppLinkResult.Card(pr, AppLinkApp("Stamp", null), "Fix the composer tray", card = body)
+        val titleOnly = withBody.copy(card = null)
+        val cards = mutableListOf<AppLinkResult.Card>()
+        val opened = mutableListOf<String>()
+        fun chipLink(result: AppLinkResult.Card, opensCards: Boolean): LinkAnnotation {
+            val host = RaftAppLinkChipHost(mapOf(pr to result), onAsk = {}, onOpenCard = if (opensCards) ({ cards += it }) else null)
+            assertEquals(opensCards && result.card != null, host.opensCard(result))
+            val chip = source().withRaftAppLinkChipContent(host) { opened += it }
+            // The chip itself is the same cyan chip either way.
+            assertEquals("See Fix the composer tray stamp.build now", chip.text.visibleText())
+            assertEquals(RaftColor.InfoSoft, chip.text.raftInlineBoxRanges().single().item.backgroundColor)
+            return chip.text.getLinkAnnotations(0, chip.text.length).single().item
+        }
+
+        val card = chipLink(withBody, opensCards = true) as LinkAnnotation.Clickable
+        assertEquals(RaftAppLinkCardTag, card.tag)
+        card.linkInteractionListener!!.onClick(card)
+        assertEquals(listOf(withBody), cards)
+        assertTrue(opened.isEmpty())
+        // No card body, or a renderer that shows no cards: the chip opens the link.
+        listOf(titleOnly to true, withBody to false).forEach { (result, opensCards) ->
+            val link = chipLink(result, opensCards) as LinkAnnotation.Url
+            link.linkInteractionListener!!.onClick(link)
+        }
+        assertEquals(listOf(pr, pr), opened)
+        assertEquals(listOf(withBody), cards)
     }
 
     @Test

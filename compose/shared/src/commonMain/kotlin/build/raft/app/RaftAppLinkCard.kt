@@ -4,8 +4,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +38,8 @@ import build.raft.designsystem.theme.RaftTheme
  * - Footer: under a hairline, the App's name and the link's domain. No App icon: raft-ui keeps
  *   it on the chip, the App's only mark of its own.
  *
+ * - [actions]: PreviewCardActions, at most two buttons, between the body and the footer.
+ *
  * Render only: no reading, no actions run. [onAction] is for v2's Buttons (RFC 076), which
  * report their element id; the v1 catalog has none, so it is never called yet. Width: the
  * incoming constraints, at least 220dp; the web card is 300dp.
@@ -44,21 +49,35 @@ internal fun RaftAppLinkCardView(
     card: AppLinkResult.Card,
     onAction: (elementId: String) -> Unit,
     modifier: Modifier = Modifier,
+    actions: (@Composable RowScope.() -> Unit)? = null,
 ) {
     RaftPopoverSurface(modifier = modifier, width = null, contentPadding = PaddingValues(0.dp)) {
-        // PreviewCardBody: px-4 pt-4 pb-3, gap-1.5 (a footer always follows).
-        Column(
-            Modifier.fillMaxWidth().padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            RaftText(
-                text = card.title,
-                style = RaftTheme.typography.headline,
-                color = RaftTheme.colors.foreground,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
-            card.card?.let { RaftAppLinkCardBody(it, onAction) }
+        // Body and actions scroll when the card is held shorter than they are (a popover in a
+        // short window); the footer, where the link goes, stays.
+        Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+            // PreviewCardBody: px-4 pt-4 pb-3, gap-1.5 (a footer always follows).
+            Column(
+                Modifier.fillMaxWidth().padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                RaftText(
+                    text = card.title,
+                    style = RaftTheme.typography.headline,
+                    color = RaftTheme.colors.foreground,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                card.card?.let { RaftAppLinkCardBody(it, onAction) }
+            }
+            // PreviewCardActions: at most two buttons, px-4 pb-3, gap-2 (a footer follows).
+            if (actions != null) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    content = actions,
+                )
+            }
         }
         RaftAppLinkCardFooter(appName = card.app.name, domain = appLinkDomain(card.url).orEmpty())
     }

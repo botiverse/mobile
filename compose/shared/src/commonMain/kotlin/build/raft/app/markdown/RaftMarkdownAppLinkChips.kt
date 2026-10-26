@@ -48,14 +48,27 @@ import build.raft.app.raftSpanStyleForWeight
 import coil3.compose.AsyncImagePainter
 
 /**
- * The App link results of the message being rendered (web `AppLinkResultsProvider`), and what a
- * tap on a grey chip does: ask the viewer first. Null outside a message that reads them.
+ * The App link results of the message being rendered (web `AppLinkResultsProvider`), what a
+ * tap on a grey chip does (ask the viewer first) and, where it is given, what a tap on a cyan
+ * chip whose App sent a card body does: open its item card ([onOpenCard]) next to the chip
+ * ([cardAnchor]). Null outside a
+ * message that reads them.
  */
 @Immutable
 internal data class RaftAppLinkChipHost(
     val results: Map<String, AppLinkResult>,
     val onAsk: (AppLinkResult.Consent) -> Unit,
+    val onOpenCard: ((AppLinkResult.Card) -> Unit)? = null,
+    /** Marks the chip of a link (by URL) whose card [onOpenCard] opens, so the card can open beside it. */
+    val cardAnchor: ((String) -> Modifier)? = null,
 )
+
+/**
+ * Whether a tap on this preview's chip opens its item card instead of the link: the App sent a
+ * card body ([AppLinkResult.Card.card]) and the message can show it. A preview with only its
+ * title keeps the plain chip, a tap opening the link.
+ */
+internal fun RaftAppLinkChipHost.opensCard(result: AppLinkResult.Card): Boolean = onOpenCard != null && result.card != null
 
 internal val LocalRaftAppLinkChips = staticCompositionLocalOf<RaftAppLinkChipHost?> { null }
 
@@ -70,7 +83,8 @@ internal data class RaftAppLinkChipContent(
  *
  * - [AppLinkResult.Card]: `MessageReferenceChip variant="info" capped`, a cyan chip with the
  *   App's icon, its title and, since a finger opens it without a hover card first, the link's
- *   domain as `MessageReferenceSuffix`. A tap opens the link.
+ *   domain as `MessageReferenceSuffix`. A tap opens the link or, with a card body
+ *   ([opensCard]), the item card (the web's hover card, which a finger can't open).
  * - [AppLinkResult.Consent]: `variant="muted"`, a grey chip with the App's icon and the
  *   shortened address. A tap asks first ([RaftAppLinkChipHost.onAsk]); nothing is opened.
  * - [AppLinkResult.Pending]: `MessageReferencePending`, the Link icon and the shortened
@@ -123,11 +137,19 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
         val annotation: LinkAnnotation? =
             when (result) {
                 is AppLinkResult.Card ->
-                    LinkAnnotation.Url(
-                        url = result.url,
-                        styles = raftAppLinkChipLinkStyles(),
-                        linkInteractionListener = LinkInteractionListener { openUri(result.url) },
-                    )
+                    if (host.opensCard(result)) {
+                        LinkAnnotation.Clickable(
+                            tag = RaftAppLinkCardTag,
+                            styles = raftAppLinkChipLinkStyles(),
+                            linkInteractionListener = LinkInteractionListener { host.onOpenCard?.invoke(result) },
+                        )
+                    } else {
+                        LinkAnnotation.Url(
+                            url = result.url,
+                            styles = raftAppLinkChipLinkStyles(),
+                            linkInteractionListener = LinkInteractionListener { openUri(result.url) },
+                        )
+                    }
                 is AppLinkResult.Consent ->
                     LinkAnnotation.Clickable(
                         tag = RaftAppLinkConsentTag,
@@ -169,7 +191,8 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
                 if (annotation != null) withLink(annotation) { chip() } else chip()
             }
         }
-        inlineContent[iconId] = raftAppLinkIconInlineContent(result)
+        val anchor = (result as? AppLinkResult.Card)?.takeIf { host.opensCard(it) }?.let { host.cardAnchor?.invoke(it.url) }
+        inlineContent[iconId] = raftAppLinkIconInlineContent(result, anchor ?: Modifier)
         inlineContent[iconGapId] = raftAppLinkSpacerInlineContent(4.sp)
         if (suffix != null) inlineContent[suffixGapId] = raftAppLinkSpacerInlineContent(4.sp)
         cursor = range.end
@@ -179,6 +202,7 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
 }
 
 internal const val RaftAppLinkConsentTag = "raft.build.markdown.appLinkConsent"
+internal const val RaftAppLinkCardTag = "raft.build.markdown.appLinkCard"
 
 /** About 24em of 14sp semibold on a phone (336dp): the whole chip's words. */
 internal const val RaftAppLinkChipMaxChars = 40
@@ -229,7 +253,7 @@ private fun raftAppLinkChipLinkStyles(): TextLinkStyles {
     return TextLinkStyles(style = base, pressedStyle = base.copy(background = RaftAppThemeState.colors.fillPressed))
 }
 
-private fun raftAppLinkIconInlineContent(result: AppLinkResult): InlineTextContent {
+private fun raftAppLinkIconInlineContent(result: AppLinkResult, anchor: Modifier): InlineTextContent {
     val app: AppLinkApp? =
         when (result) {
             is AppLinkResult.Card -> result.app
@@ -243,25 +267,28 @@ private fun raftAppLinkIconInlineContent(result: AppLinkResult): InlineTextConte
     ) {
         val icon = app?.icon
         var broken by remember(icon) { mutableStateOf(false) }
-        if (icon != null && !broken) {
-            Box(Modifier.size(14.dp).clip(RoundedCornerShape(2.dp)), contentAlignment = Alignment.Center) {
-                RaftCachedImage(
-                    source = icon,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop,
-                    onImageStateChange = { state -> if (state is AsyncImagePainter.State.Error) broken = true },
-                )
-            }
-        } else {
-            Box(Modifier.size(if (icon != null) 14.dp else 12.dp), contentAlignment = Alignment.Center) {
-                RaftLucideIcon(
-                    name = if (app == null) RaftLucideIconName.Link else RaftLucideIconName.AppWindow,
-                    modifier = Modifier.size(12.dp),
-                    // raft-ui reference chip: `[&_svg]:text-foreground-muted`.
-                    color = raftArgbHex(RaftColor.ForegroundMuted),
-                    strokeWidth = 2f,
-                )
+        // The chip's leading mark is where its card opens from ([RaftAppLinkChipHost.cardAnchor]).
+        Box(anchor) {
+            if (icon != null && !broken) {
+                Box(Modifier.size(14.dp).clip(RoundedCornerShape(2.dp)), contentAlignment = Alignment.Center) {
+                    RaftCachedImage(
+                        source = icon,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        onImageStateChange = { state -> if (state is AsyncImagePainter.State.Error) broken = true },
+                    )
+                }
+            } else {
+                Box(Modifier.size(if (icon != null) 14.dp else 12.dp), contentAlignment = Alignment.Center) {
+                    RaftLucideIcon(
+                        name = if (app == null) RaftLucideIconName.Link else RaftLucideIconName.AppWindow,
+                        modifier = Modifier.size(12.dp),
+                        // raft-ui reference chip: `[&_svg]:text-foreground-muted`.
+                        color = raftArgbHex(RaftColor.ForegroundMuted),
+                        strokeWidth = 2f,
+                    )
+                }
             }
         }
     }
