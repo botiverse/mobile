@@ -1677,6 +1677,7 @@ internal class RaftSharedStoreProvider private constructor(
                 readReceiptOwnerFactory = ::readReceiptOwner,
                 readStateV1Canary = processReadStateV1Canary,
                 persistSlices = listOf(activityPersistSlice),
+                filterPreferences = ActivityFilterPreferenceRepository(sharedPreferenceStore),
                 prewarmReplyThread = prewarmReplyThread ?: { DataResult.Empty(EmptyReason.NoMessages) },
                 replyThreadContentCached = replyThreadContentCached ?: { false },
                 replyThreadFreshnessLedger = threadPayloadStore.freshnessLedger,

@@ -195,6 +195,7 @@ LUCIDE_ICONS = [
     "layout-list",
     "link",
     "link-2",
+    "list-filter",
     "list-tree",
     "list-todo",
     "lock",

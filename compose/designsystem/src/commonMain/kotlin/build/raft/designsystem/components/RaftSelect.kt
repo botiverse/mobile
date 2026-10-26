@@ -317,3 +317,46 @@ fun RaftPickerTriggerButton(
         if (showIndicator) RaftGlyphIcon(RaftGlyph.ChevronDown, size = 14.dp, color = look.indicator)
     }
 }
+
+/**
+ * The filter in effect beside a filter's [RaftPickerTriggerButton], with an × that clears
+ * it (slock ThreadsInbox `ActiveFilterChip`, raft-design mockup s1-option-a). raft-ui has
+ * no standalone chip (its chips are Combobox parts), so this is the applied filter's look
+ * (PickerTriggerButton with a value: `info-soft`, no ring, 32dp, control radius,
+ * `foreground` footnote semibold) with the combobox chip's remove button at 24dp: 10dp
+ * in at the start, 4dp at the end, 6dp gaps, a 14dp [leadingIcon]. The label truncates
+ * before the ×. The × is [removeLabel] to assistive tech and takes touches 44dp square.
+ */
+@Composable
+fun RaftFilterChip(
+    text: String,
+    onRemove: () -> Unit,
+    removeLabel: String,
+    modifier: Modifier = Modifier,
+    leadingIcon: (@Composable () -> Unit)? = null,
+) {
+    val colors = RaftTheme.colors
+    Row(
+        modifier
+            .heightIn(min = 32.dp)
+            .background(colors.infoSoft, RoundedCornerShape(RaftRadius.Control))
+            .padding(start = 10.dp, end = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (leadingIcon != null) {
+            CompositionLocalProvider(LocalRaftContentColor provides colors.foreground) {
+                Box(Modifier.size(14.dp), contentAlignment = Alignment.Center) { leadingIcon() }
+            }
+        }
+        RaftText(
+            text,
+            Modifier.weight(1f, fill = false),
+            style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.foreground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        RaftComboboxChipRemove(removeLabel, onRemove, size = 24.dp, widenTouchTarget = true)
+    }
+}

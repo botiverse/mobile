@@ -116,6 +116,12 @@ class SharedActivityStore internal constructor(
     private var foregroundLoadGate: SharedForegroundLoadGate = SharedForegroundLoadGate(),
     private val tailPrewarmDepthCap: Int = SharedActivityTailPrewarmDepthCap,
     private var persistSlices: List<MviPersistSlice<SharedActivityState, SharedActivityIntent>> = emptyList(),
+    /**
+     * The Filter menu's last choice per server (slock #11383): a server the store binds to
+     * or switches to starts on it, and every pick is written back. Null keeps no choice
+     * (every server starts on All, as before).
+     */
+    private val filterPreferences: ActivityFilterPreferenceRepository? = null,
     onUnreadCountsChanged: () -> Unit = {},
     onSummaryFact: (ActivityUnreadSummaryFact) -> Unit = {},
     onSummaryInvalidated: (ActivityUnreadSummaryInvalidation) -> Unit = {},
@@ -936,7 +942,12 @@ class SharedActivityStore internal constructor(
         jobsToCancel.forEach(Job::cancel)
     }
 
+    private fun rememberedFilter(serverId: String): InboxFilter =
+        filterPreferences?.read(serverId) ?: InboxFilter.All
+
     private fun setFilter(filter: InboxFilter) {
+        // The pick is this server's filter from now on (web writeActivityFilterChoice).
+        filterPreferences?.write(_state.value.ownerServerId, filter)
         val changed =
             synchronized(realtimeOwnerLock) {
                 if (_state.value.selectedFilter == filter) return@synchronized false
@@ -990,13 +1001,15 @@ class SharedActivityStore internal constructor(
                 realtimeHighWater.clear()
                 resetRealtimeCatchUpLocked()
                 presentationStore.clear()
-                // Web registerServerReset (slock 1bb70cbeb, inboxStore.ts:1854-1898) starts the
-                // new server on All; the persist slice hydrates that server's cached All rows.
+                // Web registerServerReset (slock #11383) starts the new server on its last
+                // Activity filter (All when none); the persist slice hydrates that server's
+                // cached rows for it.
                 reduceState(
                     intent,
                     SharedActivityState(
                         ownerServerId = serverId,
                         ownerUserId = current.ownerUserId,
+                        selectedFilter = rememberedFilter(serverId),
                         loading = true
                     )
                 )
@@ -1706,10 +1719,15 @@ class SharedActivityStore internal constructor(
                             }
                             val stateForOwner =
                                 if (ownerChanged) {
-                                    // Web registerServerReset (slock 1bb70cbeb,
-                                    // inboxStore.ts:1854-1898) starts the new server on All.
-                                    filter = InboxFilter.All
-                                    SharedActivityState()
+                                    // Web registerServerReset (slock #11383) starts the new
+                                    // server on its last Activity filter (All when none).
+                                    filter = rememberedFilter(serverId.value)
+                                    SharedActivityState(selectedFilter = filter)
+                                } else if (stateBeforeOwner.isUnboundStart()) {
+                                    // The first load binds the store: it opens on the server's
+                                    // last Activity filter, not the default All.
+                                    filter = rememberedFilter(serverId.value)
+                                    stateBeforeOwner.copy(selectedFilter = filter)
                                 } else {
                                     stateBeforeOwner
                                 }
@@ -3970,3 +3988,11 @@ internal fun InboxItem.withRetractedPreview(messageId: MessageId, placeholder: S
 
 private fun InboxItem.isChannelOrDmRow(): Boolean =
     kind == InboxItemKind.Channel || kind == InboxItemKind.DirectMessage
+
+/**
+ * Never bound to a server and nothing shown or picked yet: the state the store is created
+ * with. Its filter is the default, not a choice, so the first load may replace it with the
+ * server's remembered one.
+ */
+internal fun SharedActivityState.isUnboundStart(): Boolean =
+    ownerServerId == null && snapshot == null && filterSnapshots.isEmpty() && selectedFilter == InboxFilter.All

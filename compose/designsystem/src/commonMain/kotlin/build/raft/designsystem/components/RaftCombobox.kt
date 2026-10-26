@@ -50,6 +50,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
@@ -636,12 +637,19 @@ private fun RaftComboboxChip(text: String, enabled: Boolean, onRemove: (() -> Un
 }
 
 /**
- * combobox.tsx `chipRemove`: 28dp (4dp under the chip), sticker radius, a 14dp × in
+ * combobox.tsx `chipRemove`: 28dp (4dp under the chip; [size]), sticker radius, a 14dp × in
  * `foreground-hint`; pressed `fill-pressed`. Its keyboard focus ring is a 2dp `foreground`
- * ring drawn inside it, which the chip would clip outside.
+ * ring drawn inside it, which the chip would clip outside. With [widenTouchTarget] it takes
+ * touches 44dp square (a standalone chip on a phone, [RaftFilterChip]); the combobox's
+ * chips keep their box (see the README).
  */
 @Composable
-private fun RaftComboboxChipRemove(label: String, onClick: () -> Unit) {
+internal fun RaftComboboxChipRemove(
+    label: String,
+    onClick: () -> Unit,
+    size: Dp = RaftTextFieldDefaults.EmbeddedControlSize - 4.dp,
+    widenTouchTarget: Boolean = false,
+) {
     val colors = RaftTheme.colors
     val source = remember { MutableInteractionSource() }
     val isPressed = raftIsPressed(source)
@@ -650,7 +658,8 @@ private fun RaftComboboxChipRemove(label: String, onClick: () -> Unit) {
     val focused = raftIsFocused(source)
     Box(
         Modifier
-            .size(RaftTextFieldDefaults.EmbeddedControlSize - 4.dp)
+            .size(size)
+            .then(if (widenTouchTarget) Modifier.raftTouchTarget(true, source, onClick) else Modifier)
             .raftPressOverlay(pressed, colors.fillPressed, RaftRadius.Sticker)
             .raftInsetFocusOutline(focused, colors.foreground, RaftRadius.Sticker)
             .clickable(source, indication = null, role = Role.Button, onClick = onClick)

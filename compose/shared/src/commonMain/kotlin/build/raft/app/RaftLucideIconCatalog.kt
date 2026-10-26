@@ -149,6 +149,7 @@ enum class RaftLucideIconName(val wireName: String) {
     LayoutList("layout-list"),
     Link("link"),
     Link2("link-2"),
+    ListFilter("list-filter"),
     ListTree("list-tree"),
     ListTodo("list-todo"),
     Lock("lock"),

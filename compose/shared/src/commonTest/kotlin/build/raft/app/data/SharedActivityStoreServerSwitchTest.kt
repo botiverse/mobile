@@ -11,8 +11,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * A server (or account) switch starts Activity on All, like web
- * `registerServerReset` (botiverse/slock 1bb70cbeb, inboxStore.ts:1854-1898).
+ * A server (or account) switch starts Activity on that server's last Filter choice, All when
+ * there is none, like web `registerServerReset` (botiverse/slock #11383; before it,
+ * 1bb70cbeb, always All).
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class SharedActivityStoreServerSwitchTest {
@@ -101,6 +102,105 @@ class SharedActivityStoreServerSwitchTest {
         store.dispatch(SharedActivityIntent.ServerSelected("server-1"))
         runCurrent()
         assertEquals(3, inbox.initialLoadCount)
+    }
+
+    @Test
+    fun aPickIsRememberedPerServerAndASwitchOpensThatServersChoice() = runTest {
+        val auth = InMemoryRaftAuthSessionStore(twoServerSession(selected = "server-1"))
+        val inbox = FilterRecordingInbox()
+        val keyValues = InMemoryRaftKeyValueStore()
+        val preferences = ActivityFilterPreferenceRepository(keyValues)
+        preferences.write("server-2", InboxFilter.Mentions)
+        val store =
+            activityStore(
+                backgroundScope,
+                inbox,
+                authStore = auth,
+                filterPreferences = preferences,
+                nowMillis = { testScheduler.currentTime }
+            )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Unread))
+        runCurrent()
+        assertEquals(InboxFilter.Unread, preferences.read("server-1"), "the pick is server-1's from now on")
+
+        // Shell switch to server-2: it opens on its own remembered Mentions, not server-1's Unread.
+        auth.saveSession(twoServerSession(selected = "server-2"))
+        store.dispatch(SharedActivityIntent.ServerSelected("server-2"))
+        runCurrent()
+        assertEquals(InboxFilter.Mentions, store.state.value.selectedFilter)
+
+        // And back: server-1 opens on Unread again.
+        auth.saveSession(twoServerSession(selected = "server-1"))
+        store.dispatch(SharedActivityIntent.ServerSelected("server-1"))
+        runCurrent()
+        assertEquals(InboxFilter.Unread, store.state.value.selectedFilter)
+
+        assertEquals(
+            listOf(
+                "server-1" to InboxFilter.All,
+                "server-1" to InboxFilter.Unread,
+                "server-2" to InboxFilter.Mentions,
+                "server-1" to InboxFilter.Unread,
+            ),
+            inbox.loads
+        )
+        // The other server's choice was never overwritten by the switch.
+        assertEquals(InboxFilter.Mentions, preferences.read("server-2"))
+    }
+
+    @Test
+    fun theFirstLoadOpensTheRememberedFilterWithoutLoadingAllFirst() = runTest {
+        val auth = InMemoryRaftAuthSessionStore(twoServerSession(selected = "server-1"))
+        val inbox = FilterRecordingInbox()
+        val preferences = ActivityFilterPreferenceRepository(InMemoryRaftKeyValueStore())
+        preferences.write("server-1", InboxFilter.Pinned)
+        val store = activityStore(backgroundScope, inbox, authStore = auth, filterPreferences = preferences)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+
+        assertEquals(InboxFilter.Pinned, store.state.value.selectedFilter)
+        assertEquals(listOf("server-1" to InboxFilter.Pinned), inbox.loads)
+    }
+
+    @Test
+    fun anAccountSwitchOnTheSameStoreOpensTheNewServersRememberedFilter() = runTest {
+        val auth = InMemoryRaftAuthSessionStore(twoServerSession(selected = "server-1"))
+        val inbox = FilterRecordingInbox()
+        val preferences = ActivityFilterPreferenceRepository(InMemoryRaftKeyValueStore())
+        preferences.write("server-2", InboxFilter.Unread)
+        val store = activityStore(backgroundScope, inbox, authStore = auth, filterPreferences = preferences)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+
+        // No ServerSelected: the load itself finds the owner changed (the load-path reset).
+        auth.saveSession(twoServerSession(selected = "server-2"))
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+
+        assertEquals(InboxFilter.Unread, store.state.value.selectedFilter)
+        assertEquals(listOf("server-1" to InboxFilter.All, "server-2" to InboxFilter.Unread), inbox.loads)
+    }
+
+    @Test
+    fun clearingTheChipBackToAllForgetsTheChoice() = runTest {
+        val auth = InMemoryRaftAuthSessionStore(twoServerSession(selected = "server-1"))
+        val keyValues = InMemoryRaftKeyValueStore()
+        val preferences = ActivityFilterPreferenceRepository(keyValues)
+        val store = activityStore(backgroundScope, FilterRecordingInbox(), authStore = auth, filterPreferences = preferences)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Mentions))
+        runCurrent()
+        assertEquals("mentions", keyValues.getString("raft.activity.filter.server-1"))
+
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.All))
+        runCurrent()
+
+        assertEquals(InboxFilter.All, store.state.value.selectedFilter)
+        assertEquals(null, keyValues.getString("raft.activity.filter.server-1"))
     }
 
     private fun twoServerSession(selected: String): StoredAuthSession =
