@@ -97,7 +97,8 @@ internal data class ActionCardFormCandidates(
  * calls [onSubmit] with the values. [fieldErrors] are the server's issues (a 422 `FORM_INVALID`):
  * each shows under its field until that field is edited, and one without a field (or naming no
  * field of the form) shows in a banner at the top with [formError] (any other failure). While
- * [submitting] the inputs are disabled, the commit is busy and the sheet does not close.
+ * [submitting] the inputs are disabled, the commit is busy, × is disabled (web `closeDisabled`)
+ * and the sheet does not close.
  */
 @Composable
 internal fun RaftActionCardFormSheet(
@@ -123,6 +124,7 @@ internal fun RaftActionCardFormSheet(
             commitLoading = submitting,
             closeLabel = stringResource(MR.strings.common_close),
             cancelLabel = stringResource(MR.strings.common_cancel),
+            closeEnabled = !submitting,
         ) {
             ActionCardFormBody(form, values, onValuesChange, state, submitting, candidates, formError, locale, agentStatusResolver)
         }
@@ -150,6 +152,7 @@ internal fun RaftActionCardFormSheetSurfaceForFixture(
         modifier = modifier,
         commitLoading = submitting,
         closeLabel = stringResource(MR.strings.common_close),
+        closeEnabled = !submitting,
     ) {
         ActionCardFormBody(form, values, {}, state, submitting, candidates, formError, displayLocale, EmptyRaftAgentStatusResolver)
     }
