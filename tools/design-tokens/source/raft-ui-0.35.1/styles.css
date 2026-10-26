@@ -212,6 +212,7 @@
   --color-ink-40: var(--ink-40);
 
   --color-brand: var(--brand-400);
+  --color-brand-edge: var(--brand-edge);
   --color-brand-50: var(--brand-50);
   --color-brand-100: var(--brand-100);
   --color-brand-200: var(--brand-200);
@@ -225,8 +226,11 @@
   --color-brand-950: var(--brand-950);
   --color-brand-strong: var(--brand-strong);
   --color-brand-soft: var(--brand-soft);
+  --color-selection: var(--selection);
   --color-brand-hover: var(--brand-hover);
   --color-brand-active: var(--brand-active);
+  --color-you: var(--you);
+  --color-selected: var(--selected);
 
   --color-attention: var(--attention-400);
   --color-attention-50: var(--attention-50);
@@ -300,6 +304,7 @@
   --color-presence-error: var(--presence-error);
   --color-presence-offline: var(--presence-offline);
   --color-presence-external: var(--presence-external);
+  --color-read-mark: var(--read-mark);
 
   /* Task-status scale for Tailwind (`bg-task-status-todo`, `text-task-status-*`,
      …). One slot per state plus its soft wash / strong ink; all four theme
@@ -561,11 +566,14 @@ textarea:-webkit-autofill:disabled {
    yellow of a highlight and a 2px yellow underline; the passage of the open
    discussion gets the full yellow with ink type, like a search hit, in both
    modes. `--brand-400` is the `brand` role (what `bg-brand` paints):
-   `--color-brand` is an inline theme value and emits no variable. */
+   `--color-brand` is an inline theme value and emits no variable. In dark
+   mode the wash is `--selection` (brand at 22%), kept in one place. The wash
+   is environment and follows the theme; the open passage is addressed to you,
+   so it takes `--you` and stays yellow in every theme (themes.md). */
 ::highlight(raft-comment) {
   background-color: light-dark(
     color-mix(in oklch, var(--brand-400) 35%, transparent),
-    color-mix(in oklch, var(--brand-400) 22%, transparent)
+    var(--selection)
   );
   text-decoration-line: underline;
   text-decoration-color: var(--brand-400);
@@ -573,7 +581,7 @@ textarea:-webkit-autofill:disabled {
 }
 
 ::highlight(raft-comment-active) {
-  background-color: var(--brand-400);
+  background-color: var(--you);
   color: var(--sticker-ink);
   text-decoration-line: none;
 }
@@ -677,6 +685,28 @@ textarea:-webkit-autofill:disabled {
    sticker overlay-sticker-medium, on the frame overlay-frame-medium.
    Use the bg-fill-* colours instead on a transparent control whose fill fades
    in with transition-colors. */
+/* Theme decorations on the frame (themes.css): the theme's sprites on the top
+   bar's right and above the rail's foot; none without a decorated theme. */
+/* The top bar's strip (190px) sits 72px from its right end, clear of the
+   right-hand controls; only from 1024px, where the centered search field
+   (at most min(32vw, 420px)) leaves it room. */
+@utility frame-decor-top {
+  background-repeat: no-repeat;
+  background-position: right 72px center;
+  @media (width >= 1024px) {
+    background-image: var(--frame-decor-top, none);
+  }
+}
+
+/* The rail's strip (48×112), for the nav's last flex item: laid out after
+   the items, so it never sits behind one, and clipped from the top when the
+   rail has less room than the strip. */
+@utility frame-decor-rail {
+  background-image: var(--frame-decor-rail, none);
+  background-repeat: no-repeat;
+  background-position: center bottom;
+}
+
 @utility overlay-subtle {
   background-image: linear-gradient(var(--fill-subtle), var(--fill-subtle));
 }

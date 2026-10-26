@@ -158,9 +158,9 @@ fun RaftTheme(
         LocalRaftContentColor provides colors.foreground,
         LocalRaftSurfaceColor provides colors.layerCanvas,
         LocalRaftPulseClock provides rememberRaftPulseClock(),
-        // raft-web `::selection { background-color: var(--brand-soft) }`; the handles take
-        // the caret's ink.
-        LocalTextSelectionColors provides remember(colors) { TextSelectionColors(handleColor = colors.foreground, backgroundColor = colors.brandSoft) },
+        // raft-web `::selection { background-color: var(--selection) }` (raft-ui 0.23 #730:
+        // brand-soft in light, brand at 22% in dark); the handles take the caret's ink.
+        LocalTextSelectionColors provides remember(colors) { TextSelectionColors(handleColor = colors.foreground, backgroundColor = colors.selection) },
         content = content,
     )
 }

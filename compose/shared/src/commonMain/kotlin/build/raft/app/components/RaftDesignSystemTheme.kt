@@ -28,7 +28,7 @@ import build.raft.designsystem.theme.RaftTheme
  * Space Mono faces, so designsystem text matches the `RaftType` text around it. The app
  * faces go straight into [RaftTheme], so the designsystem's own copies are never loaded.
  *
- * The designsystem theme provides its own `brand-soft` text selection colours; the app's
+ * The designsystem theme provides its own `selection` text selection colours; the app's
  * [LocalTextSelectionColors] are put back for the subtree so a text field in here selects
  * the same way as every other field in the app.
  *

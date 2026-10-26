@@ -16,9 +16,9 @@ move off Kuikly (see the CMP migration assessment, §3.2 `:ui-cmp`).
 Sources of truth:
 
 - Colour tokens: generated from the one vendored raft-ui source pinned in
-  `tools/design-tokens/manifest.json` (currently 0.7.1), the same source as the Kuikly
-  tokens in compose/shared. Bumping raft-ui is a source + manifest change that
-  regenerates both outputs together; 0.7.1 and 0.8.0 ship byte-identical CSS.
+  `tools/design-tokens/manifest.json` (currently 0.35.1, the version slock `packages/web`
+  ships), the same source as the tokens in compose/shared. Bumping raft-ui is a source +
+  manifest change that regenerates both outputs together.
 - Component specs and state rules: the raft-design docs site
   (https://raft-design.botiverse.build, raft-ui 0.8.0; `design/` in the raft-design repo),
   cross-checked with the component source
@@ -106,8 +106,9 @@ RaftTheme(appearance = RaftAppearance.Light) { ... }
   round its design-system screens (`LocalRaftStrings provides RaftStrings(optional =
   stringResource(MR.strings.common_optional_suffix), …)`); `closeLabel` / `loadingLabel`
   parameters default to it and still take a per-call value.
-- `RaftTheme` also provides `LocalTextSelectionColors`: a selection is `brand-soft`
-  (raft-web `::selection`), the handles `foreground`.
+- `RaftTheme` also provides `LocalTextSelectionColors`: a selection is `selection`
+  (raft-web `::selection`, raft-ui 0.23 #730: `brand-soft` in light, brand at 22% in dark),
+  the handles `foreground`. A message body's in-place selection takes the same colours.
 - `RaftTheme(localeList = ...)` puts the app's UI language on every `RaftTypography` style
   (`RaftTypography.from(fonts, localeList)`), so Android and iOS pick the CJK fallback
   glyphs of that language (`ja`, `ko`, `zh-Hant`) for Han characters. The default, null,
@@ -176,7 +177,7 @@ Other checks:
 | `RaftAvatarEmpty` | Avatar (`rf-avatar--empty`) | Done | The dashed "add" identity at any avatar size: dashed `foreground-hint` edge and plus, press `fill-medium`, disabled; screenshot `avatar_empty` |
 | `RaftAvatarBadgeBox`, `RaftMessageDelegatedAvatar` | AvatarBadge (`render`), MessageItemDelegatedAvatar | Done | A sticker of the caller's in the presence light's corner and overhang; the assistant's 19dp (`2xs`) face on its owner's `md` avatar for a message the assistant sent (RFC 077): ringed and backed by the row surface (1.5dp past the edge in light, 3dp in dark so 1.5dp shows past the die-cut), deleted = grayscale at 60%, hidden from accessibility |
 | `RaftStatusDot` | Status | Done | 8 variants, 5 presence lights, xs–lg; a light beside text is `md`, 10dp (raft-design #722: even, so it centres in even rows); `sm` (8dp) is the dot on an icon's corner; a light on an avatar follows the avatar |
-| `RaftMessageReferenceReadMark` | MessageReferenceReadMark | Done | A bare Lucide check, 10dp, stroke 2.5 (raft-design #794, raft-ui 0.34.0), `palette-lime-700` in light and the online lime in dark; no light, no box. Hand-matched `--read-mark` (the generated tokens are pinned to raft-ui 0.22.1) |
+| `RaftMessageReferenceReadMark` | MessageReferenceReadMark | Done | A bare Lucide check, 10dp, stroke 2.5 (raft-design #794, raft-ui 0.34.0), `--read-mark` (`palette-lime-700` in light, the online lime in dark); no light, no box |
 | `RaftSkeleton`, `RaftSkeletonList`, `rememberRaftSkeletonDelayPassed` | Skeleton, InboxItemSkeletonList `delay` | Done | Line, block, square; pulse (all in phase, one shared frame loop per theme), or still for screenshots / reduced motion. A list skeleton waits `RaftListSkeletonDelayMillis` (1s, raft-ui 0.22.1 #720) before it shows, so a fast load doesn't flash it: `RaftSkeletonList` wraps the rows, `rememberRaftSkeletonDelayPassed(loading)` gates lazy rows. `delayMillis = 0` or `LocalRaftListSkeletonDelayMillis provides 0L` shows them at once (screenshot fixtures). A single `RaftSkeleton` is not delayed |
 | `RaftLocatedState`, `Modifier.raftLocated`, `raftLocatedStrength` | located (`useLocated`, `LOCATED_MS`) | Done | raft-ui 0.22.1 #719: the item a jump took someone to shows `info-soft` at once, held 1.2s, then an ease-out fade, gone at 2s (`RaftLocatedMillis`); reduced motion holds it still for 2s, then off. `locate(key)` once the item is on screen (a new call restarts it); `raftLocated` paints it over the item's fill in its shape (draw phase only); `raftLocatedStrength(active)` for a row that lays it in its own fill (a message). A stronger mark (selected, menu open, search match, checked) wins: don't paint it there. Used by the thread jump, the search return row and Activity's unread jump |
 | `RaftProgressBar` | Progress | Done | `fill-muted` track (sticker radius), `info` fill with the 1.5dp `sticker-ink` inset edge; sm / md / lg (6 / 8 / 10dp); primary and warning; complete turns `success`; optional header (label, mono value); indeterminate half-width sweep (`animated = false` freezes it); progress-bar semantics |

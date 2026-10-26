@@ -3,8 +3,10 @@ package build.raft.app
 import androidx.compose.foundation.text.contextmenu.provider.LocalTextContextMenuToolbarProvider
 import androidx.compose.foundation.text.contextmenu.provider.TextContextMenuDataProvider
 import androidx.compose.foundation.text.contextmenu.provider.TextContextMenuProvider
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.selection.SelectionState
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -457,9 +459,17 @@ internal fun ThreadInPlaceSelectableBody(
     val host = LocalThreadInPlaceTextSelectionHost.current ?: return content()
     val textToolbar = remember(controller) { ThreadInPlaceTextToolbar(controller) }
     val contextMenuProvider = remember(controller) { ThreadInPlaceTextContextMenuProvider(controller) }
+    // raft-ui MessageItem text `selection:bg-selection` (0.23 #730): brand-soft in light, brand at
+    // 22% in dark; the handles take the caret's ink, as in the designsystem RaftTheme.
+    val themeColors = RaftAppThemeState.colors
+    val selectionColors =
+        remember(themeColors) {
+            TextSelectionColors(handleColor = themeColors.foreground, backgroundColor = themeColors.selection)
+        }
     CompositionLocalProvider(
         LocalTextToolbar provides textToolbar,
         LocalTextContextMenuToolbarProvider provides contextMenuProvider,
+        LocalTextSelectionColors provides selectionColors,
     ) {
         SelectionContainer(
             controller.selectionState,

@@ -2,9 +2,9 @@
 // Regenerate: python3 tools/design-tokens/gen_tokens.py
 // Sources (tools/design-tokens/manifest.json):
 //   npm:tailwindcss@4.3.3/theme.css sha256=443d7af364200f8e
-//   npm:@botiverse/raft-ui@0.22.1/dist/styles.css sha256=2baece367aea6ece
-//   npm:@botiverse/raft-ui@0.22.1/dist/foundation.css sha256=6a94916693d9676a
-//   botiverse/slock@f1459e8b121ac91332baa286e08dd0883a813396:packages/web/src/index.css sha256=6e63d66d3ee7932a
+//   npm:@botiverse/raft-ui@0.35.1/dist/styles.css sha256=de66fe7057a7a86e
+//   npm:@botiverse/raft-ui@0.35.1/dist/foundation.css sha256=b3cf18148a40ed1d
+//   botiverse/slock@3652d3703232dd2e61b8f07b0217befe94337118:packages/web/src/index.css sha256=85dc624a9146fda9
 
 package build.raft.designsystem.tokens
 
@@ -1200,6 +1200,8 @@ object RaftUiPalette {
     val secondary900 = Color(0xFF23211F)
     /** `--secondary-950` */
     val secondary950 = Color(0xFF141312)
+    /** `--selected` */
+    val selected = Color(0xFFFFD440)
     /** `--sticker-ink` */
     val stickerInk = Color(0xFF141111)
     /** `--sticker-medium` */
@@ -1222,6 +1224,8 @@ object RaftUiPalette {
     val warningForeground = Color(0xFF141111)
     /** `--warning-hover` */
     val warningHover = Color(0xFFE19366)
+    /** `--you` */
+    val you = Color(0xFFFFD440)
 }
 
 /**
@@ -1376,6 +1380,10 @@ sealed class RaftUiThemeColors {
     abstract val primarySoft: Color
     /** `--primary-strong` */
     abstract val primaryStrong: Color
+    /** `--read-mark` */
+    abstract val readMark: Color
+    /** `--selection` */
+    abstract val selection: Color
     /** `--sticker-edge` */
     abstract val stickerEdge: Color
     /** `--success-muted` */
@@ -1493,6 +1501,8 @@ sealed class RaftUiThemeColors {
         override val lineStrong = Color(0xFF141111)
         override val primarySoft = Color(0xFFFFF0BD)
         override val primaryStrong = Color(0xFF564919)
+        override val readMark = Color(0xFF506836)
+        override val selection = Color(0xFFFFF0BD)
         override val stickerEdge = Color(0x00141111)
         override val successMuted = Color(0xFFC0F588)
         override val successSoft = Color(0xFFDCFAC1)
@@ -1590,6 +1600,8 @@ sealed class RaftUiThemeColors {
         override val lineStrong = Color(0xFFE5E5E2)
         override val primarySoft = Color(0x33876F1F)
         override val primaryStrong = Color(0xFFFFD440)
+        override val readMark = Color(0xFFA9D877)
+        override val selection = Color(0x38FFD440)
         override val stickerEdge = Color(0x59FAFAF7)
         override val successMuted = Color(0x470C7D43)
         override val successSoft = Color(0x2E167641)

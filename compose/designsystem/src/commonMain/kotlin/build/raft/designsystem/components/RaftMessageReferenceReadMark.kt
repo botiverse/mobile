@@ -7,7 +7,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.designsystem.theme.RaftTheme
-import build.raft.designsystem.tokens.RaftUiPalette
 
 /**
  * raft-ui `MessageReferenceReadMark` (raft-design #794, raft-ui 0.34.0, message-item.md "Read
@@ -43,10 +42,9 @@ object RaftMessageReferenceReadMarkDefaults {
 
     /**
      * `--read-mark`: `palette-lime-700` in light (6.2:1 on white), the online lime
-     * (`presence-online`) in dark (10.5:1 on the dark canvas). The generated tokens are pinned to
-     * raft-ui 0.22.1 and do not have it yet, so the two palette steps are named here.
+     * (`presence-online`) in dark (10.5:1 on the dark canvas).
      */
     val color: Color
         @Composable @ReadOnlyComposable
-        get() = if (RaftTheme.isDark) RaftUiPalette.presenceOnline else RaftUiPalette.paletteLime700
+        get() = RaftTheme.colors.readMark
 }

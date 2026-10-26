@@ -20,7 +20,8 @@ radius, text...) are skipped, and an unresolvable colour fails the run.
 
 Colour maths follows CSS Color 4: oklch -> OKLab -> LMS -> XYZ-D65 -> linear
 sRGB (unclamped); color-mix(in srgb-linear) interpolates premultiplied in
-linear light. Chrome clips each channel to [0, 1] when painting (no CSS
+linear light, color-mix(in oklch) premultiplied in OKLCH with the shorter
+hue arc and a powerless hue (`transparent`, a grey) taking the other colour's. Chrome clips each channel to [0, 1] when painting (no CSS
 chroma-reduction gamut map), and so does this generator.
 `--oracle` compares every token against values painted by Chromium
 (capture_chrome_oracle.mjs).
@@ -298,11 +299,39 @@ XYZ_TO_LIN_SRGB = (
 )
 
 
+def _inv3(m):
+    (a, b, c), (d, e, f), (g, h, i) = m
+    det = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g)
+    return (
+        ((e * i - f * h) / det, (c * h - b * i) / det, (b * f - c * e) / det),
+        ((f * g - d * i) / det, (a * i - c * g) / det, (c * d - a * f) / det),
+        ((d * h - e * g) / det, (b * g - a * h) / det, (a * e - b * d) / det),
+    )
+
+
+# The inverses of the matrices above, so oklch -> sRGB -> oklch round-trips exactly.
+LIN_SRGB_TO_XYZ = _inv3(XYZ_TO_LIN_SRGB)
+XYZ_TO_LMS = _inv3(LMS_TO_XYZ)
+LMS_TO_OKLAB = _inv3(OKLAB_TO_LMS)
+
+# Below this chroma the hue is powerless (CSS Color 4 §4.4) and counts as missing
+# when interpolating in OKLCH: `transparent`, white, black, a neutral grey.
+ACHROMATIC_CHROMA = 1e-4
+
+
 def oklch_to_linear(l: float, c: float, h: float) -> tuple[float, float, float]:
     hr = math.radians(h)
     lms = _mul(OKLAB_TO_LMS, (l, c * math.cos(hr), c * math.sin(hr)))
     xyz = _mul(LMS_TO_XYZ, tuple(v**3 for v in lms))
     return _mul(XYZ_TO_LIN_SRGB, xyz)
+
+
+def linear_to_oklch(r: float, g: float, b: float) -> tuple[float, float, float | None]:
+    """Linear sRGB to OKLCH; the hue is None (missing) when it is powerless."""
+    lms = _mul(XYZ_TO_LMS, _mul(LIN_SRGB_TO_XYZ, (r, g, b)))
+    l, a, bb = _mul(LMS_TO_OKLAB, tuple(math.copysign(abs(v) ** (1 / 3), v) for v in lms))
+    c = math.hypot(a, bb)
+    return l, c, (math.degrees(math.atan2(bb, a)) % 360 if c > ACHROMATIC_CHROMA else None)
 
 
 def _num(tok: str, percent_scale: float = 1.0) -> float:
@@ -383,7 +412,7 @@ class Resolver:
         if len(args) != 3:
             raise TokenError(f"color-mix arity: {inner}")
         space = args[0].strip()
-        if space not in ("in srgb-linear", "in srgb"):
+        if space not in ("in srgb-linear", "in srgb", "in oklch"):
             raise TokenError(f"color-mix space not supported: {space}")
         items = []
         for arg in args[1:]:
@@ -405,6 +434,8 @@ class Resolver:
             raise TokenError("color-mix percentages sum to zero")
         alpha_mult = min(total, 1.0)
         p1, p2 = p1 / total, p2 / total
+        if space == "in oklch":
+            return mix_oklch(c1, p1, c2, p2, alpha_mult)
         return mix(c1, p1, c2, p2, alpha_mult, linear=(space == "in srgb-linear"))
 
 
@@ -419,6 +450,31 @@ def mix(c1: Rgba, p1: float, c2: Rgba, p2: float, alpha_mult: float = 1.0, linea
     if not linear:
         out = [srgb_decode(x) for x in out]
     return Rgba(*out, a * alpha_mult)
+
+
+def mix_oklch(c1: Rgba, p1: float, c2: Rgba, p2: float, alpha_mult: float = 1.0) -> Rgba:
+    """color-mix(in oklch, ...) as CSS Color 4 §12 and Chromium do it: L and C
+    premultiplied by alpha, the hue not; a missing (powerless) hue takes the
+    other colour's (both missing: 0); the hue goes the shorter way round.
+    `transparent` is achromatic at alpha 0, so `color-mix(in oklch, X p%,
+    transparent)` is X at alpha p."""
+    l1, ch1, h1 = linear_to_oklch(c1.r, c1.g, c1.b)
+    l2, ch2, h2 = linear_to_oklch(c2.r, c2.g, c2.b)
+    a = c1.a * p1 + c2.a * p2
+    if a == 0:
+        return Rgba(0, 0, 0, 0)
+    l = (l1 * c1.a * p1 + l2 * c2.a * p2) / a
+    c = (ch1 * c1.a * p1 + ch2 * c2.a * p2) / a
+    if h1 is None and h2 is None:
+        h = 0.0
+    elif h1 is None or h2 is None:
+        h = h2 if h1 is None else h1
+    else:
+        d = (h2 - h1) % 360
+        if d > 180:
+            d -= 360
+        h = (h1 + d * p2) % 360
+    return Rgba(*oklch_to_linear(l, c, h), a * alpha_mult)
 
 
 def _alpha(tok: str | None) -> float:
@@ -652,7 +708,18 @@ def self_test() -> None:
     # Non-colours are skipped; unsupported colour syntax fails closed.
     assert Resolver({}).color("4px 4px 0px #000") is None
     assert Resolver({}).color("16px") is None
-    for bad in ("color-mix(in oklch, #fff, #000)", "red", "var(--nope)"):
+    # color-mix(in oklch): transparent only fades (raft-ui 0.23 dark --selection is brand-400 at 22%).
+    brand = "oklch(0.8829 0.1623 91.9)"
+    assert paint(f"color-mix(in oklch, {brand} 22%, transparent)") == (255, 212, 64, 56)
+    assert paint(f"color-mix(in oklch, transparent, {brand} 22%)") == (255, 212, 64, 56)
+    l, c, h = linear_to_oklch(*oklch_to_linear(0.8829, 0.1623, 91.9))
+    assert abs(l - 0.8829) < 1e-9 and abs(c - 0.1623) < 1e-9 and abs(h - 91.9) < 1e-6
+    # The shorter hue arc: 350 and 10 meet at 0, not 180; a grey takes the other hue.
+    mid = Resolver({}).color("color-mix(in oklch, oklch(0.7 0.1 350), oklch(0.7 0.1 10))")
+    assert abs(linear_to_oklch(mid.r, mid.g, mid.b)[2] % 360) < 1e-6 or abs(linear_to_oklch(mid.r, mid.g, mid.b)[2] - 360) < 1e-6
+    grey = Resolver({}).color("color-mix(in oklch, oklch(0.7 0.1 120), oklch(0.5 0 0))")
+    assert abs(linear_to_oklch(grey.r, grey.g, grey.b)[2] - 120) < 1e-6
+    for bad in ("color-mix(in hsl, #fff, #000)", "red", "var(--nope)"):
         try:
             Resolver({}).color(bad)
         except TokenError:
