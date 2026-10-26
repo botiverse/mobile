@@ -48,7 +48,7 @@ internal class AppLoginCoordinator(
         if (result !is SharedAuthResult.Success || runtime()?.environment != active.environment) return@withLock null
         if (result.data.requestId.isBlank() || result.data.expiresAt.isBlank()) return@withLock null
         val url = result.data.loginUrl
-        if (!url.startsWith("https://")) return@withLock null
+        if (!isAllowedAppLoginUrl(url)) return@withLock null
         val pending = AppLoginPending(generation, result.data.requestId, verifier, returnUri, active.environment, startedAt)
         store.putString("pending", Json.encodeToString(AppLoginPending.serializer(), pending))
         url
@@ -188,3 +188,11 @@ internal fun createAppLoginRuntime(
         }
     }
 }
+
+private val LoopbackHttpUrl = Regex("^http://(localhost|127\\.0\\.0\\.1)(:\\d+)?/")
+
+/**
+ * The browser login page must be served over https; plain http only to this machine (a local
+ * development server, e.g. raftdev, whose web app has no TLS).
+ */
+internal fun isAllowedAppLoginUrl(url: String): Boolean = url.startsWith("https://") || LoopbackHttpUrl.containsMatchIn(url)
