@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -45,7 +46,6 @@ import build.raft.app.compat.ui.PlayState
 import build.raft.app.compat.ui.VideoPlayControl
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
@@ -58,7 +58,6 @@ import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftSpacing
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlin.math.roundToInt
 
 internal enum class ThreadInlineAudioPreviewStatus {
@@ -203,7 +202,7 @@ internal fun ThreadInlineAudioAttachmentCard(
                 ) { RaftSlotIcon(RaftLucideIconName.Music, size = 18.dp, color = colors.foregroundMuted) }
                 Column(modifier = Modifier.weight(1f)) {
                     RaftText(
-                        text = attachment.name.ifBlank { stringResource(MR.strings.thread_audio_attachment_fallback_name) },
+                        text = attachment.name.ifBlank { stringResource(Res.string.thread_audio_attachment_fallback_name) },
                         style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
                         color = colors.foreground,
                         maxLines = 1,
@@ -211,7 +210,7 @@ internal fun ThreadInlineAudioAttachmentCard(
                     )
                     // Web: "Audio file" alone, without the size.
                     RaftText(
-                        text = stringResource(MR.strings.thread_audio_file_label),
+                        text = stringResource(Res.string.thread_audio_file_label),
                         style = RaftTheme.typography.monoMeta,
                         color = colors.foregroundHint,
                         maxLines = 1,
@@ -221,7 +220,7 @@ internal fun ThreadInlineAudioAttachmentCard(
                 if (!failed) {
                     RaftIconButton(
                         onClick = onDownload,
-                        tooltip = stringResource(MR.strings.file_preview_action_download),
+                        tooltip = stringResource(Res.string.file_preview_action_download),
                         variant = RaftButtonVariant.Ghost
                     ) { RaftSlotIcon(RaftLucideIconName.Download, size = 18.dp) }
                 }
@@ -284,7 +283,7 @@ private fun ThreadInlineAudioSurface(
             if (playState == PlayState.ERROR) {
                 ThreadInlineAudioFailedWell(onRetry = onRetry, onDownload = onDownload)
             } else {
-                val positionLabel = stringResource(MR.strings.thread_audio_playback_position)
+                val positionLabel = stringResource(Res.string.thread_audio_playback_position)
                 ThreadInlineAudioControls(
                     isPlaying = isPlaying,
                     canPlay = canPlay,
@@ -333,7 +332,7 @@ private fun ThreadInlineAudioLoadingWell() {
         ) {
             RaftSpinner(size = RaftSpinnerSize.Xs, color = RaftTheme.colors.foregroundMuted)
             RaftText(
-                text = stringResource(MR.strings.thread_audio_preview_loading),
+                text = stringResource(Res.string.thread_audio_preview_loading),
                 style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Bold),
                 color = RaftTheme.colors.foregroundMuted,
                 maxLines = 1,
@@ -356,7 +355,7 @@ private fun ThreadInlineAudioFailedWell(
         Row(modifier = Modifier.fillMaxWidth()) {
             if (onRetry != null) {
                 RaftButton(
-                    text = stringResource(MR.strings.common_retry),
+                    text = stringResource(Res.string.common_retry),
                     onClick = onRetry,
                     variant = RaftButtonVariant.Ghost,
                     modifier = Modifier.weight(1f),
@@ -364,7 +363,7 @@ private fun ThreadInlineAudioFailedWell(
                 )
             }
             RaftButton(
-                text = stringResource(MR.strings.thread_audio_download_to_view),
+                text = stringResource(Res.string.thread_audio_download_to_view),
                 onClick = onDownload,
                 variant = RaftButtonVariant.Ghost,
                 modifier = Modifier.weight(1f),
@@ -398,7 +397,7 @@ internal fun ThreadInlineAudioControls(
         ) {
             RaftIconButton(
                 onClick = onTogglePlay,
-                tooltip = stringResource(if (isPlaying) MR.strings.common_pause else MR.strings.common_play),
+                tooltip = stringResource(if (isPlaying) Res.string.common_pause else Res.string.common_play),
                 enabled = canPlay
             ) { RaftSlotIcon(if (isPlaying) RaftLucideIconName.Pause else RaftLucideIconName.Play, size = 16.dp) }
             ThreadInlineAudioSeekBar(

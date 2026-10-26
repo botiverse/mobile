@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,9 +35,7 @@ import build.raft.app.data.typingAgentIds
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
-import build.raft.app.resources.MR
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /**
  * Agent typing line (raft-design 0042, `working-agents.md` "Who is about to post"; web
@@ -131,7 +130,7 @@ internal fun rememberThreadAgentTyping(
     val membersState = serverMembersStore?.state?.collectAsState()?.value
     val serverMembers =
         remember(membersState, server) { serverMembersStore?.currentServerMembers(ServerId(server)).orEmpty() }
-    val fallbackName = stringResource(MR.strings.thread_agent_typing_agent_fallback)
+    val fallbackName = stringResource(Res.string.thread_agent_typing_agent_fallback)
     val agents =
         remember(agentIds, serverMembers, payload.members, payload.memberCandidates, fallbackName) {
             resolveThreadTypingAgents(agentIds, serverMembers, payload.members + payload.memberCandidates, fallbackName)
@@ -151,10 +150,10 @@ private const val ThreadAgentTypingMaxFaces = 3
 @Composable
 internal fun agentTypingSentenceTemplates(): AgentTypingSentenceTemplates =
     AgentTypingSentenceTemplates(
-        one = stringResource(MR.strings.thread_agent_typing_one),
-        two = stringResource(MR.strings.thread_agent_typing_two),
-        three = stringResource(MR.strings.thread_agent_typing_three),
-        many = stringResource(MR.strings.thread_agent_typing_many),
+        one = stringResource(Res.string.thread_agent_typing_one),
+        two = stringResource(Res.string.thread_agent_typing_two),
+        three = stringResource(Res.string.thread_agent_typing_three),
+        many = stringResource(Res.string.thread_agent_typing_many),
     )
 
 /** raft-ui `MessageListEndFade` `h-timeline-section`: the list end fade, the section step. */

@@ -6,16 +6,16 @@ import androidx.compose.runtime.staticCompositionLocalOf
 /**
  * The few words the components write themselves. The module has no string resources: these
  * are raft-ui's English defaults, and an app provides its translations once, round the
- * screens that host the components (with its own resources, e.g. moko `MR.strings`):
+ * screens that host the components (with its own resources, e.g. `Res.string` in :shared):
  *
  * ```
  * CompositionLocalProvider(
  *     LocalRaftStrings provides RaftStrings(
- *         optional = stringResource(MR.strings.common_optional_suffix),
- *         close = stringResource(MR.strings.common_close),
- *         clear = stringResource(MR.strings.common_clear),
- *         loading = stringResource(MR.strings.common_loading),
- *         cancel = stringResource(MR.strings.common_cancel),
+ *         optional = stringResource(Res.string.common_optional_suffix),
+ *         close = stringResource(Res.string.common_close),
+ *         clear = stringResource(Res.string.common_clear),
+ *         loading = stringResource(Res.string.common_loading),
+ *         cancel = stringResource(Res.string.common_cancel),
  *     ),
  * ) { content() }
  * ```

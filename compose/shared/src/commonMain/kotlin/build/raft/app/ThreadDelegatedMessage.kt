@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -9,9 +10,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import build.raft.app.model.MessageDelegatedBy
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.compose.stringResource
-import com.tencent.tmm.kmmresource.resource.StringResource
+import org.jetbrains.compose.resources.StringResource
 
 // RFC 077 (assistant launch, task #6): the words for a message a person's assistant sent for
 // them. Web source of truth: botiverse/slock `packages/web/src/components/message/
@@ -26,18 +25,18 @@ internal enum class DelegatedLabelPlacement { Header, InBody }
 /** The catalog entry for [delegatedBy] at [placement] (web `DelegatedByLabel` `inBody`). */
 internal fun delegatedLabelResource(delegatedBy: MessageDelegatedBy, placement: DelegatedLabelPlacement): StringResource =
     when {
-        delegatedBy.deleted && placement == DelegatedLabelPlacement.Header -> MR.strings.message_delegated_sent_by_deleted
-        delegatedBy.deleted -> MR.strings.message_delegated_sent_by_deleted_in_body
-        placement == DelegatedLabelPlacement.Header -> MR.strings.message_delegated_sent_by
-        else -> MR.strings.message_delegated_sent_by_in_body
+        delegatedBy.deleted && placement == DelegatedLabelPlacement.Header -> Res.string.message_delegated_sent_by_deleted
+        delegatedBy.deleted -> Res.string.message_delegated_sent_by_deleted_in_body
+        placement == DelegatedLabelPlacement.Header -> Res.string.message_delegated_sent_by
+        else -> Res.string.message_delegated_sent_by_in_body
     }
 
 /** Web `formatDelegatedSender`: the sender with the assistant, or the sender alone. */
 internal fun delegatedPreviewSenderResource(delegatedBy: MessageDelegatedBy?): StringResource? =
     when {
         delegatedBy == null -> null
-        delegatedBy.deleted -> MR.strings.message_delegated_preview_sender_deleted
-        else -> MR.strings.message_delegated_preview_sender
+        delegatedBy.deleted -> Res.string.message_delegated_preview_sender_deleted
+        else -> Res.string.message_delegated_preview_sender
     }
 
 /**
@@ -130,7 +129,7 @@ internal fun ThreadMessageRetractedBody(
     modifier: Modifier = Modifier,
 ) {
     Text(
-        text = stringResource(MR.strings.message_delegated_retracted),
+        text = stringResource(Res.string.message_delegated_retracted),
         style = textStyle,
         color = RaftColor.ForegroundHint,
         modifier = modifier,

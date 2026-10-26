@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
@@ -14,7 +15,6 @@ import androidx.compose.runtime.withFrameNanos
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalIconButton
-import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,7 +33,6 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.Pager
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 internal const val RAFT_IN_APP_BROWSER_PAGE = "compose_in_app_browser"
 internal const val RAFT_IN_APP_BROWSER_URL_KEY = "url"
@@ -101,7 +100,7 @@ private fun RaftInAppBrowserScreen() {
 
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         RaftTopPageHeader(
-            title = navigationState.title.ifBlank { stringResource(MR.strings.in_app_browser_title) },
+            title = navigationState.title.ifBlank { stringResource(Res.string.in_app_browser_title) },
             subtitle =
                 (navigationState.url.takeIf { it.isNotBlank() } ?: launchUrl)
                     ?.let(::raftInAppBrowserDisplayUrl),
@@ -116,7 +115,7 @@ private fun RaftInAppBrowserScreen() {
                     RaftBrutalIconButton(
                         iconName = RaftLucideIconName.ChevronRight,
                         onClick = controller::goForward,
-                        contentDescription = stringResource(MR.strings.in_app_browser_forward),
+                        contentDescription = stringResource(Res.string.in_app_browser_forward),
                         enabled = navigationState.canGoForward,
                         size = 26.dp,
                     )
@@ -127,9 +126,9 @@ private fun RaftInAppBrowserScreen() {
                         },
                         contentDescription =
                             if (navigationState.isLoading) {
-                                stringResource(MR.strings.common_stop)
+                                stringResource(Res.string.common_stop)
                             } else {
-                                stringResource(MR.strings.in_app_browser_reload)
+                                stringResource(Res.string.in_app_browser_reload)
                             },
                         size = 26.dp,
                     )
@@ -137,7 +136,7 @@ private fun RaftInAppBrowserScreen() {
                         // raft-ui 0.26 (#758): a control that leaves Raft is marked ↗.
                         iconName = RaftLucideIconName.ArrowUpRight,
                         onClick = ::openInSystemBrowser,
-                        contentDescription = stringResource(MR.strings.in_app_browser_open_system),
+                        contentDescription = stringResource(Res.string.in_app_browser_open_system),
                         enabled = launchUrl != null,
                         size = 26.dp,
                     )
@@ -151,7 +150,7 @@ private fun RaftInAppBrowserScreen() {
             when {
                 launchUrl == null -> {
                     RaftInAppBrowserError(
-                        message = stringResource(MR.strings.in_app_browser_invalid_link),
+                        message = stringResource(Res.string.in_app_browser_invalid_link),
                         onRetry = null,
                         onOpenSystem = null,
                         onClose = ::closePage,
@@ -184,7 +183,7 @@ private fun RaftInAppBrowserScreen() {
                     )
                     if (loadError != null) {
                         RaftInAppBrowserError(
-                            message = stringResource(MR.strings.in_app_browser_load_error),
+                            message = stringResource(Res.string.in_app_browser_load_error),
                             onRetry = {
                                 loadError = null
                                 controller.reload()
@@ -195,7 +194,7 @@ private fun RaftInAppBrowserScreen() {
                     }
                 }
                 else -> {
-                    RaftCenteredLoading(stringResource(MR.strings.common_loading))
+                    RaftCenteredLoading(stringResource(Res.string.common_loading))
                 }
             }
         }
@@ -251,7 +250,7 @@ internal fun RaftInAppBrowserError(
         }
         onRetry?.let {
             RaftButton(
-                text = stringResource(MR.strings.common_retry),
+                text = stringResource(Res.string.common_retry),
                 onClick = it,
                 leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) },
                 modifier = Modifier.fillMaxWidth(),
@@ -261,7 +260,7 @@ internal fun RaftInAppBrowserError(
         }
         onOpenSystem?.let {
             RaftButton(
-                text = stringResource(MR.strings.in_app_browser_open_system),
+                text = stringResource(Res.string.in_app_browser_open_system),
                 onClick = it,
                 // raft-ui 0.26 (#758): leaving Raft ends in ↗, in the trailing icon's place.
                 trailingIcon = { RaftSlotIcon(RaftLucideIconName.ArrowUpRight) },
@@ -271,7 +270,7 @@ internal fun RaftInAppBrowserError(
         }
         onClose?.let {
             RaftButton(
-                text = stringResource(MR.strings.common_close),
+                text = stringResource(Res.string.common_close),
                 onClick = it,
                 leadingIcon = { RaftSlotIcon(RaftLucideIconName.X) },
                 modifier = Modifier.fillMaxWidth(),

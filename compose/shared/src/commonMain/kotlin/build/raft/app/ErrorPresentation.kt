@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import build.raft.app.data.AddComputerDialogState
 import build.raft.app.data.EmptyReason
@@ -11,8 +12,6 @@ import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.errorPresentation
 import build.raft.app.data.errorPresentationOrNull
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /**
  * Locale-resolved half of the canonical error pipeline.
@@ -32,26 +31,26 @@ internal class ErrorPresentationStrings(
 internal fun localizedErrorPresentationStrings(): ErrorPresentationStrings =
     ErrorPresentationStrings(
         mapOf(
-            ErrorPresentationKey.SessionExpired to stringResource(MR.strings.error_session_expired),
-            ErrorPresentationKey.ServerUnreachable to stringResource(MR.strings.error_server_unreachable),
-            ErrorPresentationKey.RequestTimedOut to stringResource(MR.strings.error_request_timed_out),
-            ErrorPresentationKey.NetworkConnectionFailed to stringResource(MR.strings.error_network_connection_failed),
-            ErrorPresentationKey.ServerUnavailable to stringResource(MR.strings.error_server_unavailable),
-            ErrorPresentationKey.ItemNotFound to stringResource(MR.strings.error_item_not_found),
-            ErrorPresentationKey.PermissionDenied to stringResource(MR.strings.error_permission_denied),
-            ErrorPresentationKey.EdgeBlocked to stringResource(MR.strings.error_edge_blocked),
-            ErrorPresentationKey.AttachmentTooLarge to stringResource(MR.strings.error_attachment_too_large),
-            ErrorPresentationKey.TooManyAttempts to stringResource(MR.strings.error_too_many_attempts),
-            ErrorPresentationKey.ResponseUnreadable to stringResource(MR.strings.error_response_unreadable),
-            ErrorPresentationKey.ServerVersionIncompatible to stringResource(MR.strings.error_server_version_incompatible),
-            ErrorPresentationKey.Generic to stringResource(MR.strings.error_generic),
-            ErrorPresentationKey.EmptyNoChannels to stringResource(MR.strings.empty_no_channels),
-            ErrorPresentationKey.EmptyNoMessages to stringResource(MR.strings.empty_no_messages),
-            ErrorPresentationKey.EmptyNoTasks to stringResource(MR.strings.empty_no_tasks),
-            ErrorPresentationKey.EmptyNoMembers to stringResource(MR.strings.empty_no_members),
-            ErrorPresentationKey.EmptyNoInboxItems to stringResource(MR.strings.empty_no_inbox_items),
-            ErrorPresentationKey.EmptyNoSettingsAvailable to stringResource(MR.strings.empty_no_settings_available),
-            ErrorPresentationKey.EmptyNoSearchResults to stringResource(MR.strings.empty_no_search_results)
+            ErrorPresentationKey.SessionExpired to stringResource(Res.string.error_session_expired),
+            ErrorPresentationKey.ServerUnreachable to stringResource(Res.string.error_server_unreachable),
+            ErrorPresentationKey.RequestTimedOut to stringResource(Res.string.error_request_timed_out),
+            ErrorPresentationKey.NetworkConnectionFailed to stringResource(Res.string.error_network_connection_failed),
+            ErrorPresentationKey.ServerUnavailable to stringResource(Res.string.error_server_unavailable),
+            ErrorPresentationKey.ItemNotFound to stringResource(Res.string.error_item_not_found),
+            ErrorPresentationKey.PermissionDenied to stringResource(Res.string.error_permission_denied),
+            ErrorPresentationKey.EdgeBlocked to stringResource(Res.string.error_edge_blocked),
+            ErrorPresentationKey.AttachmentTooLarge to stringResource(Res.string.error_attachment_too_large),
+            ErrorPresentationKey.TooManyAttempts to stringResource(Res.string.error_too_many_attempts),
+            ErrorPresentationKey.ResponseUnreadable to stringResource(Res.string.error_response_unreadable),
+            ErrorPresentationKey.ServerVersionIncompatible to stringResource(Res.string.error_server_version_incompatible),
+            ErrorPresentationKey.Generic to stringResource(Res.string.error_generic),
+            ErrorPresentationKey.EmptyNoChannels to stringResource(Res.string.empty_no_channels),
+            ErrorPresentationKey.EmptyNoMessages to stringResource(Res.string.empty_no_messages),
+            ErrorPresentationKey.EmptyNoTasks to stringResource(Res.string.empty_no_tasks),
+            ErrorPresentationKey.EmptyNoMembers to stringResource(Res.string.empty_no_members),
+            ErrorPresentationKey.EmptyNoInboxItems to stringResource(Res.string.empty_no_inbox_items),
+            ErrorPresentationKey.EmptyNoSettingsAvailable to stringResource(Res.string.empty_no_settings_available),
+            ErrorPresentationKey.EmptyNoSearchResults to stringResource(Res.string.empty_no_search_results)
         )
     )
 

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -13,7 +14,6 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.formatRaftTimestampLabel
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.resolveRaftRelativeTimeLabel
-import build.raft.app.resources.MR
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
@@ -26,8 +26,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.tencent.tmm.kmmresource.compose.stringResource
-import com.tencent.tmm.kmmresource.resource.StringResource
+import org.jetbrains.compose.resources.StringResource
 
 internal enum class RaftTimestampDisplayMode {
     Relative,
@@ -116,7 +115,7 @@ internal fun raftRelativeTimestampLabel(
     val resolved = resolveRaftRelativeTimeLabel(value, effectiveContext)
     return when (val label = if (clampFuture) resolved.clampedFutureToNow() else resolved) {
         RaftRelativeTimeLabel.Empty -> ""
-        RaftRelativeTimeLabel.Unknown -> stringResource(MR.strings.relative_time_unknown)
+        RaftRelativeTimeLabel.Unknown -> stringResource(Res.string.relative_time_unknown)
         is RaftRelativeTimeLabel.Literal -> label.value
         is RaftRelativeTimeLabel.Relative -> label.localized()
     }
@@ -161,15 +160,15 @@ internal fun RaftRelativeTimestampText(
         }
     val onClickLabel =
         if (resolvedMode == RaftTimestampDisplayMode.Relative) {
-            stringResource(MR.strings.relative_time_toggle_show_absolute)
+            stringResource(Res.string.relative_time_toggle_show_absolute)
         } else {
-            stringResource(MR.strings.relative_time_toggle_show_relative)
+            stringResource(Res.string.relative_time_toggle_show_relative)
         }
     val modeDescription =
         if (resolvedMode == RaftTimestampDisplayMode.Relative) {
-            stringResource(MR.strings.relative_time_toggle_state_relative)
+            stringResource(Res.string.relative_time_toggle_state_relative)
         } else {
-            stringResource(MR.strings.relative_time_toggle_state_absolute)
+            stringResource(Res.string.relative_time_toggle_state_absolute)
         }
     val interactiveModifier =
         if (toggleAvailable) {
@@ -272,32 +271,32 @@ internal fun RaftRelativeTimeLabel.Relative.selectLocalizedStringResource(): Raf
     when (unit) {
         RaftRelativeTimeUnit.Minute ->
             when {
-                value == 0 -> RaftRelativeTimeStringSelection(MR.strings.thread_timestamp_now)
-                value == -1 -> RaftRelativeTimeStringSelection(MR.strings.relative_time_minute_past_one)
-                value < 0 -> RaftRelativeTimeStringSelection(MR.strings.relative_time_minute_past_many, absoluteValue())
-                value == 1 -> RaftRelativeTimeStringSelection(MR.strings.relative_time_minute_future_one)
-                else -> RaftRelativeTimeStringSelection(MR.strings.relative_time_minute_future_many, value)
+                value == 0 -> RaftRelativeTimeStringSelection(Res.string.thread_timestamp_now)
+                value == -1 -> RaftRelativeTimeStringSelection(Res.string.relative_time_minute_past_one)
+                value < 0 -> RaftRelativeTimeStringSelection(Res.string.relative_time_minute_past_many, absoluteValue())
+                value == 1 -> RaftRelativeTimeStringSelection(Res.string.relative_time_minute_future_one)
+                else -> RaftRelativeTimeStringSelection(Res.string.relative_time_minute_future_many, value)
             }
         RaftRelativeTimeUnit.Hour ->
             when {
-                value == 0 -> RaftRelativeTimeStringSelection(MR.strings.relative_time_hour_now)
-                value == -1 -> RaftRelativeTimeStringSelection(MR.strings.relative_time_hour_past_one)
-                value < 0 -> RaftRelativeTimeStringSelection(MR.strings.relative_time_hour_past_many, absoluteValue())
-                value == 1 -> RaftRelativeTimeStringSelection(MR.strings.relative_time_hour_future_one)
-                else -> RaftRelativeTimeStringSelection(MR.strings.relative_time_hour_future_many, value)
+                value == 0 -> RaftRelativeTimeStringSelection(Res.string.relative_time_hour_now)
+                value == -1 -> RaftRelativeTimeStringSelection(Res.string.relative_time_hour_past_one)
+                value < 0 -> RaftRelativeTimeStringSelection(Res.string.relative_time_hour_past_many, absoluteValue())
+                value == 1 -> RaftRelativeTimeStringSelection(Res.string.relative_time_hour_future_one)
+                else -> RaftRelativeTimeStringSelection(Res.string.relative_time_hour_future_many, value)
             }
         RaftRelativeTimeUnit.Day ->
             when (value) {
-                -2 -> RaftRelativeTimeStringSelection(MR.strings.relative_time_day_before_yesterday)
-                -1 -> RaftRelativeTimeStringSelection(MR.strings.relative_time_day_yesterday)
-                0 -> RaftRelativeTimeStringSelection(MR.strings.relative_time_day_today)
-                1 -> RaftRelativeTimeStringSelection(MR.strings.relative_time_day_tomorrow)
-                2 -> RaftRelativeTimeStringSelection(MR.strings.relative_time_day_after_tomorrow)
+                -2 -> RaftRelativeTimeStringSelection(Res.string.relative_time_day_before_yesterday)
+                -1 -> RaftRelativeTimeStringSelection(Res.string.relative_time_day_yesterday)
+                0 -> RaftRelativeTimeStringSelection(Res.string.relative_time_day_today)
+                1 -> RaftRelativeTimeStringSelection(Res.string.relative_time_day_tomorrow)
+                2 -> RaftRelativeTimeStringSelection(Res.string.relative_time_day_after_tomorrow)
                 else ->
                     if (value < 0) {
-                        RaftRelativeTimeStringSelection(MR.strings.relative_time_day_past_many, absoluteValue())
+                        RaftRelativeTimeStringSelection(Res.string.relative_time_day_past_many, absoluteValue())
                     } else {
-                        RaftRelativeTimeStringSelection(MR.strings.relative_time_day_future_many, value)
+                        RaftRelativeTimeStringSelection(Res.string.relative_time_day_future_many, value)
                     }
             }
     }

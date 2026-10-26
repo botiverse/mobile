@@ -654,10 +654,6 @@ struct iOSApp: App {
         // Capture failures in the startup work below, including the first
         // Kotlin call, storage setup and network transport initialization.
         RaftIosInstallHandsReporting()
-        // task #423: point the kmmresource loader at the "shared" pod bundle so
-        // MR.* (reaction atlas + all MR.strings) resolves on iOS. Must run before
-        // any page renders / touches MR.
-        RaftIosResourceBundleKt.raftConfigureIosResourceBundle()
         // CMP page routing: debug builds also admit the debug-only :ui-cmp pages.
         RaftPageControllerFactory.configure()
         // task #436: register the SVG coder with SDWebImage, which the durable avatar store

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -11,7 +12,6 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import androidx.compose.foundation.layout.height
 import coil3.compose.AsyncImagePainter
 import build.raft.app.markdown.RaftMarkdownBody
-import build.raft.app.resources.MR
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Box
@@ -22,7 +22,6 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
-import com.tencent.tmm.kmmresource.compose.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -121,7 +120,7 @@ internal fun SharedAnnouncementModal(
             ) {
                 if (hasMultiplePages && pageIndex > 0) {
                     RaftBrutalActionButton(
-                        label = stringResource(MR.strings.common_back),
+                        label = stringResource(Res.string.common_back),
                         onClick = { pageIndex -= 1 },
                         leadingIcon = RaftLucideIconName.ChevronLeft,
                         backgroundColor = RaftColor.SurfaceWhite
@@ -130,14 +129,14 @@ internal fun SharedAnnouncementModal(
                 val isLastPage = pageIndex >= pages.lastIndex
                 if (isLastPage && announcement.cta != null) {
                     RaftBrutalActionButton(
-                        label = stringResource(MR.strings.announcement_action_got_it),
+                        label = stringResource(Res.string.announcement_action_got_it),
                         onClick = onDismiss,
                         backgroundColor = RaftColor.SurfaceWhite,
                     )
                 }
                 RaftBrutalActionButton(
                     label = announcement.cta?.takeIf { isLastPage }?.label
-                        ?: stringResource(if (isLastPage) MR.strings.announcement_action_got_it else MR.strings.pagination_next),
+                        ?: stringResource(if (isLastPage) Res.string.announcement_action_got_it else Res.string.pagination_next),
                     onClick = {
                         if (!isLastPage) pageIndex += 1
                         else {

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,7 +35,6 @@ import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.isRefreshing
 import build.raft.app.downloads.RaftDownloadCenterProcess
 import build.raft.app.model.RaftTimeFormat24Hour
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButtonVariant
@@ -49,7 +49,6 @@ import build.raft.designsystem.components.RaftSection
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
@@ -165,12 +164,12 @@ private fun SettingsStorageScreen() {
     val coroutineScope = rememberCoroutineScope()
     val openResultTerms =
         RaftAttachmentOpenResultTerms(
-            downloadStopped = stringResource(MR.strings.file_preview_download_stopped),
-            unableToDownloadAttachment = stringResource(MR.strings.file_preview_error_download_attachment),
-            noAppCanOpenFile = stringResource(MR.strings.file_preview_error_no_app),
-            storageUnavailable = stringResource(MR.strings.file_preview_error_storage_unavailable),
-            downloadFailed = stringResource(MR.strings.file_preview_download_failed),
-            unableToOpenAttachment = stringResource(MR.strings.file_preview_error_open_attachment)
+            downloadStopped = stringResource(Res.string.file_preview_download_stopped),
+            unableToDownloadAttachment = stringResource(Res.string.file_preview_error_download_attachment),
+            noAppCanOpenFile = stringResource(Res.string.file_preview_error_no_app),
+            storageUnavailable = stringResource(Res.string.file_preview_error_storage_unavailable),
+            downloadFailed = stringResource(Res.string.file_preview_download_failed),
+            unableToOpenAttachment = stringResource(Res.string.file_preview_error_open_attachment)
         )
     fun onDownloadAction(action: RaftDownloadCenterAction) {
         when (action) {
@@ -213,7 +212,7 @@ private fun SettingsStorageScreen() {
     val timeContextProvider = inheritedTimeContextProvider ?: ownTimeContextProvider
     CompositionLocalProvider(LocalRaftTimeContextProvider provides timeContextProvider) {
         SettingsDetailShell(
-            title = stringResource(MR.strings.settings_storage_title),
+            title = stringResource(Res.string.settings_storage_title),
             subtitle = "",
             onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
         ) {

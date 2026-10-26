@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.compat.ui.nativeEvent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -7,9 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
-import build.raft.app.resources.MR
 import build.raft.app.compat.ui.raftImeBottomPx
-import com.tencent.tmm.kmmresource.compose.stringResource
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -414,7 +413,7 @@ private fun RaftAppShellNetworkBanner() {
         contentAlignment = Alignment.CenterStart
     ) {
         Text(
-            text = stringResource(MR.strings.app_shell_offline_banner),
+            text = stringResource(Res.string.app_shell_offline_banner),
             style = RaftType.ButtonBold,
             color = RaftColor.StickerInk,
             maxLines = 1

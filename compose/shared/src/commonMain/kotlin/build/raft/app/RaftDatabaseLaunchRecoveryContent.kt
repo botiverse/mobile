@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
@@ -8,7 +9,6 @@ import androidx.compose.runtime.Composable
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalCard
 import build.raft.app.data.RaftDatabaseVersionMismatch
-import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,7 +22,6 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 @Composable
 internal fun RaftDatabaseLaunchRecoveryContent(
@@ -60,7 +59,7 @@ internal fun RaftDatabaseLaunchRecoveryContent(
                     )
                 }
                 Text(
-                    text = stringResource(MR.strings.database_recovery_title),
+                    text = stringResource(Res.string.database_recovery_title),
                     modifier = Modifier.weight(1f),
                     style = RaftType.PageTitle,
                     color = RaftColor.TextBlack,
@@ -69,7 +68,7 @@ internal fun RaftDatabaseLaunchRecoveryContent(
             Text(
                 text =
                     stringResource(
-                        MR.strings.database_recovery_detail,
+                        Res.string.database_recovery_detail,
                         mismatch.databaseVersion,
                         mismatch.supportedVersion,
                     ),
@@ -77,7 +76,7 @@ internal fun RaftDatabaseLaunchRecoveryContent(
                 color = RaftColor.TextMutedGray,
             )
             RaftButton(
-                text = stringResource(MR.strings.database_recovery_action_retry),
+                text = stringResource(Res.string.database_recovery_action_retry),
                 onClick = onRetry,
                 modifier = Modifier.fillMaxWidth(),
                 leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) },

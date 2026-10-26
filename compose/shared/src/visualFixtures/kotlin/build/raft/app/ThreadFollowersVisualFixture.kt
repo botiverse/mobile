@@ -7,7 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.Modifier
 import build.raft.app.compat.pager.Page
-import com.tencent.tmm.kmmresource.resource.desc.StringDesc
+import build.raft.app.resources.StringDesc
 
 /** Real header, popover, toast and store; only the repository uses deterministic fixture data. */
 @Page("compose_thread_followers_visual", supportInLocal = true)

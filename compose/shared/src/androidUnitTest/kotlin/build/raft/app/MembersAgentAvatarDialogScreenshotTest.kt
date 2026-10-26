@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
@@ -23,10 +24,8 @@ import build.raft.app.model.AvatarReference
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftDialogSheetSurface
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -127,8 +126,8 @@ class MembersAgentAvatarDialogScreenshotTest {
         MigrationFixtureHost {
             Column(Modifier.fillMaxSize().background(RaftTheme.colors.foreground.copy(alpha = 0.6f)).padding(top = 76.dp)) {
                 RaftDialogSheetSurface(
-                    title = stringResource(MR.strings.member_action_choose_avatar),
-                    commitLabel = stringResource(MR.strings.common_save),
+                    title = stringResource(Res.string.member_action_choose_avatar),
+                    commitLabel = stringResource(Res.string.common_save),
                     onCommit = {},
                     onClose = {},
                     modifier = Modifier.fillMaxSize(),

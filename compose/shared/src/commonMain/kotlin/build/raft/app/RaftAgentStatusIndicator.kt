@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.data.NeutralAgentStatusLabel
 import build.raft.app.data.SharedServerMemberStatus
 import build.raft.app.data.truncateAgentToolLabel
@@ -8,8 +9,6 @@ import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.compose.stringResource
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -387,19 +386,19 @@ private fun String.isGenericWorkingLabel(): Boolean {
 @Composable
 internal fun RaftAgentActivityDetailText.localizedText(): String =
     when (this) {
-        RaftAgentActivityDetailText.Starting -> stringResource(MR.strings.agent_activity_starting)
-        RaftAgentActivityDetailText.CompactingContext -> stringResource(MR.strings.agent_activity_compacting_context)
+        RaftAgentActivityDetailText.Starting -> stringResource(Res.string.agent_activity_starting)
+        RaftAgentActivityDetailText.CompactingContext -> stringResource(Res.string.agent_activity_compacting_context)
         is RaftAgentActivityDetailText.Tool ->
             when (toolName) {
-                "read_file" -> stringResource(MR.strings.agent_activity_tool_read_file)
-                "write_file" -> stringResource(MR.strings.agent_activity_tool_write_file)
-                "upload_file" -> stringResource(MR.strings.agent_activity_tool_upload_file)
-                "view_file" -> stringResource(MR.strings.agent_activity_tool_view_file)
-                "schedule_reminder" -> stringResource(MR.strings.agent_activity_tool_schedule_reminder)
-                "list_reminders" -> stringResource(MR.strings.agent_activity_tool_list_reminders)
-                "cancel_reminder" -> stringResource(MR.strings.agent_activity_tool_cancel_reminder)
-                "run_command" -> stringResource(MR.strings.agent_activity_tool_run_command)
-                else -> stringResource(MR.strings.agent_activity_tool_using, toolName.truncateAgentToolLabel())
+                "read_file" -> stringResource(Res.string.agent_activity_tool_read_file)
+                "write_file" -> stringResource(Res.string.agent_activity_tool_write_file)
+                "upload_file" -> stringResource(Res.string.agent_activity_tool_upload_file)
+                "view_file" -> stringResource(Res.string.agent_activity_tool_view_file)
+                "schedule_reminder" -> stringResource(Res.string.agent_activity_tool_schedule_reminder)
+                "list_reminders" -> stringResource(Res.string.agent_activity_tool_list_reminders)
+                "cancel_reminder" -> stringResource(Res.string.agent_activity_tool_cancel_reminder)
+                "run_command" -> stringResource(Res.string.agent_activity_tool_run_command)
+                else -> stringResource(Res.string.agent_activity_tool_using, toolName.truncateAgentToolLabel())
             }
         is RaftAgentActivityDetailText.Raw -> text
     }
@@ -412,14 +411,14 @@ internal fun RaftAgentStatusIndicatorState.localizedMemberStatusLabel(): String 
         ?.takeIf { it !is RaftAgentActivityDetailText.Raw }
         ?.let { return it.localizedText() }
     return when (label.trim().lowercase()) {
-        "online", "active" -> stringResource(MR.strings.member_row_status_online)
-        "offline" -> stringResource(MR.strings.member_row_status_offline)
-        "idle", "away" -> stringResource(MR.strings.member_row_status_idle)
-        "disconnected" -> stringResource(MR.strings.member_row_status_disconnected)
-        "error" -> stringResource(MR.strings.member_row_status_error)
-        "external" -> stringResource(MR.strings.member_row_status_external)
-        "working" -> stringResource(MR.strings.member_row_status_working)
-        "thinking" -> stringResource(MR.strings.member_row_status_thinking)
+        "online", "active" -> stringResource(Res.string.member_row_status_online)
+        "offline" -> stringResource(Res.string.member_row_status_offline)
+        "idle", "away" -> stringResource(Res.string.member_row_status_idle)
+        "disconnected" -> stringResource(Res.string.member_row_status_disconnected)
+        "error" -> stringResource(Res.string.member_row_status_error)
+        "external" -> stringResource(Res.string.member_row_status_external)
+        "working" -> stringResource(Res.string.member_row_status_working)
+        "thinking" -> stringResource(Res.string.member_row_status_thinking)
         else -> label
     }
 }

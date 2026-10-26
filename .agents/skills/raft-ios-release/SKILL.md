@@ -58,7 +58,7 @@ dispatch starts a train.
   A `::warning::xcodebuild relinked the shared framework` means the archive
   took the slow double-link path — report it, the IPA is still valid.
 - `Validate IPA + dSYM boundary` checks bundle id `build.raft.app`, versions,
-  MR bundle/resources, dSYM UUID match. Record the IPA/dSYM SHA-256 from the
+  Compose resources (string catalogs, reaction atlas), dSYM UUID match. Record the IPA/dSYM SHA-256 from the
   step summary.
 - The `testflight_internal` job is NOT idempotent: if it failed after the ASC
   upload, re-dispatch with a higher `version_build`; do not re-run the job.

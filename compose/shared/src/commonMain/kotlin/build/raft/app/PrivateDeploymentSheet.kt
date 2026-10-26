@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -14,7 +15,6 @@ import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.network.RaftHttpExecutor
 import build.raft.app.network.RaftRequestPriority
 import build.raft.app.network.createPlatformRaftHttpExecutor
-import build.raft.app.resources.MR
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.Modifier
@@ -31,7 +31,6 @@ import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextLink
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -78,11 +77,11 @@ internal fun PrivateDeploymentSheet(
     val errorMessage =
         when (errorCode) {
             null -> null
-            PRIVATE_DEPLOYMENT_INVALID -> stringResource(MR.strings.auth_private_deployment_invalid)
-            PRIVATE_DEPLOYMENT_WEB_UNREACHABLE -> stringResource(MR.strings.auth_private_deployment_web_unreachable)
-            "settings_environment_server_unreachable" -> stringResource(MR.strings.auth_private_deployment_unreachable)
-            "settings_environment_server_outdated" -> stringResource(MR.strings.auth_private_deployment_outdated)
-            else -> stringResource(MR.strings.auth_private_deployment_failed)
+            PRIVATE_DEPLOYMENT_INVALID -> stringResource(Res.string.auth_private_deployment_invalid)
+            PRIVATE_DEPLOYMENT_WEB_UNREACHABLE -> stringResource(Res.string.auth_private_deployment_web_unreachable)
+            "settings_environment_server_unreachable" -> stringResource(Res.string.auth_private_deployment_unreachable)
+            "settings_environment_server_outdated" -> stringResource(Res.string.auth_private_deployment_outdated)
+            else -> stringResource(Res.string.auth_private_deployment_failed)
         }
     val saving = pending != null
 
@@ -93,21 +92,21 @@ internal fun PrivateDeploymentSheet(
     RaftDesignSystemTheme {
         RaftDialog(
             onDismissRequest = dismiss,
-            title = stringResource(MR.strings.auth_private_deployment_title),
-            description = stringResource(MR.strings.auth_private_deployment_hint),
+            title = stringResource(Res.string.auth_private_deployment_title),
+            description = stringResource(Res.string.auth_private_deployment_hint),
             // A form: a stray tap outside must not lose the typed addresses.
             dismissOnClickOutside = false,
-            closeLabel = stringResource(MR.strings.common_close),
+            closeLabel = stringResource(Res.string.common_close),
             footer = {
                 RaftButton(
-                    text = stringResource(MR.strings.auth_private_deployment_cancel),
+                    text = stringResource(Res.string.auth_private_deployment_cancel),
                     onClick = dismiss,
                     variant = RaftButtonVariant.Ghost,
                     size = RaftButtonSize.Lg,
                     enabled = !saving,
                 )
                 RaftButton(
-                    text = stringResource(MR.strings.auth_private_deployment_save),
+                    text = stringResource(Res.string.auth_private_deployment_save),
                     onClick = {
                         val request = privateDeploymentRequest(webValue.text, apiValue.text)
                         if (request == null) errorCode = PRIVATE_DEPLOYMENT_INVALID else pending = request
@@ -121,7 +120,7 @@ internal fun PrivateDeploymentSheet(
             if (errorMessage != null) {
                 RaftBanner(description = errorMessage, status = RaftBannerStatus.Warning)
             }
-            RaftField(label = stringResource(MR.strings.auth_private_deployment_web_label), enabled = !saving) {
+            RaftField(label = stringResource(Res.string.auth_private_deployment_web_label), enabled = !saving) {
                 RaftTextField(
                     value = webValue,
                     onValueChange = {
@@ -129,12 +128,12 @@ internal fun PrivateDeploymentSheet(
                         errorCode = null
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = stringResource(MR.strings.auth_private_deployment_web_placeholder),
+                    placeholder = stringResource(Res.string.auth_private_deployment_web_placeholder),
                     enabled = !saving,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
                 )
             }
-            RaftField(label = stringResource(MR.strings.auth_private_deployment_api_label), enabled = !saving) {
+            RaftField(label = stringResource(Res.string.auth_private_deployment_api_label), enabled = !saving) {
                 RaftTextField(
                     value = apiValue,
                     onValueChange = {
@@ -142,14 +141,14 @@ internal fun PrivateDeploymentSheet(
                         errorCode = null
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = stringResource(MR.strings.auth_private_deployment_api_placeholder),
+                    placeholder = stringResource(Res.string.auth_private_deployment_api_placeholder),
                     enabled = !saving,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
                 )
             }
             if (isCustom) {
                 RaftTextLink(
-                    text = stringResource(MR.strings.auth_private_deployment_reset),
+                    text = stringResource(Res.string.auth_private_deployment_reset),
                     enabled = !saving,
                     onClick = {
                         if (!saving) {

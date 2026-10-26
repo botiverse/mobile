@@ -1,11 +1,8 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import build.raft.app.network.RaftRequestTimeoutException
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.compose.localized
-import com.tencent.tmm.kmmresource.resource.desc.StringDesc
-import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -133,20 +130,20 @@ internal fun threadUserFacingErrorCodeReason(errorCode: String?): ThreadUserFaci
 
 internal fun ThreadUserFacingErrorReason.stringDesc(): StringDesc =
     when (this) {
-        ThreadUserFacingErrorReason.AuthenticationRequired -> MR.strings.thread_error_reason_auth.desc()
-        ThreadUserFacingErrorReason.PermissionDenied -> MR.strings.thread_error_reason_permission.desc()
-        ThreadUserFacingErrorReason.ServerUnreachable -> MR.strings.thread_error_reason_server_unreachable.desc()
-        ThreadUserFacingErrorReason.RequestTimedOut -> MR.strings.thread_error_reason_timeout.desc()
-        ThreadUserFacingErrorReason.NetworkFailed -> MR.strings.thread_error_reason_network.desc()
-        ThreadUserFacingErrorReason.ServerUnavailable -> MR.strings.thread_error_reason_server_unavailable.desc()
-        ThreadUserFacingErrorReason.ItemNotFound -> MR.strings.thread_error_reason_not_found.desc()
-        ThreadUserFacingErrorReason.AttachmentTooLarge -> MR.strings.thread_error_reason_attachment_too_large.desc()
+        ThreadUserFacingErrorReason.AuthenticationRequired -> Res.string.thread_error_reason_auth.desc()
+        ThreadUserFacingErrorReason.PermissionDenied -> Res.string.thread_error_reason_permission.desc()
+        ThreadUserFacingErrorReason.ServerUnreachable -> Res.string.thread_error_reason_server_unreachable.desc()
+        ThreadUserFacingErrorReason.RequestTimedOut -> Res.string.thread_error_reason_timeout.desc()
+        ThreadUserFacingErrorReason.NetworkFailed -> Res.string.thread_error_reason_network.desc()
+        ThreadUserFacingErrorReason.ServerUnavailable -> Res.string.thread_error_reason_server_unavailable.desc()
+        ThreadUserFacingErrorReason.ItemNotFound -> Res.string.thread_error_reason_not_found.desc()
+        ThreadUserFacingErrorReason.AttachmentTooLarge -> Res.string.thread_error_reason_attachment_too_large.desc()
         ThreadUserFacingErrorReason.AttachmentImageCompressionFailed ->
-            MR.strings.thread_error_reason_attachment_image_compression_failed.desc()
-        ThreadUserFacingErrorReason.RateLimited -> MR.strings.thread_error_reason_rate_limited.desc()
-        ThreadUserFacingErrorReason.ResponseUnreadable -> MR.strings.thread_error_reason_response_unreadable.desc()
-        ThreadUserFacingErrorReason.RequestCancelled -> MR.strings.thread_error_reason_cancelled.desc()
-        ThreadUserFacingErrorReason.Generic -> MR.strings.thread_error_reason_generic.desc()
+            Res.string.thread_error_reason_attachment_image_compression_failed.desc()
+        ThreadUserFacingErrorReason.RateLimited -> Res.string.thread_error_reason_rate_limited.desc()
+        ThreadUserFacingErrorReason.ResponseUnreadable -> Res.string.thread_error_reason_response_unreadable.desc()
+        ThreadUserFacingErrorReason.RequestCancelled -> Res.string.thread_error_reason_cancelled.desc()
+        ThreadUserFacingErrorReason.Generic -> Res.string.thread_error_reason_generic.desc()
     }
 
 internal class ThreadUserFacingErrorLabels(

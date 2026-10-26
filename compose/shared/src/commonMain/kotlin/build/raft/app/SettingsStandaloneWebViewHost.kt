@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -23,7 +24,6 @@ import build.raft.app.data.KeyValueLocalePreferenceStore
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.raftSharedPreferenceStore
-import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -49,7 +49,6 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
-import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.app.network.RaftAppIdentityRegistry
 
 const val SETTINGS_WEB_VIEW_PAGE = "compose_settings_webview"
@@ -154,21 +153,21 @@ private fun SettingsWebViewScreen() {
         SettingsWebViewSurface.Billing ->
             StandaloneSettingsWebViewPage(
                 pager = pager,
-                title = stringResource(MR.strings.settings_billing_title),
+                title = stringResource(Res.string.settings_billing_title),
                 iconName = RaftLucideIconName.CreditCard,
                 spec = settingsBillingWebViewSpec,
             )
         SettingsWebViewSurface.Marketplace ->
             StandaloneSettingsWebViewPage(
                 pager = pager,
-                title = stringResource(MR.strings.settings_connected_apps_title),
+                title = stringResource(Res.string.settings_connected_apps_title),
                 iconName = RaftLucideIconName.Link2,
                 spec = settingsMarketplaceWebViewSpec,
             )
         SettingsWebViewSurface.Feedback ->
             StandaloneSettingsWebViewPage(
                 pager = pager,
-                title = stringResource(MR.strings.settings_feedback_title),
+                title = stringResource(Res.string.settings_feedback_title),
                 iconName = RaftLucideIconName.MessageSquarePlus,
                 spec =
                     remember(pager.pageData.params) {
@@ -190,7 +189,7 @@ private fun SettingsWebViewScreen() {
         SettingsWebViewSurface.Administration ->
             StandaloneSettingsWebViewPage(
                 pager = pager,
-                title = stringResource(MR.strings.settings_server_administration_title),
+                title = stringResource(Res.string.settings_server_administration_title),
                 iconName = RaftLucideIconName.Shield,
                 spec = settingsAdministrationWebViewSpec,
             )
@@ -205,13 +204,13 @@ private fun SettingsWebViewScreen() {
 private fun SettingsWebViewInvalidRoute(pager: Pager) {
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceCream)) {
         RaftTopPageHeader(
-            title = stringResource(MR.strings.settings_title),
+            title = stringResource(Res.string.settings_title),
             iconName = RaftLucideIconName.Settings,
             backgroundColor = RaftColor.SurfaceWhite,
             onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
         )
         SettingsWebViewErrorContent(
-            actionLabel = stringResource(MR.strings.common_close),
+            actionLabel = stringResource(Res.string.common_close),
             actionIcon = RaftLucideIconName.X,
             onAction = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
         )
@@ -681,7 +680,7 @@ internal fun SettingsWebViewContent(
         when (settingsWebViewPresentation(contentVisible, loadError != null)) {
             SettingsWebViewPresentation.Error ->
                 SettingsWebViewErrorContent(
-                    actionLabel = stringResource(MR.strings.common_retry),
+                    actionLabel = stringResource(Res.string.common_retry),
                     actionIcon = RaftLucideIconName.RefreshCw,
                     onAction = { reloadKey += 1 },
                 )
@@ -710,12 +709,12 @@ internal fun SettingsWebViewErrorContent(
             RaftSlotIcon(RaftLucideIconName.TriangleAlert, size = RaftIconTileSize.Lg.icon)
         }
         Text(
-            stringResource(MR.strings.settings_webview_error_title),
+            stringResource(Res.string.settings_webview_error_title),
             style = RaftType.PageTitle.copy(color = RaftColor.TextBlack),
             color = RaftColor.TextBlack,
         )
         Text(
-            stringResource(MR.strings.settings_webview_error_body),
+            stringResource(Res.string.settings_webview_error_body),
             style = RaftType.Body.copy(color = RaftColor.TextMutedGray),
             color = RaftColor.TextMutedGray,
         )

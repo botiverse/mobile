@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -47,7 +48,6 @@ import build.raft.app.data.renderActionCardMsgText
 import build.raft.app.data.currentSystemLanguageTag
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftChoicePicker
@@ -63,7 +63,6 @@ import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /**
  * What the pickers of an action card form choose from: the client's own store, no extra
@@ -122,8 +121,8 @@ internal fun RaftActionCardFormSheet(
             commitLabel = form.submitLabel.render(locale),
             onCommit = { state.submit(values, submitting, onSubmit) },
             commitLoading = submitting,
-            closeLabel = stringResource(MR.strings.common_close),
-            cancelLabel = stringResource(MR.strings.common_cancel),
+            closeLabel = stringResource(Res.string.common_close),
+            cancelLabel = stringResource(Res.string.common_cancel),
             closeEnabled = !submitting,
         ) {
             ActionCardFormBody(form, values, onValuesChange, state, submitting, candidates, formError, locale, agentStatusResolver)
@@ -151,7 +150,7 @@ internal fun RaftActionCardFormSheetSurfaceForFixture(
         onClose = {},
         modifier = modifier,
         commitLoading = submitting,
-        closeLabel = stringResource(MR.strings.common_close),
+        closeLabel = stringResource(Res.string.common_close),
         closeEnabled = !submitting,
     ) {
         ActionCardFormBody(form, values, {}, state, submitting, candidates, formError, displayLocale, EmptyRaftAgentStatusResolver)
@@ -278,7 +277,7 @@ private fun ActionCardFormField(
             RaftField(label = label, description = description, error = error, enabled = enabled, required = field.required == true) {
                 val options = field.options.map { RaftComboboxOption(it.value, it.label.render(locale)) }
                 // The empty line is built outside composition: fill the query into the resolved string.
-                val noMatches = stringResource(MR.strings.action_card_form_options_no_matches, "\u0001")
+                val noMatches = stringResource(Res.string.action_card_form_options_no_matches, "\u0001")
                 RaftChoicePicker(
                     value = (value as? ActionCardFormValue.Text)?.value?.takeIf { it.isNotEmpty() },
                     options = options,
@@ -287,7 +286,7 @@ private fun ActionCardFormField(
                     emptyText = { query -> noMatches.replace("\u0001", query.trim()) },
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = placeholder.orEmpty(),
-                    searchPlaceholder = stringResource(MR.strings.action_card_form_options_search),
+                    searchPlaceholder = stringResource(Res.string.action_card_form_options_search),
                 )
             }
         is ActionCardSpecToggleField ->
@@ -390,7 +389,7 @@ private fun ActionCardFormChannelPicker(
     val hint = RaftTheme.colors.foregroundHint
     if (channels.isEmpty()) {
         RaftText(
-            if (loading) stringResource(MR.strings.settings_members_loading) else emptyText ?: stringResource(MR.strings.action_card_form_channels_empty),
+            if (loading) stringResource(Res.string.settings_members_loading) else emptyText ?: stringResource(Res.string.action_card_form_channels_empty),
             style = RaftTheme.typography.callout,
             color = hint,
         )
@@ -404,7 +403,7 @@ private fun ActionCardFormChannelPicker(
             value = query,
             onValueChange = { if (enabled) query = it },
             modifier = Modifier.fillMaxWidth(),
-            placeholder = placeholder ?: stringResource(MR.strings.action_card_form_channels_search),
+            placeholder = placeholder ?: stringResource(Res.string.action_card_form_channels_search),
             enabled = enabled,
             leading = { RaftSlotIcon(RaftLucideIconName.Search) },
         )
@@ -413,7 +412,7 @@ private fun ActionCardFormChannelPicker(
                 if (shown.isEmpty()) {
                     item(key = "no-matches") {
                         RaftText(
-                            stringResource(MR.strings.action_card_form_channels_no_matches, query.trim()),
+                            stringResource(Res.string.action_card_form_channels_no_matches, query.trim()),
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                             style = RaftTheme.typography.callout,
                             color = hint,

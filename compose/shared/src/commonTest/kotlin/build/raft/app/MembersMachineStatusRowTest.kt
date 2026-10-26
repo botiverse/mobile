@@ -1,7 +1,7 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.data.ComputerStatus
-import build.raft.app.resources.MR
 import build.raft.app.data.ComputerSummary
 import build.raft.app.data.SharedComputersLoadStatus
 import kotlin.test.Test
@@ -180,38 +180,38 @@ class MembersMachineStatusRowTest {
     @Test
     fun computerVersionPairsWithItsOwnResourceAndCarriesTheVersion() {
         val label = MembersMachineRunLabel.ComputerVersion("0.0.48")
-        assertSame(MR.strings.member_machine_run_computer_version, label.resource())
+        assertSame(Res.string.member_machine_run_computer_version, label.resource())
         assertEquals("0.0.48", label.formatArg())
     }
 
     @Test
     fun daemonVersionPairsWithItsOwnResourceAndCarriesTheVersion() {
         val label = MembersMachineRunLabel.DaemonVersion("0.65.0")
-        assertSame(MR.strings.member_machine_run_daemon_version, label.resource())
+        assertSame(Res.string.member_machine_run_daemon_version, label.resource())
         assertEquals("0.65.0", label.formatArg())
     }
 
     @Test
     fun computerOnlinePairsWithItsOwnResourceAndTakesNoArgument() {
-        assertSame(MR.strings.member_machine_run_computer_online, MembersMachineRunLabel.ComputerOnline.resource())
+        assertSame(Res.string.member_machine_run_computer_online, MembersMachineRunLabel.ComputerOnline.resource())
         assertNull(MembersMachineRunLabel.ComputerOnline.formatArg())
     }
 
     @Test
     fun daemonOnlinePairsWithItsOwnResourceAndTakesNoArgument() {
-        assertSame(MR.strings.member_machine_run_daemon_online, MembersMachineRunLabel.DaemonOnline.resource())
+        assertSame(Res.string.member_machine_run_daemon_online, MembersMachineRunLabel.DaemonOnline.resource())
         assertNull(MembersMachineRunLabel.DaemonOnline.formatArg())
     }
 
     @Test
     fun computerOfflinePairsWithItsOwnResourceAndTakesNoArgument() {
-        assertSame(MR.strings.member_machine_run_computer_offline, MembersMachineRunLabel.ComputerOffline.resource())
+        assertSame(Res.string.member_machine_run_computer_offline, MembersMachineRunLabel.ComputerOffline.resource())
         assertNull(MembersMachineRunLabel.ComputerOffline.formatArg())
     }
 
     @Test
     fun daemonOfflinePairsWithItsOwnResourceAndTakesNoArgument() {
-        assertSame(MR.strings.member_machine_run_daemon_offline, MembersMachineRunLabel.DaemonOffline.resource())
+        assertSame(Res.string.member_machine_run_daemon_offline, MembersMachineRunLabel.DaemonOffline.resource())
         assertNull(MembersMachineRunLabel.DaemonOffline.formatArg())
     }
 

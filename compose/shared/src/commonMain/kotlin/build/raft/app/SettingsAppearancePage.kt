@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftRadioRow
 import build.raft.designsystem.components.RaftRadioGroup
 import build.raft.app.data.RaftAppAppearanceRuntime
@@ -9,7 +10,6 @@ import build.raft.app.data.APPEARANCE_ACTION_MESSAGE_FONT_SIZE
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsAppearanceSnapshot
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
@@ -29,7 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.flow.map
 
 @Composable
@@ -60,8 +59,8 @@ internal fun SettingsAppearanceContent(
                 item {
                     SettingsLoadStateCard(
                         RaftLucideIconName.Type,
-                        stringResource(MR.strings.common_loading),
-                        stringResource(MR.strings.settings_appearance_loading),
+                        stringResource(Res.string.common_loading),
+                        stringResource(Res.string.settings_appearance_loading),
                         null,
                         onRetry,
                         loading = true
@@ -71,9 +70,9 @@ internal fun SettingsAppearanceContent(
                 item {
                     SettingsLoadStateCard(
                         RaftLucideIconName.Type,
-                        stringResource(MR.strings.settings_state_unavailable),
+                        stringResource(Res.string.settings_state_unavailable),
                         state.reason.localizedUserFacingMessage(),
-                        stringResource(MR.strings.common_retry),
+                        stringResource(Res.string.common_retry),
                         onRetry
                     )
                 }
@@ -81,9 +80,9 @@ internal fun SettingsAppearanceContent(
                 item {
                     SettingsLoadStateCard(
                         RaftLucideIconName.TriangleAlert,
-                        stringResource(MR.strings.settings_error_appearance),
+                        stringResource(Res.string.settings_error_appearance),
                         state.error.localizedUserFacingMessage(),
-                        stringResource(MR.strings.common_retry),
+                        stringResource(Res.string.common_retry),
                         onRetry
                     )
                 }
@@ -91,7 +90,7 @@ internal fun SettingsAppearanceContent(
                 item {
                     SettingsLoadStateCard(
                         RaftLucideIconName.Lock,
-                        stringResource(MR.strings.settings_state_permission_required),
+                        stringResource(Res.string.settings_state_permission_required),
                         state.blocker.localizedUserFacingMessage(),
                         null,
                         onRetry
@@ -119,8 +118,8 @@ internal fun SettingsAppearanceContent(
 @Composable
 private fun SettingsAppearanceThemeCard() {
     val selected = RaftAppAppearanceRuntime.appearance
-    SettingsFormSectionCard(iconName = RaftLucideIconName.Eye, title = stringResource(MR.strings.settings_appearance_theme_title)) {
-        SettingsFormDetailText(stringResource(MR.strings.settings_appearance_theme_description))
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Eye, title = stringResource(Res.string.settings_appearance_theme_title)) {
+        SettingsFormDetailText(stringResource(Res.string.settings_appearance_theme_description))
         RaftDesignSystemTheme {
             RaftRadioGroup {
                 RaftAppAppearanceOptions.forEach { (appearance, label) ->
@@ -138,9 +137,9 @@ private fun SettingsAppearanceThemeCard() {
 /** The Web's order (`APP_APPEARANCE_MODES`): light, dark, system. */
 private val RaftAppAppearanceOptions =
     listOf(
-        RaftAppAppearance.Light to MR.strings.settings_appearance_mode_light,
-        RaftAppAppearance.Dark to MR.strings.settings_appearance_mode_dark,
-        RaftAppAppearance.System to MR.strings.settings_appearance_mode_system,
+        RaftAppAppearance.Light to Res.string.settings_appearance_mode_light,
+        RaftAppAppearance.Dark to Res.string.settings_appearance_mode_dark,
+        RaftAppAppearance.System to Res.string.settings_appearance_mode_system,
     )
 
 @Composable
@@ -150,18 +149,18 @@ private fun SettingsActivitySenderAvatarsCard(
 ) {
     SettingsFormSectionCard(
         iconName = RaftLucideIconName.CircleUser,
-        title = stringResource(MR.strings.settings_appearance_activity_sender_avatars)
+        title = stringResource(Res.string.settings_appearance_activity_sender_avatars)
     ) {
         SettingsNotificationToggleRow(
             title =
                 stringResource(
                     if (enabled) {
-                        MR.strings.settings_appearance_activity_sender_avatars_enabled
+                        Res.string.settings_appearance_activity_sender_avatars_enabled
                     } else {
-                        MR.strings.settings_appearance_activity_sender_avatars_disabled
+                        Res.string.settings_appearance_activity_sender_avatars_disabled
                     }
                 ),
-            detail = stringResource(MR.strings.settings_appearance_activity_sender_avatars_detail),
+            detail = stringResource(Res.string.settings_appearance_activity_sender_avatars_detail),
             checked = enabled,
             enabled = true,
             onCheckedChange = onEnabledChange
@@ -185,7 +184,7 @@ private fun SettingsAppearanceFontSizeCard(
         if (!dirty) return@LaunchedEffect
         onSubmit()
     }
-    SettingsFormSectionCard(iconName = RaftLucideIconName.Type, title = stringResource(MR.strings.settings_appearance_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Type, title = stringResource(Res.string.settings_appearance_title)) {
         SettingsSegmentedControlField(
             detail = snapshot.messageBodyFontSize.detail,
             selectedValue = selected,
@@ -212,16 +211,16 @@ private fun SettingsAppearancePreview(fontSizeKey: String) {
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(
-            stringResource(MR.strings.settings_appearance_preview),
+            stringResource(Res.string.settings_appearance_preview),
             style = RaftType.SectionLabel.copy(color = RaftColor.TextMutedGray),
             color = RaftColor.TextMutedGray
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
             RaftAppAvatar(avatarWireValue = "letter:AI", label = "AI", avatarSize = 28.dp)
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(stringResource(MR.strings.settings_appearance_preview_sender), style = RaftType.ButtonBold.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
+                Text(stringResource(Res.string.settings_appearance_preview_sender), style = RaftType.ButtonBold.copy(color = RaftColor.TextBlack), color = RaftColor.TextBlack)
                 Text(
-                    stringResource(MR.strings.settings_appearance_preview_message),
+                    stringResource(Res.string.settings_appearance_preview_message),
                     style = bodyStyle,
                     color = RaftColor.TextBlack
                 )

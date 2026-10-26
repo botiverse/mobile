@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,7 +52,6 @@ import build.raft.app.model.MillisPerDay
 import build.raft.app.model.MillisPerMinute
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.formatRaftTimestampEpochMillis
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -64,7 +64,6 @@ import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftStatusSize
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.mutableStateOf
@@ -116,15 +115,15 @@ internal fun MembersAgentActivityViewSwitch(
     modifier: Modifier = Modifier,
 ) {
     // Web: the SegmentedControl's aria-label "Activity view".
-    val groupLabel = stringResource(MR.strings.member_activity_overview_view_label)
+    val groupLabel = stringResource(Res.string.member_activity_overview_view_label)
     RaftSegmentedControl(modifier = modifier.semantics { contentDescription = groupLabel }) {
         RaftSegment(
-            text = stringResource(MR.strings.member_activity_overview_view_overview),
+            text = stringResource(Res.string.member_activity_overview_view_overview),
             selected = view == MembersAgentActivityView.Overview,
             onClick = { onViewChange(MembersAgentActivityView.Overview) },
         )
         RaftSegment(
-            text = stringResource(MR.strings.member_activity_overview_view_raw),
+            text = stringResource(Res.string.member_activity_overview_view_raw),
             selected = view == MembersAgentActivityView.Raw,
             onClick = { onViewChange(MembersAgentActivityView.Raw) },
         )
@@ -181,9 +180,9 @@ internal fun MembersAgentActivityOverview(
     val status = state.status
     if (status is AgentActivityOverviewStatus.Error) {
         RaftEmptyState(
-            title = stringResource(MR.strings.member_activity_overview_load_error),
+            title = stringResource(Res.string.member_activity_overview_load_error),
             iconName = RaftLucideIconName.Activity,
-            actionLabel = stringResource(MR.strings.common_retry),
+            actionLabel = stringResource(Res.string.common_retry),
             onAction = { binding.onIntent(AgentActivityOverviewIntent.Refresh) },
             modifier = modifier,
         )
@@ -254,34 +253,34 @@ internal fun MembersAgentActivityOverview(
             !loaded ->
                 item(key = "activity-overview-loading") {
                     RaftCenteredLoading(
-                        message = stringResource(MR.strings.member_state_loading_activity),
+                        message = stringResource(Res.string.member_state_loading_activity),
                         modifier = Modifier.fillMaxWidth().padding(vertical = RaftAppSpacing.Lg),
                     )
                 }
             !showTurns && !hasRawActivity ->
                 item(key = "activity-overview-empty") {
                     MembersAgentActivityOverviewEmpty(
-                        title = stringResource(MR.strings.member_state_no_activity),
-                        detail = stringResource(MR.strings.member_state_activity_start_agent),
+                        title = stringResource(Res.string.member_state_no_activity),
+                        detail = stringResource(Res.string.member_state_activity_start_agent),
                     )
                 }
             !showTurns ->
                 item(key = "activity-overview-empty") {
                     MembersAgentActivityOverviewEmpty(
-                        title = stringResource(MR.strings.member_activity_overview_empty_title),
+                        title = stringResource(Res.string.member_activity_overview_empty_title),
                         detail = stringResource(
-                            if (hasComputer) MR.strings.member_activity_overview_empty_upgrade_desc
-                            else MR.strings.member_activity_overview_empty_external_desc
+                            if (hasComputer) Res.string.member_activity_overview_empty_upgrade_desc
+                            else Res.string.member_activity_overview_empty_external_desc
                         ),
                     ) {
                         if (hasComputer && onOpenComputer != null) {
                             RaftButton(
-                                text = stringResource(MR.strings.member_activity_overview_empty_open_computer),
+                                text = stringResource(Res.string.member_activity_overview_empty_open_computer),
                                 onClick = onOpenComputer,
                             )
                         }
                         RaftButton(
-                            text = stringResource(MR.strings.member_activity_overview_empty_show_raw),
+                            text = stringResource(Res.string.member_activity_overview_empty_show_raw),
                             onClick = onShowRaw,
                         )
                     }
@@ -291,7 +290,7 @@ internal fun MembersAgentActivityOverview(
                     item(key = "activity-overview-load-more") {
                         Box(Modifier.fillMaxWidth()) {
                             RaftButton(
-                                text = stringResource(MR.strings.member_activity_overview_load_more),
+                                text = stringResource(Res.string.member_activity_overview_load_more),
                                 onClick = { binding.onIntent(AgentActivityOverviewIntent.LoadMore) },
                                 loading = state.loadingMore,
                                 enabled = !state.loadingMore,
@@ -330,7 +329,7 @@ internal fun MembersAgentActivityOverview(
     if (newTurnBelow && showTurns) {
         val scope = rememberCoroutineScope()
         RaftButton(
-            text = stringResource(MR.strings.member_activity_overview_new_turn),
+            text = stringResource(Res.string.member_activity_overview_new_turn),
             onClick = {
                 // Direct user action: an explicit viewport replacement.
                 followingBottom = true
@@ -379,14 +378,14 @@ private fun MembersAgentActivityNow.headline(): String {
     val detailKind = indicator?.detailKind
     // The server paused automatic wakes; a manual start lifts it (web `activity.status.wakeCrashLoopBlocked`).
     if (wakeCrashLoop != null || detailKind == AgentActivityDetailKindWakeCrashLoopBlocked) {
-        return stringResource(MR.strings.agent_activity_wake_crash_loop_blocked)
+        return stringResource(Res.string.agent_activity_wake_crash_loop_blocked)
     }
     agentMemoryLimitExit(label, detailKind)?.let { exit ->
-        return exit.memoryLimit?.let { stringResource(MR.strings.agent_activity_memory_limit_stopped_with_limit, it) }
-            ?: stringResource(MR.strings.agent_activity_memory_limit_stopped)
+        return exit.memoryLimit?.let { stringResource(Res.string.agent_activity_memory_limit_stopped_with_limit, it) }
+            ?: stringResource(Res.string.agent_activity_memory_limit_stopped)
     }
     if ((detailKind == null || detailKind == "system_message") && isAgentBackgroundOomActivityTitle(label)) {
-        return stringResource(MR.strings.agent_activity_background_oom)
+        return stringResource(Res.string.agent_activity_background_oom)
     }
     // Same localized caption as the profile badge (raw free-text activity passes through).
     return indicator?.copy(label = label)?.localizedMemberStatusLabel() ?: label
@@ -423,7 +422,7 @@ private fun MembersAgentActivityNowCard(
                 // to do (web AgentStatusBadge, botiverse/slock #10860). Older servers send no reason.
                 now.wakeCrashLoop?.takeIf { it.pausedAtMemoryLimit }?.let { pause ->
                     RaftText(
-                        text = stringResource(MR.strings.agent_activity_wake_crash_loop_memory_limit_detail, pause.earlyExitCount),
+                        text = stringResource(Res.string.agent_activity_wake_crash_loop_memory_limit_detail, pause.earlyExitCount),
                         style = typography.callout,
                         color = colors.foregroundMuted,
                     )
@@ -433,14 +432,14 @@ private fun MembersAgentActivityNowCard(
                     running != null -> {
                         val time = membersActivityOverviewClock(running.startedAtEpochMillis, timeContext)
                         membersActivityOverviewTriggerText(running.trigger.describe())
-                            ?.let { stringResource(MR.strings.member_activity_overview_now_current_turn_for, time, it) }
-                            ?: stringResource(MR.strings.member_activity_overview_now_current_turn, time)
+                            ?.let { stringResource(Res.string.member_activity_overview_now_current_turn_for, time, it) }
+                            ?: stringResource(Res.string.member_activity_overview_now_current_turn, time)
                     }
                     last != null -> {
                         val time = membersActivityOverviewClock(last.endedAtEpochMillis, timeContext)
                         membersActivityOverviewTriggerText(last.trigger.describe())
-                            ?.let { stringResource(MR.strings.member_activity_overview_now_last_turn_for, time, it) }
-                            ?: stringResource(MR.strings.member_activity_overview_now_last_turn, time)
+                            ?.let { stringResource(Res.string.member_activity_overview_now_last_turn_for, time, it) }
+                            ?: stringResource(Res.string.member_activity_overview_now_last_turn, time)
                     }
                     else -> null
                 }
@@ -451,14 +450,14 @@ private fun MembersAgentActivityNowCard(
                     val steps = shown.sumOf { it.toolCalls }
                     val problems = shown.sumOf { it.problemStepCount }
                     val parts = listOf(
-                        if (shown.size == 1) stringResource(MR.strings.member_activity_overview_now_turns_one)
-                        else stringResource(MR.strings.member_activity_overview_now_turns_other, shown.size),
-                        if (steps == 1) stringResource(MR.strings.member_activity_overview_now_steps_one)
-                        else stringResource(MR.strings.member_activity_overview_now_steps_other, steps),
+                        if (shown.size == 1) stringResource(Res.string.member_activity_overview_now_turns_one)
+                        else stringResource(Res.string.member_activity_overview_now_turns_other, shown.size),
+                        if (steps == 1) stringResource(Res.string.member_activity_overview_now_steps_one)
+                        else stringResource(Res.string.member_activity_overview_now_steps_other, steps),
                         when (problems) {
-                            0 -> stringResource(MR.strings.member_activity_overview_now_problems_none)
-                            1 -> stringResource(MR.strings.member_activity_overview_now_problems_one)
-                            else -> stringResource(MR.strings.member_activity_overview_now_problems_other, problems)
+                            0 -> stringResource(Res.string.member_activity_overview_now_problems_none)
+                            1 -> stringResource(Res.string.member_activity_overview_now_problems_one)
+                            else -> stringResource(Res.string.member_activity_overview_now_problems_other, problems)
                         },
                     )
                     RaftText(text = parts.joinToString(" · "), style = typography.caption, color = colors.foregroundHint)
@@ -496,7 +495,7 @@ private fun MembersAgentActivityTurnSection(
         ) {
             RaftText(
                 text = range.second?.let { end ->
-                    stringResource(MR.strings.member_activity_overview_turn_range, range.first, end)
+                    stringResource(Res.string.member_activity_overview_turn_range, range.first, end)
                 } ?: range.first,
                 style = typography.monoCode.copy(fontWeight = FontWeight.Bold),
                 color = colors.foreground,
@@ -507,10 +506,10 @@ private fun MembersAgentActivityTurnSection(
             MembersActivityOverviewRefText(
                 text = when {
                     trigger != null && turn.running ->
-                        stringResource(MR.strings.member_activity_overview_turn_trigger_and_running_for, trigger, duration)
-                    trigger != null -> stringResource(MR.strings.member_activity_overview_turn_trigger_and_duration, trigger, duration)
-                    turn.running -> stringResource(MR.strings.member_activity_overview_turn_running_for, duration)
-                    else -> stringResource(MR.strings.member_activity_overview_turn_took, duration)
+                        stringResource(Res.string.member_activity_overview_turn_trigger_and_running_for, trigger, duration)
+                    trigger != null -> stringResource(Res.string.member_activity_overview_turn_trigger_and_duration, trigger, duration)
+                    turn.running -> stringResource(Res.string.member_activity_overview_turn_running_for, duration)
+                    else -> stringResource(Res.string.member_activity_overview_turn_took, duration)
                 },
                 style = typography.caption,
                 color = colors.foregroundHint,
@@ -520,7 +519,7 @@ private fun MembersAgentActivityTurnSection(
             // The exact waking message, only where the viewer may see it (web TriggerMessageLink).
             if (trigger != null && triggerMessage != null) {
                 RaftTextLink(
-                    text = stringResource(MR.strings.member_activity_overview_trigger_open),
+                    text = stringResource(Res.string.member_activity_overview_trigger_open),
                     onClick = { onOpenMessage(triggerMessage.first, triggerMessage.second) },
                     variant = RaftTextLinkVariant.Strong,
                     style = typography.caption,
@@ -538,7 +537,7 @@ private fun MembersAgentActivityTurnSection(
         }
         if (turn.problemCount > turn.problems.size && turn.problems.any { !it.isRoutineHold }) {
             RaftText(
-                text = stringResource(MR.strings.member_activity_overview_problem_more, turn.problemCount - turn.problems.size),
+                text = stringResource(Res.string.member_activity_overview_problem_more, turn.problemCount - turn.problems.size),
                 style = typography.caption,
                 color = colors.foregroundHint,
             )
@@ -581,7 +580,7 @@ private fun MembersAgentActivityTurnSection(
 private fun MembersAgentActivityTurnBadges(turn: AgentActivityTurn, modifier: Modifier = Modifier) {
     if (turn.running) {
         RaftBadge(
-            text = stringResource(MR.strings.member_activity_overview_outcome_running),
+            text = stringResource(Res.string.member_activity_overview_outcome_running),
             appearance = RaftBadgeAppearance.Soft,
             variant = RaftBadgeVariant.Primary,
             icon = { RaftStatusDot(presence = RaftPresence.Busy, size = RaftStatusSize.Sm) },
@@ -594,15 +593,15 @@ private fun MembersAgentActivityTurnBadges(turn: AgentActivityTurn, modifier: Mo
         when {
             turn.outcome == AgentActivityTurnOutcome.Completed && problems > 0 ->
                 RaftBadge(
-                    text = if (problems == 1) stringResource(MR.strings.member_activity_overview_outcome_problems_one)
-                    else stringResource(MR.strings.member_activity_overview_outcome_problems_other, problems),
+                    text = if (problems == 1) stringResource(Res.string.member_activity_overview_outcome_problems_one)
+                    else stringResource(Res.string.member_activity_overview_outcome_problems_other, problems),
                     appearance = RaftBadgeAppearance.Soft,
                     variant = RaftBadgeVariant.Warning,
                     icon = { RaftStatusDot(presence = RaftPresence.Error, size = RaftStatusSize.Sm) },
                 )
             turn.outcome == AgentActivityTurnOutcome.Failed ->
                 RaftBadge(
-                    text = stringResource(MR.strings.member_activity_overview_outcome_failed),
+                    text = stringResource(Res.string.member_activity_overview_outcome_failed),
                     appearance = RaftBadgeAppearance.Soft,
                     variant = RaftBadgeVariant.Warning,
                     icon = { RaftStatusDot(presence = RaftPresence.Error, size = RaftStatusSize.Sm) },
@@ -610,8 +609,8 @@ private fun MembersAgentActivityTurnBadges(turn: AgentActivityTurn, modifier: Mo
             turn.outcome != AgentActivityTurnOutcome.Completed ->
                 RaftBadge(
                     text = stringResource(
-                        if (turn.outcome == AgentActivityTurnOutcome.Interrupted) MR.strings.member_activity_overview_outcome_interrupted
-                        else MR.strings.member_activity_overview_outcome_unknown
+                        if (turn.outcome == AgentActivityTurnOutcome.Interrupted) Res.string.member_activity_overview_outcome_interrupted
+                        else Res.string.member_activity_overview_outcome_unknown
                     ),
                     appearance = RaftBadgeAppearance.Soft,
                     variant = RaftBadgeVariant.Muted,
@@ -620,7 +619,7 @@ private fun MembersAgentActivityTurnBadges(turn: AgentActivityTurn, modifier: Mo
         }
         if (turn.lastReplyMessageId == null) {
             RaftBadge(
-                text = stringResource(MR.strings.member_activity_overview_outcome_no_message),
+                text = stringResource(Res.string.member_activity_overview_outcome_no_message),
                 appearance = RaftBadgeAppearance.Soft,
                 variant = RaftBadgeVariant.Muted,
             )
@@ -636,10 +635,10 @@ private fun MembersAgentActivityProblemLine(problem: AgentActivityTurnProblem, t
     // A test run that reports failures is ordinary work, not an agent error: lighter wording.
     val text = when {
         exitNonzero && problem.kind == AgentActivityActionKind.RunChecks ->
-            stringResource(MR.strings.member_activity_overview_problem_checks_failed, time)
+            stringResource(Res.string.member_activity_overview_problem_checks_failed, time)
         exitNonzero ->
-            stringResource(MR.strings.member_activity_overview_problem_exit_nonzero, time, problem.exitCode?.toString().orEmpty())
-        else -> stringResource(MR.strings.member_activity_overview_problem_call_failed, time)
+            stringResource(Res.string.member_activity_overview_problem_exit_nonzero, time, problem.exitCode?.toString().orEmpty())
+        else -> stringResource(Res.string.member_activity_overview_problem_call_failed, time)
     }
     val icon = when {
         problem.countsAsProblem -> RaftLucideIconName.TriangleAlert
@@ -683,8 +682,8 @@ private fun MembersAgentActivityLastReply(
     val loadedReply = reply as? AgentActivityTurnReply.Loaded
     val loading = state == AgentActivityReplyState.Loading
     val label = loadedReply?.createdAtEpochMillis?.let { createdAt ->
-        stringResource(MR.strings.member_activity_overview_reply_label_at, membersActivityOverviewClock(createdAt, timeContext))
-    } ?: stringResource(MR.strings.member_activity_overview_reply_label)
+        stringResource(Res.string.member_activity_overview_reply_label_at, membersActivityOverviewClock(createdAt, timeContext))
+    } ?: stringResource(Res.string.member_activity_overview_reply_label)
     RaftCard(modifier = Modifier.fillMaxWidth()) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -695,7 +694,7 @@ private fun MembersAgentActivityLastReply(
                 )
                 RaftText(
                     text = if (count > 1) {
-                        "$label ${stringResource(MR.strings.member_activity_overview_reply_count, count)}"
+                        "$label ${stringResource(Res.string.member_activity_overview_reply_count, count)}"
                     } else {
                         label
                     },
@@ -708,8 +707,8 @@ private fun MembersAgentActivityLastReply(
             } else {
                 RaftText(
                     text = stringResource(
-                        if (loading) MR.strings.member_activity_overview_reply_loading
-                        else MR.strings.member_activity_overview_reply_unavailable
+                        if (loading) Res.string.member_activity_overview_reply_loading
+                        else Res.string.member_activity_overview_reply_unavailable
                     ),
                     style = typography.callout,
                     color = colors.foreground,
@@ -742,8 +741,8 @@ private fun MembersAgentActivitySentMessages(
     Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
         val total = visible + hidden
         RaftText(
-            text = if (total == 1) stringResource(MR.strings.member_activity_overview_sent_title_one)
-            else stringResource(MR.strings.member_activity_overview_sent_title_other, total),
+            text = if (total == 1) stringResource(Res.string.member_activity_overview_sent_title_one)
+            else stringResource(Res.string.member_activity_overview_sent_title_other, total),
             style = typography.caption,
             color = colors.foregroundHint,
         )
@@ -753,22 +752,22 @@ private fun MembersAgentActivitySentMessages(
         }
         if (!expanded && ids.size > SentMessagesShown) {
             RaftTextLink(
-                text = stringResource(MR.strings.member_activity_overview_sent_more, ids.size - SentMessagesShown),
+                text = stringResource(Res.string.member_activity_overview_sent_more, ids.size - SentMessagesShown),
                 onClick = { expanded = true },
                 style = typography.caption,
             )
         }
         if (visible > ids.size) {
             RaftText(
-                text = stringResource(MR.strings.member_activity_overview_sent_unlisted, visible - ids.size),
+                text = stringResource(Res.string.member_activity_overview_sent_unlisted, visible - ids.size),
                 style = typography.caption,
                 color = colors.foregroundHint,
             )
         }
         if (hidden > 0) {
             RaftText(
-                text = if (hidden == 1) stringResource(MR.strings.member_activity_overview_sent_hidden_one)
-                else stringResource(MR.strings.member_activity_overview_sent_hidden_other, hidden),
+                text = if (hidden == 1) stringResource(Res.string.member_activity_overview_sent_hidden_one)
+                else stringResource(Res.string.member_activity_overview_sent_hidden_other, hidden),
                 style = typography.caption,
                 color = colors.foregroundHint,
             )
@@ -793,7 +792,7 @@ private fun MembersAgentActivitySentMessageCard(
                 RaftLucideIcon(RaftLucideIconName.MessageSquare, modifier = Modifier.size(14.dp), color = raftArgbHex(colors.foregroundHint))
                 RaftText(
                     text = loaded?.createdAtEpochMillis?.let { membersActivityOverviewClock(it, timeContext) }
-                        ?: stringResource(MR.strings.member_activity_overview_reply_label),
+                        ?: stringResource(Res.string.member_activity_overview_reply_label),
                     style = typography.caption,
                     color = colors.foregroundHint,
                     modifier = Modifier.weight(1f),
@@ -801,7 +800,7 @@ private fun MembersAgentActivitySentMessageCard(
                 val channelId = loaded?.channelId
                 if (channelId != null) {
                     RaftTextLink(
-                        text = stringResource(MR.strings.member_activity_overview_sent_open),
+                        text = stringResource(Res.string.member_activity_overview_sent_open),
                         onClick = { onOpenMessage(channelId, messageId) },
                         style = typography.caption,
                     )
@@ -812,8 +811,8 @@ private fun MembersAgentActivitySentMessageCard(
             } else {
                 RaftText(
                     text = stringResource(
-                        if (state == AgentActivityReplyState.Loading) MR.strings.member_activity_overview_reply_loading
-                        else MR.strings.member_activity_overview_reply_unavailable
+                        if (state == AgentActivityReplyState.Loading) Res.string.member_activity_overview_reply_loading
+                        else Res.string.member_activity_overview_reply_unavailable
                     ),
                     style = typography.callout,
                     color = colors.foreground,
@@ -841,8 +840,8 @@ private fun MembersAgentActivityAppEvents(events: List<AgentActivityAppEvent>, c
     val shown = if (expanded) events else events.take(AppEventsShown)
     Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
         RaftText(
-            text = if (count == 1) stringResource(MR.strings.member_activity_overview_app_events_title_one)
-            else stringResource(MR.strings.member_activity_overview_app_events_title_other, count),
+            text = if (count == 1) stringResource(Res.string.member_activity_overview_app_events_title_one)
+            else stringResource(Res.string.member_activity_overview_app_events_title_other, count),
             style = typography.caption,
             color = colors.foregroundHint,
         )
@@ -861,14 +860,14 @@ private fun MembersAgentActivityAppEvents(events: List<AgentActivityAppEvent>, c
         }
         if (!expanded && events.size > AppEventsShown) {
             RaftTextLink(
-                text = stringResource(MR.strings.member_activity_overview_app_events_more, events.size - AppEventsShown),
+                text = stringResource(Res.string.member_activity_overview_app_events_more, events.size - AppEventsShown),
                 onClick = { expanded = true },
                 style = typography.caption,
             )
         }
         if (count > events.size) {
             RaftText(
-                text = stringResource(MR.strings.member_activity_overview_app_events_unlisted, count - events.size),
+                text = stringResource(Res.string.member_activity_overview_app_events_unlisted, count - events.size),
                 style = typography.caption,
                 color = colors.foregroundHint,
             )
@@ -947,36 +946,36 @@ private fun MembersActivityOverviewRefText(
 private fun membersActivityOverviewTriggerText(description: AgentActivityTriggerDescription?): String? =
     when (description) {
         null -> null
-        AgentActivityTriggerDescription.HiddenDm -> stringResource(MR.strings.member_activity_overview_trigger_dm)
+        AgentActivityTriggerDescription.HiddenDm -> stringResource(Res.string.member_activity_overview_trigger_dm)
         AgentActivityTriggerDescription.HiddenPrivateChannel ->
-            stringResource(MR.strings.member_activity_overview_trigger_private_channel)
-        AgentActivityTriggerDescription.Unresolved -> stringResource(MR.strings.member_activity_overview_trigger_unresolved)
-        AgentActivityTriggerDescription.Dm -> stringResource(MR.strings.member_activity_overview_trigger_dm)
-        AgentActivityTriggerDescription.AppEvent -> stringResource(MR.strings.member_activity_overview_trigger_app_event)
+            stringResource(Res.string.member_activity_overview_trigger_private_channel)
+        AgentActivityTriggerDescription.Unresolved -> stringResource(Res.string.member_activity_overview_trigger_unresolved)
+        AgentActivityTriggerDescription.Dm -> stringResource(Res.string.member_activity_overview_trigger_dm)
+        AgentActivityTriggerDescription.AppEvent -> stringResource(Res.string.member_activity_overview_trigger_app_event)
         is AgentActivityTriggerDescription.AppEventFrom ->
-            stringResource(MR.strings.member_activity_overview_trigger_app_event_from, description.app, description.summary)
+            stringResource(Res.string.member_activity_overview_trigger_app_event_from, description.app, description.summary)
         is AgentActivityTriggerDescription.DmFrom ->
-            stringResource(MR.strings.member_activity_overview_trigger_dm_from, description.peer)
+            stringResource(Res.string.member_activity_overview_trigger_dm_from, description.peer)
         is AgentActivityTriggerDescription.Target ->
-            stringResource(MR.strings.member_activity_overview_trigger_target, description.channel)
+            stringResource(Res.string.member_activity_overview_trigger_target, description.channel)
         is AgentActivityTriggerDescription.Message ->
-            stringResource(MR.strings.member_activity_overview_trigger_message, description.sender, description.channel)
+            stringResource(Res.string.member_activity_overview_trigger_message, description.sender, description.channel)
         is AgentActivityTriggerDescription.Thread ->
-            stringResource(MR.strings.member_activity_overview_trigger_thread, description.sender, description.channel)
+            stringResource(Res.string.member_activity_overview_trigger_thread, description.sender, description.channel)
     }
 
 @Composable
 private fun membersActivityOverviewActionsText(actions: List<AgentActivityActionCount>, messagesSent: Int): String {
-    if (actions.isEmpty()) return stringResource(MR.strings.member_activity_overview_actions_none)
+    if (actions.isEmpty()) return stringResource(Res.string.member_activity_overview_actions_none)
     // One send command can post several messages (web): count what was sent, not the commands.
     val parts = actions.map {
         membersActivityOverviewActionText(
             if (it.kind == AgentActivityActionKind.SendMessage && messagesSent > 0) it.copy(count = messagesSent) else it
         )
     }
-    val joinTemplate = stringResource(MR.strings.member_activity_overview_actions_join, "%1\$s", "%2\$s")
-    val lastTemplate = stringResource(MR.strings.member_activity_overview_actions_join_last, "%1\$s", "%2\$s")
-    val pairTemplate = stringResource(MR.strings.member_activity_overview_actions_join_pair, "%1\$s", "%2\$s")
+    val joinTemplate = stringResource(Res.string.member_activity_overview_actions_join, "%1\$s", "%2\$s")
+    val lastTemplate = stringResource(Res.string.member_activity_overview_actions_join_last, "%1\$s", "%2\$s")
+    val pairTemplate = stringResource(Res.string.member_activity_overview_actions_join_pair, "%1\$s", "%2\$s")
     return membersActivityOverviewJoinList(parts, joinTemplate, lastTemplate, pairTemplate)
 }
 
@@ -1005,50 +1004,50 @@ private fun membersActivityOverviewActionText(action: AgentActivityActionCount):
     val count = action.count
     return when (action.kind) {
         AgentActivityActionKind.RunCommand ->
-            if (one) stringResource(MR.strings.member_activity_overview_action_run_command_one)
-            else stringResource(MR.strings.member_activity_overview_action_run_command_other, count)
+            if (one) stringResource(Res.string.member_activity_overview_action_run_command_one)
+            else stringResource(Res.string.member_activity_overview_action_run_command_other, count)
         AgentActivityActionKind.ReadFile ->
-            if (one) stringResource(MR.strings.member_activity_overview_action_read_file_one)
-            else stringResource(MR.strings.member_activity_overview_action_read_file_other, count)
+            if (one) stringResource(Res.string.member_activity_overview_action_read_file_one)
+            else stringResource(Res.string.member_activity_overview_action_read_file_other, count)
         AgentActivityActionKind.EditFile ->
-            if (one) stringResource(MR.strings.member_activity_overview_action_edit_file_one)
-            else stringResource(MR.strings.member_activity_overview_action_edit_file_other, count)
+            if (one) stringResource(Res.string.member_activity_overview_action_edit_file_one)
+            else stringResource(Res.string.member_activity_overview_action_edit_file_other, count)
         AgentActivityActionKind.Search ->
-            if (one) stringResource(MR.strings.member_activity_overview_action_search_one)
-            else stringResource(MR.strings.member_activity_overview_action_search_other, count)
+            if (one) stringResource(Res.string.member_activity_overview_action_search_one)
+            else stringResource(Res.string.member_activity_overview_action_search_other, count)
         AgentActivityActionKind.Web ->
-            if (one) stringResource(MR.strings.member_activity_overview_action_web_one)
-            else stringResource(MR.strings.member_activity_overview_action_web_other, count)
+            if (one) stringResource(Res.string.member_activity_overview_action_web_one)
+            else stringResource(Res.string.member_activity_overview_action_web_other, count)
         AgentActivityActionKind.Fetch ->
-            if (one) stringResource(MR.strings.member_activity_overview_action_fetch_one)
-            else stringResource(MR.strings.member_activity_overview_action_fetch_other, count)
+            if (one) stringResource(Res.string.member_activity_overview_action_fetch_one)
+            else stringResource(Res.string.member_activity_overview_action_fetch_other, count)
         AgentActivityActionKind.Subagent ->
-            if (one) stringResource(MR.strings.member_activity_overview_action_subagent_one)
-            else stringResource(MR.strings.member_activity_overview_action_subagent_other, count)
+            if (one) stringResource(Res.string.member_activity_overview_action_subagent_one)
+            else stringResource(Res.string.member_activity_overview_action_subagent_other, count)
         AgentActivityActionKind.Mcp ->
-            if (one) stringResource(MR.strings.member_activity_overview_action_mcp_one)
-            else stringResource(MR.strings.member_activity_overview_action_mcp_other, count)
+            if (one) stringResource(Res.string.member_activity_overview_action_mcp_one)
+            else stringResource(Res.string.member_activity_overview_action_mcp_other, count)
         AgentActivityActionKind.Wait ->
-            if (one) stringResource(MR.strings.member_activity_overview_action_wait_one)
-            else stringResource(MR.strings.member_activity_overview_action_wait_other, count)
+            if (one) stringResource(Res.string.member_activity_overview_action_wait_one)
+            else stringResource(Res.string.member_activity_overview_action_wait_other, count)
         AgentActivityActionKind.Other ->
-            if (one) stringResource(MR.strings.member_activity_overview_action_other_one)
-            else stringResource(MR.strings.member_activity_overview_action_other_other, count)
+            if (one) stringResource(Res.string.member_activity_overview_action_other_one)
+            else stringResource(Res.string.member_activity_overview_action_other_other, count)
         AgentActivityActionKind.SendMessage ->
-            if (one) stringResource(MR.strings.member_activity_overview_action_send_message_one)
-            else stringResource(MR.strings.member_activity_overview_action_send_message_other, count)
+            if (one) stringResource(Res.string.member_activity_overview_action_send_message_one)
+            else stringResource(Res.string.member_activity_overview_action_send_message_other, count)
         AgentActivityActionKind.ReadMessages ->
-            if (one) stringResource(MR.strings.member_activity_overview_action_read_messages_one)
-            else stringResource(MR.strings.member_activity_overview_action_read_messages_other, count)
+            if (one) stringResource(Res.string.member_activity_overview_action_read_messages_one)
+            else stringResource(Res.string.member_activity_overview_action_read_messages_other, count)
         AgentActivityActionKind.RaftAction ->
-            if (one) stringResource(MR.strings.member_activity_overview_action_raft_action_one)
-            else stringResource(MR.strings.member_activity_overview_action_raft_action_other, count)
+            if (one) stringResource(Res.string.member_activity_overview_action_raft_action_one)
+            else stringResource(Res.string.member_activity_overview_action_raft_action_other, count)
         AgentActivityActionKind.VersionControl ->
-            if (one) stringResource(MR.strings.member_activity_overview_action_version_control_one)
-            else stringResource(MR.strings.member_activity_overview_action_version_control_other, count)
+            if (one) stringResource(Res.string.member_activity_overview_action_version_control_one)
+            else stringResource(Res.string.member_activity_overview_action_version_control_other, count)
         AgentActivityActionKind.RunChecks ->
-            if (one) stringResource(MR.strings.member_activity_overview_action_run_checks_one)
-            else stringResource(MR.strings.member_activity_overview_action_run_checks_other, count)
+            if (one) stringResource(Res.string.member_activity_overview_action_run_checks_one)
+            else stringResource(Res.string.member_activity_overview_action_run_checks_other, count)
     }
 }
 
@@ -1069,9 +1068,9 @@ internal fun membersActivityOverviewDurationParts(millis: Long): MembersActivity
 private fun membersActivityOverviewDuration(millis: Long): String {
     val parts = membersActivityOverviewDurationParts(millis)
     return when {
-        parts.hours > 0 -> stringResource(MR.strings.member_activity_overview_duration_hours, parts.hours, parts.minutes)
-        parts.minutes > 0 -> stringResource(MR.strings.member_activity_overview_duration_minutes, parts.minutes, parts.seconds)
-        else -> stringResource(MR.strings.member_activity_overview_duration_seconds, parts.seconds)
+        parts.hours > 0 -> stringResource(Res.string.member_activity_overview_duration_hours, parts.hours, parts.minutes)
+        parts.minutes > 0 -> stringResource(Res.string.member_activity_overview_duration_minutes, parts.minutes, parts.seconds)
+        else -> stringResource(Res.string.member_activity_overview_duration_seconds, parts.seconds)
     }
 }
 

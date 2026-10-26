@@ -1,5 +1,6 @@
 package build.raft.app.markdown
 
+import build.raft.app.resources.*
 import androidx.compose.animation.core.Animatable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -50,7 +51,6 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.raftBottomSafeAreaPadding
 import build.raft.app.raftTopSafeAreaPadding
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
@@ -60,7 +60,6 @@ import build.raft.designsystem.gesture.raftBackSwipeRegion
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.tokens.RaftSpacing
 import build.raft.designsystem.tokens.RaftStroke
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.delay
 
 internal enum class RaftMermaidView { Diagram, Code }
@@ -123,12 +122,12 @@ internal fun RaftMermaidCard(
             ) {
                 RaftSegmentedControl {
                     RaftSegment(
-                        text = stringResource(MR.strings.markdown_mermaid_diagram),
+                        text = stringResource(Res.string.markdown_mermaid_diagram),
                         selected = view == RaftMermaidView.Diagram,
                         onClick = { view = RaftMermaidView.Diagram }
                     )
                     RaftSegment(
-                        text = stringResource(MR.strings.markdown_mermaid_code),
+                        text = stringResource(Res.string.markdown_mermaid_code),
                         selected = view == RaftMermaidView.Code,
                         onClick = { view = RaftMermaidView.Code }
                     )
@@ -141,20 +140,20 @@ internal fun RaftMermaidCard(
                     if (view == RaftMermaidView.Diagram) {
                         RaftMermaidToolbarButton(
                             icon = RaftLucideIconName.ZoomOut,
-                            tooltip = stringResource(MR.strings.markdown_mermaid_zoom_out),
+                            tooltip = stringResource(Res.string.markdown_mermaid_zoom_out),
                             enabled = zoom.canZoomOut,
                             onClick = { zoom.zoomOut() }
                         )
                         RaftMermaidToolbarButton(
                             icon = RaftLucideIconName.ZoomIn,
-                            tooltip = stringResource(MR.strings.markdown_mermaid_zoom_in),
+                            tooltip = stringResource(Res.string.markdown_mermaid_zoom_in),
                             enabled = zoom.canZoomIn,
                             onClick = { zoom.zoomIn() }
                         )
                     }
                     RaftMermaidToolbarButton(
                         icon = if (copied) RaftLucideIconName.Check else RaftLucideIconName.Copy,
-                        tooltip = stringResource(MR.strings.markdown_mermaid_copy_source),
+                        tooltip = stringResource(Res.string.markdown_mermaid_copy_source),
                         onClick = {
                             bridge.copyToPasteboard(code)
                             copied = true
@@ -163,7 +162,7 @@ internal fun RaftMermaidCard(
                     if (view == RaftMermaidView.Diagram) {
                         RaftMermaidToolbarButton(
                             icon = RaftLucideIconName.Maximize2,
-                            tooltip = stringResource(MR.strings.markdown_mermaid_fullscreen),
+                            tooltip = stringResource(Res.string.markdown_mermaid_fullscreen),
                             onClick = { fullscreen = true }
                         )
                     }
@@ -263,21 +262,21 @@ private fun RaftMermaidFullscreen(
                     Spacer(Modifier.weight(1f))
                     RaftMermaidToolbarButton(
                         icon = RaftLucideIconName.ZoomOut,
-                        tooltip = stringResource(MR.strings.markdown_mermaid_zoom_out),
+                        tooltip = stringResource(Res.string.markdown_mermaid_zoom_out),
                         enabled = zoom.canZoomOut,
                         onClick = { zoom.zoomOut() },
                         size = RaftIconButtonSize.Lg
                     )
                     RaftMermaidToolbarButton(
                         icon = RaftLucideIconName.ZoomIn,
-                        tooltip = stringResource(MR.strings.markdown_mermaid_zoom_in),
+                        tooltip = stringResource(Res.string.markdown_mermaid_zoom_in),
                         enabled = zoom.canZoomIn,
                         onClick = { zoom.zoomIn() },
                         size = RaftIconButtonSize.Lg
                     )
                     RaftMermaidToolbarButton(
                         icon = RaftLucideIconName.X,
-                        tooltip = stringResource(MR.strings.markdown_mermaid_close_fullscreen),
+                        tooltip = stringResource(Res.string.markdown_mermaid_close_fullscreen),
                         onClick = onDismiss,
                         size = RaftIconButtonSize.Lg
                     )

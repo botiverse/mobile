@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.components.RaftIconSpinner
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftButton
@@ -95,7 +96,6 @@ import build.raft.app.model.ThreadId
 import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.model.gravatarAvatarHttpUrlOrNull
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
-import build.raft.app.resources.MR
 import build.raft.app.compat.pager.BridgeManager
 import build.raft.app.compat.module.RouterModule
 import androidx.compose.runtime.Composable
@@ -199,9 +199,6 @@ import kotlinx.coroutines.launch
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.IPagerEventObserver
 import build.raft.app.compat.pager.Pager
-import com.tencent.tmm.kmmresource.compose.stringResource
-import com.tencent.tmm.kmmresource.compose.localized
-import com.tencent.tmm.kmmresource.resource.format
 import androidx.compose.ui.text.input.TextFieldValue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.currentCoroutineContext
@@ -625,54 +622,54 @@ data class RaftHomeShellLabels(
     companion object {
         @Composable
         fun localized(): RaftHomeShellLabels = RaftHomeShellLabels(
-            search = stringResource(MR.strings.home_nav_search),
-            inbox = stringResource(MR.strings.home_nav_activity),
-            followedThreads = stringResource(MR.strings.home_nav_followed_threads),
-            saved = stringResource(MR.strings.home_nav_saved),
-            channels = stringResource(MR.strings.home_section_channels),
-            jointChannels = stringResource(MR.strings.home_section_joint_channels),
-            directMessages = stringResource(MR.strings.home_section_direct_messages),
-            pinned = stringResource(MR.strings.home_section_pinned),
-            pin = stringResource(MR.strings.home_action_pin),
-            unpin = stringResource(MR.strings.home_action_unpin),
-            markAsRead = stringResource(MR.strings.home_action_mark_as_read),
-            markAsUnread = stringResource(MR.strings.home_action_mark_as_unread),
-            markAllAsRead = stringResource(MR.strings.home_action_mark_all_as_read),
-            mute = stringResource(MR.strings.home_action_mute),
-            unmute = stringResource(MR.strings.home_action_unmute),
-            closeChat = stringResource(MR.strings.home_action_close_chat),
-            archive = stringResource(MR.strings.home_action_archive),
-            sortChannels = stringResource(MR.strings.home_action_sort),
-            saveSort = stringResource(MR.strings.common_save),
-            sortManual = stringResource(MR.strings.home_sort_manual),
-            sortRecent = stringResource(MR.strings.home_sort_recent),
-            sortAz = stringResource(MR.strings.home_sort_az),
-            moveToSection = stringResource(MR.strings.home_section_move_to),
-            pinnedTarget = stringResource(MR.strings.home_section_move_to_pinned),
-            sortMenuTitle = stringResource(MR.strings.home_section_menu_sort_title),
-            displaySection = stringResource(MR.strings.home_section_menu_display_title),
-            hideEmptySections = stringResource(MR.strings.home_section_hide_empty),
-            createChannel = stringResource(MR.strings.home_section_create_channel),
-            sectionEmpty = stringResource(MR.strings.home_section_empty),
-            pinnedSectionEmpty = stringResource(MR.strings.home_section_pinned_empty),
-            jointChannelsEmpty = stringResource(MR.strings.home_section_joint_empty),
-            removeFromSection = stringResource(MR.strings.home_section_remove_from),
-            newSectionMenu = stringResource(MR.strings.home_section_new_menu),
-            renameSection = stringResource(MR.strings.home_section_rename),
-            deleteSection = stringResource(MR.strings.home_section_delete),
-            newSectionTitle = stringResource(MR.strings.home_section_new_title),
-            editSectionTitle = stringResource(MR.strings.home_section_edit_title),
-            createSection = stringResource(MR.strings.home_section_create),
-            sectionNameLabel = stringResource(MR.strings.home_section_name_label),
-            sectionNamePlaceholder = stringResource(MR.strings.home_section_name_placeholder),
-            sectionEmojiLabel = stringResource(MR.strings.home_section_emoji_label),
-            addChannel = stringResource(MR.strings.home_action_add_channel),
-            createJointChannel = stringResource(MR.strings.home_section_create_joint_channel),
-            noServersAvailable = stringResource(MR.strings.home_state_no_servers),
-            joinChineseCommunityServer = stringResource(MR.strings.home_server_switcher_join_chinese_community),
-            joinCommunityServer = stringResource(MR.strings.home_server_switcher_join_community),
-            switchOrCreateServer = stringResource(MR.strings.home_server_switcher_switch_or_create),
-            inviteHuman = stringResource(MR.strings.home_server_switcher_invite_human)
+            search = stringResource(Res.string.home_nav_search),
+            inbox = stringResource(Res.string.home_nav_activity),
+            followedThreads = stringResource(Res.string.home_nav_followed_threads),
+            saved = stringResource(Res.string.home_nav_saved),
+            channels = stringResource(Res.string.home_section_channels),
+            jointChannels = stringResource(Res.string.home_section_joint_channels),
+            directMessages = stringResource(Res.string.home_section_direct_messages),
+            pinned = stringResource(Res.string.home_section_pinned),
+            pin = stringResource(Res.string.home_action_pin),
+            unpin = stringResource(Res.string.home_action_unpin),
+            markAsRead = stringResource(Res.string.home_action_mark_as_read),
+            markAsUnread = stringResource(Res.string.home_action_mark_as_unread),
+            markAllAsRead = stringResource(Res.string.home_action_mark_all_as_read),
+            mute = stringResource(Res.string.home_action_mute),
+            unmute = stringResource(Res.string.home_action_unmute),
+            closeChat = stringResource(Res.string.home_action_close_chat),
+            archive = stringResource(Res.string.home_action_archive),
+            sortChannels = stringResource(Res.string.home_action_sort),
+            saveSort = stringResource(Res.string.common_save),
+            sortManual = stringResource(Res.string.home_sort_manual),
+            sortRecent = stringResource(Res.string.home_sort_recent),
+            sortAz = stringResource(Res.string.home_sort_az),
+            moveToSection = stringResource(Res.string.home_section_move_to),
+            pinnedTarget = stringResource(Res.string.home_section_move_to_pinned),
+            sortMenuTitle = stringResource(Res.string.home_section_menu_sort_title),
+            displaySection = stringResource(Res.string.home_section_menu_display_title),
+            hideEmptySections = stringResource(Res.string.home_section_hide_empty),
+            createChannel = stringResource(Res.string.home_section_create_channel),
+            sectionEmpty = stringResource(Res.string.home_section_empty),
+            pinnedSectionEmpty = stringResource(Res.string.home_section_pinned_empty),
+            jointChannelsEmpty = stringResource(Res.string.home_section_joint_empty),
+            removeFromSection = stringResource(Res.string.home_section_remove_from),
+            newSectionMenu = stringResource(Res.string.home_section_new_menu),
+            renameSection = stringResource(Res.string.home_section_rename),
+            deleteSection = stringResource(Res.string.home_section_delete),
+            newSectionTitle = stringResource(Res.string.home_section_new_title),
+            editSectionTitle = stringResource(Res.string.home_section_edit_title),
+            createSection = stringResource(Res.string.home_section_create),
+            sectionNameLabel = stringResource(Res.string.home_section_name_label),
+            sectionNamePlaceholder = stringResource(Res.string.home_section_name_placeholder),
+            sectionEmojiLabel = stringResource(Res.string.home_section_emoji_label),
+            addChannel = stringResource(Res.string.home_action_add_channel),
+            createJointChannel = stringResource(Res.string.home_section_create_joint_channel),
+            noServersAvailable = stringResource(Res.string.home_state_no_servers),
+            joinChineseCommunityServer = stringResource(Res.string.home_server_switcher_join_chinese_community),
+            joinCommunityServer = stringResource(Res.string.home_server_switcher_join_community),
+            switchOrCreateServer = stringResource(Res.string.home_server_switcher_switch_or_create),
+            inviteHuman = stringResource(Res.string.home_server_switcher_invite_human)
         )
     }
 }
@@ -821,9 +818,9 @@ private fun RaftHomePageContent(routeVisibleTick: Int = 0) {
             )
         }
     val standaloneScope = rememberCoroutineScope()
-    val unableToOpenDirectMessage = stringResource(MR.strings.home_error_open_direct_message)
-    val failedToOpenDirectMessage = stringResource(MR.strings.home_error_open_direct_message_failed)
-    val noDirectMessagePermission = stringResource(MR.strings.home_error_open_direct_message_permission)
+    val unableToOpenDirectMessage = stringResource(Res.string.home_error_open_direct_message)
+    val failedToOpenDirectMessage = stringResource(Res.string.home_error_open_direct_message_failed)
+    val noDirectMessagePermission = stringResource(Res.string.home_error_open_direct_message_permission)
     val errorStrings = localizedErrorPresentationStrings()
     LaunchedEffect(sharedStores.serverMembersStore, payload.currentServerId) {
         val serverId = payload.currentServerId.trim().takeIf { it.isNotBlank() } ?: return@LaunchedEffect
@@ -2389,7 +2386,7 @@ private fun RaftStructuralHomeShellContent(
                 RaftAppShellBodyTopBanner()
                 // Task #164 (stdrc O2): under the head, above the list; the counts stay as they are.
                 if (unreadStale) {
-                    RaftReadWarehouseStaleNotice(stringResource(MR.strings.home_unread_stale_notice))
+                    RaftReadWarehouseStaleNotice(stringResource(Res.string.home_unread_stale_notice))
                 }
                 appUpdateBanner?.let { update ->
                     HomeAppUpdateBanner(
@@ -3362,7 +3359,7 @@ private fun RaftStructuralHomeShellContent(
                 ) {
                     Text(
                         text =
-                            MR.strings.home_section_delete_message
+                            Res.string.home_section_delete_message
                                 .format(listOf(sectionDeleteSection.name))
                                 .localized(),
                         style = RaftType.Caption,
@@ -3370,13 +3367,13 @@ private fun RaftStructuralHomeShellContent(
                     )
                     RaftDialogFooter {
                         RaftButton(
-                            text = stringResource(MR.strings.common_cancel),
+                            text = stringResource(Res.string.common_cancel),
                             onClick = { sectionDeleteConfirmId = null },
                             variant = RaftButtonVariant.Ghost,
                             size = RaftButtonSize.Lg
                         )
                         RaftButton(
-                            text = stringResource(MR.strings.home_section_delete_confirm),
+                            text = stringResource(Res.string.home_section_delete_confirm),
                             onClick = {
                                 onSidebarSectionDelete(sectionDeleteSection.id)
                                 sectionDeleteConfirmId = null
@@ -3452,11 +3449,11 @@ private fun RaftHomePreviewBottomTabBar(
     modifier: Modifier,
     bottomSafeArea: Dp,
 ) {
-    val homeTabLabel = stringResource(MR.strings.tab_home)
-    val activityTabLabel = stringResource(MR.strings.tab_activity)
-    val tasksTabLabel = stringResource(MR.strings.tab_tasks)
-    val moreTabLabel = stringResource(MR.strings.tab_more)
-    val searchLabel = stringResource(MR.strings.home_nav_search)
+    val homeTabLabel = stringResource(Res.string.tab_home)
+    val activityTabLabel = stringResource(Res.string.tab_activity)
+    val tasksTabLabel = stringResource(Res.string.tab_tasks)
+    val moreTabLabel = stringResource(Res.string.tab_more)
+    val searchLabel = stringResource(Res.string.home_nav_search)
     val items = remember(selectedTabKey, homeTabLabel, activityTabLabel, searchLabel, tasksTabLabel, moreTabLabel) {
         appShellPhoneBottomTabs(
             selectedTab = selectedTabKey,
@@ -3927,13 +3924,13 @@ private fun RaftHomeSectionDialog(
         )
         RaftDialogFooter {
             RaftButton(
-                text = stringResource(MR.strings.common_cancel),
+                text = stringResource(Res.string.common_cancel),
                 onClick = onDismiss,
                 variant = RaftButtonVariant.Ghost,
                 size = RaftButtonSize.Lg
             )
             RaftButton(
-                text = submitLabel ?: stringResource(MR.strings.common_save),
+                text = submitLabel ?: stringResource(Res.string.common_save),
                 onClick = { onSubmit(trimmedName, emoji.text.trim().takeIf { it.isNotEmpty() }) },
                 enabled = trimmedName.isNotEmpty(),
                 variant = RaftButtonVariant.Primary,
@@ -4867,7 +4864,7 @@ private fun HomeServerIdentityCluster(
                         RaftAvatarAttentionLight(
                             RaftAvatarSize.Sm,
                             cutout = RaftTheme.colors.layerCanvas,
-                            contentDescription = stringResource(MR.strings.home_server_switcher_other_unread),
+                            contentDescription = stringResource(Res.string.home_server_switcher_other_unread),
                         )
                     }
                 },
@@ -5148,7 +5145,7 @@ private fun HomeAppUpdateBanner(
             overflow = TextOverflow.Ellipsis
         )
         Text(
-            text = stringResource(MR.strings.app_update_view),
+            text = stringResource(Res.string.app_update_view),
             style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
             color = RaftColor.TextBlack,
             maxLines = 1
@@ -5168,14 +5165,14 @@ private fun HomeNotificationPopover(
 ) {
     HardShadowPanel(modifier = modifier, minWidth = minWidth, maxWidth = maxWidth) {
         androidx.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().background(RaftColor.FillMuted).padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Sm), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(MR.strings.home_notification_center_title), style = RaftType.SectionLabel, color = RaftColor.TextMutedGray, maxLines = 1)
+            Text(stringResource(Res.string.home_notification_center_title), style = RaftType.SectionLabel, color = RaftColor.TextMutedGray, maxLines = 1)
             Text(
                 if (notifications.isEmpty()) {
-                    stringResource(MR.strings.home_notification_center_item_count_all_clear)
+                    stringResource(Res.string.home_notification_center_item_count_all_clear)
                 } else if (notifications.size == 1) {
-                    MR.strings.home_notification_center_item_count_one.format(listOf(notifications.size)).localized()
+                    Res.string.home_notification_center_item_count_one.format(listOf(notifications.size)).localized()
                 } else {
-                    MR.strings.home_notification_center_item_count_many.format(listOf(notifications.size)).localized()
+                    Res.string.home_notification_center_item_count_many.format(listOf(notifications.size)).localized()
                 },
                 style = RaftType.Button,
                 color = RaftColor.TextMutedGray,
@@ -5209,7 +5206,7 @@ private fun HomeNotificationCenterEmptyState() {
             color = RaftColor.TextMutedGrayArgb
         )
         Text(
-            text = stringResource(MR.strings.home_notification_center_empty_title),
+            text = stringResource(Res.string.home_notification_center_empty_title),
             style = RaftType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
             color = RaftColor.TextMutedGray,
             textAlign = TextAlign.Center,
@@ -5217,7 +5214,7 @@ private fun HomeNotificationCenterEmptyState() {
             overflow = TextOverflow.Ellipsis
         )
         Text(
-            text = stringResource(MR.strings.home_notification_center_empty_body),
+            text = stringResource(Res.string.home_notification_center_empty_body),
             style = RaftType.Caption,
             color = RaftColor.TextMutedGray,
             textAlign = TextAlign.Center,
@@ -5249,7 +5246,7 @@ private fun HomeNotificationRow(notification: RaftHomeNotificationItem, onView: 
                         shadowOffset = notification.primaryActionShadowOffset()
                     )
                 }
-                HomeNotificationActionButton(stringResource(MR.strings.common_dismiss), RaftColor.SurfaceWhite, onDismiss)
+                HomeNotificationActionButton(stringResource(Res.string.common_dismiss), RaftColor.SurfaceWhite, onDismiss)
             }
         }
     }
@@ -5421,7 +5418,7 @@ private fun HomeServerDrawerPanel(
                 horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
             ) {
                 Text(
-                    text = stringResource(MR.strings.home_section_servers),
+                    text = stringResource(Res.string.home_section_servers),
                     style = RaftType.ButtonBold,
                     color = RaftColor.TextBlack,
                     modifier = Modifier.weight(1f),
@@ -5741,7 +5738,7 @@ private fun HomeServerDrawerServerHeader(
     val failed = section.status == HomeServerDrawerLoadStatus.ErrorEmpty || section.status == HomeServerDrawerLoadStatus.ErrorWithCache
     val unavailable = section.status == HomeServerDrawerLoadStatus.Unavailable
     val interactive = !unavailable || hasCachedConversations
-    val unavailableDescription = stringResource(MR.strings.settings_state_unavailable)
+    val unavailableDescription = stringResource(Res.string.settings_state_unavailable)
     Row(
         modifier =
             Modifier
@@ -5898,7 +5895,7 @@ private fun HomeServerDrawerErrorRow(
     row: RaftHomeServerDrawerRow.Error,
     onRetry: () -> Unit
 ) {
-    val retryLabel = row.visibleRetryLabel(stringResource(MR.strings.home_action_retry))
+    val retryLabel = row.visibleRetryLabel(stringResource(Res.string.home_action_retry))
     Row(
         modifier =
             Modifier
@@ -6652,7 +6649,7 @@ private fun HomeSidebarChannelRow(
             else -> null
         }
     // Web ChannelRow: the yellow @ sticker sits before the count (`ml-1`), whatever the count's tone.
-    val mentionDescription = if (marks.mention) stringResource(MR.strings.activity_list_mentioned_you) else null
+    val mentionDescription = if (marks.mention) stringResource(Res.string.activity_list_mentioned_you) else null
     val trailing: (@Composable RowScope.() -> Unit)? =
         if (marks.mention) {
             {
@@ -6666,7 +6663,7 @@ private fun HomeSidebarChannelRow(
     val longClick = rememberHomeSidebarLongClick(interactionIdentity, onLongPress)
     val rowModifier = modifier.then(longClick.anchorModifier)
     val title = remember(name) { homeSidebarUserContentName(name) }
-    val longClickLabel = longClick.onLongClick?.let { stringResource(MR.strings.home_sidebar_row_menu_action) }
+    val longClickLabel = longClick.onLongClick?.let { stringResource(Res.string.home_sidebar_row_menu_action) }
     traceMarkdownSection(RaftHomeTraceNames.CHANNEL_ROW_RENDER, name.length) {
         if (symbol == "#" || symbol == "lock") {
             RaftSidebarChannelItem(
@@ -6761,7 +6758,7 @@ private fun HomeSidebarSectionHeader(
         onExpandedChange = onExpandedChange,
         modifier = modifier.then(longClick.anchorModifier),
         onLongClick = longClick.onLongClick,
-        onLongClickLabel = longClick.onLongClick?.let { stringResource(MR.strings.home_sidebar_section_menu_action, title) },
+        onLongClickLabel = longClick.onLongClick?.let { stringResource(Res.string.home_sidebar_section_menu_action, title) },
         menuOpen = menuOpen,
         count = count,
         attention = attention,
@@ -6936,7 +6933,7 @@ private fun RaftSidebarSortOverlay(
         commitLabel = saveLabel,
         commitEnabled = draggedId == null,
         onCommit = { onSave(order) },
-        closeLabel = stringResource(MR.strings.common_close)
+        closeLabel = stringResource(Res.string.common_close)
     ) {
         Box(modifier = Modifier.fillMaxWidth().weight(1f).clipToBounds()) {
             // Container-level long-press drag: identify the row under the finger
@@ -7199,7 +7196,7 @@ private fun HomeSidebarDirectMessageRow(
             tone = homeConversationRowTone(muted = muted, joined = true, selected = selected, loudUnread = badge.hasUnread),
             subtitle = description?.takeIf { it.isNotBlank() },
             onLongClick = longClick.onLongClick,
-            onLongClickLabel = longClick.onLongClick?.let { stringResource(MR.strings.home_sidebar_row_menu_action) },
+            onLongClickLabel = longClick.onLongClick?.let { stringResource(Res.string.home_sidebar_row_menu_action) },
             menuOpen = menuOpen,
             titleTrailing = mutedIcon?.let { icon -> @Composable { HomeSidebarLucideIcon(icon, HomeSidebarMetaIconSize) } },
             variant = RaftSidebarItemVariant.Peer,

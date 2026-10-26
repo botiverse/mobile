@@ -1,9 +1,8 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ThreadAttachmentOpenTarget
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlinx.coroutines.delay
 import kotlin.time.TimeSource
 
@@ -79,13 +78,13 @@ internal fun RaftFilePreviewPayload.withImageUrlResult(
     val resolvedImageUrl = remoteImageUrl ?: thumbnailUrl
     return copy(
         kind = "image",
-        titleDesc = MR.strings.file_preview_image.desc(),
+        titleDesc = Res.string.file_preview_image.desc(),
         imageUrl = resolvedImageUrl,
         imageFullLoadFailed = remoteImageUrl == null && resolvedImageUrl != null,
         message = "",
         messageDesc =
             if (resolvedImageUrl == null) {
-                MR.strings.file_preview_error_image_unavailable.desc()
+                Res.string.file_preview_error_image_unavailable.desc()
             } else {
                 null
             },

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,9 +26,6 @@ import build.raft.app.data.SettingsServerProfileSnapshot
 import build.raft.app.data.SettingsServerSectionSnapshot
 import build.raft.app.data.SettingsServerSnapshot
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.resource.desc.Resource
-import com.tencent.tmm.kmmresource.resource.desc.StringDesc
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -124,7 +122,7 @@ private fun ServerProfileFixture() {
                     listOf(
                         SettingsServerSectionSnapshot(
                             key = "danger",
-                            title = StringDesc.Resource(MR.strings.settings_section_danger_zone_title),
+                            title = StringDesc.Resource(Res.string.settings_section_danger_zone_title),
                             detail = "",
                             state = SettingsSectionAvailability.Available,
                         ),

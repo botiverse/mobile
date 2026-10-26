@@ -29,7 +29,10 @@ internal sealed interface RaftImageSource {
         override val cacheKey: String by lazy { raftNetworkImageCacheKey(url) }
     }
 
-    /** `assets://<path>`: an MR / app bundled asset (Android APK assets, iOS main or MR bundle). */
+    /**
+     * `assets://<path>`: an app bundled asset (Android APK assets, iOS main bundle), or a Compose
+     * resources file when <path> starts with `compose-resources/`.
+     */
     class BundledAsset(val path: String) : RaftImageSource {
         override val cacheKey: String get() = "raft-img-v1:asset:$path"
     }

@@ -1,5 +1,6 @@
 package build.raft.app.markdown
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
@@ -20,10 +21,8 @@ import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftMessageReferenceReadMark
 import build.raft.designsystem.components.RaftMessageReferenceReadMarkDefaults
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /**
  * Read state of the agents @mentioned in ONE message body (read_receipts_v0, web task #693
@@ -102,7 +101,7 @@ internal fun raftMarkdownMentionReadInlineContent(fontSize: TextUnit): Map<Strin
  */
 @Composable
 internal fun RaftMarkdownMentionReadBadge() {
-    val label = stringResource(MR.strings.thread_mention_agent_read)
+    val label = stringResource(Res.string.thread_mention_agent_read)
     Box(
         Modifier.fillMaxSize().semantics(mergeDescendants = true) { contentDescription = label },
         contentAlignment = Alignment.TopStart,

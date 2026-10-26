@@ -695,6 +695,11 @@ android {
         // Robolectric tests (AndroidUnreadNotificationPosterPreviewTest) resolve the app's own strings.
         unitTests.isIncludeAndroidResources = true
     }
+    // Compose resources string catalogs (assets/composeResources/**/*.cvr) are read on demand;
+    // store them uncompressed so a lookup does not inflate the whole catalog first.
+    androidResources {
+        noCompress += "cvr"
+    }
     packaging {
         dex {
             useLegacyPackaging = raftDexUseLegacyPackaging.orNull
@@ -734,8 +739,9 @@ val generateReleaseOssLicenses by tasks.registering(GenerateOssLicensesTask::cla
     sourceConfigurationLabel.set("Android release runtime + shared KMP metadata")
     requiredModules.set(
         listOf(
-            "com.tencent.kuiklybase:resource-core",
-            "com.tencent.kuiklybase:resource-core-android",
+            // Shared KMP metadata (common) and its Android variant must both be disclosed.
+            "org.jetbrains.compose.components:components-resources",
+            "org.jetbrains.compose.components:components-resources-android",
             handsAndroidSdkModule
         )
     )

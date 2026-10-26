@@ -130,15 +130,15 @@ and manifest differ from checked-in output after rerun.
 
 Use KMM Resource as the source-of-truth asset pipeline. The project already applies
 `com.tencent.kuiklybase.resource.generator` in `compose/shared/build.gradle.kts`,
-with input rooted at `compose/shared/src/commonMain/resources/MR`; the reaction
+with input rooted at `compose/shared/src/commonMain/composeResources`; the reaction
 atlas must extend that existing pipeline instead of adding a separate
 `commonMain/assets` + per-platform copy path.
 
 Add generated atlas outputs under shared MR assets:
 
 ```text
-compose/shared/src/commonMain/resources/MR/assets/reactions/reaction_atlas_v1.png
-compose/shared/src/commonMain/resources/MR/assets/reactions/reaction_atlas_v1.json
+compose/shared/src/commonMain/composeResources/files/reactions/reaction_atlas_v1.png
+compose/shared/src/commonMain/composeResources/files/reactions/reaction_atlas_v1.json
 ```
 
 Generated common code should reference the generated resource handle, for example:
@@ -178,7 +178,7 @@ OHOS packaging requirement:
 
 Required spike before implementation lands:
 
-- Add one tiny PNG and one JSON fixture under `MR/assets/reactions/`.
+- Add one tiny PNG and one JSON fixture under `composeResources/files/reactions/`.
 - Confirm the generated `MR` exposes both resources to common code.
 - Confirm Android can read both generated resources at runtime/package level.
 - Confirm OHOS can read both generated resources at runtime/HAP package level.
@@ -268,8 +268,8 @@ The quick reaction row should be derived from catalog order, not a hard-coded em
 The recommended first implementation is **KMM Resource + build-time generated
 Kotlin catalog**:
 
-1. Keep `MR/assets/reactions/reaction_atlas_v1.json` as the manifest source of truth.
-2. Keep `MR/assets/reactions/reaction_atlas_v1.png` as the image source of truth.
+1. Keep `composeResources/files/reactions/reaction_atlas_v1.json` as the manifest source of truth.
+2. Keep `composeResources/files/reactions/reaction_atlas_v1.png` as the image source of truth.
 3. Add a Gradle or checked-in generation step that validates the JSON and emits a commonMain Kotlin catalog, for example `GeneratedThreadReactionCatalog.kt`.
 4. Common UI reads the generated Kotlin metadata synchronously and receives the generated image resource through a `ThreadReactionAtlasResource` wrapper.
 5. Unit tests parse the JSON source directly to verify it still matches the generated Kotlin catalog.
@@ -378,7 +378,7 @@ KMM string resources can still own generic grammar such as "reaction" or "You re
 
 1. Extract each quick reaction's real source SVG from existing hard-coded paths or React production SVG assets. Check them in as per-icon source files under `scripts/assets/thread-reactions/sources/`.
 2. Add or update `scripts/generate_thread_reaction_atlas.mjs` so it composes those source SVGs into a transparent PNG atlas and emits/validates the JSON manifest.
-3. Add the generated atlas PNG and JSON manifest under `commonMain/resources/MR/assets/reactions/`.
+3. Add the generated atlas PNG and JSON manifest under `commonMain/composeResources/files/reactions/`.
 4. Run the KMM Resource spike and document the generated accessors for PNG and JSON on Android/OHOS.
 5. Add a `ThreadReactionAtlasResource` adapter that maps the generated KMM resource to the renderer's image/asset input on Android/OHOS.
 6. Add a manifest validator and generated commonMain Kotlin catalog, or add the explicit runtime KMM-resource text reader before using a common parser on device.
@@ -434,7 +434,7 @@ cd compose
 - Future implementation has one generated transparent PNG atlas and one JSON manifest with stable icon names, exact reaction values, crop rectangles, and labels.
 - The atlas generator can be rerun locally with no tracked diff after outputs are committed.
 - Runtime catalog access is explicit: generated commonMain Kotlin catalog from JSON source of truth, or a common KMM-resource text bridge implemented on Android and OHOS.
-- Android and OHOS consume the same checked-in KMM Resource source files under `commonMain/resources/MR/assets/reactions/`; no checked-in double-copy under app-specific resource folders is required.
+- Android and OHOS consume the same checked-in KMM Resource source files under `commonMain/composeResources/files/reactions/`; no checked-in double-copy under app-specific resource folders is required.
 - Any platform URI/path conversion is centralized in `ThreadReactionAtlasResource` or an equivalent adapter, not scattered through Thread UI code.
 - UI reaction add/remove behavior remains compatible with existing server emoji payloads and exact-value React behavior.
 - Quick reaction menu and reaction chips use the same exact-value catalog.

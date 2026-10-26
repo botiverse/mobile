@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.BridgeRaftAvatarNativeCache
@@ -39,14 +40,12 @@ import build.raft.app.data.MOBILE_THREAD_REVERSE_LAYOUT_FEATURE_FLAG_KEY
 import build.raft.app.model.ServerId
 import build.raft.app.network.sync.ProcessDiagnosticFeatureFlagOverrides
 import build.raft.app.data.runCatchingPreservingCancellation
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.Pager
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 internal data class StandaloneSettingsEnvironment(
     val dataSource: SharedSettingsDataSource,
@@ -96,7 +95,7 @@ internal fun rememberStandaloneSettingsEnvironment(
         sharedStores.serverMembersStore(storeScope)
     }
     val linkNavigator = rememberRaftLinkNavigator(pager, bridge)
-    val copiedMessage = stringResource(MR.strings.common_copied)
+    val copiedMessage = stringResource(Res.string.common_copied)
     val settingsCapabilities =
         remember(bridge, scope, linkNavigator, copiedMessage) {
             BridgeSettingsPlatformCapabilities(
@@ -224,7 +223,7 @@ internal fun StandaloneSettingsEffectHandler(
     state: SharedSettingsState,
     dispatch: (SharedSettingsIntent) -> Unit
 ) {
-    val shareUsageDataSaveFailed = stringResource(MR.strings.settings_usage_data_save_failed)
+    val shareUsageDataSaveFailed = stringResource(Res.string.settings_usage_data_save_failed)
     LaunchedEffect(state.effect) {
         val effect = state.effect ?: return@LaunchedEffect
         when (effect) {

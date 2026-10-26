@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import build.raft.app.base.Utils
@@ -7,9 +8,7 @@ import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.RaftProductPageView
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
-import build.raft.app.resources.MR
 import build.raft.app.compat.pager.Pager
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /** Executable inventory of independently mounted authenticated production routes. */
 internal enum class AuthenticatedProductRoute(val pageName: String) {
@@ -79,7 +78,7 @@ internal fun AuthenticatedProductRouteEffect(
     }
     val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
-    val sessionExpiredMessage = stringResource(MR.strings.auth_error_session_expired)
+    val sessionExpiredMessage = stringResource(Res.string.auth_error_session_expired)
     AuthSessionTerminalRouteEffect(
         enabled = hasExplicitShellScope,
         authStore = authStore,

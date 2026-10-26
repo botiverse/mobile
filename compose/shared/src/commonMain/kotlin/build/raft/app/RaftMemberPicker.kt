@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -29,7 +30,6 @@ import build.raft.app.components.rememberRaftDesignSystemEditor
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.avatarWireValueForAvatarSlot
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftSectionEyebrow
@@ -37,7 +37,6 @@ import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /**
  * One pick in a [RaftMemberPicker]: agents and humans keep separate id spaces, so the kind is
@@ -139,7 +138,7 @@ internal fun RaftMemberPicker(
         val hint = RaftTheme.colors.foregroundHint
         if (members.none { it.kind == MemberKind.Agent || it.kind == MemberKind.Human }) {
             RaftText(
-                stringResource(if (loading) MR.strings.settings_members_loading else MR.strings.joint_create_no_members),
+                stringResource(if (loading) Res.string.settings_members_loading else Res.string.joint_create_no_members),
                 modifier = modifier,
                 style = RaftTheme.typography.callout,
                 color = hint,
@@ -162,7 +161,7 @@ internal fun RaftMemberPicker(
                 value = query,
                 onValueChange = { if (enabled) onQueryChange(it) },
                 modifier = Modifier.fillMaxWidth().then(editor.modifier),
-                placeholder = stringResource(MR.strings.joint_create_members_search),
+                placeholder = stringResource(Res.string.joint_create_members_search),
                 enabled = enabled,
                 leading = { RaftSlotIcon(RaftLucideIconName.Search) },
                 keyboardOptions = editor.keyboardOptions,
@@ -172,7 +171,7 @@ internal fun RaftMemberPicker(
                     if (sections.isEmpty) {
                         item(key = "no-matches") {
                             RaftText(
-                                stringResource(MR.strings.joint_create_no_matches, query.text.trim()),
+                                stringResource(Res.string.joint_create_no_matches, query.text.trim()),
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                                 style = RaftTheme.typography.callout,
                                 color = hint,
@@ -180,8 +179,8 @@ internal fun RaftMemberPicker(
                         }
                     }
                     listOf(
-                        MR.strings.joint_create_agents to sections.agents,
-                        MR.strings.joint_create_humans to sections.humans,
+                        Res.string.joint_create_agents to sections.agents,
+                        Res.string.joint_create_humans to sections.humans,
                     ).forEach { (label, group) ->
                         if (group.isEmpty()) return@forEach
                         item(key = "label-${group.first().kind.name}") {

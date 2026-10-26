@@ -1,13 +1,12 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.RaftEventBus
-import build.raft.app.resources.MR
 import build.raft.app.compat.json.JSONObject
-import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -757,7 +756,7 @@ class RaftFilePreviewLaunchContractTest {
             )
 
         assertEquals("failure", trace.result)
-        assertEquals(MR.strings.file_preview_unavailable.desc(), trace.payload.titleDesc)
+        assertEquals(Res.string.file_preview_unavailable.desc(), trace.payload.titleDesc)
         assertEquals("payload_parse_failed", trace.payload.error)
     }
 }

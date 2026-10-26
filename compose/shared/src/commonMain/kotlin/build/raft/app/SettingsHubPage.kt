@@ -1,7 +1,7 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.data.StoredAuthSession
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
@@ -20,7 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 
@@ -101,7 +100,7 @@ internal fun SettingsAppShellHomeContent(
     onBack: (() -> Unit)? = null,
 ) {
     val payload = appShellSettingsHomePayload(session)
-    val membersSubtitle = stringResource(MR.strings.more_hub_members_subtitle)
+    val membersSubtitle = stringResource(Res.string.more_hub_members_subtitle)
     SettingsHomeContent(
         payload =
             payload.copy(
@@ -120,112 +119,112 @@ internal fun SettingsAppShellHomeContent(
 internal fun appShellSettingsHomePayload(
     session: StoredAuthSession?,
 ): RaftSettingsHomePayload {
-    val personalSection = stringResource(MR.strings.settings_navigation_section_personal)
-    val workspaceSection = stringResource(MR.strings.settings_navigation_section_workspace)
-    val aboutSection = stringResource(MR.strings.settings_navigation_section_about)
+    val personalSection = stringResource(Res.string.settings_navigation_section_personal)
+    val workspaceSection = stringResource(Res.string.settings_navigation_section_workspace)
+    val aboutSection = stringResource(Res.string.settings_navigation_section_about)
     return RaftSettingsHomePayload(
-        title = stringResource(MR.strings.settings_title),
+        title = stringResource(Res.string.settings_title),
         subtitle = "",
         items =
             listOf(
                 SettingsHomePageLinkPayload(
                     key = SettingsDestinationAccount,
-                    title = stringResource(MR.strings.settings_account_title),
-                    subtitle = stringResource(MR.strings.settings_account_subtitle),
+                    title = stringResource(Res.string.settings_account_title),
+                    subtitle = stringResource(Res.string.settings_account_subtitle),
                     iconName = RaftLucideIconName.User,
                     value = session?.user?.bestDisplayName,
                     section = personalSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsNativeDetailPage.LanguageRegion.key,
-                    title = stringResource(MR.strings.settings_language_region_title),
-                    subtitle = stringResource(MR.strings.settings_language_region_subtitle),
+                    title = stringResource(Res.string.settings_language_region_title),
+                    subtitle = stringResource(Res.string.settings_language_region_subtitle),
                     iconName = RaftLucideIconName.Languages,
                     section = personalSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsNativeDetailPage.Appearance.key,
-                    title = stringResource(MR.strings.settings_appearance_title),
-                    subtitle = stringResource(MR.strings.settings_appearance_subtitle),
+                    title = stringResource(Res.string.settings_appearance_title),
+                    subtitle = stringResource(Res.string.settings_appearance_subtitle),
                     iconName = RaftLucideIconName.Type,
                     section = personalSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsNativeDetailPage.Notifications.key,
-                    title = stringResource(MR.strings.settings_notifications_title),
-                    subtitle = stringResource(MR.strings.settings_notifications_subtitle),
+                    title = stringResource(Res.string.settings_notifications_title),
+                    subtitle = stringResource(Res.string.settings_notifications_subtitle),
                     iconName = RaftLucideIconName.Bell,
                     section = personalSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsNativeDetailPage.Mobile.key,
-                    title = stringResource(MR.strings.settings_mobile_title),
-                    subtitle = stringResource(MR.strings.settings_mobile_subtitle),
+                    title = stringResource(Res.string.settings_mobile_title),
+                    subtitle = stringResource(Res.string.settings_mobile_subtitle),
                     iconName = RaftLucideIconName.Smartphone,
                     section = personalSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsDestinationStorage,
-                    title = stringResource(MR.strings.settings_storage_title),
-                    subtitle = stringResource(MR.strings.settings_storage_subtitle),
+                    title = stringResource(Res.string.settings_storage_title),
+                    subtitle = stringResource(Res.string.settings_storage_subtitle),
                     iconName = RaftLucideIconName.Archive,
                     section = personalSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsNativeDetailPage.Server.key,
-                    title = stringResource(MR.strings.settings_server_profile_title),
-                    subtitle = stringResource(MR.strings.settings_server_profile_subtitle),
+                    title = stringResource(Res.string.settings_server_profile_title),
+                    subtitle = stringResource(Res.string.settings_server_profile_subtitle),
                     iconName = RaftLucideIconName.Building2,
                     value = session?.currentServerSummary()?.role?.replaceFirstChar { it.uppercase() },
                     section = workspaceSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsDestinationBilling,
-                    title = stringResource(MR.strings.settings_billing_title),
-                    subtitle = stringResource(MR.strings.settings_billing_subtitle),
+                    title = stringResource(Res.string.settings_billing_title),
+                    subtitle = stringResource(Res.string.settings_billing_subtitle),
                     iconName = RaftLucideIconName.CreditCard,
                     value = session?.currentServerSummary()?.plan?.replaceFirstChar { it.uppercase() },
                     section = workspaceSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsDestinationAdministration,
-                    title = stringResource(MR.strings.settings_server_administration_title),
-                    subtitle = stringResource(MR.strings.settings_server_administration_subtitle),
+                    title = stringResource(Res.string.settings_server_administration_title),
+                    subtitle = stringResource(Res.string.settings_server_administration_subtitle),
                     iconName = RaftLucideIconName.Shield,
                     section = workspaceSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsDestinationConnectedApps,
-                    title = stringResource(MR.strings.settings_connected_apps_title),
-                    subtitle = stringResource(MR.strings.settings_connected_apps_subtitle),
+                    title = stringResource(Res.string.settings_connected_apps_title),
+                    subtitle = stringResource(Res.string.settings_connected_apps_subtitle),
                     iconName = RaftLucideIconName.Link2,
                     section = workspaceSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsDestinationComputers,
-                    title = stringResource(MR.strings.settings_computers_title),
-                    subtitle = stringResource(MR.strings.settings_computers_subtitle),
+                    title = stringResource(Res.string.settings_computers_title),
+                    subtitle = stringResource(Res.string.settings_computers_subtitle),
                     iconName = RaftLucideIconName.Monitor,
                     section = workspaceSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsNativeDetailPage.About.key,
-                    title = stringResource(MR.strings.settings_about_title),
-                    subtitle = stringResource(MR.strings.settings_about_subtitle),
+                    title = stringResource(Res.string.settings_about_title),
+                    subtitle = stringResource(Res.string.settings_about_subtitle),
                     iconName = RaftLucideIconName.BadgeInfo,
                     section = aboutSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsDestinationHandsFeedback,
-                    title = stringResource(MR.strings.settings_feedback_title),
-                    subtitle = stringResource(MR.strings.settings_feedback_subtitle),
+                    title = stringResource(Res.string.settings_feedback_title),
+                    subtitle = stringResource(Res.string.settings_feedback_subtitle),
                     iconName = RaftLucideIconName.MessageSquarePlus,
                     section = aboutSection
                 ),
                 SettingsHomePageLinkPayload(
                     key = SettingsDestinationReleaseNotes,
-                    title = stringResource(MR.strings.settings_release_notes_title),
-                    subtitle = stringResource(MR.strings.settings_release_notes_subtitle),
+                    title = stringResource(Res.string.settings_release_notes_title),
+                    subtitle = stringResource(Res.string.settings_release_notes_subtitle),
                     iconName = RaftLucideIconName.FileText,
                     section = aboutSection
                 )

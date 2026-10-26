@@ -5,7 +5,7 @@
 // reaction-sprite.svg — so mobile and web glyphs can never drift (task #335).
 //
 // Outputs:
-//   compose/shared/src/commonMain/resources/MR/assets/reactions/
+//   compose/shared/src/commonMain/composeResources/files/reactions/
 //     reaction_atlas_v1.png            (rasterized atlas, 24dp cells @3x)
 //     reaction_atlas_v1_manifest.json  (ids/emoji/aliases/labels + rects)
 //
@@ -113,7 +113,7 @@ ${sourceBody(reaction.sourceSvg)
 </svg>
 `;
 
-const assetsDir = resolve(repoRoot, "compose/shared/src/commonMain/resources/MR/assets/reactions");
+const assetsDir = resolve(repoRoot, "compose/shared/src/commonMain/composeResources/files/reactions");
 const outPngPath = resolve(assetsDir, atlas.image);
 const outManifestPath = resolve(assetsDir, "reaction_atlas_v1_manifest.json");
 

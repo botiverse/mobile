@@ -1,11 +1,10 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.getRuntimeDisplayName
 import build.raft.app.model.isExternalAgentRuntime
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /**
  * What a Home DM row with an agent peer says it is doing right now, on the
@@ -96,7 +95,7 @@ internal fun raftHomeDmTrailingSlots(
 @Composable
 internal fun RaftHomeDmAgentLiveActivity.localizedText(): String =
     when (this) {
-        RaftHomeDmAgentLiveActivity.Thinking -> stringResource(MR.strings.home_dm_agent_activity_thinking)
-        RaftHomeDmAgentLiveActivity.Working -> stringResource(MR.strings.home_dm_agent_activity_working)
+        RaftHomeDmAgentLiveActivity.Thinking -> stringResource(Res.string.home_dm_agent_activity_thinking)
+        RaftHomeDmAgentLiveActivity.Working -> stringResource(Res.string.home_dm_agent_activity_working)
         is RaftHomeDmAgentLiveActivity.Detail -> detail.localizedText()
     }

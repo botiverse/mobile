@@ -1,15 +1,14 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import build.raft.app.resources.MR
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 private const val RAFT_FILE_PREVIEW_EDITOR_VISUAL_PAGE = "compose_file_preview_editor_visual"
 
@@ -65,7 +64,7 @@ private fun RaftFilePreviewEditorVisualContent() {
         return
     }
     RaftFilePreviewPageScaffold(
-        title = stringResource(MR.strings.file_preview_editor_title),
+        title = stringResource(Res.string.file_preview_editor_title),
         iconName = RaftLucideIconName.Pencil,
         onBack = {},
         contentPadding = 0.dp,

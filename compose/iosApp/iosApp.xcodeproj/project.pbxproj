@@ -408,7 +408,7 @@
 				412082966DD7AFE0B53032CB /* Frameworks */,
 				6715C2D1184DF4DA5556ABE1 /* [CP] Embed Pods Frameworks */,
 				70E4183CF2B3FF25AA2B7C8F /* [CP] Copy Pods Resources */,
-				037D30FF99587FF5BDE98C71 /* [CP-User] Copy kmmresource MR bundle to app */,
+				037D30FF99587FF5BDE98C71 /* [CP-User] Copy Compose resources to app */,
 			);
 			buildRules = (
 			);
@@ -553,15 +553,15 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		037D30FF99587FF5BDE98C71 /* [CP-User] Copy kmmresource MR bundle to app */ = {
+		037D30FF99587FF5BDE98C71 /* [CP-User] Copy Compose resources to app */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
-			name = "[CP-User] Copy kmmresource MR bundle to app";
+			name = "[CP-User] Copy Compose resources to app";
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\n# The Gradle project root is compose/ (gradlew + settings.gradle.kts live there),\n# one level up from this target's $SRCROOT (compose/iosApp).\nGRADLE_ROOT=\"$SRCROOT/..\"\n# :ui-cmp:syncComposeResourcesForXcodeApp copies the Compose Multiplatform resources\n# (Raft fonts) to <App>.app/compose-resources, where the CMP runtime reads them;\n# compose.ios.resources.sync=false keeps the CMP plugin from doing it.\n\"$GRADLE_ROOT/gradlew\" -p \"$GRADLE_ROOT\" :shared:copyFrameworkResourcesToApp \\\n  :ui-cmp:syncComposeResourcesForXcodeApp \\\n  -Praft.cmp.resources.dir=\"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/compose-resources\" \\\n  -Ptmm.resources.BUILT_PRODUCTS_DIR=\"$BUILT_PRODUCTS_DIR\" \\\n  -Ptmm.resources.CONTENTS_FOLDER_PATH=\"$CONTENTS_FOLDER_PATH\" \\\n  -Ptmm.resources.CONFIGURATION=\"$CONFIGURATION\" \\\n  -Ptmm.resources.PLATFORM_NAME=\"$PLATFORM_NAME\" \\\n  -Ptmm.resources.ARCHS=\"$ARCHS\"\n\n# The kmmresource generator packs MR strings but NOT MR/assets into the bundle.\n# The runtime reads assets via the moko convention: relativePath with '/'\n# flattened to '+' and no 'assets/' prefix (see slock_mrBundleURLForRelativePath,\n# #409). Inject every MR/assets file flattened to the bundle root, e.g.\n#   assets/reactions/reaction_atlas_v1.png -> MR.bundle/reactions+reaction_atlas_v1.png\nMR_ASSETS_SRC=\"$GRADLE_ROOT/shared/src/commonMain/resources/MR/assets\"\nMR_BUNDLE_DST=\"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/build.raft.app.resources.MR.bundle\"\nif [ -d \"$MR_ASSETS_SRC\" ] && [ -d \"$MR_BUNDLE_DST\" ]; then\n  # Land under Contents/Resources/ to exactly match the verified-working Debug\n  # simulator bundle shape (KMP task #22 evidence: assets live at\n  # MR.bundle/Contents/Resources/<flattened>); the moko handler checks there\n  # first. Create the dir if the Release bundle didn't have it.\n  MR_DEST=\"$MR_BUNDLE_DST/Contents/Resources\"\n  mkdir -p \"$MR_DEST\"\n  find \"$MR_ASSETS_SRC\" -type f | while IFS= read -r f; do\n    rel=${f#\"$MR_ASSETS_SRC/\"}\n    flat=$(printf '%s' \"$rel\" | tr '/' '+')\n    cp -f \"$f\" \"$MR_DEST/$flat\"\n    echo \"MR asset injected: Contents/Resources/$flat\"\n  done\nelse\n  echo \"warning: MR assets src or bundle dst missing (src=$MR_ASSETS_SRC dst=$MR_BUNDLE_DST)\" >&2\nfi\n";
+			shellScript = "set -e\n# The Gradle project root is compose/ (gradlew + settings.gradle.kts live there),\n# one level up from this target's $SRCROOT (compose/iosApp).\nGRADLE_ROOT=\"$SRCROOT/..\"\n# :ui-cmp:syncComposeResourcesForXcodeApp copies the Compose Multiplatform resources\n# (Raft fonts, the app strings and bundled files of :shared) to <App>.app/compose-resources,\n# where the CMP runtime reads them; compose.ios.resources.sync=false keeps the CMP plugin\n# from doing it.\n\"$GRADLE_ROOT/gradlew\" -p \"$GRADLE_ROOT\" :ui-cmp:syncComposeResourcesForXcodeApp \\\n  -Praft.cmp.resources.dir=\"$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/compose-resources\"\n";
 		};
 		6715C2D1184DF4DA5556ABE1 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;

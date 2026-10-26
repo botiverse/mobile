@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -54,7 +55,6 @@ import build.raft.app.data.actionCardScopeGroupLabel
 import build.raft.app.data.renderActionCardMsg
 import build.raft.app.markdown.raftAppLinkKeepEnd
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftButton
@@ -68,8 +68,7 @@ import build.raft.designsystem.components.RaftMessageActionCardScopeList
 import build.raft.designsystem.components.RaftTooltip
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import build.raft.kuiklybase.datetime.Clock
-import com.tencent.tmm.kmmresource.compose.stringResource
+import kotlin.time.Clock
 import kotlinx.coroutines.delay
 
 /**
@@ -288,7 +287,7 @@ private fun RaftCardFields(fields: List<ActionCardSpecDisplayElement.Field>, con
 private fun RaftCardScopeList(node: ActionCardSpecDisplayElement.ScopeList) {
     val scopes = remember(node.scopes) { node.scopes.map { it.trim() }.filter { it.isNotEmpty() }.distinct() }
     val groups = node.groups.orEmpty()
-    val label = stringResource(MR.strings.thread_action_card_permissions, scopes.size)
+    val label = stringResource(Res.string.thread_action_card_permissions, scopes.size)
     val described = scopes.any { it.lowercase() in RaftCardDescribedScopes }
     RaftMessageActionCardScopeList(label = label, viewportDescription = label.takeIf { described || groups.isNotEmpty() }) {
         if (described) {
@@ -311,10 +310,10 @@ private val RaftCardDescribedScopes = setOf("identity", "openid", "profile")
 @Composable
 private fun raftCardScopeDescription(scope: String): String =
     when (scope.lowercase()) {
-        "identity" -> stringResource(MR.strings.thread_action_card_scope_identity)
-        "openid" -> stringResource(MR.strings.thread_action_card_scope_openid)
-        "profile" -> stringResource(MR.strings.thread_action_card_scope_profile)
-        else -> stringResource(MR.strings.thread_action_card_scope_other)
+        "identity" -> stringResource(Res.string.thread_action_card_scope_identity)
+        "openid" -> stringResource(Res.string.thread_action_card_scope_openid)
+        "profile" -> stringResource(Res.string.thread_action_card_scope_profile)
+        else -> stringResource(Res.string.thread_action_card_scope_other)
     }
 
 /** raft-ui MessageActionCardNotice: neutral; a warning one leads with the alert icon. */
@@ -400,9 +399,9 @@ private fun RaftCardDuration(node: CardDuration) {
     RaftText(
         text =
             when {
-                seconds < 60 -> stringResource(MR.strings.member_activity_overview_duration_seconds, seconds)
-                minutes < 60 -> stringResource(MR.strings.member_activity_overview_duration_minutes, minutes, seconds % 60)
-                else -> stringResource(MR.strings.member_activity_overview_duration_hours, minutes / 60, minutes % 60)
+                seconds < 60 -> stringResource(Res.string.member_activity_overview_duration_seconds, seconds)
+                minutes < 60 -> stringResource(Res.string.member_activity_overview_duration_minutes, minutes, seconds % 60)
+                else -> stringResource(Res.string.member_activity_overview_duration_hours, minutes / 60, minutes % 60)
             },
         style = RaftTheme.typography.monoMeta,
         color = RaftTheme.colors.foregroundMuted,

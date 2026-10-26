@@ -1,7 +1,7 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.components.RaftIconSpinner
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,7 +43,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftBackButtonDefaults
@@ -140,7 +139,7 @@ internal fun RaftTopPageHeader(
         ) {
             when {
                 onBack != null ->
-                    RaftBackButton(onClick = onBack, label = stringResource(MR.strings.common_back))
+                    RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_back))
                 leadingContent != null ->
                     Box(
                         modifier = Modifier.size(RaftAppSize.HeaderIcon),
@@ -245,7 +244,7 @@ internal fun RaftPanelBackHeader(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (onBack != null) {
-                RaftBackButton(onClick = onBack, label = stringResource(MR.strings.common_back))
+                RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_back))
             }
             Column(
                 // Title tap is a hidden shortcut (scroll to top), not a control: no press wash.
@@ -396,7 +395,7 @@ internal fun RaftCenteredLoading(
     message: String? = null,
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
-    val resolvedMessage = message ?: stringResource(MR.strings.common_loading)
+    val resolvedMessage = message ?: stringResource(Res.string.common_loading)
     Box(
         modifier = modifier.background(RaftColor.Canvas),
         contentAlignment = Alignment.Center

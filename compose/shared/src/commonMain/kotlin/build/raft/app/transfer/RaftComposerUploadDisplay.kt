@@ -1,9 +1,7 @@
 package build.raft.app.transfer
 
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.resource.desc.Raw
-import com.tencent.tmm.kmmresource.resource.desc.StringDesc
-import com.tencent.tmm.kmmresource.resource.desc.desc
+import build.raft.app.resources.*
+
 
 /** What a composer attachment chip says about its upload (the web's chip states). */
 enum class RaftComposerUploadPhase { Checking, Uploading, Finishing, Failed }
@@ -37,21 +35,21 @@ data class RaftComposerUploadDisplay(
 fun raftComposerUploadDisplay(status: String, transfer: RaftTransferProgress?): RaftComposerUploadDisplay? =
     when (status) {
         "failed" ->
-            RaftComposerUploadDisplay(RaftComposerUploadPhase.Failed, null, MR.strings.thread_composer_attachment_upload_failed.desc())
+            RaftComposerUploadDisplay(RaftComposerUploadPhase.Failed, null, Res.string.thread_composer_attachment_upload_failed.desc())
         "uploading" -> {
             val percent = transfer?.percent
             when {
                 transfer == null ->
-                    RaftComposerUploadDisplay(RaftComposerUploadPhase.Checking, null, MR.strings.thread_composer_attachment_checking.desc())
+                    RaftComposerUploadDisplay(RaftComposerUploadPhase.Checking, null, Res.string.thread_composer_attachment_checking.desc())
                 transfer?.phase == RaftTransferPhase.Finishing || (percent != null && percent >= 99) ->
-                    RaftComposerUploadDisplay(RaftComposerUploadPhase.Finishing, 99, MR.strings.thread_composer_attachment_finishing.desc())
+                    RaftComposerUploadDisplay(RaftComposerUploadPhase.Finishing, 99, Res.string.thread_composer_attachment_finishing.desc())
                 percent == null || percent <= 0 ->
                     // The web draws the empty bar while nothing is sent yet; no bar at all when the
                     // total is unknown.
                     RaftComposerUploadDisplay(
                         RaftComposerUploadPhase.Uploading,
                         if (transfer.bytesTotal != null) 0 else null,
-                        MR.strings.thread_composer_attachment_uploading.desc()
+                        Res.string.thread_composer_attachment_uploading.desc()
                     )
                 else -> RaftComposerUploadDisplay(RaftComposerUploadPhase.Uploading, percent, StringDesc.Raw("$percent%"))
             }

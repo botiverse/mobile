@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import build.raft.app.base.BridgeModule
@@ -8,11 +9,9 @@ import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.PersistentLinkOpenPreferenceRepository
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.raftSharedPreferenceStore
-import build.raft.app.resources.MR
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 internal enum class RaftLinkOpenIntent {
     Ordinary,
@@ -205,7 +204,7 @@ internal fun rememberRaftLinkNavigator(
                 KeyValueLinkOpenPreferenceStore(raftSharedPreferenceStore())
             )
         }
-    val rejectedMessage = stringResource(MR.strings.in_app_browser_unable_to_open_link)
+    val rejectedMessage = stringResource(Res.string.in_app_browser_unable_to_open_link)
     return remember(pager, bridge, preferenceRepository, routeScope, rejectedMessage) {
         RaftLinkNavigator(
             modeProvider = preferenceRepository::getLinkOpenModeSync,

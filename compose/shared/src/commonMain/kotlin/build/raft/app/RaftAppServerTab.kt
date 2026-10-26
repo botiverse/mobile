@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
@@ -13,7 +14,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftMobileNavDefaults
@@ -31,7 +31,6 @@ import build.raft.designsystem.components.RaftMutedCount
 import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.components.raftReorderableItem
 import build.raft.designsystem.components.rememberRaftReorderState
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 // Design D1a (#proj-raft-ui task #152; raft-design #712): the app's current-server tab and its
 // server popover (the "server panel"), built from the design system's RaftMobileNavServerPopover*
@@ -106,9 +105,9 @@ internal fun RaftAppServerTab(
     }
     val attention = appShellServerTabShowsAttention(model)
     val attentionDescription =
-        if (attention) stringResource(MR.strings.home_server_switcher_other_unread) else null
-    val label = stringResource(MR.strings.server_tab_a11y_label, server.name)
-    val longPressLabel = stringResource(MR.strings.server_tab_switch_action)
+        if (attention) stringResource(Res.string.home_server_switcher_other_unread) else null
+    val label = stringResource(Res.string.server_tab_a11y_label, server.name)
+    val longPressLabel = stringResource(Res.string.server_tab_switch_action)
     RaftDesignSystemTheme {
         RaftMobileNavServerPopoverItem(
             label = server.name,
@@ -181,7 +180,7 @@ internal fun RaftAppServerMenuOverlay(
     // it before it moves the page, whatever the host does.
     RaftBackHandler(enabled = true, label = "server_menu", onBack = state::dismiss)
     val labels = RaftHomeShellLabels.localized()
-    val panelTitle = stringResource(MR.strings.server_panel_title)
+    val panelTitle = stringResource(Res.string.server_panel_title)
     // raft-design #712: Join Community (while not joined), Switch or Create Server, Invite Human.
     val joinCommunityActions =
         homeServerSwitcherJoinCommunityActions(
@@ -189,19 +188,19 @@ internal fun RaftAppServerMenuOverlay(
             labels = labels,
             includeChineseCommunity = prefersChineseCommunity,
         )
-    val attentionDescription = stringResource(MR.strings.more_row_attention_dot)
+    val attentionDescription = stringResource(Res.string.more_row_attention_dot)
     // artin 10-23: hold a server row to lift it, drag, let go to save the order (the Home
     // switcher's order and intent); a tap still switches.
     val serversById = model.servers.associateBy { it.id }
     val reorderState = rememberRaftReorderState(model.servers.map { it.id })
     val reorderable = model.servers.size > 1
-    val moveUpLabel = stringResource(MR.strings.server_panel_move_up)
-    val moveDownLabel = stringResource(MR.strings.server_panel_move_down)
+    val moveUpLabel = stringResource(Res.string.server_panel_move_up)
+    val moveDownLabel = stringResource(Res.string.server_panel_move_down)
     val pageLabels =
         mapOf(
-            RaftServerMenuEntry.Members to stringResource(MR.strings.tab_members),
-            RaftServerMenuEntry.Computers to stringResource(MR.strings.settings_computers_title),
-            RaftServerMenuEntry.Settings to stringResource(MR.strings.tab_settings),
+            RaftServerMenuEntry.Members to stringResource(Res.string.tab_members),
+            RaftServerMenuEntry.Computers to stringResource(Res.string.settings_computers_title),
+            RaftServerMenuEntry.Settings to stringResource(Res.string.tab_settings),
         )
     RaftFloatingOverlayHost(
         onDismiss = state::dismiss,

@@ -1,11 +1,10 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.LocalRaftCopyHandler
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftBackButton
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.app.components.RaftBrutalActionButton
 import build.raft.app.components.RaftBrutalActionSheetRow
 import build.raft.app.components.RaftBrutalIconButton
@@ -650,7 +649,7 @@ private fun RaftUnifiedDialogSurface(
                     }
                     RaftBackButton(
                         onClick = onDismiss,
-                        label = stringResource(MR.strings.common_close),
+                        label = stringResource(Res.string.common_close),
                         glyph = RaftGlyph.X,
                         enabled = dismissEnabled,
                     )
@@ -983,7 +982,7 @@ internal fun RowScope.RaftModalCompactMemberRowContent(
                 } else {
                     RaftModalSquareActionButton(
                         icon = trailingIcon,
-                        contentDescription = trailingContentDescription ?: stringResource(MR.strings.common_remove),
+                        contentDescription = trailingContentDescription ?: stringResource(Res.string.common_remove),
                         onClick = onTrailingClick,
                         color = if (selected) RaftColor.SurfaceWhite else Color(0xFFFFF2F2), // raft-color: chrome classifier input, painted as the Card outline button
                         enabled = enabled,

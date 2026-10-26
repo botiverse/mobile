@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -164,7 +165,7 @@ private val storageFixtureSnapshot =
 @Composable
 private fun SettingsStorageVisualContent() {
     SettingsDetailShell(
-        title = com.tencent.tmm.kmmresource.compose.stringResource(build.raft.app.resources.MR.strings.settings_storage_title),
+        title = build.raft.app.resources.stringResource(Res.string.settings_storage_title),
         subtitle = "",
         applyTopSafeArea = false,
         onBack = {},

@@ -45,7 +45,6 @@ kotlin {
                 implementation(libs.kotlinx.serialization.json)
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.atomicfu)
-                implementation("build.raft.kuiklybase:datetime:0.1.0-raft.0")
             }
         }
         val commonTest by getting {

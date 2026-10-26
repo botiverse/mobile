@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -18,13 +19,10 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.data.raftSharedPreferenceStore
-import build.raft.app.resources.MR
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.Pager
-import com.tencent.tmm.kmmresource.compose.stringResource
-import com.tencent.tmm.kmmresource.resource.desc.desc
 
 @Page(AUTH_CHOOSE_SERVER_PAGE, supportInLocal = true)
 internal class ComposeAuthChooseServerPage : build.raft.app.base.BasePager() {
@@ -104,7 +102,7 @@ private fun AuthChooseServerPageContent() {
                 )
                 errorPresentation =
                     if (restored == null) {
-                        AuthGateMessage.Static(MR.strings.auth_error_choose_server_sign_in_required.desc())
+                        AuthGateMessage.Static(Res.string.auth_error_choose_server_sign_in_required.desc())
                     } else {
                         null
                     }
@@ -114,7 +112,7 @@ private fun AuthChooseServerPageContent() {
                 authDataSource.logDiagnostics(
                     "auth_choose_server_page_session result=failure restoreAttempt=$restoreAttempt"
                 )
-                errorPresentation = AuthGateMessage.Static(MR.strings.auth_error_restore_session.desc())
+                errorPresentation = AuthGateMessage.Static(Res.string.auth_error_restore_session.desc())
             }
     }
 
@@ -126,7 +124,7 @@ private fun AuthChooseServerPageContent() {
                 AppShellAuthErrorContent(
                     message =
                         errorMessage
-                            ?: stringResource(MR.strings.auth_error_choose_server_sign_in_required),
+                            ?: stringResource(Res.string.auth_error_choose_server_sign_in_required),
                     onRetry = {
                         errorPresentation = null
                         session = null

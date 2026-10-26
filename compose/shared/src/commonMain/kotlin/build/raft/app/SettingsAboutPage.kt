@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import build.raft.app.data.DEVELOPER_ACTION_HANDS_UPDATE_CHECK
 import build.raft.app.data.SharedSettingsActionState
@@ -10,16 +11,12 @@ import build.raft.app.data.SharedSettingsOpenSourceLicensesSnapshot
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.StoredAuthSession
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.unit.Dp
-import com.tencent.tmm.kmmresource.compose.localized
-import com.tencent.tmm.kmmresource.compose.stringResource
-import com.tencent.tmm.kmmresource.resource.format
 import kotlinx.coroutines.flow.map
 
 @Composable
@@ -69,13 +66,13 @@ internal fun SharedSettingsAboutContent(
     val developer = (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
     val environmentStatus =
         when (developerState) {
-            ScreenLoadState.Loading -> stringResource(MR.strings.settings_state_loading)
-            is ScreenLoadState.Content -> developer?.environmentLabel.orEmpty().ifBlank { stringResource(MR.strings.settings_developer_state_current) }
-            else -> stringResource(MR.strings.settings_state_unavailable)
+            ScreenLoadState.Loading -> stringResource(Res.string.settings_state_loading)
+            is ScreenLoadState.Content -> developer?.environmentLabel.orEmpty().ifBlank { stringResource(Res.string.settings_developer_state_current) }
+            else -> stringResource(Res.string.settings_state_unavailable)
         }
     val environmentDetail =
         developer?.apiBaseUrl.orEmpty().ifBlank {
-            stringResource(MR.strings.settings_developer_environment_detail)
+            stringResource(Res.string.settings_developer_environment_detail)
         }
     val payload =
         if (includeDeveloperShortcuts) {
@@ -83,17 +80,17 @@ internal fun SharedSettingsAboutContent(
                 sections =
                     aboutPayload.sections +
                         RaftSharedSettingsSection(
-                            title = stringResource(MR.strings.settings_developer_section_api_server),
+                            title = stringResource(Res.string.settings_developer_section_api_server),
                             rows = settingsAboutDeveloperShortcutRows(
-                                environmentTitle = stringResource(MR.strings.settings_developer_api_environment),
+                                environmentTitle = stringResource(Res.string.settings_developer_api_environment),
                                 environmentDetail = environmentDetail,
                                 environmentStatus = environmentStatus,
                                 environmentEnabled = developerState is ScreenLoadState.Content,
-                                diagnosticsTitle = stringResource(MR.strings.settings_diagnostics_title),
-                                diagnosticsDetail = stringResource(MR.strings.settings_developer_diagnostics_detail),
-                                feedbackTitle = stringResource(MR.strings.settings_feedback_title),
-                                feedbackDetail = stringResource(MR.strings.settings_feedback_subtitle),
-                                openStatus = stringResource(MR.strings.settings_state_open),
+                                diagnosticsTitle = stringResource(Res.string.settings_diagnostics_title),
+                                diagnosticsDetail = stringResource(Res.string.settings_developer_diagnostics_detail),
+                                feedbackTitle = stringResource(Res.string.settings_feedback_title),
+                                feedbackDetail = stringResource(Res.string.settings_feedback_subtitle),
+                                openStatus = stringResource(Res.string.settings_state_open),
                                 includeFeedback = onSendFeedback != null
                             )
                         )
@@ -212,30 +209,30 @@ internal data class SettingsAboutPayloadCopy(
 
 @Composable
 private fun settingsAboutPayloadCopy(resolvedWebUrl: String): SettingsAboutPayloadCopy {
-    val localizedOpenWebDetail = MR.strings.settings_about_open_web_detail.format(listOf(resolvedWebUrl)).localized()
+    val localizedOpenWebDetail = Res.string.settings_about_open_web_detail.format(listOf(resolvedWebUrl)).localized()
     return SettingsAboutPayloadCopy(
-        title = stringResource(MR.strings.settings_about_title),
-        detail = stringResource(MR.strings.settings_about_version_build_source),
-        applicationSection = stringResource(MR.strings.settings_about_section_application),
-        application = stringResource(MR.strings.settings_about_label_application),
-        version = stringResource(MR.strings.settings_about_label_version),
-        buildTime = stringResource(MR.strings.settings_about_label_build_time),
-        gitCommit = stringResource(MR.strings.settings_about_label_git_commit),
-        packageLabel = stringResource(MR.strings.settings_about_label_package),
-        unknown = stringResource(MR.strings.settings_about_state_unknown),
-        buildUnknown = stringResource(MR.strings.settings_about_state_build_unknown),
-        actions = stringResource(MR.strings.settings_about_section_actions),
-        checkUpdate = stringResource(MR.strings.settings_about_action_check_update),
-        checkUpdateDetail = stringResource(MR.strings.settings_about_check_update_detail, raftPlatformProductName()),
-        checking = stringResource(MR.strings.settings_about_state_checking),
-        check = stringResource(MR.strings.settings_about_action_check),
-        licenses = stringResource(MR.strings.settings_open_source_licenses_title),
-        licensesDetail = stringResource(MR.strings.settings_about_licenses_detail, raftPlatformProductName()),
-        open = stringResource(MR.strings.settings_state_open),
-        copyEnvironment = stringResource(MR.strings.settings_about_action_copy_environment),
-        copyEnvironmentDetail = stringResource(MR.strings.settings_about_copy_environment_detail),
-        copy = stringResource(MR.strings.settings_about_action_copy),
-        openRaft = stringResource(MR.strings.settings_about_action_open_raft),
+        title = stringResource(Res.string.settings_about_title),
+        detail = stringResource(Res.string.settings_about_version_build_source),
+        applicationSection = stringResource(Res.string.settings_about_section_application),
+        application = stringResource(Res.string.settings_about_label_application),
+        version = stringResource(Res.string.settings_about_label_version),
+        buildTime = stringResource(Res.string.settings_about_label_build_time),
+        gitCommit = stringResource(Res.string.settings_about_label_git_commit),
+        packageLabel = stringResource(Res.string.settings_about_label_package),
+        unknown = stringResource(Res.string.settings_about_state_unknown),
+        buildUnknown = stringResource(Res.string.settings_about_state_build_unknown),
+        actions = stringResource(Res.string.settings_about_section_actions),
+        checkUpdate = stringResource(Res.string.settings_about_action_check_update),
+        checkUpdateDetail = stringResource(Res.string.settings_about_check_update_detail, raftPlatformProductName()),
+        checking = stringResource(Res.string.settings_about_state_checking),
+        check = stringResource(Res.string.settings_about_action_check),
+        licenses = stringResource(Res.string.settings_open_source_licenses_title),
+        licensesDetail = stringResource(Res.string.settings_about_licenses_detail, raftPlatformProductName()),
+        open = stringResource(Res.string.settings_state_open),
+        copyEnvironment = stringResource(Res.string.settings_about_action_copy_environment),
+        copyEnvironmentDetail = stringResource(Res.string.settings_about_copy_environment_detail),
+        copy = stringResource(Res.string.settings_about_action_copy),
+        openRaft = stringResource(Res.string.settings_about_action_open_raft),
         openWebDetail = { localizedOpenWebDetail }
     )
 }
@@ -244,12 +241,12 @@ private fun settingsAboutPayloadCopy(resolvedWebUrl: String): SettingsAboutPaylo
 internal fun appShellAboutFallback(session: StoredAuthSession?): SharedSettingsAboutSnapshot =
     SharedSettingsAboutSnapshot(
         appName = "Raft",
-        versionLabel = stringResource(MR.strings.settings_state_loading),
-        signedInUserLabel = session?.user?.bestDisplayName ?: stringResource(MR.strings.settings_about_state_unknown),
-        selectedServerLabel = session?.currentServerSummary()?.name ?: stringResource(MR.strings.settings_about_state_none),
-        sessionStatusLabel = if (session != null) stringResource(MR.strings.settings_about_state_signed_in) else stringResource(MR.strings.settings_about_state_signed_out),
-        socketStatusLabel = stringResource(MR.strings.settings_about_state_checking),
-        notificationStatusLabel = stringResource(MR.strings.settings_about_state_checking)
+        versionLabel = stringResource(Res.string.settings_state_loading),
+        signedInUserLabel = session?.user?.bestDisplayName ?: stringResource(Res.string.settings_about_state_unknown),
+        selectedServerLabel = session?.currentServerSummary()?.name ?: stringResource(Res.string.settings_about_state_none),
+        sessionStatusLabel = if (session != null) stringResource(Res.string.settings_about_state_signed_in) else stringResource(Res.string.settings_about_state_signed_out),
+        socketStatusLabel = stringResource(Res.string.settings_about_state_checking),
+        notificationStatusLabel = stringResource(Res.string.settings_about_state_checking)
     )
 
 internal fun SharedSettingsAboutSnapshot.toAboutPayload(
@@ -366,28 +363,28 @@ internal data class SettingsOpenSourceLicensesPayloadCopy(
 
 @Composable
 private fun settingsOpenSourceLicensesPayloadCopy(): SettingsOpenSourceLicensesPayloadCopy {
-    val detailTemplate = stringResource(MR.strings.settings_open_source_licenses_detail_libraries_from)
-    val numberedLibrariesTemplate = stringResource(MR.strings.settings_open_source_licenses_section_libraries_numbered)
+    val detailTemplate = stringResource(Res.string.settings_open_source_licenses_detail_libraries_from)
+    val numberedLibrariesTemplate = stringResource(Res.string.settings_open_source_licenses_section_libraries_numbered)
     return SettingsOpenSourceLicensesPayloadCopy(
-        title = stringResource(MR.strings.settings_open_source_licenses_title),
+        title = stringResource(Res.string.settings_open_source_licenses_title),
         detail = { count, source -> detailTemplate.replaceLocalizedFormatArgs(count, source) },
-        defaultSource = stringResource(MR.strings.settings_open_source_licenses_default_source, raftPlatformProductName()),
-        sectionLicenses = stringResource(MR.strings.settings_licenses_title),
-        loading = stringResource(MR.strings.settings_open_source_licenses_state_loading),
-        loadingDetail = stringResource(MR.strings.settings_open_source_licenses_loading_detail, raftPlatformProductName()),
-        wait = stringResource(MR.strings.settings_open_source_licenses_state_wait),
-        unavailable = stringResource(MR.strings.settings_open_source_licenses_action_unavailable),
-        emptyTitle = stringResource(MR.strings.settings_open_source_licenses_empty_title),
-        emptyDetail = stringResource(MR.strings.settings_open_source_licenses_empty_detail, raftPlatformProductName()),
-        empty = stringResource(MR.strings.settings_open_source_licenses_state_empty),
-        libraries = stringResource(MR.strings.settings_open_source_licenses_section_libraries),
+        defaultSource = stringResource(Res.string.settings_open_source_licenses_default_source, raftPlatformProductName()),
+        sectionLicenses = stringResource(Res.string.settings_licenses_title),
+        loading = stringResource(Res.string.settings_open_source_licenses_state_loading),
+        loadingDetail = stringResource(Res.string.settings_open_source_licenses_loading_detail, raftPlatformProductName()),
+        wait = stringResource(Res.string.settings_open_source_licenses_state_wait),
+        unavailable = stringResource(Res.string.settings_open_source_licenses_action_unavailable),
+        emptyTitle = stringResource(Res.string.settings_open_source_licenses_empty_title),
+        emptyDetail = stringResource(Res.string.settings_open_source_licenses_empty_detail, raftPlatformProductName()),
+        empty = stringResource(Res.string.settings_open_source_licenses_state_empty),
+        libraries = stringResource(Res.string.settings_open_source_licenses_section_libraries),
         numberedLibraries = { section -> numberedLibrariesTemplate.replaceLocalizedFormatArgs(section) },
-        licenseUnknown = stringResource(MR.strings.settings_open_source_licenses_license_unknown),
-        licenseLink = stringResource(MR.strings.settings_open_source_licenses_license_link),
-        sourceLink = stringResource(MR.strings.settings_open_source_licenses_source_link),
-        noLink = stringResource(MR.strings.settings_open_source_licenses_no_link),
-        license = stringResource(MR.strings.settings_open_source_licenses_action_license),
-        source = stringResource(MR.strings.settings_open_source_licenses_action_source)
+        licenseUnknown = stringResource(Res.string.settings_open_source_licenses_license_unknown),
+        licenseLink = stringResource(Res.string.settings_open_source_licenses_license_link),
+        sourceLink = stringResource(Res.string.settings_open_source_licenses_source_link),
+        noLink = stringResource(Res.string.settings_open_source_licenses_no_link),
+        license = stringResource(Res.string.settings_open_source_licenses_action_license),
+        source = stringResource(Res.string.settings_open_source_licenses_action_source)
     )
 }
 

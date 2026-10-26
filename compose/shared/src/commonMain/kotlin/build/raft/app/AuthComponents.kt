@@ -1,12 +1,12 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.components.RaftLinkButton
 import build.raft.app.components.RaftBrutalIconButton
 import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.raftButtonChrome
 import build.raft.app.components.raftCardSurface
 import build.raft.app.components.raftControlSurface
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -65,7 +65,6 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.app.compat.ui.KeyboardParams
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -359,7 +358,7 @@ internal fun AuthBrandBlock(modifier: Modifier = Modifier) {
     ) {
         AuthLogoBadge("RAFT")
         Text(
-            text = stringResource(MR.strings.auth_restore_tagline),
+            text = stringResource(Res.string.auth_restore_tagline),
             style = RaftType.SectionLabel.copy(
                 fontSize = 12.sp,
                 lineHeight = 16.sp,
@@ -481,7 +480,7 @@ internal fun AuthTextField(
                             onClick = { passwordVisible = !passwordVisible },
                             contentDescription =
                                 stringResource(
-                                    if (passwordVisible) MR.strings.common_hide_password else MR.strings.common_show_password
+                                    if (passwordVisible) Res.string.common_hide_password else Res.string.common_show_password
                                 ),
                             enabled = enabled,
                             size = 28.dp,
@@ -537,7 +536,7 @@ internal fun AuthFieldLabel(label: String, required: Boolean = false, optional: 
             )
         } else if (optional) {
             Text(
-                text = stringResource(MR.strings.common_optional_suffix),
+                text = stringResource(Res.string.common_optional_suffix),
                 style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                 color = RaftColor.TextMutedGray
             )
@@ -660,7 +659,7 @@ internal fun AuthDivider() {
     ) {
         Box(Modifier.weight(1f).height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
         Text(
-            text = stringResource(MR.strings.auth_social_divider_or),
+            text = stringResource(Res.string.auth_social_divider_or),
             style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, color = RaftColor.TextMutedGray),
             color = RaftColor.TextMutedGray,
             modifier = Modifier.authStaticTextFocus()
@@ -748,7 +747,7 @@ internal fun AuthSuccessNotice(title: String, detail: String) {
 
 @Composable
 internal fun AuthProviderIcon(provider: AuthProvider) {
-    // task #60: every platform loads the MR-bundled SVG asset (see ProviderIconAsset.kt).
+    // task #60: every platform loads the bundled SVG file (see ProviderIconAsset.kt).
     val source =
         when (provider) {
             AuthProvider.Google -> providerIconAssetSource(ProviderIconKey.GoogleColor)
@@ -771,8 +770,8 @@ private fun AuthComponentPreview() {
             style = RaftType.PageTitle.copy(fontSize = 32.sp, lineHeight = 38.sp, color = RaftColor.TextBlack),
             color = RaftColor.TextBlack
         )
-        AuthTextField(value = TextFieldValue(""), onValueChange = {}, label = stringResource(MR.strings.auth_label_email), required = true, forceFocused = true)
-        AuthTextField(value = TextFieldValue("not-an-email"), onValueChange = {}, label = stringResource(MR.strings.auth_label_email), required = true, isError = true, errorText = "Enter a valid email.")
+        AuthTextField(value = TextFieldValue(""), onValueChange = {}, label = stringResource(Res.string.auth_label_email), required = true, forceFocused = true)
+        AuthTextField(value = TextFieldValue("not-an-email"), onValueChange = {}, label = stringResource(Res.string.auth_label_email), required = true, isError = true, errorText = "Enter a valid email.")
         AuthActionButton(text = "Sign In", onClick = {}, tone = AuthButtonTone.Pink)
         AuthActionButton(text = "Continue with GitHub", onClick = {}, tone = AuthButtonTone.Black, preserveDisabledVisual = true)
         AuthSuccessNotice("Reset link sent", "Check artin@raft.build for your secure link.")

@@ -1,5 +1,6 @@
 package build.raft.app.components
 
+import build.raft.app.resources.*
 import build.raft.app.raftMenuWidth
 import build.raft.app.RaftColor
 import build.raft.app.RaftFloatingDefaultViewportGap
@@ -20,7 +21,6 @@ import build.raft.app.raftCaptureLiveRootAnchor
 import build.raft.app.raftFloatingContentClickTarget
 import build.raft.app.withRaftFontWeight
 import build.raft.app.raftArgbHex
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,7 +38,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import com.tencent.tmm.kmmresource.compose.stringResource
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -146,7 +145,7 @@ private fun RaftLookSelectionPopover(
                 if (showClear) {
                     Box(modifier = Modifier.clickable { onClear() }) {
                         Text(
-                            text = stringResource(MR.strings.common_clear),
+                            text = stringResource(Res.string.common_clear),
                             style =
                                 RaftType.Caption
                                     .copy(fontSize = 12.sp, lineHeight = 16.sp, textDecoration = TextDecoration.Underline)
@@ -190,7 +189,7 @@ private fun RaftLookSelectionPopover(
             if (options.isEmpty()) {
                 Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp)) {
                     Text(
-                        text = emptyLabel ?: stringResource(MR.strings.common_no_matches),
+                        text = emptyLabel ?: stringResource(Res.string.common_no_matches),
                         style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
                         color = RaftColor.ForegroundHint
                     )

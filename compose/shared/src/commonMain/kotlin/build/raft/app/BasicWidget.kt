@@ -2,8 +2,7 @@
 
 package build.raft.app
 
-import com.tencent.tmm.kmmresource.compose.stringResource
-import build.raft.app.resources.MR
+import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
@@ -2258,7 +2257,7 @@ fun ComposeNavigationBar(titleInput: String = "", content: @Composable () -> Uni
         Box {
             RaftBackButton(
                 onClick = { routerModule?.closePage() },
-                label = stringResource(MR.strings.common_back),
+                label = stringResource(Res.string.common_back),
                 modifier = Modifier.align(Alignment.CenterStart).padding(start = RaftBackButtonDefaults.EdgeInset)
             )
             Text(

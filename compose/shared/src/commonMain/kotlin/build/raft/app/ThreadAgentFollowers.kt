@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
@@ -47,7 +48,6 @@ import build.raft.app.data.ThreadAgentFollowersIntent
 import build.raft.app.data.ThreadAgentFollowersState
 import build.raft.app.data.ThreadFollowersError
 import build.raft.app.model.ThreadFollowersUpdated
-import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -65,7 +65,6 @@ import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.pager.Pager
-import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
 import build.raft.designsystem.components.RaftAvatarSize
@@ -172,10 +171,10 @@ private fun FollowerNoticeView(
 ) {
     val isError = notice.kind == ThreadFollowersNoticeKind.RemoveFailed || notice.kind == ThreadFollowersNoticeKind.RestoreFailed
     val label = stringResource(when (notice.kind) {
-        ThreadFollowersNoticeKind.Removed -> MR.strings.thread_followers_removed
-        ThreadFollowersNoticeKind.Restored -> MR.strings.thread_followers_restored
-        ThreadFollowersNoticeKind.RemoveFailed -> MR.strings.thread_followers_remove_failed
-        ThreadFollowersNoticeKind.RestoreFailed -> MR.strings.thread_followers_restore_failed
+        ThreadFollowersNoticeKind.Removed -> Res.string.thread_followers_removed
+        ThreadFollowersNoticeKind.Restored -> Res.string.thread_followers_restored
+        ThreadFollowersNoticeKind.RemoveFailed -> Res.string.thread_followers_remove_failed
+        ThreadFollowersNoticeKind.RestoreFailed -> Res.string.thread_followers_restore_failed
     }, notice.agentLabel)
     val shape = RoundedCornerShape(12.dp)
     val surface = Color(0xED2C2C2E) // raft-color: fixed dark toast surface in both modes
@@ -201,7 +200,7 @@ private fun FollowerNoticeView(
                         .background(Color.White.copy(alpha = 0.06f), buttonShape) // raft-color: wash on fixed dark toast
                         .border(1.dp, Color.White.copy(alpha = 0.14f), buttonShape) // raft-color: edge on fixed dark toast
                         .clickable(enabled = enabled, onClick = onUndo).padding(horizontal = 8.dp, vertical = 6.dp), contentAlignment = Alignment.Center) {
-                        Text(stringResource(MR.strings.common_undo), style = RaftType.Caption, color = RaftColor.StickerPaper)
+                        Text(stringResource(Res.string.common_undo), style = RaftType.Caption, color = RaftColor.StickerPaper)
                     }
                 }
             }
@@ -237,7 +236,7 @@ internal fun ThreadAgentFollowersHeader(
     // Keep the live anchor while an empty popover is open, but never leave an empty trigger.
     Box(Modifier.raftCaptureLiveRootAnchor(anchorRef)) {
         if (agents.isNotEmpty() || state.error == ThreadFollowersError.Load) {
-            val description = stringResource(MR.strings.thread_followers_count, agents.size)
+            val description = stringResource(Res.string.thread_followers_count, agents.size)
             ThreadHeaderActionButton(
                 modifier = Modifier.semantics { contentDescription = description },
                 horizontalPadding = 6.dp,
@@ -303,37 +302,37 @@ private fun FollowersPopover(
             Box(Modifier.fillMaxWidth()
                 .background(theme.surface)
                 .padding(horizontal = 12.dp, vertical = 8.dp)) {
-                Text(stringResource(MR.strings.thread_followers_title),
+                Text(stringResource(Res.string.thread_followers_title),
                     style = RaftType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold), color = theme.ink)
             }
             Box(Modifier.fillMaxWidth().height(theme.lineWidth).background(theme.line))
             if (state.loading && agents.isEmpty()) {
                 Box(Modifier.padding(16.dp)) {
-                    Text(stringResource(MR.strings.thread_followers_loading), style = RaftType.Caption, color = theme.inkMuted)
+                    Text(stringResource(Res.string.thread_followers_loading), style = RaftType.Caption, color = theme.inkMuted)
                 }
             } else if (state.error == ThreadFollowersError.Load) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(stringResource(MR.strings.thread_followers_load_failed), style = RaftType.Caption, color = theme.inkMuted)
+                    Text(stringResource(Res.string.thread_followers_load_failed), style = RaftType.Caption, color = theme.inkMuted)
                     Box(Modifier.clickable(enabled = !state.loading) { dispatch(ThreadAgentFollowersIntent.Refresh) }.padding(8.dp)) {
-                        Text(stringResource(MR.strings.common_retry), style = RaftType.Caption, color = theme.ink)
+                        Text(stringResource(Res.string.common_retry), style = RaftType.Caption, color = theme.ink)
                     }
                 }
             } else if (agents.isEmpty()) {
                 Box(Modifier.padding(16.dp)) {
-                    Text(stringResource(MR.strings.thread_followers_empty), style = RaftType.Caption, color = theme.inkMuted)
+                    Text(stringResource(Res.string.thread_followers_empty), style = RaftType.Caption, color = theme.inkMuted)
                 }
             } else {
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp).padding(vertical = 4.dp)) {
                     items(agents, key = { it.id }) { agent ->
                         val server = agent.serverName?.takeIf { it.isNotBlank() }
                             ?: agent.serverSlug?.takeIf { it.isNotBlank() }
-                            ?: stringResource(MR.strings.thread_followers_peer_server)
+                            ?: stringResource(Res.string.thread_followers_peer_server)
                         val canManage = state.roster?.canManage == true
                         val canRemove = agent.canRemove && agent.isCurrentServer
                         // Web: the X names the action, or why a peer server's agent cannot be removed here.
                         val removeLabel =
-                            if (canRemove) stringResource(MR.strings.thread_followers_remove, agent.label)
-                            else stringResource(MR.strings.thread_followers_peer_remove_unavailable, server)
+                            if (canRemove) stringResource(Res.string.thread_followers_remove, agent.label)
+                            else stringResource(Res.string.thread_followers_peer_remove_unavailable, server)
                         // Task #20: the same live source (and external-agent tiering) as the
                         // message avatar; collected as state so the row follows it while open.
                         val indicator = threadFollowerStatusIndicator(

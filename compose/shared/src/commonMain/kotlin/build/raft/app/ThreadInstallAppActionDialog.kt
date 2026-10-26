@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -19,7 +20,6 @@ import build.raft.app.data.ThreadActionCardInstallText
 import build.raft.app.data.boundInstallText
 import build.raft.app.data.installSetBound
 import build.raft.app.data.isInstallMarketplaceAppAction
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
@@ -30,7 +30,6 @@ import build.raft.designsystem.components.RaftDialogSheet
 import build.raft.designsystem.components.RaftDialogSheetSurface
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -232,12 +231,12 @@ internal fun ThreadInstallAppActionDialog(
         RaftDialogSheet(
             onDismissRequest = { onIntent(ThreadInstallAppActionIntent.Dismiss) },
             // A dialog opened by a button takes that button's label.
-            title = stringResource(MR.strings.thread_action_card_install_app),
-            commitLabel = stringResource(MR.strings.thread_action_card_install_dialog_confirm),
+            title = stringResource(Res.string.thread_action_card_install_app),
+            commitLabel = stringResource(Res.string.thread_action_card_install_dialog_confirm),
             commitEnabled = state.canInstall,
             onCommit = { onIntent(ThreadInstallAppActionIntent.Confirm) },
-            closeLabel = stringResource(MR.strings.common_close),
-            cancelLabel = stringResource(MR.strings.common_cancel),
+            closeLabel = stringResource(Res.string.common_close),
+            cancelLabel = stringResource(Res.string.common_cancel),
             // web closeDisabled={installing}
             closeEnabled = !state.submitting,
         ) {
@@ -253,13 +252,13 @@ internal fun ThreadInstallAppActionSheetSurfaceForFixture(
     modifier: Modifier = Modifier,
 ) {
     RaftDialogSheetSurface(
-        title = stringResource(MR.strings.thread_action_card_install_app),
-        commitLabel = stringResource(MR.strings.thread_action_card_install_dialog_confirm),
+        title = stringResource(Res.string.thread_action_card_install_app),
+        commitLabel = stringResource(Res.string.thread_action_card_install_dialog_confirm),
         commitEnabled = state.canInstall,
         onCommit = {},
         onClose = {},
         modifier = modifier,
-        closeLabel = stringResource(MR.strings.common_close),
+        closeLabel = stringResource(Res.string.common_close),
         closeEnabled = !state.submitting,
     ) {
         ThreadInstallAppActionDialogBody(state)
@@ -269,8 +268,8 @@ internal fun ThreadInstallAppActionSheetSurfaceForFixture(
 @Composable
 private fun ColumnScope.ThreadInstallAppActionDialogBody(state: ThreadInstallAppActionDialogState) {
     val card = state.card
-    val client = card.clientName?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.thread_action_card_app)
-    val agent = (card.agentName?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.thread_action_card_agent)).removePrefix("@")
+    val client = card.clientName?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.thread_action_card_app)
+    val agent = (card.agentName?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.thread_action_card_agent)).removePrefix("@")
     Column(
         Modifier
             .fillMaxWidth()
@@ -280,7 +279,7 @@ private fun ColumnScope.ThreadInstallAppActionDialogBody(state: ThreadInstallApp
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         RaftText(
-            stringResource(MR.strings.thread_action_card_install_dialog_description, agent, client),
+            stringResource(Res.string.thread_action_card_install_dialog_description, agent, client),
             style = RaftTheme.typography.callout,
             color = RaftTheme.colors.foregroundMuted,
         )
@@ -288,7 +287,7 @@ private fun ColumnScope.ThreadInstallAppActionDialogBody(state: ThreadInstallApp
             ThreadAppPermissionSetList(scopes = card.installScopes.orEmpty(), groups = card.installGroups.orEmpty())
         } else {
             RaftBanner(
-                description = stringResource(MR.strings.thread_action_card_install_dialog_unbound, agent),
+                description = stringResource(Res.string.thread_action_card_install_dialog_unbound, agent),
                 status = RaftBannerStatus.Warning,
                 size = RaftBannerSize.Sm,
             )
@@ -296,25 +295,25 @@ private fun ColumnScope.ThreadInstallAppActionDialogBody(state: ThreadInstallApp
         card.boundInstallText?.let { text -> ThreadAppPromptTextSection(text, service = card.clientKey) }
         val error =
             when (state.cardChange) {
-                ThreadInstallAppCardChange.Executed -> stringResource(MR.strings.thread_action_card_install_dialog_card_done)
+                ThreadInstallAppCardChange.Executed -> stringResource(Res.string.thread_action_card_install_dialog_card_done)
                 ThreadInstallAppCardChange.NeedsReconfirmation ->
-                    stringResource(MR.strings.thread_action_card_install_dialog_card_reconfirm)
-                ThreadInstallAppCardChange.Frozen -> stringResource(MR.strings.thread_action_card_install_dialog_card_frozen)
+                    stringResource(Res.string.thread_action_card_install_dialog_card_reconfirm)
+                ThreadInstallAppCardChange.Frozen -> stringResource(Res.string.thread_action_card_install_dialog_card_frozen)
                 null ->
                     when (state.staleCode) {
                         ThreadInstallAppStaleCode.PermissionsChanged ->
-                            stringResource(MR.strings.thread_action_card_install_dialog_permissions_changed, client, agent)
+                            stringResource(Res.string.thread_action_card_install_dialog_permissions_changed, client, agent)
                         ThreadInstallAppStaleCode.AppChanged ->
-                            stringResource(MR.strings.thread_action_card_install_dialog_app_changed, client, agent)
+                            stringResource(Res.string.thread_action_card_install_dialog_app_changed, client, agent)
                         ThreadInstallAppStaleCode.ScopesChanged ->
-                            stringResource(MR.strings.thread_action_card_install_dialog_scopes_changed, client, agent)
+                            stringResource(Res.string.thread_action_card_install_dialog_scopes_changed, client, agent)
                         ThreadInstallAppStaleCode.AgentChanged ->
-                            stringResource(MR.strings.thread_action_card_install_dialog_agent_changed, agent)
+                            stringResource(Res.string.thread_action_card_install_dialog_agent_changed, agent)
                         ThreadInstallAppStaleCode.TextChanged ->
-                            stringResource(MR.strings.thread_action_card_install_dialog_text_changed, client, agent)
+                            stringResource(Res.string.thread_action_card_install_dialog_text_changed, client, agent)
                         null ->
                             if (state.failed) {
-                                state.errorServerMessage ?: stringResource(MR.strings.thread_action_card_execute_failed)
+                                state.errorServerMessage ?: stringResource(Res.string.thread_action_card_execute_failed)
                             } else {
                                 null
                             }
@@ -337,14 +336,14 @@ internal fun ThreadAppPromptTextSection(text: ThreadActionCardInstallText, servi
     val typography = RaftTheme.typography
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         RaftText(
-            stringResource(MR.strings.thread_action_card_prompt_text_title),
+            stringResource(Res.string.thread_action_card_prompt_text_title),
             style = typography.footnote.copy(fontWeight = FontWeight.SemiBold),
             color = colors.foreground,
         )
-        RaftText(stringResource(MR.strings.thread_action_card_prompt_text_install_note), style = typography.footnote, color = colors.foregroundMuted)
+        RaftText(stringResource(Res.string.thread_action_card_prompt_text_install_note), style = typography.footnote, color = colors.foregroundMuted)
         val lines = threadAppPromptTextLines(text, service)
         if (lines == null) {
-            RaftText(stringResource(MR.strings.thread_action_card_prompt_text_empty), style = typography.footnote, color = colors.foregroundMuted)
+            RaftText(stringResource(Res.string.thread_action_card_prompt_text_empty), style = typography.footnote, color = colors.foregroundMuted)
         } else {
             RaftCodeBlock(text = lines.joinToString("\n"), wrap = true)
         }
@@ -431,8 +430,8 @@ internal fun ThreadAppPermissionSetList(scopes: List<String>, groups: List<Strin
             )
         }
     RaftDescriptionList(modifier = modifier.fillMaxWidth(), direction = RaftDescriptionListDirection.Horizontal) {
-        Item(stringResource(MR.strings.thread_action_card_permission_set_login_scopes)) { ThreadAppPermissionRows(scopeRows) }
-        Item(stringResource(MR.strings.thread_action_card_permission_set_data_access)) { ThreadAppPermissionRows(groupRows) }
+        Item(stringResource(Res.string.thread_action_card_permission_set_login_scopes)) { ThreadAppPermissionRows(scopeRows) }
+        Item(stringResource(Res.string.thread_action_card_permission_set_data_access)) { ThreadAppPermissionRows(groupRows) }
     }
 }
 
@@ -443,7 +442,7 @@ private fun ThreadAppPermissionRows(rows: List<ThreadAppPermissionRow>) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     if (rows.isEmpty()) {
-        RaftText(stringResource(MR.strings.thread_action_card_permission_set_none), style = typography.callout, color = colors.foregroundHint)
+        RaftText(stringResource(Res.string.thread_action_card_permission_set_none), style = typography.callout, color = colors.foregroundHint)
         return
     }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -464,15 +463,15 @@ private fun ThreadAppPermissionRows(rows: List<ThreadAppPermissionRow>) {
 @Composable
 internal fun localizedAppPermissionScopeDescription(scope: String): String =
     when (scope) {
-        "openid" -> stringResource(MR.strings.thread_action_card_scope_openid)
-        "profile" -> stringResource(MR.strings.thread_action_card_scope_profile)
-        "email" -> stringResource(MR.strings.thread_action_card_scope_email)
-        "identity" -> stringResource(MR.strings.thread_action_card_scope_identity)
-        "agent:read" -> stringResource(MR.strings.thread_action_card_scope_agent_read)
-        "agent:event:write" -> stringResource(MR.strings.thread_action_card_scope_agent_event_write)
-        "agent:notification:write" -> stringResource(MR.strings.thread_action_card_scope_agent_notification_write)
-        "agent:action_request:write" -> stringResource(MR.strings.thread_action_card_scope_agent_action_request_write)
-        else -> stringResource(MR.strings.thread_action_card_permission_set_unrecognized_scope)
+        "openid" -> stringResource(Res.string.thread_action_card_scope_openid)
+        "profile" -> stringResource(Res.string.thread_action_card_scope_profile)
+        "email" -> stringResource(Res.string.thread_action_card_scope_email)
+        "identity" -> stringResource(Res.string.thread_action_card_scope_identity)
+        "agent:read" -> stringResource(Res.string.thread_action_card_scope_agent_read)
+        "agent:event:write" -> stringResource(Res.string.thread_action_card_scope_agent_event_write)
+        "agent:notification:write" -> stringResource(Res.string.thread_action_card_scope_agent_notification_write)
+        "agent:action_request:write" -> stringResource(Res.string.thread_action_card_scope_agent_action_request_write)
+        else -> stringResource(Res.string.thread_action_card_permission_set_unrecognized_scope)
     }
 
 /** web `permissionGroupLabel`: "<resource> · read", except the reminder-write group. Null when unknown. */
@@ -480,23 +479,23 @@ internal fun localizedAppPermissionScopeDescription(scope: String): String =
 private fun localizedAppPermissionGroupLabel(group: String): String? {
     val resource =
         when (group) {
-            "server" -> stringResource(MR.strings.thread_action_card_group_server)
-            "agent" -> stringResource(MR.strings.thread_action_card_group_agent)
-            "channel" -> stringResource(MR.strings.thread_action_card_group_channel)
-            "computer" -> stringResource(MR.strings.thread_action_card_group_computer)
-            "agent_reminder_write" -> return stringResource(MR.strings.thread_action_card_group_agent_reminder_write)
+            "server" -> stringResource(Res.string.thread_action_card_group_server)
+            "agent" -> stringResource(Res.string.thread_action_card_group_agent)
+            "channel" -> stringResource(Res.string.thread_action_card_group_channel)
+            "computer" -> stringResource(Res.string.thread_action_card_group_computer)
+            "agent_reminder_write" -> return stringResource(Res.string.thread_action_card_group_agent_reminder_write)
             else -> return null
         }
-    return stringResource(MR.strings.thread_action_card_group_read, resource)
+    return stringResource(Res.string.thread_action_card_group_read, resource)
 }
 
 @Composable
 private fun localizedAppPermissionGroupSummary(group: String): String =
     when (group) {
-        "server" -> stringResource(MR.strings.thread_action_card_group_server_summary)
-        "agent" -> stringResource(MR.strings.thread_action_card_group_agent_summary)
-        "channel" -> stringResource(MR.strings.thread_action_card_group_channel_summary)
-        "computer" -> stringResource(MR.strings.thread_action_card_group_computer_summary)
-        "agent_reminder_write" -> stringResource(MR.strings.thread_action_card_group_agent_reminder_write_summary)
-        else -> stringResource(MR.strings.thread_action_card_permission_set_unrecognized_group)
+        "server" -> stringResource(Res.string.thread_action_card_group_server_summary)
+        "agent" -> stringResource(Res.string.thread_action_card_group_agent_summary)
+        "channel" -> stringResource(Res.string.thread_action_card_group_channel_summary)
+        "computer" -> stringResource(Res.string.thread_action_card_group_computer_summary)
+        "agent_reminder_write" -> stringResource(Res.string.thread_action_card_group_agent_reminder_write_summary)
+        else -> stringResource(Res.string.thread_action_card_permission_set_unrecognized_group)
     }

@@ -1,7 +1,7 @@
 package build.raft.app
 
 import build.raft.app.network.RaftRequestTimeoutException
-import com.tencent.tmm.kmmresource.resource.desc.ResourceStringDesc
+import build.raft.app.resources.ResourceStringDesc
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

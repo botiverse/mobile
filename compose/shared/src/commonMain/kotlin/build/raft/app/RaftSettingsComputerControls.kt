@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -22,7 +23,6 @@ import build.raft.app.data.SettingsComputerRestartProgress
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.COMPUTER_RESTART_TIMED_OUT
 import build.raft.app.markdown.RaftMarkdownBody
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
@@ -39,7 +39,6 @@ import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftTextLinkVariant
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /*
  * The Computer controls of the computer detail page, after web MachineDetailPanel.tsx (botiverse/slock
@@ -107,7 +106,7 @@ internal fun RaftComputerCommandLine(
     command: String,
     onCopy: (String) -> Unit,
     label: String? = null,
-    copyLabel: String = stringResource(MR.strings.settings_computers_copy_command),
+    copyLabel: String = stringResource(Res.string.settings_computers_copy_command),
 ) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (label != null) RaftComputerStepLabel(label)
@@ -140,12 +139,12 @@ private fun RaftComputerManualInstall(context: RaftComputerControlsContext) {
             if (oneLine != null) {
                 RaftComputerCommandLine(oneLine, context.onCopy)
             } else {
-                RaftComputerCommandLine(commands.install, context.onCopy, label = stringResource(MR.strings.settings_computers_install_step))
-                RaftComputerCommandLine(commands.setup, context.onCopy, label = stringResource(MR.strings.settings_computers_setup_step))
+                RaftComputerCommandLine(commands.install, context.onCopy, label = stringResource(Res.string.settings_computers_install_step))
+                RaftComputerCommandLine(commands.setup, context.onCopy, label = stringResource(Res.string.settings_computers_setup_step))
             }
         }
         RaftTextLink(
-            text = stringResource(MR.strings.settings_computers_install_guide),
+            text = stringResource(Res.string.settings_computers_install_guide),
             onClick = context.onOpenInstallGuide,
             variant = RaftTextLinkVariant.Strong,
             style = RaftTheme.typography.footnote,
@@ -160,7 +159,7 @@ internal fun RaftComputerReleaseNotesLink(notes: SettingsComputerReleaseNotesSna
     val text = raftComputerReleaseNotesText(notes, languageTag) ?: return
     var open by remember(notes.version) { mutableStateOf(false) }
     RaftTextLink(
-        text = stringResource(MR.strings.settings_computers_release_notes_open),
+        text = stringResource(Res.string.settings_computers_release_notes_open),
         onClick = { open = true },
         variant = RaftTextLinkVariant.Strong,
         style = RaftTheme.typography.footnote,
@@ -168,8 +167,8 @@ internal fun RaftComputerReleaseNotesLink(notes: SettingsComputerReleaseNotesSna
     if (open) {
         RaftDialog(
             onDismissRequest = { open = false },
-            title = stringResource(MR.strings.settings_computers_release_notes_title, notes.version),
-            closeLabel = stringResource(MR.strings.common_close),
+            title = stringResource(Res.string.settings_computers_release_notes_title, notes.version),
+            closeLabel = stringResource(Res.string.common_close),
         ) {
             RaftMarkdownBody(body = text, modifier = Modifier.fillMaxWidth())
         }
@@ -192,28 +191,28 @@ internal fun RaftComputerVersionNotice(context: RaftComputerControlsContext) {
     val unknown = tier.reason == "computer_version_unknown"
     val title =
         when {
-            tier.enforced && unknown -> stringResource(MR.strings.settings_computers_version_notice_enforced_title_unknown)
-            tier.enforced -> stringResource(MR.strings.settings_computers_version_notice_enforced_title)
-            !tier.reinstall && date != null -> stringResource(MR.strings.settings_computers_version_notice_upgrade_title_scheduled, date)
-            !tier.reinstall -> stringResource(MR.strings.settings_computers_version_notice_upgrade_title)
-            date != null -> stringResource(MR.strings.settings_computers_version_notice_reinstall_title_scheduled, date)
-            unknown -> stringResource(MR.strings.settings_computers_version_notice_unknown_title)
-            else -> stringResource(MR.strings.settings_computers_version_notice_reinstall_title)
+            tier.enforced && unknown -> stringResource(Res.string.settings_computers_version_notice_enforced_title_unknown)
+            tier.enforced -> stringResource(Res.string.settings_computers_version_notice_enforced_title)
+            !tier.reinstall && date != null -> stringResource(Res.string.settings_computers_version_notice_upgrade_title_scheduled, date)
+            !tier.reinstall -> stringResource(Res.string.settings_computers_version_notice_upgrade_title)
+            date != null -> stringResource(Res.string.settings_computers_version_notice_reinstall_title_scheduled, date)
+            unknown -> stringResource(Res.string.settings_computers_version_notice_unknown_title)
+            else -> stringResource(Res.string.settings_computers_version_notice_reinstall_title)
         }
     val body =
         when {
             !tier.reinstall ->
-                stringResource(MR.strings.settings_computers_version_notice_upgrade_body, computerVersion.orEmpty(), tier.minVersion)
-            unknown || computerVersion == null -> stringResource(MR.strings.settings_computers_version_notice_unknown_body)
-            else -> stringResource(MR.strings.settings_computers_version_notice_reinstall_body, computerVersion)
+                stringResource(Res.string.settings_computers_version_notice_upgrade_body, computerVersion.orEmpty(), tier.minVersion)
+            unknown || computerVersion == null -> stringResource(Res.string.settings_computers_version_notice_unknown_body)
+            else -> stringResource(Res.string.settings_computers_version_notice_reinstall_body, computerVersion)
         }
     val askAdmin =
         if (context.canManage) {
             null
         } else if (tier.reinstall) {
-            stringResource(MR.strings.settings_computers_version_notice_ask_admin_reinstall)
+            stringResource(Res.string.settings_computers_version_notice_ask_admin_reinstall)
         } else {
-            stringResource(MR.strings.settings_computers_version_notice_ask_admin_upgrade)
+            stringResource(Res.string.settings_computers_version_notice_ask_admin_upgrade)
         }
     val oneClick = (context.upgrade.card as? RaftComputerCardState.OneClick)?.version?.takeIf { !tier.reinstall && context.canManage }
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -225,7 +224,7 @@ internal fun RaftComputerVersionNotice(context: RaftComputerControlsContext) {
                 oneClick?.let { version ->
                     {
                         RaftButton(
-                            text = stringResource(MR.strings.settings_computers_upgrade_to_version, version),
+                            text = stringResource(Res.string.settings_computers_upgrade_to_version, version),
                             onClick = { context.onUpgrade(version) },
                         )
                     }
@@ -260,19 +259,19 @@ internal fun RaftComputerConnectionSection(context: RaftComputerControlsContext)
             if (migrate) RaftComputerMigrateBlock(context)
             if (daemonAdminOnly) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RaftComputerEyebrow(stringResource(MR.strings.settings_computers_connection))
-                    RaftComputerHelp(stringResource(MR.strings.settings_computers_connect_commands_admin_only))
+                    RaftComputerEyebrow(stringResource(Res.string.settings_computers_connection))
+                    RaftComputerHelp(stringResource(Res.string.settings_computers_connect_commands_admin_only))
                 }
             }
             if (reconnect.reconnecting) {
                 val version = reconnect.inFlight?.targetVersion.orEmpty()
                 val status = context.commands?.status ?: RAFT_COMPUTER_STATUS_COMMAND
-                val title = stringResource(MR.strings.settings_computers_upgrade_status_reconnecting, version)
+                val title = stringResource(Res.string.settings_computers_upgrade_status_reconnecting, version)
                 // Admins get the command to check with; everyone else the status sentence alone.
                 RaftBanner(
                     description =
                         if (context.canManage) {
-                            stringResource(MR.strings.settings_computers_upgrade_status_reconnecting_hint, status)
+                            stringResource(Res.string.settings_computers_upgrade_status_reconnecting_hint, status)
                         } else {
                             title
                         },
@@ -292,22 +291,22 @@ private fun RaftComputerMigrateBlock(context: RaftComputerControlsContext) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         RaftComputerEyebrow(
             stringResource(
-                MR.strings.settings_computers_migrate_to_computer,
-                if (windows) stringResource(MR.strings.settings_computers_windows_x64_suffix) else "",
+                Res.string.settings_computers_migrate_to_computer,
+                if (windows) stringResource(Res.string.settings_computers_windows_x64_suffix) else "",
             )
         )
         RaftComputerHelp(
             stringResource(
-                MR.strings.settings_computers_migrate_detail,
+                Res.string.settings_computers_migrate_detail,
                 if (windows) {
-                    stringResource(MR.strings.settings_computers_windows_powershell)
+                    stringResource(Res.string.settings_computers_windows_powershell)
                 } else {
-                    stringResource(MR.strings.settings_computers_mac_linux)
+                    stringResource(Res.string.settings_computers_mac_linux)
                 },
             )
         )
-        RaftComputerCommandLine(commands.install, context.onCopy, label = stringResource(MR.strings.settings_computers_install_step))
-        RaftComputerCommandLine(commands.setup, context.onCopy, label = stringResource(MR.strings.settings_computers_setup_step))
+        RaftComputerCommandLine(commands.install, context.onCopy, label = stringResource(Res.string.settings_computers_install_step))
+        RaftComputerCommandLine(commands.setup, context.onCopy, label = stringResource(Res.string.settings_computers_setup_step))
     }
 }
 
@@ -319,15 +318,15 @@ private fun RaftComputerBringOnlineBlock(context: RaftComputerControlsContext) {
     val lastSeen = computer.lastHeartbeat?.let { raftRelativeTimestampLabel(it) }?.takeIf { it.isNotBlank() }
     var showSetup by remember(computer.id) { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        RaftComputerEyebrow(stringResource(MR.strings.settings_computers_bring_online), RaftLucideIconName.Terminal)
+        RaftComputerEyebrow(stringResource(Res.string.settings_computers_bring_online), RaftLucideIconName.Terminal)
         if (upgrade.reconnect.overdue) {
             RaftComputerProblem(
-                stringResource(MR.strings.settings_computers_upgrade_status_reconnect_overdue, upgrade.reconnect.inFlight?.targetVersion.orEmpty())
+                stringResource(Res.string.settings_computers_upgrade_status_reconnect_overdue, upgrade.reconnect.inFlight?.targetVersion.orEmpty())
             )
         }
         if (!context.canManage) {
-            val parenthetical = lastSeen?.let { stringResource(MR.strings.settings_computers_last_seen_parenthetical, it).trim() }.orEmpty()
-            RaftComputerHelp(stringResource(MR.strings.settings_computers_offline_admin_only, parenthetical))
+            val parenthetical = lastSeen?.let { stringResource(Res.string.settings_computers_last_seen_parenthetical, it).trim() }.orEmpty()
+            RaftComputerHelp(stringResource(Res.string.settings_computers_offline_admin_only, parenthetical))
             return@Column
         }
         val commands = context.commands
@@ -335,27 +334,27 @@ private fun RaftComputerBringOnlineBlock(context: RaftComputerControlsContext) {
         upgrade.requestOutcome?.let { outcome ->
             RaftComputerProblem(
                 if (outcome.state == "failed") {
-                    stringResource(MR.strings.settings_computers_upgrade_status_failed, computer.computerVersion.orEmpty(), status)
+                    stringResource(Res.string.settings_computers_upgrade_status_failed, computer.computerVersion.orEmpty(), status)
                 } else {
-                    stringResource(MR.strings.settings_computers_upgrade_status_no_response, status)
+                    stringResource(Res.string.settings_computers_upgrade_status_no_response, status)
                 }
             )
         }
         if (upgrade.requestOutcome != null || upgrade.reconnect.overdue) {
             Column {
-                RaftComputerHelp(stringResource(MR.strings.settings_computers_upgrade_status_manual_fallback))
+                RaftComputerHelp(stringResource(Res.string.settings_computers_upgrade_status_manual_fallback))
                 RaftComputerManualInstall(context)
             }
         }
         if (commands != null) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 RaftComputerHelp(
-                    stringResource(MR.strings.settings_computers_bring_online_restart_detail, context.commandContext?.serverSlug?.trim()?.trimStart('/').orEmpty())
+                    stringResource(Res.string.settings_computers_bring_online_restart_detail, context.commandContext?.serverSlug?.trim()?.trimStart('/').orEmpty())
                 )
                 RaftComputerCommandLine(commands.restart, context.onCopy)
             }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                RaftComputerHelp(stringResource(MR.strings.settings_computers_offline_diagnostics))
+                RaftComputerHelp(stringResource(Res.string.settings_computers_offline_diagnostics))
                 RaftComputerCommandLine(commands.status, context.onCopy)
                 RaftComputerCommandLine(commands.doctor, context.onCopy)
             }
@@ -366,9 +365,9 @@ private fun RaftComputerBringOnlineBlock(context: RaftComputerControlsContext) {
             RaftTextLink(
                 text =
                     if (showSetup) {
-                        stringResource(MR.strings.settings_computers_hide_install_setup)
+                        stringResource(Res.string.settings_computers_hide_install_setup)
                     } else {
-                        stringResource(MR.strings.settings_computers_command_not_found_setup)
+                        stringResource(Res.string.settings_computers_command_not_found_setup)
                     },
                 onClick = { showSetup = !showSetup },
                 style = RaftTheme.typography.footnote,
@@ -376,18 +375,18 @@ private fun RaftComputerBringOnlineBlock(context: RaftComputerControlsContext) {
             if (showSetup) {
                 val windows = context.platform == RaftComputerCommandPlatform.Windows
                 RaftComputerHelp(
-                    stringResource(MR.strings.settings_computers_install_setup_detail) +
-                        if (windows) " " + stringResource(MR.strings.settings_computers_windows_installer_x64_only) else ""
+                    stringResource(Res.string.settings_computers_install_setup_detail) +
+                        if (windows) " " + stringResource(Res.string.settings_computers_windows_installer_x64_only) else ""
                 )
-                RaftComputerCommandLine(commands.install, context.onCopy, label = stringResource(MR.strings.settings_computers_install_step))
-                RaftComputerCommandLine(commands.setup, context.onCopy, label = stringResource(MR.strings.settings_computers_setup_step))
+                RaftComputerCommandLine(commands.install, context.onCopy, label = stringResource(Res.string.settings_computers_install_step))
+                RaftComputerCommandLine(commands.setup, context.onCopy, label = stringResource(Res.string.settings_computers_setup_step))
             }
         }
     }
 }
 
 @Composable
-private fun raftComputerLastSeenSentence(lastSeen: String): String = stringResource(MR.strings.settings_computers_last_seen, lastSeen)
+private fun raftComputerLastSeenSentence(lastSeen: String): String = stringResource(Res.string.settings_computers_last_seen, lastSeen)
 
 // endregion
 
@@ -405,7 +404,7 @@ internal fun RaftComputerServiceCard(context: RaftComputerControlsContext) {
     val card = upgrade.card
     val commands = context.commands
     val status = commands?.status ?: RAFT_COMPUTER_STATUS_COMMAND
-    RaftCard(title = stringResource(MR.strings.settings_computers_detail_computer)) {
+    RaftCard(title = stringResource(Res.string.settings_computers_detail_computer)) {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             val restart = context.restart?.takeIf { it.machineId == computer.id }
             if (restart != null) {
@@ -415,14 +414,14 @@ internal fun RaftComputerServiceCard(context: RaftComputerControlsContext) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (card !is RaftComputerCardState.Upgrading) {
                         RaftButton(
-                            text = stringResource(MR.strings.settings_computers_restart),
+                            text = stringResource(Res.string.settings_computers_restart),
                             onClick = context.onRestart,
                             leadingIcon = { RaftComputersIcon(RaftLucideIconName.RotateCcw) },
                         )
                     }
                     if (card is RaftComputerCardState.UpToDate && upgrade.webUpgradeOn) {
                         RaftButton(
-                            text = stringResource(MR.strings.settings_computers_up_to_date),
+                            text = stringResource(Res.string.settings_computers_up_to_date),
                             onClick = {},
                             enabled = false,
                             leadingIcon = { RaftComputersIcon(RaftLucideIconName.CircleCheck) },
@@ -431,7 +430,7 @@ internal fun RaftComputerServiceCard(context: RaftComputerControlsContext) {
                     if (card is RaftComputerCardState.OneClick) {
                         // The one pink action on this page: the upgrade the computer is waiting for.
                         RaftButton(
-                            text = stringResource(MR.strings.settings_computers_upgrade_to_version, card.version),
+                            text = stringResource(Res.string.settings_computers_upgrade_to_version, card.version),
                             onClick = { context.onUpgrade(card.version) },
                             variant = RaftButtonVariant.Primary,
                             leadingIcon = { RaftComputersIcon(RaftLucideIconName.Play) },
@@ -439,10 +438,10 @@ internal fun RaftComputerServiceCard(context: RaftComputerControlsContext) {
                     }
                     if (card is RaftComputerCardState.Upgrading) {
                         RaftButton(
-                            text = stringResource(MR.strings.settings_computers_upgrading),
+                            text = stringResource(Res.string.settings_computers_upgrading),
                             onClick = {},
                             loading = true,
-                            loadingLabel = stringResource(MR.strings.settings_computers_upgrading),
+                            loadingLabel = stringResource(Res.string.settings_computers_upgrading),
                         )
                     }
                 }
@@ -450,19 +449,19 @@ internal fun RaftComputerServiceCard(context: RaftComputerControlsContext) {
                 val outcome =
                     when {
                         card is RaftComputerCardState.OneClick && upgrade.refusal == RaftComputerUpgradeRefusal.Unknown ->
-                            stringResource(MR.strings.settings_computers_upgrade_status_refused_unknown)
+                            stringResource(Res.string.settings_computers_upgrade_status_refused_unknown)
                         card !is RaftComputerCardState.Upgrading && card !is RaftComputerCardState.UpToDate && upgrade.requestOutcome != null ->
                             if (upgrade.requestOutcome?.state == "failed") {
-                                stringResource(MR.strings.settings_computers_upgrade_status_failed, computer.computerVersion.orEmpty(), status)
+                                stringResource(Res.string.settings_computers_upgrade_status_failed, computer.computerVersion.orEmpty(), status)
                             } else {
-                                stringResource(MR.strings.settings_computers_upgrade_status_no_response, status)
+                                stringResource(Res.string.settings_computers_upgrade_status_no_response, status)
                             }
                         else -> null
                     }
                 if (outcome != null) RaftComputerProblem(outcome)
                 if (outcome != null && card is RaftComputerCardState.OneClick) {
                     Column {
-                        RaftComputerHelp(stringResource(MR.strings.settings_computers_upgrade_status_manual_fallback))
+                        RaftComputerHelp(stringResource(Res.string.settings_computers_upgrade_status_manual_fallback))
                         RaftComputerManualInstall(context)
                     }
                 }
@@ -471,21 +470,21 @@ internal fun RaftComputerServiceCard(context: RaftComputerControlsContext) {
                 }
                 val fresh = context.commands
                 if (card is RaftComputerCardState.Commands && fresh != null) {
-                    RaftComputerCommandLine(fresh.install, context.onCopy, label = stringResource(MR.strings.settings_computers_upgrade_install_step))
+                    RaftComputerCommandLine(fresh.install, context.onCopy, label = stringResource(Res.string.settings_computers_upgrade_install_step))
                     RaftComputerCommandLine(
                         fresh.restartService,
                         context.onCopy,
-                        label = stringResource(MR.strings.settings_computers_upgrade_restart_step),
+                        label = stringResource(Res.string.settings_computers_upgrade_restart_step),
                     )
                 }
             }
             if (commands != null) {
                 RaftSeparator()
-                RaftComputerEyebrow(stringResource(MR.strings.settings_computers_verify_title), RaftLucideIconName.Terminal)
-                RaftComputerHelp(stringResource(MR.strings.settings_computers_verify_detail))
+                RaftComputerEyebrow(stringResource(Res.string.settings_computers_verify_title), RaftLucideIconName.Terminal)
+                RaftComputerHelp(stringResource(Res.string.settings_computers_verify_detail))
                 RaftComputerCommandLine(commands.status, context.onCopy)
                 RaftComputerCommandLine(commands.doctor, context.onCopy)
-                RaftComputerHelp(stringResource(MR.strings.settings_computers_web_buttons_not_responding))
+                RaftComputerHelp(stringResource(Res.string.settings_computers_web_buttons_not_responding))
                 RaftComputerCommandLine(commands.restart, context.onCopy)
             }
         }
@@ -496,24 +495,24 @@ internal fun RaftComputerServiceCard(context: RaftComputerControlsContext) {
 @Composable
 private fun raftComputerCardSentence(card: RaftComputerCardState, tier: RaftComputerVersionTier): String =
     when (card) {
-        RaftComputerCardState.Reinstall -> stringResource(MR.strings.settings_computers_upgrade_status_reinstall)
-        RaftComputerCardState.Reading -> stringResource(MR.strings.settings_computers_upgrade_status_reading)
-        RaftComputerCardState.CannotCheck -> stringResource(MR.strings.settings_computers_upgrade_status_cannot_check)
-        RaftComputerCardState.UpToDate -> stringResource(MR.strings.settings_computers_upgrade_status_up_to_date)
-        is RaftComputerCardState.Upgrading -> stringResource(MR.strings.settings_computers_upgrade_status_in_progress, card.version)
-        is RaftComputerCardState.OneClick -> stringResource(MR.strings.settings_computers_upgrade_status_available, card.version)
+        RaftComputerCardState.Reinstall -> stringResource(Res.string.settings_computers_upgrade_status_reinstall)
+        RaftComputerCardState.Reading -> stringResource(Res.string.settings_computers_upgrade_status_reading)
+        RaftComputerCardState.CannotCheck -> stringResource(Res.string.settings_computers_upgrade_status_cannot_check)
+        RaftComputerCardState.UpToDate -> stringResource(Res.string.settings_computers_upgrade_status_up_to_date)
+        is RaftComputerCardState.Upgrading -> stringResource(Res.string.settings_computers_upgrade_status_in_progress, card.version)
+        is RaftComputerCardState.OneClick -> stringResource(Res.string.settings_computers_upgrade_status_available, card.version)
         is RaftComputerCardState.ManualUpgrade ->
             if (tier is RaftComputerVersionTier.None) {
-                stringResource(MR.strings.settings_computers_upgrade_status_manual, card.version)
+                stringResource(Res.string.settings_computers_upgrade_status_manual, card.version)
             } else {
                 // With the version notice up, its copy of the command is the one to use.
-                stringResource(MR.strings.settings_computers_upgrade_status_manual_above, card.version)
+                stringResource(Res.string.settings_computers_upgrade_status_manual_above, card.version)
             }
         is RaftComputerCardState.Commands ->
             if (card.refusedNotAllowed) {
-                stringResource(MR.strings.settings_computers_upgrade_status_refused_not_allowed)
+                stringResource(Res.string.settings_computers_upgrade_status_refused_not_allowed)
             } else {
-                stringResource(MR.strings.settings_computers_upgrade_status_run_commands, card.version)
+                stringResource(Res.string.settings_computers_upgrade_status_run_commands, card.version)
             }
     }
 
@@ -524,7 +523,7 @@ private fun RaftComputerRestartProgressLine(restart: SettingsComputerRestartProg
         if (!restart.done) {
             RaftSpinner(size = RaftSpinnerSize.Sm)
             RaftText(
-                stringResource(MR.strings.settings_computers_restarting),
+                stringResource(Res.string.settings_computers_restarting),
                 style = RaftTheme.typography.monoMeta,
                 color = RaftTheme.colors.foregroundMuted,
             )
@@ -532,7 +531,7 @@ private fun RaftComputerRestartProgressLine(restart: SettingsComputerRestartProg
             val error = restart.errorCode
             RaftComputersIcon(if (error != null) RaftLucideIconName.TriangleAlert else RaftLucideIconName.CircleCheck, size = 14.dp)
             RaftText(
-                if (error == null) stringResource(MR.strings.settings_computers_restarted) else raftComputerRestartErrorText(restart),
+                if (error == null) stringResource(Res.string.settings_computers_restarted) else raftComputerRestartErrorText(restart),
                 style = RaftTheme.typography.monoMeta,
                 color = if (error != null) RaftTheme.colors.warningStrong else RaftTheme.colors.foregroundMuted,
             )
@@ -548,11 +547,11 @@ private fun RaftComputerRestartProgressLine(restart: SettingsComputerRestartProg
 @Composable
 private fun raftComputerRestartErrorText(restart: SettingsComputerRestartProgress): String =
     when (val code = restart.errorCode) {
-        COMPUTER_RESTART_TIMED_OUT -> stringResource(MR.strings.settings_computers_restart_timed_out)
-        "computer_offline" -> stringResource(MR.strings.settings_computers_restart_computer_offline)
-        "restart_failed", null -> stringResource(MR.strings.settings_computers_restart_failed)
+        COMPUTER_RESTART_TIMED_OUT -> stringResource(Res.string.settings_computers_restart_timed_out)
+        "computer_offline" -> stringResource(Res.string.settings_computers_restart_computer_offline)
+        "restart_failed", null -> stringResource(Res.string.settings_computers_restart_failed)
         else ->
-            if (restart.requestId == null) stringResource(MR.strings.settings_computers_restart_request_failed) else code.orEmpty()
+            if (restart.requestId == null) stringResource(Res.string.settings_computers_restart_request_failed) else code.orEmpty()
     }
 
 /**
@@ -568,16 +567,16 @@ internal fun RaftComputerRecoveryGuideCard(context: RaftComputerControlsContext)
     val open = disclosure ?: !computer.online
     val windows = context.platform == RaftComputerCommandPlatform.Windows
     RaftCard(
-        title = stringResource(MR.strings.settings_computers_recovery_guide),
+        title = stringResource(Res.string.settings_computers_recovery_guide),
         leading = { RaftComputersIcon(RaftLucideIconName.Terminal) },
         trailing = {
             RaftIconButton(
                 onClick = { disclosure = !open },
                 tooltip =
                     if (open) {
-                        stringResource(MR.strings.settings_computers_recovery_guide_hide)
+                        stringResource(Res.string.settings_computers_recovery_guide_hide)
                     } else {
-                        stringResource(MR.strings.settings_computers_recovery_guide_show)
+                        stringResource(Res.string.settings_computers_recovery_guide_show)
                     },
                 variant = RaftButtonVariant.Ghost,
                 size = RaftIconButtonSize.Md,
@@ -589,26 +588,26 @@ internal fun RaftComputerRecoveryGuideCard(context: RaftComputerControlsContext)
             if (open) {
                 {
                     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        RaftComputerHelp(stringResource(MR.strings.settings_computers_recovery_guide_detail))
+                        RaftComputerHelp(stringResource(Res.string.settings_computers_recovery_guide_detail))
                         RaftComputerRecoveryStep(
-                            label = stringResource(MR.strings.settings_computers_recovery_restart_step),
-                            detail = stringResource(MR.strings.settings_computers_recovery_restart_step_detail),
+                            label = stringResource(Res.string.settings_computers_recovery_restart_step),
+                            detail = stringResource(Res.string.settings_computers_recovery_restart_step_detail),
                             command = commands.restart,
                             onCopy = context.onCopy,
                         )
                         RaftComputerRecoveryStep(
                             label =
                                 stringResource(
-                                    MR.strings.settings_computers_recovery_fresh_install_step,
-                                    if (windows) stringResource(MR.strings.settings_computers_windows_x64_suffix) else "",
+                                    Res.string.settings_computers_recovery_fresh_install_step,
+                                    if (windows) stringResource(Res.string.settings_computers_windows_x64_suffix) else "",
                                 ),
-                            detail = stringResource(MR.strings.settings_computers_recovery_fresh_install_detail),
+                            detail = stringResource(Res.string.settings_computers_recovery_fresh_install_detail),
                             command = fresh.install,
                             onCopy = context.onCopy,
                         )
                         RaftComputerRecoveryStep(
-                            label = stringResource(MR.strings.settings_computers_recovery_restart_after_install_step),
-                            detail = stringResource(MR.strings.settings_computers_recovery_restart_after_install_detail),
+                            label = stringResource(Res.string.settings_computers_recovery_restart_after_install_step),
+                            detail = stringResource(Res.string.settings_computers_recovery_restart_after_install_detail),
                             command = fresh.restartService,
                             onCopy = context.onCopy,
                         )

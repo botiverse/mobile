@@ -1,7 +1,7 @@
 package build.raft.app.data
 
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.resource.StringResource
+import build.raft.app.resources.*
+import org.jetbrains.compose.resources.StringResource
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -365,11 +365,11 @@ sealed interface ActionCardSpecDisplayElement : ActionCardSpecElement {
  */
 fun actionCardScopeGroupLabel(group: String): StringResource? =
     when (group) {
-        "server" -> MR.strings.thread_action_card_scope_group_server
-        "agent" -> MR.strings.thread_action_card_scope_group_agent
-        "channel" -> MR.strings.thread_action_card_scope_group_channel
-        "computer" -> MR.strings.thread_action_card_scope_group_computer
-        "agent_reminder_write" -> MR.strings.thread_action_card_scope_group_agent_reminder_write
+        "server" -> Res.string.thread_action_card_scope_group_server
+        "agent" -> Res.string.thread_action_card_scope_group_agent
+        "channel" -> Res.string.thread_action_card_scope_group_channel
+        "computer" -> Res.string.thread_action_card_scope_group_computer
+        "agent_reminder_write" -> Res.string.thread_action_card_scope_group_agent_reminder_write
         else -> null
     }
 

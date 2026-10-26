@@ -1,14 +1,13 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.base.BridgeAttachmentDownloadProgress
-import build.raft.app.resources.MR
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.ui.PlayState
 import build.raft.app.compat.json.JSONObject
-import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.runBlocking
@@ -1718,12 +1717,12 @@ class RaftFilePreviewDownloadStatusTest {
                 RaftFilePreviewPayload(
                     kind = "unsupported",
                     externalFileName = "archive.zip",
-                    messageDesc = MR.strings.file_preview_no_preview.desc()
+                    messageDesc = Res.string.file_preview_no_preview.desc()
                 ),
                 downloadable = true
             )
 
-        assertEquals(MR.strings.file_preview_download_to_open.desc(), label)
+        assertEquals(Res.string.file_preview_download_to_open.desc(), label)
     }
 
     @Test
@@ -2029,7 +2028,7 @@ class RaftFilePreviewDownloadStatusTest {
             ).toThreadAttachmentLazyPreviewPayload(kind = "image")
 
         assertEquals("loading", payload.kind)
-        assertEquals(MR.strings.file_preview_image.desc(), payload.titleDesc)
+        assertEquals(Res.string.file_preview_image.desc(), payload.titleDesc)
         assertEquals("https://cdn.slock.test/thumb.jpg", payload.imageUrl)
         assertEquals("att-1", payload.attachmentId)
         assertTrue(payload.shouldRenderImagePreview())

@@ -17,7 +17,8 @@ import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextMotion
 import build.raft.app.data.AppLocale
-import build.raft.app.data.currentSystemLanguageTag
+import build.raft.app.resources.raftSystemPreferredLanguageTagsOrEmpty
+import build.raft.app.resources.raftSystemResourceLocale
 import build.raft.designsystem.theme.RaftTypography
 
 /**
@@ -56,18 +57,16 @@ internal expect fun raftPlatformTextMotion(): TextMotion?
 internal val RaftUserContentLocaleList: LocaleList = LocaleList("zh-Hans")
 private val RaftJapaneseUiLocaleList: LocaleList = LocaleList("ja")
 
-// Never throws: unit-test Android stubs and old platforms lack the locale APIs.
-private fun raftSystemLanguageTagOrNull(): String? = runCatching { currentSystemLanguageTag() }.getOrNull()
-
 internal fun raftUiTextLocaleList(
     appLocale: AppLocale? = KmmResourceLocaleRuntime.locale.value,
-    systemLanguageTag: () -> String? = ::raftSystemLanguageTagOrNull,
+    systemLanguageTags: () -> List<String> = ::raftSystemPreferredLanguageTagsOrEmpty,
 ): LocaleList {
     val japaneseUi =
         when (appLocale) {
             AppLocale.Japanese -> true
-            // Not seeded yet / "System default": the strings follow the device language.
-            null, AppLocale.System -> systemLanguageTag()?.trim()?.lowercase()?.let { it == "ja" || it.startsWith("ja-") || it.startsWith("ja_") } == true
+            // Not seeded yet / "System default": the catalog the strings take from the device's
+            // preferred languages ([raftSystemResourceLocale]).
+            null, AppLocale.System -> raftSystemResourceLocale(systemLanguageTags()).language == "ja"
             AppLocale.English, AppLocale.SimplifiedChinese -> false
         }
     return if (japaneseUi) RaftJapaneseUiLocaleList else RaftUserContentLocaleList
@@ -83,19 +82,19 @@ internal fun raftUiTextLocaleList(
  */
 internal object RaftUiTextLocaleState {
     private var lastAppLocale: AppLocale? = KmmResourceLocaleRuntime.locale.value
-    private var lastSystemTag: String? = raftSystemLanguageTagOrNull()
+    private var lastSystemTags: List<String> = raftSystemPreferredLanguageTagsOrEmpty()
 
-    var localeList: LocaleList by mutableStateOf(raftUiTextLocaleList(lastAppLocale) { lastSystemTag })
+    var localeList: LocaleList by mutableStateOf(raftUiTextLocaleList(lastAppLocale) { lastSystemTags })
         private set
 
     fun refresh(
         appLocale: AppLocale? = KmmResourceLocaleRuntime.locale.value,
-        systemTag: String? = raftSystemLanguageTagOrNull(),
+        systemTags: List<String> = raftSystemPreferredLanguageTagsOrEmpty(),
     ) {
-        if (appLocale == lastAppLocale && systemTag == lastSystemTag) return
+        if (appLocale == lastAppLocale && systemTags == lastSystemTags) return
         lastAppLocale = appLocale
-        lastSystemTag = systemTag
-        val next = raftUiTextLocaleList(appLocale) { systemTag }
+        lastSystemTags = systemTags
+        val next = raftUiTextLocaleList(appLocale) { systemTags }
         if (next != localeList) localeList = next
     }
 }

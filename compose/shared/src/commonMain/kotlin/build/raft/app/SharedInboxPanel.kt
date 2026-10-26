@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.RaftBrutalBadge
 import build.raft.app.components.RaftBrutalTone
@@ -67,7 +68,6 @@ import build.raft.app.model.TaskStatus
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.threadIdentity
 import build.raft.app.model.topLevelThreadId
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -123,7 +123,6 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.designsystem.components.RaftToast
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
@@ -442,7 +441,7 @@ internal fun SharedHomeActivityScreen(
         remember(activeDraftRecords) {
             activeDraftRecords.toSharedThreadComposerDraftProjection()
         }
-    val conversationNotReadyMessage = stringResource(MR.strings.inbox_error_conversation_not_ready)
+    val conversationNotReadyMessage = stringResource(Res.string.inbox_error_conversation_not_ready)
     LaunchedEffect(activityStore) {
         // task #436: the probe must run from a COMMITTED effect, not from a
         // remember calculation. Composition can be abandoned or retried, so a
@@ -988,7 +987,7 @@ private fun SharedActivityPanelContent(
         RaftAppShellBodyTopBanner()
         // Task #164 (stdrc O2): under the head, above the filters; the rows and counts stay.
         if (state.stale) {
-            RaftReadWarehouseStaleNotice(stringResource(MR.strings.activity_stale_notice))
+            RaftReadWarehouseStaleNotice(stringResource(Res.string.activity_stale_notice))
         }
         // task #232: filter tabs are a TabPager — the filter bar stays the tap
         // surface (its SetFilter flows back in as selectedIndex and animates
@@ -1046,7 +1045,7 @@ private fun SharedActivityPanelContent(
                 )
             } else {
                 SharedActivityStateBody(
-                    title = stringResource(MR.strings.common_loading),
+                    title = stringResource(Res.string.common_loading),
                     detail = "",
                     loading = true,
                     bottomContentPadding = bottomContentPadding
@@ -1103,18 +1102,18 @@ private fun SharedActivityBodyContent(
         when {
             snapshot == null && state.loading ->
                 SharedActivityStateBody(
-                    title = stringResource(MR.strings.common_loading),
+                    title = stringResource(Res.string.common_loading),
                     detail = "",
                     loading = true,
                     bottomContentPadding = bottomContentPadding
                 )
             snapshot == null && state.errorCode != null ->
                 SharedActivityRefreshableStateBody(
-                    title = stringResource(MR.strings.inbox_error_load_activity),
+                    title = stringResource(Res.string.inbox_error_load_activity),
                     detail =
                         userFacingErrorLabels.forErrorCode(state.errorCode)
                             ?: userFacingErrorLabels.generic(),
-                    actionLabel = if (state.refreshing || state.loading) "…" else stringResource(MR.strings.common_retry),
+                    actionLabel = if (state.refreshing || state.loading) "…" else stringResource(Res.string.common_retry),
                     onAction = { onIntent(SharedActivityIntent.Refresh) },
                     refreshing = state.refreshing,
                     pullRefreshing = state.pullRefreshing,
@@ -1124,7 +1123,7 @@ private fun SharedActivityBodyContent(
                 )
             snapshot == null ->
                 SharedActivityRefreshableStateBody(
-                    title = stringResource(MR.strings.inbox_state_activity_empty),
+                    title = stringResource(Res.string.inbox_state_activity_empty),
                     detail = state.selectedFilter.localizedEmptyCopy(),
                     refreshing = state.refreshing,
                     pullRefreshing = state.pullRefreshing,
@@ -1136,10 +1135,10 @@ private fun SharedActivityBodyContent(
                 SharedActivityRefreshableStateBody(
                     title =
                         when (state.selectedFilter) {
-                            InboxFilter.Mentions -> stringResource(MR.strings.inbox_state_no_mentions)
-                            InboxFilter.Unread -> stringResource(MR.strings.inbox_state_no_unread_chats)
-                            InboxFilter.All -> stringResource(MR.strings.inbox_state_activity_empty)
-                            InboxFilter.Pinned -> stringResource(MR.strings.inbox_state_no_pinned)
+                            InboxFilter.Mentions -> stringResource(Res.string.inbox_state_no_mentions)
+                            InboxFilter.Unread -> stringResource(Res.string.inbox_state_no_unread_chats)
+                            InboxFilter.All -> stringResource(Res.string.inbox_state_activity_empty)
+                            InboxFilter.Pinned -> stringResource(Res.string.inbox_state_no_pinned)
                         },
                     detail = state.selectedFilter.localizedEmptyCopy(),
                     refreshing = state.refreshing,
@@ -1196,7 +1195,7 @@ private fun SharedActivityHeader(
         // stats line, no icon sticker and no back arrow. The title starts on the 16dp phone margin,
         // the edge of the filter tray and of the rows below it.
         RaftTopPageHeader(
-            title = stringResource(MR.strings.tab_activity),
+            title = stringResource(Res.string.tab_activity),
             subtitle = activityHeaderSubtitle(totalCount, totalUnreadCount),
             topSafeAreaOverride = topSafeAreaPadding,
             contentStartPadding = 16.dp,
@@ -1209,7 +1208,7 @@ private fun SharedActivityHeader(
     }
     // web ThreadsInbox head: raft-ui PanelHeader with the phone Back.
     RaftPanelBackHeader(
-        title = stringResource(MR.strings.home_nav_activity),
+        title = stringResource(Res.string.home_nav_activity),
         subtitle = activityHeaderSubtitle(totalCount, totalUnreadCount),
         onBack = onClose,
         topSafeArea = topSafeAreaPadding,
@@ -1224,7 +1223,7 @@ private fun SharedActivityHeader(
  */
 @Composable
 private fun SharedActivityMarkAllReadButton(iconOnly: Boolean, onClick: () -> Unit) {
-    val label = stringResource(MR.strings.inbox_action_mark_all_read)
+    val label = stringResource(Res.string.inbox_action_mark_all_read)
     if (iconOnly) {
         RaftIconButton(
             onClick = onClick,
@@ -1248,7 +1247,7 @@ internal fun activityMarkAllReadIconOnly(toolbarWidth: Dp): Boolean = toolbarWid
 @Composable
 private fun activityHeaderSubtitle(totalCount: Int, totalUnreadCount: Int): String =
     // Web `thread.header.subtitle`: both counts, always.
-    stringResource(MR.strings.activity_header_active_unread_count, totalCount, totalUnreadCount)
+    stringResource(Res.string.activity_header_active_unread_count, totalCount, totalUnreadCount)
 
 @Composable
 private fun SharedActivityFilterBar(
@@ -1999,7 +1998,7 @@ private fun SharedActivityList(
             // web `thread.newUpdates`: a 32dp outline button.
             RaftButton(
                 text = stringResource(
-                    if (updateTracking.pendingCount == 1) MR.strings.activity_updates_one else MR.strings.activity_updates_many,
+                    if (updateTracking.pendingCount == 1) Res.string.activity_updates_one else Res.string.activity_updates_many,
                     updateTracking.pendingCount
                 ),
                 onClick = {
@@ -2027,7 +2026,7 @@ private fun SharedActivityList(
             // web `thread.newUpdates`: the count of those rows not seen yet.
             RaftButton(
                 text = stringResource(
-                    if (newActivityAboveCount == 1) MR.strings.activity_updates_one else MR.strings.activity_updates_many,
+                    if (newActivityAboveCount == 1) Res.string.activity_updates_one else Res.string.activity_updates_many,
                     newActivityAboveCount
                 ),
                 onClick = {
@@ -2039,8 +2038,8 @@ private fun SharedActivityList(
         }
         swipeDoneUndo.pending?.let { pending ->
             RaftToast(
-                title = stringResource(MR.strings.activity_list_marked_done),
-                actionLabel = stringResource(MR.strings.common_undo),
+                title = stringResource(Res.string.activity_list_marked_done),
+                actionLabel = stringResource(Res.string.common_undo),
                 onAction = { swipeDoneUndo = swipeDoneUndo.undo(pending.token) },
                 modifier =
                     Modifier
@@ -2054,10 +2053,10 @@ private fun SharedActivityList(
             RaftToast(
                 title =
                     when (pending.action) {
-                        ActivitySwipeEndAction.UnfollowThread -> stringResource(MR.strings.activity_swipe_unfollowed_thread, conversation)
-                        ActivitySwipeEndAction.MuteActivity -> stringResource(MR.strings.activity_swipe_muted_activity, conversation)
+                        ActivitySwipeEndAction.UnfollowThread -> stringResource(Res.string.activity_swipe_unfollowed_thread, conversation)
+                        ActivitySwipeEndAction.MuteActivity -> stringResource(Res.string.activity_swipe_muted_activity, conversation)
                     },
-                actionLabel = stringResource(MR.strings.common_undo),
+                actionLabel = stringResource(Res.string.common_undo),
                 onAction = { undoSwipeEnd(pending.token) },
                 modifier =
                     Modifier
@@ -2217,15 +2216,15 @@ internal fun activityRowActionLabel(item: InboxItem, actionId: String): String =
     when (actionId) {
         "toggle-read" ->
             if (item.unreadCount > 0) {
-                stringResource(MR.strings.home_action_mark_as_read)
+                stringResource(Res.string.home_action_mark_as_read)
             } else {
-                stringResource(MR.strings.home_action_mark_as_unread)
+                stringResource(Res.string.home_action_mark_as_unread)
             }
-        "done" -> stringResource(MR.strings.thread_action_mark_done)
-        "follow-thread" -> stringResource(MR.strings.thread_action_follow_thread)
-        "unfollow-thread" -> stringResource(MR.strings.thread_action_unfollow_thread)
-        "mute-activity" -> stringResource(MR.strings.activity_action_mute_activity)
-        "unmute-activity" -> stringResource(MR.strings.activity_action_unmute_activity)
+        "done" -> stringResource(Res.string.thread_action_mark_done)
+        "follow-thread" -> stringResource(Res.string.thread_action_follow_thread)
+        "unfollow-thread" -> stringResource(Res.string.thread_action_unfollow_thread)
+        "mute-activity" -> stringResource(Res.string.activity_action_mute_activity)
+        "unmute-activity" -> stringResource(Res.string.activity_action_unmute_activity)
         else -> error("unknown Activity row action: $actionId")
     }
 
@@ -2447,7 +2446,7 @@ private fun SharedActivityLoadingMoreRow() {
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = stringResource(MR.strings.inbox_state_loading_more),
+            text = stringResource(Res.string.inbox_state_loading_more),
             style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextMutedGray),
             color = RaftColor.TextMutedGray
         )
@@ -2466,13 +2465,13 @@ private fun SharedActivityLoadMoreRetryRow(onClick: () -> Unit) {
         horizontalArrangement = Arrangement.Center
     ) {
         Text(
-            text = stringResource(MR.strings.inbox_error_load_more),
+            text = stringResource(Res.string.inbox_error_load_more),
             style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextMutedGray),
             color = RaftColor.TextMutedGray,
             modifier = Modifier.padding(end = 8.dp)
         )
         RaftButton(
-            text = stringResource(MR.strings.common_retry),
+            text = stringResource(Res.string.common_retry),
             onClick = onClick
         )
     }
@@ -2543,10 +2542,10 @@ private fun SharedActivityStateBody(
 private fun InboxFilter.localizedLabel(): String =
     stringResource(
         when (this) {
-            InboxFilter.All -> MR.strings.activity_filter_all
-            InboxFilter.Unread -> MR.strings.activity_filter_unread
-            InboxFilter.Mentions -> MR.strings.activity_filter_mentions
-            InboxFilter.Pinned -> MR.strings.activity_filter_pinned
+            InboxFilter.All -> Res.string.activity_filter_all
+            InboxFilter.Unread -> Res.string.activity_filter_unread
+            InboxFilter.Mentions -> Res.string.activity_filter_mentions
+            InboxFilter.Pinned -> Res.string.activity_filter_pinned
         }
     )
 
@@ -2571,10 +2570,10 @@ private fun InboxFilter.emptyCopy(): String =
 private fun InboxFilter.localizedEmptyCopy(): String =
     stringResource(
         when (this) {
-            InboxFilter.All -> MR.strings.inbox_empty_all_detail
-            InboxFilter.Unread -> MR.strings.inbox_empty_unread_detail
-            InboxFilter.Mentions -> MR.strings.inbox_empty_mentions_detail
-            InboxFilter.Pinned -> MR.strings.inbox_empty_pinned_detail
+            InboxFilter.All -> Res.string.inbox_empty_all_detail
+            InboxFilter.Unread -> Res.string.inbox_empty_unread_detail
+            InboxFilter.Mentions -> Res.string.inbox_empty_mentions_detail
+            InboxFilter.Pinned -> Res.string.inbox_empty_pinned_detail
         }
     )
 

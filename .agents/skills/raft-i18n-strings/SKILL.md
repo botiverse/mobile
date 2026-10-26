@@ -1,34 +1,39 @@
 ---
 name: raft-i18n-strings
-description: Use when adding or changing user-visible text in Raft Mobile (any label, toast, dialog, empty state) — adding the MR string in all three locales (en base, zh-CN, ja), choosing canonical terms, and running the i18n checks instead of a visual capture.
+description: Use when adding or changing user-visible text in Raft Mobile (any label, toast, dialog, empty state) — adding the string resource in all three locales (en base, zh-CN, ja), choosing canonical terms, and running the i18n checks instead of a visual capture.
 ---
 
 # User-visible strings (en / zh-CN / ja)
 
-Every user-visible string is a moko resource; no English literals in
-production UI.
+Every user-visible string is a Compose Multiplatform string resource (`Res.string.<key>`,
+package `build.raft.app.resources`); no English literals in production UI.
 
 ## 1. Add the key in all three files
 
 ```
-compose/shared/src/commonMain/resources/MR/base/strings.xml    # en
-compose/shared/src/commonMain/resources/MR/zh-rCN/strings.xml
-compose/shared/src/commonMain/resources/MR/ja/strings.xml
+compose/shared/src/commonMain/composeResources/values/strings.xml    # en
+compose/shared/src/commonMain/composeResources/values-zh-rCN/strings.xml
+compose/shared/src/commonMain/composeResources/values-ja/strings.xml
 ```
 - Key: `<area>_<thing>` in snake_case, following neighbours
   (`thread_audio_file_label`, `common_copied`). Reuse `common_*` keys.
 - No ASCII leading/trailing spaces (Android trims them, iOS keeps them): use
   `&#160;`. Fix automatically with
   `python3 scripts/ci/check_string_edge_spaces.py --fix`.
-- Placeholders: same count and order in every locale.
+- Placeholders: positional only (`%1$s`, `%2$d`), the same set in every locale
+  (`ComposeResourcesCatalogParityTest` checks keys and placeholders).
+- Plain XML text: write `'` and `"` as is (no Android `\'` escapes); `\n` is a newline.
 
 ## 2. Use it
 
 ```kotlin
-import com.tencent.tmm.kmmresource.compose.stringResource
-RaftText(stringResource(MR.strings.<key>), style = RaftTheme.typography.callout)
+import build.raft.app.resources.*   // Res, the Res.string accessors, stringResource, StringDesc
+RaftText(stringResource(Res.string.<key>), style = RaftTheme.typography.callout)
 ```
-Outside composition use the `StringDesc` helpers already used nearby.
+Use `build.raft.app.resources.stringResource`, not `org.jetbrains.compose.resources.stringResource`:
+only the former follows the in-app language setting. Outside composition build a `StringDesc`
+(`Res.string.<key>.desc()`, `.format(args)`) and call `.resolve()` (or `.localized()` in
+composition).
 
 ## 3. Pick the words
 

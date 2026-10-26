@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -24,14 +25,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.AttachmentPreviewContent
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftCardVariant
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftSpacing
 import build.raft.designsystem.tokens.RaftStroke
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -124,20 +123,20 @@ internal fun RaftFilePreviewCsvPanel(
     val shownRows = csv.rows.size
     val rowsLabel =
         if (csv.truncated) {
-            stringResource(if (shownRows == 1) MR.strings.file_preview_csv_rows_first_one else MR.strings.file_preview_csv_rows_first_other, shownRows)
+            stringResource(if (shownRows == 1) Res.string.file_preview_csv_rows_first_one else Res.string.file_preview_csv_rows_first_other, shownRows)
         } else {
-            stringResource(if (csv.rowCount == 1) MR.strings.file_preview_csv_rows_one else MR.strings.file_preview_csv_rows_other, csv.rowCount)
+            stringResource(if (csv.rowCount == 1) Res.string.file_preview_csv_rows_one else Res.string.file_preview_csv_rows_other, csv.rowCount)
         }
     val columnsLabel =
         stringResource(
-            if (csv.columnCount == 1) MR.strings.file_preview_csv_columns_one else MR.strings.file_preview_csv_columns_other,
+            if (csv.columnCount == 1) Res.string.file_preview_csv_columns_one else Res.string.file_preview_csv_columns_other,
             csv.columnCount,
         )
     val footer =
         if (csv.truncated) {
-            stringResource(MR.strings.file_preview_csv_truncated, shownRows)
+            stringResource(Res.string.file_preview_csv_truncated, shownRows)
         } else {
-            stringResource(MR.strings.file_preview_csv_showing_of, shownRows, csv.rowCount)
+            stringResource(Res.string.file_preview_csv_showing_of, shownRows, csv.rowCount)
         }
     Column(
         modifier = modifier
@@ -151,7 +150,7 @@ internal fun RaftFilePreviewCsvPanel(
             verticalAlignment = Alignment.CenterVertically
         ) {
             RaftText(
-                text = stringResource(MR.strings.file_preview_csv_data),
+                text = stringResource(Res.string.file_preview_csv_data),
                 modifier = Modifier.weight(1f),
                 style = style,
                 color = colors.foregroundHint,
@@ -159,7 +158,7 @@ internal fun RaftFilePreviewCsvPanel(
                 overflow = TextOverflow.Ellipsis
             )
             RaftText(
-                text = stringResource(MR.strings.file_preview_csv_rows_columns, rowsLabel, columnsLabel),
+                text = stringResource(Res.string.file_preview_csv_rows_columns, rowsLabel, columnsLabel),
                 style = style,
                 color = colors.foregroundHint,
                 maxLines = 1
@@ -208,7 +207,7 @@ internal fun RaftFilePreviewDataTable(
     val columns = columnCount.coerceAtLeast(1)
     val headerLabels =
         List(columns) { index ->
-            headers.getOrNull(index).orEmpty().ifEmpty { stringResource(MR.strings.file_preview_table_column_fallback, index + 1) }
+            headers.getOrNull(index).orEmpty().ifEmpty { stringResource(Res.string.file_preview_table_column_fallback, index + 1) }
         }
     val stripe = colors.fillMuted.copy(alpha = colors.fillMuted.alpha * 0.5f)
     BoxWithConstraints(modifier) {

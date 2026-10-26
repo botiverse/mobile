@@ -3,7 +3,7 @@ package build.raft.app
 import build.raft.app.data.RaftSharedKeyValueStoreProvider
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.model.ConversationKind
-import build.raft.kuiklybase.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.flow.MutableStateFlow

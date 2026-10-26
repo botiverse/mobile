@@ -1,7 +1,7 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.ui.geometry.Rect
-import build.raft.app.resources.MR
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import kotlin.test.Test
@@ -299,15 +299,15 @@ class ThreadInPlaceTextSelectionTest {
     @Test
     fun copyReadsCopySelectionOnlyForAPartialSelection() {
         assertEquals(
-            MR.strings.thread_action_copy_markdown,
+            Res.string.thread_action_copy_markdown,
             ThreadNewMessageMenuTool.Copy.compactLabelResource(messageMenu)
         )
         assertEquals(
-            MR.strings.thread_action_copy_markdown,
+            Res.string.thread_action_copy_markdown,
             ThreadNewMessageMenuTool.Copy.compactLabelResource(fullSelectionMenu)
         )
         assertEquals(
-            MR.strings.thread_text_selection_copy_selection,
+            Res.string.thread_text_selection_copy_selection,
             ThreadNewMessageMenuTool.Copy.compactLabelResource(partialSelectionMenu)
         )
     }
@@ -358,7 +358,7 @@ class ThreadInPlaceTextSelectionTest {
         assertFalse(partialSelectionMenu.showsReactionRow())
         assertFalse(partialSelectionMenu.reactions)
         assertEquals(
-            MR.strings.thread_text_selection_select_all,
+            Res.string.thread_text_selection_select_all,
             ThreadNewMessageMenuTool.SelectAll.compactLabelResource(partialSelectionMenu)
         )
         // Whole-message tools never reach a partial selection, not even on the second row.

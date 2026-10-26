@@ -1,7 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.KmmResourceLocaleRuntime
-import com.tencent.tmm.kmmresource.resource.desc.StringDesc
+import build.raft.app.resources.StringDesc
 
 /** Opaque process-locale state returned by [applyVisualCaptureLocale]. */
 class VisualCaptureLocaleRestoreToken internal constructor(

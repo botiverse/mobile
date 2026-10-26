@@ -1,13 +1,12 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.data.InboxItem
 import build.raft.app.model.ChannelId
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageId
 import build.raft.app.network.sync.ReplyPreview
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -108,16 +107,16 @@ class ThreadActivityOpenSeedIdentityTest {
     @Test
     fun aStandInWhoseLoadIsRunningSaysOlderMessagesAreLoading() {
         val loading = threadOlderMessagesStatusSpec(canLoadMoreBefore = false, durableLastKnown = true, mainLoadFailed = false)
-        assertEquals(MR.strings.thread_state_loading_older.desc(), loading.label)
+        assertEquals(Res.string.thread_state_loading_older.desc(), loading.label)
         assertTrue(loading.loading)
         // Only a failed load makes "not available offline" true.
         val offline = threadOlderMessagesStatusSpec(canLoadMoreBefore = false, durableLastKnown = true, mainLoadFailed = true)
-        assertEquals(MR.strings.thread_offline_older_unavailable.desc(), offline.label)
+        assertEquals(Res.string.thread_offline_older_unavailable.desc(), offline.label)
         assertFalse(offline.loading)
         // A canonical frame, and a stand-in that reaches the start, are unchanged.
         assertFalse(threadOlderMessagesStatusSpec(canLoadMoreBefore = false).loading)
         assertEquals(
-            MR.strings.thread_state_beginning_conversation.desc(),
+            Res.string.thread_state_beginning_conversation.desc(),
             threadOlderMessagesStatusSpec(canLoadMoreBefore = false, durableLastKnown = true, durableReachedOldest = true).label,
         )
         // The seeded first frame itself (the Activity row's message, its load running).

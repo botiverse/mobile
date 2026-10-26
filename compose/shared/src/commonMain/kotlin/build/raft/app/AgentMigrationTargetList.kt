@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.format.RaftFormat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -23,7 +24,6 @@ import build.raft.app.data.RuntimeQuotaLinePart
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.getRuntimeDisplayName
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftChoiceList
 import build.raft.designsystem.components.RaftChoiceListItem
@@ -35,7 +35,6 @@ import build.raft.designsystem.components.RaftSheet
 import build.raft.designsystem.components.RaftSheetSurface
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /*
  * The Move dialog's target list (web TargetComputerList / targetComputerInfo /
@@ -97,12 +96,12 @@ internal fun agentMigrationOfflineDuration(lastHeartbeat: String?, nowMillis: Lo
 
 @Composable
 private fun rememberAgentMigrationTargetInfoCopy(): AgentMigrationTargetInfoCopy {
-    val offline = stringResource(MR.strings.agent_migration_target_offline)
-    val memory = stringResource(MR.strings.agent_migration_target_memory_free, "\u0001")
-    val disk = stringResource(MR.strings.agent_migration_target_disk_free, "\u0001")
-    val none = stringResource(MR.strings.agent_migration_target_agents_none)
-    val one = stringResource(MR.strings.agent_migration_target_agents_one, "\u0001")
-    val other = stringResource(MR.strings.agent_migration_target_agents_other, "\u0001")
+    val offline = stringResource(Res.string.agent_migration_target_offline)
+    val memory = stringResource(Res.string.agent_migration_target_memory_free, "\u0001")
+    val disk = stringResource(Res.string.agent_migration_target_disk_free, "\u0001")
+    val none = stringResource(Res.string.agent_migration_target_agents_none)
+    val one = stringResource(Res.string.agent_migration_target_agents_one, "\u0001")
+    val other = stringResource(Res.string.agent_migration_target_agents_other, "\u0001")
     return remember(offline, memory, disk, none, one, other) {
         AgentMigrationTargetInfoCopy(
             offline = offline,
@@ -180,10 +179,10 @@ internal fun AgentMigrationTargetList(
         items = items,
         value = selected,
         onValueChange = onSelect,
-        searchPlaceholder = stringResource(MR.strings.agent_migration_target_search),
-        clearSearchLabel = stringResource(MR.strings.agent_migration_target_clear_search),
-        noMatchLabel = stringResource(MR.strings.agent_migration_target_no_matches),
-        emptyLabel = stringResource(MR.strings.agent_migration_detail_no_other_attached_computer),
+        searchPlaceholder = stringResource(Res.string.agent_migration_target_search),
+        clearSearchLabel = stringResource(Res.string.agent_migration_target_clear_search),
+        noMatchLabel = stringResource(Res.string.agent_migration_target_no_matches),
+        emptyLabel = stringResource(Res.string.agent_migration_detail_no_other_attached_computer),
         enabled = enabled,
         initialQuery = initialQuery,
         action = { item ->
@@ -191,7 +190,7 @@ internal fun AgentMigrationTargetList(
             if (item.value != HOSTED_TARGET_CHOICE) {
                 RaftIconButton(
                     onClick = { details = item.value },
-                    tooltip = stringResource(MR.strings.agent_migration_target_details, item.label),
+                    tooltip = stringResource(Res.string.agent_migration_target_details, item.label),
                     variant = RaftButtonVariant.Ghost
                 ) {
                     RaftGlyphIcon(RaftGlyph.Info, size = 18.dp)
@@ -252,7 +251,7 @@ private fun AgentMigrationTargetDetailsContent(
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (usage != null && agentRuntime != null) {
             RaftText(
-                stringResource(MR.strings.settings_computers_runtime_usage_title, getRuntimeDisplayName(agentRuntime)),
+                stringResource(Res.string.settings_computers_runtime_usage_title, getRuntimeDisplayName(agentRuntime)),
                 style = typography.footnote.copy(fontWeight = FontWeight.SemiBold),
                 color = colors.foregroundMuted
             )
@@ -263,9 +262,9 @@ private fun AgentMigrationTargetDetailsContent(
                     available.snapshot.collectedAt
                         ?.let { raftRelativeTimestampLabel(it, timeContext, clampFuture = true) }
                         ?.takeIf { it.isNotEmpty() }
-                        ?: stringResource(MR.strings.settings_computers_runtime_usage_recently)
+                        ?: stringResource(Res.string.settings_computers_runtime_usage_recently)
                 RaftText(
-                    stringResource(MR.strings.agent_migration_target_last_reported, reported),
+                    stringResource(Res.string.agent_migration_target_last_reported, reported),
                     style = typography.caption,
                     color = colors.foregroundHint
                 )
@@ -282,35 +281,35 @@ private fun AgentMigrationTargetDetailsContent(
             }
         // In the row's order: agents, memory, disk (web #11086). Opened for one row, nothing is cut off.
         val infoCopy = rememberAgentMigrationTargetInfoCopy()
-        val agentsTitle = stringResource(MR.strings.agent_migration_target_agents_title)
+        val agentsTitle = stringResource(Res.string.agent_migration_target_agents_title)
         computer.agentCount?.let { count -> AgentMigrationSizeSection(title = agentsTitle, text = infoCopy.agents(count)) }
         AgentMigrationSizeSection(
-            title = stringResource(MR.strings.agent_migration_target_memory),
+            title = stringResource(Res.string.agent_migration_target_memory),
             text =
                 agentMigrationSizeText(
                     computer.liveMemoryStatus(),
                     computer.offline,
                     offlineFor,
                     SizeWords(
-                        MR.strings.agent_migration_target_memory_detail,
-                        MR.strings.agent_migration_target_memory_unknown,
-                        MR.strings.agent_migration_target_memory_offline,
-                        MR.strings.agent_migration_target_memory_offline_for
+                        Res.string.agent_migration_target_memory_detail,
+                        Res.string.agent_migration_target_memory_unknown,
+                        Res.string.agent_migration_target_memory_offline,
+                        Res.string.agent_migration_target_memory_offline_for
                     )
                 )
         )
         AgentMigrationSizeSection(
-            title = stringResource(MR.strings.agent_migration_target_disk),
+            title = stringResource(Res.string.agent_migration_target_disk),
             text =
                 agentMigrationSizeText(
                     computer.liveDiskStatus(),
                     computer.offline,
                     offlineFor,
                     SizeWords(
-                        MR.strings.agent_migration_target_disk_detail,
-                        MR.strings.agent_migration_target_disk_unknown,
-                        MR.strings.agent_migration_target_disk_offline,
-                        MR.strings.agent_migration_target_disk_offline_for
+                        Res.string.agent_migration_target_disk_detail,
+                        Res.string.agent_migration_target_disk_unknown,
+                        Res.string.agent_migration_target_disk_offline,
+                        Res.string.agent_migration_target_disk_offline_for
                     )
                 )
         )
@@ -318,10 +317,10 @@ private fun AgentMigrationTargetDetailsContent(
 }
 
 private class SizeWords(
-    val detail: com.tencent.tmm.kmmresource.resource.StringResource,
-    val unknown: com.tencent.tmm.kmmresource.resource.StringResource,
-    val offline: com.tencent.tmm.kmmresource.resource.StringResource,
-    val offlineFor: com.tencent.tmm.kmmresource.resource.StringResource
+    val detail: org.jetbrains.compose.resources.StringResource,
+    val unknown: org.jetbrains.compose.resources.StringResource,
+    val offline: org.jetbrains.compose.resources.StringResource,
+    val offlineFor: org.jetbrains.compose.resources.StringResource
 )
 
 @Composable
@@ -338,11 +337,11 @@ private fun agentMigrationDurationText(unit: AgentMigrationDurationUnit, count: 
     val one = count == 1
     return when (unit) {
         AgentMigrationDurationUnit.Minutes ->
-            stringResource(if (one) MR.strings.agent_migration_target_duration_minutes_one else MR.strings.agent_migration_target_duration_minutes_other, count)
+            stringResource(if (one) Res.string.agent_migration_target_duration_minutes_one else Res.string.agent_migration_target_duration_minutes_other, count)
         AgentMigrationDurationUnit.Hours ->
-            stringResource(if (one) MR.strings.agent_migration_target_duration_hours_one else MR.strings.agent_migration_target_duration_hours_other, count)
+            stringResource(if (one) Res.string.agent_migration_target_duration_hours_one else Res.string.agent_migration_target_duration_hours_other, count)
         AgentMigrationDurationUnit.Days ->
-            stringResource(if (one) MR.strings.agent_migration_target_duration_days_one else MR.strings.agent_migration_target_duration_days_other, count)
+            stringResource(if (one) Res.string.agent_migration_target_duration_days_one else Res.string.agent_migration_target_duration_days_other, count)
     }
 }
 

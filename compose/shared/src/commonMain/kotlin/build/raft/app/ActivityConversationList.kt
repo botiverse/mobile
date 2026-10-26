@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.markdown.RaftMarkdownPreview
 import build.raft.app.markdown.markdownToPreview
 import androidx.compose.runtime.getValue
@@ -68,7 +69,6 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.agentAvatarFallbackWireValue
 import build.raft.app.model.avatarWireValueForAvatarSlot
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftConversationKindGlyph
 import build.raft.designsystem.components.RaftConversationKindIcon
 import build.raft.designsystem.components.RaftIconTile
@@ -81,7 +81,6 @@ import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.components.raftUnreadCountText
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /*
  * Activity conversation list, the only Activity layout: the KMP port of the web
@@ -614,12 +613,12 @@ internal fun ActivityConversationListRow(
     val bodyLine = with(density) { typography.callout.lineHeight.toDp() }
     val titleColor = if (model.strong) colors.foreground else colors.foregroundMuted
     val bodyColor = if (model.strong) colors.foreground else colors.foregroundMuted
-    val threadFallback = stringResource(MR.strings.activity_fallback_thread_update)
-    val actionFallback = stringResource(MR.strings.activity_fallback_action_required)
-    val conversationFallback = stringResource(MR.strings.activity_fallback_conversation_update)
-    val systemLabel = stringResource(MR.strings.activity_list_system_sender)
-    val selfLabel = stringResource(MR.strings.activity_list_self_sender)
-    val openLabel = stringResource(MR.strings.common_open)
+    val threadFallback = stringResource(Res.string.activity_fallback_thread_update)
+    val actionFallback = stringResource(Res.string.activity_fallback_action_required)
+    val conversationFallback = stringResource(Res.string.activity_fallback_conversation_update)
+    val systemLabel = stringResource(Res.string.activity_list_system_sender)
+    val selfLabel = stringResource(Res.string.activity_list_self_sender)
+    val openLabel = stringResource(Res.string.common_open)
     val latestOnAccessibilityAction by rememberUpdatedState(onAccessibilityAction)
     val accessibilityActions =
         accessibilityActionIds.map { actionId ->
@@ -628,7 +627,7 @@ internal fun ActivityConversationListRow(
                 true
             }
         }
-    val threadChannelText = model.threadChannelLabel?.let { stringResource(MR.strings.activity_list_thread_channel, it) }
+    val threadChannelText = model.threadChannelLabel?.let { stringResource(Res.string.activity_list_thread_channel, it) }
     // A DM thread's face says the peer, so its line drops "@peer ·"; screen readers still hear it.
     val visibleThreadChannelText = threadChannelText?.takeIf { model.threadChannelLabelVisible }
     val fallback =
@@ -929,7 +928,7 @@ private fun ActivityConversationMarks(model: ActivityConversationRowModel, marks
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (model.hasDraft) {
-            val draftDescription = stringResource(MR.strings.activity_list_draft_description)
+            val draftDescription = stringResource(Res.string.activity_list_draft_description)
             Box(
                 modifier =
                     Modifier.semantics {
@@ -941,7 +940,7 @@ private fun ActivityConversationMarks(model: ActivityConversationRowModel, marks
             }
         }
         if (model.showMentionMarker) {
-            RaftMentionMarker(contentDescription = stringResource(MR.strings.activity_list_mentioned_you))
+            RaftMentionMarker(contentDescription = stringResource(Res.string.activity_list_mentioned_you))
         }
         when {
             model.muted ->
@@ -950,7 +949,7 @@ private fun ActivityConversationMarks(model: ActivityConversationRowModel, marks
                 RaftUnreadCount(
                     model.unreadCount,
                     contentDescription =
-                        stringResource(MR.strings.activity_list_unread_count_description, model.unreadCount),
+                        stringResource(Res.string.activity_list_unread_count_description, model.unreadCount),
                 )
         }
     }

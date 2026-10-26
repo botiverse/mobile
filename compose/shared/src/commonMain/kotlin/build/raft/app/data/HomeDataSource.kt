@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.resources.*
 import build.raft.app.raftAvatarDiagnosticsSource
 import build.raft.app.projectionRejectingDiagnosticsLogger
 import build.raft.app.model.ServerId
@@ -21,10 +22,6 @@ import build.raft.app.model.SyncResumeResponse
 import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadUpdated
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.resource.desc.StringDesc
-import com.tencent.tmm.kmmresource.resource.desc.desc
-import com.tencent.tmm.kmmresource.resource.format
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Deferred
@@ -360,8 +357,8 @@ internal fun SharedSettingsUpdateCheckSnapshot.toSharedHomeAppUpdateNotification
         title = "App update available",
         body = "Current version $currentVersion. Latest version $latestVersion.",
         actionLabel = appUpdateNotificationActionLabel(),
-        titleDesc = MR.strings.home_notification_app_update_title.desc(),
-        bodyDesc = MR.strings.home_notification_app_update_body.format(listOf(localizedCurrentVersion, localizedLatestVersion)),
+        titleDesc = Res.string.home_notification_app_update_title.desc(),
+        bodyDesc = Res.string.home_notification_app_update_body.format(listOf(localizedCurrentVersion, localizedLatestVersion)),
         actionLabelDesc = appUpdateNotificationActionDesc(),
         targetId = APP_UPDATE_HOME_NOTIFICATION_ID,
         kind = SharedHomeNotificationKind.Info,
@@ -392,9 +389,9 @@ private fun SharedSettingsUpdateCheckSnapshot.appUpdateNotificationActionLabel()
 private fun SharedSettingsUpdateCheckSnapshot.appUpdateNotificationActionDesc(): StringDesc? =
     appUpdateNotificationActionLabel().lowercase().let { action ->
         when (action) {
-            "downloading" -> MR.strings.home_notification_action_downloading.desc()
-            "install" -> MR.strings.home_notification_action_install.desc()
-            "download", "" -> MR.strings.home_notification_action_download.desc()
+            "downloading" -> Res.string.home_notification_action_downloading.desc()
+            "install" -> Res.string.home_notification_action_install.desc()
+            "download", "" -> Res.string.home_notification_action_download.desc()
             else -> null
         }
     }
@@ -421,17 +418,17 @@ private fun ComputerListSummary.toSharedHomeMachineNotifications(
             actionLabel = "View",
             titleDesc =
                 if (offlineMachines.size == 1) {
-                    MR.strings.home_notification_machine_offline_title_one.format(listOf(names))
+                    Res.string.home_notification_machine_offline_title_one.format(listOf(names))
                 } else {
-                    MR.strings.home_notification_machine_offline_title_many.format(listOf(names))
+                    Res.string.home_notification_machine_offline_title_many.format(listOf(names))
                 },
             bodyDesc =
                 if (offlineMachines.size == 1) {
-                    MR.strings.home_notification_machine_offline_body_one.desc()
+                    Res.string.home_notification_machine_offline_body_one.desc()
                 } else {
-                    MR.strings.home_notification_machine_offline_body_many.desc()
+                    Res.string.home_notification_machine_offline_body_many.desc()
                 },
-            actionLabelDesc = MR.strings.home_action_view.desc(),
+            actionLabelDesc = Res.string.home_action_view.desc(),
             targetId = offlineMachines.first().id,
             kind = SharedHomeNotificationKind.Warning,
             icon = SharedHomeNotificationIcon.WifiOff
@@ -454,12 +451,12 @@ private fun ComputerListSummary.toSharedHomeMachineNotifications(
             actionLabel = "View",
             titleDesc =
                 if (outdatedMachines.size == 1) {
-                    MR.strings.home_notification_machine_outdated_title_one.format(listOf(names))
+                    Res.string.home_notification_machine_outdated_title_one.format(listOf(names))
                 } else {
-                    MR.strings.home_notification_machine_outdated_title_many.format(listOf(names))
+                    Res.string.home_notification_machine_outdated_title_many.format(listOf(names))
                 },
-            bodyDesc = MR.strings.home_notification_machine_outdated_body.desc(),
-            actionLabelDesc = MR.strings.home_action_view.desc(),
+            bodyDesc = Res.string.home_notification_machine_outdated_body.desc(),
+            actionLabelDesc = Res.string.home_action_view.desc(),
             targetId = outdatedMachines.first().id,
             kind = SharedHomeNotificationKind.Warning,
             icon = SharedHomeNotificationIcon.CircleArrowUp

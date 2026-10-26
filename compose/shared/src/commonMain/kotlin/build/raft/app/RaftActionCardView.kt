@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -13,7 +14,6 @@ import build.raft.app.data.ActionCardSpecAction
 import build.raft.app.data.ActionCardSpecButton
 import build.raft.app.data.ActionCardSpecCard
 import build.raft.app.data.ActionCardSpecEntityRef
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
@@ -23,7 +23,6 @@ import build.raft.designsystem.components.RaftMessageActionCardHeaderDescription
 import build.raft.designsystem.components.RaftMessageActionCardNotice
 import build.raft.designsystem.components.RaftMessageActionCardStatusTone
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /** `actionMetadata.state` as the frame shows it. */
 internal enum class RaftActionCardStatus { Prepared, Executed, Frozen, ReconfirmRequired }
@@ -150,10 +149,10 @@ internal fun RaftActionCardView(
                 },
             status =
                 when {
-                    executed -> stringResource(MR.strings.common_done)
-                    state.status == RaftActionCardStatus.Frozen -> stringResource(MR.strings.thread_action_card_frozen)
-                    state.status == RaftActionCardStatus.ReconfirmRequired -> stringResource(MR.strings.thread_action_card_status_reconfirm)
-                    viewOnly -> stringResource(MR.strings.thread_action_card_view_only)
+                    executed -> stringResource(Res.string.common_done)
+                    state.status == RaftActionCardStatus.Frozen -> stringResource(Res.string.thread_action_card_frozen)
+                    state.status == RaftActionCardStatus.ReconfirmRequired -> stringResource(Res.string.thread_action_card_status_reconfirm)
+                    viewOnly -> stringResource(Res.string.thread_action_card_view_only)
                     else -> null
                 },
             statusTone =
@@ -165,10 +164,10 @@ internal fun RaftActionCardView(
             expanded = expanded,
             onExpandedChange =
                 if (executed || viewOnly || state.status != RaftActionCardStatus.Prepared) ({ expanded = it }) else null,
-            toggleLabel = stringResource(MR.strings.thread_action_card_toggle_details),
+            toggleLabel = stringResource(Res.string.thread_action_card_toggle_details),
         ) {
             state.runsOnServerName?.takeIf { it.isNotBlank() }?.let { server ->
-                RaftMessageActionCardNotice(stringResource(MR.strings.thread_action_card_runs_on_server, server))
+                RaftMessageActionCardNotice(stringResource(Res.string.thread_action_card_runs_on_server, server))
             }
             RaftCardTree(card.spec.root, card.spec.elements, context)
             if (executed) card.result?.let { result -> RaftCardTree(result.root, result.elements, context(inSpecOfExecutedCard = false)) }

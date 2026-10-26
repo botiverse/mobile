@@ -558,7 +558,7 @@
     <string name="thread_quoted_permalink_one_file">ファイル 1 件</string>
     <string name="thread_quoted_permalink_images">画像 %1$d 枚</string>
     <string name="thread_quoted_permalink_attachments">添付ファイル %1$d 件</string>
-<string name="thread_member_role_member">メンバー</string>
+    <string name="thread_member_role_member">メンバー</string>
     <string name="thread_member_role_system">システム</string>
     <string name="thread_settings_edit_channel">チャンネルを編集</string>
     <string name="thread_dm_settings_title">DM設定</string>
@@ -1535,8 +1535,8 @@
     <string name="tasks_filter_assignee">担当者で絞り込み</string>
     <string name="tasks_search_channels">チャンネルを検索</string>
     <string name="tasks_search_creators">作成者を検索</string>
-        <string name="tasks_assignee_picker_title">担当者を設定</string>
-<string name="tasks_search_assignees">担当者を検索</string>
+    <string name="tasks_assignee_picker_title">担当者を設定</string>
+    <string name="tasks_search_assignees">担当者を検索</string>
     <string name="tasks_assignee_unassigned">未割り当て</string>
     <string name="tasks_detail_task_identifier">タスク #%1$d</string>
     <string name="tasks_state_updating">更新中</string>

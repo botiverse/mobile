@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
@@ -34,7 +35,6 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.model.formatRaftTimestampLabel
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftAvatarType
@@ -49,7 +49,6 @@ import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 // web AttachmentCommentsPanel (packages/web/src/components/message/AttachmentCommentsPanel.tsx):
 // a `min-h-10 px-3 py-1.5` header over a `line-seam`, the comment cards in a `px-3 py-2`
@@ -128,7 +127,7 @@ private fun AttachmentCommentsHeader(filename: String, onClose: (() -> Unit)?) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             RaftText(
-                text = stringResource(MR.strings.thread_comments_header, filename),
+                text = stringResource(Res.string.thread_comments_header, filename),
                 style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Bold).withRaftTextRendering(),
                 color = colors.foreground,
                 maxLines = 1,
@@ -136,7 +135,7 @@ private fun AttachmentCommentsHeader(filename: String, onClose: (() -> Unit)?) {
                 modifier = Modifier.weight(1f)
             )
             if (onClose != null) {
-                val closeLabel = stringResource(MR.strings.common_close)
+                val closeLabel = stringResource(Res.string.common_close)
                 RaftIconButton(
                     onClick = onClose,
                     tooltip = closeLabel,
@@ -180,13 +179,13 @@ private fun AttachmentCommentsList(
                             errorCode = state.errorCode,
                             serverMessage = state.errorServerMessage,
                             labels = labels,
-                            genericMessage = stringResource(MR.strings.thread_comments_load_failed)
+                            genericMessage = stringResource(Res.string.thread_comments_load_failed)
                         ),
                     style = RaftTheme.typography.footnote.withRaftTextRendering(),
                     color = colors.foregroundMuted
                 )
                 build.raft.designsystem.components.RaftButton(
-                    text = stringResource(MR.strings.common_retry),
+                    text = stringResource(Res.string.common_retry),
                     onClick = onRetry
                 )
             }
@@ -194,7 +193,7 @@ private fun AttachmentCommentsList(
         comments.isEmpty() ->
             Column(modifier = Modifier.fillMaxSize().padding(horizontal = CommentsEdge, vertical = CommentsListPaddingVertical)) {
                 RaftText(
-                    text = stringResource(MR.strings.thread_comments_empty_hint, state.attachment.name),
+                    text = stringResource(Res.string.thread_comments_empty_hint, state.attachment.name),
                     style = RaftTheme.typography.footnote.withRaftTextRendering(),
                     color = colors.foregroundMuted,
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 12.dp)
@@ -260,7 +259,7 @@ private fun AttachmentCommentCard(comment: ThreadAttachmentCommentItem, filename
                     }
             )
             RaftText(
-                text = comment.senderName.ifBlank { stringResource(MR.strings.thread_comments_unknown_author) },
+                text = comment.senderName.ifBlank { stringResource(Res.string.thread_comments_unknown_author) },
                 style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Bold).withRaftTextRendering(),
                 color = colors.foreground,
                 maxLines = 1,
@@ -323,7 +322,7 @@ private fun AttachmentCommentChip(
             modifier = Modifier.weight(1f, fill = false)
         )
         if (onRemove != null) {
-            val removeLabel = stringResource(MR.strings.common_close)
+            val removeLabel = stringResource(Res.string.common_close)
             Box(
                 modifier =
                     Modifier
@@ -376,7 +375,7 @@ private fun AttachmentCommentsDock(
                     quote?.let {
                         AttachmentCommentChip(
                             icon = RaftLucideIconName.MessageSquarePlus,
-                            label = stringResource(MR.strings.thread_comments_quote, it)
+                            label = stringResource(Res.string.thread_comments_quote, it)
                         )
                     }
                 }
@@ -393,7 +392,7 @@ private fun AttachmentCommentsDock(
                             errorCode = code,
                             serverMessage = state.errorServerMessage,
                             labels = threadUserFacingErrorLabels(),
-                            genericMessage = stringResource(MR.strings.common_error)
+                            genericMessage = stringResource(Res.string.common_error)
                         ),
                     style = RaftTheme.typography.caption.withRaftTextRendering(),
                     color = colors.dangerStrong,
@@ -431,7 +430,7 @@ private fun AttachmentCommentComposer(
     ) {
         TextField(
             value = state.draft,
-            placeholder = stringResource(MR.strings.thread_comments_composer_placeholder, state.attachment.name),
+            placeholder = stringResource(Res.string.thread_comments_composer_placeholder, state.attachment.name),
             autoFocus = false,
             onValueChange = onDraftChange,
             enabled = enabled,
@@ -457,7 +456,7 @@ private fun AttachmentCommentComposer(
                     .heightIn(min = CommentComposerInputMinHeight, max = CommentComposerInputMaxHeight)
         )
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            val sendLabel = stringResource(MR.strings.common_send)
+            val sendLabel = stringResource(Res.string.common_send)
             RaftIconButton(
                 onClick = onSend,
                 tooltip = sendLabel,
@@ -465,7 +464,7 @@ private fun AttachmentCommentComposer(
                 size = RaftIconButtonSize.Md,
                 enabled = enabled && state.draft.text.isNotBlank(),
                 loading = state.sending,
-                loadingLabel = stringResource(MR.strings.thread_comments_sending)
+                loadingLabel = stringResource(Res.string.thread_comments_sending)
             ) {
                 val ink = LocalRaftContentColor.current
                 RaftLucideIcon(RaftLucideIconName.Send, modifier = Modifier.size(18.dp), color = raftArgbHex(ink))

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,7 +29,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.components.RaftDesignSystemTheme
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -43,7 +43,6 @@ import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /** The preview kind of a PDF attachment (web `attachmentPreview.ts`: `.pdf` or `application/pdf`). */
 internal const val RaftFilePreviewPdfKind = "pdf"
@@ -233,7 +232,7 @@ internal fun RaftFilePreviewPdfViewerFrame(
         viewer(Modifier.fillMaxSize())
         raftFilePreviewPdfPageIndicatorArgs(currentPage, pageCount)?.let { (current, count) ->
             RaftBadge(
-                text = stringResource(MR.strings.file_preview_pdf_page_indicator, current, count),
+                text = stringResource(Res.string.file_preview_pdf_page_indicator, current, count),
                 appearance = RaftBadgeAppearance.Solid,
                 variant = RaftBadgeVariant.Default,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp + bottomInset)
@@ -273,7 +272,7 @@ private fun RaftFilePreviewPdfStatusCard(
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 RaftText(
-                    text = name.ifBlank { stringResource(MR.strings.file_preview_fallback_file) },
+                    text = name.ifBlank { stringResource(Res.string.file_preview_fallback_file) },
                     modifier = Modifier.raftCopyable(name),
                     style = typography.headline,
                     color = colors.foreground,
@@ -298,17 +297,17 @@ private fun RaftFilePreviewPdfStatusCard(
                         title =
                             stringResource(
                                 when (state.reason) {
-                                    RaftFilePreviewPdfFailure.PasswordProtected -> MR.strings.file_preview_pdf_password_title
-                                    RaftFilePreviewPdfFailure.Corrupt -> MR.strings.file_preview_pdf_corrupt_title
-                                    RaftFilePreviewPdfFailure.Download -> MR.strings.file_preview_download_failed
+                                    RaftFilePreviewPdfFailure.PasswordProtected -> Res.string.file_preview_pdf_password_title
+                                    RaftFilePreviewPdfFailure.Corrupt -> Res.string.file_preview_pdf_corrupt_title
+                                    RaftFilePreviewPdfFailure.Download -> Res.string.file_preview_download_failed
                                 }
                             ),
                         description =
                             when (state.reason) {
-                                RaftFilePreviewPdfFailure.PasswordProtected -> stringResource(MR.strings.file_preview_pdf_password_detail)
-                                RaftFilePreviewPdfFailure.Corrupt -> stringResource(MR.strings.file_preview_pdf_corrupt_detail)
+                                RaftFilePreviewPdfFailure.PasswordProtected -> stringResource(Res.string.file_preview_pdf_password_detail)
+                                RaftFilePreviewPdfFailure.Corrupt -> stringResource(Res.string.file_preview_pdf_corrupt_detail)
                                 RaftFilePreviewPdfFailure.Download ->
-                                    state.message ?: stringResource(MR.strings.file_preview_error_download_attachment)
+                                    state.message ?: stringResource(Res.string.file_preview_error_download_attachment)
                             },
                         status = RaftBannerStatus.Warning,
                         modifier = Modifier.fillMaxWidth()
@@ -327,7 +326,7 @@ private fun RaftFilePreviewPdfStatusCard(
             }
             if (state.canRetry && onRetry != null) {
                 RaftButton(
-                    text = stringResource(MR.strings.common_retry),
+                    text = stringResource(Res.string.common_retry),
                     onClick = onRetry,
                     modifier = Modifier.fillMaxWidth(),
                     variant = RaftButtonVariant.Primary,
@@ -337,7 +336,7 @@ private fun RaftFilePreviewPdfStatusCard(
             }
             if (failure != null && onOpenInOtherApp != null) {
                 RaftButton(
-                    text = stringResource(MR.strings.file_preview_action_open_in_other_app),
+                    text = stringResource(Res.string.file_preview_action_open_in_other_app),
                     onClick = onOpenInOtherApp,
                     modifier = Modifier.fillMaxWidth(),
                     variant = if (state.canRetry) RaftButtonVariant.Default else RaftButtonVariant.Primary,

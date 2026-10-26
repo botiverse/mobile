@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.resources.raftSystemPreferredLanguageTagsOrEmpty
 import build.raft.app.toJointConnectionsDurableRecord
 import build.raft.app.toJointConnectionsSnapshot
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Loader
@@ -2760,7 +2761,7 @@ internal class RaftSharedStoreProvider private constructor(
                         displayLanguage = {
                             KeyValueLocalePreferenceStore(sharedPreferenceStore)
                                 .readLocaleSync()
-                                .displayLanguageTag(currentSystemLanguageTag())
+                                .displayLanguageTag(raftSystemPreferredLanguageTagsOrEmpty())
                         },
                         diagnosticsLogger = sharedInfoLogger("SlockMessageTranslation", "shared_message_translation")
                     ),

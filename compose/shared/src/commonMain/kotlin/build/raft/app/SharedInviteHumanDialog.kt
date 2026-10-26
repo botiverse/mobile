@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,7 +27,6 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.SettingsServerJoinLinkSnapshot
 import build.raft.app.data.SharedMembersDataSource
 import build.raft.app.model.ServerSummary
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
@@ -48,8 +48,7 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
-import build.raft.kuiklybase.datetime.Clock
-import com.tencent.tmm.kmmresource.compose.stringResource
+import kotlin.time.Clock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -218,12 +217,12 @@ internal fun SharedServerInviteHumanDialogHost(
 ) {
     val scope = rememberCoroutineScope()
     val errorStrings = localizedErrorPresentationStrings()
-    val failedPrepareLink = stringResource(MR.strings.invite_human_failed_prepare_link)
-    val failedSend = stringResource(MR.strings.invite_human_failed_send)
-    val enterEmailOrCopyLink = stringResource(MR.strings.invite_human_enter_email_or_copy_link)
-    val invalidEmail = stringResource(MR.strings.invite_human_invalid_email)
-    val manageInvitesForbidden = stringResource(MR.strings.member_error_manage_invites_forbidden)
-    val sendInvitesForbidden = stringResource(MR.strings.member_error_send_invites_forbidden)
+    val failedPrepareLink = stringResource(Res.string.invite_human_failed_prepare_link)
+    val failedSend = stringResource(Res.string.invite_human_failed_send)
+    val enterEmailOrCopyLink = stringResource(Res.string.invite_human_enter_email_or_copy_link)
+    val invalidEmail = stringResource(Res.string.invite_human_invalid_email)
+    val manageInvitesForbidden = stringResource(Res.string.member_error_manage_invites_forbidden)
+    val sendInvitesForbidden = stringResource(Res.string.member_error_send_invites_forbidden)
 
     var tab by remember(serverId) { mutableStateOf(InviteHumanTab.Email) }
     var invitees by remember(serverId) { mutableStateOf(listOf(InviteHumanInvitee(id = 0))) }
@@ -392,25 +391,25 @@ internal fun SharedServerInviteHumanDialogHost(
         if (confirmingRevoke) {
             RaftDialog(
                 onDismissRequest = { if (!regenerating) confirmingRevoke = false },
-                title = stringResource(MR.strings.invite_human_revoke_confirm_title),
-                description = stringResource(MR.strings.invite_human_revoke_confirm_message),
+                title = stringResource(Res.string.invite_human_revoke_confirm_title),
+                description = stringResource(Res.string.invite_human_revoke_confirm_message),
                 size = RaftDialogSize.Sm,
-                closeLabel = stringResource(MR.strings.common_close),
+                closeLabel = stringResource(Res.string.common_close),
                 footer = {
                     RaftButton(
-                        text = stringResource(MR.strings.common_cancel),
+                        text = stringResource(Res.string.common_cancel),
                         onClick = { confirmingRevoke = false },
                         variant = RaftButtonVariant.Ghost,
                         size = RaftButtonSize.Lg,
                         enabled = !regenerating,
                     )
                     RaftButton(
-                        text = stringResource(MR.strings.invite_human_revoke_confirm_label),
+                        text = stringResource(Res.string.invite_human_revoke_confirm_label),
                         onClick = ::revokeLink,
                         variant = RaftButtonVariant.Danger,
                         size = RaftButtonSize.Lg,
                         loading = regenerating,
-                        loadingLabel = stringResource(MR.strings.invite_human_revoking),
+                        loadingLabel = stringResource(Res.string.invite_human_revoking),
                     )
                 },
             )
@@ -457,18 +456,18 @@ private fun InviteHumanDialogContent(
     }
     RaftDialogSheet(
         onDismissRequest = onDismiss,
-        title = stringResource(MR.strings.agent_invite_title),
+        title = stringResource(Res.string.agent_invite_title),
         commitLabel =
             when {
                 tab != InviteHumanTab.Email -> null
-                sending -> stringResource(MR.strings.invite_human_sending)
-                else -> stringResource(MR.strings.invite_human_send_invites)
+                sending -> stringResource(Res.string.invite_human_sending)
+                else -> stringResource(Res.string.invite_human_send_invites)
             },
         onCommit = onSubmit,
         commitEnabled = !sending,
         commitIcon = { InviteHumanIcon(RaftLucideIconName.Mail, 18.dp) },
-        closeLabel = stringResource(MR.strings.common_close),
-        cancelLabel = stringResource(MR.strings.common_cancel),
+        closeLabel = stringResource(Res.string.common_close),
+        cancelLabel = stringResource(Res.string.common_cancel),
     ) {
         Column(
             Modifier
@@ -517,13 +516,13 @@ internal fun InviteHumanSheetSurfaceForFixture(
     canOfferGuest: Boolean = true,
 ) {
     RaftDialogSheetSurface(
-        title = stringResource(MR.strings.agent_invite_title),
-        commitLabel = if (tab == InviteHumanTab.Email) stringResource(MR.strings.invite_human_send_invites) else null,
+        title = stringResource(Res.string.agent_invite_title),
+        commitLabel = if (tab == InviteHumanTab.Email) stringResource(Res.string.invite_human_send_invites) else null,
         onCommit = {},
         commitIcon = { InviteHumanIcon(RaftLucideIconName.Mail, 18.dp) },
         onClose = {},
         modifier = modifier,
-        closeLabel = stringResource(MR.strings.common_close),
+        closeLabel = stringResource(Res.string.common_close),
     ) {
         Column(
             Modifier.fillMaxWidth().weight(1f, fill = false).padding(16.dp),
@@ -589,18 +588,18 @@ private fun InviteHumanDialogBody(
         RaftBanner(description = error, status = RaftBannerStatus.Warning)
     }
     RaftBanner(
-        description = stringResource(MR.strings.invite_human_agent_reach_hint),
+        description = stringResource(Res.string.invite_human_agent_reach_hint),
         status = RaftBannerStatus.Info,
     )
     RaftSegmentedControl(Modifier.fillMaxWidth()) {
         RaftSegment(
-            text = stringResource(MR.strings.invite_human_tab_email),
+            text = stringResource(Res.string.invite_human_tab_email),
             selected = tab == InviteHumanTab.Email,
             onClick = { onTabChange(InviteHumanTab.Email) },
             modifier = Modifier.weight(1f),
         )
         RaftSegment(
-            text = stringResource(MR.strings.invite_human_tab_link),
+            text = stringResource(Res.string.invite_human_tab_link),
             selected = tab == InviteHumanTab.Link,
             onClick = { onTabChange(InviteHumanTab.Link) },
             modifier = Modifier.weight(1f),
@@ -608,7 +607,7 @@ private fun InviteHumanDialogBody(
     }
     when (tab) {
         InviteHumanTab.Email ->
-            RaftField(label = stringResource(MR.strings.invite_human_by_email)) {
+            RaftField(label = stringResource(Res.string.invite_human_by_email)) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     invitees.forEachIndexed { index, invitee ->
                         InviteHumanInviteeRow(
@@ -622,7 +621,7 @@ private fun InviteHumanDialogBody(
                         )
                     }
                     RaftButton(
-                        text = stringResource(MR.strings.invite_human_add_invitee),
+                        text = stringResource(Res.string.invite_human_add_invitee),
                         onClick = onAddInvitee,
                         variant = RaftButtonVariant.Ghost,
                         enabled = !sending,
@@ -631,7 +630,7 @@ private fun InviteHumanDialogBody(
                 }
             }
         InviteHumanTab.Link -> {
-            RaftField(label = stringResource(MR.strings.invite_human_link_label)) {
+            RaftField(label = stringResource(Res.string.invite_human_link_label)) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -639,8 +638,8 @@ private fun InviteHumanDialogBody(
                     RaftTextField(
                         value =
                             when {
-                                linkLoading -> stringResource(MR.strings.invite_human_preparing_link)
-                                joinUrl == null -> stringResource(MR.strings.invite_human_link_unavailable)
+                                linkLoading -> stringResource(Res.string.invite_human_preparing_link)
+                                joinUrl == null -> stringResource(Res.string.invite_human_link_unavailable)
                                 else -> joinUrl
                             },
                         onValueChange = {},
@@ -649,7 +648,7 @@ private fun InviteHumanDialogBody(
                     )
                     RaftIconButton(
                         onClick = onCopy,
-                        tooltip = stringResource(MR.strings.invite_human_copy_link),
+                        tooltip = stringResource(Res.string.invite_human_copy_link),
                         size = RaftIconButtonSize.Lg,
                         enabled = joinUrl != null && !linkLoading && !regenerating,
                     ) {
@@ -659,7 +658,7 @@ private fun InviteHumanDialogBody(
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 RaftField(
-                    label = stringResource(MR.strings.invite_human_max_uses_label),
+                    label = stringResource(Res.string.invite_human_max_uses_label),
                     modifier = Modifier.weight(1f),
                 ) {
                     RaftSelect(
@@ -670,7 +669,7 @@ private fun InviteHumanDialogBody(
                     )
                 }
                 RaftField(
-                    label = stringResource(MR.strings.invite_human_expires_label),
+                    label = stringResource(Res.string.invite_human_expires_label),
                     modifier = Modifier.weight(1f),
                 ) {
                     RaftSelect(
@@ -686,14 +685,14 @@ private fun InviteHumanDialogBody(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 RaftButton(
-                    text = stringResource(MR.strings.invite_human_apply_link_options),
+                    text = stringResource(Res.string.invite_human_apply_link_options),
                     onClick = onRegenerate,
                     enabled = !regenerating && !linkLoading,
                     loading = regenerating,
                 )
                 if (joinLink != null) {
                     RaftTextLink(
-                        text = stringResource(MR.strings.invite_human_revoke_link),
+                        text = stringResource(Res.string.invite_human_revoke_link),
                         onClick = onRevoke,
                         enabled = !regenerating,
                         style = typography.footnote,
@@ -703,7 +702,7 @@ private fun InviteHumanDialogBody(
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (joinLink != null) {
                     RaftText(
-                        stringResource(MR.strings.invite_human_update_replaces_hint),
+                        stringResource(Res.string.invite_human_update_replaces_hint),
                         style = typography.caption,
                         color = colors.foregroundHint,
                     )
@@ -717,7 +716,7 @@ private fun InviteHumanDialogBody(
                 ) {
                     InviteHumanIcon(RaftLucideIconName.Link2, 14.dp, colors.foregroundHint)
                     RaftText(
-                        stringResource(MR.strings.invite_human_send_link_hint),
+                        stringResource(Res.string.invite_human_send_link_hint),
                         style = typography.caption,
                         color = colors.foregroundHint,
                     )
@@ -737,8 +736,8 @@ private fun InviteHumanInviteeRow(
     onChange: (InviteHumanInvitee) -> Unit,
     onRemove: () -> Unit,
 ) {
-    val roleMember = stringResource(MR.strings.invite_human_role_member)
-    val roleGuest = stringResource(MR.strings.invite_human_role_guest)
+    val roleMember = stringResource(Res.string.invite_human_role_member)
+    val roleGuest = stringResource(Res.string.invite_human_role_guest)
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -757,7 +756,7 @@ private fun InviteHumanInviteeRow(
                 options = listOf(InviteHumanRoleMember, InviteHumanRoleGuest),
                 onValueChange = { onChange(invitee.copy(role = it)) },
                 optionLabel = { if (it == InviteHumanRoleGuest) roleGuest else roleMember },
-                label = stringResource(MR.strings.invite_human_role_label),
+                label = stringResource(Res.string.invite_human_role_label),
                 enabled = enabled,
                 modifier = Modifier.width(112.dp),
             )
@@ -765,7 +764,7 @@ private fun InviteHumanInviteeRow(
         if (canRemove) {
             RaftIconButton(
                 onClick = onRemove,
-                tooltip = stringResource(MR.strings.invite_human_remove_invitee, index + 1),
+                tooltip = stringResource(Res.string.invite_human_remove_invitee, index + 1),
                 variant = RaftButtonVariant.Ghost,
                 size = RaftIconButtonSize.Lg,
                 enabled = enabled,
@@ -801,16 +800,16 @@ private class InviteHumanLinkChoiceLabels(
 @Composable
 private fun inviteHumanLinkChoiceLabels(): InviteHumanLinkChoiceLabels =
     InviteHumanLinkChoiceLabels(
-        keepCurrent = stringResource(MR.strings.invite_human_keep_current),
-        unlimited = stringResource(MR.strings.invite_human_unlimited),
-        never = stringResource(MR.strings.invite_human_never),
+        keepCurrent = stringResource(Res.string.invite_human_keep_current),
+        unlimited = stringResource(Res.string.invite_human_unlimited),
+        never = stringResource(Res.string.invite_human_never),
         days =
             InviteHumanLinkChoice.ExpiryDays.associateWith { choice ->
                 val count = choice.toInt()
                 if (count == 1) {
-                    stringResource(MR.strings.invite_human_days_one, count)
+                    stringResource(Res.string.invite_human_days_one, count)
                 } else {
-                    stringResource(MR.strings.invite_human_days_many, count)
+                    stringResource(Res.string.invite_human_days_many, count)
                 }
             },
     )
@@ -818,8 +817,8 @@ private fun inviteHumanLinkChoiceLabels(): InviteHumanLinkChoiceLabels =
 /** "Used 2/5 · Expires 2026-11-01" for a limited link, else null (web `invite-link-status`). */
 @Composable
 private fun inviteHumanLinkStatus(link: SettingsServerJoinLinkSnapshot): String? {
-    val used = link.maxUses?.let { max -> stringResource(MR.strings.invite_human_used_of, link.useCount ?: 0, max) }
-    val expires = link.expiresAt?.let { stringResource(MR.strings.invite_human_expires_on, it.substringBefore('T')) }
+    val used = link.maxUses?.let { max -> stringResource(Res.string.invite_human_used_of, link.useCount ?: 0, max) }
+    val expires = link.expiresAt?.let { stringResource(Res.string.invite_human_expires_on, it.substringBefore('T')) }
     return listOfNotNull(used, expires).takeIf { it.isNotEmpty() }?.joinToString(" · ")
 }
 

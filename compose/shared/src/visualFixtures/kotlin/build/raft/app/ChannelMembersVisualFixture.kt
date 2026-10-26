@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
 import build.raft.app.compat.pager.Page
-import com.tencent.tmm.kmmresource.resource.desc.StringDesc
+import build.raft.app.resources.StringDesc
 import kotlinx.coroutines.flow.flowOf
 
 /** Paired with packages/visual-testing/shared/memberParityFixture.json in botiverse/slock.

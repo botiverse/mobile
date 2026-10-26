@@ -218,7 +218,8 @@ class LocalPreferencesTest {
                 Triple(AppLocale.SimplifiedChinese, "en-US", "zh-cn"),
                 Triple(AppLocale.Japanese, "zh-Hans-CN", "ja"),
                 Triple(AppLocale.System, "ja-JP", "ja"),
-                Triple(AppLocale.System, "zh_TW", "zh-cn"),
+                // Traditional Chinese has no catalog: the strings, and so the UI, are English.
+                Triple(AppLocale.System, "zh_TW", "en"),
                 // No Korean / French UI catalog: the UI falls back to English.
                 Triple(AppLocale.System, "ko-KR", "en"),
                 Triple(AppLocale.System, "fr-FR", "en"),
@@ -231,6 +232,9 @@ class LocalPreferencesTest {
                 "$locale on $device"
             )
         }
+        // The whole preferred-language list, like the string lookup: [fr, ja] shows a Japanese UI.
+        assertEquals("ja", AppLocale.System.displayLanguageTag(listOf("fr-FR", "ja-JP")))
+        assertEquals("en", AppLocale.System.displayLanguageTag(listOf("zh-Hant-TW", "fr-FR")))
     }
 
     @Test

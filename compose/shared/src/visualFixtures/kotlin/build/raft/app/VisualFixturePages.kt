@@ -38,7 +38,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.pager.Page
 import build.raft.designsystem.components.LocalRaftListSkeletonDelayMillis
-import com.tencent.tmm.kmmresource.resource.desc.StringDesc
+import build.raft.app.resources.StringDesc
 
 @Page("compose_home_titlebar_visual", supportInLocal = true)
 internal class ComposeHomeTitlebarVisualPage : BasePager() {

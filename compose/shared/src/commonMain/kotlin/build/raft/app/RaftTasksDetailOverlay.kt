@@ -1,10 +1,10 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import androidx.compose.runtime.Composable
-import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,7 +24,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /** Widest the task thread panel grows over the board (matches the web task modal width band). */
 internal val RaftTasksDetailOverlayMaxWidth = 880.dp
@@ -98,7 +97,7 @@ internal fun RaftTasksDetailOverlay(
                 ) {
                     RaftBackButton(
                         onClick = onDismiss,
-                        label = stringResource(MR.strings.common_close),
+                        label = stringResource(Res.string.common_close),
                         glyph = RaftGlyph.X,
                     )
                 }

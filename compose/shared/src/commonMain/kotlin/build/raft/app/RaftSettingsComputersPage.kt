@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -79,7 +80,6 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftAvatarType
@@ -119,7 +119,6 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.launch
 
 const val SETTINGS_COMPUTERS_PAGE = "compose_settings_computers"
@@ -295,7 +294,7 @@ private fun RaftSettingsComputersScreen(pager: Pager, pageVisibleResumeTick: Int
         )
     fun refresh() = settingsViewModel.dispatch(SharedSettingsIntent.RefreshComputers)
     SettingsDetailShell(
-        title = stringResource(MR.strings.settings_computers_title),
+        title = stringResource(Res.string.settings_computers_title),
         subtitle = "",
         onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
     ) {
@@ -340,32 +339,32 @@ internal fun RaftSettingsComputersContent(
         when (model) {
             RaftComputersListModel.Loading ->
                 RaftComputersStateBlock(
-                    title = stringResource(MR.strings.settings_computers_loading),
-                    detail = stringResource(MR.strings.settings_computers_loading_detail),
+                    title = stringResource(Res.string.settings_computers_loading),
+                    detail = stringResource(Res.string.settings_computers_loading_detail),
                     loading = true,
                 )
             is RaftComputersListModel.Failed ->
                 if (model.failure.noAccess) {
                     RaftComputersStateBlock(
-                        title = stringResource(MR.strings.settings_computers_no_access),
-                        detail = stringResource(MR.strings.settings_computers_no_access_detail),
+                        title = stringResource(Res.string.settings_computers_no_access),
+                        detail = stringResource(Res.string.settings_computers_no_access_detail),
                         iconName = RaftLucideIconName.Lock,
                     )
                 } else {
                     RaftComputersStateBlock(
-                        title = stringResource(MR.strings.settings_computers_error_load),
+                        title = stringResource(Res.string.settings_computers_error_load),
                         detail = raftComputerFailureMessage(model.failure),
                         iconName = RaftLucideIconName.TriangleAlert,
-                        actionLabel = stringResource(MR.strings.common_retry).takeIf { model.failure.retryable },
+                        actionLabel = stringResource(Res.string.common_retry).takeIf { model.failure.retryable },
                         onAction = onRetry,
                     )
                 }
             is RaftComputersListModel.Empty ->
                 RaftComputersStateBlock(
-                    title = stringResource(MR.strings.settings_computers_empty),
-                    detail = stringResource(MR.strings.settings_computers_empty_detail),
+                    title = stringResource(Res.string.settings_computers_empty),
+                    detail = stringResource(Res.string.settings_computers_empty_detail),
                     iconName = RaftLucideIconName.Monitor,
-                    actionLabel = stringResource(MR.strings.settings_computers_add_computer).takeIf { model.canAddComputer },
+                    actionLabel = stringResource(Res.string.settings_computers_add_computer).takeIf { model.canAddComputer },
                     actionIcon = RaftLucideIconName.Plus,
                     onAction = onAddComputer,
                 )
@@ -379,14 +378,14 @@ internal fun RaftSettingsComputersContent(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             RaftText(
-                                stringResource(MR.strings.settings_computers_online_count, model.onlineCount, model.rows.size),
+                                stringResource(Res.string.settings_computers_online_count, model.onlineCount, model.rows.size),
                                 modifier = Modifier.weight(1f),
                                 style = RaftTheme.typography.footnote,
                                 color = RaftTheme.colors.foregroundHint,
                             )
                             if (model.canAddComputer) {
                                 RaftButton(
-                                    text = stringResource(MR.strings.settings_computers_add_computer),
+                                    text = stringResource(Res.string.settings_computers_add_computer),
                                     onClick = onAddComputer,
                                     variant = RaftButtonVariant.Primary,
                                     leadingIcon = { RaftComputersIcon(RaftLucideIconName.Plus) },
@@ -510,7 +509,7 @@ private fun RaftSettingsComputerDetailScreen(pager: Pager, target: RaftComputerP
         }
     SettingsDetailShell(
         title = (model as? RaftComputerDetailModel.Content)?.computer?.name
-            ?: stringResource(MR.strings.settings_computers_detail_computer),
+            ?: stringResource(Res.string.settings_computers_detail_computer),
         subtitle = "",
         onBack = ::closePage,
     ) {
@@ -584,25 +583,25 @@ internal fun RaftSettingsComputerDetailContent(
     Box(Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         when (model) {
             RaftComputerDetailModel.Loading ->
-                RaftComputersStateBlock(title = stringResource(MR.strings.settings_computers_detail_loading), loading = true)
+                RaftComputersStateBlock(title = stringResource(Res.string.settings_computers_detail_loading), loading = true)
             RaftComputerDetailModel.Unavailable ->
                 RaftComputersStateBlock(
-                    title = stringResource(MR.strings.settings_computers_detail_unavailable),
+                    title = stringResource(Res.string.settings_computers_detail_unavailable),
                     iconName = RaftLucideIconName.Monitor,
                 )
             is RaftComputerDetailModel.Failed ->
                 if (model.failure.noAccess) {
                     RaftComputersStateBlock(
-                        title = stringResource(MR.strings.settings_computers_detail_no_access),
+                        title = stringResource(Res.string.settings_computers_detail_no_access),
                         detail = raftComputerFailureMessage(model.failure),
                         iconName = RaftLucideIconName.Lock,
                     )
                 } else {
                     RaftComputersStateBlock(
-                        title = stringResource(MR.strings.settings_computers_detail_error_load),
+                        title = stringResource(Res.string.settings_computers_detail_error_load),
                         detail = raftComputerFailureMessage(model.failure),
                         iconName = RaftLucideIconName.TriangleAlert,
-                        actionLabel = stringResource(MR.strings.common_retry).takeIf { model.failure.retryable },
+                        actionLabel = stringResource(Res.string.common_retry).takeIf { model.failure.retryable },
                         onAction = onRetry,
                     )
                 }
@@ -678,13 +677,13 @@ private fun RaftComputerDetailBody(
         item(key = "name") {
             RaftComputerEditableSection(
                 key = machineId,
-                title = stringResource(MR.strings.settings_computers_section_name),
-                editLabel = stringResource(MR.strings.settings_computers_edit_name),
+                title = stringResource(Res.string.settings_computers_section_name),
+                editLabel = stringResource(Res.string.settings_computers_edit_name),
                 canEdit = canEdit,
                 value = computer.name,
                 emptyText = null,
-                label = stringResource(MR.strings.settings_computers_label_name),
-                placeholder = stringResource(MR.strings.settings_computers_placeholder_name),
+                label = stringResource(Res.string.settings_computers_label_name),
+                placeholder = stringResource(Res.string.settings_computers_placeholder_name),
                 multiline = false,
                 allowBlank = false,
                 saveState = currentAction?.takeIf { it.action == COMPUTER_ACTION_RENAME },
@@ -694,13 +693,13 @@ private fun RaftComputerDetailBody(
         item(key = "description") {
             RaftComputerEditableSection(
                 key = machineId,
-                title = stringResource(MR.strings.settings_computers_section_description),
-                editLabel = stringResource(MR.strings.settings_computers_edit_description),
+                title = stringResource(Res.string.settings_computers_section_description),
+                editLabel = stringResource(Res.string.settings_computers_edit_description),
                 canEdit = canEdit,
                 value = computer.description.orEmpty(),
-                emptyText = stringResource(MR.strings.settings_computers_state_no_description),
-                label = stringResource(MR.strings.settings_computers_label_description),
-                placeholder = stringResource(MR.strings.settings_computers_placeholder_description),
+                emptyText = stringResource(Res.string.settings_computers_state_no_description),
+                label = stringResource(Res.string.settings_computers_label_description),
+                placeholder = stringResource(Res.string.settings_computers_placeholder_description),
                 multiline = true,
                 allowBlank = true,
                 maxLength = RAFT_COMPUTER_DESCRIPTION_MAX_LENGTH,
@@ -711,28 +710,28 @@ private fun RaftComputerDetailBody(
             )
         }
         item(key = "info") {
-            RaftSection(title = stringResource(MR.strings.settings_computers_section_info)) {
+            RaftSection(title = stringResource(Res.string.settings_computers_section_info)) {
                 RaftDescriptionList(direction = RaftDescriptionListDirection.Horizontal) {
-                    Item(stringResource(MR.strings.settings_computers_label_os), snapshot.computer.platform?.takeIf { it.isNotBlank() })
-                    Item(stringResource(MR.strings.settings_computers_label_version), raftComputerVersionLine(computer), mono = true)
+                    Item(stringResource(Res.string.settings_computers_label_os), snapshot.computer.platform?.takeIf { it.isNotBlank() })
+                    Item(stringResource(Res.string.settings_computers_label_version), raftComputerVersionLine(computer), mono = true)
                     // Web: the runtimes as chips, cyan-soft when detected, muted with why not otherwise.
-                    Item(stringResource(MR.strings.settings_computers_label_runtimes)) {
+                    Item(stringResource(Res.string.settings_computers_label_runtimes)) {
                         // Usage runtimes open their account usage (web RuntimeAccountUsageGateChip).
                         ComputerRuntimeUsageChips(raftComputerRuntimeChips(computer.runtimes), machineId, enabled = canEdit) { chip ->
                             RaftComputerRuntimeBadge(chip)
                         }
                     }
                     // Web: the date it was created ("Oct 22, 2026"), as on an agent's page.
-                    Item(stringResource(MR.strings.settings_computers_label_created), raftComputerCreatedDate(model.createdAt), mono = true)
+                    Item(stringResource(Res.string.settings_computers_label_created), raftComputerCreatedDate(model.createdAt), mono = true)
                     // Web: managed Computers name who attached them beside Created; raw daemons don't.
                     if (model.showsCreator) {
-                        Item(stringResource(MR.strings.settings_computers_label_creator)) {
+                        Item(stringResource(Res.string.settings_computers_label_creator)) {
                             val creator = model.creator
                             if (creator != null) {
                                 RaftComputerCreatorLink(creator, onClick = { onOpenCreator(creator) })
                             } else {
                                 RaftText(
-                                    stringResource(MR.strings.settings_computers_state_no_creator),
+                                    stringResource(Res.string.settings_computers_state_no_creator),
                                     style = RaftTheme.typography.callout,
                                     color = RaftTheme.colors.foregroundHint,
                                 )
@@ -760,7 +759,7 @@ private fun RaftComputerDetailBody(
         // Like the web, key rotation is not offered here.
         if (snapshot.canManageMachines) {
             item(key = "actions") {
-                RaftSection(title = stringResource(MR.strings.settings_computers_section_actions)) {
+                RaftSection(title = stringResource(Res.string.settings_computers_section_actions)) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         // Remote restart / upgrade: managed Computers only, and only online (an offline
                         // Computer's way back is the connection section's recovery commands).
@@ -770,15 +769,15 @@ private fun RaftComputerDetailBody(
                             val deleting =
                                 actionState?.let { it.action == COMPUTER_ACTION_DELETE && it.itemId == machineId && it.inProgress } == true
                             RaftCard(
-                                title = stringResource(MR.strings.settings_computers_delete_title),
-                                description = stringResource(MR.strings.settings_computers_delete_detail),
+                                title = stringResource(Res.string.settings_computers_delete_title),
+                                description = stringResource(Res.string.settings_computers_delete_detail),
                             ) {
                                 RaftButton(
-                                    text = stringResource(MR.strings.settings_computers_delete_action),
+                                    text = stringResource(Res.string.settings_computers_delete_action),
                                     onClick = { confirmDelete = true },
                                     variant = RaftButtonVariant.Danger,
                                     loading = deleting,
-                                    loadingLabel = stringResource(MR.strings.settings_computers_delete_busy),
+                                    loadingLabel = stringResource(Res.string.settings_computers_delete_busy),
                                     leadingIcon = { RaftComputersIcon(RaftLucideIconName.Trash2) },
                                 )
                             }
@@ -794,17 +793,17 @@ private fun RaftComputerDetailBody(
         val count = model.assignedAgentCount
         RaftDialog(
             onDismissRequest = { confirmDelete = false },
-            title = stringResource(MR.strings.settings_computers_error_title_cannot_delete),
+            title = stringResource(Res.string.settings_computers_error_title_cannot_delete),
             description =
                 if (count == 1) {
-                    stringResource(MR.strings.settings_computers_cannot_delete_message_one, count)
+                    stringResource(Res.string.settings_computers_cannot_delete_message_one, count)
                 } else {
-                    stringResource(MR.strings.settings_computers_cannot_delete_message_many, count)
+                    stringResource(Res.string.settings_computers_cannot_delete_message_many, count)
                 },
-            closeLabel = stringResource(MR.strings.common_close),
+            closeLabel = stringResource(Res.string.common_close),
             footer = {
                 RaftButton(
-                    text = stringResource(MR.strings.common_ok),
+                    text = stringResource(Res.string.common_ok),
                     onClick = { confirmDelete = false },
                     variant = RaftButtonVariant.Default,
                     size = RaftButtonSize.Lg,
@@ -814,18 +813,18 @@ private fun RaftComputerDetailBody(
     } else if (confirmDelete) {
         RaftDialog(
             onDismissRequest = { confirmDelete = false },
-            title = stringResource(MR.strings.settings_computers_delete_title),
-            description = stringResource(MR.strings.settings_computers_delete_detail),
-            closeLabel = stringResource(MR.strings.common_close),
+            title = stringResource(Res.string.settings_computers_delete_title),
+            description = stringResource(Res.string.settings_computers_delete_detail),
+            closeLabel = stringResource(Res.string.common_close),
             footer = {
                 RaftButton(
-                    text = stringResource(MR.strings.common_cancel),
+                    text = stringResource(Res.string.common_cancel),
                     onClick = { confirmDelete = false },
                     variant = RaftButtonVariant.Ghost,
                     size = RaftButtonSize.Lg,
                 )
                 RaftButton(
-                    text = stringResource(MR.strings.settings_computers_delete_action),
+                    text = stringResource(Res.string.settings_computers_delete_action),
                     onClick = {
                         confirmDelete = false
                         onIntent(SharedSettingsIntent.DeleteComputer(machineId))
@@ -843,8 +842,8 @@ private fun RaftComputerRuntimeBadge(chip: RaftComputerRuntimeChip) {
     val suffix =
         when (chip.availability) {
             RaftComputerRuntimeAvailability.Detected -> ""
-            RaftComputerRuntimeAvailability.NotInstalled -> stringResource(MR.strings.agent_create_suffix_not_installed)
-            RaftComputerRuntimeAvailability.UpdateComputer -> stringResource(MR.strings.settings_computers_runtime_suffix_update_computer)
+            RaftComputerRuntimeAvailability.NotInstalled -> stringResource(Res.string.agent_create_suffix_not_installed)
+            RaftComputerRuntimeAvailability.UpdateComputer -> stringResource(Res.string.settings_computers_runtime_suffix_update_computer)
         }
     RaftBadge(
         text = chip.name + suffix,
@@ -887,7 +886,7 @@ private fun RaftComputerCreatorLink(creator: RaftComputerCreatorModel, onClick: 
             overflow = TextOverflow.Ellipsis,
         )
         RaftText(
-            stringResource(MR.strings.settings_computers_creator_handle, creator.name),
+            stringResource(Res.string.settings_computers_creator_handle, creator.name),
             style = RaftTheme.typography.monoMeta,
             color = RaftTheme.colors.foregroundHint,
             maxLines = 1,
@@ -1082,16 +1081,16 @@ private fun RaftComputerEditableText(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             RaftButton(
-                text = stringResource(MR.strings.common_save),
+                text = stringResource(Res.string.common_save),
                 // An unchanged value has nothing to save: Save just closes the editor.
                 onClick = { if (changed) onSave(trimmed) else onCancel() },
                 variant = RaftButtonVariant.Primary,
                 enabled = (allowBlank || trimmed.isNotBlank()) && !tooLong,
                 loading = saving,
-                loadingLabel = stringResource(MR.strings.settings_computers_action_saving),
+                loadingLabel = stringResource(Res.string.settings_computers_action_saving),
             )
             RaftButton(
-                text = stringResource(MR.strings.common_cancel),
+                text = stringResource(Res.string.common_cancel),
                 onClick = onCancel,
                 enabled = !saving,
             )
@@ -1115,20 +1114,20 @@ private fun RaftComputerAgentsSection(
 ) {
     val agents = snapshot.agents
     RaftSection(
-        title = stringResource(MR.strings.settings_computers_section_agents),
+        title = stringResource(Res.string.settings_computers_section_agents),
         count = agents.size.takeIf { it > 0 }?.toString(),
     ) {
         val error = snapshot.agentsError
         when {
             error != null ->
                 RaftComputersInlineNotice(
-                    title = stringResource(MR.strings.settings_computers_error_load_agents),
+                    title = stringResource(Res.string.settings_computers_error_load_agents),
                     detail = raftComputerErrorCodeMessage(error.computerErrorCode, error.screenError, error.permissionBlocker),
                 )
             agents.isEmpty() ->
                 RaftComputersInlineNotice(
-                    title = stringResource(MR.strings.settings_computers_empty_agents),
-                    detail = stringResource(MR.strings.settings_computers_empty_agents_detail),
+                    title = stringResource(Res.string.settings_computers_empty_agents),
+                    detail = stringResource(Res.string.settings_computers_empty_agents_detail),
                 )
             else ->
                 RaftListRowGroup(Modifier.fillMaxWidth()) {
@@ -1235,20 +1234,20 @@ private fun RaftComputerWorkspacesSection(
     onScan: () -> Unit,
 ) {
     RaftSection(
-        title = stringResource(MR.strings.settings_computers_section_workspaces),
+        title = stringResource(Res.string.settings_computers_section_workspaces),
         count = snapshot.workspaces.size.takeIf { snapshot.workspacesScanned && it > 0 }?.toString(),
         // Web `SectionHeader action`: a small outline Scan / Rescan button at the end of the heading.
         action = {
             RaftButton(
                 text =
                     if (snapshot.workspacesScanned) {
-                        stringResource(MR.strings.settings_computers_action_rescan)
+                        stringResource(Res.string.settings_computers_action_rescan)
                     } else {
-                        stringResource(MR.strings.settings_computers_action_scan)
+                        stringResource(Res.string.settings_computers_action_scan)
                     },
                 onClick = onScan,
                 loading = scanning,
-                loadingLabel = stringResource(MR.strings.settings_computers_action_scanning),
+                loadingLabel = stringResource(Res.string.settings_computers_action_scanning),
                 leadingIcon = { RaftComputersIcon(RaftLucideIconName.RefreshCw) },
             )
         },
@@ -1259,21 +1258,21 @@ private fun RaftComputerWorkspacesSection(
                 // Web shows the scan prompt only while no scan is running.
                 if (!scanning) {
                     RaftComputersInlineNotice(
-                        title = stringResource(MR.strings.settings_computers_workspace_scan_title),
-                        detail = stringResource(MR.strings.settings_computers_workspace_scan_detail),
+                        title = stringResource(Res.string.settings_computers_workspace_scan_title),
+                        detail = stringResource(Res.string.settings_computers_workspace_scan_detail),
                     )
                 } else {
                     Unit
                 }
             error != null ->
                 RaftComputersInlineNotice(
-                    title = stringResource(MR.strings.settings_computers_error_load_workspaces),
+                    title = stringResource(Res.string.settings_computers_error_load_workspaces),
                     detail = raftComputerErrorCodeMessage(error.computerErrorCode, error.screenError, error.permissionBlocker),
                 )
             snapshot.workspaces.isEmpty() ->
                 RaftComputersInlineNotice(
-                    title = stringResource(MR.strings.settings_computers_empty_workspaces),
-                    detail = stringResource(MR.strings.settings_computers_empty_workspaces_detail),
+                    title = stringResource(Res.string.settings_computers_empty_workspaces),
+                    detail = stringResource(Res.string.settings_computers_empty_workspaces_detail),
                 )
             else ->
                 RaftListRowGroup(Modifier.fillMaxWidth()) {
@@ -1290,16 +1289,16 @@ private fun RaftComputerWorkspaceRow(workspace: SettingsComputerWorkspaceSnapsho
     val files =
         workspace.fileCount?.let { count ->
             if (count == 1) {
-                stringResource(MR.strings.settings_computers_file_count_one, count)
+                stringResource(Res.string.settings_computers_file_count_one, count)
             } else {
-                stringResource(MR.strings.settings_computers_file_count_many, count)
+                stringResource(Res.string.settings_computers_file_count_many, count)
             }
         }
     val modified =
         workspace.lastActiveLabel
             ?.let { raftRelativeTimestampLabel(it) }
             ?.takeIf { it.isNotBlank() }
-            ?.let { stringResource(MR.strings.settings_computers_workspace_modified, it) }
+            ?.let { stringResource(Res.string.settings_computers_workspace_modified, it) }
     RaftListRow(
         title = workspace.name,
         divider = divider,
@@ -1312,13 +1311,13 @@ private fun RaftComputerWorkspaceRow(workspace: SettingsComputerWorkspaceSnapsho
             when (workspace.statusLabel) {
                 "active" ->
                     RaftBadge(
-                        stringResource(MR.strings.settings_computers_workspace_status_active),
+                        stringResource(Res.string.settings_computers_workspace_status_active),
                         appearance = RaftBadgeAppearance.Soft,
                         variant = RaftBadgeVariant.Success,
                     )
                 "orphan" ->
                     RaftBadge(
-                        stringResource(MR.strings.settings_computers_workspace_status_orphan),
+                        stringResource(Res.string.settings_computers_workspace_status_orphan),
                         appearance = RaftBadgeAppearance.Soft,
                         variant = RaftBadgeVariant.Warning,
                     )
@@ -1361,9 +1360,9 @@ private fun RaftComputerStatus(online: Boolean) {
         RaftStatusDot(presence = if (online) RaftPresence.Online else RaftPresence.Offline)
         RaftListRowValue(
             if (online) {
-                stringResource(MR.strings.settings_computers_status_connected)
+                stringResource(Res.string.settings_computers_status_connected)
             } else {
-                stringResource(MR.strings.settings_computers_status_offline)
+                stringResource(Res.string.settings_computers_status_offline)
             },
             maxWidth = 120.dp,
         )
@@ -1373,7 +1372,7 @@ private fun RaftComputerStatus(online: Boolean) {
 @Composable
 private fun RaftComputerUpdateBadge() {
     RaftBadge(
-        stringResource(MR.strings.settings_computers_update_available),
+        stringResource(Res.string.settings_computers_update_available),
         appearance = RaftBadgeAppearance.Soft,
         variant = RaftBadgeVariant.Warning,
     )
@@ -1385,7 +1384,7 @@ private fun RaftComputersRefreshErrorBanner(code: String) {
     RaftBanner(
         description = raftComputerErrorCodeMessage(code, null, null),
         status = RaftBannerStatus.Warning,
-        title = stringResource(MR.strings.settings_computers_error_refresh_title),
+        title = stringResource(Res.string.settings_computers_error_refresh_title),
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
     )
 }
@@ -1454,16 +1453,16 @@ private fun RaftComputersInlineNotice(title: String, detail: String) {
 private fun raftComputerVersionLine(row: RaftComputerRowModel): String? {
     val kind =
         if (row.kind == RaftComputerKind.Computer) {
-            stringResource(MR.strings.settings_computers_kind_computer)
+            stringResource(Res.string.settings_computers_kind_computer)
         } else {
-            stringResource(MR.strings.settings_computers_kind_daemon)
+            stringResource(Res.string.settings_computers_kind_daemon)
         }
-    return row.version?.let { stringResource(MR.strings.settings_computers_run_version, kind, it.removePrefix("v")) }
+    return row.version?.let { stringResource(Res.string.settings_computers_run_version, kind, it.removePrefix("v")) }
 }
 
 @Composable
 private fun raftComputerLastSeen(timestamp: String): String =
-    stringResource(MR.strings.settings_computers_last_seen, raftRelativeTimestampLabel(timestamp))
+    stringResource(Res.string.settings_computers_last_seen, raftRelativeTimestampLabel(timestamp))
 
 @Composable
 private fun raftComputerFailureMessage(failure: RaftComputersFailure): String =
@@ -1476,19 +1475,19 @@ private fun raftComputerErrorCodeMessage(
     permissionBlocker: build.raft.app.data.PermissionBlocker?,
 ): String =
     when (raftComputerErrorCopy(code)) {
-        RaftComputerErrorCopy.Offline -> stringResource(MR.strings.settings_computers_error_offline)
-        RaftComputerErrorCopy.Replica -> stringResource(MR.strings.settings_computers_error_replica)
-        RaftComputerErrorCopy.HasAgents -> stringResource(MR.strings.settings_computers_error_has_agents)
-        RaftComputerErrorCopy.BadRequest -> stringResource(MR.strings.settings_computers_error_bad_request)
-        RaftComputerErrorCopy.Forbidden -> stringResource(MR.strings.settings_computers_error_forbidden)
-        RaftComputerErrorCopy.SessionExpired -> stringResource(MR.strings.settings_computers_error_auth)
-        RaftComputerErrorCopy.ServerUnavailable -> stringResource(MR.strings.settings_computers_error_server_unavailable)
+        RaftComputerErrorCopy.Offline -> stringResource(Res.string.settings_computers_error_offline)
+        RaftComputerErrorCopy.Replica -> stringResource(Res.string.settings_computers_error_replica)
+        RaftComputerErrorCopy.HasAgents -> stringResource(Res.string.settings_computers_error_has_agents)
+        RaftComputerErrorCopy.BadRequest -> stringResource(Res.string.settings_computers_error_bad_request)
+        RaftComputerErrorCopy.Forbidden -> stringResource(Res.string.settings_computers_error_forbidden)
+        RaftComputerErrorCopy.SessionExpired -> stringResource(Res.string.settings_computers_error_auth)
+        RaftComputerErrorCopy.ServerUnavailable -> stringResource(Res.string.settings_computers_error_server_unavailable)
         RaftComputerErrorCopy.Generic -> {
             val strings = localizedErrorPresentationStrings()
             screenError?.userFacingMessage(strings)
                 ?: permissionBlocker?.userFacingMessage(strings)
-                ?: code?.let { stringResource(MR.strings.settings_computers_error_code, it) }
-                ?: stringResource(MR.strings.settings_computers_error_unavailable_detail)
+                ?: code?.let { stringResource(Res.string.settings_computers_error_code, it) }
+                ?: stringResource(Res.string.settings_computers_error_unavailable_detail)
         }
     }
 
@@ -1499,13 +1498,13 @@ private fun raftComputerActionErrorMessage(action: SharedSettingsActionState): S
 @Composable
 private fun raftComputerActionErrorTitle(action: SharedSettingsActionState): String =
     when (raftComputerErrorCopy(action.computerErrorCode)) {
-        RaftComputerErrorCopy.HasAgents -> stringResource(MR.strings.settings_computers_error_title_cannot_delete)
-        RaftComputerErrorCopy.BadRequest -> stringResource(MR.strings.settings_computers_error_title_request_rejected)
-        RaftComputerErrorCopy.Offline, RaftComputerErrorCopy.Replica -> stringResource(MR.strings.settings_computers_error_title_offline)
-        RaftComputerErrorCopy.Forbidden -> stringResource(MR.strings.settings_computers_error_title_permission)
-        RaftComputerErrorCopy.SessionExpired -> stringResource(MR.strings.settings_computers_error_title_session)
+        RaftComputerErrorCopy.HasAgents -> stringResource(Res.string.settings_computers_error_title_cannot_delete)
+        RaftComputerErrorCopy.BadRequest -> stringResource(Res.string.settings_computers_error_title_request_rejected)
+        RaftComputerErrorCopy.Offline, RaftComputerErrorCopy.Replica -> stringResource(Res.string.settings_computers_error_title_offline)
+        RaftComputerErrorCopy.Forbidden -> stringResource(Res.string.settings_computers_error_title_permission)
+        RaftComputerErrorCopy.SessionExpired -> stringResource(Res.string.settings_computers_error_title_session)
         RaftComputerErrorCopy.ServerUnavailable, RaftComputerErrorCopy.Generic ->
-            stringResource(MR.strings.settings_computers_error_title_action)
+            stringResource(Res.string.settings_computers_error_title_action)
     }
 
 // endregion

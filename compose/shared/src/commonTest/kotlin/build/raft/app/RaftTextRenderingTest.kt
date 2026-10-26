@@ -61,14 +61,18 @@ class RaftTextRenderingTest {
     fun uiTextFollowsTheAppLanguageForHanForms() {
         val zhHans = LocaleList("zh-Hans")
         val ja = LocaleList("ja")
-        assertEquals(ja, raftUiTextLocaleList(AppLocale.Japanese) { "en-US" })
-        assertEquals(zhHans, raftUiTextLocaleList(AppLocale.SimplifiedChinese) { "ja-JP" })
+        assertEquals(ja, raftUiTextLocaleList(AppLocale.Japanese) { listOf("en-US") })
+        assertEquals(zhHans, raftUiTextLocaleList(AppLocale.SimplifiedChinese) { listOf("ja-JP") })
         // English UI: the Web's sans stack (PingFang SC / Noto Sans SC) decides, whatever the device.
-        assertEquals(zhHans, raftUiTextLocaleList(AppLocale.English) { "ja-JP" })
-        assertEquals(ja, raftUiTextLocaleList(AppLocale.System) { "ja-JP" })
-        assertEquals(ja, raftUiTextLocaleList(null) { "ja" })
-        assertEquals(zhHans, raftUiTextLocaleList(AppLocale.System) { "zh-Hant-TW" })
-        assertEquals(zhHans, raftUiTextLocaleList(AppLocale.System) { null })
+        assertEquals(zhHans, raftUiTextLocaleList(AppLocale.English) { listOf("ja-JP") })
+        assertEquals(ja, raftUiTextLocaleList(AppLocale.System) { listOf("ja-JP") })
+        assertEquals(ja, raftUiTextLocaleList(null) { listOf("ja") })
+        assertEquals(zhHans, raftUiTextLocaleList(AppLocale.System) { listOf("zh-Hant-TW") })
+        assertEquals(zhHans, raftUiTextLocaleList(AppLocale.System) { emptyList() })
+        // The whole preferred-language list, like the string lookup: French has no catalog, so a
+        // [fr, ja] device shows a Japanese UI with Japanese kanji forms.
+        assertEquals(ja, raftUiTextLocaleList(AppLocale.System) { listOf("fr-FR", "ja-JP") })
+        assertEquals(zhHans, raftUiTextLocaleList(AppLocale.System) { listOf("en-US", "ja-JP") })
     }
 
     @Test
@@ -87,20 +91,20 @@ class RaftTextRenderingTest {
         val zhHans = LocaleList("zh-Hans")
         val ja = LocaleList("ja")
         try {
-            RaftUiTextLocaleState.refresh(AppLocale.English, "en-US")
+            RaftUiTextLocaleState.refresh(AppLocale.English, listOf("en-US"))
             assertEquals(zhHans, RaftUiTextLocaleState.localeList)
             assertEquals(zhHans, RaftType.Body.localeList)
-            RaftUiTextLocaleState.refresh(AppLocale.Japanese, "en-US")
+            RaftUiTextLocaleState.refresh(AppLocale.Japanese, listOf("en-US"))
             assertEquals(ja, RaftUiTextLocaleState.localeList)
             assertEquals(ja, RaftType.Body.localeList)
             // User content keeps Simplified forms under a Japanese UI.
             assertEquals(zhHans, raftMessageBodyTextStyle(null).localeList)
-            RaftUiTextLocaleState.refresh(AppLocale.System, "ja-JP")
+            RaftUiTextLocaleState.refresh(AppLocale.System, listOf("ja-JP"))
             assertEquals(ja, RaftUiTextLocaleState.localeList)
-            RaftUiTextLocaleState.refresh(AppLocale.System, "zh-CN")
+            RaftUiTextLocaleState.refresh(AppLocale.System, listOf("zh-CN"))
             assertEquals(zhHans, RaftUiTextLocaleState.localeList)
         } finally {
-            RaftUiTextLocaleState.refresh(AppLocale.English, "en-US")
+            RaftUiTextLocaleState.refresh(AppLocale.English, listOf("en-US"))
         }
     }
 }

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -22,7 +23,6 @@ import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.RaftExternalShareEnvelopeRepositoryProvider
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.raftSharedPreferenceStore
-import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,7 +36,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import build.raft.app.compat.json.JSONObject
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 @Composable
 internal fun ExternalShareLaunchHost(
@@ -130,8 +129,8 @@ private fun ExternalShareSurface(
         is ExternalShareState.SelectingTargets -> ExternalShareTargetPickerSurface(state, onIntent)
         is ExternalShareState.LoadingEnvelope ->
             ExternalShareStatusSurface(
-                title = stringResource(MR.strings.external_share_title),
-                message = stringResource(MR.strings.external_share_preparing),
+                title = stringResource(Res.string.external_share_title),
+                message = stringResource(Res.string.external_share_preparing),
                 onClose = { onIntent(ExternalShareIntent.Cancel) }
             )
         is ExternalShareState.ReadyForComposer -> {
@@ -143,15 +142,15 @@ private fun ExternalShareSurface(
                 }
             }
             ExternalShareStatusSurface(
-                title = stringResource(MR.strings.external_share_title),
-                message = stringResource(MR.strings.external_share_opening_target, state.handoff.target.title),
+                title = stringResource(Res.string.external_share_title),
+                message = stringResource(Res.string.external_share_opening_target, state.handoff.target.title),
                 onClose = null
             )
         }
         is ExternalShareState.Error ->
             ExternalShareStatusSurface(
-                title = stringResource(MR.strings.external_share_error_title),
-                message = stringResource(MR.strings.external_share_error_detail),
+                title = stringResource(Res.string.external_share_error_title),
+                message = stringResource(Res.string.external_share_error_detail),
                 onClose = { onIntent(ExternalShareIntent.Cancel) }
             )
     }
@@ -191,14 +190,14 @@ private fun ExternalShareStatusSurface(
             )
             retry?.let {
                 RaftModalActionButton(
-                    label = stringResource(MR.strings.external_share_retry_failed),
+                    label = stringResource(Res.string.external_share_retry_failed),
                     icon = RaftLucideIconName.RefreshCw,
                     onClick = it
                 )
             }
             onClose?.let {
                 RaftModalActionButton(
-                    label = stringResource(MR.strings.common_close),
+                    label = stringResource(Res.string.common_close),
                     icon = RaftLucideIconName.X,
                     onClick = it
                 )

@@ -1,5 +1,7 @@
 package build.raft.app.image
 
+import build.raft.app.resources.Res
+import build.raft.app.resources.RaftComposeResourcesAssetPrefix
 import build.raft.app.data.RaftAvatarMountedRenderDescriptor
 import build.raft.app.network.SharedBinaryDownloader
 import build.raft.app.network.SharedDownloadedBytes
@@ -19,7 +21,7 @@ import coil3.getExtra
 import coil3.request.Options
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
-import build.raft.kuiklybase.datetime.Clock
+import kotlin.time.Clock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -61,7 +63,7 @@ object RaftImageHost {
     var managedImageReader: RaftManagedImageReader? = null
 }
 
-/** Platform read of a bundled `assets://` file (Android APK assets; iOS main + MR bundles). */
+/** Platform read of a bundled `assets://` file (Android APK assets; iOS main bundle). */
 internal expect suspend fun raftReadBundledImageAsset(context: PlatformContext, path: String): ByteArray?
 
 /** Directory of the Raft image disk cache, or null to run without one. */
@@ -282,7 +284,18 @@ private class RaftBundledAssetFetcher(
     private val options: Options,
 ) : Fetcher {
     override suspend fun fetch(): FetchResult {
-        val bytes = raftReadBundledImageAsset(options.context, data.path)
+        val bytes =
+            if (data.path.startsWith(RaftComposeResourcesAssetPrefix)) {
+                try {
+                    Res.readBytes(data.path.removePrefix(RaftComposeResourcesAssetPrefix))
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Exception) {
+                    null
+                }
+            } else {
+                raftReadBundledImageAsset(options.context, data.path)
+            }
         if (bytes == null) {
             // Bundled asset paths carry no user data, so log the path itself: a missing packaged
             // asset is otherwise invisible (task #335).

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.CompositionLocalProvider
@@ -64,7 +65,6 @@ import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.typedPinnedOrLegacy
 import build.raft.app.model.ServerId
 import build.raft.app.model.RaftTimeContext
-import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -83,7 +83,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.compat.pager.Pager
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 
@@ -158,7 +157,7 @@ private fun rememberHomeSecondaryRouteEnvironment(
     val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
     val bridgeCallScope = rememberCoroutineScope()
     val linkNavigator = rememberRaftLinkNavigator(pager, bridge)
-    val copiedMessage = stringResource(MR.strings.common_copied)
+    val copiedMessage = stringResource(Res.string.common_copied)
     val settingsCapabilities =
         remember(bridge, bridgeCallScope, linkNavigator, copiedMessage) {
             BridgeSettingsPlatformCapabilities(
@@ -323,7 +322,7 @@ internal fun HomeSecondaryRouterContent(
                     inlineListSelection = inlineListSelection,
                 )
             HomeDestinationSaved -> HomeSavedRouterContent(environment, routeVisibleTick, inlineListSelection)
-            else -> RaftCenteredLoading(message = stringResource(MR.strings.auth_state_opening_server))
+            else -> RaftCenteredLoading(message = stringResource(Res.string.auth_state_opening_server))
         }
     }
 }
@@ -614,7 +613,7 @@ private fun HomeActivityRouterContent(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            text = stringResource(MR.strings.home_adaptive_select_conversation),
+                            text = stringResource(Res.string.home_adaptive_select_conversation),
                             color = RaftColor.TextMutedGray,
                             fontSize = 15.sp,
                         )
@@ -781,7 +780,7 @@ private fun HomeSearchRouterContent(
     onQueryApplied: () -> Unit = {},
     inlineListSelection: RaftInlineListSelection? = null,
 ) {
-    val conversationNotReadyMessage = stringResource(MR.strings.home_error_conversation_not_ready)
+    val conversationNotReadyMessage = stringResource(Res.string.home_error_conversation_not_ready)
     val homeDataSource =
         remember(environment.authStore, environment.networkClient) {
             SharedHomeDataSource(
@@ -1098,9 +1097,9 @@ private fun HomeSavedRouterContent(
     routeVisibleTick: Int = 0,
     inlineListSelection: RaftInlineListSelection? = null,
 ) {
-    val conversationNotReadyMessage = stringResource(MR.strings.home_error_conversation_not_ready)
-    val copiedMessage = stringResource(MR.strings.common_copied)
-    val copyLinkFailedMessage = stringResource(MR.strings.thread_error_copy_link)
+    val conversationNotReadyMessage = stringResource(Res.string.home_error_conversation_not_ready)
+    val copiedMessage = stringResource(Res.string.common_copied)
+    val copyLinkFailedMessage = stringResource(Res.string.thread_error_copy_link)
     val searchSavedViewModel = rememberHomeSearchSavedViewModel(environment, key = "home-secondary-saved")
     val searchSavedState by searchSavedViewModel.state.collectAsState()
     LaunchedEffect(routeVisibleTick) {

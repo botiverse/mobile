@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -25,9 +26,7 @@ import build.raft.app.data.SharedRuntimeAccountUsageStore
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.raftEpochDayForDate
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftChoicePickerSheetSurface
-import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
@@ -198,11 +197,11 @@ private fun SheetContent() {
         value = "m-1",
         options =
             createAgentMachineChoiceOptions(
-                createAgentMachineDropdownItems(moreMachines, requiredComputer = null, offlineSuffix = stringResource(MR.strings.agent_create_suffix_offline)),
+                createAgentMachineDropdownItems(moreMachines, requiredComputer = null, offlineSuffix = stringResource(Res.string.agent_create_suffix_offline)),
                 lines
             ),
         onPick = {},
-        title = stringResource(MR.strings.agent_create_label_computer),
+        title = stringResource(Res.string.agent_create_label_computer),
         emptyText = { "" },
         searchable = false,
         modifier = Modifier.height(560.dp)

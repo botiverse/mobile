@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
@@ -15,7 +16,6 @@ import build.raft.app.data.ChannelSosState
 import build.raft.app.data.ChannelSosIntent
 import build.raft.app.data.ChannelSosPhase
 import build.raft.app.data.ChannelSosStore
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
@@ -27,7 +27,6 @@ import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /**
  * Web `SOSDialog`: confirm stopping every agent in the channel, then offer
@@ -52,28 +51,28 @@ internal fun ChannelSosDialog(
         onDismissRequest = { if (!busy) onClose() },
         title =
             stringResource(
-                if (state.phase == ChannelSosPhase.Confirm) MR.strings.channel_sos_stop_all_agents else MR.strings.channel_sos_agents_stopped
+                if (state.phase == ChannelSosPhase.Confirm) Res.string.channel_sos_stop_all_agents else Res.string.channel_sos_agents_stopped
             ),
         size = RaftDialogSize.Sm,
         dismissOnClickOutside = !busy,
-        closeLabel = stringResource(MR.strings.common_close),
+        closeLabel = stringResource(Res.string.common_close),
         footer = { ChannelSosDialogFooter(state, busy, store, onClose) },
     ) {
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md)) {
             if (state.phase == ChannelSosPhase.Confirm) {
                 RaftText(
-                    text = stringResource(MR.strings.channel_sos_confirm_warning, channelName),
+                    text = stringResource(Res.string.channel_sos_confirm_warning, channelName),
                     style = typography.subhead,
                     color = colors.foregroundMuted
                 )
             } else {
                 RaftBanner(
-                    description = stringResource(MR.strings.channel_sos_all_stopped),
+                    description = stringResource(Res.string.channel_sos_all_stopped),
                     status = RaftBannerStatus.Success,
                     size = RaftBannerSize.Sm
                 )
                 RaftText(
-                    text = stringResource(MR.strings.channel_sos_guidance_hint),
+                    text = stringResource(Res.string.channel_sos_guidance_hint),
                     style = typography.subhead,
                     color = colors.foregroundMuted
                 )
@@ -92,7 +91,7 @@ internal fun ChannelSosDialog(
                 RaftTextarea(
                     value = state.guidance,
                     onValueChange = { store.dispatch(ChannelSosIntent.UpdateGuidance(it)) },
-                    placeholder = stringResource(MR.strings.channel_sos_guidance_placeholder),
+                    placeholder = stringResource(Res.string.channel_sos_guidance_placeholder),
                     enabled = !state.resuming,
                     minHeight = 104.dp,
                 )
@@ -101,7 +100,7 @@ internal fun ChannelSosDialog(
                 RaftBanner(
                     description =
                         stringResource(
-                            if (state.phase == ChannelSosPhase.Confirm) MR.strings.channel_sos_stop_failed else MR.strings.channel_sos_resume_error
+                            if (state.phase == ChannelSosPhase.Confirm) Res.string.channel_sos_stop_failed else Res.string.channel_sos_resume_error
                         ),
                     status = RaftBannerStatus.Warning,
                     size = RaftBannerSize.Sm
@@ -121,36 +120,36 @@ private fun RowScope.ChannelSosDialogFooter(
 ) {
             if (state.phase == ChannelSosPhase.Confirm) {
                 RaftButton(
-                    text = stringResource(MR.strings.common_cancel),
+                    text = stringResource(Res.string.common_cancel),
                     onClick = onClose,
                     variant = RaftButtonVariant.Ghost,
                     size = RaftButtonSize.Lg,
                     enabled = !busy
                 )
                 RaftButton(
-                    text = stringResource(MR.strings.channel_sos_stop_action),
+                    text = stringResource(Res.string.channel_sos_stop_action),
                     onClick = { store.dispatch(ChannelSosIntent.Stop) },
                     variant = RaftButtonVariant.Warning,
                     size = RaftButtonSize.Lg,
                     loading = state.stopping,
-                    loadingLabel = stringResource(MR.strings.channel_sos_stopping)
+                    loadingLabel = stringResource(Res.string.channel_sos_stopping)
                 )
             } else {
                 RaftButton(
-                    text = stringResource(MR.strings.channel_sos_keep_stopped),
+                    text = stringResource(Res.string.channel_sos_keep_stopped),
                     onClick = onClose,
                     variant = RaftButtonVariant.Ghost,
                     size = RaftButtonSize.Lg,
                     enabled = !state.resuming
                 )
                 RaftButton(
-                    text = stringResource(MR.strings.channel_sos_resume_all),
+                    text = stringResource(Res.string.channel_sos_resume_all),
                     onClick = { store.dispatch(ChannelSosIntent.Resume) },
                     variant = RaftButtonVariant.Primary,
                     size = RaftButtonSize.Lg,
                     enabled = state.canResume,
                     loading = state.resuming,
-                    loadingLabel = stringResource(MR.strings.channel_sos_resuming)
+                    loadingLabel = stringResource(Res.string.channel_sos_resuming)
                 )
             }
 }
@@ -158,15 +157,15 @@ private fun RowScope.ChannelSosDialogFooter(
 @Composable
 private fun channelSosStillStartingText(count: Int): String =
     if (count == 1) {
-        stringResource(MR.strings.channel_sos_resume_still_starting_one)
+        stringResource(Res.string.channel_sos_resume_still_starting_one)
     } else {
-        stringResource(MR.strings.channel_sos_resume_still_starting_other, count)
+        stringResource(Res.string.channel_sos_resume_still_starting_other, count)
     }
 
 @Composable
 private fun channelSosResumeFailedText(count: Int): String =
     if (count == 1) {
-        stringResource(MR.strings.channel_sos_resume_failed_one)
+        stringResource(Res.string.channel_sos_resume_failed_one)
     } else {
-        stringResource(MR.strings.channel_sos_resume_failed_other, count)
+        stringResource(Res.string.channel_sos_resume_failed_other, count)
     }

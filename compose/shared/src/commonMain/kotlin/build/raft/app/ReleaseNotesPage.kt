@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.components.RaftSlotIcon
@@ -22,7 +23,6 @@ import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.kmmResourceLocaleTag
 import build.raft.app.data.raftSharedPreferenceStore
-import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,7 +33,6 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.CancellationException
 
 const val RELEASE_NOTES_PAGE = "compose_release_notes"
@@ -83,7 +82,7 @@ internal fun ReleaseNotesScreen() {
     SettingsWebViewPageScaffold(
         pager = pager,
         surface = SettingsWebViewSurface.ReleaseNotes,
-        title = stringResource(MR.strings.release_notes_title),
+        title = stringResource(Res.string.release_notes_title),
         iconName = RaftLucideIconName.FileText,
     ) { controller, onNavigationStateChange ->
         if (launchVersionCode.isNotBlank()) {
@@ -345,12 +344,12 @@ private fun ReleaseNotesErrorState(onRetry: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         RaftUiEmptyState(
-            title = stringResource(MR.strings.release_notes_error_title),
-            description = stringResource(MR.strings.release_notes_error_body),
+            title = stringResource(Res.string.release_notes_error_title),
+            description = stringResource(Res.string.release_notes_error_body),
             modifier = Modifier.fillMaxSize(),
             action = {
                 RaftButton(
-                    text = stringResource(MR.strings.common_retry),
+                    text = stringResource(Res.string.common_retry),
                     onClick = onRetry,
                     leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) },
                     size = RaftButtonSize.Lg,

@@ -1,12 +1,11 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.data.DataResult
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.format.RaftFormat
-import build.raft.app.resources.MR
 import build.raft.app.compat.json.JSONObject
-import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlin.random.Random
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -367,7 +366,7 @@ internal fun settingsHandsFeedbackImageEditRequest(
         previewPayload =
             RaftFilePreviewPayload(
                 kind = "image",
-                titleDesc = MR.strings.file_preview_image.desc(),
+                titleDesc = Res.string.file_preview_image.desc(),
                 subtitle = firstFile.fileName,
                 name = firstFile.fileName,
                 path = firstFile.fileName,
@@ -379,7 +378,7 @@ internal fun settingsHandsFeedbackImageEditRequest(
                 imageUrl = previewUri.takeIf { it.isNotBlank() },
                 messageDesc =
                     if (previewUri.isBlank()) {
-                        MR.strings.file_preview_error_image_unavailable.desc()
+                        Res.string.file_preview_error_image_unavailable.desc()
                     } else {
                         null
                     },
@@ -439,7 +438,7 @@ internal fun settingsHandsFeedbackImageEditPreviewRequest(
             RaftFilePreviewPayload(
                 kind = "image",
                 requestedKind = "image",
-                titleDesc = MR.strings.file_preview_image.desc(),
+                titleDesc = Res.string.file_preview_image.desc(),
                 subtitle = file.fileName,
                 name = file.fileName,
                 path = file.fileName,

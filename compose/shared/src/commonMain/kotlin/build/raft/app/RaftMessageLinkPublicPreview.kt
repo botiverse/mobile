@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,13 +43,11 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.parseRaftPublicMessages
 import build.raft.app.data.parseRaftPublicServerCard
 import build.raft.app.model.ConversationKind
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -273,14 +272,14 @@ internal fun RaftMessageLinkPublicPreviewScreen(
         Column(modifier.fillMaxSize().background(colors.layerCanvas)) {
             val content = state as? RaftPublicPreviewState.Content
             RaftPanelBackHeader(
-                title = content?.channelName?.let { "#$it" } ?: stringResource(MR.strings.message_link_public_preview_title),
+                title = content?.channelName?.let { "#$it" } ?: stringResource(Res.string.message_link_public_preview_title),
                 subtitle = content?.serverName,
                 onBack = onBack,
                 topSafeArea = topSafeArea,
             )
             Box(Modifier.fillMaxWidth().background(colors.fillMuted).padding(horizontal = 16.dp, vertical = 10.dp)) {
                 RaftText(
-                    text = stringResource(MR.strings.message_link_public_preview_notice),
+                    text = stringResource(Res.string.message_link_public_preview_notice),
                     style = RaftTheme.typography.footnote,
                     color = colors.foregroundMuted,
                 )
@@ -292,13 +291,13 @@ internal fun RaftMessageLinkPublicPreviewScreen(
                     Box(Modifier.fillMaxWidth().weight(1f).padding(24.dp), contentAlignment = Alignment.Center) {
                         Column(Modifier.widthIn(max = 320.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             RaftText(
-                                text = stringResource(MR.strings.error_server_unreachable),
+                                text = stringResource(Res.string.error_server_unreachable),
                                 style = RaftTheme.typography.callout,
                                 color = colors.foregroundMuted,
                                 textAlign = TextAlign.Center,
                             )
                             Spacer(Modifier.height(16.dp))
-                            RaftButton(text = stringResource(MR.strings.common_retry), onClick = onRetry, size = RaftButtonSize.Lg)
+                            RaftButton(text = stringResource(Res.string.common_retry), onClick = onRetry, size = RaftButtonSize.Lg)
                         }
                     }
                 is RaftPublicPreviewState.Content -> RaftPublicPreviewMessageList(state, Modifier.fillMaxWidth().weight(1f))
