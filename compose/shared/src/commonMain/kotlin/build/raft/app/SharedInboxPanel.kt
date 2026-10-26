@@ -1828,6 +1828,21 @@ private fun SharedActivityList(
         RaftProductEvents.activityMark(activityReadToggleMarkAction(currentItem))
         latestOnIntent(activityReadToggleIntent(currentItem))
     }
+    // The row menu's items and the row's screen-reader actions (raft-design #776 / #777): one write each,
+    // with the menu's analytics.
+    fun runRowAction(item: InboxItem, actionId: String) {
+        val write = activityRowActionWrite(item, actionId)
+        write.markAction?.let(RaftProductEvents::activityMark)
+        runSwipeEndCommand(write.command)
+    }
+    // A screen-reader action on a rendered row: resolved against the live row like a tap, and only while
+    // the row still offers it (its menu would list it).
+    fun accessibilityRowAction(renderedItemKey: String, actionId: String) {
+        val currentItem = committedRowItem(renderedItemKey) ?: return
+        if (actionId !in activityContextMenuActionIds(currentItem, channelMute?.mutedByChannelId.orEmpty())) return
+        swipeOpenRow = swipeOpenRow.close()
+        runRowAction(currentItem, actionId)
+    }
     fun undoSwipeEnd(token: Long) {
         val transition = swipeEndUndo.undo(token)
         swipeEndUndo = transition.state
@@ -1939,6 +1954,8 @@ private fun SharedActivityList(
                                 swipeEndAction = item.activitySwipeEndAction(channelMute?.mutedByChannelId.orEmpty()),
                                 onSwipeEnd = { swipeRowEnd(item.key) },
                                 onSwipeToggleRead = { swipeRowToggleRead(item.key) },
+                                accessibilityActionIds = activityContextMenuActionIds(item, channelMute?.mutedByChannelId.orEmpty()),
+                                onAccessibilityAction = { actionId -> accessibilityRowAction(item.key, actionId) },
                                 swipeOpenSide = swipeOpenRow.openSide(item.key),
                                 onSwipeOpenChange = { side -> swipeOpenRow = swipeOpenRow.change(item.key, side) },
                                 onSwipeOpenRowPlaced = swipeOpenRowGeometry::onOpenRowPlaced,
@@ -2053,74 +2070,12 @@ private fun SharedActivityList(
             RaftBaseMenuOverlay(
                 anchor = resolvedMenuAnchor,
                 items = activityContextMenuActionIds(item, channelMute?.mutedByChannelId.orEmpty()).map { actionId ->
-                    when (actionId) {
-                        "toggle-read" ->
-                            RaftBaseMenuItem(
-                                id = actionId,
-                                label =
-                                    if (item.unreadCount > 0) {
-                                        stringResource(MR.strings.home_action_mark_as_read)
-                                    } else {
-                                        stringResource(MR.strings.home_action_mark_as_unread)
-                                    },
-                                // Web InboxContextMenu, and the swipe's Read / Unread button (#793).
-                                icon =
-                                    if (item.unreadCount > 0) {
-                                        RaftLucideIconName.MessageSquareCheck
-                                    } else {
-                                        RaftLucideIconName.MessageSquareDot
-                                    }
-                            )
-                        "done" ->
-                            RaftBaseMenuItem(
-                                id = actionId,
-                                label = stringResource(MR.strings.thread_action_mark_done),
-                                icon = RaftLucideIconName.Check
-                            )
-                        "follow-thread" ->
-                            RaftBaseMenuItem(
-                                id = actionId,
-                                label = stringResource(MR.strings.thread_action_follow_thread),
-                                icon = RaftLucideIconName.Bell
-                            )
-                        "unfollow-thread" ->
-                            RaftBaseMenuItem(
-                                id = actionId,
-                                label = stringResource(MR.strings.thread_action_unfollow_thread),
-                                icon = RaftLucideIconName.BellOff
-                            )
-                        "mute-activity" ->
-                            RaftBaseMenuItem(
-                                id = actionId,
-                                label = stringResource(MR.strings.activity_action_mute_activity),
-                                icon = RaftLucideIconName.BellOff
-                            )
-                        "unmute-activity" ->
-                            RaftBaseMenuItem(
-                                id = actionId,
-                                label = stringResource(MR.strings.activity_action_unmute_activity),
-                                icon = RaftLucideIconName.Bell
-                            )
-                        else -> error("unknown Activity menu action: $actionId")
-                    }
+                    RaftBaseMenuItem(id = actionId, label = activityRowActionLabel(item, actionId), icon = activityRowActionIcon(item, actionId))
                 },
                 selectedId = "",
                 onDismiss = { activeMenuItem = null },
                 onSelect = { id ->
-                    when (id) {
-                        "toggle-read" -> {
-                            RaftProductEvents.activityMark(activityReadToggleMarkAction(item))
-                            onIntent(activityReadToggleIntent(item))
-                        }
-                        "done" -> {
-                            RaftProductEvents.activityMark(RaftActivityMarkAction.Done)
-                            onIntent(SharedActivityIntent.MarkDone(item))
-                        }
-                        "follow-thread" -> onIntent(SharedActivityIntent.FollowThread(item))
-                        "unfollow-thread" -> onIntent(SharedActivityIntent.UnfollowThread(item))
-                        "mute-activity" -> channelMute?.onToggle?.invoke(item.channelId.value, true)
-                        "unmute-activity" -> channelMute?.onToggle?.invoke(item.channelId.value, false)
-                    }
+                    runRowAction(item, id)
                     activeMenuItem = null
                 }
             )
@@ -2231,6 +2186,57 @@ internal fun activityContextMenuActionIds(item: InboxItem, mutedByChannelId: Map
                 null -> Unit
             }
         }
+    }
+
+/** What one row action ([activityContextMenuActionIds]) writes, and its `activity_mark` analytics value if any. */
+internal data class ActivityRowActionWrite(
+    val command: ActivitySwipeEndCommand,
+    val markAction: RaftActivityMarkAction? = null,
+)
+
+/**
+ * The write of the row menu's item [actionId] on [item]. The menu and the row's screen-reader actions
+ * share it, and the swipe's buttons make the same writes ([activityReadToggleIntent],
+ * [activitySwipeEndApplyCommand]).
+ */
+internal fun activityRowActionWrite(item: InboxItem, actionId: String): ActivityRowActionWrite =
+    when (actionId) {
+        "toggle-read" ->
+            ActivityRowActionWrite(ActivitySwipeEndCommand.Activity(activityReadToggleIntent(item)), activityReadToggleMarkAction(item))
+        "done" -> ActivityRowActionWrite(ActivitySwipeEndCommand.Activity(SharedActivityIntent.MarkDone(item)), RaftActivityMarkAction.Done)
+        "follow-thread" -> ActivityRowActionWrite(ActivitySwipeEndCommand.Activity(SharedActivityIntent.FollowThread(item)))
+        "unfollow-thread" -> ActivityRowActionWrite(ActivitySwipeEndCommand.Activity(SharedActivityIntent.UnfollowThread(item)))
+        "mute-activity" -> ActivityRowActionWrite(ActivitySwipeEndCommand.ChannelMute(item.channelId.value, muted = true))
+        "unmute-activity" -> ActivityRowActionWrite(ActivitySwipeEndCommand.ChannelMute(item.channelId.value, muted = false))
+        else -> error("unknown Activity row action: $actionId")
+    }
+
+/** The words of the row menu's item [actionId], also the row's screen-reader action of that name. */
+@Composable
+internal fun activityRowActionLabel(item: InboxItem, actionId: String): String =
+    when (actionId) {
+        "toggle-read" ->
+            if (item.unreadCount > 0) {
+                stringResource(MR.strings.home_action_mark_as_read)
+            } else {
+                stringResource(MR.strings.home_action_mark_as_unread)
+            }
+        "done" -> stringResource(MR.strings.thread_action_mark_done)
+        "follow-thread" -> stringResource(MR.strings.thread_action_follow_thread)
+        "unfollow-thread" -> stringResource(MR.strings.thread_action_unfollow_thread)
+        "mute-activity" -> stringResource(MR.strings.activity_action_mute_activity)
+        "unmute-activity" -> stringResource(MR.strings.activity_action_unmute_activity)
+        else -> error("unknown Activity row action: $actionId")
+    }
+
+/** The row menu item's icon (web InboxContextMenu; Read / Unread as on the swipe's button, #793). */
+internal fun activityRowActionIcon(item: InboxItem, actionId: String): RaftLucideIconName =
+    when (actionId) {
+        "toggle-read" -> if (item.unreadCount > 0) RaftLucideIconName.MessageSquareCheck else RaftLucideIconName.MessageSquareDot
+        "done" -> RaftLucideIconName.Check
+        "follow-thread", "unmute-activity" -> RaftLucideIconName.Bell
+        "unfollow-thread", "mute-activity" -> RaftLucideIconName.BellOff
+        else -> error("unknown Activity row action: $actionId")
     }
 
 internal fun InboxItem.toReplyThreadPrewarmMarker(serverId: String): ActivityReplyThreadPrewarmMarker? {

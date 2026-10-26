@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -33,9 +34,11 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -591,6 +594,14 @@ internal fun ActivityConversationListRow(
     onSwipeOpenRowPlaced: ((LayoutCoordinates) -> Unit)? = null,
     /** Screenshots only: the row slid by this share of its width on top of [swipeOpenSide] (negative: toward the end). */
     swipePreviewRevealFraction: Float = 0f,
+    /**
+     * The row's screen-reader actions (raft-design #776 / #777): the row menu's items
+     * ([activityContextMenuActionIds]), named as in the menu, run through [onAccessibilityAction] with
+     * their id. A screen reader can't swipe or press and hold, so this is how it reaches Done, Unfollow,
+     * Mute and Mark as read / unread.
+     */
+    accessibilityActionIds: List<String> = emptyList(),
+    onAccessibilityAction: (actionId: String) -> Unit = {},
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -609,6 +620,14 @@ internal fun ActivityConversationListRow(
     val systemLabel = stringResource(MR.strings.activity_list_system_sender)
     val selfLabel = stringResource(MR.strings.activity_list_self_sender)
     val openLabel = stringResource(MR.strings.common_open)
+    val latestOnAccessibilityAction by rememberUpdatedState(onAccessibilityAction)
+    val accessibilityActions =
+        accessibilityActionIds.map { actionId ->
+            CustomAccessibilityAction(activityRowActionLabel(item, actionId)) {
+                latestOnAccessibilityAction(actionId)
+                true
+            }
+        }
     val threadChannelText = model.threadChannelLabel?.let { stringResource(MR.strings.activity_list_thread_channel, it) }
     // A DM thread's face says the peer, so its line drops "@peer ·"; screen readers still hear it.
     val visibleThreadChannelText = threadChannelText?.takeIf { model.threadChannelLabelVisible }
@@ -675,6 +694,7 @@ internal fun ActivityConversationListRow(
                                 onOpen()
                                 true
                             }
+                            if (accessibilityActions.isNotEmpty()) customActions = accessibilityActions
                         }
                         .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),

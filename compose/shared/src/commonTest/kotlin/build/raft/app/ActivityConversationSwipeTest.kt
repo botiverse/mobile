@@ -668,6 +668,28 @@ class ActivitySwipeButtonsSpecTest {
     }
 
     @Test
+    fun rowActionsWriteWhatTheSwipeAndMenuWriteWithTheMenusAnalytics() {
+        // raft-design #776 / #777: the menu and the row's screen-reader actions share one write per item,
+        // the same as the swipe's buttons.
+        val unread = row("u").copy(unreadCount = 3)
+        val read = row("r")
+        val followed = row("f").copy(kind = InboxItemKind.Thread, isFollowing = true)
+        val unfollowed = row("n").copy(kind = InboxItemKind.Thread, isFollowing = false)
+        assertEquals(ActivityRowActionWrite(ActivitySwipeEndCommand.Activity(activityReadToggleIntent(unread)), RaftActivityMarkAction.Read), activityRowActionWrite(unread, "toggle-read"))
+        assertEquals(ActivityRowActionWrite(ActivitySwipeEndCommand.Activity(SharedActivityIntent.MarkUnread(read)), RaftActivityMarkAction.Unread), activityRowActionWrite(read, "toggle-read"))
+        assertEquals(ActivityRowActionWrite(ActivitySwipeEndCommand.Activity(SharedActivityIntent.MarkDone(read)), RaftActivityMarkAction.Done), activityRowActionWrite(read, "done"))
+        assertEquals(ActivityRowActionWrite(activitySwipeEndApplyCommand(followed, ActivitySwipeEndAction.UnfollowThread)), activityRowActionWrite(followed, "unfollow-thread"))
+        assertEquals(ActivityRowActionWrite(ActivitySwipeEndCommand.Activity(SharedActivityIntent.FollowThread(unfollowed))), activityRowActionWrite(unfollowed, "follow-thread"))
+        assertEquals(ActivityRowActionWrite(activitySwipeEndApplyCommand(read, ActivitySwipeEndAction.MuteActivity)), activityRowActionWrite(read, "mute-activity"))
+        assertEquals(ActivityRowActionWrite(ActivitySwipeEndCommand.ChannelMute(read.channelId.value, muted = false)), activityRowActionWrite(read, "unmute-activity"))
+        // Every item any row's menu lists has a write.
+        val mutes = mapOf(read.channelId.value to false, unread.channelId.value to true)
+        listOf(unread, read, followed, unfollowed).forEach { item ->
+            activityContextMenuActionIds(item, mutes).forEach { id -> activityRowActionWrite(item, id) }
+        }
+    }
+
+    @Test
     fun undoWindowIsEightSeconds() {
         assertEquals(8_000L, ActivitySwipeDoneUndoWindowMillis)
     }

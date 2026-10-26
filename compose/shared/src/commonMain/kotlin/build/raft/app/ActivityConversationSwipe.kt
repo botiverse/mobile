@@ -101,8 +101,11 @@ import kotlinx.coroutines.launch
  *   A row whose menu has no read toggle (an unfollowed thread) has no start button.
  *
  * The row has no Done button at rest (artin 2026-10-23). The swipe is never the only way: the press-and-
- * hold menu (Done, Unfollow, Mute Activity) stays, and screen readers use it, so the buttons are
- * decorative to accessibility.
+ * hold menu (Mark as read / unread, Done, Unfollow, Mute Activity) stays. A screen reader can neither
+ * swipe nor press and hold, so the row's own accessibility node carries the menu's items as custom
+ * actions (raft-design #776 / #777; TalkBack's Actions menu, VoiceOver's Actions rotor), named as in the
+ * menu and making the same writes (`activityRowActionWrite`). The uncovered buttons themselves are hidden
+ * from accessibility (`clearAndSetSemantics`) so a screen reader doesn't hear them twice.
  *
  * Gesture conflicts:
  *
