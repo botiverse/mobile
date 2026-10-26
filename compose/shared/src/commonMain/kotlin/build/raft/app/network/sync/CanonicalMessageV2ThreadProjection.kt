@@ -135,6 +135,8 @@ private fun CanonicalActionMetadataV2.toWireActionCardMetadata(): WireActionCard
             state = state,
             executedAt = executedAt,
             executedByUserName = executedByUserName,
+            // S0.3: the App tells the sender of a done feedback card by it ("View in Settings").
+            executedByUserId = executedByUserId,
             result = result?.let {
                 WireActionCardResult(
                     kind = it.kind,
@@ -149,6 +151,8 @@ private fun CanonicalActionMetadataV2.toWireActionCardMetadata(): WireActionCard
                     ownerAgentName = it.ownerAgentName,
                     addedHumanIds = it.addedHumanIds,
                     addedAgentIds = it.addedAgentIds,
+                    ticketId = it.ticketId,
+                    source = it.source,
                 )
             },
             presentation = presentation?.let {

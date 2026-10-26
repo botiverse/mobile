@@ -12,6 +12,9 @@ internal const val SETTINGS_FEEDBACK_ACTION_CARD_SERVER_ID = "settingsFeedbackAc
 /** pageData key for a Feedback WebView opened on one ticket (a done feedback card's "View in Settings", S0.3): identity only. */
 internal const val SETTINGS_FEEDBACK_TICKET_ID = "settingsFeedbackTicketId"
 
+/** The web feedback page's query parameter for the ticket to open on (S0.3, the web reads exactly this name). */
+internal const val SETTINGS_FEEDBACK_TICKET_QUERY = "ticket"
+
 /**
  * The card a Feedback WebView is opened for (slock `docs/development/feedback-native-entry.md`,
  * "Opened from a feedback card"): the card's message id and the server the person is viewing the
@@ -49,8 +52,10 @@ internal fun ThreadActionCard.opensFeedbackCardEntry(productFeedbackMultiAppEnab
 /**
  * `<web>/feedback/?embed=…&shell=host[&actionCard=<id>&server=<id>][&ticket=<id>]`, on the current
  * environment's web origin. Both card params are added together or not at all. [ticketId] (a UUID,
- * [feedbackTicketIdOrNull]) asks the page to open on that ticket; a page that does not read
- * `ticket` yet opens the list, which is the S0.3 fallback.
+ * [feedbackTicketIdOrNull]) asks the page to open on that ticket. The parameter is named exactly
+ * `ticket` (agreed with the web: slock's standalone feedback page reads `ticket` and opens its
+ * workspace on it, Kirby's S0.3 follow-up); a page that does not read it yet opens the list, which
+ * is the S0.3 fallback.
  */
 internal fun settingsFeedbackWebUrl(webBaseUrl: String?, entry: RaftFeedbackCardEntry?, ticketId: String? = null): String =
     sharedSettingsHostShellWebUrl(
@@ -61,7 +66,7 @@ internal fun settingsFeedbackWebUrl(webBaseUrl: String?, entry: RaftFeedbackCard
                 "actionCard" to it.actionCardMessageId.feedbackQueryEncode(),
                 "server" to it.serverId.feedbackQueryEncode(),
             )
-        }.orEmpty() + listOfNotNull(feedbackTicketIdOrNull(ticketId)?.let { "ticket" to it.feedbackQueryEncode() }),
+        }.orEmpty() + listOfNotNull(feedbackTicketIdOrNull(ticketId)?.let { SETTINGS_FEEDBACK_TICKET_QUERY to it.feedbackQueryEncode() }),
     )
 
 internal fun JSONObject.putSettingsFeedbackCardEntry(entry: RaftFeedbackCardEntry?): JSONObject =
