@@ -245,7 +245,11 @@ class JointChannelConnectionsCacheFirstTest {
             )
         }
 
-        override suspend fun invite(targetServerSlug: String, invitedPeople: List<String>): DataResult<JointChannelConnections> =
+        override suspend fun invite(
+            targetServerSlug: String,
+            invitedPeople: List<String>,
+            sameAdmin: Boolean,
+        ): DataResult<JointChannelConnections> =
             error("unused")
 
         override suspend fun resend(): DataResult<Int> = error("unused")

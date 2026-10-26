@@ -11,6 +11,8 @@ import build.raft.app.data.JOINT_TARGET_SERVER_INVALID
 import build.raft.app.data.JointChannelConnections
 import build.raft.app.data.JointChannelServer
 import build.raft.app.data.JointChannelServerPlan
+import build.raft.app.data.JointSameAdminContext
+import build.raft.app.data.JointSameAdminServer
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.errorPresentation
@@ -110,6 +112,61 @@ class JointChannelConnectionsStoreTest {
         assertEquals(JointChannelConnectionsEffect.InviteSent(emailedCount = 2), state.effect)
         store.dispatch(JointChannelConnectionsIntent.ConsumeEffect)
         assertNull(store.state.value.effect)
+        store.clear()
+    }
+
+    @Test
+    fun sameAdminInviteNeedsConfirmationThenReportsTheDirectConnectionLikeWeb() = runTest {
+        val connected = jointTestConnections(serverCount = 3).let { list ->
+            list.copy(servers = list.servers.map { if (it.slug == "server-2") it.copy(active = true) else it })
+        }
+        val dataSource = FakeJointConnectionsDataSource(inviteResult = DataResult.Content(connected))
+        val store = loadedStore(dataSource)
+        store.dispatch(
+            JointChannelConnectionsIntent.SetSameAdminContext(
+                JointSameAdminContext(
+                    currentServerSlug = "server-0",
+                    currentServerName = "Server 0",
+                    userName = "me",
+                    userEmail = "me@example.com",
+                    servers = listOf(JointSameAdminServer("server-0", "Server 0", "owner"), JointSameAdminServer("server-2", "Server 2", "admin")),
+                )
+            )
+        )
+        assertEquals("Server 2", store.state.value.sameAdminTarget("server-2", "@ada, me@example.com")?.name)
+
+        store.dispatch(JointChannelConnectionsIntent.Invite("server-2", "@ada, me@example.com"))
+        runCurrent()
+        assertEquals(setOf(JointInviteValidation.SameAdminConfirmRequired), store.state.value.inviteValidation)
+        assertEquals(0, dataSource.inviteCalls)
+
+        store.dispatch(JointChannelConnectionsIntent.Invite("server-2", "@ada, me@example.com", sameAdminConfirmed = true))
+        runCurrent()
+        assertEquals(listOf(true), dataSource.sameAdminFlags)
+        assertEquals(JointChannelConnectionsEffect.InviteSent(emailedCount = 1, connectedServerName = "Server 2"), store.state.value.effect)
+        store.dispatch(JointChannelConnectionsIntent.ConsumeEffect)
+
+        // Someone else only: a plain email invite, no flag.
+        store.dispatch(JointChannelConnectionsIntent.Invite("server-2", "@ada"))
+        runCurrent()
+        assertEquals(listOf(true, false), dataSource.sameAdminFlags)
+        assertEquals(JointChannelConnectionsEffect.InviteSent(emailedCount = 1), store.state.value.effect)
+        store.clear()
+    }
+
+    @Test
+    fun sameAdminAcceptThatFellBackToEmailIsReportedAsSent() = runTest {
+        val dataSource = FakeJointConnectionsDataSource(inviteResult = DataResult.Content(jointTestConnections(serverCount = 3)))
+        val store = loadedStore(dataSource)
+        store.dispatch(
+            JointChannelConnectionsIntent.SetSameAdminContext(
+                JointSameAdminContext("server-0", "Server 0", "me", null, listOf(JointSameAdminServer("server-2", "Server 2", "owner")))
+            )
+        )
+        store.dispatch(JointChannelConnectionsIntent.Invite("server-2", "@me", sameAdminConfirmed = true))
+        runCurrent()
+        assertEquals(listOf(true), dataSource.sameAdminFlags)
+        assertEquals(JointChannelConnectionsEffect.InviteSent(emailedCount = 1), store.state.value.effect)
         store.clear()
     }
 
@@ -300,9 +357,16 @@ private class FakeJointConnectionsDataSource(
         return loadResult
     }
 
-    override suspend fun invite(targetServerSlug: String, invitedPeople: List<String>): DataResult<JointChannelConnections> {
+    val sameAdminFlags = mutableListOf<Boolean>()
+
+    override suspend fun invite(
+        targetServerSlug: String,
+        invitedPeople: List<String>,
+        sameAdmin: Boolean,
+    ): DataResult<JointChannelConnections> {
         inviteCalls += 1
         invites += targetServerSlug to invitedPeople
+        sameAdminFlags += sameAdmin
         return inviteGate?.await() ?: inviteResult ?: DataResult.Content(jointTestConnections(serverCount = 3))
     }
 

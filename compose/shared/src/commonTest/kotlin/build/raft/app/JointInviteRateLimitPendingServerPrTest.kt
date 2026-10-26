@@ -58,6 +58,7 @@ class JointInviteRateLimitPendingServerPrTest {
                 nameInvalid = "name",
                 slugRequired = "slug",
                 peopleRequired = "people",
+                sameAdminConfirmRequired = "confirm",
                 freeServerLimit = "free",
                 serverLimit = "max",
                 freeHostLimit = { "host:$it" },

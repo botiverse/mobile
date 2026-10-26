@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.JOINT_CHANNEL_MAX_SERVERS
 import build.raft.app.data.JointChannelAccepted
+import build.raft.app.data.JointSameAdminContext
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.errorPresentationOrNull
 import build.raft.app.data.jointRetryAfterSeconds
@@ -62,6 +63,8 @@ internal fun CreateJointChannelDialogHost(
     membersLoading: Boolean,
     logger: (String) -> Unit,
     agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
+    /** The inviter's account and server roles, for the same-admin direct connection. */
+    sameAdminContext: JointSameAdminContext? = null,
     onDismiss: () -> Unit,
     onOpenChannel: (JointChannelAccepted) -> Unit,
     onOpenBilling: () -> Unit,
@@ -72,6 +75,7 @@ internal fun CreateJointChannelDialogHost(
             CreateJointChannelStore(NetworkCreateJointChannelDataSource(networkClient, logger), scope)
         }
     DisposableEffect(store) { onDispose { store.clear() } }
+    LaunchedEffect(store, sameAdminContext) { store.dispatch(CreateJointChannelIntent.SetSameAdminContext(sameAdminContext)) }
     val state by store.state.collectAsState()
     val latestOpen by rememberUpdatedState(onOpenChannel)
     LaunchedEffect(state.effect) {
@@ -266,6 +270,15 @@ private fun CreateJointInviteDrafts(state: CreateJointChannelState, onIntent: (C
                             placeholder = stringResource(MR.strings.joint_connections_people_placeholder),
                         )
                     }
+                    state.sameAdminTarget(draft)?.let { target ->
+                        JointSameAdminNotice(
+                            sourceServerName = state.sameAdminContext?.currentServerName.orEmpty(),
+                            targetServerName = target.name,
+                            confirmed = draft.sameAdminConfirmed,
+                            onConfirmedChange = { onIntent(CreateJointChannelIntent.ConfirmSameAdmin(draft.id, it)) },
+                            enabled = !state.submitting,
+                        )
+                    }
                 }
             }
         }
@@ -324,6 +337,7 @@ private fun createJointChannelErrorMessage(error: CreateJointChannelError, curre
             nameInvalid = stringResource(MR.strings.channel_create_error_name_format),
             slugRequired = stringResource(MR.strings.joint_connections_slug_required),
             peopleRequired = stringResource(MR.strings.joint_connections_people_required),
+            sameAdminConfirmRequired = stringResource(MR.strings.joint_same_admin_confirm_required),
             freeServerLimit = stringResource(MR.strings.joint_limit_free_servers),
             serverLimit = stringResource(MR.strings.joint_limit_servers, JOINT_CHANNEL_MAX_SERVERS),
             freeHostLimit = { freeHost },

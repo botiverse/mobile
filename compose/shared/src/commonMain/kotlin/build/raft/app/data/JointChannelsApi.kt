@@ -3,6 +3,8 @@ package build.raft.app.data
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -13,7 +15,7 @@ import kotlinx.serialization.json.Json
  *  - `GET channels/:id` (`packages/server/src/routes/channels.ts` `channelRouter.get("/:id")`)
  *    → the channel row run through `channelService.attachJointChannelMetadata`, i.e. the
  *    `JointChannelMetadata` fields (`jointServers[]`, `jointPendingInvites[]`, `jointPeer*`).
- *  - `POST channels/:id/joint-invites` body `{ targetServerSlug, invitedPeople: string[] }`
+ *  - `POST channels/:id/joint-invites` body `{ targetServerSlug, invitedPeople: string[], sameAdmin? }`
  *    → the channel with joint metadata plus `jointInvites` / `jointInvite`. 400 carries
  *    `{ error, code: JointChannelInviteValidationCode, targetServerSlug?, invitee? }`; 403 is
  *    either the `federateChannels` gate (`{ error }`) or a limit
@@ -193,8 +195,15 @@ internal fun parseSharedJointErrorDetails(bodyText: String?): JointChannelErrorD
         )
     }
 
-/** One invite draft as sent: slug + invitee list. */
-data class JointInviteTarget(val targetServerSlug: String, val invitedPeople: List<String>)
+/**
+ * One invite draft as sent: slug + invitee list, and [sameAdmin] when the inviter confirmed
+ * connecting directly as admin of both servers (see [findSameAdminJointTarget]).
+ */
+data class JointInviteTarget(
+    val targetServerSlug: String,
+    val invitedPeople: List<String>,
+    val sameAdmin: Boolean = false,
+)
 
 sealed interface CreateJointChannelOutcome {
     data class Created(val channel: JointChannelAccepted) : CreateJointChannelOutcome
@@ -223,16 +232,84 @@ internal fun buildSharedCreateJointChannelBody(
             description = description,
             agentIds = agentIds,
             userIds = userIds,
-            jointInvites = invites.map { JointChannelInviteRequestBody(it.targetServerSlug, it.invitedPeople) },
+            jointInvites = invites.map { JointChannelInviteRequestBody(it.targetServerSlug, it.invitedPeople, it.sameAdmin.sameAdminWire()) },
         ),
     )
 
-/** `POST channels/:id/joint-invites` request body (no `sameAdmin`: the direct same-admin connect is web-only). */
+/**
+ * One `jointInvites` entry of `POST channels`, and the `POST channels/:id/joint-invites` body.
+ * `sameAdmin: true` (RFC 075 §4.5, botiverse/slock `staging` d8082739a
+ * `services/channelService.ts` `JointInviteRequest.sameAdmin`) asks the server to accept the
+ * inviter's own invite on the target in the same request instead of emailing them; the server
+ * re-checks their owner/admin role on both servers and falls back to the email on failure.
+ * Omitted (not `false`) when not set, as the web sends it.
+ */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 internal data class JointChannelInviteRequestBody(
     val targetServerSlug: String,
     val invitedPeople: List<String>,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val sameAdmin: Boolean? = null,
 )
+
+private fun Boolean.sameAdminWire(): Boolean? = takeIf { it }
+
+/** A server the signed-in account belongs to, as far as the same-admin check needs it. */
+internal data class JointSameAdminServer(val slug: String, val name: String, val role: String?)
+
+/** Who is inviting and from where: the inputs of web `findSameAdminJointTarget`. */
+internal data class JointSameAdminContext(
+    val currentServerSlug: String?,
+    val currentServerName: String,
+    val userName: String?,
+    val userEmail: String?,
+    val servers: List<JointSameAdminServer>,
+)
+
+/**
+ * Web `invitesSelf` (`packages/web/src/utils/jointSameAdmin.ts`): `a@b` is an email
+ * (case-insensitive), anything else a handle with an optional leading `@`, the same token rules
+ * as the server's `resolveJointInvitees`.
+ */
+internal fun jointInvitesSelf(invitedPeople: List<String>, userName: String?, userEmail: String?): Boolean =
+    invitedPeople.any { raw ->
+        val token = raw.trim()
+        if (token.contains('@') && !token.startsWith('@')) {
+            !userEmail.isNullOrEmpty() && token.equals(userEmail, ignoreCase = true)
+        } else {
+            !userName.isNullOrEmpty() && token.removePrefix("@") == userName
+        }
+    }
+
+/**
+ * Web `findSameAdminJointTarget`: the target server the inviter owns or administers when they
+ * invite themselves there, so the form asks to confirm the direct connection. Only decides what
+ * the form shows; the server re-checks the inviter's authority on both servers.
+ */
+internal fun findSameAdminJointTarget(
+    context: JointSameAdminContext?,
+    targetServerSlug: String,
+    invitedPeople: List<String>,
+): JointSameAdminServer? {
+    context ?: return null
+    val slug = targetServerSlug.trim()
+    if (slug.isEmpty() || slug == context.currentServerSlug) return null
+    if (!jointInvitesSelf(invitedPeople, context.userName, context.userEmail)) return null
+    val target = context.servers.firstOrNull { it.slug == slug } ?: return null
+    return target.takeIf { it.role == "owner" || it.role == "admin" }
+}
+
+/** The same-admin inputs from the stored session: its user and the servers with their roles. */
+internal fun StoredAuthSession.jointSameAdminContext(currentServerId: String?): JointSameAdminContext? {
+    val current = servers.firstOrNull { it.id == currentServerId } ?: return null
+    return JointSameAdminContext(
+        currentServerSlug = current.slug,
+        currentServerName = current.name,
+        userName = user.name,
+        userEmail = user.email,
+        servers = servers.mapNotNull { server -> server.slug?.let { JointSameAdminServer(it, server.name, server.role) } },
+    )
+}
 
 enum class JointChannelServerPlan { Free, Paid }
 
@@ -364,10 +441,18 @@ internal fun parseSharedJointAcceptedChannel(bodyText: String): JointChannelAcce
     JointChannelAccepted(channelId = ChannelId(id), channelName = wire.name)
 }.getOrNull()
 
-internal fun buildSharedJointChannelInviteBody(targetServerSlug: String, invitedPeople: List<String>): String =
+internal fun buildSharedJointChannelInviteBody(
+    targetServerSlug: String,
+    invitedPeople: List<String>,
+    sameAdmin: Boolean = false,
+): String =
     jointChannelsJson.encodeToString(
         JointChannelInviteRequestBody.serializer(),
-        JointChannelInviteRequestBody(targetServerSlug = targetServerSlug, invitedPeople = invitedPeople),
+        JointChannelInviteRequestBody(
+            targetServerSlug = targetServerSlug,
+            invitedPeople = invitedPeople,
+            sameAdmin = sameAdmin.sameAdminWire(),
+        ),
     )
 
 /** Web `parseInvitedPeopleText` (`packages/web/src/utils/jointSameAdmin.ts`): commas or new lines. */
@@ -404,6 +489,7 @@ internal class RealJointChannelRepository(
         channelId: ChannelId,
         targetServerSlug: String,
         invitedPeople: List<String>,
+        sameAdmin: Boolean = false,
     ): DataResult<JointChannelConnections> =
         execute(
             "joint_invite",
@@ -412,7 +498,7 @@ internal class RealJointChannelRepository(
                     priority = DataRequestPriority.Foreground,
                     path = "channels/${channelId.value}/joint-invites",
                     method = "POST",
-                    bodyText = buildSharedJointChannelInviteBody(targetServerSlug, invitedPeople),
+                    bodyText = buildSharedJointChannelInviteBody(targetServerSlug, invitedPeople, sameAdmin),
                 )
             },
         ) { body -> parseSharedJointChannelConnections(body) }

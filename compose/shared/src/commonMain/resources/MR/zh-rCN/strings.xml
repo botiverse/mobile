@@ -2879,6 +2879,10 @@
     <string name="joint_create_free_host_limit">你的免费服务器已经发起了 #%1$s，并且已有其他服务器加入。升级到 Pro 可以发起更多，或者等 #%1$s 里的其他服务器全部退出。</string>
     <string name="joint_create_free_host_limit_unnamed">你的免费服务器已经发起了 1 个有其他服务器加入的联合频道。升级到 Pro 可以发起更多，或者等其中的其他服务器全部退出。</string>
     <string name="joint_invite_error_invitee_not_found">在服务器「%2$s」中找不到 %1$s，请检查 handle 或邮箱。</string>
+    <string name="joint_same_admin_notice">你同时是 %1$s 和 %2$s 的管理员。将以两边管理员的身份直接建立连接，不会发送邮件。</string>
+    <string name="joint_same_admin_confirm">以两边管理员的身份直接建立连接</string>
+    <string name="joint_same_admin_confirm_required">请确认直接建立连接，或从被邀请人中移除自己。</string>
+    <string name="joint_same_admin_connected">已直接连接 %1$s。</string>
     <string name="joint_invite_error_invitee_not_admin">%1$s 必须是服务器「%2$s」的所有者或管理员，才能被邀请。</string>
     <string name="joint_invite_error_server_not_found">找不到服务器「%1$s」，请检查 slug。</string>
     <string name="joint_invite_error_cannot_invite_self">不能邀请本服务器加入它自己的联合频道。</string>

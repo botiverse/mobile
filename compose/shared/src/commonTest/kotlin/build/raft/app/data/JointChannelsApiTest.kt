@@ -120,6 +120,48 @@ class JointChannelsApiTest {
     }
 
     @Test
+    fun sameAdminIsSentOnlyWhenSetLikeWeb() {
+        // botiverse/slock staging d8082739a routes/channels.ts `POST /:id/joint-invites` reads `sameAdmin === true`.
+        val direct = Json.parseToJsonElement(buildSharedJointChannelInviteBody("partner-co", listOf("@me"), sameAdmin = true)).jsonObject
+        assertEquals(setOf("targetServerSlug", "invitedPeople", "sameAdmin"), direct.keys)
+        assertEquals("true", direct.getValue("sameAdmin").jsonPrimitive.content)
+
+        val create =
+            Json.parseToJsonElement(
+                buildSharedCreateJointChannelBody(
+                    "launch",
+                    null,
+                    emptyList(),
+                    emptyList(),
+                    listOf(JointInviteTarget("partner-co", listOf("@me"), sameAdmin = true), JointInviteTarget("third-co", listOf("@cy"))),
+                )
+            ).jsonObject
+        val invites = create.getValue("jointInvites").jsonArray.map { it.jsonObject }
+        assertEquals("true", invites[0].getValue("sameAdmin").jsonPrimitive.content)
+        assertEquals(setOf("targetServerSlug", "invitedPeople"), invites[1].keys)
+    }
+
+    @Test
+    fun sameAdminContextComesFromTheSessionServersAndUser() {
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "u1", email = "me@example.com", name = "me"),
+                accessToken = "a",
+                refreshToken = "r",
+                servers =
+                    listOf(
+                        StoredAuthServer(id = "s1", name = "Home Co", slug = "home-co", role = "member"),
+                        StoredAuthServer(id = "s2", name = "Partner Co", slug = "partner-co", role = "admin"),
+                    ),
+            )
+        val context = session.jointSameAdminContext("s1")!!
+        assertEquals("Home Co", context.currentServerName)
+        assertEquals("partner-co", findSameAdminJointTarget(context, "partner-co", listOf("Me@Example.com"))?.slug)
+        assertNull(findSameAdminJointTarget(context, "partner-co", listOf("bo@example.com")))
+        assertNull(session.jointSameAdminContext("unknown"))
+    }
+
+    @Test
     fun invitedPeopleAndSlugFollowWebRules() {
         assertEquals(listOf("@ada", "bo@example.com", "cy"), parseJointInvitedPeopleText(" @ada ,bo@example.com\n\n cy ,"))
         assertEquals(JointServerSlugIssue.Required, jointServerSlugIssue(""))

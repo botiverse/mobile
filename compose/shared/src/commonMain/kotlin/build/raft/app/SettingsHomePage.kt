@@ -130,6 +130,7 @@ import build.raft.app.data.realtime.realtimeProcessDesiredSession
 import build.raft.app.data.HomeRowRestoredHint
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.jointInviteIdFromHomeNotificationIdOrNull
+import build.raft.app.data.jointSameAdminContext
 import build.raft.app.data.displayRowHints
 import build.raft.app.data.SharedHomeDataSource
 import build.raft.app.data.HomeConversationRow
@@ -7746,6 +7747,11 @@ private fun RaftAppShellReadyContent(
                         membersLoading = createChannelMembersLoading,
                         logger = raftLogger("SlockCreateJointChannel", "create_joint_channel", RaftLogLevel.Warn),
                         agentStatusResolver = createChannelAgentStatusResolver,
+                        // Web `findSameAdminJointTarget` inputs: the account and its server roles.
+                        sameAdminContext =
+                            remember(readySession, jointHomeSnapshot?.server?.id) {
+                                readySession?.jointSameAdminContext(jointHomeSnapshot?.server?.id?.value)
+                            },
                         onDismiss = { createJointChannelDialogOpen = false },
                         onOpenChannel = { channel ->
                             createJointChannelDialogOpen = false

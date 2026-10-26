@@ -11,6 +11,9 @@ import build.raft.app.data.JOINT_INVITEE_NOT_FOUND
 import build.raft.app.data.JOINT_INVITE_LIMIT_EXCEEDED
 import build.raft.app.data.JOINT_TARGET_SERVER_INVALID
 import build.raft.app.data.JointChannelConnections
+import build.raft.app.data.JointSameAdminContext
+import build.raft.app.data.JointSameAdminServer
+import build.raft.app.data.findSameAdminJointTarget
 import build.raft.app.data.JointServerSlugIssue
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.RaftDurableSnapshotKey
@@ -74,10 +77,23 @@ internal enum class JointChannelConnectionsLoadStatus { Loading, Content, Error 
 internal enum class JointChannelConnectionsAction { Invite, Resend }
 
 /** Client-side invite form rejection (web parity: checked before any request). */
-internal enum class JointInviteValidation { SlugRequired, SlugPattern, PeopleRequired, ServerLimitReached }
+internal enum class JointInviteValidation {
+    SlugRequired,
+    SlugPattern,
+    PeopleRequired,
+    ServerLimitReached,
+
+    /** Web `channel.jointInvite.sameAdmin.confirmRequired`: the direct connection is not confirmed. */
+    SameAdminConfirmRequired,
+}
 
 internal sealed interface JointChannelConnectionsEffect {
-    data class InviteSent(val emailedCount: Int) : JointChannelConnectionsEffect
+    /**
+     * [connectedServerName] is set when the same-admin invite connected that server directly
+     * (web reads it from the returned server list: the server may fall back to the email);
+     * [emailedCount] is everyone else on the list.
+     */
+    data class InviteSent(val emailedCount: Int, val connectedServerName: String? = null) : JointChannelConnectionsEffect
 
     data class Resent(val resentCount: Int) : JointChannelConnectionsEffect
 }
@@ -99,7 +115,13 @@ internal data class JointChannelConnectionsState(
     val inviteFailure: JointChannelFailure? = null,
     val resendFailure: JointChannelFailure? = null,
     val effect: JointChannelConnectionsEffect? = null,
+    /** The inviter's account, servers and roles; null until the session is known. */
+    val sameAdminContext: JointSameAdminContext? = null,
 ) {
+    /** Web EditChannelDialog `inviteSameAdminTarget` for the form's current slug and people. */
+    fun sameAdminTarget(targetServerSlug: String, invitedPeopleText: String): JointSameAdminServer? =
+        findSameAdminJointTarget(sameAdminContext, targetServerSlug, parseJointInvitedPeopleText(invitedPeopleText))
+
     /** Web: invite / resend controls render only for `federateChannels` on a live joint channel. */
     val canManageConnections: Boolean
         get() = canFederate && connections?.isJoint == true && connections.archived.not()
@@ -111,7 +133,12 @@ internal data class JointChannelConnectionsState(
 internal sealed interface JointChannelConnectionsIntent {
     data object Load : JointChannelConnectionsIntent
     data object Refresh : JointChannelConnectionsIntent
-    data class Invite(val targetServerSlug: String, val invitedPeopleText: String) : JointChannelConnectionsIntent
+    data class Invite(
+        val targetServerSlug: String,
+        val invitedPeopleText: String,
+        val sameAdminConfirmed: Boolean = false,
+    ) : JointChannelConnectionsIntent
+    data class SetSameAdminContext(val context: JointSameAdminContext?) : JointChannelConnectionsIntent
     data object Resend : JointChannelConnectionsIntent
     data object ClearInviteFeedback : JointChannelConnectionsIntent
     data object ConsumeEffect : JointChannelConnectionsIntent
@@ -119,7 +146,7 @@ internal sealed interface JointChannelConnectionsIntent {
 
 internal interface JointChannelConnectionsDataSource {
     suspend fun load(): DataResult<JointChannelConnectionsSnapshot>
-    suspend fun invite(targetServerSlug: String, invitedPeople: List<String>): DataResult<JointChannelConnections>
+    suspend fun invite(targetServerSlug: String, invitedPeople: List<String>, sameAdmin: Boolean): DataResult<JointChannelConnections>
     suspend fun resend(): DataResult<Int>
 }
 
@@ -146,9 +173,13 @@ internal class RealJointChannelConnectionsDataSource(
             }
         }
 
-    override suspend fun invite(targetServerSlug: String, invitedPeople: List<String>): DataResult<JointChannelConnections> =
+    override suspend fun invite(
+        targetServerSlug: String,
+        invitedPeople: List<String>,
+        sameAdmin: Boolean,
+    ): DataResult<JointChannelConnections> =
         runner.run { _, networkClient ->
-            repository(networkClient).inviteServer(route.channelId, targetServerSlug, invitedPeople)
+            repository(networkClient).inviteServer(route.channelId, targetServerSlug, invitedPeople, sameAdmin)
         }
 
     override suspend fun resend(): DataResult<Int> =
@@ -215,6 +246,10 @@ internal class JointChannelConnectionsStore(
             JointChannelConnectionsIntent.Refresh -> load(force = true)
             is JointChannelConnectionsIntent.Invite -> invite(intent)
             JointChannelConnectionsIntent.Resend -> resend()
+            is JointChannelConnectionsIntent.SetSameAdminContext ->
+                if (mutableState.value.sameAdminContext != intent.context) {
+                    mutableState.value = mutableState.value.copy(sameAdminContext = intent.context)
+                }
             JointChannelConnectionsIntent.ClearInviteFeedback -> {
                 val current = mutableState.value
                 if (current.inviteValidation.isNotEmpty() || current.inviteFailure != null) {
@@ -312,6 +347,12 @@ internal class JointChannelConnectionsStore(
                 if (people.isEmpty()) add(JointInviteValidation.PeopleRequired)
                 if (isEmpty() && connections.serverLimitReached) add(JointInviteValidation.ServerLimitReached)
             }
+        val sameAdminTarget = findSameAdminJointTarget(current.sameAdminContext, slug, people)
+        if (validation.isEmpty() && sameAdminTarget != null && !intent.sameAdminConfirmed) {
+            mutableState.value =
+                current.copy(inviteValidation = setOf(JointInviteValidation.SameAdminConfirmRequired), inviteFailure = null)
+            return
+        }
         if (validation.isNotEmpty()) {
             mutableState.value = current.copy(inviteValidation = validation, inviteFailure = null)
             return
@@ -324,7 +365,7 @@ internal class JointChannelConnectionsStore(
                 effect = null,
             )
         launchAction {
-            val result = runCall { dataSource.invite(slug, people) }
+            val result = runCall { dataSource.invite(slug, people, sameAdmin = sameAdminTarget != null) }
             val previous = mutableState.value
             if (result is DataResult.Content && result.data.channelId == connections.channelId) {
                 cacheSlot?.let { slot ->
@@ -333,13 +374,22 @@ internal class JointChannelConnectionsStore(
             }
             mutableState.value =
                 when (result) {
-                    is DataResult.Content ->
+                    is DataResult.Content -> {
+                        // Web: read the outcome from the returned list, the accept may have fallen back to email.
+                        val connectedDirectly =
+                            sameAdminTarget != null &&
+                                result.data.servers.any { it.slug == sameAdminTarget.slug && it.active }
                         previous.copy(
                             actionInFlight = null,
                             connections =
                                 if (result.data.channelId == connections.channelId) result.data else previous.connections,
-                            effect = JointChannelConnectionsEffect.InviteSent(emailedCount = people.size),
+                            effect =
+                                JointChannelConnectionsEffect.InviteSent(
+                                    emailedCount = if (connectedDirectly) people.size - 1 else people.size,
+                                    connectedServerName = sameAdminTarget?.name?.takeIf { connectedDirectly },
+                                ),
                         )
+                    }
                     else -> previous.copy(actionInFlight = null, inviteFailure = result.toJointChannelFailure())
                 }
         }

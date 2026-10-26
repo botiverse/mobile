@@ -45,6 +45,8 @@ import build.raft.app.data.JointChannelServer
 import build.raft.app.data.JointChannelServerPlan
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.jointSameAdminContext
+import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
@@ -147,6 +149,13 @@ private fun JointChannelConnectionsScreen() {
     val state by store.state.collectAsState()
     var slug by remember(route) { mutableStateOf("") }
     var people by remember(route) { mutableStateOf("") }
+    var sameAdminConfirmed by remember(route) { mutableStateOf(false) }
+    val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
+    // Web `findSameAdminJointTarget` inputs: the account and its role on each of its servers.
+    LaunchedEffect(store, authStore, liveOwner) {
+        val session = runCatchingPreservingCancellation { authStore.readSession() }.getOrNull()
+        store.dispatch(JointChannelConnectionsIntent.SetSameAdminContext(session?.jointSameAdminContext(route.serverId.value)))
+    }
     // The last finished action's receipt (web: the role="status" line under the form).
     var statusMessage by remember(route) { mutableStateOf<JointChannelConnectionsEffect?>(null) }
 
@@ -158,6 +167,7 @@ private fun JointChannelConnectionsScreen() {
             is JointChannelConnectionsEffect.InviteSent -> {
                 slug = ""
                 people = ""
+                sameAdminConfirmed = false
                 statusMessage = effect
             }
             is JointChannelConnectionsEffect.Resent -> statusMessage = effect
@@ -187,20 +197,27 @@ private fun JointChannelConnectionsScreen() {
                             state = state,
                             slug = slug,
                             people = people,
+                            sameAdminConfirmed = sameAdminConfirmed,
                             statusMessage = statusMessage,
                             onSlugChange = {
                                 slug = it
+                                sameAdminConfirmed = false
                                 statusMessage = null
                                 store.dispatch(JointChannelConnectionsIntent.ClearInviteFeedback)
                             },
                             onPeopleChange = {
                                 people = it
+                                sameAdminConfirmed = false
                                 statusMessage = null
+                                store.dispatch(JointChannelConnectionsIntent.ClearInviteFeedback)
+                            },
+                            onSameAdminConfirmedChange = {
+                                sameAdminConfirmed = it
                                 store.dispatch(JointChannelConnectionsIntent.ClearInviteFeedback)
                             },
                             onSendInvite = {
                                 statusMessage = null
-                                store.dispatch(JointChannelConnectionsIntent.Invite(slug, people))
+                                store.dispatch(JointChannelConnectionsIntent.Invite(slug, people, sameAdminConfirmed))
                             },
                             onResend = {
                                 statusMessage = null
@@ -227,9 +244,11 @@ private fun JointConnectionsContent(
     state: JointChannelConnectionsState,
     slug: String,
     people: String,
+    sameAdminConfirmed: Boolean,
     statusMessage: JointChannelConnectionsEffect?,
     onSlugChange: (String) -> Unit,
     onPeopleChange: (String) -> Unit,
+    onSameAdminConfirmedChange: (Boolean) -> Unit,
     onSendInvite: () -> Unit,
     onResend: () -> Unit,
 ) {
@@ -292,8 +311,10 @@ private fun JointConnectionsContent(
                     state = state,
                     slug = slug,
                     people = people,
+                    sameAdminConfirmed = sameAdminConfirmed,
                     onSlugChange = onSlugChange,
                     onPeopleChange = onPeopleChange,
+                    onSameAdminConfirmedChange = onSameAdminConfirmedChange,
                     onSendInvite = onSendInvite,
                 )
             }
@@ -315,12 +336,17 @@ private fun JointConnectionsContent(
 @Composable
 private fun jointConnectionsReceiptText(receipt: JointChannelConnectionsEffect): String =
     when (receipt) {
-        is JointChannelConnectionsEffect.InviteSent ->
-            if (receipt.emailedCount == 1) {
-                stringResource(MR.strings.joint_connections_invite_sent_one)
-            } else {
-                stringResource(MR.strings.joint_connections_invite_sent_many, receipt.emailedCount)
-            }
+        is JointChannelConnectionsEffect.InviteSent -> {
+            // Web: "Connected X directly." first, then the emails sent to anyone else on the list.
+            val connected = receipt.connectedServerName?.let { stringResource(MR.strings.joint_same_admin_connected, it) }
+            val emailed =
+                when {
+                    receipt.emailedCount <= 0 && connected != null -> null
+                    receipt.emailedCount == 1 -> stringResource(MR.strings.joint_connections_invite_sent_one)
+                    else -> stringResource(MR.strings.joint_connections_invite_sent_many, receipt.emailedCount)
+                }
+            listOfNotNull(connected, emailed).joinToString(" ")
+        }
         is JointChannelConnectionsEffect.Resent ->
             if (receipt.resentCount == 1) {
                 stringResource(MR.strings.joint_connections_resent_one)
@@ -370,11 +396,14 @@ private fun JointInviteSection(
     state: JointChannelConnectionsState,
     slug: String,
     people: String,
+    sameAdminConfirmed: Boolean,
     onSlugChange: (String) -> Unit,
     onPeopleChange: (String) -> Unit,
+    onSameAdminConfirmedChange: (Boolean) -> Unit,
     onSendInvite: () -> Unit,
 ) {
     val connections = state.connections ?: return
+    val sameAdminTarget = state.sameAdminTarget(slug, people)
     val inviting = state.actionInFlight == JointChannelConnectionsAction.Invite
     val failure = state.inviteFailure
     val failureField = failure?.let { jointInviteFailureField(it.code) }
@@ -396,6 +425,8 @@ private fun JointInviteSection(
         when {
             JointInviteValidation.ServerLimitReached in state.inviteValidation ->
                 stringResource(MR.strings.joint_connections_max_servers, JOINT_CHANNEL_MAX_SERVERS)
+            JointInviteValidation.SameAdminConfirmRequired in state.inviteValidation ->
+                stringResource(MR.strings.joint_same_admin_confirm_required)
             failureField == JointInviteField.Form -> failureText
             else -> null
         }
@@ -434,6 +465,15 @@ private fun JointInviteSection(
                     onValueChange = onPeopleChange,
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = stringResource(MR.strings.joint_connections_people_placeholder),
+                )
+            }
+            sameAdminTarget?.let { target ->
+                JointSameAdminNotice(
+                    sourceServerName = state.sameAdminContext?.currentServerName.orEmpty(),
+                    targetServerName = target.name,
+                    confirmed = sameAdminConfirmed,
+                    onConfirmedChange = onSameAdminConfirmedChange,
+                    enabled = !inviting,
                 )
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
