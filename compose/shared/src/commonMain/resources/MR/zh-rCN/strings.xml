@@ -3254,4 +3254,9 @@
     <string name="thread_action_card_scope_group_channel">频道 · 只读</string>
     <string name="thread_action_card_scope_group_computer">计算机 · 只读</string>
     <string name="thread_action_card_scope_group_agent_reminder_write">Agent 提醒</string>
+    <string name="action_card_form_options_search">搜索</string>
+    <string name="action_card_form_options_no_matches">没有与“%1$s”匹配的结果</string>
+    <string name="action_card_form_channels_search">搜索频道</string>
+    <string name="action_card_form_channels_no_matches">没有符合「%1$s」的频道</string>
+    <string name="action_card_form_channels_empty">没有可选的频道</string>
 </resources>

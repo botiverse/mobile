@@ -3254,4 +3254,9 @@
     <string name="thread_action_card_scope_group_channel">チャンネル · 読み取り</string>
     <string name="thread_action_card_scope_group_computer">コンピューター · 読み取り</string>
     <string name="thread_action_card_scope_group_agent_reminder_write">エージェントのリマインダー</string>
+    <string name="action_card_form_options_search">検索</string>
+    <string name="action_card_form_options_no_matches">「%1$s」に一致する項目はありません</string>
+    <string name="action_card_form_channels_search">チャンネルを検索</string>
+    <string name="action_card_form_channels_no_matches">「%1$s」に一致するチャンネルはありません</string>
+    <string name="action_card_form_channels_empty">選択できるチャンネルはありません</string>
 </resources>
