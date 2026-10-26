@@ -2892,6 +2892,10 @@
     <string name="joint_create_free_host_limit">この無料サーバーは、他のサーバーが参加している共同チャンネル #%1$s をすでにホストしています。さらにホストするには Pro にアップグレードするか、他のサーバーがすべて #%1$s から退出するまでお待ちください。</string>
     <string name="joint_create_free_host_limit_unnamed">この無料サーバーは、他のサーバーが参加している共同チャンネルをすでにホストしています。さらにホストするには Pro にアップグレードするか、他のサーバーがすべて退出するまでお待ちください。</string>
     <string name="joint_invite_error_invitee_not_found">サーバー「%2$s」に %1$s に一致する人が見つかりませんでした。ハンドルまたはメールアドレスを確認してください。</string>
+    <string name="joint_same_admin_notice">%1$s と %2$s の両方の管理者であるため、両サーバーの管理者として直接接続します。メールは送信されません。</string>
+    <string name="joint_same_admin_confirm">両サーバーの管理者として直接接続</string>
+    <string name="joint_same_admin_confirm_required">直接接続を確認するか、招待する人から自分を削除してください。</string>
+    <string name="joint_same_admin_connected">%1$s と直接接続しました。</string>
     <string name="joint_invite_error_invitee_not_admin">招待するには、%1$s がサーバー「%2$s」のオーナーまたは管理者である必要があります。</string>
     <string name="joint_invite_error_server_not_found">サーバー「%1$s」が見つかりませんでした。スラッグを確認してください。</string>
     <string name="joint_invite_error_cannot_invite_self">このサーバーを、自身の共同チャンネルに招待することはできません。</string>

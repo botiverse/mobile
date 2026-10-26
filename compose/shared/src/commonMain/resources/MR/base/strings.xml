@@ -2892,6 +2892,10 @@
     <string name="joint_create_free_host_limit">Your free server already hosts #%1$s, a Joint Channel another server has joined. Upgrade to Pro to host more, or wait until all other servers leave #%1$s.</string>
     <string name="joint_create_free_host_limit_unnamed">Your free server already hosts a Joint Channel another server has joined. Upgrade to Pro to host more, or wait until all other servers leave it.</string>
     <string name="joint_invite_error_invitee_not_found">No one matching %1$s was found on server “%2$s”. Check the handle or email.</string>
+    <string name="joint_same_admin_notice">You’re an admin of both %1$s and %2$s. The connection will be made directly as admin of both, and no email will be sent.</string>
+    <string name="joint_same_admin_confirm">Connect directly as admin of both servers</string>
+    <string name="joint_same_admin_confirm_required">Confirm the direct connection, or remove yourself from the invited people.</string>
+    <string name="joint_same_admin_connected">Connected %1$s directly.</string>
     <string name="joint_invite_error_invitee_not_admin">%1$s must be an owner or admin of server “%2$s” to be invited.</string>
     <string name="joint_invite_error_server_not_found">Server “%1$s” wasn’t found. Check the slug.</string>
     <string name="joint_invite_error_cannot_invite_self">You can’t invite this server to its own joint channel.</string>

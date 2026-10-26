@@ -10,6 +10,8 @@ import build.raft.app.data.JOINT_TARGET_SERVER_INVALID
 import build.raft.app.data.JointChannelAccepted
 import build.raft.app.data.JointChannelErrorDetails
 import build.raft.app.data.JointInviteTarget
+import build.raft.app.data.JointSameAdminContext
+import build.raft.app.data.JointSameAdminServer
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.model.ChannelId
@@ -172,6 +174,7 @@ class CreateJointChannelStoreTest {
                 nameInvalid = "name",
                 slugRequired = "slug",
                 peopleRequired = "people",
+                sameAdminConfirmRequired = "confirm",
                 freeServerLimit = "free",
                 serverLimit = "max",
                 freeHostLimit = { "host:$it" },
@@ -217,6 +220,67 @@ class CreateJointChannelStoreTest {
         assertEquals(CreateJointChannelIntent.ToggleAgent("a1"), createJointMemberToggleIntent(RaftMemberPickerKey(MemberKind.Agent, "a1")))
         assertEquals(CreateJointChannelIntent.ToggleUser("a1"), createJointMemberToggleIntent(RaftMemberPickerKey(MemberKind.Human, "a1")))
     }
+
+    @Test
+    fun inviterWhoAdministersTheTargetConfirmsThenConnectsDirectlyLikeWeb() = runTest {
+        val dataSource = FakeCreateJointDataSource()
+        val store = filledStore(dataSource, "launch", "partner-co", "@ada, bo@example.com")
+        store.dispatch(CreateJointChannelIntent.SetSameAdminContext(sameAdminContext))
+        val draft = store.state.value.drafts.single()
+        // Inviting someone else only: the normal email invite, no confirmation.
+        assertNull(store.state.value.sameAdminTarget(draft))
+
+        store.dispatch(CreateJointChannelIntent.UpdateDraft(draft.id, invitedPeopleText = "bo@example.com, ME@example.com"))
+        assertEquals("Partner Co", store.state.value.sameAdminTarget(store.state.value.drafts.single())?.name)
+        store.dispatch(CreateJointChannelIntent.Submit)
+        runCurrent()
+        assertEquals(CreateJointChannelError.SameAdminConfirmRequired, store.state.value.error)
+        assertTrue(dataSource.creates.isEmpty())
+
+        store.dispatch(CreateJointChannelIntent.ConfirmSameAdmin(draft.id, true))
+        // Editing the draft takes the confirmation back (web JointInviteDraftCard).
+        store.dispatch(CreateJointChannelIntent.UpdateDraft(draft.id, invitedPeopleText = "bo@example.com, @me"))
+        assertFalse(store.state.value.drafts.single().sameAdminConfirmed)
+        store.dispatch(CreateJointChannelIntent.ConfirmSameAdmin(draft.id, true))
+        store.dispatch(CreateJointChannelIntent.Submit)
+        runCurrent()
+
+        assertEquals(
+            listOf(JointInviteTarget("partner-co", listOf("bo@example.com", "@me"), sameAdmin = true)),
+            dataSource.creates.single().invites,
+        )
+    }
+
+    @Test
+    fun sameAdminNeedsAnAdminRoleOnAnotherServerTheInviterBelongsTo() {
+        fun target(slug: String, people: String) =
+            CreateJointChannelState(
+                drafts = listOf(CreateJointInviteDraft(id = 1, targetServerSlug = slug, invitedPeopleText = people)),
+                sameAdminContext = sameAdminContext,
+            ).let { it.sameAdminTarget(it.drafts.single()) }
+        assertEquals("partner-co", target(" partner-co ", "me")?.slug)
+        assertEquals("owned-co", target("owned-co", "@me")?.slug)
+        assertNull(target("member-co", "@me"), "member role")
+        assertNull(target("home-co", "@me"), "the current server")
+        assertNull(target("stranger-co", "@me"), "not one of the inviter's servers")
+        assertNull(target("partner-co", "@mel"), "someone else")
+        assertNull(CreateJointChannelState().let { it.sameAdminTarget(it.drafts.single()) }, "no session yet")
+    }
+
+    private val sameAdminContext =
+        JointSameAdminContext(
+            currentServerSlug = "home-co",
+            currentServerName = "Home Co",
+            userName = "me",
+            userEmail = "me@example.com",
+            servers =
+                listOf(
+                    JointSameAdminServer("home-co", "Home Co", "owner"),
+                    JointSameAdminServer("partner-co", "Partner Co", "admin"),
+                    JointSameAdminServer("owned-co", "Owned Co", "owner"),
+                    JointSameAdminServer("member-co", "Member Co", "member"),
+                ),
+        )
 
     private fun TestScope.filledStore(
         dataSource: FakeCreateJointDataSource,

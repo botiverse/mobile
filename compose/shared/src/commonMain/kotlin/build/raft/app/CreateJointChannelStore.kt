@@ -17,9 +17,12 @@ import build.raft.app.data.JOINT_TARGET_SERVER_INVALID
 import build.raft.app.data.JointChannelAccepted
 import build.raft.app.data.JointChannelErrorDetails
 import build.raft.app.data.JointInviteTarget
+import build.raft.app.data.JointSameAdminContext
+import build.raft.app.data.JointSameAdminServer
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.RealJointChannelRepository
 import build.raft.app.data.ScreenError
+import build.raft.app.data.findSameAdminJointTarget
 import build.raft.app.data.isSubmittableChannelName
 import build.raft.app.data.parseJointInvitedPeopleText
 import build.raft.app.model.ChannelId
@@ -38,12 +41,17 @@ internal data class CreateJointInviteDraft(
     val id: Int,
     val targetServerSlug: String = "",
     val invitedPeopleText: String = "",
+    /** Web `JointInviteDraft.sameAdminConfirmed`: the inviter confirmed connecting directly. */
+    val sameAdminConfirmed: Boolean = false,
 )
 
 internal sealed interface CreateJointChannelError {
     data object NameInvalid : CreateJointChannelError
     data object InviteSlugRequired : CreateJointChannelError
     data object InviteePersonRequired : CreateJointChannelError
+
+    /** Web `channel.jointInvite.sameAdmin.confirmRequired`: a same-admin draft is not confirmed. */
+    data object SameAdminConfirmRequired : CreateJointChannelError
 
     /** A server rejection: the failed result plus its structured body (code, slug, invitee). */
     data class Server(val result: DataResult<*>, val details: JointChannelErrorDetails?) : CreateJointChannelError
@@ -71,7 +79,16 @@ internal data class CreateJointChannelState(
     val error: CreateJointChannelError? = null,
     val collision: CreateJointArchivedCollision? = null,
     val effect: CreateJointChannelEffect? = null,
+    /** The inviter's account, servers and roles; null until the session is known. */
+    val sameAdminContext: JointSameAdminContext? = null,
 ) {
+    /**
+     * Web `sameAdminTargets` (RFC 075 §4.5): the server the inviter administers when this draft
+     * invites themselves there; the draft then needs an explicit confirmation.
+     */
+    fun sameAdminTarget(draft: CreateJointInviteDraft): JointSameAdminServer? =
+        findSameAdminJointTarget(sameAdminContext, draft.targetServerSlug, parseJointInvitedPeopleText(draft.invitedPeopleText))
+
     val canAddDraft: Boolean get() = drafts.size < CREATE_JOINT_MAX_INVITE_DRAFTS
 
     /** Web `billingError`: the failure is a plan limit, so the banner links to Billing. */
@@ -100,6 +117,8 @@ internal sealed interface CreateJointChannelIntent {
     data class RemoveDraft(val id: Int) : CreateJointChannelIntent
     data class UpdateDraft(val id: Int, val targetServerSlug: String? = null, val invitedPeopleText: String? = null) :
         CreateJointChannelIntent
+    data class ConfirmSameAdmin(val id: Int, val confirmed: Boolean) : CreateJointChannelIntent
+    data class SetSameAdminContext(val context: JointSameAdminContext?) : CreateJointChannelIntent
     data class ToggleAgent(val id: String) : CreateJointChannelIntent
     data class ToggleUser(val id: String) : CreateJointChannelIntent
     data object Submit : CreateJointChannelIntent
@@ -183,12 +202,24 @@ internal class CreateJointChannelStore(
                                     draft.copy(
                                         targetServerSlug = intent.targetServerSlug ?: draft.targetServerSlug,
                                         invitedPeopleText = intent.invitedPeopleText ?: draft.invitedPeopleText,
+                                        // Web JointInviteDraftCard: editing either field un-confirms.
+                                        sameAdminConfirmed = false,
                                     )
                                 }
                             },
                         error = null,
                     )
                 )
+            is CreateJointChannelIntent.ConfirmSameAdmin -> {
+                if (current.submitting) return
+                update(
+                    current.copy(
+                        drafts = current.drafts.map { if (it.id == intent.id) it.copy(sameAdminConfirmed = intent.confirmed) else it },
+                        error = null,
+                    )
+                )
+            }
+            is CreateJointChannelIntent.SetSameAdminContext -> update(current.copy(sameAdminContext = intent.context))
             is CreateJointChannelIntent.ToggleAgent ->
                 update(current.copy(selectedAgentIds = current.selectedAgentIds.toggle(intent.id)))
             is CreateJointChannelIntent.ToggleUser ->
@@ -208,9 +239,14 @@ internal class CreateJointChannelStore(
             update(cleared.copy(error = CreateJointChannelError.NameInvalid))
             return
         }
+        val sameAdminDrafts = current.drafts.filter { current.sameAdminTarget(it) != null }.mapTo(HashSet()) { it.id }
         val invites =
             current.drafts.map { draft ->
-                JointInviteTarget(draft.targetServerSlug.trim(), parseJointInvitedPeopleText(draft.invitedPeopleText))
+                JointInviteTarget(
+                    targetServerSlug = draft.targetServerSlug.trim(),
+                    invitedPeople = parseJointInvitedPeopleText(draft.invitedPeopleText),
+                    sameAdmin = draft.id in sameAdminDrafts,
+                )
             }
         val incomplete = invites.firstOrNull { it.targetServerSlug.isEmpty() || it.invitedPeople.isEmpty() }
         if (incomplete != null) {
@@ -221,6 +257,10 @@ internal class CreateJointChannelStore(
                     CreateJointChannelError.InviteePersonRequired
                 }
             update(cleared.copy(error = error))
+            return
+        }
+        if (current.drafts.any { it.id in sameAdminDrafts && !it.sameAdminConfirmed }) {
+            update(cleared.copy(error = CreateJointChannelError.SameAdminConfirmRequired))
             return
         }
         update(cleared.copy(submitting = true))
@@ -301,6 +341,7 @@ internal data class CreateJointErrorCopy(
     val nameInvalid: String,
     val slugRequired: String,
     val peopleRequired: String,
+    val sameAdminConfirmRequired: String,
     val freeServerLimit: String,
     val serverLimit: String,
     val freeHostLimit: (String) -> String,
@@ -324,6 +365,7 @@ internal fun createJointChannelErrorText(
         CreateJointChannelError.NameInvalid -> copy.nameInvalid
         CreateJointChannelError.InviteSlugRequired -> copy.slugRequired
         CreateJointChannelError.InviteePersonRequired -> copy.peopleRequired
+        CreateJointChannelError.SameAdminConfirmRequired -> copy.sameAdminConfirmRequired
         is CreateJointChannelError.Server -> {
             val details = error.details
             val server = details?.targetServerSlug
