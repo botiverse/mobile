@@ -12,6 +12,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -216,6 +218,79 @@ class SharedServerMembersPresenceReconciliationTest {
         val sequenced = registry.factFor(owner, agentId.value)
         assertEquals(AgentStatus.Working, sequenced?.agentStatus)
         assertEquals(7L, sequenced?.serverSeq)
+    }
+
+    // Hands f75b5d1c: on a server switch the Members page / Home load (not forced) joins the
+    // reconnect's forced roster flight and publishes that version first. The forced caller then
+    // sees version_unchanged; it must still project roster status into the rebaselined registry,
+    // or every agent reads "offline" until its next realtime event.
+    @Test
+    fun forcedRosterProjectsStatusWhenJoinedNonForcedCallerPublishedFirst() = runTest {
+        val registry = ProcessMemberPresenceRegistry()
+        val release = CompletableDeferred<Unit>()
+        val forcedPublication = CompletableDeferred<Unit>()
+        var publications = 0
+        val fetch: suspend (DataRequestPriority, ServerId) -> DataResult<MemberSnapshot> = { _, id ->
+            release.await()
+            DataResult.Content(
+                MemberSnapshot(
+                    server = ServerSummary(id = id, name = "Raft"),
+                    members =
+                        listOf(
+                            MemberProfile(
+                                id = agentId,
+                                displayName = "Agent One",
+                                handle = "agent-one",
+                                kind = MemberKind.Agent,
+                                presence = AgentStatus.Working.presence,
+                                agentStatus = AgentStatus.Working,
+                                serverId = id
+                            )
+                        )
+                )
+            )
+        }
+        val store =
+            SharedServerMembersStore(
+                memberRepository = PresenceNoopMemberRepository,
+                processCore = ProcessServerMembersCore(fetchMembers = fetch, scope = backgroundScope),
+                // The forced (first-started) caller is held at publication so the joined
+                // non-forced caller publishes the version first, as on device.
+                beforeProcessPublication = {
+                    publications += 1
+                    if (publications == 1) forcedPublication.await()
+                },
+                presenceRegistry = registry
+            )
+        registry.rebaselineTransport(
+            owner,
+            registry.writeGeneration,
+            ProcessPresenceTransportEpoch("family-1", 1L)
+        )
+
+        val reconnect =
+            async {
+                store.refreshMembers(
+                    serverId,
+                    priority = DataRequestPriority.Background,
+                    force = true,
+                    reason = "presence_transport_connected"
+                )
+            }
+        runCurrent()
+        val membersPage =
+            async { store.refreshMembers(serverId, priority = DataRequestPriority.Visible, reason = "members_page") }
+        runCurrent()
+        release.complete(Unit)
+        runCurrent()
+        assertEquals(DataResult.Content(Unit), membersPage.await())
+        assertNull(registry.factFor(owner, agentId.value), "the non-forced publication projects nothing")
+
+        forcedPublication.complete(Unit)
+        assertEquals(DataResult.Content(Unit), reconnect.await())
+
+        assertEquals(AgentStatus.Working, registry.factFor(owner, agentId.value)?.agentStatus)
+        assertEquals(AgentStatus.Working, store.memberStatusFlow(serverId, agentId.value).first()?.status)
     }
 
     @Test

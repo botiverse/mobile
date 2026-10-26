@@ -2003,6 +2003,23 @@ class SharedServerMembersStore internal constructor(
                             "reduceMs=${processResult.reduceMs} publishMs=${publishStartedAt.elapsedNow().inWholeMilliseconds} " +
                             "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
                     )
+                    // A non-forced caller (Members page, Home) that joined this forced flight may
+                    // have published the same version first, without a roster presence request.
+                    // The reconnect rebaseline already cleared the owner's facts, so the forced
+                    // caller must still project the roster's current status, or every agent stays
+                    // "offline" until its next realtime event (Hands f75b5d1c, server switch).
+                    val unchanged = processResult.result
+                    if (rosterPresenceRequest != null && unchanged is DataResult.Content) {
+                        val normalizedKey = unchanged.data.server.id.value.trim().ifBlank { key }
+                        applyAuthoritativeRosterPresence(
+                            request = rosterPresenceRequest,
+                            serverId = normalizedKey,
+                            profiles =
+                                unchanged.data.members
+                                    .filterServerRosterMembers(normalizedKey)
+                                    .filterDeletedAgents(normalizedKey)
+                        )
+                    }
                     processResult.result.map { Unit }
                 } else {
                     val previous = _state.value.entriesByServerId[key]
