@@ -3253,4 +3253,9 @@
     <string name="thread_action_card_scope_group_channel">Channel · read</string>
     <string name="thread_action_card_scope_group_computer">Computer · read</string>
     <string name="thread_action_card_scope_group_agent_reminder_write">Agent reminders</string>
+    <string name="action_card_form_options_search">Search</string>
+    <string name="action_card_form_options_no_matches">Nothing matches “%1$s”</string>
+    <string name="action_card_form_channels_search">Search channels</string>
+    <string name="action_card_form_channels_no_matches">No channels match “%1$s”</string>
+    <string name="action_card_form_channels_empty">No channels to choose from</string>
 </resources>
