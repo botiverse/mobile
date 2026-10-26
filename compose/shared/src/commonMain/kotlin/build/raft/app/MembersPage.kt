@@ -7428,7 +7428,7 @@ private fun membersLifecycleConfirmMessage(action: MembersAgentLifecycleAction, 
     }
 
 @Composable
-private fun MembersLifecycleConfirmation(
+internal fun MembersLifecycleConfirmation(
     action: MembersAgentLifecycleAction,
     agentName: String,
     busy: Boolean,
@@ -7819,7 +7819,7 @@ private fun MembersArchiveWorkspaceOption(
 }
 
 @Composable
-private fun MembersAgentIssueReportDialog(
+internal fun MembersAgentIssueReportDialog(
     agentName: String,
     runtimeTranscriptAvailable: Boolean,
     busy: Boolean,
@@ -8914,7 +8914,7 @@ private fun MembersHumanRoleHelpDialog(onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun MembersServerRoleEditor(
+internal fun MembersServerRoleEditor(
     displayValue: String,
     badgeBackgroundColor: Color,
     expanded: Boolean,
@@ -9011,7 +9011,7 @@ private fun MembersAgentServerRoleDisplay.rememberKey(): String =
     }
 
 @Composable
-private fun MembersAgentServerRoleChip(display: MembersAgentServerRoleDisplay) {
+internal fun MembersAgentServerRoleChip(display: MembersAgentServerRoleDisplay) {
     // Hidden renders nothing: no membership row, or a deleted agent. Any chip here would
     // assert a membership that does not exist (#261).
     if (display is MembersAgentServerRoleDisplay.Hidden) return
@@ -9209,7 +9209,7 @@ private val MembersAgentAvatarPickerCellSize = 40.dp
 private val MembersAgentAvatarPickerAvatarSize = 36.dp
 
 @Composable
-private fun MembersAgentAvatarChoiceGrid(
+internal fun MembersAgentAvatarChoiceGrid(
     member: MemberProfile,
     uploading: Boolean,
     onUploadClick: () -> Unit,
@@ -14067,7 +14067,7 @@ private fun MembersAgentScopeRow.localizedDescription(): String =
     }
 
 @Composable
-private fun MembersAgentPermissionsTab(
+internal fun MembersAgentPermissionsTab(
     member: MemberProfile,
     detail: AgentDetailSnapshot?,
     canManage: Boolean,
