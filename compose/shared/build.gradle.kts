@@ -74,6 +74,10 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
 
+    // Desktop (JVM, packaged for macOS by :desktopApp). Shares plain-JVM actuals with Android
+    // through jvmCommonMain.
+    jvm("desktop")
+
     cocoapods {
         summary = "Some description for the Shared Module"
         homepage = "Link to the Shared Module homepage"
@@ -183,8 +187,17 @@ kotlin {
                 implementation(libs.ktor.client.mock)
             }
         }
-        val androidMain by getting {
+        // Plain-JVM actuals shared by Android and desktop (OkHttp transport, dispatchers, ...).
+        val jvmCommonMain by creating {
+            dependsOn(commonMain)
             kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/jvmMain/kotlin"))
+            dependencies {
+                implementation(libs.ktor.client.okhttp)
+                implementation(libs.okhttp.transport)
+            }
+        }
+        val androidMain by getting {
+            dependsOn(jvmCommonMain)
             dependencies {
                 implementation("app.cash.sqldelight:android-driver:2.1.0")
                 // RaftVideoPlayer (Media3 PlayerView inside AndroidView; replaces the Kuikly
@@ -199,8 +212,15 @@ kotlin {
                 // below). Android-only artifact; iOS plays them through Skia's Codec instead. The
                 // loader turns Coil's service loader off so this never decodes outside the viewer.
                 implementation(libs.coil.gif)
-                implementation(libs.ktor.client.okhttp)
-                implementation(libs.okhttp.transport)
+            }
+        }
+        val desktopMain by getting {
+            dependsOn(jvmCommonMain)
+            // Bundled `assets://` files (lucide, raft logos) on the classpath root.
+            resources.srcDir("src/commonMain/assets")
+            dependencies {
+                implementation("app.cash.sqldelight:sqlite-driver:2.1.0")
+                implementation(libs.kotlinx.coroutines.swing)
             }
         }
         val androidUnitTest by getting {
@@ -419,4 +439,10 @@ fun getCommonCompilerArgs(): List<String> {
 
 fun getLinkerArgs(): List<String> {
     return listOf()
+}
+
+// TODO(desktop): commonTest is not yet run on the desktop JVM (several suites assume Android or
+// iOS hosts); the desktop target is compile-checked through :desktopApp.
+tasks.matching { it.name == "desktopTest" || it.name == "compileTestKotlinDesktop" }.configureEach {
+    enabled = false
 }

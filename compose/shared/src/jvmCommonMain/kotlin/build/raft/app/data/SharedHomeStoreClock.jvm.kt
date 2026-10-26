@@ -1,10 +1,10 @@
 package build.raft.app.data
 
 /**
- * Android legacy wall-clock source retained for the Datetime build rollback.
+ * JVM (Android, desktop) legacy wall-clock source retained for the Datetime build rollback.
  *
- * `System.currentTimeMillis()` is available on the Android JVM runtime
- * (this KMP module's `androidMain` is a JVM target). Returns
+ * `System.currentTimeMillis()` is available on the JVM runtimes
+ * (androidMain and desktopMain are JVM targets). Returns
  * wall-clock UTC milliseconds since the epoch.
  *
  * Note: `kotlin.system.getTimeMillis()` (the alternative explored in the
