@@ -11,8 +11,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -37,10 +37,11 @@ class SharedThreadStoreInstallActionCardTest {
         )
 
     @Test
-    fun installMarketplaceCardNeverExecutesFromTheCardButton() = runBlocking {
-        val actionCardsApi = SharedThreadStoreTest.RecordingActionCardsApi()
+    fun installMarketplaceCardNeverExecutesFromTheCardButton() = runTest {
+        val actionCardsApi = SharedThreadStoreMembersAndActionCardsTest.RecordingActionCardsApi()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = SharedThreadStoreTest.FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(SharedThreadStoreTest.sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -55,10 +56,11 @@ class SharedThreadStoreInstallActionCardTest {
     }
 
     @Test
-    fun installMarketplaceConfirmationExecutesTheBoundCard() = runBlocking {
-        val actionCardsApi = SharedThreadStoreTest.RecordingActionCardsApi()
+    fun installMarketplaceConfirmationExecutesTheBoundCard() = runTest {
+        val actionCardsApi = SharedThreadStoreMembersAndActionCardsTest.RecordingActionCardsApi()
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = SharedThreadStoreTest.FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(SharedThreadStoreTest.sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -85,9 +87,9 @@ class SharedThreadStoreInstallActionCardTest {
     }
 
     @Test
-    fun installMarketplaceStaleRefusalKeepsTheServerCode() = runBlocking {
+    fun installMarketplaceStaleRefusalKeepsTheServerCode() = runTest {
         val actionCardsApi =
-            SharedThreadStoreTest.RecordingActionCardsApi(
+            SharedThreadStoreMembersAndActionCardsTest.RecordingActionCardsApi(
                 executeResponse =
                     HomeNetworkResponse(
                         code = 409,
@@ -97,6 +99,7 @@ class SharedThreadStoreInstallActionCardTest {
             )
         val dataSource =
             testSharedThreadDataSource(
+                storeScope = backgroundScope,
                 networkApi = SharedThreadStoreTest.FakeThreadApi(),
                 sessionStore = InMemoryRaftAuthSessionStore(SharedThreadStoreTest.sampleSession()),
                 cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
@@ -111,12 +114,13 @@ class SharedThreadStoreInstallActionCardTest {
         assertEquals(1, actionCardsApi.calls.size)
     }
 
-    private fun dataSourceAnswering(response: HomeNetworkResponse) =
+    private fun dataSourceAnswering(storeScope: CoroutineScope, response: HomeNetworkResponse) =
         testSharedThreadDataSource(
+            storeScope = storeScope,
             networkApi = SharedThreadStoreTest.FakeThreadApi(),
             sessionStore = InMemoryRaftAuthSessionStore(SharedThreadStoreTest.sampleSession()),
             cacheEnvironmentIdProvider = { TestThreadEnvironmentId },
-            actionCardsApiClient = RaftIntegrationsActionsPushApiClient(SharedThreadStoreTest.RecordingActionCardsApi(executeResponse = response))
+            actionCardsApiClient = RaftIntegrationsActionsPushApiClient(SharedThreadStoreMembersAndActionCardsTest.RecordingActionCardsApi(executeResponse = response))
         )
 
     @Test
@@ -127,7 +131,7 @@ class SharedThreadStoreInstallActionCardTest {
         val store =
             threadInstallAppActionDialogStore(
                 scope = backgroundScope,
-                dataSource = dataSourceAnswering(HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"Unauthorized"}""")),
+                dataSource = dataSourceAnswering(backgroundScope, HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"Unauthorized"}""")),
                 applyCard = { id, _ -> applied += id },
                 toastInstalled = {},
                 routeAuthRequired = { result -> routed += result; result.blocker.isAuthSessionBlocker() },
@@ -150,6 +154,7 @@ class SharedThreadStoreInstallActionCardTest {
                 scope = backgroundScope,
                 dataSource =
                     dataSourceAnswering(
+                        backgroundScope,
                         HomeNetworkResponse(
                             code = 409,
                             bodyText = null,
