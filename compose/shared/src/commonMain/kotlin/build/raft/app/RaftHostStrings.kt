@@ -1,15 +1,10 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.data.AppLocale
 import build.raft.app.data.kmmResourceLocaleTag
 import build.raft.app.data.stringDescLocaleType
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.resource.StringResource
-import com.tencent.tmm.kmmresource.resource.desc.Resource
-import com.tencent.tmm.kmmresource.resource.desc.StringDesc
-import com.tencent.tmm.kmmresource.resource.format
-
-internal expect fun raftResolveHostString(desc: StringDesc): String
+import org.jetbrains.compose.resources.StringResource
 
 internal fun appUpdateDetailStringDesc(
     updateAvailable: Boolean,
@@ -17,14 +12,14 @@ internal fun appUpdateDetailStringDesc(
     patchSizeLabel: String? = null
 ): StringDesc =
     when {
-        !updateAvailable -> StringDesc.Resource(MR.strings.app_update_detail_current)
+        !updateAvailable -> StringDesc.Resource(Res.string.app_update_detail_current)
         !patchSizeLabel.isNullOrBlank() && !sizeLabel.isNullOrBlank() ->
-            MR.strings.app_update_detail_available_with_patch_and_full_sizes
+            Res.string.app_update_detail_available_with_patch_and_full_sizes
                 .format(listOf(patchSizeLabel, sizeLabel))
         !patchSizeLabel.isNullOrBlank() ->
-            MR.strings.app_update_detail_available_with_patch_size.format(listOf(patchSizeLabel))
-        sizeLabel.isNullOrBlank() -> StringDesc.Resource(MR.strings.app_update_detail_available)
-        else -> MR.strings.app_update_detail_available_with_size.format(listOf(sizeLabel))
+            Res.string.app_update_detail_available_with_patch_size.format(listOf(patchSizeLabel))
+        sizeLabel.isNullOrBlank() -> StringDesc.Resource(Res.string.app_update_detail_available)
+        else -> Res.string.app_update_detail_available_with_size.format(listOf(sizeLabel))
     }
 
 /**
@@ -37,30 +32,30 @@ internal fun appUpdateDetailStringDesc(
  * Objective-C callers.
  */
 object RaftHostStrings {
-    fun feedbackPromptTitle(): String = resolve(MR.strings.settings_feedback_title)
+    fun feedbackPromptTitle(): String = resolve(Res.string.settings_feedback_title)
 
-    fun feedbackPromptMessage(): String = resolve(MR.strings.host_feedback_prompt_message)
+    fun feedbackPromptMessage(): String = resolve(Res.string.host_feedback_prompt_message)
 
-    fun feedbackPromptPlaceholder(): String = resolve(MR.strings.host_feedback_prompt_placeholder)
+    fun feedbackPromptPlaceholder(): String = resolve(Res.string.host_feedback_prompt_placeholder)
 
-    fun feedbackCancel(): String = resolve(MR.strings.common_cancel)
+    fun feedbackCancel(): String = resolve(Res.string.common_cancel)
 
-    fun feedbackSend(): String = resolve(MR.strings.common_send)
+    fun feedbackSend(): String = resolve(Res.string.common_send)
 
-    fun feedbackFailedTitle(): String = resolve(MR.strings.settings_feedback_submission_failed_title)
+    fun feedbackFailedTitle(): String = resolve(Res.string.settings_feedback_submission_failed_title)
 
-    fun feedbackErrorUnknown(): String = resolve(MR.strings.host_feedback_error_unknown)
+    fun feedbackErrorUnknown(): String = resolve(Res.string.host_feedback_error_unknown)
 
     fun feedbackFailedMessage(detail: String?): String {
         return resolve(
-            MR.strings.host_feedback_failed_message
+            Res.string.host_feedback_failed_message
                 .format(listOf(detail?.takeIf { it.isNotBlank() } ?: feedbackErrorUnknown()))
         )
     }
 
-    fun feedbackSentTitle(): String = resolve(MR.strings.host_feedback_sent_title)
+    fun feedbackSentTitle(): String = resolve(Res.string.host_feedback_sent_title)
 
-    fun feedbackCopiedMessage(): String = resolve(MR.strings.host_feedback_copied_message)
+    fun feedbackCopiedMessage(): String = resolve(Res.string.host_feedback_copied_message)
 
     fun appUpdateDetail(
         updateAvailable: Boolean,
@@ -72,14 +67,14 @@ object RaftHostStrings {
         (KmmResourceLocaleRuntime.locale.value ?: AppLocale.Default).kmmResourceLocaleTag
 
     fun mobileOAuthAccountConflict(providerName: String): String =
-        resolve(MR.strings.auth_error_mobile_oauth_account_conflict.format(listOf(providerName)))
+        resolve(Res.string.auth_error_mobile_oauth_account_conflict.format(listOf(providerName)))
 
     fun mobileOAuthProviderConflict(providerName: String): String =
-        resolve(MR.strings.auth_error_mobile_oauth_provider_conflict.format(listOf(providerName)))
+        resolve(Res.string.auth_error_mobile_oauth_provider_conflict.format(listOf(providerName)))
 
-    fun ok(): String = resolve(MR.strings.common_ok)
+    fun ok(): String = resolve(Res.string.common_ok)
 
-    fun shareOpenFailed(): String = resolve(MR.strings.share_open_failed)
+    fun shareOpenFailed(): String = resolve(Res.string.share_open_failed)
 
     private fun resolve(resource: StringResource): String {
         return resolve(StringDesc.Resource(resource))
@@ -87,7 +82,7 @@ object RaftHostStrings {
 
     private fun resolve(desc: StringDesc): String {
         applyRuntimeLocale()
-        return raftResolveHostString(desc)
+        return desc.resolve()
     }
 
     private fun applyRuntimeLocale() {

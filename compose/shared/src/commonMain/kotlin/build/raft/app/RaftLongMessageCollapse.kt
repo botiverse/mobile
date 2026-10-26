@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
@@ -35,10 +36,8 @@ import build.raft.app.data.raftLongMessageCollapseDetailKind
 import build.raft.app.data.RaftLongMessageCollapsePreferenceRevision
 import build.raft.app.data.RaftLongMessageCollapsePreferenceStore
 import build.raft.app.data.raftSharedPreferenceStore
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -428,7 +427,7 @@ private fun RaftLongMessageToggle(
         RaftTextLink(
             text =
                 stringResource(
-                    if (expanded) MR.strings.thread_long_message_show_less else MR.strings.thread_long_message_show_more
+                    if (expanded) Res.string.thread_long_message_show_less else Res.string.thread_long_message_show_more
                 ),
             onClick = onClick,
             style = RaftTheme.typography.footnote
@@ -485,9 +484,9 @@ internal fun rememberRaftLongMessageCollapseConversationSetting(
 internal fun RaftLongMessageCollapseConversationPreference.localizedDetail(): String =
     stringResource(
         when (raftLongMessageCollapseDetailKind(globalEnabled, channelOverride)) {
-            RaftLongMessageCollapseDetailKind.FollowsGlobalOn -> MR.strings.conversation_long_message_collapse_follows_global_on
-            RaftLongMessageCollapseDetailKind.FollowsGlobalOff -> MR.strings.conversation_long_message_collapse_follows_global_off
-            RaftLongMessageCollapseDetailKind.OverrideOn -> MR.strings.conversation_long_message_collapse_override_on
-            RaftLongMessageCollapseDetailKind.OverrideOff -> MR.strings.conversation_long_message_collapse_override_off
+            RaftLongMessageCollapseDetailKind.FollowsGlobalOn -> Res.string.conversation_long_message_collapse_follows_global_on
+            RaftLongMessageCollapseDetailKind.FollowsGlobalOff -> Res.string.conversation_long_message_collapse_follows_global_off
+            RaftLongMessageCollapseDetailKind.OverrideOn -> Res.string.conversation_long_message_collapse_override_on
+            RaftLongMessageCollapseDetailKind.OverrideOff -> Res.string.conversation_long_message_collapse_override_off
         }
     )

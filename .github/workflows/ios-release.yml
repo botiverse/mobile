@@ -464,18 +464,13 @@ jobs:
           [ "${VERSION_CODE}" = "${RAFT_IOS_VERSION_CODE}" ] || { echo "Unexpected version code: ${VERSION_CODE}" >&2; exit 1; }
           [ "${VERSION_CODE}" != "1" ] || { echo "CFBundleVersion must not be the project default 1" >&2; exit 1; }
           [ -f "${APP_PATH}/embedded.mobileprovision" ] || { echo "embedded.mobileprovision missing" >&2; exit 1; }
-          [ -d "${APP_PATH}/build.raft.app.resources.MR.bundle" ] || { echo "MR bundle missing from app" >&2; exit 1; }
-          find "${APP_PATH}/build.raft.app.resources.MR.bundle" -name 'Localizable.strings' -type f | grep -q . || { echo "MR Localizable.strings missing" >&2; exit 1; }
-          # The reaction atlas is injected into the MR bundle flattened per the
-          # moko runtime convention ('/'->'+', no 'assets/' prefix), so the
-          # runtime reads it as reactions/reaction_atlas_v1 -> reactions+reaction_atlas_v1.
-          MR_BUNDLE="${APP_PATH}/build.raft.app.resources.MR.bundle"
-          echo "DEBUG: MR.bundle reaction/atlas entries:"
-          find "${MR_BUNDLE}" -iname '*reaction*' || echo "  (no reaction* entries in MR.bundle)"
-          # Injected flattened per moko convention (reactions/reaction_atlas_v1 ->
-          # reactions+reaction_atlas_v1); recursive so it matches either the bundle
-          # root (device) or Contents/Resources/ (simulator-style) layout.
-          find "${MR_BUNDLE}" -name 'reactions+reaction_atlas_v1.png' -type f | grep -q . || { echo "reaction atlas missing (expected reactions+reaction_atlas_v1.png in MR.bundle)" >&2; exit 1; }
+          # App strings and bundled files are Compose Multiplatform resources, copied by the
+          # "[CP-User] Copy Compose resources to app" phase (:ui-cmp:syncComposeResourcesForXcodeApp).
+          APP_RES="${APP_PATH}/compose-resources/composeResources/build.raft.app.resources"
+          for values_dir in values values-ja values-zh-rCN; do
+            find "${APP_RES}/${values_dir}" -name '*.cvr' -type f 2>/dev/null | grep -q . || { echo "Compose string catalog ${values_dir} missing from app" >&2; exit 1; }
+          done
+          [ -f "${APP_RES}/files/reactions/reaction_atlas_v1.png" ] || { echo "reaction atlas missing (expected files/reactions/reaction_atlas_v1.png in compose-resources)" >&2; exit 1; }
           find "${APP_PATH}" -name 'SDWebImageSVGCoder.framework' -type d | grep -q . || { echo "SDWebImageSVGCoder.framework missing" >&2; exit 1; }
 
           dwarfdump --uuid "${APP_PATH}/${EXECUTABLE}" | awk '{print $2}' | sort -u > "${TMP_DIR}/app-uuids.txt"

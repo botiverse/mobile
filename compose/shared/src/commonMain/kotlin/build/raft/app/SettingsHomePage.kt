@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.format.RaftFormat
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.components.RaftTextFieldDefaults
@@ -335,7 +336,6 @@ import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochMillisUtcIso
 import build.raft.app.model.raftStartOfDayUtcIso
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -438,12 +438,6 @@ import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.ui.KeyboardParams
-import com.tencent.tmm.kmmresource.compose.localized
-import com.tencent.tmm.kmmresource.compose.stringResource
-import com.tencent.tmm.kmmresource.resource.desc.ResourceFormatted
-import com.tencent.tmm.kmmresource.resource.desc.StringDesc
-import com.tencent.tmm.kmmresource.resource.desc.desc
-import com.tencent.tmm.kmmresource.resource.format
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancel
@@ -1829,26 +1823,26 @@ private fun localizedSharedHomeErrorDisplay(
     RaftHomeInlineError(
         title =
             when {
-                serverMessage.isEdgeBlockedMarker() -> stringResource(MR.strings.home_error_unavailable)
-                ScreenError(code, retryable = false).isAuthSessionError() -> stringResource(MR.strings.home_error_session_expired)
-                code.contains("permission", ignoreCase = true) -> stringResource(MR.strings.home_error_unavailable)
-                code.contains("timeout", ignoreCase = true) -> stringResource(MR.strings.home_error_timeout)
-                code.contains("offline", ignoreCase = true) -> stringResource(MR.strings.home_error_offline)
-                code.contains("network", ignoreCase = true) -> stringResource(MR.strings.home_error_refresh)
-                else -> stringResource(MR.strings.home_error_load)
+                serverMessage.isEdgeBlockedMarker() -> stringResource(Res.string.home_error_unavailable)
+                ScreenError(code, retryable = false).isAuthSessionError() -> stringResource(Res.string.home_error_session_expired)
+                code.contains("permission", ignoreCase = true) -> stringResource(Res.string.home_error_unavailable)
+                code.contains("timeout", ignoreCase = true) -> stringResource(Res.string.home_error_timeout)
+                code.contains("offline", ignoreCase = true) -> stringResource(Res.string.home_error_offline)
+                code.contains("network", ignoreCase = true) -> stringResource(Res.string.home_error_refresh)
+                else -> stringResource(Res.string.home_error_load)
             },
         detail =
             when {
-                serverMessage.isEdgeBlockedMarker() -> stringResource(MR.strings.error_edge_blocked)
-                ScreenError(code, retryable = false).isAuthSessionError() -> stringResource(MR.strings.home_error_session_detail)
-                code.contains("permission", ignoreCase = true) -> stringResource(MR.strings.home_error_unavailable_detail)
-                code.contains("timeout", ignoreCase = true) -> stringResource(MR.strings.home_error_timeout_detail)
-                code.contains("offline", ignoreCase = true) -> stringResource(MR.strings.home_error_offline_detail)
-                code.contains("network", ignoreCase = true) -> stringResource(MR.strings.home_error_network_detail)
-                else -> stringResource(MR.strings.home_error_load_detail)
+                serverMessage.isEdgeBlockedMarker() -> stringResource(Res.string.error_edge_blocked)
+                ScreenError(code, retryable = false).isAuthSessionError() -> stringResource(Res.string.home_error_session_detail)
+                code.contains("permission", ignoreCase = true) -> stringResource(Res.string.home_error_unavailable_detail)
+                code.contains("timeout", ignoreCase = true) -> stringResource(Res.string.home_error_timeout_detail)
+                code.contains("offline", ignoreCase = true) -> stringResource(Res.string.home_error_offline_detail)
+                code.contains("network", ignoreCase = true) -> stringResource(Res.string.home_error_network_detail)
+                else -> stringResource(Res.string.home_error_load_detail)
             },
         code = code,
-        actionLabel = stringResource(MR.strings.common_retry)
+        actionLabel = stringResource(Res.string.common_retry)
     )
 
 @Composable
@@ -1859,27 +1853,27 @@ private fun localizedSharedHomeSearchErrorDisplay(
     RaftHomeInlineError(
         title =
             when {
-                code == "QUERY_TOO_BROAD" -> stringResource(MR.strings.search_error_too_broad)
-                code.contains("permission", ignoreCase = true) -> stringResource(MR.strings.search_error_unavailable)
-                code.contains("timeout", ignoreCase = true) -> stringResource(MR.strings.search_error_timeout)
-                code.contains("offline", ignoreCase = true) -> stringResource(MR.strings.home_error_offline)
-                code.contains("network", ignoreCase = true) -> stringResource(MR.strings.search_error_refresh)
-                else -> stringResource(MR.strings.search_error_load)
+                code == "QUERY_TOO_BROAD" -> stringResource(Res.string.search_error_too_broad)
+                code.contains("permission", ignoreCase = true) -> stringResource(Res.string.search_error_unavailable)
+                code.contains("timeout", ignoreCase = true) -> stringResource(Res.string.search_error_timeout)
+                code.contains("offline", ignoreCase = true) -> stringResource(Res.string.home_error_offline)
+                code.contains("network", ignoreCase = true) -> stringResource(Res.string.search_error_refresh)
+                else -> stringResource(Res.string.search_error_load)
             },
         detail =
             when {
-                code == "QUERY_TOO_BROAD" -> stringResource(MR.strings.search_error_too_broad_detail)
-                code.contains("permission", ignoreCase = true) -> stringResource(MR.strings.search_error_permission_detail)
-                code.contains("timeout", ignoreCase = true) -> stringResource(MR.strings.search_error_timeout_detail)
-                code.contains("offline", ignoreCase = true) -> stringResource(MR.strings.search_error_offline_detail)
-                code.contains("network", ignoreCase = true) -> stringResource(MR.strings.search_error_network_detail)
+                code == "QUERY_TOO_BROAD" -> stringResource(Res.string.search_error_too_broad_detail)
+                code.contains("permission", ignoreCase = true) -> stringResource(Res.string.search_error_permission_detail)
+                code.contains("timeout", ignoreCase = true) -> stringResource(Res.string.search_error_timeout_detail)
+                code.contains("offline", ignoreCase = true) -> stringResource(Res.string.search_error_offline_detail)
+                code.contains("network", ignoreCase = true) -> stringResource(Res.string.search_error_network_detail)
                 else -> code.userFacingErrorCodeMessage(localizedErrorPresentationStrings())
             },
         code = code.ifBlank { "unknown_error" },
         actionLabel = when (action) {
-            is SharedHomeSearchSavedIntent.SetSearchSort -> stringResource(MR.strings.search_error_sort_recent)
+            is SharedHomeSearchSavedIntent.SetSearchSort -> stringResource(Res.string.search_error_sort_recent)
             null -> ""
-            else -> stringResource(MR.strings.common_retry)
+            else -> stringResource(Res.string.common_retry)
         }
     )
 
@@ -2062,12 +2056,12 @@ private fun RaftAppShellReadyContent(
     sharedStores: RaftSharedStoreProvider,
 ) {
     val errorStrings = localizedErrorPresentationStrings()
-    val conversationNotReadyMessage = stringResource(MR.strings.home_error_conversation_not_ready)
-    val notificationServerUnavailableMessage = stringResource(MR.strings.home_error_notification_server_unavailable)
-    val notificationSignInMessage = stringResource(MR.strings.home_error_notification_sign_in)
-    val channelCreatedMessage = stringResource(MR.strings.thread_action_card_success_channel)
-    val channelNotCreatedMessage = stringResource(MR.strings.channel_create_error_not_created)
-    val conversationUnavailableMessage = stringResource(MR.strings.home_error_conversation_unavailable)
+    val conversationNotReadyMessage = stringResource(Res.string.home_error_conversation_not_ready)
+    val notificationServerUnavailableMessage = stringResource(Res.string.home_error_notification_server_unavailable)
+    val notificationSignInMessage = stringResource(Res.string.home_error_notification_sign_in)
+    val channelCreatedMessage = stringResource(Res.string.thread_action_card_success_channel)
+    val channelNotCreatedMessage = stringResource(Res.string.channel_create_error_not_created)
+    val conversationUnavailableMessage = stringResource(Res.string.home_error_conversation_unavailable)
     val pager = LocalActivity.current.getPager() as Pager
     val timestampDisplayState =
         LocalRaftTimestampDisplayState.current ?: remember { RaftTimestampDisplayState() }
@@ -2484,7 +2478,7 @@ private fun RaftAppShellReadyContent(
                                 appShellBootstrapAuthDecision(AppShellBootstrapAuthSignal.AuthRequired)
                             val applyEffect = {
                                 authGateMessage =
-                                    AuthGateMessage.Static(MR.strings.auth_error_session_expired.desc())
+                                    AuthGateMessage.Static(Res.string.auth_error_session_expired.desc())
                                 if (authDecision.resetSessionState) authSessionResetGeneration += 1
                                 authGateViewModel.dispatch(authDecision.intent)
                             }
@@ -2623,7 +2617,7 @@ private fun RaftAppShellReadyContent(
     val shellScope = rememberRaftAppShellScope(adaptivePane)
     val appShellNetworkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val linkNavigator = rememberRaftLinkNavigator(pager, bridge)
-    val copiedMessage = stringResource(MR.strings.common_copied)
+    val copiedMessage = stringResource(Res.string.common_copied)
     val settingsCapabilities =
         remember(bridge, appShellCoroutineScope, linkNavigator, copiedMessage) {
             BridgeSettingsPlatformCapabilities(
@@ -2983,7 +2977,7 @@ private fun RaftAppShellReadyContent(
     var messageLinkNavigationTick by remember { mutableStateOf(0) }
     val pendingMessageLink by RaftMessageLinkInbox.Process.pending.collectAsState()
     val messageLinkSwitchedServerTemplate =
-        stringResource(MR.strings.message_link_switched_server, MessageLinkServerNamePlaceholder)
+        stringResource(Res.string.message_link_switched_server, MessageLinkServerNamePlaceholder)
     DisposableEffect(eventBus, windowNavigationCoordinator, bridge) {
         val subscription =
             eventBus.observe(build.raft.app.data.RaftDesktopShortcutContract.OpenEventName) { eventData ->
@@ -4355,7 +4349,7 @@ private fun RaftAppShellReadyContent(
             return@LaunchedEffect
         }
         bridge.logWarn("app_shell_home_auth_error_gate code=$error")
-        authGateMessage = AuthGateMessage.Static(MR.strings.auth_error_sign_in_continue.desc())
+        authGateMessage = AuthGateMessage.Static(Res.string.auth_error_sign_in_continue.desc())
         authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
         resetAppShellSessionState()
     }
@@ -4438,13 +4432,13 @@ private fun RaftAppShellReadyContent(
     val pushPreviewModeStore = remember { KeyValuePushPreviewModePreferenceStore(raftSharedPreferenceStore()) }
     val latestPushPreviewBannerStrings by rememberUpdatedState(
         RaftPushPreviewBannerStrings(
-            hiddenTitle = stringResource(MR.strings.push_preview_hidden_title),
-            hiddenMessage = stringResource(MR.strings.push_preview_hidden_message),
-            hiddenMention = stringResource(MR.strings.push_preview_hidden_mention),
+            hiddenTitle = stringResource(Res.string.push_preview_hidden_title),
+            hiddenMessage = stringResource(Res.string.push_preview_hidden_message),
+            hiddenMention = stringResource(Res.string.push_preview_hidden_mention),
             senderOnlyMessageTemplate =
-                stringResource(MR.strings.push_preview_sender_only_message, RaftPushPreviewBannerStrings.SENDER_PLACEHOLDER),
+                stringResource(Res.string.push_preview_sender_only_message, RaftPushPreviewBannerStrings.SENDER_PLACEHOLDER),
             senderOnlyMentionTemplate =
-                stringResource(MR.strings.push_preview_sender_only_mention, RaftPushPreviewBannerStrings.SENDER_PLACEHOLDER)
+                stringResource(Res.string.push_preview_sender_only_mention, RaftPushPreviewBannerStrings.SENDER_PLACEHOLDER)
         )
     )
     when (val gate = authGateState) {
@@ -5995,14 +5989,14 @@ private fun RaftAppShellReadyContent(
                 selectedTab = selectedTab,
                 presentation = adaptiveWorkspaceState?.presentation,
             )
-    val homeTabLabel = stringResource(MR.strings.tab_home)
-    val tasksTabLabel = stringResource(MR.strings.tab_tasks)
-    val membersTabLabel = stringResource(MR.strings.tab_members)
-    val settingsTabLabel = stringResource(MR.strings.tab_settings)
-    val dmsTabLabel = stringResource(MR.strings.tab_dms)
-    val activityTabLabel = stringResource(MR.strings.tab_activity)
-    val searchTabLabel = stringResource(MR.strings.home_nav_search)
-    val moreTabLabel = stringResource(MR.strings.tab_more)
+    val homeTabLabel = stringResource(Res.string.tab_home)
+    val tasksTabLabel = stringResource(Res.string.tab_tasks)
+    val membersTabLabel = stringResource(Res.string.tab_members)
+    val settingsTabLabel = stringResource(Res.string.tab_settings)
+    val dmsTabLabel = stringResource(Res.string.tab_dms)
+    val activityTabLabel = stringResource(Res.string.tab_activity)
+    val searchTabLabel = stringResource(Res.string.home_nav_search)
+    val moreTabLabel = stringResource(Res.string.tab_more)
     // Activity tab badge = Activity unread only (the count the old Home 动态 row showed). The
     // notification center keeps its own Bell dot in the Home head (task #18).
     val activityTabUnreadCount = homeActivitySidebarUnreadCount(activityUnreadSummary.totalUnreadCount)
@@ -6095,7 +6089,7 @@ private fun RaftAppShellReadyContent(
     LaunchedEffect(showAppShellBottomTabs, navRailActive) { serverMenuState.dismiss() }
     // artin 10-23: a server switch that ends without the server's Home (dropped load, error,
     // timeout) says so once (web ServerSwitcherMenu `switchFailed`); the list is already back.
-    val serverSwitchFailedMessage = stringResource(MR.strings.home_server_switch_failed)
+    val serverSwitchFailedMessage = stringResource(Res.string.home_server_switch_failed)
     val serverSwitchFailuresShown = remember { longArrayOf(homeState.serverSwitchState.failureCount) }
     LaunchedEffect(homeState.serverSwitchState.failureCount) {
         val failures = homeState.serverSwitchState.failureCount
@@ -6131,7 +6125,7 @@ private fun RaftAppShellReadyContent(
         }
     }
     val serverTabAccessibilityLabel =
-        serverMenuModel?.let { stringResource(MR.strings.server_tab_a11y_label, it.currentServer.name) }
+        serverMenuModel?.let { stringResource(Res.string.server_tab_a11y_label, it.currentServer.name) }
     val appShellBottomTabItems = remember(
         selectedTab,
         homeTabLabel,
@@ -6934,7 +6928,7 @@ private fun RaftAppShellReadyContent(
                         val detailPayload = adaptiveDetailLaunchPayload?.takeIf { detailAccepted }
                         val childActive =
                             active && workspace?.presentation != RaftAdaptiveWorkspacePresentation.Inactive
-                        val adaptiveEmptyLabel = stringResource(MR.strings.home_adaptive_select_conversation)
+                        val adaptiveEmptyLabel = stringResource(Res.string.home_adaptive_select_conversation)
                         val detailPageData =
                             remember(
                                 detailPayload,
@@ -7833,7 +7827,7 @@ private fun RaftAppShellReadyContent(
                     appShellModalHostState.entries.isNotEmpty() ||
                         createChannelDialogOpen ||
                         activeAnnouncement != null,
-                dismissLabel = stringResource(MR.strings.common_dismiss),
+                dismissLabel = stringResource(Res.string.common_dismiss),
                 onServerClick = ::openServerDrawerHome,
                 onConversationClick = ::openServerDrawerConversation,
                 onProgrammaticCloseFenceChanged = { serverDrawerProgrammaticCloseFence = it },
@@ -8321,10 +8315,10 @@ internal fun ScreenLoadState<SharedSettingsStorageSnapshot>.toStoragePayload(
     val storage = (this as? ScreenLoadState.Content<SharedSettingsStorageSnapshot>)?.data
     val statusText =
         when (this) {
-            ScreenLoadState.Loading -> if (refreshing) stringResource(MR.strings.settings_storage_refreshing) else stringResource(MR.strings.settings_storage_loading)
-            is ScreenLoadState.Empty -> stringResource(MR.strings.settings_storage_unavailable)
-            is ScreenLoadState.Error -> MR.strings.settings_storage_unavailable_detail.format(listOf(this.error.localizedUserFacingMessage())).localized()
-            is ScreenLoadState.NoPermission -> MR.strings.settings_storage_unavailable_detail.format(listOf(this.blocker.localizedUserFacingMessage())).localized()
+            ScreenLoadState.Loading -> if (refreshing) stringResource(Res.string.settings_storage_refreshing) else stringResource(Res.string.settings_storage_loading)
+            is ScreenLoadState.Empty -> stringResource(Res.string.settings_storage_unavailable)
+            is ScreenLoadState.Error -> Res.string.settings_storage_unavailable_detail.format(listOf(this.error.localizedUserFacingMessage())).localized()
+            is ScreenLoadState.NoPermission -> Res.string.settings_storage_unavailable_detail.format(listOf(this.blocker.localizedUserFacingMessage())).localized()
             is ScreenLoadState.Content ->
                 storage?.feedback.orEmpty().ifBlank {
                     storage?.feedbackError
@@ -8334,10 +8328,10 @@ internal fun ScreenLoadState<SharedSettingsStorageSnapshot>.toStoragePayload(
         }
     return RaftSettingsStoragePayload(
         instanceId = "shared-shell-settings-storage",
-        totalTitle = stringResource(MR.strings.settings_storage_total_title),
-        totalSize = storage?.totalSizeBytes?.let { RaftFormat.bytes(it) } ?: storage?.totalSizeLabel?.takeIf { it.isNotBlank() } ?: if (refreshing) stringResource(MR.strings.settings_state_refreshing) else "--",
-        refreshLabel = stringResource(MR.strings.settings_storage_refresh),
-        safeClearNote = stringResource(MR.strings.settings_storage_safe_clear_note),
+        totalTitle = stringResource(Res.string.settings_storage_total_title),
+        totalSize = storage?.totalSizeBytes?.let { RaftFormat.bytes(it) } ?: storage?.totalSizeLabel?.takeIf { it.isNotBlank() } ?: if (refreshing) stringResource(Res.string.settings_state_refreshing) else "--",
+        refreshLabel = stringResource(Res.string.settings_storage_refresh),
+        safeClearNote = stringResource(Res.string.settings_storage_safe_clear_note),
         feedback = localizedSettingsStorageFeedback(statusText),
         refreshing = refreshing,
         rows =
@@ -8363,10 +8357,10 @@ private fun SharedSettingsStorageRow.toStoragePayloadRow(clearInProgress: Boolea
         clearLabel =
             if (clearEnabled) {
                 when (target) {
-                    "imageCache" -> stringResource(MR.strings.settings_storage_clear_image_cache)
-                    "attachmentDownloads" -> stringResource(MR.strings.settings_storage_clear_downloaded_files)
-                    "temporaryAndLogs" -> stringResource(MR.strings.settings_storage_clear_temp_files)
-                    else -> stringResource(MR.strings.common_clear)
+                    "imageCache" -> stringResource(Res.string.settings_storage_clear_image_cache)
+                    "attachmentDownloads" -> stringResource(Res.string.settings_storage_clear_downloaded_files)
+                    "temporaryAndLogs" -> stringResource(Res.string.settings_storage_clear_temp_files)
+                    else -> stringResource(Res.string.common_clear)
                 }
             } else {
                 ""
@@ -8378,10 +8372,10 @@ private fun SharedSettingsStorageRow.toStoragePayloadRow(clearInProgress: Boolea
 @Composable
 private fun localizedSettingsStorageRowTitle(target: String, fallback: String): String =
     when (target) {
-        "database" -> stringResource(MR.strings.settings_storage_row_database)
-        "imageCache" -> stringResource(MR.strings.settings_storage_row_image_cache)
-        "attachmentDownloads" -> stringResource(MR.strings.settings_storage_row_downloads)
-        "temporaryAndLogs" -> stringResource(MR.strings.settings_storage_row_temporary)
+        "database" -> stringResource(Res.string.settings_storage_row_database)
+        "imageCache" -> stringResource(Res.string.settings_storage_row_image_cache)
+        "attachmentDownloads" -> stringResource(Res.string.settings_storage_row_downloads)
+        "temporaryAndLogs" -> stringResource(Res.string.settings_storage_row_temporary)
         else -> fallback
     }
 
@@ -8389,28 +8383,28 @@ private fun localizedSettingsStorageRowTitle(target: String, fallback: String): 
 private fun localizedSettingsStorageRowDetail(detail: String): String =
     when (detail) {
         "Messages, task metadata, and server snapshots stored on this device." ->
-            stringResource(MR.strings.settings_storage_row_database_detail)
+            stringResource(Res.string.settings_storage_row_database_detail)
         "Downloaded image previews kept for faster viewing." ->
-            stringResource(MR.strings.settings_storage_row_image_cache_detail)
+            stringResource(Res.string.settings_storage_row_image_cache_detail)
         "Files downloaded for opening or installing from previews.",
         "Private copies kept for opening or installing files. Public exports are not removed.",
         "Temporary data from active or failed downloads. Completed files remain in Downloads." ->
-            stringResource(MR.strings.settings_storage_row_downloads_detail)
+            stringResource(Res.string.settings_storage_row_downloads_detail)
         "Debug logs and temporary files generated by the app." ->
-            stringResource(MR.strings.settings_storage_row_temporary_detail)
+            stringResource(Res.string.settings_storage_row_temporary_detail)
         else -> detail
     }
 
 @Composable
 private fun localizedSettingsStorageFeedback(feedback: String): String =
     when (feedback) {
-        "Image cache cleared." -> stringResource(MR.strings.settings_storage_feedback_image_cleared)
+        "Image cache cleared." -> stringResource(Res.string.settings_storage_feedback_image_cleared)
         "Downloaded files cleared.",
         "Attachment cache cleared. Public exports were not removed.",
         "Attachment staging cleared. Completed Downloads were not removed." ->
-            stringResource(MR.strings.settings_storage_feedback_downloads_cleared)
+            stringResource(Res.string.settings_storage_feedback_downloads_cleared)
         "Temporary files and diagnostics logs cleared." ->
-            stringResource(MR.strings.settings_storage_feedback_temporary_cleared)
+            stringResource(Res.string.settings_storage_feedback_temporary_cleared)
         else -> feedback
     }
 
@@ -8666,7 +8660,7 @@ internal fun AppShellServerGateContent(
             }
             null -> {
                 authDataSource.logDiagnostics("auth_choose_server_load_result result=failure code=exception")
-                errorPresentation = AuthGateMessage.Static(MR.strings.auth_error_load_servers.desc())
+                errorPresentation = AuthGateMessage.Static(Res.string.auth_error_load_servers.desc())
             }
         }
         loadingServers = false
@@ -8684,7 +8678,7 @@ internal fun AppShellServerGateContent(
         topBarBrandImagePadding = 0.dp,
         topLeadingContent = onBack?.let { back ->
             {
-                RaftBackButton(onClick = back, label = stringResource(MR.strings.common_back))
+                RaftBackButton(onClick = back, label = stringResource(Res.string.common_back))
             }
         }
     ) {
@@ -8692,14 +8686,14 @@ internal fun AppShellServerGateContent(
         Text(
             text =
                 when (mode) {
-                    "create" -> stringResource(MR.strings.auth_server_title_create)
+                    "create" -> stringResource(Res.string.auth_server_title_create)
                     "empty" ->
                         if (loadingServers) {
-                            stringResource(MR.strings.auth_server_title_checking)
+                            stringResource(Res.string.auth_server_title_checking)
                         } else {
-                            stringResource(MR.strings.auth_server_title_first)
+                            stringResource(Res.string.auth_server_title_first)
                         }
-                    else -> stringResource(MR.strings.auth_server_title_choose)
+                    else -> stringResource(Res.string.auth_server_title_choose)
                 },
             style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
             color = RaftColor.TextBlack
@@ -8707,7 +8701,7 @@ internal fun AppShellServerGateContent(
         Text(
             text =
                 StringDesc.ResourceFormatted(
-                    MR.strings.auth_server_signed_in_as,
+                    Res.string.auth_server_signed_in_as,
                     listOf(latestSession.user.bestDisplayName)
                 ).localized(),
             style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
@@ -8718,7 +8712,7 @@ internal fun AppShellServerGateContent(
             AuthError(errorMessage)
             if (showPinnedSignOut) {
                 AuthActionButton(
-                    text = stringResource(MR.strings.auth_action_sign_out),
+                    text = stringResource(Res.string.auth_action_sign_out),
                     onClick = {
                         pendingServerId = "__logout__"
                         loading = true
@@ -8729,14 +8723,14 @@ internal fun AppShellServerGateContent(
             }
             if (loadingServers) {
                 Text(
-                    text = stringResource(MR.strings.auth_server_loading),
+                    text = stringResource(Res.string.auth_server_loading),
                     style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
                     color = RaftColor.TextMutedGray,
                     textAlign = TextAlign.Center
                 )
             } else if (latestSession.servers.isEmpty() && errorMessage != null) {
                 AuthActionButton(
-                    text = stringResource(MR.strings.auth_action_retry),
+                    text = stringResource(Res.string.auth_action_retry),
                     onClick = {
                         errorPresentation = null
                         loadAttempt += 1
@@ -8746,7 +8740,7 @@ internal fun AppShellServerGateContent(
                 )
             } else if (mode == "create") {
                 Text(
-                    text = stringResource(MR.strings.auth_server_create_hint),
+                    text = stringResource(Res.string.auth_server_create_hint),
                     style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
                     color = RaftColor.TextMutedGray
                 )
@@ -8762,7 +8756,7 @@ internal fun AppShellServerGateContent(
                             createSlug = TextFieldValue(slug, selection = TextRange(slug.length))
                         }
                     },
-                    label = stringResource(MR.strings.auth_label_server_name),
+                    label = stringResource(Res.string.auth_label_server_name),
                     required = true,
                     enabled = !loading
                 )
@@ -8773,16 +8767,16 @@ internal fun AppShellServerGateContent(
                         createSlugTouched = true
                         createSlug = authCreateServerSlugFieldValue(nextValue)
                     },
-                    label = stringResource(MR.strings.auth_label_server_slug),
+                    label = stringResource(Res.string.auth_label_server_slug),
                     placeholder = "my-team",
                     enabled = !loading
                 )
                 AuthActionButton(
                     text =
                         if (loading) {
-                            stringResource(MR.strings.auth_state_creating_server)
+                            stringResource(Res.string.auth_state_creating_server)
                         } else {
-                            stringResource(MR.strings.auth_action_create_server)
+                            stringResource(Res.string.auth_action_create_server)
                         },
                     onClick = {
                         loading = true
@@ -8796,9 +8790,9 @@ internal fun AppShellServerGateContent(
                 AuthActionButton(
                     text =
                         if (latestSession.servers.isEmpty()) {
-                            stringResource(MR.strings.auth_action_back)
+                            stringResource(Res.string.auth_action_back)
                         } else {
-                            stringResource(MR.strings.auth_action_back_to_servers)
+                            stringResource(Res.string.auth_action_back_to_servers)
                         },
                     onClick = { mode = if (latestSession.servers.isEmpty()) "empty" else "choose" },
                     tone = AuthButtonTone.White,
@@ -8814,7 +8808,7 @@ internal fun AppShellServerGateContent(
                         title = server.name,
                         subtitle =
                             if (pendingServerId == server.id) {
-                                stringResource(MR.strings.auth_state_opening_server)
+                                stringResource(Res.string.auth_state_opening_server)
                             } else {
                                 "/${server.slug.orEmpty().ifBlank { server.id }}"
                             },
@@ -8827,7 +8821,7 @@ internal fun AppShellServerGateContent(
                     )
                 }
                 AuthActionButton(
-                    text = stringResource(MR.strings.auth_action_create_new_server),
+                    text = stringResource(Res.string.auth_action_create_new_server),
                     onClick = { mode = "create" },
                     tone = AuthButtonTone.Yellow,
                     enabled = !loading
@@ -8835,7 +8829,7 @@ internal fun AppShellServerGateContent(
             }
             if (!showPinnedSignOut) {
                 RaftLinkButton(
-                    text = stringResource(MR.strings.auth_action_sign_out),
+                    text = stringResource(Res.string.auth_action_sign_out),
                     enabled = !loading,
                     onClick = {
                         pendingServerId = "__logout__"
@@ -8938,7 +8932,7 @@ internal fun appShellAuthLossEffectShouldApply(
 
 internal fun serverGateActionFailureMessage(target: String, message: String): AuthGateMessage =
     if (target == "__create__" && message == AuthAuthorityChangedMessage) {
-        AuthGateMessage.Static(MR.strings.auth_error_session_changed_retry_create_server.desc())
+        AuthGateMessage.Static(Res.string.auth_error_session_changed_retry_create_server.desc())
     } else {
         AuthGateMessage.Dynamic(message)
     }
@@ -8977,7 +8971,7 @@ internal fun authCreateServerSlugFieldValue(value: TextFieldValue): TextFieldVal
 
 internal fun serverGateUnauthenticatedMessage(): AuthGateMessage =
     AuthGateMessage.Static(
-        MR.strings.auth_error_session_refresh_choose_server.desc(),
+        Res.string.auth_error_session_refresh_choose_server.desc(),
         pinSignOut = true
     )
 
@@ -8994,13 +8988,13 @@ private fun AppShellServerEmptyState(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = stringResource(MR.strings.auth_server_empty_hint),
+            text = stringResource(Res.string.auth_server_empty_hint),
             style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextMutedGray),
             color = RaftColor.TextMutedGray,
             textAlign = TextAlign.Center
         )
         AuthActionButton(
-            text = stringResource(MR.strings.auth_action_create_new_server),
+            text = stringResource(Res.string.auth_action_create_new_server),
             onClick = onCreateServer,
             tone = AuthButtonTone.Pink
         )
@@ -9020,19 +9014,19 @@ internal fun AppShellAuthErrorContent(
         onDiagnosticsShortcut = onOpenDiagnostics,
         topLeadingContent = onBack?.let { back ->
             {
-                RaftBackButton(onClick = back, label = stringResource(MR.strings.common_back))
+                RaftBackButton(onClick = back, label = stringResource(Res.string.common_back))
             }
         }
     ) {
         AuthLogoBadge("RAFT")
         Text(
-            text = stringResource(MR.strings.auth_title_session_error),
+            text = stringResource(Res.string.auth_title_session_error),
             style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
             color = RaftColor.TextBlack
         )
         AuthError(message)
-        AuthActionButton(text = stringResource(MR.strings.auth_action_retry), onClick = onRetry, tone = AuthButtonTone.Pink)
-        AuthActionButton(text = stringResource(MR.strings.auth_action_sign_in), onClick = onSignIn, tone = AuthButtonTone.White)
+        AuthActionButton(text = stringResource(Res.string.auth_action_retry), onClick = onRetry, tone = AuthButtonTone.Pink)
+        AuthActionButton(text = stringResource(Res.string.auth_action_sign_in), onClick = onSignIn, tone = AuthButtonTone.White)
     }
 }
 
@@ -9061,7 +9055,7 @@ internal fun AppShellEmailVerificationGateContent(
         when (result) {
             is SharedAuthResult.Success -> {
                 errorPresentation = null
-                sentPresentation = AuthGateMessage.Static(MR.strings.auth_notice_verification_email_sent.desc())
+                sentPresentation = AuthGateMessage.Static(Res.string.auth_notice_verification_email_sent.desc())
                 authDataSource.logDiagnostics("auth_resend_verification_result result=success")
             }
             is SharedAuthResult.Failure -> {
@@ -9071,12 +9065,12 @@ internal fun AppShellEmailVerificationGateContent(
             }
             SharedAuthResult.Unauthenticated -> {
                 sentPresentation = null
-                errorPresentation = AuthGateMessage.Static(MR.strings.auth_error_session_refresh.desc())
+                errorPresentation = AuthGateMessage.Static(Res.string.auth_error_session_refresh.desc())
                 authDataSource.logDiagnostics("auth_resend_verification_result result=unauthenticated")
             }
             null -> {
                 sentPresentation = null
-                errorPresentation = AuthGateMessage.Static(MR.strings.auth_error_verification_email_send.desc())
+                errorPresentation = AuthGateMessage.Static(Res.string.auth_error_verification_email_send.desc())
                 authDataSource.logDiagnostics("auth_resend_verification_result result=failure code=exception")
             }
         }
@@ -9093,7 +9087,7 @@ internal fun AppShellEmailVerificationGateContent(
     AuthScaffold {
         AuthLogoBadge("RAFT")
         Text(
-            text = stringResource(MR.strings.auth_title_verify_email),
+            text = stringResource(Res.string.auth_title_verify_email),
             style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
             color = RaftColor.TextBlack
         )
@@ -9101,11 +9095,11 @@ internal fun AppShellEmailVerificationGateContent(
             text =
                 if (accountEmail != null) {
                     StringDesc.ResourceFormatted(
-                        MR.strings.auth_hint_verify_email_address,
+                        Res.string.auth_hint_verify_email_address,
                         listOf(accountEmail)
                     ).localized()
                 } else {
-                    stringResource(MR.strings.auth_hint_verify_email)
+                    stringResource(Res.string.auth_hint_verify_email)
                 },
             style = RaftType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
             color = RaftColor.TextMutedGray,
@@ -9114,13 +9108,13 @@ internal fun AppShellEmailVerificationGateContent(
         AuthFormColumn {
             sentMessage?.let {
                 AuthSuccessNotice(
-                    title = stringResource(MR.strings.auth_title_email_sent),
+                    title = stringResource(Res.string.auth_title_email_sent),
                     detail = it
                 )
             }
             AuthError(errorMessage)
             AuthActionButton(
-                text = stringResource(MR.strings.auth_action_resend_verification),
+                text = stringResource(Res.string.auth_action_resend_verification),
                 onClick = {
                     loading = true
                     errorPresentation = null
@@ -9132,13 +9126,13 @@ internal fun AppShellEmailVerificationGateContent(
                 loading = loading
             )
             AuthActionButton(
-                text = stringResource(MR.strings.auth_action_verified_refresh),
+                text = stringResource(Res.string.auth_action_verified_refresh),
                 onClick = onRefresh,
                 tone = AuthButtonTone.White,
                 enabled = !loading
             )
             RaftLinkButton(
-                text = stringResource(MR.strings.auth_action_sign_out),
+                text = stringResource(Res.string.auth_action_sign_out),
                 enabled = !loading,
                 onClick = {
                     loading = true
@@ -9185,9 +9179,9 @@ private fun SharedMembersScreen(
     onForegroundActivity: (String) -> Unit = {}
 ) {
     val errorStrings = localizedErrorPresentationStrings()
-    val membersTitle = stringResource(MR.strings.tab_members)
-    val membersLoadFailedMessage = stringResource(MR.strings.thread_composer_load_members_failed)
-    val openProfileFailedMessage = stringResource(MR.strings.member_error_open_profile)
+    val membersTitle = stringResource(Res.string.tab_members)
+    val membersLoadFailedMessage = stringResource(Res.string.thread_composer_load_members_failed)
+    val openProfileFailedMessage = stringResource(Res.string.member_error_open_profile)
     val currentServerId = session?.currentServerId?.trim()?.takeIf { it.isNotBlank() }
     var selectedDetail by detailSelection
     val showMemberSplit = desktopMembersEnabled && paneLayout == RaftAdaptivePaneLayout.DualPane
@@ -9618,7 +9612,7 @@ private fun SharedMembersScreen(
                     val detail = selectedDetail
                     if (detail == null) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(stringResource(MR.strings.members_select_detail), color = RaftColor.TextMutedGray)
+                            Text(stringResource(Res.string.members_select_detail), color = RaftColor.TextMutedGray)
                         }
                     } else if (active) {
                         // Dispose all detail-local effects on identity changes. Canonical
@@ -9933,11 +9927,11 @@ private fun SharedHomeScreen(
     // off-screen. Gate through rememberUpdatedState so the check reads the
     // current `active` flag, not the one captured at callback creation.
     val latestActive = rememberUpdatedState(active)
-    val conversationUnavailableMessage = stringResource(MR.strings.home_error_conversation_unavailable)
-    val directMessageUnavailableMessage = stringResource(MR.strings.home_error_direct_message_unavailable)
-    val openDirectMessageFailedMessage = stringResource(MR.strings.home_error_open_direct_message)
-    val openDirectMessageFailedPrefix = stringResource(MR.strings.home_error_open_direct_message_failed_prefix)
-    val openDirectMessagePermissionMessage = stringResource(MR.strings.home_error_open_direct_message_permission)
+    val conversationUnavailableMessage = stringResource(Res.string.home_error_conversation_unavailable)
+    val directMessageUnavailableMessage = stringResource(Res.string.home_error_direct_message_unavailable)
+    val openDirectMessageFailedMessage = stringResource(Res.string.home_error_open_direct_message)
+    val openDirectMessageFailedPrefix = stringResource(Res.string.home_error_open_direct_message_failed_prefix)
+    val openDirectMessagePermissionMessage = stringResource(Res.string.home_error_open_direct_message_permission)
     val pinnedMemberOpenScope = rememberCoroutineScope()
     val homeContentSummary = sharedHomeContentRenderSummary(state.content)
     val shouldStartHome = sharedHomeShouldStartOnActive(active, sessionReady, state)
@@ -10566,14 +10560,14 @@ private fun SharedCreateChannelDialog(
     val trimmedName = name.trim()
     val nameError =
         if (trimmedName.isNotEmpty() && !trimmedName.isSubmittableChannelName()) {
-            stringResource(MR.strings.channel_create_error_name_format)
+            stringResource(Res.string.channel_create_error_name_format)
         } else {
             null
         }
     val canSubmit = trimmedName.isSubmittableChannelName() && !submitting
     val selectableMembers = members.filter { it.kind == MemberKind.Human || it.kind == MemberKind.Agent }
     RaftUnifiedDialog(
-        title = stringResource(MR.strings.channel_create_title),
+        title = stringResource(Res.string.channel_create_title),
         dismissEnabled = !submitting,
         keyboardAvoidanceEnabled = true,
         onDismiss = onDismiss
@@ -10641,14 +10635,14 @@ private fun SharedCreateChannelDialog(
             ) {
             item {
                 RaftBrutalTextField(
-                    label = stringResource(MR.strings.channel_create_label_name),
+                    label = stringResource(Res.string.channel_create_label_name),
                     required = true,
                     value = name,
                     keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
                     onValueChange = { name = it },
-                    placeholder = stringResource(MR.strings.channel_create_placeholder_name),
+                    placeholder = stringResource(Res.string.channel_create_placeholder_name),
                     enabled = !submitting,
-                    hint = stringResource(MR.strings.channel_create_hint_name_format),
+                    hint = stringResource(Res.string.channel_create_hint_name_format),
                     error = nameError,
                     autoFocus = false,
                     onFocusChanged = { isFocused ->
@@ -10661,11 +10655,11 @@ private fun SharedCreateChannelDialog(
             }
             item {
                 RaftBrutalTextField(
-                    label = stringResource(MR.strings.channel_create_label_description),
+                    label = stringResource(Res.string.channel_create_label_description),
                     optional = true,
                     value = description,
                     onValueChange = { description = it },
-                    placeholder = stringResource(MR.strings.channel_create_placeholder_description),
+                    placeholder = stringResource(Res.string.channel_create_placeholder_description),
                     enabled = !submitting,
                     maxLines = 2,
                     autoFocus = false,
@@ -10711,12 +10705,12 @@ private fun SharedCreateChannelDialog(
                 item {
                     val localizedError =
                         if (errorMessage == "channel_name_invalid") {
-                            stringResource(MR.strings.channel_create_error_name_format)
+                            stringResource(Res.string.channel_create_error_name_format)
                         } else {
                             errorMessage
                         }
                     Text(
-                        text = MR.strings.channel_create_error.format(listOf(localizedError)).localized(),
+                        text = Res.string.channel_create_error.format(listOf(localizedError)).localized(),
                         style = RaftType.Caption,
                         color = RaftColor.AccentRed
                     )
@@ -10726,7 +10720,7 @@ private fun SharedCreateChannelDialog(
         }
         RaftDialogFooter {
             RaftButton(
-                text = stringResource(MR.strings.common_cancel),
+                text = stringResource(Res.string.common_cancel),
                 enabled = !submitting,
                 onClick = onDismiss,
                 variant = RaftButtonVariant.Ghost,
@@ -10735,9 +10729,9 @@ private fun SharedCreateChannelDialog(
             RaftBrutalActionButton(
                 label =
                     if (submitting) {
-                        stringResource(MR.strings.channel_create_action_creating)
+                        stringResource(Res.string.channel_create_action_creating)
                     } else {
-                        stringResource(MR.strings.channel_create_action_create)
+                        stringResource(Res.string.channel_create_action_create)
                     },
                 enabled = canSubmit,
                 minWidth = 126.dp,
@@ -10779,7 +10773,7 @@ private fun SharedCreateChannelVisibilityControl(
     onSelected: (SharedCreateChannelVisibility) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        RaftFieldLabel(text = stringResource(MR.strings.channel_create_label_visibility))
+        RaftFieldLabel(text = stringResource(Res.string.channel_create_label_visibility))
         SegmentedControl(
             selectedValue = selected.name,
             options =
@@ -10788,8 +10782,8 @@ private fun SharedCreateChannelVisibilityControl(
                         value = option.name,
                         label =
                             when (option) {
-                                SharedCreateChannelVisibility.Public -> stringResource(MR.strings.channel_create_visibility_public)
-                                SharedCreateChannelVisibility.Private -> stringResource(MR.strings.channel_create_visibility_private)
+                                SharedCreateChannelVisibility.Public -> stringResource(Res.string.channel_create_visibility_public)
+                                SharedCreateChannelVisibility.Private -> stringResource(Res.string.channel_create_visibility_private)
                             },
                         iconName = option.iconName
                     )
@@ -10820,7 +10814,7 @@ internal fun SharedCreateChannelMemberPicker(
     onBlur: () -> Unit = {}
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        RaftFieldLabel(text = stringResource(MR.strings.channel_create_label_members), optional = true)
+        RaftFieldLabel(text = stringResource(Res.string.channel_create_label_members), optional = true)
         RaftMemberPicker(
             members = members,
             query = query,
@@ -10913,13 +10907,13 @@ internal fun SharedHomeSearchPanel(
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
     val channelFilters = remember(homeState) { homeSearchChannelFilters(homeState) }
-    val channelEntityLabel = stringResource(MR.strings.search_entity_channel)
-    val dmEntityLabel = stringResource(MR.strings.search_entity_dm)
-    val agentEntityLabel = stringResource(MR.strings.search_entity_agent)
-    val personEntityLabel = stringResource(MR.strings.search_entity_person)
-    val membersEntityLabel = stringResource(MR.strings.search_entity_members)
-    val computerEntityLabel = stringResource(MR.strings.search_entity_computer)
-    val threadDiscussionLabel = stringResource(MR.strings.search_thread_discussion)
+    val channelEntityLabel = stringResource(Res.string.search_entity_channel)
+    val dmEntityLabel = stringResource(Res.string.search_entity_dm)
+    val agentEntityLabel = stringResource(Res.string.search_entity_agent)
+    val personEntityLabel = stringResource(Res.string.search_entity_person)
+    val membersEntityLabel = stringResource(Res.string.search_entity_members)
+    val computerEntityLabel = stringResource(Res.string.search_entity_computer)
+    val threadDiscussionLabel = stringResource(Res.string.search_thread_discussion)
     val entityResults = remember(
         state.query,
         homeState,
@@ -11020,8 +11014,8 @@ internal fun SharedHomeSearchPanel(
     }
     var senderSearch by remember { mutableStateOf("") }
     var channelSearch by remember { mutableStateOf("") }
-    val pinLabel = stringResource(MR.strings.home_action_pin)
-    val unpinLabel = stringResource(MR.strings.home_action_unpin)
+    val pinLabel = stringResource(Res.string.home_action_pin)
+    val unpinLabel = stringResource(Res.string.home_action_unpin)
     LaunchedEffect(entityResults) {
         val activeKey = activePinMenu?.resultKey
         if (activeKey != null && entityResults.none { it.key == activeKey }) {
@@ -11091,7 +11085,7 @@ internal fun SharedHomeSearchPanel(
                     interactive = interactiveSearchField,
                     tabHead = tabHead,
                     topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
-                    placeholder = stringResource(MR.strings.search_placeholder)
+                    placeholder = stringResource(Res.string.search_placeholder)
                 )
                 // The tab head draws its own 1dp seam.
                 if (!tabHead) SharedHomeSearchDivider()
@@ -11138,8 +11132,8 @@ internal fun SharedHomeSearchPanel(
                         val hasSearchRows = projectedItems.isNotEmpty() || entityResults.isNotEmpty()
                         if (showSearchHome && (!state.personalizationLoaded || !hasSearchHomeContent)) {
                             SharedHomeSearchEmptyState(
-                                title = stringResource(MR.strings.search_empty_title),
-                                detail = stringResource(MR.strings.search_empty_detail)
+                                title = stringResource(Res.string.search_empty_title),
+                                detail = stringResource(Res.string.search_empty_detail)
                             )
                         } else if (showSearchHome) {
                             Unit
@@ -11164,8 +11158,8 @@ internal fun SharedHomeSearchPanel(
                             )
                         } else if (!state.searched && projectedItems.isEmpty() && entityResults.isEmpty()) {
                             SharedHomeSearchEmptyState(
-                                title = stringResource(MR.strings.search_empty_title),
-                                detail = stringResource(MR.strings.search_empty_detail)
+                                title = stringResource(Res.string.search_empty_title),
+                                detail = stringResource(Res.string.search_empty_detail)
                             )
                         } else if (
                             (state.empty || state.searched) &&
@@ -11176,15 +11170,15 @@ internal fun SharedHomeSearchPanel(
                             SharedHomeSearchEmptyState(
                                 title =
                                     if (trimmedQuery.isNotBlank()) {
-                                        MR.strings.search_empty_results_query.format(listOf(trimmedQuery)).localized()
+                                        Res.string.search_empty_results_query.format(listOf(trimmedQuery)).localized()
                                     } else {
-                                        stringResource(MR.strings.search_empty_results)
+                                        stringResource(Res.string.search_empty_results)
                                     },
                                 detail =
                                     if (trimmedQuery.isNotBlank()) {
-                                        stringResource(MR.strings.search_empty_query_detail)
+                                        stringResource(Res.string.search_empty_query_detail)
                                     } else {
-                                        stringResource(MR.strings.search_empty_filters_detail)
+                                        stringResource(Res.string.search_empty_filters_detail)
                                     }
                             )
                         } else {
@@ -11221,7 +11215,7 @@ internal fun SharedHomeSearchPanel(
                     if (showSearchHome && state.personalizationLoaded && hasSearchHomeContent) {
                         item(key = "search-home-frequent-heading") {
                             SharedHomeSearchSectionLabel(
-                                label = stringResource(MR.strings.search_home_frequent),
+                                label = stringResource(Res.string.search_home_frequent),
                                 visualTextScale = searchHomeVisualTextScale,
                             )
                         }
@@ -11234,7 +11228,7 @@ internal fun SharedHomeSearchPanel(
                                             .padding(horizontal = SearchMessagesHorizontalPadding, vertical = 12.dp),
                                 ) {
                                     RaftText(
-                                        text = stringResource(MR.strings.search_home_frequent_empty),
+                                        text = stringResource(Res.string.search_home_frequent_empty),
                                         style = RaftTheme.typography.callout.withHomeSearchVisualTextScale(searchHomeVisualTextScale),
                                         color = RaftColor.ForegroundHint,
                                     )
@@ -11272,7 +11266,7 @@ internal fun SharedHomeSearchPanel(
                     }
                     if (entityResults.isNotEmpty()) {
                         item {
-                            SharedHomeSearchSectionLabel(stringResource(MR.strings.search_section_entities))
+                            SharedHomeSearchSectionLabel(stringResource(Res.string.search_section_entities))
                         }
                         items(entityResults.size, key = { index -> entityResults[index].key }) { index ->
                             Box(
@@ -11312,7 +11306,7 @@ internal fun SharedHomeSearchPanel(
                     }
                     if (groupedResults.isNotEmpty()) {
                         item {
-                            SharedHomeSearchSectionLabel(stringResource(MR.strings.search_section_messages))
+                            SharedHomeSearchSectionLabel(stringResource(Res.string.search_section_messages))
                         }
                     }
                     groupedResults.forEachIndexed { groupIndex, group ->
@@ -11369,7 +11363,7 @@ internal fun SharedHomeSearchPanel(
                         item {
                             SharedHomeLoadMoreRow(
                                 loading = state.loadingMore,
-                                label = stringResource(MR.strings.search_action_load_more_results),
+                                label = stringResource(Res.string.search_action_load_more_results),
                                 onClick = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSearch) }
                             )
                         }
@@ -11383,7 +11377,7 @@ internal fun SharedHomeSearchPanel(
                 "scope" ->
                     RaftFilterPopover(
                         anchor = scopeAnchor,
-                        title = stringResource(MR.strings.search_filter_scope),
+                        title = stringResource(Res.string.search_filter_scope),
                         searchPlaceholder = "",
                         searchText = "",
                         onSearchChange = {},
@@ -11406,8 +11400,8 @@ internal fun SharedHomeSearchPanel(
                     )
                 "sender" ->
                     RaftFilterSheet(
-                        title = stringResource(MR.strings.search_filter_from),
-                        searchPlaceholder = stringResource(MR.strings.search_filter_search_senders),
+                        title = stringResource(Res.string.search_filter_from),
+                        searchPlaceholder = stringResource(Res.string.search_filter_search_senders),
                         searchText = senderSearch,
                         onSearchChange = { senderSearch = it },
                         options = state.senderFilterOptions(),
@@ -11423,14 +11417,14 @@ internal fun SharedHomeSearchPanel(
                         // An empty list while senders load (or fail) says so.
                         status =
                             when {
-                                state.senderFiltersLoading -> stringResource(MR.strings.search_filter_loading_senders)
+                                state.senderFiltersLoading -> stringResource(Res.string.search_filter_loading_senders)
                                 else -> state.senderFiltersErrorCode
                             }
                     )
                 "channel" ->
                     RaftFilterSheet(
-                        title = stringResource(MR.strings.search_filter_channels),
-                        searchPlaceholder = stringResource(MR.strings.search_filter_search),
+                        title = stringResource(Res.string.search_filter_channels),
+                        searchPlaceholder = stringResource(Res.string.search_filter_search),
                         searchText = channelSearch,
                         onSearchChange = { channelSearch = it },
                         options = channelFilters.map { RaftFilterOption(it.id, it.label, it.icon) },
@@ -11446,7 +11440,7 @@ internal fun SharedHomeSearchPanel(
                 "time" ->
                     RaftFilterPopover(
                         anchor = timeAnchor,
-                        title = stringResource(MR.strings.search_filter_time),
+                        title = stringResource(Res.string.search_filter_time),
                         searchPlaceholder = "",
                         searchText = "",
                         onSearchChange = {},
@@ -11469,14 +11463,14 @@ internal fun SharedHomeSearchPanel(
                 "sort" ->
                     RaftFilterPopover(
                         anchor = sortAnchor,
-                        title = stringResource(MR.strings.search_filter_sort),
+                        title = stringResource(Res.string.search_filter_sort),
                         searchPlaceholder = "",
                         searchText = "",
                         onSearchChange = {},
                         options =
                             listOf(
-                                RaftFilterOption("relevance", stringResource(MR.strings.search_sort_relevant)),
-                                RaftFilterOption("recent", stringResource(MR.strings.search_sort_recent))
+                                RaftFilterOption("relevance", stringResource(Res.string.search_sort_relevant)),
+                                RaftFilterOption("recent", stringResource(Res.string.search_sort_recent))
                             ),
                         selectedIds = setOf(state.sort.searchKey),
                         onToggle = { key ->
@@ -11591,7 +11585,7 @@ private fun SharedHomeSearchHistorySection(
             )
             Spacer(Modifier.width(6.dp))
             RaftText(
-                text = stringResource(MR.strings.search_home_history),
+                text = stringResource(Res.string.search_home_history),
                 style =
                     RaftTheme.typography.footnote
                         .copy(fontWeight = FontWeight.Bold)
@@ -11602,15 +11596,15 @@ private fun SharedHomeSearchHistorySection(
             SharedHomeSearchHistoryTextAction(
                 label =
                     if (editing) {
-                        stringResource(MR.strings.search_home_done)
+                        stringResource(Res.string.search_home_done)
                     } else {
-                        stringResource(MR.strings.search_home_edit)
+                        stringResource(Res.string.search_home_edit)
                     },
                 onClick = { onEditingChange(!editing) },
                 visualTextScale = visualTextScale,
             )
             SharedHomeSearchHistoryTextAction(
-                label = stringResource(MR.strings.search_home_clear),
+                label = stringResource(Res.string.search_home_clear),
                 onClick = onClear,
                 visualTextScale = visualTextScale,
             )
@@ -11669,7 +11663,7 @@ private fun SharedHomeSearchHistoryTag(
 ) {
     val removeLabel =
         if (editing) {
-            MR.strings.search_home_remove_history.format(listOf(query)).localized()
+            Res.string.search_home_remove_history.format(listOf(query)).localized()
         } else {
             null
         }
@@ -11809,7 +11803,7 @@ private fun SharedHomeSearchToolbar(
         startPadding = if (onClose != null) RaftBackButtonDefaults.EdgeInset else SearchControlsHorizontalPadding
     ) {
         if (onClose != null) {
-            RaftBackButton(onClick = onClose, label = stringResource(MR.strings.common_back))
+            RaftBackButton(onClick = onClose, label = stringResource(Res.string.common_back))
         }
         // No location tile: the search field already says where you are (web search page,
         // raft-design: a page whose head is a search field carries no location icon).
@@ -11849,7 +11843,7 @@ private fun SharedHomeSearchScopeRow(scopeLabel: String, onExpand: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         RaftText(
-            text = MR.strings.search_scope_in_channel.format(listOf(scopeLabel)).localized(),
+            text = Res.string.search_scope_in_channel.format(listOf(scopeLabel)).localized(),
             style = RaftTheme.typography.callout,
             color = RaftColor.TextMuted,
             maxLines = 1,
@@ -11857,7 +11851,7 @@ private fun SharedHomeSearchScopeRow(scopeLabel: String, onExpand: () -> Unit) {
             modifier = Modifier.weight(1f)
         )
         RaftButton(
-            text = stringResource(MR.strings.search_scope_expand_all),
+            text = stringResource(Res.string.search_scope_expand_all),
             onClick = onExpand,
             variant = RaftButtonVariant.Default,
             size = RaftButtonSize.Md,
@@ -11925,9 +11919,9 @@ internal fun SharedHomeSavedPanel(
         remember(state.items, draftProjection) {
             state.items.map { item -> item.withComposerDraftProjection(draftProjection) }
         }
-    val copyLinkLabel = stringResource(MR.strings.saved_action_copy_link)
-    val copyMarkdownLabel = stringResource(MR.strings.saved_action_copy_markdown)
-    val removeLabel = stringResource(MR.strings.saved_action_remove)
+    val copyLinkLabel = stringResource(Res.string.saved_action_copy_link)
+    val copyMarkdownLabel = stringResource(Res.string.saved_action_copy_markdown)
+    val removeLabel = stringResource(Res.string.saved_action_remove)
     val contextMenuItems = remember(copyLinkLabel, copyMarkdownLabel, removeLabel) {
         listOf(
             RaftBaseMenuItem(SharedHomeSavedMenuActionCopyLink, copyLinkLabel, RaftLucideIconName.Link),
@@ -12037,7 +12031,7 @@ internal fun SharedHomeSavedPanel(
                             if (state.errorCode != null && !state.loadingMore) {
                                 SharedHomeLoadMoreRow(
                                     loading = false,
-                                    label = stringResource(MR.strings.saved_action_load_more),
+                                    label = stringResource(Res.string.saved_action_load_more),
                                     onClick = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSaved) }
                                 )
                             } else {
@@ -12047,7 +12041,7 @@ internal fun SharedHomeSavedPanel(
                                 ) {
                                     if (state.loadingMore) {
                                         Text(
-                                            text = stringResource(MR.strings.common_loading),
+                                            text = stringResource(Res.string.common_loading),
                                             style = RaftType.Caption,
                                             color = RaftColor.ForegroundHint
                                         )
@@ -12152,8 +12146,8 @@ internal fun InboxItem.sharedHomeSavedMarkdownContent(): String =
 @Composable
 private fun SharedHomeSavedEmptyState() {
     RaftEmptyState(
-        title = stringResource(MR.strings.saved_empty_title),
-        detail = stringResource(MR.strings.saved_empty_detail),
+        title = stringResource(Res.string.saved_empty_title),
+        detail = stringResource(Res.string.saved_empty_detail),
         iconName = RaftLucideIconName.Bookmark,
         modifier =
             Modifier
@@ -12172,8 +12166,8 @@ private fun SharedHomeSavedHeader(
 ) {
     // web SavedPanel head: raft-ui PanelHeader with the phone Back, "N saved items".
     RaftPanelBackHeader(
-        title = stringResource(MR.strings.saved_title),
-        subtitle = stringResource(if (count == 1) MR.strings.saved_count_one else MR.strings.saved_count, count),
+        title = stringResource(Res.string.saved_title),
+        subtitle = stringResource(if (count == 1) Res.string.saved_count_one else Res.string.saved_count, count),
         onBack = onClose,
         topSafeArea = topSafeAreaPadding,
         refreshing = refreshing,
@@ -12289,8 +12283,8 @@ private fun SharedHomeSearchFilters(
     val channelActive = state.selectedChannelId != null
     val timeActive = state.timeRange != SearchTimeRange.Any
     val sortActive = state.sort != SearchSort.Relevance
-    val scopeLabel = stringResource(MR.strings.search_filter_scope)
-    val channelLabel = stringResource(MR.strings.search_filter_channel)
+    val scopeLabel = stringResource(Res.string.search_filter_scope)
+    val channelLabel = stringResource(Res.string.search_filter_channel)
     // raft-ui PickerTriggerButton: an applied filter (web `appliedFilterProps`) is the
     // `info-soft` wash.
     SharedHomeSearchControlsBlock {
@@ -12367,7 +12361,7 @@ private fun SharedHomeSearchFilters(
             if (hasActiveFilters) {
                 item {
                     RaftPickerTriggerButton(
-                        text = stringResource(MR.strings.search_filter_clear_all),
+                        text = stringResource(Res.string.search_filter_clear_all),
                         showIndicator = false,
                         onClick = { onIntent(SharedHomeSearchSavedIntent.ClearSearchFilters) }
                     )
@@ -12422,22 +12416,22 @@ private fun SharedHomePanelStatus(
     when {
         noPermissionCode != null ->
             SharedHomePanelMessage(
-                title = stringResource(MR.strings.panel_error_no_permission),
+                title = stringResource(Res.string.panel_error_no_permission),
                 detail =
                     userFacingErrorLabels.forErrorCode(noPermissionCode)
                         ?: userFacingErrorLabels.generic(),
                 tone = RaftColor.AccentRed,
-                actionLabel = stringResource(MR.strings.common_retry),
+                actionLabel = stringResource(Res.string.common_retry),
                 onAction = onRetry
             )
         errorCode != null ->
             SharedHomePanelMessage(
-                title = stringResource(MR.strings.panel_error_load),
+                title = stringResource(Res.string.panel_error_load),
                 detail =
                     userFacingErrorLabels.forErrorCode(errorCode)
                         ?: userFacingErrorLabels.generic(),
                 tone = RaftColor.AccentRed,
-                actionLabel = stringResource(MR.strings.common_retry),
+                actionLabel = stringResource(Res.string.common_retry),
                 onAction = onRetry
             )
         empty ->
@@ -12522,7 +12516,7 @@ private fun SharedHomeSavedResultCard(
 ) {
     val avatarCacheIdentity =
         remember(item, cacheServerId) { item.previewSenderAvatarCacheIdentity(cacheServerId) }
-    val preview = item.previewMarkdownText() ?: stringResource(MR.strings.saved_state_no_preview)
+    val preview = item.previewMarkdownText() ?: stringResource(Res.string.saved_state_no_preview)
     val sender = item.latestActivitySenderName ?: item.lastMessageSenderName
     val time = item.latestActivityAt ?: item.lastMessageAt
     val openGestureKey = remember(item) { item.inboxItemOpenGestureKey() }
@@ -12658,7 +12652,7 @@ private fun SharedHomeSavedResultCard(
                                 modifier = Modifier.size(12.dp)
                             )
                             Text(
-                                text = stringResource(MR.strings.saved_meta_thread),
+                                text = stringResource(Res.string.saved_meta_thread),
                                 style = RaftType.Caption,
                                 color = RaftColor.ForegroundHint,
                                 maxLines = 1,
@@ -12893,9 +12887,9 @@ private fun SharedHomeSearchResultsCount(
     RaftSearchSummary(
         text =
             if (searching) {
-                stringResource(MR.strings.search_state_searching)
+                stringResource(Res.string.search_state_searching)
             } else {
-                stringResource(MR.strings.search_results_count, totalResults)
+                stringResource(Res.string.search_results_count, totalResults)
             },
         typography = RaftTheme.typography
     )
@@ -13030,7 +13024,7 @@ internal fun SharedHomeSearchEntityRow(
                 SharedHomeEntityTypeBadge(result.type, muted = mutedArchived)
                 if (result.archived) {
                     RaftBadge(
-                        text = stringResource(MR.strings.channel_settings_status_archived),
+                        text = stringResource(Res.string.channel_settings_status_archived),
                         appearance = RaftBadgeAppearance.Soft,
                         variant = if (mutedArchived) RaftBadgeVariant.Muted else RaftBadgeVariant.Warning
                     )
@@ -13132,11 +13126,11 @@ private fun SharedHomeEntityTypeBadge(type: SearchEntityType, muted: Boolean = f
     RaftBadge(
         text =
             when (type) {
-                SearchEntityType.Channel -> stringResource(MR.strings.search_entity_channel)
-                SearchEntityType.DirectMessage -> stringResource(MR.strings.search_entity_dm)
-                SearchEntityType.Human -> stringResource(MR.strings.search_entity_dm)
-                SearchEntityType.Agent -> stringResource(MR.strings.search_entity_dm)
-                SearchEntityType.Computer -> stringResource(MR.strings.search_entity_computer)
+                SearchEntityType.Channel -> stringResource(Res.string.search_entity_channel)
+                SearchEntityType.DirectMessage -> stringResource(Res.string.search_entity_dm)
+                SearchEntityType.Human -> stringResource(Res.string.search_entity_dm)
+                SearchEntityType.Agent -> stringResource(Res.string.search_entity_dm)
+                SearchEntityType.Computer -> stringResource(Res.string.search_entity_computer)
             },
         appearance = if (muted) RaftBadgeAppearance.Soft else RaftBadgeAppearance.Solid,
         variant = if (muted) RaftBadgeVariant.Muted else RaftBadgeVariant.Default
@@ -13185,7 +13179,7 @@ private fun SharedHomeThreadResultGroup(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     RaftBadge(
-                        text = stringResource(MR.strings.search_meta_thread),
+                        text = stringResource(Res.string.search_meta_thread),
                         icon = {
                             RaftLucideIcon(
                                 RaftLucideIconName.MessageSquare,
@@ -13203,7 +13197,7 @@ private fun SharedHomeThreadResultGroup(
                         modifier = Modifier.weight(1f, fill = false)
                     )
                     Text(
-                        text = stringResource(MR.strings.search_hits_count, group.items.size),
+                        text = stringResource(Res.string.search_hits_count, group.items.size),
                         style = metaStyle,
                         color = RaftColor.ForegroundHint,
                         maxLines = 1
@@ -13263,7 +13257,7 @@ internal fun SharedHomeSearchMessageResultRow(
 ) {
     val avatarCacheIdentity =
         remember(item, cacheServerId) { item.previewSenderAvatarCacheIdentity(cacheServerId) }
-    val preview = item.previewMarkdownText() ?: stringResource(MR.strings.search_state_no_preview)
+    val preview = item.previewMarkdownText() ?: stringResource(Res.string.search_state_no_preview)
     // RFC 077 (web MessageHitRow): "Alice (sent by Friday)", text only.
     val sender = (item.latestActivitySenderName ?: item.lastMessageSenderName)?.let { delegatedPreviewSender(it, item.latestDelegatedBy) }
     val time = item.latestActivityAt ?: item.lastMessageAt
@@ -13349,7 +13343,7 @@ private fun SharedHomeSearchThreadMeta(style: TextStyle) {
             modifier = Modifier.size(12.dp)
         )
         Text(
-            text = stringResource(MR.strings.search_meta_thread),
+            text = stringResource(Res.string.search_meta_thread),
             style = style,
             color = RaftColor.ForegroundHint,
             maxLines = 1
@@ -13481,7 +13475,7 @@ private fun SharedHomeLoadMoreRow(
         contentAlignment = Alignment.Center
     ) {
         RaftBrutalActionButton(
-            label = if (loading) stringResource(MR.strings.common_loading) else label,
+            label = if (loading) stringResource(Res.string.common_loading) else label,
             enabled = !loading,
             minWidth = 0.dp,
             minHeight = RaftMetrics.ControlHeightMd,
@@ -13523,12 +13517,12 @@ private fun SharedHomeSearchSortSegmentedControl(
         verticalAlignment = Alignment.CenterVertically
     ) {
         SharedHomeSearchSortSegmentButton(
-            label = stringResource(MR.strings.search_sort_relevant),
+            label = stringResource(Res.string.search_sort_relevant),
             selected = sort == SearchSort.Relevance,
             onClick = { onSortChange(SearchSort.Relevance) }
         )
         SharedHomeSearchSortSegmentButton(
-            label = stringResource(MR.strings.search_sort_recent),
+            label = stringResource(Res.string.search_sort_recent),
             selected = sort == SearchSort.Recent,
             onClick = { onSortChange(SearchSort.Recent) }
         )
@@ -13821,7 +13815,7 @@ private fun groupHomeSearchResults(
 
 @Composable
 private fun SharedHomeSearchPanelState.senderFilterOptions(): List<RaftFilterOption> {
-    val meLabel = stringResource(MR.strings.search_sender_me)
+    val meLabel = stringResource(Res.string.search_sender_me)
     return senderFilters
         .map { sender ->
             RaftFilterOption(
@@ -13836,11 +13830,11 @@ private fun SharedHomeSearchPanelState.senderFilterOptions(): List<RaftFilterOpt
 @Composable
 private fun SharedHomeSearchPanelState.localizedSenderFilterLabel(): String {
     val selectedId = selectedSenderId?.trim()?.takeIf { it.isNotBlank() }
-        ?: return stringResource(MR.strings.search_filter_from)
-    val meLabel = stringResource(MR.strings.search_sender_me)
+        ?: return stringResource(Res.string.search_filter_from)
+    val meLabel = stringResource(Res.string.search_sender_me)
     val selected = senderFilters.firstOrNull { it.id == selectedId }
     return stringResource(
-        MR.strings.search_filter_from_value,
+        Res.string.search_filter_from_value,
         selected?.let { if (it.isSelf) meLabel else it.displayLabel } ?: selectedId
     )
 }
@@ -14230,9 +14224,9 @@ private fun HomeConversationRow.isAgentDirectMessage(): Boolean =
 private fun SearchScope.localizedSearchLabel(): String =
     stringResource(
         when (this) {
-            SearchScope.Mentioned -> MR.strings.search_scope_mentioned
-            SearchScope.Humans -> MR.strings.search_scope_humans
-            SearchScope.Agents -> MR.strings.search_scope_agents
+            SearchScope.Mentioned -> Res.string.search_scope_mentioned
+            SearchScope.Humans -> Res.string.search_scope_humans
+            SearchScope.Agents -> Res.string.search_scope_agents
         }
     )
 
@@ -14240,10 +14234,10 @@ private fun SearchScope.localizedSearchLabel(): String =
 private fun SearchTimeRange.localizedSearchLabel(): String =
     stringResource(
         when (this) {
-            SearchTimeRange.Any -> MR.strings.search_time_any
-            SearchTimeRange.Today -> MR.strings.search_time_today
-            SearchTimeRange.Last7Days -> MR.strings.search_time_last_7_days
-            SearchTimeRange.Last30Days -> MR.strings.search_time_last_30_days
+            SearchTimeRange.Any -> Res.string.search_time_any
+            SearchTimeRange.Today -> Res.string.search_time_today
+            SearchTimeRange.Last7Days -> Res.string.search_time_last_7_days
+            SearchTimeRange.Last30Days -> Res.string.search_time_last_30_days
         }
     )
 
@@ -14251,8 +14245,8 @@ private fun SearchTimeRange.localizedSearchLabel(): String =
 private fun SearchSort.localizedSearchLabel(): String =
     stringResource(
         when (this) {
-            SearchSort.Relevance -> MR.strings.search_sort_relevant
-            SearchSort.Recent -> MR.strings.search_sort_recent
+            SearchSort.Relevance -> Res.string.search_sort_relevant
+            SearchSort.Recent -> Res.string.search_sort_recent
         }
     )
 
@@ -15689,11 +15683,11 @@ private fun MembersPageErrorContent(
         modifier = Modifier.fillMaxSize().background(RaftColor.Canvas),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        MembersPageHeader(title = stringResource(MR.strings.tab_members), onBack = onBack)
+        MembersPageHeader(title = stringResource(Res.string.tab_members), onBack = onBack)
         PageErrorBody(
             message = message,
             code = code,
-            retryLabel = stringResource(MR.strings.common_retry),
+            retryLabel = stringResource(Res.string.common_retry),
             onRetry = onRetry
         )
     }
@@ -16026,7 +16020,7 @@ private fun SettingsServerDangerModalVisualContent() {
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                RaftBackButton(onClick = {}, label = stringResource(MR.strings.common_back))
+                RaftBackButton(onClick = {}, label = stringResource(Res.string.common_back))
                 Text(
                     "Server Profile",
                     style = RaftType.PageTitle.copy(fontSize = 17.sp, lineHeight = 22.sp, color = RaftColor.TextBlack),
@@ -16734,7 +16728,7 @@ internal fun SettingsRouteVisualScreen() {
         remember(route.fixtureKey) {
             settingsHandsFeedbackVisualFixture(route.fixtureKey)
         }
-    val copiedMessage = stringResource(MR.strings.common_copied)
+    val copiedMessage = stringResource(Res.string.common_copied)
     val settingsCapabilities =
         remember(bridge, handsFeedbackVisualFixture, copiedMessage) {
             BridgeSettingsPlatformCapabilities(
@@ -16954,15 +16948,15 @@ private fun SettingsDedicatedPagerVisualFixtureContent(
 @Composable
 private fun settingsDedicatedPagerVisualFixtureTitle(destination: String): String =
     when (destination) {
-        SettingsDestinationAccount -> stringResource(MR.strings.settings_account_title)
-        SettingsDestinationComputers -> stringResource(MR.strings.settings_computers_title)
-        SettingsDestinationAdministration -> stringResource(MR.strings.settings_server_administration_title)
-        SettingsDestinationConnectedApps -> stringResource(MR.strings.settings_connected_apps_title)
-        SettingsDestinationBilling -> stringResource(MR.strings.settings_billing_title)
-        SettingsDestinationStorage -> stringResource(MR.strings.settings_storage_title)
-        SettingsDestinationReleaseNotes -> stringResource(MR.strings.settings_release_notes_title)
-        SettingsDestinationHandsFeedback -> stringResource(MR.strings.settings_feedback_title)
-        else -> stringResource(MR.strings.settings_title)
+        SettingsDestinationAccount -> stringResource(Res.string.settings_account_title)
+        SettingsDestinationComputers -> stringResource(Res.string.settings_computers_title)
+        SettingsDestinationAdministration -> stringResource(Res.string.settings_server_administration_title)
+        SettingsDestinationConnectedApps -> stringResource(Res.string.settings_connected_apps_title)
+        SettingsDestinationBilling -> stringResource(Res.string.settings_billing_title)
+        SettingsDestinationStorage -> stringResource(Res.string.settings_storage_title)
+        SettingsDestinationReleaseNotes -> stringResource(Res.string.settings_release_notes_title)
+        SettingsDestinationHandsFeedback -> stringResource(Res.string.settings_feedback_title)
+        else -> stringResource(Res.string.settings_title)
     }
 
 private fun settingsDedicatedPagerVisualFixtureIcon(destination: String): RaftLucideIconName =

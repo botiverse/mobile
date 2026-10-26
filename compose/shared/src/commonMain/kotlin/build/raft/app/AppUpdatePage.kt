@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.format.RaftFormat
 import build.raft.app.transfer.RaftTransferMeter
 import build.raft.app.transfer.RaftTransferProgress
@@ -22,7 +23,6 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.raftSharedPreferenceStore
-import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -46,7 +46,6 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import build.raft.app.data.SharedUpdateDownloadProgress
@@ -83,7 +82,7 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
     val appUpdateEvents = remember(sharedStores.eventBus) { RaftAppUpdateEvents(sharedStores.eventBus) }
     val scope = rememberCoroutineScope()
     val refreshGate = remember { AppUpdateRefreshGate() }
-    val unavailableMessage = stringResource(MR.strings.app_update_unavailable)
+    val unavailableMessage = stringResource(Res.string.app_update_unavailable)
     val errorStrings = localizedErrorPresentationStrings()
     var snapshot by remember { mutableStateOf<SharedSettingsUpdateCheckSnapshot?>(null) }
     var loading by remember { mutableStateOf(true) }
@@ -91,7 +90,7 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var progress by remember { mutableStateOf<SharedUpdateDownloadProgress?>(null) }
     var transfer by remember { mutableStateOf<RaftTransferProgress?>(null) }
-    val downloadFailedMessage = stringResource(MR.strings.app_update_download_failed)
+    val downloadFailedMessage = stringResource(Res.string.app_update_download_failed)
 
     fun refresh() {
         scope.launch {
@@ -151,7 +150,7 @@ private fun AppUpdateScreen(pageVisibleResumeTick: Int, pageVisible: Boolean) {
 
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         RaftTopPageHeader(
-            title = stringResource(MR.strings.home_notification_app_update_title),
+            title = stringResource(Res.string.home_notification_app_update_title),
             iconName = RaftLucideIconName.CircleArrowUp,
             backgroundColor = RaftColor.BrandYellow,
             onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
@@ -351,15 +350,15 @@ internal fun AppUpdateSummary(
         appUpdatePrimaryActionLabel(
             snapshot = snapshot,
             actionRunning = actionRunning,
-            retryLabel = stringResource(MR.strings.app_update_retry),
-            workingLabel = stringResource(MR.strings.app_update_working),
-            checkingLabel = stringResource(MR.strings.app_update_checking),
-            preparingLabel = stringResource(MR.strings.app_update_preparing),
-            downloadLabel = stringResource(MR.strings.app_update_download),
-            downloadingLabel = stringResource(MR.strings.app_update_downloading),
-            installingLabel = stringResource(MR.strings.app_update_installing),
-            installLabel = stringResource(MR.strings.app_update_install),
-            installedLabel = stringResource(MR.strings.app_update_installed)
+            retryLabel = stringResource(Res.string.app_update_retry),
+            workingLabel = stringResource(Res.string.app_update_working),
+            checkingLabel = stringResource(Res.string.app_update_checking),
+            preparingLabel = stringResource(Res.string.app_update_preparing),
+            downloadLabel = stringResource(Res.string.app_update_download),
+            downloadingLabel = stringResource(Res.string.app_update_downloading),
+            installingLabel = stringResource(Res.string.app_update_installing),
+            installLabel = stringResource(Res.string.app_update_install),
+            installedLabel = stringResource(Res.string.app_update_installed)
         )
     Column(
         modifier =
@@ -382,7 +381,7 @@ internal fun AppUpdateSummary(
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = stringResource(MR.strings.app_update_version_summary, currentVersion, latestVersion),
+                    text = stringResource(Res.string.app_update_version_summary, currentVersion, latestVersion),
                     style = RaftType.ButtonBold,
                     color = RaftColor.TextBlack,
                     maxLines = 1,
@@ -391,7 +390,7 @@ internal fun AppUpdateSummary(
                 Text(
                     text =
                         if (snapshot?.errorCode == "settings_hands_update_download_failed") {
-                            stringResource(MR.strings.app_update_download_failed)
+                            stringResource(Res.string.app_update_download_failed)
                         } else if (errorMessage != null) {
                             errorMessage
                         } else {
@@ -418,7 +417,7 @@ internal fun AppUpdateSummary(
             val percent = transfer?.percent
             val label = if (total != null) "$bytes / $total" else bytes
             Text(
-                text = stringResource(if (progress.phase == "paused") MR.strings.app_update_download_paused else MR.strings.app_update_downloading),
+                text = stringResource(if (progress.phase == "paused") Res.string.app_update_download_paused else Res.string.app_update_downloading),
                 style = RaftType.Caption,
                 color = RaftColor.TextMutedGray
             )
@@ -432,7 +431,7 @@ internal fun AppUpdateSummary(
         Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Default).background(RaftColor.BorderBlack))
         if (appUpdateCanSkipVersion(snapshot)) {
             Text(
-                text = stringResource(MR.strings.app_update_skip_version),
+                text = stringResource(Res.string.app_update_skip_version),
                 modifier = Modifier.align(Alignment.End).clickable(onClick = onSkipVersion).padding(vertical = 4.dp),
                 style = RaftType.Caption,
                 color = RaftColor.TextMutedGray
@@ -466,7 +465,7 @@ internal fun AppUpdateDetailsVisualScreen(chinese: Boolean = false) {
         )
     Column(modifier = Modifier.width(390.dp).height(844.dp).background(RaftColor.SurfaceWhite).padding(top = 48.dp)) {
         RaftTopPageHeader(
-            title = stringResource(MR.strings.home_notification_app_update_title),
+            title = stringResource(Res.string.home_notification_app_update_title),
             iconName = RaftLucideIconName.CircleArrowUp,
             backgroundColor = RaftColor.BrandYellow,
             onBack = {}

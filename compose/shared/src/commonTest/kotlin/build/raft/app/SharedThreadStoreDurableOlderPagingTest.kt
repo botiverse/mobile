@@ -1,7 +1,6 @@
 package build.raft.app
 
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.resource.desc.desc
+import build.raft.app.resources.*
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
@@ -68,14 +67,14 @@ class SharedThreadStoreDurableOlderPagingTest {
             assertEquals("idle", paged.olderMessagesStatus)
         }
         assertFalse(standIn.durableReachedOldest)
-        assertEquals(MR.strings.thread_state_loading_older.desc(), threadOlderMessagesStatusSpec(standIn).label)
+        assertEquals(Res.string.thread_state_loading_older.desc(), threadOlderMessagesStatusSpec(standIn).label)
         store.accept(SharedThreadIntent.LoadOlder)
         val last = store.state.value.payload
         assertEquals((1..120).map { "body $it" }, last.messages.map { it.body })
         assertFalse(last.canLoadMoreBefore, "window exhausted and the cursor says it reaches the channel start")
         assertTrue(last.durableReachedOldest, "the stored window reaches the conversation's first message")
         assertEquals(
-            MR.strings.thread_state_beginning_conversation.desc(),
+            Res.string.thread_state_beginning_conversation.desc(),
             threadOlderMessagesStatusSpec(last).label,
             "the real beginning is labelled as such, not as an offline cut",
         )
@@ -150,7 +149,7 @@ class SharedThreadStoreDurableOlderPagingTest {
         assertFalse(closed.state.value.payload.canLoadMoreBefore)
         assertTrue(closed.state.value.payload.durableReachedOldest)
         assertEquals(
-            MR.strings.thread_state_beginning_conversation.desc(),
+            Res.string.thread_state_beginning_conversation.desc(),
             threadOlderMessagesStatusSpec(closed.state.value.payload).label,
         )
         closedScopeJob.cancelAndJoin()

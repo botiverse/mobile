@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
@@ -7,8 +8,6 @@ import androidx.compose.runtime.*
 import build.raft.app.data.*
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.app.components.RaftBrutalActionButton
 import androidx.compose.material3.Text
 import kotlinx.coroutines.launch
@@ -45,8 +44,8 @@ internal fun ChannelMembersCreateAgentDialog(
     var submitting by remember(owner) { mutableStateOf(false) }
     var error by remember(owner) { mutableStateOf<String?>(null) }
     var createdId by remember(owner) { mutableStateOf<String?>(null) }
-    val failedLabel = stringResource(MR.strings.common_error)
-    val joinFailedLabel = stringResource(MR.strings.thread_members_created_join_failed)
+    val failedLabel = stringResource(Res.string.common_error)
+    val joinFailedLabel = stringResource(Res.string.thread_members_created_join_failed)
     LaunchedEffect(owner, mode) {
         if (mode.requiresComputerSelection()) {
             computersStore.dispatch(SharedComputersIntent.EnsureComputerPicker(owner.serverId, DataRequestPriority.Visible))
@@ -99,12 +98,12 @@ internal fun ChannelMembersCreateAgentDialog(
         }
     }
     if (createdId != null) {
-        RaftUnifiedDialog(title = stringResource(MR.strings.thread_action_add_member),
+        RaftUnifiedDialog(title = stringResource(Res.string.thread_action_add_member),
             onDismiss = onDismiss, dismissEnabled = !submitting) {
             Text(error ?: joinFailedLabel, style = RaftType.Body)
             RaftDialogFooter {
                 RaftButton(
-                    text = stringResource(MR.strings.common_retry),
+                    text = stringResource(Res.string.common_retry),
                     enabled = !submitting,
                     onClick = { submit(null) },
                     variant = RaftButtonVariant.Ghost,

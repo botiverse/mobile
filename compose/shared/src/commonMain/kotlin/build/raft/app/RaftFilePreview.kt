@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftButtonVariant
@@ -70,7 +71,6 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.RaftWorkspaceFilePreview
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.network.binaryDownloadUrlDiagnostics
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
@@ -146,11 +146,6 @@ import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.ui.PlayState
 import build.raft.app.compat.ui.VideoPlayControl
-import com.tencent.tmm.kmmresource.compose.localized
-import com.tencent.tmm.kmmresource.compose.stringResource
-import com.tencent.tmm.kmmresource.resource.desc.StringDesc
-import com.tencent.tmm.kmmresource.resource.desc.desc
-import com.tencent.tmm.kmmresource.resource.format
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -1485,7 +1480,7 @@ private suspend fun RaftFilePreviewRemoteOperationScope.loadPreview(
             return DataResult.Content(
                 payload.copy(
                     kind = "image",
-                    titleDesc = MR.strings.file_preview_image.desc(),
+                    titleDesc = Res.string.file_preview_image.desc(),
                     imageUrl = cachedUrl,
                     message = "",
                     messageDesc = null,
@@ -1562,7 +1557,7 @@ internal data class RaftFilePreviewPayload(
     val kind: String = "unsupported",
     val requestedKind: String = "",
     val title: String = "",
-    val titleDesc: StringDesc = MR.strings.file_preview_title.desc(),
+    val titleDesc: StringDesc = Res.string.file_preview_title.desc(),
     val subtitle: String = "",
     val name: String = "",
     val path: String = "",
@@ -1577,7 +1572,7 @@ internal data class RaftFilePreviewPayload(
     /** Serialized [RaftFilePreviewCsvCarrier] for the CSV table panel. */
     val csvTableJson: String = "",
     val message: String = "",
-    val messageDesc: StringDesc? = MR.strings.file_preview_no_preview.desc(),
+    val messageDesc: StringDesc? = Res.string.file_preview_no_preview.desc(),
     val error: String? = null,
     val externalUrl: String? = null,
     val videoUrl: String? = null,
@@ -1945,22 +1940,22 @@ private fun RaftFilePreviewStandalonePageContent() {
     val downloadProgressMailbox = remember(payload.source, payload.attachmentId, payload.path) {
         RaftFilePreviewProgressMailbox()
     }
-    val unableToSendComment = stringResource(MR.strings.file_preview_error_send_comment)
-    val attachmentFallback = stringResource(MR.strings.file_preview_fallback_attachment)
+    val unableToSendComment = stringResource(Res.string.file_preview_error_send_comment)
+    val attachmentFallback = stringResource(Res.string.file_preview_fallback_attachment)
     val actionTerms = raftFilePreviewLocalizedActionTerms()
-    val downloadStopped = stringResource(MR.strings.file_preview_download_stopped)
-    val downloadFailed = stringResource(MR.strings.file_preview_download_failed)
-    val downloadSaved = stringResource(MR.strings.file_preview_download_saved)
-    val privateDownloadSaved = stringResource(MR.strings.file_preview_private_download_saved)
-    val fileExportSaved = stringResource(MR.strings.file_preview_export_saved)
-    val fileExportFailed = stringResource(MR.strings.file_preview_export_failed)
-    val unableToDownloadAttachment = stringResource(MR.strings.file_preview_error_download_attachment)
-    val noAppCanOpenFile = stringResource(MR.strings.file_preview_error_no_app)
-    val storageUnavailable = stringResource(MR.strings.file_preview_error_storage_unavailable)
-    val unableToOpenAttachment = stringResource(MR.strings.file_preview_error_open_attachment)
-    val downloadedFileDeleted = stringResource(MR.strings.file_preview_download_deleted)
-    val copiedLabel = stringResource(MR.strings.common_copied)
-    val unableToDeleteDownload = stringResource(MR.strings.file_preview_error_delete_download)
+    val downloadStopped = stringResource(Res.string.file_preview_download_stopped)
+    val downloadFailed = stringResource(Res.string.file_preview_download_failed)
+    val downloadSaved = stringResource(Res.string.file_preview_download_saved)
+    val privateDownloadSaved = stringResource(Res.string.file_preview_private_download_saved)
+    val fileExportSaved = stringResource(Res.string.file_preview_export_saved)
+    val fileExportFailed = stringResource(Res.string.file_preview_export_failed)
+    val unableToDownloadAttachment = stringResource(Res.string.file_preview_error_download_attachment)
+    val noAppCanOpenFile = stringResource(Res.string.file_preview_error_no_app)
+    val storageUnavailable = stringResource(Res.string.file_preview_error_storage_unavailable)
+    val unableToOpenAttachment = stringResource(Res.string.file_preview_error_open_attachment)
+    val downloadedFileDeleted = stringResource(Res.string.file_preview_download_deleted)
+    val copiedLabel = stringResource(Res.string.common_copied)
+    val unableToDeleteDownload = stringResource(Res.string.file_preview_error_delete_download)
     val attachmentOpenResultTerms =
         RaftAttachmentOpenResultTerms(
             downloadStopped = downloadStopped,
@@ -1970,17 +1965,17 @@ private fun RaftFilePreviewStandalonePageContent() {
             downloadFailed = downloadFailed,
             unableToOpenAttachment = unableToOpenAttachment
         )
-    val imageEditorLoading = stringResource(MR.strings.file_preview_error_editor_loading)
+    val imageEditorLoading = stringResource(Res.string.file_preview_error_editor_loading)
     val composerImageCompressionFailed =
-        stringResource(MR.strings.thread_error_reason_attachment_image_compression_failed)
-    val composerImageHandoffFailed = stringResource(MR.strings.thread_error_attachment_upload)
-    val imageEditorExportFailed = stringResource(MR.strings.file_preview_error_editor_export)
-    val imageSavedToPhotos = stringResource(MR.strings.thread_image_preview_saved_to_photos)
-    val imagePhotosPermissionDenied = stringResource(MR.strings.thread_image_preview_photos_permission_denied)
-    val imagePhotosPermissionRestricted = stringResource(MR.strings.thread_image_preview_photos_permission_restricted)
-    val imagePhotosUnsupported = stringResource(MR.strings.thread_image_preview_photos_unsupported)
-    val imagePhotosSaveFailed = stringResource(MR.strings.thread_image_preview_photos_save_failed)
-    val truncatedPreviewHint = stringResource(MR.strings.file_preview_truncated_open_with_hint)
+        stringResource(Res.string.thread_error_reason_attachment_image_compression_failed)
+    val composerImageHandoffFailed = stringResource(Res.string.thread_error_attachment_upload)
+    val imageEditorExportFailed = stringResource(Res.string.file_preview_error_editor_export)
+    val imageSavedToPhotos = stringResource(Res.string.thread_image_preview_saved_to_photos)
+    val imagePhotosPermissionDenied = stringResource(Res.string.thread_image_preview_photos_permission_denied)
+    val imagePhotosPermissionRestricted = stringResource(Res.string.thread_image_preview_photos_permission_restricted)
+    val imagePhotosUnsupported = stringResource(Res.string.thread_image_preview_photos_unsupported)
+    val imagePhotosSaveFailed = stringResource(Res.string.thread_image_preview_photos_save_failed)
+    val truncatedPreviewHint = stringResource(Res.string.file_preview_truncated_open_with_hint)
     val attachmentCacheId = payload.attachmentCacheId()
     val attachmentCacheFileName = payload.attachmentCacheFileName()
     val visibleExternalOperationIdentity =
@@ -3874,7 +3869,7 @@ private fun RaftFilePreviewStandalonePageContent() {
         pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
     }
     RaftFilePreviewPageScaffold(
-        title = if (composerImageEditMode) stringResource(MR.strings.file_preview_editor_title) else payload.previewHeaderTitle(),
+        title = if (composerImageEditMode) stringResource(Res.string.file_preview_editor_title) else payload.previewHeaderTitle(),
         // A long press on the title copies the file name (not the editor title or a stand-in).
         titleCopyText = if (composerImageEditMode) null else payload.previewHeaderCopyText(),
         subtitle = if (composerImageEditMode) null else payload.previewHeaderSubtitle(),
@@ -3909,7 +3904,7 @@ private fun RaftFilePreviewStandalonePageContent() {
                         // A constant action label: `selected` already renders the checkmark, so
                         // swapping the text to "Adaptive mode" while desktop mode was ON read like
                         // "currently adaptive" (caught on device, Android 12).
-                        label = stringResource(MR.strings.file_preview_desktop_mode_off),
+                        label = stringResource(Res.string.file_preview_desktop_mode_off),
                         icon = RaftLucideIconName.Monitor,
                         selected = htmlDesktopMode
                     )
@@ -3923,9 +3918,9 @@ private fun RaftFilePreviewStandalonePageContent() {
                         label =
                             stringResource(
                                 if (payload.kind == "markdown") {
-                                    MR.strings.thread_action_copy_markdown
+                                    Res.string.thread_action_copy_markdown
                                 } else {
-                                    MR.strings.file_preview_action_copy_text
+                                    Res.string.file_preview_action_copy_text
                                 }
                             ),
                         icon = RaftLucideIconName.Copy
@@ -3940,10 +3935,10 @@ private fun RaftFilePreviewStandalonePageContent() {
                             stringResource(
                                 when (photosActionState) {
                                     RaftFilePreviewPhotosActionState.Saving ->
-                                        MR.strings.thread_image_preview_saving_to_photos
+                                        Res.string.thread_image_preview_saving_to_photos
                                     RaftFilePreviewPhotosActionState.Retry ->
-                                        MR.strings.thread_image_preview_retry_save_to_photos
-                                    else -> MR.strings.thread_image_preview_save_to_photos
+                                        Res.string.thread_image_preview_retry_save_to_photos
+                                    else -> Res.string.thread_image_preview_save_to_photos
                                 }
                             ),
                         icon = RaftLucideIconName.Save,
@@ -3958,7 +3953,7 @@ private fun RaftFilePreviewStandalonePageContent() {
                 if (canOpenComments) {
                     RaftUiMenuItem(
                         id = RaftFilePreviewCommentsActionId,
-                        label = stringResource(MR.strings.file_preview_action_comments),
+                        label = stringResource(Res.string.file_preview_action_comments),
                         icon = RaftLucideIconName.MessageCircle
                     )
                 } else {
@@ -3993,7 +3988,7 @@ private fun RaftFilePreviewStandalonePageContent() {
                 if (payload.kind == RaftFilePreviewPdfKind && raftFilePreviewPdfShowsShareAction(canOpenWith, downloadUiState, pdfState)) {
                     RaftUiMenuItem(
                         id = RaftFilePreviewShareActionId,
-                        label = stringResource(MR.strings.common_share),
+                        label = stringResource(Res.string.common_share),
                         icon = RaftLucideIconName.Share2,
                         enabled = !exportInProgress && raftFilePreviewCanStartExternalOperation(downloadStatus)
                     )
@@ -4010,9 +4005,9 @@ private fun RaftFilePreviewStandalonePageContent() {
                         label =
                             stringResource(
                                 if (exportInProgress) {
-                                    MR.strings.file_preview_action_saving_to_files
+                                    Res.string.file_preview_action_saving_to_files
                                 } else {
-                                    MR.strings.file_preview_action_save_to_files
+                                    Res.string.file_preview_action_save_to_files
                                 }
                             ),
                         icon = RaftLucideIconName.Download,
@@ -4025,7 +4020,7 @@ private fun RaftFilePreviewStandalonePageContent() {
                 if (canOpenWith && downloadUiState == RaftFilePreviewDownloadUiState.Downloaded) {
                     RaftUiMenuItem(
                         id = RaftFilePreviewDeleteDownloadActionId,
-                        label = stringResource(MR.strings.file_preview_action_delete_downloaded),
+                        label = stringResource(Res.string.file_preview_action_delete_downloaded),
                         icon = RaftLucideIconName.Trash2
                     )
                 } else {
@@ -4230,7 +4225,7 @@ internal fun RaftFilePreviewComposerImageActionBar(
             when (slot) {
                 RaftFilePreviewComposerImageActionSlot.Edit ->
                     RaftBrutalActionButton(
-                        label = stringResource(MR.strings.common_edit),
+                        label = stringResource(Res.string.common_edit),
                         onClick = onEdit,
                         enabled = enabled && payload.imageUrl != null,
                         leadingIcon = RaftLucideIconName.Pencil,
@@ -4264,7 +4259,7 @@ internal fun RaftFilePreviewComposerImageActionBar(
                             size = 14.dp,
                         )
                         Text(
-                            text = stringResource(MR.strings.thread_composer_original_image),
+                            text = stringResource(Res.string.thread_composer_original_image),
                             style =
                                 RaftType.Caption
                                     .withRaftFontWeight(FontWeight.Bold)
@@ -4279,7 +4274,7 @@ internal fun RaftFilePreviewComposerImageActionBar(
                     Box(modifier = Modifier.weight(1f))
                 RaftFilePreviewComposerImageActionSlot.Done ->
                     RaftBrutalActionButton(
-                        label = stringResource(MR.strings.common_done),
+                        label = stringResource(Res.string.common_done),
                         onClick = onComplete,
                         enabled = enabled && payload.canCompleteComposerImageSelection(),
                         leadingIcon = RaftLucideIconName.Check,
@@ -4368,9 +4363,9 @@ private fun RaftFilePreviewImageEditorDoneButton(
     RaftBrutalActionButton(
         label =
             if (saving) {
-                stringResource(MR.strings.file_preview_editor_saving)
+                stringResource(Res.string.file_preview_editor_saving)
             } else {
-                stringResource(MR.strings.common_done)
+                stringResource(Res.string.common_done)
             },
         onClick = onDone,
         enabled = imageAvailable,
@@ -4510,7 +4505,7 @@ internal fun RaftFilePreviewImageEditorHistoryActions(
     ) {
         RaftFilePreviewBorderlessIconButton(
             icon = RaftLucideIconName.Undo2,
-            label = stringResource(MR.strings.common_undo),
+            label = stringResource(Res.string.common_undo),
             onClick = state::undo,
             enabled = !saving && state.history.canUndo,
             size = 32.dp,
@@ -4518,7 +4513,7 @@ internal fun RaftFilePreviewImageEditorHistoryActions(
         )
         RaftFilePreviewBorderlessIconButton(
             icon = RaftLucideIconName.Redo2,
-            label = stringResource(MR.strings.common_redo),
+            label = stringResource(Res.string.common_redo),
             onClick = state::redo,
             enabled = !saving && state.history.canRedo,
             size = 32.dp,
@@ -5216,7 +5211,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                         onValueChange = { nextText ->
                             textDraft = textDraft.updated(payload.imageUrl, nextText)
                         },
-                        placeholder = stringResource(MR.strings.file_preview_placeholder_tap_to_add_text),
+                        placeholder = stringResource(Res.string.file_preview_placeholder_tap_to_add_text),
                         placeholderColor = RaftColor.TextMutedGray,
                         autoFocus = true,
                         keyboardHeightChange = { params ->
@@ -5234,7 +5229,7 @@ internal fun RaftFilePreviewComposerImageEditor(
                     )
                     RaftBrutalIconButton(
                         iconName = RaftLucideIconName.Check,
-                        contentDescription = stringResource(MR.strings.common_add),
+                        contentDescription = stringResource(Res.string.common_add),
                         onClick = { addTextAnnotation() },
                         enabled = !saving && !editorFinishing && textDraft.text.isNotBlank(),
                         backgroundColor = RaftColor.BrandYellow
@@ -5349,28 +5344,28 @@ private fun RaftFilePreviewImageEditorPrimaryControls(
         verticalAlignment = Alignment.CenterVertically
     ) {
         RaftFilePreviewEditorToolButton(
-            label = stringResource(MR.strings.file_preview_toolbar_pen),
+            label = stringResource(Res.string.file_preview_toolbar_pen),
             icon = RaftLucideIconName.Pencil,
             selected = tool == RaftComposerImageEditorTool.Pencil,
             enabled = !saving,
             onClick = { onSelectTool(RaftComposerImageEditorTool.Pencil) }
         )
         RaftFilePreviewEditorToolButton(
-            label = stringResource(MR.strings.file_preview_toolbar_text),
+            label = stringResource(Res.string.file_preview_toolbar_text),
             icon = RaftLucideIconName.Type,
             selected = tool == RaftComposerImageEditorTool.Text,
             enabled = !saving,
             onClick = { onSelectTool(RaftComposerImageEditorTool.Text) }
         )
         RaftFilePreviewEditorToolButton(
-            label = stringResource(MR.strings.file_preview_toolbar_mosaic),
+            label = stringResource(Res.string.file_preview_toolbar_mosaic),
             icon = RaftLucideIconName.Mosaic,
             selected = tool == RaftComposerImageEditorTool.Mosaic,
             enabled = !saving,
             onClick = { onSelectTool(RaftComposerImageEditorTool.Mosaic) }
         )
         RaftFilePreviewEditorToolButton(
-            label = stringResource(MR.strings.file_preview_toolbar_crop),
+            label = stringResource(Res.string.file_preview_toolbar_crop),
             icon = RaftLucideIconName.Crop,
             selected = tool == RaftComposerImageEditorTool.Crop,
             enabled = !saving,
@@ -5395,7 +5390,7 @@ private fun RaftFilePreviewPencilOptions(
     onSelectColor: (Color) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val penLabel = stringResource(MR.strings.file_preview_toolbar_pen)
+    val penLabel = stringResource(Res.string.file_preview_toolbar_pen)
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -5403,7 +5398,7 @@ private fun RaftFilePreviewPencilOptions(
     ) {
         RaftFilePreviewBorderlessIconButton(
             icon = RaftLucideIconName.Eraser,
-            label = stringResource(MR.strings.file_preview_toolbar_erase),
+            label = stringResource(Res.string.file_preview_toolbar_erase),
             onClick = onSelectEraser,
             enabled = enabled,
             iconColor = raftFilePreviewEditorToolIconColor(mode == RaftComposerImagePencilMode.Eraser),
@@ -5474,13 +5469,13 @@ private fun RaftFilePreviewCropOptions(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RaftButton(
-            text = stringResource(MR.strings.file_preview_crop_reset),
+            text = stringResource(Res.string.file_preview_crop_reset),
             onClick = onReset,
             enabled = enabled && canReset,
             modifier = Modifier.weight(1f),
         )
         RaftButton(
-            text = stringResource(MR.strings.file_preview_crop_apply),
+            text = stringResource(Res.string.file_preview_crop_apply),
             onClick = onApply,
             enabled = enabled,
             modifier = Modifier.weight(1f),
@@ -6464,8 +6459,8 @@ internal fun raftFilePreviewResolveLaunchPayload(
     return FilePreviewLaunchPayloadTrace(
         payload =
             restoredPayload ?: RaftFilePreviewPayload(
-                titleDesc = MR.strings.file_preview_unavailable.desc(),
-                messageDesc = MR.strings.file_preview_error_load_payload.desc(),
+                titleDesc = Res.string.file_preview_unavailable.desc(),
+                messageDesc = Res.string.file_preview_error_load_payload.desc(),
                 error =
                     when {
                         launch?.routeKind == RaftFilePreviewRouteEphemeral ->
@@ -6490,7 +6485,7 @@ internal fun FilePreviewLaunchPayloadTrace.requiresAuthenticatedRouteAuthority()
 private fun RaftFilePreviewPayload.withFilePreviewAuthorityRejected(): RaftFilePreviewPayload =
     copy(
         kind = "error",
-        titleDesc = MR.strings.file_preview_unavailable.desc(),
+        titleDesc = Res.string.file_preview_unavailable.desc(),
         subtitle = "",
         name = "",
         path = "",
@@ -6509,7 +6504,7 @@ private fun RaftFilePreviewPayload.withFilePreviewAuthorityRejected(): RaftFileP
         imageGallery = emptyList(),
         imageGalleryIndex = 0,
         message = "",
-        messageDesc = MR.strings.file_preview_error_load_payload.desc(),
+        messageDesc = Res.string.file_preview_error_load_payload.desc(),
         error = "authenticated_route_authority_changed",
         composerImageThreadKey = "",
         composerImageActionId = "",
@@ -6648,7 +6643,7 @@ private fun WireRaftFilePreviewLaunchPayload.toRestoredThreadAttachmentPayload()
         kind = "loading",
         requestedKind = previewKind,
         titleDesc = previewKind.filePreviewTitleDesc(),
-        messageDesc = MR.strings.common_loading.desc(),
+        messageDesc = Res.string.common_loading.desc(),
         source = RaftFilePreviewSourceThreadAttachment,
         attachmentId = attachmentId,
         attachmentCommentsEnabled = attachmentCommentsEnabled,
@@ -6660,14 +6655,14 @@ private fun WireRaftFilePreviewLaunchPayload.toRestoredThreadAttachmentPayload()
 
 private fun String.filePreviewTitleDesc(): StringDesc =
     when (this) {
-        "image" -> MR.strings.file_preview_image.desc()
-        "markdown" -> MR.strings.file_preview_markdown.desc()
-        "text" -> MR.strings.file_preview_text.desc()
-        "html" -> MR.strings.file_preview_html.desc()
-        "video" -> MR.strings.file_preview_video.desc()
-        "audio" -> MR.strings.file_preview_audio.desc()
-        RaftFilePreviewPdfKind -> MR.strings.file_preview_pdf.desc()
-        else -> MR.strings.file_preview_title.desc()
+        "image" -> Res.string.file_preview_image.desc()
+        "markdown" -> Res.string.file_preview_markdown.desc()
+        "text" -> Res.string.file_preview_text.desc()
+        "html" -> Res.string.file_preview_html.desc()
+        "video" -> Res.string.file_preview_video.desc()
+        "audio" -> Res.string.file_preview_audio.desc()
+        RaftFilePreviewPdfKind -> Res.string.file_preview_pdf.desc()
+        else -> Res.string.file_preview_title.desc()
     }
 
 internal fun raftFilePreviewLaunchDescriptor(
@@ -6925,12 +6920,12 @@ internal fun RaftThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(
         kind = "loading",
         requestedKind = kind,
         titleDesc = when (kind) {
-            "image" -> MR.strings.file_preview_image.desc()
-            "markdown" -> MR.strings.file_preview_markdown.desc()
-            "text" -> MR.strings.file_preview_text.desc()
-            "video" -> MR.strings.file_preview_video.desc()
-            RaftFilePreviewPdfKind -> MR.strings.file_preview_pdf.desc()
-            else -> MR.strings.file_preview_title.desc()
+            "image" -> Res.string.file_preview_image.desc()
+            "markdown" -> Res.string.file_preview_markdown.desc()
+            "text" -> Res.string.file_preview_text.desc()
+            "video" -> Res.string.file_preview_video.desc()
+            RaftFilePreviewPdfKind -> Res.string.file_preview_pdf.desc()
+            else -> Res.string.file_preview_title.desc()
         },
         subtitle = name,
         name = name,
@@ -6942,7 +6937,7 @@ internal fun RaftThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(
             } else {
                 null
             },
-        messageDesc = MR.strings.common_loading.desc(),
+        messageDesc = Res.string.common_loading.desc(),
         externalFileName = name.ifBlank { "attachment-${id.take(8)}" },
         externalMimeType = mimeType,
         source = RaftFilePreviewSourceThreadAttachment,
@@ -7000,11 +6995,11 @@ internal fun agentWorkspaceLazyPreviewPayload(agentId: String, path: String): Ra
     RaftFilePreviewPayload(
         kind = "loading",
         requestedKind = "workspace",
-        titleDesc = MR.strings.file_preview_title.desc(),
+        titleDesc = Res.string.file_preview_title.desc(),
         subtitle = path,
         name = path,
         path = path,
-        messageDesc = MR.strings.common_loading.desc(),
+        messageDesc = Res.string.common_loading.desc(),
         source = RaftFilePreviewSourceAgentWorkspace,
         agentId = agentId
     )
@@ -7072,7 +7067,7 @@ internal suspend fun RaftFilePreviewPayload.loadThreadAttachmentPreview(
         wantsPdf ->
             copy(
                 kind = RaftFilePreviewPdfKind,
-                titleDesc = MR.strings.file_preview_pdf.desc(),
+                titleDesc = Res.string.file_preview_pdf.desc(),
                 message = "",
                 messageDesc = null
             )
@@ -7081,7 +7076,7 @@ internal suspend fun RaftFilePreviewPayload.loadThreadAttachmentPreview(
         wantsImage -> loadThreadImageAttachmentPreview(threadApi, priority, expiresAtSink, diagnosticsLogger)
         wantsVideo -> loadThreadVideoAttachmentPreview(threadApi, priority)
         wantsAudio ->
-            loadThreadVideoAttachmentPreview(threadApi, priority, title = MR.strings.file_preview_audio.desc(), audioOnly = true)
+            loadThreadVideoAttachmentPreview(threadApi, priority, title = Res.string.file_preview_audio.desc(), audioOnly = true)
         wantsHtml -> loadThreadHtmlAttachmentPreview(threadApi)
         // The text path draws a server CSV payload as the table too; a CSV-labelled file that
         // is not text-like (an Excel-MIME export) has no raw-text fallback.
@@ -7096,9 +7091,9 @@ internal suspend fun RaftFilePreviewPayload.loadThreadAttachmentPreview(
         else ->
             copy(
                 kind = "unsupported",
-                titleDesc = MR.strings.file_preview_title.desc(),
+                titleDesc = Res.string.file_preview_title.desc(),
                 message = "",
-                messageDesc = MR.strings.file_preview_no_preview.desc()
+                messageDesc = Res.string.file_preview_no_preview.desc()
             )
     }
 }
@@ -7133,14 +7128,14 @@ private suspend fun RaftFilePreviewPayload.loadThreadHtmlAttachmentPreview(
             is ThreadApiResult.Failure -> null
         } ?: return copy(
             kind = "error",
-            titleDesc = MR.strings.file_preview_unavailable.desc(),
+            titleDesc = Res.string.file_preview_unavailable.desc(),
             message = "",
-            messageDesc = MR.strings.file_preview_error_load_html.desc(),
+            messageDesc = Res.string.file_preview_error_load_html.desc(),
             error = "html_preview_url_failed"
         )
     return copy(
         kind = "html",
-        titleDesc = MR.strings.file_preview_html.desc(),
+        titleDesc = Res.string.file_preview_html.desc(),
         content = "",
         imageUrl = null,
         videoUrl = null,
@@ -7154,7 +7149,7 @@ private suspend fun RaftFilePreviewPayload.loadThreadHtmlAttachmentPreview(
 private suspend fun RaftFilePreviewPayload.loadThreadVideoAttachmentPreview(
     threadApi: RaftThreadApiClient,
     priority: DataRequestPriority,
-    title: StringDesc = MR.strings.file_preview_video.desc(),
+    title: StringDesc = Res.string.file_preview_video.desc(),
     audioOnly: Boolean = false
 ): RaftFilePreviewPayload {
     val target =
@@ -7163,9 +7158,9 @@ private suspend fun RaftFilePreviewPayload.loadThreadVideoAttachmentPreview(
             is ThreadApiResult.Failure -> null
         } ?: return copy(
             kind = "error",
-            titleDesc = MR.strings.file_preview_unavailable.desc(),
+            titleDesc = Res.string.file_preview_unavailable.desc(),
             message = "",
-            messageDesc = MR.strings.file_preview_error_load_media.desc(),
+            messageDesc = Res.string.file_preview_error_load_media.desc(),
             error = "video_preview_url_failed"
         )
     return copy(
@@ -7230,7 +7225,7 @@ private suspend fun RaftFilePreviewPayload.loadThreadTextAttachmentPreview(
     if (csvCarrier != null) {
         return copy(
             kind = "csv",
-            titleDesc = MR.strings.file_preview_csv.desc(),
+            titleDesc = Res.string.file_preview_csv.desc(),
             content = "",
             markdown = false,
             message = "",
@@ -7242,9 +7237,9 @@ private suspend fun RaftFilePreviewPayload.loadThreadTextAttachmentPreview(
     if (!rawTextFallback) {
         return copy(
             kind = "unsupported",
-            titleDesc = MR.strings.file_preview_title.desc(),
+            titleDesc = Res.string.file_preview_title.desc(),
             message = "",
-            messageDesc = MR.strings.file_preview_no_preview.desc(),
+            messageDesc = Res.string.file_preview_no_preview.desc(),
             error = null,
         )
     }
@@ -7254,7 +7249,7 @@ private suspend fun RaftFilePreviewPayload.loadThreadTextAttachmentPreview(
             if (serverPreview.truncated) serverText + "\n\n$truncatedPreviewHint" else serverText
         return copy(
             kind = "text",
-            titleDesc = MR.strings.file_preview_text.desc(),
+            titleDesc = Res.string.file_preview_text.desc(),
             content = previewBody,
             markdown = false,
             message = "",
@@ -7268,9 +7263,9 @@ private suspend fun RaftFilePreviewPayload.loadThreadTextAttachmentPreview(
             is ThreadApiResult.Failure -> null
         } ?: return copy(
             kind = "error",
-            titleDesc = MR.strings.file_preview_unavailable.desc(),
+            titleDesc = Res.string.file_preview_unavailable.desc(),
             message = "",
-            messageDesc = MR.strings.file_preview_error_load_text.desc(),
+            messageDesc = Res.string.file_preview_error_load_text.desc(),
             error = "text_preview_url_failed"
         )
     val response =
@@ -7284,18 +7279,18 @@ private suspend fun RaftFilePreviewPayload.loadThreadTextAttachmentPreview(
         } catch (_: Throwable) {
             return copy(
                 kind = "error",
-                titleDesc = MR.strings.file_preview_unavailable.desc(),
+                titleDesc = Res.string.file_preview_unavailable.desc(),
                 message = "",
-                messageDesc = MR.strings.file_preview_error_load_text.desc(),
+                messageDesc = Res.string.file_preview_error_load_text.desc(),
                 error = "text_preview_fetch_failed"
             )
         }
     if (response.code !in 200..299) {
         return copy(
             kind = "error",
-            titleDesc = MR.strings.file_preview_unavailable.desc(),
+            titleDesc = Res.string.file_preview_unavailable.desc(),
             message = "",
-            messageDesc = MR.strings.file_preview_error_load_text.desc(),
+            messageDesc = Res.string.file_preview_error_load_text.desc(),
             error = "text_preview_fetch_failed"
         )
     }
@@ -7308,7 +7303,7 @@ private suspend fun RaftFilePreviewPayload.loadThreadTextAttachmentPreview(
         }
     return copy(
         kind = "text",
-        titleDesc = MR.strings.file_preview_text.desc(),
+        titleDesc = Res.string.file_preview_text.desc(),
         content = previewBody,
         markdown = false,
         message = "",
@@ -7334,7 +7329,7 @@ private suspend fun RaftFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
             }
         return copy(
             kind = "markdown",
-            titleDesc = MR.strings.file_preview_markdown.desc(),
+            titleDesc = Res.string.file_preview_markdown.desc(),
             content = previewBody,
             markdown = true,
             message = "",
@@ -7348,9 +7343,9 @@ private suspend fun RaftFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
             is ThreadApiResult.Failure -> null
         } ?: return copy(
             kind = "error",
-            titleDesc = MR.strings.file_preview_unavailable.desc(),
+            titleDesc = Res.string.file_preview_unavailable.desc(),
             message = "",
-            messageDesc = MR.strings.file_preview_error_load_markdown.desc(),
+            messageDesc = Res.string.file_preview_error_load_markdown.desc(),
             error = "markdown_preview_url_failed"
         )
     val response =
@@ -7364,18 +7359,18 @@ private suspend fun RaftFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
         } catch (_: Throwable) {
             return copy(
                 kind = "error",
-                titleDesc = MR.strings.file_preview_unavailable.desc(),
+                titleDesc = Res.string.file_preview_unavailable.desc(),
                 message = "",
-                messageDesc = MR.strings.file_preview_error_load_markdown.desc(),
+                messageDesc = Res.string.file_preview_error_load_markdown.desc(),
                 error = "markdown_preview_fetch_failed"
             )
         }
     if (response.code !in 200..299) {
         return copy(
             kind = "error",
-            titleDesc = MR.strings.file_preview_unavailable.desc(),
+            titleDesc = Res.string.file_preview_unavailable.desc(),
             message = "",
-            messageDesc = MR.strings.file_preview_error_load_markdown.desc(),
+            messageDesc = Res.string.file_preview_error_load_markdown.desc(),
             error = "markdown_preview_fetch_failed"
         )
     }
@@ -7383,9 +7378,9 @@ private suspend fun RaftFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
         response.bodyText?.takeIf { it.isNotBlank() }
             ?: return copy(
                 kind = "error",
-                titleDesc = MR.strings.file_preview_unavailable.desc(),
+                titleDesc = Res.string.file_preview_unavailable.desc(),
                 message = "",
-                messageDesc = MR.strings.file_preview_error_markdown_empty.desc(),
+                messageDesc = Res.string.file_preview_error_markdown_empty.desc(),
                 error = "markdown_preview_empty"
             )
     val previewBody =
@@ -7396,7 +7391,7 @@ private suspend fun RaftFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
         }
     return copy(
         kind = "markdown",
-        titleDesc = MR.strings.file_preview_markdown.desc(),
+        titleDesc = Res.string.file_preview_markdown.desc(),
         content = previewBody,
         markdown = true,
         message = "",
@@ -7415,7 +7410,7 @@ private suspend fun RaftFilePreviewPayload.loadThreadXlsxAttachmentPreview(
     if (xlsx != null) {
         return copy(
             kind = "xlsx",
-            titleDesc = MR.strings.file_preview_xlsx.desc(),
+            titleDesc = Res.string.file_preview_xlsx.desc(),
             content = "",
             markdown = false,
             message = "",
@@ -7426,9 +7421,9 @@ private suspend fun RaftFilePreviewPayload.loadThreadXlsxAttachmentPreview(
     }
     return copy(
         kind = "unsupported",
-        titleDesc = MR.strings.file_preview_title.desc(),
+        titleDesc = Res.string.file_preview_title.desc(),
         message = "",
-        messageDesc = MR.strings.file_preview_no_preview.desc(),
+        messageDesc = Res.string.file_preview_no_preview.desc(),
         error = null,
     )
 }
@@ -7498,9 +7493,9 @@ private suspend fun RaftFilePreviewPayload.loadAgentWorkspacePreview(
         is DataResult.Empty ->
             copy(
                 kind = "error",
-                titleDesc = MR.strings.file_preview_unavailable.desc(),
+                titleDesc = Res.string.file_preview_unavailable.desc(),
                 message = "",
-                messageDesc = MR.strings.file_preview_file_unavailable.desc(),
+                messageDesc = Res.string.file_preview_file_unavailable.desc(),
                 error = "empty_preview"
             )
         is DataResult.Error -> withAgentWorkspaceLoadError(result.error, errorStrings)
@@ -7514,7 +7509,7 @@ internal fun RaftFilePreviewPayload.withAgentWorkspaceLoadError(
 ): RaftFilePreviewPayload =
     copy(
         kind = "error",
-        titleDesc = MR.strings.file_preview_unavailable.desc(),
+        titleDesc = Res.string.file_preview_unavailable.desc(),
         message = error.userFacingMessage(errorStrings),
         messageDesc = null,
         error = error.code
@@ -7526,7 +7521,7 @@ internal fun RaftFilePreviewPayload.withAgentWorkspacePermissionError(
 ): RaftFilePreviewPayload =
     copy(
         kind = "error",
-        titleDesc = MR.strings.file_preview_hidden.desc(),
+        titleDesc = Res.string.file_preview_hidden.desc(),
         message = blocker.userFacingMessage(errorStrings),
         messageDesc = null,
         error = blocker.code
@@ -7882,9 +7877,9 @@ internal fun RaftWorkspaceFilePreview.toRaftFilePreviewPayload(path: String): Ra
                 kind = if (markdown) "markdown" else "text",
                 titleDesc =
                     if (markdown) {
-                        MR.strings.file_preview_markdown.desc()
+                        Res.string.file_preview_markdown.desc()
                     } else {
-                        MR.strings.file_preview_text.desc()
+                        Res.string.file_preview_text.desc()
                     },
                 subtitle = path.ifBlank { this.path },
                 name = path.ifBlank { this.path },
@@ -7896,7 +7891,7 @@ internal fun RaftWorkspaceFilePreview.toRaftFilePreviewPayload(path: String): Ra
         is RaftWorkspaceFilePreview.Image ->
             RaftFilePreviewPayload(
                 kind = "image",
-                titleDesc = MR.strings.file_preview_image.desc(),
+                titleDesc = Res.string.file_preview_image.desc(),
                 subtitle = path.ifBlank { this.path },
                 name = path.ifBlank { this.path },
                 path = this.path,
@@ -7905,7 +7900,7 @@ internal fun RaftWorkspaceFilePreview.toRaftFilePreviewPayload(path: String): Ra
                 message = description.orEmpty(),
                 messageDesc =
                     if (description.isNullOrBlank()) {
-                        MR.strings.file_preview_error_image_unavailable.desc()
+                        Res.string.file_preview_error_image_unavailable.desc()
                     } else {
                         null
                     }
@@ -7913,7 +7908,7 @@ internal fun RaftWorkspaceFilePreview.toRaftFilePreviewPayload(path: String): Ra
         is RaftWorkspaceFilePreview.Unsupported ->
             RaftFilePreviewPayload(
                 kind = "unsupported",
-                titleDesc = MR.strings.file_preview_title.desc(),
+                titleDesc = Res.string.file_preview_title.desc(),
                 subtitle = path.ifBlank { this.path },
                 name = path.ifBlank { this.path },
                 path = this.path,
@@ -7924,7 +7919,7 @@ internal fun RaftWorkspaceFilePreview.toRaftFilePreviewPayload(path: String): Ra
         is RaftWorkspaceFilePreview.Error ->
             RaftFilePreviewPayload(
                 kind = "error",
-                titleDesc = MR.strings.file_preview_unavailable.desc(),
+                titleDesc = Res.string.file_preview_unavailable.desc(),
                 subtitle = path,
                 name = path,
                 path = path,
@@ -7936,12 +7931,12 @@ internal fun RaftWorkspaceFilePreview.toRaftFilePreviewPayload(path: String): Ra
             RaftFilePreviewPayload(
                 kind = "loading",
                 requestedKind = "workspace",
-                titleDesc = MR.strings.file_preview_title.desc(),
+                titleDesc = Res.string.file_preview_title.desc(),
                 subtitle = path,
                 name = path,
                 path = path,
                 message = detail,
-                messageDesc = if (detail.isBlank()) MR.strings.common_loading.desc() else null
+                messageDesc = if (detail.isBlank()) Res.string.common_loading.desc() else null
             )
     }
 
@@ -7985,7 +7980,7 @@ internal fun RaftFilePreviewPayloadContent(
 ) {
     val onToggleDownload = if (downloadPaused) onResumeDownload else onPauseDownload
     val actionTerms = raftFilePreviewLocalizedActionTerms()
-    val fallbackFile = stringResource(MR.strings.file_preview_fallback_file)
+    val fallbackFile = stringResource(Res.string.file_preview_fallback_file)
     if (payload.kind == "loading" || payload.kind == "image") {
         // One call site for the loading (thumbnail) and resolved (full-size) payloads of an image, so
         // the pager, each page's zoom (keyed by image identity) and the image surface's underlay
@@ -8037,7 +8032,7 @@ internal fun RaftFilePreviewPayloadContent(
                         meta = pagePayload.meta,
                         message =
                             pagePayload.localizedMessage().ifBlank {
-                                stringResource(MR.strings.file_preview_error_image_unavailable)
+                                stringResource(Res.string.file_preview_error_image_unavailable)
                             },
                         statusLabel = downloadStatusLabel.takeIf { selected },
                         showProgress = selected && downloadInProgress,
@@ -8045,7 +8040,7 @@ internal fun RaftFilePreviewPayloadContent(
                         secondaryActionLabel =
                             onExternalBrowserOpen
                                 ?.takeIf { selected }
-                                ?.let { stringResource(MR.strings.file_preview_action_open_in_browser) },
+                                ?.let { stringResource(Res.string.file_preview_action_open_in_browser) },
                         secondaryActionIcon = RaftLucideIconName.ExternalLink,
                         secondaryActionEnabled = !downloadInProgress,
                         onSecondaryAction = onExternalBrowserOpen?.takeIf { selected },
@@ -8132,9 +8127,9 @@ internal fun RaftFilePreviewPayloadContent(
                         iconName = RaftLucideIconName.FileSpreadsheet,
                         name = payload.name.ifBlank { payload.path },
                         meta = payload.meta,
-                        message = payload.localizedMessage().ifBlank { stringResource(MR.strings.file_preview_no_preview) },
+                        message = payload.localizedMessage().ifBlank { stringResource(Res.string.file_preview_no_preview) },
                         secondaryActionLabel =
-                            onExternalBrowserOpen?.let { stringResource(MR.strings.file_preview_action_open_in_browser) },
+                            onExternalBrowserOpen?.let { stringResource(Res.string.file_preview_action_open_in_browser) },
                         secondaryActionIcon = RaftLucideIconName.ExternalLink,
                         secondaryActionEnabled = !downloadInProgress,
                         onSecondaryAction = onExternalBrowserOpen,
@@ -8167,9 +8162,9 @@ internal fun RaftFilePreviewPayloadContent(
                         iconName = RaftLucideIconName.FileSpreadsheet,
                         name = payload.name.ifBlank { payload.path },
                         meta = payload.meta,
-                        message = payload.localizedMessage().ifBlank { stringResource(MR.strings.file_preview_no_preview) },
+                        message = payload.localizedMessage().ifBlank { stringResource(Res.string.file_preview_no_preview) },
                         secondaryActionLabel =
-                            onExternalBrowserOpen?.let { stringResource(MR.strings.file_preview_action_open_in_browser) },
+                            onExternalBrowserOpen?.let { stringResource(Res.string.file_preview_action_open_in_browser) },
                         secondaryActionIcon = RaftLucideIconName.ExternalLink,
                         secondaryActionEnabled = !downloadInProgress,
                         onSecondaryAction = onExternalBrowserOpen,
@@ -8226,8 +8221,8 @@ internal fun RaftFilePreviewPayloadContent(
                 } else {
                     RaftFilePreviewMessage(
                         iconName = RaftLucideIconName.TriangleAlert,
-                        title = stringResource(MR.strings.file_preview_unavailable),
-                        detail = payload.localizedMessage().ifBlank { stringResource(MR.strings.file_preview_error_load_html) },
+                        title = stringResource(Res.string.file_preview_unavailable),
+                        detail = payload.localizedMessage().ifBlank { stringResource(Res.string.file_preview_error_load_html) },
                         modifier = Modifier.fillMaxWidth().padding(RaftAppSpacing.Md)
                     )
                 }
@@ -8275,11 +8270,11 @@ internal fun RaftFilePreviewPayloadContent(
         "error" ->
             RaftFilePreviewMessage(
                 iconName = RaftLucideIconName.TriangleAlert,
-                title = stringResource(MR.strings.file_preview_unavailable),
+                title = stringResource(Res.string.file_preview_unavailable),
                 detail =
                     raftFilePreviewVisibleErrorDetail(
                         localizedMessage = payload.localizedMessage(),
-                        fallbackMessage = stringResource(MR.strings.file_preview_error_load_generic)
+                        fallbackMessage = stringResource(Res.string.file_preview_error_load_generic)
                     ),
                 modifier = modifier.fillMaxWidth().padding(RaftAppSpacing.Md)
             )
@@ -8290,7 +8285,7 @@ internal fun RaftFilePreviewPayloadContent(
                 meta = payload.meta,
                 message =
                     if (downloadState == RaftFilePreviewDownloadUiState.Downloaded && onDownload != null) {
-                        stringResource(MR.strings.file_preview_download_completed_hint)
+                        stringResource(Res.string.file_preview_download_completed_hint)
                     } else {
                         raftFilePreviewUnsupportedFileMessage(payload, downloadable = onDownload != null).localized()
                     },
@@ -8298,7 +8293,7 @@ internal fun RaftFilePreviewPayloadContent(
                 showProgress = downloadInProgress,
                 downloadView = downloadView,
                 secondaryActionLabel =
-                    onExternalBrowserOpen?.let { stringResource(MR.strings.file_preview_action_open_in_browser) },
+                    onExternalBrowserOpen?.let { stringResource(Res.string.file_preview_action_open_in_browser) },
                 secondaryActionIcon = RaftLucideIconName.ExternalLink,
                 secondaryActionEnabled = !downloadInProgress,
                 onSecondaryAction = onExternalBrowserOpen,
@@ -8586,7 +8581,7 @@ private fun RaftFilePreviewVideoPanel(
             if (!canPlay) {
                 RaftFilePreviewVideoOverlayText(
                     iconName = RaftLucideIconName.TriangleAlert,
-                    title = fallbackMessage.ifBlank { stringResource(MR.strings.file_preview_error_load_media) },
+                    title = fallbackMessage.ifBlank { stringResource(Res.string.file_preview_error_load_media) },
                     detail = name.ifBlank { meta }
                 )
             } else if (audioOnly && !nativeController) {
@@ -8597,13 +8592,13 @@ private fun RaftFilePreviewVideoPanel(
                 // page header already shows the file name and meta.
                 RaftFilePreviewVideoOverlayText(
                     iconName = RaftLucideIconName.FileMusic,
-                    title = name.ifBlank { stringResource(MR.strings.file_preview_audio) },
+                    title = name.ifBlank { stringResource(Res.string.file_preview_audio) },
                     detail = meta
                 )
             } else if (!nativeController && !firstFrameVisible && !isPlaying) {
                 RaftFilePreviewVideoOverlayText(
                     iconName = RaftLucideIconName.Play,
-                    title = name.ifBlank { stringResource(MR.strings.file_preview_video) },
+                    title = name.ifBlank { stringResource(Res.string.file_preview_video) },
                     detail = meta
                 )
             }
@@ -8663,7 +8658,7 @@ private fun RaftFilePreviewVideoControls(
             RaftBrutalIconButton(
                 iconName = if (isPlaying) RaftLucideIconName.Pause else RaftLucideIconName.Play,
                 onClick = { if (canPlay) onTogglePlay() },
-                contentDescription = stringResource(if (isPlaying) MR.strings.common_pause else MR.strings.common_play),
+                contentDescription = stringResource(if (isPlaying) Res.string.common_pause else Res.string.common_play),
                 enabled = canPlay,
                 size = 30.dp,
                 iconSize = 16.dp,
@@ -8872,12 +8867,12 @@ private fun raftFilePreviewLocalizedVideoTimeLabel(
         playState = playState,
         terms =
             RaftFilePreviewVideoStateTerms(
-                playing = stringResource(MR.strings.file_preview_media_playing),
-                buffering = stringResource(MR.strings.file_preview_media_buffering),
-                paused = stringResource(MR.strings.file_preview_media_paused),
-                ended = stringResource(MR.strings.file_preview_media_ended),
-                playbackFailed = stringResource(MR.strings.file_preview_media_playback_failed),
-                ready = stringResource(MR.strings.file_preview_media_ready)
+                playing = stringResource(Res.string.file_preview_media_playing),
+                buffering = stringResource(Res.string.file_preview_media_buffering),
+                paused = stringResource(Res.string.file_preview_media_paused),
+                ended = stringResource(Res.string.file_preview_media_ended),
+                playbackFailed = stringResource(Res.string.file_preview_media_playback_failed),
+                ready = stringResource(Res.string.file_preview_media_ready)
             )
     )
 
@@ -9437,11 +9432,11 @@ private fun RaftFilePreviewPayload.hasResolvedRemoteImageComparedTo(
 private fun RaftFilePreviewPayload.imageGalleryResolutionFailurePayload(): RaftFilePreviewPayload =
     copy(
         kind = "image",
-        titleDesc = MR.strings.file_preview_image.desc(),
+        titleDesc = Res.string.file_preview_image.desc(),
         message = "",
         messageDesc =
             if (imageUrl.isNullOrBlank()) {
-                MR.strings.file_preview_error_image_unavailable.desc()
+                Res.string.file_preview_error_image_unavailable.desc()
             } else {
                 null
             },
@@ -9500,7 +9495,7 @@ internal fun RaftFilePreviewPayload.withImageGalleryIndex(
 
 @Composable
 internal fun RaftFilePreviewPayload.previewHeaderTitle(): String {
-    val fallbackFile = stringResource(MR.strings.file_preview_fallback_file)
+    val fallbackFile = stringResource(Res.string.file_preview_fallback_file)
     return raftFilePreviewHeaderTitle(
         fallbackFile = fallbackFile,
         localizedTitle = titleDesc.localized(),
@@ -9510,7 +9505,7 @@ internal fun RaftFilePreviewPayload.previewHeaderTitle(): String {
 /** The file name the header's long press copies; null when the header shows a stand-in. */
 @Composable
 internal fun RaftFilePreviewPayload.previewHeaderCopyText(): String? {
-    val fallbackFile = stringResource(MR.strings.file_preview_fallback_file)
+    val fallbackFile = stringResource(Res.string.file_preview_fallback_file)
     return raftFilePreviewHeaderCopyText(fallbackFile)
 }
 
@@ -9606,7 +9601,7 @@ private fun RaftFilePreviewGalleryImage.toPreviewPayload(
             kind = "image",
             requestedKind = "image",
             title = "",
-            titleDesc = MR.strings.file_preview_image.desc(),
+            titleDesc = Res.string.file_preview_image.desc(),
             subtitle = title,
             name = title,
             path = title,
@@ -9635,7 +9630,7 @@ private fun RaftFilePreviewGalleryImage.toPreviewPayload(
         kind = "loading",
         requestedKind = "image",
         title = "",
-        titleDesc = MR.strings.file_preview_image.desc(),
+        titleDesc = Res.string.file_preview_image.desc(),
         subtitle = title,
         name = title,
         path = title,
@@ -9644,7 +9639,7 @@ private fun RaftFilePreviewGalleryImage.toPreviewPayload(
         markdown = false,
         imageUrl = thumbnailUrl?.takeIf { it.isNotBlank() },
         message = "",
-        messageDesc = MR.strings.common_loading.desc(),
+        messageDesc = Res.string.common_loading.desc(),
         error = null,
         externalUrl = null,
         videoUrl = null,
@@ -9667,7 +9662,7 @@ internal fun RaftFilePreviewOverflowMenuButton(
         onClick = {
             menuAnchor.resolve(RaftPopoverLocalPoint.BottomEnd)?.let(onOpenMenu)
         },
-        contentDescription = stringResource(MR.strings.tab_more),
+        contentDescription = stringResource(Res.string.tab_more),
         size = 30.dp,
         modifier = modifier.raftCaptureLiveRootAnchor(menuAnchor)
     )
@@ -9902,9 +9897,9 @@ internal fun raftFilePreviewLocalizedActiveDownloadStatusLabel(
         status = status,
         terms =
             RaftFilePreviewDownloadStatusTerms(
-                downloading = stringResource(MR.strings.file_preview_download_downloading),
-                paused = stringResource(MR.strings.file_preview_download_paused),
-                saving = stringResource(MR.strings.file_preview_download_saving)
+                downloading = stringResource(Res.string.file_preview_download_downloading),
+                paused = stringResource(Res.string.file_preview_download_paused),
+                saving = stringResource(Res.string.file_preview_download_saving)
             )
     )
 }
@@ -9945,10 +9940,10 @@ internal data class RaftFilePreviewActionTerms(
 @Composable
 internal fun raftFilePreviewLocalizedActionTerms(): RaftFilePreviewActionTerms =
     RaftFilePreviewActionTerms(
-        download = stringResource(MR.strings.file_preview_action_download),
-        install = stringResource(MR.strings.file_preview_action_install),
-        open = stringResource(MR.strings.file_preview_action_open),
-        openWith = stringResource(MR.strings.file_preview_action_open_with)
+        download = stringResource(Res.string.file_preview_action_download),
+        install = stringResource(Res.string.file_preview_action_install),
+        open = stringResource(Res.string.file_preview_action_open),
+        openWith = stringResource(Res.string.file_preview_action_open_with)
     )
 
 internal fun raftFilePreviewPrimaryActionLabel(
@@ -9981,9 +9976,9 @@ internal fun raftFilePreviewPrimaryAction(
 
 internal fun raftFilePreviewUnsupportedFileMessage(payload: RaftFilePreviewPayload, downloadable: Boolean): StringDesc =
     when {
-        downloadable -> MR.strings.file_preview_download_to_open.desc()
+        downloadable -> Res.string.file_preview_download_to_open.desc()
         payload.message.isNotBlank() -> payload.message.desc()
-        else -> payload.messageDesc ?: MR.strings.file_preview_no_preview.desc()
+        else -> payload.messageDesc ?: Res.string.file_preview_no_preview.desc()
     }
 
 internal fun raftFilePreviewOverflowActionLabel(
@@ -10379,13 +10374,13 @@ internal fun RaftFilePreviewImageLoadFailedBanner(
 ) {
     RaftDesignSystemTheme {
         RaftBanner(
-            description = stringResource(MR.strings.file_preview_image_full_load_failed),
+            description = stringResource(Res.string.file_preview_image_full_load_failed),
             status = RaftBannerStatus.Warning,
             size = RaftBannerSize.Sm,
             modifier = modifier.fillMaxWidth().padding(12.dp),
             action = {
                 RaftButton(
-                    text = stringResource(MR.strings.common_retry),
+                    text = stringResource(Res.string.common_retry),
                     onClick = onRetry
                 )
             }
@@ -10437,7 +10432,7 @@ internal fun RaftFilePreviewMarkdownPanel(
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         RaftFilePreviewPanelHeader(
-            name = name.ifBlank { stringResource(MR.strings.file_preview_fallback_markdown) },
+            name = name.ifBlank { stringResource(Res.string.file_preview_fallback_markdown) },
             copyText = name.ifBlank { null },
             meta = meta,
             statusLabel = statusLabel
@@ -10464,8 +10459,8 @@ internal fun RaftFilePreviewMarkdownPanel(
             "error" ->
                 RaftFilePreviewMessage(
                     iconName = RaftLucideIconName.FileText,
-                    title = stringResource(MR.strings.file_preview_markdown_unavailable),
-                    detail = error.orEmpty().ifBlank { stringResource(MR.strings.file_preview_markdown_open_with_hint) },
+                    title = stringResource(Res.string.file_preview_markdown_unavailable),
+                    detail = error.orEmpty().ifBlank { stringResource(Res.string.file_preview_markdown_open_with_hint) },
                     modifier = Modifier.fillMaxWidth().weight(1f)
                 )
             else ->
@@ -10512,7 +10507,7 @@ internal fun RaftFilePreviewTextPanel(
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
         RaftFilePreviewPanelHeader(
-            name = name.ifBlank { stringResource(MR.strings.file_preview_fallback_text_file) },
+            name = name.ifBlank { stringResource(Res.string.file_preview_fallback_text_file) },
             copyText = name.ifBlank { null },
             meta = meta,
             statusLabel = null
@@ -10556,7 +10551,7 @@ internal fun RaftFilePreviewXlsxPanel(
             .border(RaftAppStroke.Default, RaftColor.BorderBlack)
     ) {
         RaftFilePreviewPanelHeader(
-            name = name.ifBlank { stringResource(MR.strings.file_preview_fallback_file) },
+            name = name.ifBlank { stringResource(Res.string.file_preview_fallback_file) },
             meta = meta,
             statusLabel = null
         )
@@ -10604,7 +10599,7 @@ internal fun RaftFilePreviewXlsxPanel(
                         .padding(RaftAppSpacing.Sm)
             ) {
                 Text(
-                    text = stringResource(MR.strings.file_preview_no_preview),
+                    text = stringResource(Res.string.file_preview_no_preview),
                     style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                     color = RaftColor.TextMutedGray
                 )
@@ -10631,7 +10626,7 @@ internal fun RaftFilePreviewXlsxPanel(
                 }
                 if (truncated || selectedSheet.truncated) {
                     Text(
-                        text = stringResource(MR.strings.file_preview_truncated_open_with_hint),
+                        text = stringResource(Res.string.file_preview_truncated_open_with_hint),
                         style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                         color = RaftColor.TextMutedGray,
                         modifier = Modifier.padding(top = RaftAppSpacing.Sm)
@@ -10661,7 +10656,7 @@ internal fun RaftFilePreviewImagePanel(
         source = source,
         fallbackSource = fallbackSource,
         contentDescription = contentDescription,
-        placeholderLabel = placeholderLabel ?: stringResource(MR.strings.file_preview_image_placeholder),
+        placeholderLabel = placeholderLabel ?: stringResource(Res.string.file_preview_image_placeholder),
         modifier = modifier.fillMaxWidth(),
         backgroundColor = backgroundColor,
         borderWidth = borderWidth,

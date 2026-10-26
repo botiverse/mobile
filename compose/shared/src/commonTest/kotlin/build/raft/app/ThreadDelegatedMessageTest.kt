@@ -1,7 +1,7 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.model.MessageDelegatedBy
-import build.raft.app.resources.MR
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -76,18 +76,18 @@ class ThreadDelegatedMessageTest {
         // (assistant, placement, catalog entry): web `message.delegated.sentBy[Deleted][InBody]`.
         val cases =
             listOf(
-                Triple(friday, DelegatedLabelPlacement.Header, MR.strings.message_delegated_sent_by),
-                Triple(friday, DelegatedLabelPlacement.InBody, MR.strings.message_delegated_sent_by_in_body),
-                Triple(fridayDeleted, DelegatedLabelPlacement.Header, MR.strings.message_delegated_sent_by_deleted),
-                Triple(fridayDeleted, DelegatedLabelPlacement.InBody, MR.strings.message_delegated_sent_by_deleted_in_body),
+                Triple(friday, DelegatedLabelPlacement.Header, Res.string.message_delegated_sent_by),
+                Triple(friday, DelegatedLabelPlacement.InBody, Res.string.message_delegated_sent_by_in_body),
+                Triple(fridayDeleted, DelegatedLabelPlacement.Header, Res.string.message_delegated_sent_by_deleted),
+                Triple(fridayDeleted, DelegatedLabelPlacement.InBody, Res.string.message_delegated_sent_by_deleted_in_body),
             )
         cases.forEach { (delegatedBy, placement, expected) ->
             assertEquals(expected, delegatedLabelResource(delegatedBy, placement), "$delegatedBy $placement")
         }
         // Previews (web `formatDelegatedSender`): the sender alone without an assistant.
         assertNull(delegatedPreviewSenderResource(null))
-        assertEquals(MR.strings.message_delegated_preview_sender, delegatedPreviewSenderResource(friday))
-        assertEquals(MR.strings.message_delegated_preview_sender_deleted, delegatedPreviewSenderResource(fridayDeleted))
+        assertEquals(Res.string.message_delegated_preview_sender, delegatedPreviewSenderResource(friday))
+        assertEquals(Res.string.message_delegated_preview_sender_deleted, delegatedPreviewSenderResource(fridayDeleted))
     }
 
     @Test

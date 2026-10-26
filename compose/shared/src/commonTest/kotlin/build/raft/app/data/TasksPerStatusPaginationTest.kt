@@ -9,7 +9,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.yield
-import kotlinx.coroutines.flow.first
 import build.raft.app.model.MessageId
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus

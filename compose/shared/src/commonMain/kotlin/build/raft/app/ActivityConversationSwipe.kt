@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -59,7 +60,6 @@ import build.raft.app.data.isFollowedActivityThread
 import build.raft.app.data.isUnfollowedActivityThread
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.gesture.LocalRaftBackSwipeRegions
@@ -69,7 +69,6 @@ import build.raft.designsystem.gesture.raftClaimsHorizontalDragFirst
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftUiPalette
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
@@ -1100,11 +1099,11 @@ private fun ActivitySwipeButtonCell(
             testLabels != null -> testLabels(button)
             else ->
                 when (button) {
-                    ActivitySwipeButton.Done -> stringResource(MR.strings.activity_swipe_layer_done)
-                    ActivitySwipeButton.Unfollow -> stringResource(MR.strings.activity_swipe_layer_unfollow)
-                    ActivitySwipeButton.Mute -> stringResource(MR.strings.activity_swipe_layer_mute)
-                    ActivitySwipeButton.Read -> stringResource(MR.strings.activity_swipe_layer_read)
-                    ActivitySwipeButton.Unread -> stringResource(MR.strings.activity_swipe_layer_unread)
+                    ActivitySwipeButton.Done -> stringResource(Res.string.activity_swipe_layer_done)
+                    ActivitySwipeButton.Unfollow -> stringResource(Res.string.activity_swipe_layer_unfollow)
+                    ActivitySwipeButton.Mute -> stringResource(Res.string.activity_swipe_layer_mute)
+                    ActivitySwipeButton.Read -> stringResource(Res.string.activity_swipe_layer_read)
+                    ActivitySwipeButton.Unread -> stringResource(Res.string.activity_swipe_layer_unread)
                 }
         }
     val innerAlignment = if (innerEdgeAtEnd) Alignment.CenterEnd else Alignment.CenterStart

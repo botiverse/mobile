@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.gesture.rememberRaftBackSwipeScroll
@@ -193,7 +194,6 @@ import build.raft.app.model.formatRaftTimestampClockWithSeconds
 import build.raft.app.model.hidesHumanDirectoryForViewer
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.toMemberProfile
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.components.RaftTextField
@@ -325,11 +325,7 @@ import build.raft.app.compat.module.CodecModule
 import build.raft.app.compat.json.JSONArray
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.IPagerEventObserver
-import com.tencent.tmm.kmmresource.compose.localized
-import com.tencent.tmm.kmmresource.compose.stringResource
-import com.tencent.tmm.kmmresource.resource.StringResource
-import com.tencent.tmm.kmmresource.resource.desc.StringDesc
-import com.tencent.tmm.kmmresource.resource.desc.desc
+import org.jetbrains.compose.resources.StringResource
 import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -349,7 +345,6 @@ import kotlinx.serialization.json.contentOrNull
 import kotlin.math.abs
 import kotlin.math.roundToLong
 import build.raft.app.model.isExternalAgentRuntime
-import build.raft.app.data.defaultNowMillis
 
 const val MEMBERS_PAGE = "compose_members"
 const val MEMBER_DETAIL_PAGE = "compose_member_detail"
@@ -431,12 +426,12 @@ internal enum class MembersAgentDetailTab(
 @Composable
 private fun MembersAgentDetailTab.localizedLabel(): String =
     when (this) {
-        MembersAgentDetailTab.Profile -> stringResource(MR.strings.member_label_profile)
-        MembersAgentDetailTab.Activity -> stringResource(MR.strings.member_tab_activity)
-        MembersAgentDetailTab.Chat -> stringResource(MR.strings.member_tab_chat)
-        MembersAgentDetailTab.Reminders -> stringResource(MR.strings.member_tab_reminders)
-        MembersAgentDetailTab.Workspace -> stringResource(MR.strings.member_tab_workspace)
-        MembersAgentDetailTab.Apps -> stringResource(MR.strings.member_tab_apps)
+        MembersAgentDetailTab.Profile -> stringResource(Res.string.member_label_profile)
+        MembersAgentDetailTab.Activity -> stringResource(Res.string.member_tab_activity)
+        MembersAgentDetailTab.Chat -> stringResource(Res.string.member_tab_chat)
+        MembersAgentDetailTab.Reminders -> stringResource(Res.string.member_tab_reminders)
+        MembersAgentDetailTab.Workspace -> stringResource(Res.string.member_tab_workspace)
+        MembersAgentDetailTab.Apps -> stringResource(Res.string.member_tab_apps)
     }
 
 internal fun membersHeaderMessageUsesIconOnly(kind: MemberKind): Boolean =
@@ -461,9 +456,9 @@ internal enum class MembersHumanServerRole(
 @Composable
 private fun MembersHumanServerRole.localizedLabel(): String =
     when (this) {
-        MembersHumanServerRole.Owner -> stringResource(MR.strings.member_role_owner)
-        MembersHumanServerRole.Admin -> stringResource(MR.strings.member_role_admin)
-        MembersHumanServerRole.Member -> stringResource(MR.strings.member_role_member)
+        MembersHumanServerRole.Owner -> stringResource(Res.string.member_role_owner)
+        MembersHumanServerRole.Admin -> stringResource(Res.string.member_role_admin)
+        MembersHumanServerRole.Member -> stringResource(Res.string.member_role_member)
     }
 
 internal fun String?.toMembersHumanServerRoleOrNull(): MembersHumanServerRole? =
@@ -627,8 +622,8 @@ internal fun DataResult<SettingsServerActionResult>.membersHumanRoleSaveOutcome(
 @Composable
 private fun MembersAgentServerRole.localizedLabel(): String =
     when (this) {
-        MembersAgentServerRole.Admin -> stringResource(MR.strings.member_role_admin)
-        MembersAgentServerRole.Member -> stringResource(MR.strings.member_role_member)
+        MembersAgentServerRole.Admin -> stringResource(Res.string.member_role_admin)
+        MembersAgentServerRole.Member -> stringResource(Res.string.member_role_member)
     }
 
 internal fun String?.toMembersAgentServerRoleOrNull(): MembersAgentServerRole? =
@@ -1418,25 +1413,25 @@ internal enum class MembersAgentLifecycleAction(
 @Composable
 private fun MembersAgentLifecycleAction.localizedLabel(): String =
     when (this) {
-        MembersAgentLifecycleAction.Start -> stringResource(MR.strings.member_action_start_agent)
-        MembersAgentLifecycleAction.Stop -> stringResource(MR.strings.member_action_stop_agent)
-        MembersAgentLifecycleAction.Restart -> stringResource(MR.strings.member_action_restart_agent)
-        MembersAgentLifecycleAction.ResetSession -> stringResource(MR.strings.member_action_reset_runtime_session)
-        MembersAgentLifecycleAction.ResetFull -> stringResource(MR.strings.member_action_full_reset_restart)
-        MembersAgentLifecycleAction.Delete -> stringResource(MR.strings.member_action_delete_agent)
-        MembersAgentLifecycleAction.UnassignMachine -> stringResource(MR.strings.member_action_unassign_machine)
+        MembersAgentLifecycleAction.Start -> stringResource(Res.string.member_action_start_agent)
+        MembersAgentLifecycleAction.Stop -> stringResource(Res.string.member_action_stop_agent)
+        MembersAgentLifecycleAction.Restart -> stringResource(Res.string.member_action_restart_agent)
+        MembersAgentLifecycleAction.ResetSession -> stringResource(Res.string.member_action_reset_runtime_session)
+        MembersAgentLifecycleAction.ResetFull -> stringResource(Res.string.member_action_full_reset_restart)
+        MembersAgentLifecycleAction.Delete -> stringResource(Res.string.member_action_delete_agent)
+        MembersAgentLifecycleAction.UnassignMachine -> stringResource(Res.string.member_action_unassign_machine)
     }
 
 @Composable
 private fun MembersAgentLifecycleAction.localizedBusyLabel(): String =
     when (this) {
-        MembersAgentLifecycleAction.Start -> stringResource(MR.strings.member_action_starting)
-        MembersAgentLifecycleAction.Stop -> stringResource(MR.strings.member_action_stopping)
-        MembersAgentLifecycleAction.Delete -> stringResource(MR.strings.member_action_deleting)
-        MembersAgentLifecycleAction.Restart -> stringResource(MR.strings.member_action_restarting)
+        MembersAgentLifecycleAction.Start -> stringResource(Res.string.member_action_starting)
+        MembersAgentLifecycleAction.Stop -> stringResource(Res.string.member_action_stopping)
+        MembersAgentLifecycleAction.Delete -> stringResource(Res.string.member_action_deleting)
+        MembersAgentLifecycleAction.Restart -> stringResource(Res.string.member_action_restarting)
         MembersAgentLifecycleAction.ResetSession,
-        MembersAgentLifecycleAction.ResetFull -> stringResource(MR.strings.member_action_resetting)
-        MembersAgentLifecycleAction.UnassignMachine -> stringResource(MR.strings.member_action_unassigning)
+        MembersAgentLifecycleAction.ResetFull -> stringResource(Res.string.member_action_resetting)
+        MembersAgentLifecycleAction.UnassignMachine -> stringResource(Res.string.member_action_unassigning)
     }
 
 private data class MembersAgentActionState(
@@ -1512,18 +1507,18 @@ private fun rememberExternalAgentDetailIndicatorState(
     }
     val label =
         when (val caption = indicator.caption) {
-            ExternalAgentDetailCaption.External -> stringResource(MR.strings.member_external_status)
-            ExternalAgentDetailCaption.Online -> stringResource(MR.strings.member_external_online)
-            ExternalAgentDetailCaption.SetupRequired -> stringResource(MR.strings.member_external_setup_required)
-            ExternalAgentDetailCaption.Active -> stringResource(MR.strings.member_external_active)
+            ExternalAgentDetailCaption.External -> stringResource(Res.string.member_external_status)
+            ExternalAgentDetailCaption.Online -> stringResource(Res.string.member_external_online)
+            ExternalAgentDetailCaption.SetupRequired -> stringResource(Res.string.member_external_setup_required)
+            ExternalAgentDetailCaption.Active -> stringResource(Res.string.member_external_active)
             is ExternalAgentDetailCaption.LastActivity ->
-                membersStringTemplate(MR.strings.member_external_last_activity)
+                membersStringTemplate(Res.string.member_external_last_activity)
                     .membersFormat(timeContext.formatTimestampLabel(caption.iso).ifBlank { caption.iso })
             is ExternalAgentDetailCaption.LastSeen ->
-                membersStringTemplate(MR.strings.member_external_last_seen)
+                membersStringTemplate(Res.string.member_external_last_seen)
                     .membersFormat(timeContext.formatTimestampLabel(caption.iso).ifBlank { caption.iso })
-            ExternalAgentDetailCaption.NoRaftActivity -> stringResource(MR.strings.member_external_no_raft_activity)
-            ExternalAgentDetailCaption.NotConfigured -> stringResource(MR.strings.member_external_not_configured)
+            ExternalAgentDetailCaption.NoRaftActivity -> stringResource(Res.string.member_external_no_raft_activity)
+            ExternalAgentDetailCaption.NotConfigured -> stringResource(Res.string.member_external_not_configured)
         }
     return indicator.state.copy(label = label)
 }
@@ -2227,7 +2222,7 @@ internal fun MembersPageContent(
     }
     val bridgeCallScope = rememberCoroutineScope()
     val linkNavigator = rememberRaftLinkNavigator(pager, bridge)
-    val copiedMessage = stringResource(MR.strings.common_copied)
+    val copiedMessage = stringResource(Res.string.common_copied)
     val settingsCapabilities =
         remember(bridge, bridgeCallScope, linkNavigator, copiedMessage) {
             BridgeSettingsPlatformCapabilities(
@@ -2267,7 +2262,7 @@ internal fun MembersPageContent(
         )
     }
     val scope = rememberCoroutineScope()
-    val openProfileFailed = stringResource(MR.strings.member_error_open_profile)
+    val openProfileFailed = stringResource(Res.string.member_error_open_profile)
     val computersStore = remember(computersApiClient, scope) {
         SharedComputersStore(
             computersApiClient = computersApiClient,
@@ -3631,7 +3626,7 @@ private fun rememberMemberDetailRouteProvider(
     bridge: BridgeModule,
     storeScopeOverride: RaftShellStoreScope? = null
 ): MemberDetailRouteProvider {
-    val reportIssueFailedMessage = stringResource(MR.strings.member_error_report_issue)
+    val reportIssueFailedMessage = stringResource(Res.string.member_error_report_issue)
     val sharedStores = remember { build.raft.app.data.RaftSharedStoreRegistry.get(bridge) }
     val storeScope = storeScopeOverride ?: remember(pager.pageData.params.toString(), pager.pagerId) {
         pager.pageData.params.raftShellStoreScope(RaftShellStoreScope.Legacy.shellInstanceId)
@@ -3843,17 +3838,17 @@ internal fun MemberDetailPageContent(
     val bridge = Utils.bridgeModule(pager.pagerId)
     val errorStrings = localizedErrorPresentationStrings()
     val linkNavigator = rememberRaftLinkNavigator(pager, bridge)
-    val memberIdCopied = stringResource(MR.strings.member_notice_member_id_copied)
-    val diagnosticsCopied = stringResource(MR.strings.member_notice_diagnostics_copied)
-    val removeFromSettings = stringResource(MR.strings.member_notice_remove_from_settings)
-    val tabOrderSaveError = stringResource(MR.strings.member_error_tab_order_save)
-    val tabOrderSaveErrorTemplate = membersStringTemplate(MR.strings.member_error_tab_order_save_detail)
-    val tabOrderPermissionError = stringResource(MR.strings.member_error_tab_order_permission)
-    val reminderOpenError = stringResource(MR.strings.member_error_open_reminder)
-    val directMessageOpenError = stringResource(MR.strings.member_error_open_direct_message)
-    val directMessageOpenErrorTemplate = membersStringTemplate(MR.strings.member_error_open_direct_message_detail)
-    val directMessagePermissionError = stringResource(MR.strings.member_error_open_direct_message_permission)
-    val openProfileFailed = stringResource(MR.strings.member_error_open_profile)
+    val memberIdCopied = stringResource(Res.string.member_notice_member_id_copied)
+    val diagnosticsCopied = stringResource(Res.string.member_notice_diagnostics_copied)
+    val removeFromSettings = stringResource(Res.string.member_notice_remove_from_settings)
+    val tabOrderSaveError = stringResource(Res.string.member_error_tab_order_save)
+    val tabOrderSaveErrorTemplate = membersStringTemplate(Res.string.member_error_tab_order_save_detail)
+    val tabOrderPermissionError = stringResource(Res.string.member_error_tab_order_permission)
+    val reminderOpenError = stringResource(Res.string.member_error_open_reminder)
+    val directMessageOpenError = stringResource(Res.string.member_error_open_direct_message)
+    val directMessageOpenErrorTemplate = membersStringTemplate(Res.string.member_error_open_direct_message_detail)
+    val directMessagePermissionError = stringResource(Res.string.member_error_open_direct_message_permission)
+    val openProfileFailed = stringResource(Res.string.member_error_open_profile)
     val payload = embeddedPayload ?: remember(pager.pageData.params.toString()) {
         pager.pageData.params.toRaftMemberDetailPayload()
     }
@@ -4265,7 +4260,7 @@ internal fun MemberDetailPageContent(
                 MemberDetailLoadingPageShell(onBack = { closeDetail() })
             is MemberDetailRouteState.Error ->
                 MemberDetailErrorPageShell(
-                    title = stringResource(MR.strings.member_error_load_member),
+                    title = stringResource(Res.string.member_error_load_member),
                     detail = current.error.userFacingMessage(errorStrings),
                     onBack = { closeDetail() },
                     onRetry = { localAgentDetailRefreshKey += 1 }
@@ -4993,7 +4988,7 @@ private fun MemberDetailErrorPageShell(
             title = title,
             detail = detail,
             iconName = RaftLucideIconName.TriangleAlert,
-            actionLabel = stringResource(MR.strings.common_retry),
+            actionLabel = stringResource(Res.string.common_retry),
             onAction = onRetry,
             modifier = Modifier.fillMaxSize()
         )
@@ -5007,8 +5002,8 @@ private fun MemberDetailRoutePageShell(
 ) {
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         RaftTopPageHeader(
-            title = stringResource(MR.strings.member_role_member),
-            subtitle = stringResource(MR.strings.member_label_profile),
+            title = stringResource(Res.string.member_role_member),
+            subtitle = stringResource(Res.string.member_label_profile),
             iconName = RaftLucideIconName.Users,
             backgroundColor = RaftColor.SurfaceWhite,
             onBack = onBack
@@ -5475,19 +5470,19 @@ internal fun MembersListContent(
         canonicalMembersDisplayText(
             value = payload.title,
             canonicalDefault = "Members",
-            localizedDefault = stringResource(MR.strings.members_page_title)
+            localizedDefault = stringResource(Res.string.members_page_title)
         )
     val displayAgentsLabel =
         canonicalMembersDisplayText(
             value = payload.labels.agents,
             canonicalDefault = "AGENTS",
-            localizedDefault = stringResource(MR.strings.members_section_agents)
+            localizedDefault = stringResource(Res.string.members_section_agents)
         )
     val displayHumansLabel =
         canonicalMembersDisplayText(
             value = payload.labels.humans,
             canonicalDefault = "HUMANS",
-            localizedDefault = stringResource(MR.strings.members_section_humans)
+            localizedDefault = stringResource(Res.string.members_section_humans)
         )
     val groupedMembers = remember(payload.members) {
         payload.members.groupBy {
@@ -5521,12 +5516,12 @@ internal fun MembersListContent(
     // Runtime form v2: fields a rejected create pointed at (`/formValues/<field>`).
     var createAgentErrorFields by remember { mutableStateOf(emptySet<String>()) }
     var activeInviteHuman by remember(payload.instanceId) { mutableStateOf(false) }
-    val emptyResponseMessage = stringResource(MR.strings.member_error_empty_response)
-    val createAgentFailed = stringResource(MR.strings.member_error_create_agent)
-    val createAgentForbidden = stringResource(MR.strings.member_error_create_agent_forbidden)
-    val createAgentFormRefreshed = stringResource(MR.strings.agent_create_error_form_refreshed)
-    val createAgentNameTaken = stringResource(MR.strings.agent_create_error_name_taken)
-    val createAgentFormRefreshFailed = stringResource(MR.strings.agent_create_error_form_refresh_failed)
+    val emptyResponseMessage = stringResource(Res.string.member_error_empty_response)
+    val createAgentFailed = stringResource(Res.string.member_error_create_agent)
+    val createAgentForbidden = stringResource(Res.string.member_error_create_agent_forbidden)
+    val createAgentFormRefreshed = stringResource(Res.string.agent_create_error_form_refreshed)
+    val createAgentNameTaken = stringResource(Res.string.agent_create_error_name_taken)
+    val createAgentFormRefreshFailed = stringResource(Res.string.agent_create_error_form_refresh_failed)
     val canInviteHumans = payload.canInviteHumans && inviteHumanDialog != null
     LaunchedEffect(canInviteHumans) {
         if (!canInviteHumans) {
@@ -5699,7 +5694,7 @@ internal fun MembersListContent(
                                     {
                                         RaftSidebarSectionAction(
                                             glyph = RaftGlyph.Plus,
-                                            tooltip = stringResource(MR.strings.member_action_invite_human),
+                                            tooltip = stringResource(Res.string.member_action_invite_human),
                                             onClick = { activeInviteHuman = true }
                                         )
                                     }
@@ -5899,12 +5894,12 @@ internal class MembersAgentMigrationBinding(
 @Composable
 private fun membersAgentTurnStopMessages(): Map<AgentTurnStopFeedback, String> =
     mapOf(
-        AgentTurnStopFeedback.Interrupted to stringResource(MR.strings.agent_stop_turn_interrupted),
-        AgentTurnStopFeedback.Restarted to stringResource(MR.strings.agent_stop_turn_restarted),
-        AgentTurnStopFeedback.NotRunning to stringResource(MR.strings.agent_stop_turn_not_running),
-        AgentTurnStopFeedback.UpgradeRequired to stringResource(MR.strings.agent_stop_turn_upgrade_required),
-        AgentTurnStopFeedback.ComputerOffline to stringResource(MR.strings.agent_stop_turn_computer_offline),
-        AgentTurnStopFeedback.Failed to stringResource(MR.strings.agent_stop_turn_failed)
+        AgentTurnStopFeedback.Interrupted to stringResource(Res.string.agent_stop_turn_interrupted),
+        AgentTurnStopFeedback.Restarted to stringResource(Res.string.agent_stop_turn_restarted),
+        AgentTurnStopFeedback.NotRunning to stringResource(Res.string.agent_stop_turn_not_running),
+        AgentTurnStopFeedback.UpgradeRequired to stringResource(Res.string.agent_stop_turn_upgrade_required),
+        AgentTurnStopFeedback.ComputerOffline to stringResource(Res.string.agent_stop_turn_computer_offline),
+        AgentTurnStopFeedback.Failed to stringResource(Res.string.agent_stop_turn_failed)
     )
 
 private class MembersDetailActions(
@@ -6009,12 +6004,12 @@ private fun MembersDetailContent(
     val stableVisualCapture = presentation.stableVisualCapture
     val errorStrings = localizedErrorPresentationStrings()
     val detail = (agentDetailState as? MembersAgentDetailLoadState.Content)?.detail
-    val managementUnavailable = stringResource(MR.strings.member_error_action_unavailable)
-    val issueReportingUnavailable = stringResource(MR.strings.member_error_issue_unavailable)
-    val avatarEditingUnavailable = stringResource(MR.strings.member_error_avatar_edit_unavailable)
-    val permissionErrorTemplate = membersStringTemplate(MR.strings.member_error_permission)
-    val diagnosticsCopied = stringResource(MR.strings.member_action_diagnostics_copied)
-    val issueReported = stringResource(MR.strings.member_action_issue_reported)
+    val managementUnavailable = stringResource(Res.string.member_error_action_unavailable)
+    val issueReportingUnavailable = stringResource(Res.string.member_error_issue_unavailable)
+    val avatarEditingUnavailable = stringResource(Res.string.member_error_avatar_edit_unavailable)
+    val permissionErrorTemplate = membersStringTemplate(Res.string.member_error_permission)
+    val diagnosticsCopied = stringResource(Res.string.member_action_diagnostics_copied)
+    val issueReported = stringResource(Res.string.member_action_issue_reported)
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
     // task #256: observed-or-null drives the dot. The label-facing resolution below may
     // substitute the unknown placeholder, which is grey and would impersonate Offline.
@@ -6970,7 +6965,7 @@ private fun MembersDetailContent(
                     busy = lifecycleInFlight == action.actionKey,
                     archiveHasComputerWorkspace = archiveHasComputerWorkspace,
                     archiveComputerName = detail?.summary?.machineName?.takeIf { it.isNotBlank() }
-                        ?: stringResource(MR.strings.member_archive_unknown_computer),
+                        ?: stringResource(Res.string.member_archive_unknown_computer),
                     archiveWorkspaceChoice = archiveWorkspaceChoice,
                     onArchiveWorkspaceChoiceChange = { archiveWorkspaceChoice = it },
                     onConfirm = { runLifecycleAction(action, confirmed = true, workspaceChoice = archiveWorkspaceChoice) },
@@ -7018,7 +7013,7 @@ internal fun buildMembersManagementMenuItems(
     val stopTurnItem =
         MembersManagementMenuItemSpec(
             id = MEMBERS_STOP_TURN_MENU_ID,
-            label = MR.strings.agent_stop_turn.desc(),
+            label = Res.string.agent_stop_turn.desc(),
             icon = RaftLucideIconName.Square,
             enabled = !stopTurnInProgress
         ).takeIf { canStopTurn }
@@ -7028,8 +7023,8 @@ internal fun buildMembersManagementMenuItems(
         items += MembersManagementMenuItemSpec(
             id = primaryAction.actionKey,
             label = when (primaryAction) {
-                MembersAgentLifecycleAction.Start -> MR.strings.member_action_start_agent.desc()
-                MembersAgentLifecycleAction.Stop -> MR.strings.member_action_stop_agent.desc()
+                MembersAgentLifecycleAction.Start -> Res.string.member_action_start_agent.desc()
+                MembersAgentLifecycleAction.Stop -> Res.string.member_action_stop_agent.desc()
                 else -> primaryAction.label.desc()
             },
             icon = primaryAction.iconName,
@@ -7038,7 +7033,7 @@ internal fun buildMembersManagementMenuItems(
     }
     items += MembersManagementMenuItemSpec(
         id = MembersAgentLifecycleAction.Restart.actionKey,
-        label = MR.strings.member_label_restart_reset.desc(),
+        label = Res.string.member_label_restart_reset.desc(),
         icon = RaftLucideIconName.RotateCcw,
         enabled = !inProgress
     )
@@ -7105,8 +7100,8 @@ private fun MembersHumanDetailHeader(
         ) != MembersDirectMessageEligibility.Unavailable
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    val backLabel = stringResource(MR.strings.common_back)
-    val messageLabel = stringResource(MR.strings.member_label_message)
+    val backLabel = stringResource(Res.string.common_back)
+    val messageLabel = stringResource(Res.string.member_label_message)
     RaftTopPageHeader(
         title = member.displayName,
         backgroundColor = RaftColor.Canvas,
@@ -7188,7 +7183,7 @@ private fun MembersDetailHeader(
         rememberUpdatedState(onManagementMenuAnchorResolverReady)
     val headerMetaLabel =
         when {
-            deleted -> stringResource(MR.strings.member_status_deleted)
+            deleted -> stringResource(Res.string.member_status_deleted)
             member.kind == MemberKind.Agent ->
                 summary?.description?.takeIf { it.isNotBlank() }
                     ?: member.description?.takeIf { it.isNotBlank() }
@@ -7215,7 +7210,7 @@ private fun MembersDetailHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
-            RaftBackButton(onClick = onBack, label = stringResource(MR.strings.common_back))
+            RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_back))
             // The web's panel head shows the avatar only; it is changed from the profile hero.
             MembersRaftAvatar(
                 member = member,
@@ -7252,7 +7247,7 @@ private fun MembersDetailHeader(
                 ) {
                     RaftIconButton(
                         onClick = onOpenDirectMessage,
-                        tooltip = stringResource(MR.strings.member_label_message),
+                        tooltip = stringResource(Res.string.member_label_message),
                         variant = RaftButtonVariant.Ghost,
                         size = RaftIconButtonSize.Lg
                     ) {
@@ -7261,7 +7256,7 @@ private fun MembersDetailHeader(
                 } else if (directMessageEligibility != MembersDirectMessageEligibility.Unavailable) {
                     // A filled Button straight in the head ends on the content edge (raft-ui panelHeadEdges).
                     RaftButton(
-                        text = stringResource(MR.strings.member_label_message),
+                        text = stringResource(Res.string.member_label_message),
                         onClick = onOpenDirectMessage,
                         modifier = Modifier.padding(end = 7.dp),
                         leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.MessageSquare) }
@@ -7274,7 +7269,7 @@ private fun MembersDetailHeader(
                                 threeDotButtonAnchorResolver.resolve()
                             )
                         },
-                        tooltip = stringResource(MR.strings.tab_more),
+                        tooltip = stringResource(Res.string.tab_more),
                         variant = RaftButtonVariant.Ghost,
                         size = RaftIconButtonSize.Lg,
                         modifier =
@@ -7353,12 +7348,12 @@ internal fun membersAgentArchiveRequestBody(choice: AgentArchiveWorkspaceChoice)
 @Composable
 private fun membersLifecycleConfirmTitle(action: MembersAgentLifecycleAction, agentName: String): String =
     when (action) {
-        MembersAgentLifecycleAction.Stop -> stringResource(MR.strings.member_action_stop_agent)
+        MembersAgentLifecycleAction.Stop -> stringResource(Res.string.member_action_stop_agent)
         // task #515: the archive dialog's title carries the agent name, matching
         // web `agent.archive.title` ("Archive {name}?"); other actions keep the
         // action-label title.
         MembersAgentLifecycleAction.Delete ->
-            stringResource(MR.strings.member_archive_title).replace("%1\$s", agentName)
+            stringResource(Res.string.member_archive_title).replace("%1\$s", agentName)
         else -> action.localizedLabel()
     }
 
@@ -7366,11 +7361,11 @@ private fun membersLifecycleConfirmTitle(action: MembersAgentLifecycleAction, ag
 private fun membersLifecycleConfirmMessage(action: MembersAgentLifecycleAction, agentName: String): String =
     when (action) {
         MembersAgentLifecycleAction.Stop ->
-            stringResource(MR.strings.member_dialog_confirm_stop).replace("%1\$s", agentName)
+            stringResource(Res.string.member_dialog_confirm_stop).replace("%1\$s", agentName)
         MembersAgentLifecycleAction.Delete ->
-            stringResource(MR.strings.member_archive_description)
+            stringResource(Res.string.member_archive_description)
         MembersAgentLifecycleAction.UnassignMachine ->
-            stringResource(MR.strings.member_dialog_confirm_unassign).replace("%1\$s", agentName)
+            stringResource(Res.string.member_dialog_confirm_unassign).replace("%1\$s", agentName)
         else -> "Are you sure you want to ${action.localizedLabel().lowercase()} \"$agentName\"?"
     }
 
@@ -7406,28 +7401,28 @@ internal fun MembersLifecycleConfirmation(
             // destructive banner ONLY when "delete" is selected (the keep path
             // carries no warning at all).
             Text(
-                text = stringResource(MR.strings.member_archive_description),
+                text = stringResource(Res.string.member_archive_description),
                 style = RaftType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
                 color = RaftColor.TextBlack
             )
             if (archiveHasComputerWorkspace) {
                 Text(
-                    text = stringResource(MR.strings.member_archive_workspace_question),
+                    text = stringResource(Res.string.member_archive_workspace_question),
                     style = RaftType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
                     color = RaftColor.TextMutedGray
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                     MembersArchiveWorkspaceOption(
-                        label = stringResource(MR.strings.member_archive_option_keep),
-                        description = stringResource(MR.strings.member_archive_option_keep_desc)
+                        label = stringResource(Res.string.member_archive_option_keep),
+                        description = stringResource(Res.string.member_archive_option_keep_desc)
                             .replace("%1\$s", archiveComputerName),
                         selected = archiveWorkspaceChoice == AgentArchiveWorkspaceChoice.Keep,
                         enabled = !busy,
                         onSelect = { onArchiveWorkspaceChoiceChange(AgentArchiveWorkspaceChoice.Keep) }
                     )
                     MembersArchiveWorkspaceOption(
-                        label = stringResource(MR.strings.member_archive_option_delete),
-                        description = stringResource(MR.strings.member_archive_option_delete_desc)
+                        label = stringResource(Res.string.member_archive_option_delete),
+                        description = stringResource(Res.string.member_archive_option_delete_desc)
                             .replace("%1\$s", archiveComputerName),
                         selected = archiveWorkspaceChoice == AgentArchiveWorkspaceChoice.Delete,
                         enabled = !busy,
@@ -7438,7 +7433,7 @@ internal fun MembersLifecycleConfirmation(
             if (archiveWorkspaceChoice == AgentArchiveWorkspaceChoice.Delete && archiveHasComputerWorkspace) {
                 MembersLifecycleWarningBanner(
                     destructive = true,
-                    text = stringResource(MR.strings.member_archive_delete_warning)
+                    text = stringResource(Res.string.member_archive_delete_warning)
                 )
             }
         } else {
@@ -7449,7 +7444,7 @@ internal fun MembersLifecycleConfirmation(
         }
         RaftDialogFooter {
             RaftButton(
-                text = stringResource(MR.strings.common_cancel),
+                text = stringResource(Res.string.common_cancel),
                 enabled = !busy,
                 onClick = onCancel,
                 variant = RaftButtonVariant.Ghost,
@@ -7458,8 +7453,8 @@ internal fun MembersLifecycleConfirmation(
             RaftButton(
                 // #148: the confirm button says the verb only; the title names the agent.
                 text = when {
-                    isArchive -> stringResource(MR.strings.member_archive_confirm)
-                    action == MembersAgentLifecycleAction.Stop -> stringResource(MR.strings.member_action_stop_confirm)
+                    isArchive -> stringResource(Res.string.member_archive_confirm)
+                    action == MembersAgentLifecycleAction.Stop -> stringResource(Res.string.member_action_stop_confirm)
                     else -> membersLifecycleConfirmTitle(action, agentName)
                 },
                 loading = busy,
@@ -7539,15 +7534,15 @@ private fun membersArchiveLastErrorText(
     return if (archive.pendingOp == null) {
         when (code) {
             "ARCHIVE_WORKSPACE_MISSING" ->
-                stringResource(MR.strings.member_archive_error_workspace_missing)
+                stringResource(Res.string.member_archive_error_workspace_missing)
             "ARCHIVE_DELETE_UNCONFIRMED" ->
-                stringResource(MR.strings.member_archive_error_delete_unconfirmed)
-            else -> stringResource(MR.strings.member_archive_error_generic)
+                stringResource(Res.string.member_archive_error_delete_unconfirmed)
+            else -> stringResource(Res.string.member_archive_error_generic)
         }
     } else if (code == "ARCHIVE_DELETE_TIMED_OUT") {
-        stringResource(MR.strings.member_archive_still_deleting, computer)
+        stringResource(Res.string.member_archive_still_deleting, computer)
     } else {
-        stringResource(MR.strings.member_archive_retrying)
+        stringResource(Res.string.member_archive_retrying)
     }
 }
 
@@ -7558,9 +7553,9 @@ private fun membersArchiveLastErrorText(
 private fun membersArchiveDeleteErrorText(error: ScreenError): String =
     when (error.code) {
         "archive_migration_active" ->
-            stringResource(MR.strings.member_archive_error_migration_active)
+            stringResource(Res.string.member_archive_error_migration_active)
         else -> error.serverMessage?.takeIf { it.isNotBlank() }
-            ?: stringResource(MR.strings.member_archive_error_generic)
+            ?: stringResource(Res.string.member_archive_error_generic)
     }
 
 @Composable
@@ -7587,16 +7582,16 @@ private fun MembersAgentArchiveSection(
 
     val archive = (archiveState as? MembersAgentArchiveUiState.Loaded)?.archive
     val computer = archive?.machineName?.takeIf { it.isNotBlank() }
-        ?: stringResource(MR.strings.member_archive_unknown_computer)
+        ?: stringResource(Res.string.member_archive_unknown_computer)
     val workspaceText = when {
-        archive == null -> stringResource(MR.strings.member_archive_workspace_unknown)
+        archive == null -> stringResource(Res.string.member_archive_workspace_unknown)
         archive.pendingOp != null ->
-            stringResource(MR.strings.member_archive_workspace_deleting, computer)
+            stringResource(Res.string.member_archive_workspace_deleting, computer)
         archive.workspaceState == build.raft.app.data.AgentArchiveWorkspaceState.OnComputer ->
-            stringResource(MR.strings.member_archive_workspace_on_computer, computer)
+            stringResource(Res.string.member_archive_workspace_on_computer, computer)
         archive.workspaceState == build.raft.app.data.AgentArchiveWorkspaceState.Deleted ->
-            stringResource(MR.strings.member_archive_workspace_deleted)
-        else -> stringResource(MR.strings.member_archive_workspace_unknown)
+            stringResource(Res.string.member_archive_workspace_deleted)
+        else -> stringResource(Res.string.member_archive_workspace_unknown)
     }
     val archivedAtIso = archive?.archivedAt ?: fallbackArchivedAt
     val archivedAtText = archivedAtIso?.let {
@@ -7607,38 +7602,38 @@ private fun MembersAgentArchiveSection(
         archive.workspaceState == build.raft.app.data.AgentArchiveWorkspaceState.OnComputer && !deleting
 
     MembersDetailSection(
-        title = stringResource(MR.strings.member_archive_section_title)
+        title = stringResource(Res.string.member_archive_section_title)
     ) {
         if (archiveState == MembersAgentArchiveUiState.Failed) {
             MembersLifecycleWarningBanner(
                 destructive = false,
-                text = stringResource(MR.strings.member_archive_load_failed)
+                text = stringResource(Res.string.member_archive_load_failed)
             )
         }
         if (archiveState == MembersAgentArchiveUiState.Failed || archive == null) {
             // Fallback: the same block the pre-archive detail rendered.
             MembersDetailField(
-                stringResource(MR.strings.member_label_status),
-                stringResource(MR.strings.member_status_deleted)
+                stringResource(Res.string.member_label_status),
+                stringResource(Res.string.member_status_deleted)
             )
             MembersDetailField(
-                stringResource(MR.strings.member_label_deleted_at),
+                stringResource(Res.string.member_label_deleted_at),
                 archivedAtIso.orDash()
             )
         } else {
             val byName = archivedByName
             MembersDetailField(
-                stringResource(MR.strings.member_archive_archived_at),
+                stringResource(Res.string.member_archive_archived_at),
                 if (byName != null && archivedAtText != null) {
-                    stringResource(MR.strings.member_archive_archived_at_by, archivedAtText, byName)
+                    stringResource(Res.string.member_archive_archived_at_by, archivedAtText, byName)
                 } else {
                     archivedAtText.orDash()
                 }
             )
-            MembersDetailField(stringResource(MR.strings.member_archive_workspace_label), workspaceText)
+            MembersDetailField(stringResource(Res.string.member_archive_workspace_label), workspaceText)
             if (archive.waitingForComputer) {
                 Text(
-                    text = stringResource(MR.strings.member_archive_waiting_for_computer, computer),
+                    text = stringResource(Res.string.member_archive_waiting_for_computer, computer),
                     style = RaftType.Caption,
                     color = RaftColor.TextMutedGray
                 )
@@ -7657,7 +7652,7 @@ private fun MembersAgentArchiveSection(
         }
         if (canDeleteWorkspace) {
             RaftButton(
-                text = stringResource(MR.strings.member_archive_action_delete_workspace),
+                text = stringResource(Res.string.member_archive_action_delete_workspace),
                 onClick = { confirmDelete = true },
                 enabled = !deleting,
                 modifier = Modifier.fillMaxWidth(),
@@ -7692,27 +7687,27 @@ private fun MembersAgentArchiveSection(
         // Web `ConfirmDialog`: action-label title, one message line, cancel +
         // danger confirm (the irreversible red lives here, not on the trigger).
         RaftUnifiedDialog(
-            title = stringResource(MR.strings.member_archive_action_delete_workspace),
+            title = stringResource(Res.string.member_archive_action_delete_workspace),
             dismissEnabled = !deleting,
             contentPadding = 24.dp,
             onDismiss = { confirmDelete = false }
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 Text(
-                    text = stringResource(MR.strings.member_archive_confirm_delete_workspace, computer),
+                    text = stringResource(Res.string.member_archive_confirm_delete_workspace, computer),
                     style = RaftType.Caption.copy(fontSize = 14.sp, lineHeight = 20.sp),
                     color = RaftColor.TextBlack
                 )
                 RaftDialogFooter {
                     RaftButton(
-                        text = stringResource(MR.strings.common_cancel),
+                        text = stringResource(Res.string.common_cancel),
                         enabled = !deleting,
                         onClick = { confirmDelete = false },
                         variant = RaftButtonVariant.Ghost,
                         size = RaftButtonSize.Lg
                     )
                     RaftButton(
-                        text = stringResource(MR.strings.member_archive_delete_workspace_confirm),
+                        text = stringResource(Res.string.member_archive_delete_workspace_confirm),
                         loading = deleting,
                         variant = RaftButtonVariant.Danger,
                         size = RaftButtonSize.Lg,
@@ -7791,7 +7786,7 @@ internal fun MembersAgentIssueReportDialog(
         mutableStateOf(runtimeTranscriptAvailable)
     }
     RaftUnifiedDialog(
-        title = stringResource(MR.strings.member_report_issue_title).raftDisplayUppercase(),
+        title = stringResource(Res.string.member_report_issue_title).raftDisplayUppercase(),
         dismissEnabled = !busy,
         keyboardAvoidanceEnabled = true,
         maxWidth = 384.dp,
@@ -7813,7 +7808,7 @@ internal fun MembersAgentIssueReportDialog(
                             .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    RaftAppSectionEyebrow(label = stringResource(MR.strings.member_report_issue_agent_label))
+                    RaftAppSectionEyebrow(label = stringResource(Res.string.member_report_issue_agent_label))
                     Text(
                         text = agentName,
                         style = RaftType.ButtonBold,
@@ -7823,7 +7818,7 @@ internal fun MembersAgentIssueReportDialog(
             }
             item {
                 RaftField(
-                    label = stringResource(MR.strings.member_report_issue_description_label),
+                    label = stringResource(Res.string.member_report_issue_description_label),
                     modifier = Modifier.fillMaxWidth(),
                     optional = true,
                     enabled = !busy
@@ -7831,40 +7826,40 @@ internal fun MembersAgentIssueReportDialog(
                     RaftTextarea(
                         value = description,
                         onValueChange = { description = it },
-                        placeholder = stringResource(MR.strings.member_report_issue_description_placeholder)
+                        placeholder = stringResource(Res.string.member_report_issue_description_placeholder)
                     )
                 }
             }
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    RaftAppSectionEyebrow(label = stringResource(MR.strings.member_report_issue_include))
+                    RaftAppSectionEyebrow(label = stringResource(Res.string.member_report_issue_include))
                     MembersAgentIssueReportOption(
-                        label = stringResource(MR.strings.member_report_issue_recent_messages),
+                        label = stringResource(Res.string.member_report_issue_recent_messages),
                         checked = includeRecentMessages,
                         enabled = !busy,
                         onCheckedChange = { includeRecentMessages = it }
                     )
                     MembersAgentIssueReportOption(
-                        label = stringResource(MR.strings.member_report_issue_live_activity),
+                        label = stringResource(Res.string.member_report_issue_live_activity),
                         checked = includeLiveActivity,
                         enabled = !busy,
                         onCheckedChange = { includeLiveActivity = it }
                     )
                     MembersAgentIssueReportOption(
-                        label = stringResource(MR.strings.member_report_issue_activity_history),
+                        label = stringResource(Res.string.member_report_issue_activity_history),
                         checked = includeActivityHistory,
                         enabled = !busy,
                         onCheckedChange = { includeActivityHistory = it }
                     )
                     MembersAgentIssueReportOption(
-                        label = stringResource(MR.strings.member_report_issue_runtime_transcript),
+                        label = stringResource(Res.string.member_report_issue_runtime_transcript),
                         checked = includeRuntimeTranscript,
                         enabled = runtimeTranscriptAvailable && !busy,
                         onCheckedChange = { includeRuntimeTranscript = it }
                     )
                     if (!runtimeTranscriptAvailable) {
                         Text(
-                            text = stringResource(MR.strings.member_report_issue_runtime_transcript_unavailable),
+                            text = stringResource(Res.string.member_report_issue_runtime_transcript_unavailable),
                             modifier = Modifier.padding(start = 26.dp),
                             style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
                             color = RaftColor.TextMutedGray
@@ -7892,7 +7887,7 @@ internal fun MembersAgentIssueReportDialog(
                             color = RaftColor.TextBlackArgb
                         )
                         Text(
-                            text = stringResource(MR.strings.member_report_issue_disclosure),
+                            text = stringResource(Res.string.member_report_issue_disclosure),
                             modifier = Modifier.weight(1f),
                             style = RaftType.Caption.copy(fontSize = 13.sp, lineHeight = 18.sp),
                             color = RaftColor.TextBlack
@@ -7910,7 +7905,7 @@ internal fun MembersAgentIssueReportDialog(
                             size = 16.dp
                         )
                         Text(
-                            text = stringResource(MR.strings.member_report_issue_consent),
+                            text = stringResource(Res.string.member_report_issue_consent),
                             modifier = Modifier.weight(1f),
                             style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
                             color = RaftColor.TextBlack
@@ -7921,7 +7916,7 @@ internal fun MembersAgentIssueReportDialog(
             errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
                 item {
                     Text(
-                        text = stringResource(MR.strings.member_report_issue_failed, message),
+                        text = stringResource(Res.string.member_report_issue_failed, message),
                         style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
                         color = RaftColor.AccentRed
                     )
@@ -7930,7 +7925,7 @@ internal fun MembersAgentIssueReportDialog(
         }
         RaftDialogFooter {
             RaftButton(
-                text = stringResource(MR.strings.common_cancel),
+                text = stringResource(Res.string.common_cancel),
                 enabled = !busy,
                 onClick = onDismiss,
                 variant = RaftButtonVariant.Ghost,
@@ -7939,9 +7934,9 @@ internal fun MembersAgentIssueReportDialog(
             RaftButton(
                 text =
                     if (busy) {
-                        stringResource(MR.strings.member_report_issue_submitting)
+                        stringResource(Res.string.member_report_issue_submitting)
                     } else {
-                        stringResource(MR.strings.member_report_issue_submit)
+                        stringResource(Res.string.member_report_issue_submit)
                     },
                 leadingIcon = { RaftSlotIcon(RaftLucideIconName.Bug) },
                 enabled = consented,
@@ -8031,7 +8026,7 @@ private fun MembersAgentIssueReportReceiptDialog(
     onDismiss: () -> Unit
 ) {
     RaftUnifiedDialog(
-        title = stringResource(MR.strings.member_report_issue_success_title).raftDisplayUppercase(),
+        title = stringResource(Res.string.member_report_issue_success_title).raftDisplayUppercase(),
         maxWidth = 384.dp,
         contentPadding = 24.dp,
         titleFontSize = 18,
@@ -8061,13 +8056,13 @@ private fun MembersAgentIssueReportReceiptDialog(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = stringResource(MR.strings.member_report_issue_success_body),
+                    text = stringResource(Res.string.member_report_issue_success_body),
                     style = RaftType.ButtonBold,
                     color = RaftColor.TextBlack,
                     textAlign = TextAlign.Center
                 )
                 Text(
-                    text = stringResource(MR.strings.member_report_issue_success_hint),
+                    text = stringResource(Res.string.member_report_issue_success_hint),
                     style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 17.sp),
                     color = RaftColor.TextBlack.copy(alpha = 0.6f),
                     textAlign = TextAlign.Center
@@ -8080,34 +8075,34 @@ private fun MembersAgentIssueReportReceiptDialog(
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                RaftAppSectionEyebrow(label = stringResource(MR.strings.member_report_issue_reference_label))
+                RaftAppSectionEyebrow(label = stringResource(Res.string.member_report_issue_reference_label))
                 MembersAgentIssueReportReferenceRow(
-                    label = stringResource(MR.strings.member_report_issue_report_id),
+                    label = stringResource(Res.string.member_report_issue_report_id),
                     value = receipt.reportId
                 )
                 receipt.artifactId?.takeIf { it.isNotBlank() }?.let { artifactId ->
                     MembersAgentIssueReportReferenceRow(
-                        label = stringResource(MR.strings.member_report_issue_artifact_id),
+                        label = stringResource(Res.string.member_report_issue_artifact_id),
                         value = artifactId
                     )
                 }
                 MembersAgentIssueReportReferenceRow(
-                    label = stringResource(MR.strings.member_report_issue_server_id),
+                    label = stringResource(Res.string.member_report_issue_server_id),
                     value = receipt.serverId
                 )
                 if (receipt.transcriptRequested) {
                     MembersAgentIssueReportReferenceRow(
-                        label = stringResource(MR.strings.member_report_issue_runtime_transcript_label),
-                        value = stringResource(MR.strings.member_report_issue_runtime_transcript_queued)
+                        label = stringResource(Res.string.member_report_issue_runtime_transcript_label),
+                        value = stringResource(Res.string.member_report_issue_runtime_transcript_queued)
                     )
                 }
                 // Web ReportIssueDialog: outline (default) md inside the receipt card.
                 RaftButton(
                     text =
                         if (referenceCopied) {
-                            stringResource(MR.strings.member_report_issue_reference_copied)
+                            stringResource(Res.string.member_report_issue_reference_copied)
                         } else {
-                            stringResource(MR.strings.member_report_issue_copy_reference)
+                            stringResource(Res.string.member_report_issue_copy_reference)
                         },
                     leadingIcon = {
                         RaftSlotIcon(if (referenceCopied) RaftLucideIconName.Check else RaftLucideIconName.Copy)
@@ -8119,7 +8114,7 @@ private fun MembersAgentIssueReportReceiptDialog(
             }
             RaftDialogFooter {
                 RaftButton(
-                    text = stringResource(MR.strings.common_done),
+                    text = stringResource(Res.string.common_done),
                     onClick = onDismiss,
                     size = RaftButtonSize.Lg
                 )
@@ -8139,7 +8134,7 @@ internal fun MembersRestartResetDialog(
     onDismiss: () -> Unit
 ) {
     RaftUnifiedDialog(
-        title = stringResource(MR.strings.member_dialog_restart_title).replace("%1\$s", agentName),
+        title = stringResource(Res.string.member_dialog_restart_title).replace("%1\$s", agentName),
         onDismiss = onDismiss,
         dismissEnabled = !busy,
         maxWidth = 520.dp,
@@ -8166,7 +8161,7 @@ internal fun MembersRestartResetDialog(
             errorMessage?.takeIf { it.isNotBlank() }?.let {
                 item {
                     RaftBanner(
-                        description = stringResource(MR.strings.member_error_reset_agent, it),
+                        description = stringResource(Res.string.member_error_reset_agent, it),
                         status = RaftBannerStatus.Destructive,
                         size = RaftBannerSize.Sm
                     )
@@ -8188,7 +8183,7 @@ internal fun MembersRestartResetDialog(
             if (selectedAction == MembersAgentLifecycleAction.ResetFull) {
                 item {
                     RaftBanner(
-                        description = stringResource(MR.strings.member_dialog_full_reset_warning),
+                        description = stringResource(Res.string.member_dialog_full_reset_warning),
                         status = RaftBannerStatus.Destructive,
                         size = RaftBannerSize.Sm
                     )
@@ -8199,7 +8194,7 @@ internal fun MembersRestartResetDialog(
         // right-aligned buttons at their natural width.
         RaftDialogFooter {
             RaftButton(
-                text = stringResource(MR.strings.common_cancel),
+                text = stringResource(Res.string.common_cancel),
                 onClick = onDismiss,
                 variant = RaftButtonVariant.Ghost,
                 size = RaftButtonSize.Lg,
@@ -8211,7 +8206,7 @@ internal fun MembersRestartResetDialog(
                 variant = selectedAction.restartResetConfirmVariant(),
                 size = RaftButtonSize.Lg,
                 loading = busy,
-                loadingLabel = stringResource(MR.strings.member_action_restarting),
+                loadingLabel = stringResource(Res.string.member_action_restarting),
                 leadingIcon = {
                     RaftLucideIcon(
                         RaftLucideIconName.RotateCcw,
@@ -8232,18 +8227,18 @@ private fun MembersAgentLifecycleAction.isRestartResetDialogAction(): Boolean =
 @Composable
 private fun MembersAgentLifecycleAction.restartResetTitle(): String =
     when (this) {
-        MembersAgentLifecycleAction.Restart -> stringResource(MR.strings.member_action_restart_agent)
-        MembersAgentLifecycleAction.ResetSession -> stringResource(MR.strings.member_action_restart_session)
-        MembersAgentLifecycleAction.ResetFull -> stringResource(MR.strings.member_action_full_reset_restart)
+        MembersAgentLifecycleAction.Restart -> stringResource(Res.string.member_action_restart_agent)
+        MembersAgentLifecycleAction.ResetSession -> stringResource(Res.string.member_action_restart_session)
+        MembersAgentLifecycleAction.ResetFull -> stringResource(Res.string.member_action_full_reset_restart)
         else -> localizedLabel()
     }
 
 @Composable
 private fun MembersAgentLifecycleAction.restartResetButtonLabel(): String =
     when (this) {
-        MembersAgentLifecycleAction.Restart -> stringResource(MR.strings.member_action_restart_confirm)
-        MembersAgentLifecycleAction.ResetSession -> stringResource(MR.strings.member_action_restart_session)
-        MembersAgentLifecycleAction.ResetFull -> stringResource(MR.strings.member_action_full_reset_restart)
+        MembersAgentLifecycleAction.Restart -> stringResource(Res.string.member_action_restart_confirm)
+        MembersAgentLifecycleAction.ResetSession -> stringResource(Res.string.member_action_restart_session)
+        MembersAgentLifecycleAction.ResetFull -> stringResource(Res.string.member_action_full_reset_restart)
         else -> localizedLabel()
     }
 
@@ -8251,11 +8246,11 @@ private fun MembersAgentLifecycleAction.restartResetButtonLabel(): String =
 private fun MembersAgentLifecycleAction.restartResetDescription(): String =
     when (this) {
         MembersAgentLifecycleAction.Restart ->
-            stringResource(MR.strings.member_dialog_restart_description)
+            stringResource(Res.string.member_dialog_restart_description)
         MembersAgentLifecycleAction.ResetSession ->
-            stringResource(MR.strings.member_dialog_reset_session_description)
+            stringResource(Res.string.member_dialog_reset_session_description)
         MembersAgentLifecycleAction.ResetFull ->
-            stringResource(MR.strings.member_dialog_full_reset_description)
+            stringResource(Res.string.member_dialog_full_reset_description)
         else -> ""
     }
 
@@ -8375,15 +8370,15 @@ private fun MembersAgentDetailStateNotice(
     val errorStrings = localizedErrorPresentationStrings()
     val message =
         when (state) {
-            MembersAgentDetailLoadState.Loading -> stringResource(MR.strings.member_state_loading_agent_profile)
-            MembersAgentDetailLoadState.Empty -> stringResource(MR.strings.member_state_agent_profile_unavailable)
+            MembersAgentDetailLoadState.Loading -> stringResource(Res.string.member_state_loading_agent_profile)
+            MembersAgentDetailLoadState.Empty -> stringResource(Res.string.member_state_agent_profile_unavailable)
             is MembersAgentDetailLoadState.Error ->
-                "${stringResource(MR.strings.member_error_load_agent_profile)}: ${state.error.userFacingMessage(errorStrings)}"
+                "${stringResource(Res.string.member_error_load_agent_profile)}: ${state.error.userFacingMessage(errorStrings)}"
             is MembersAgentDetailLoadState.NoPermission ->
-                "${stringResource(MR.strings.member_error_private_surfaces_hidden)}: ${state.blocker.userFacingMessage(errorStrings)}"
+                "${stringResource(Res.string.member_error_private_surfaces_hidden)}: ${state.blocker.userFacingMessage(errorStrings)}"
             MembersAgentDetailLoadState.Idle -> null
             is MembersAgentDetailLoadState.Content ->
-                if (state.refreshing) stringResource(MR.strings.member_state_refreshing_agent_profile) else null
+                if (state.refreshing) stringResource(Res.string.member_state_refreshing_agent_profile) else null
         }
     val resolved = message ?: return
     // raft-ui Banner (sm): info while loading, warning when the profile can't be shown.
@@ -8412,7 +8407,7 @@ private fun MembersAgentRuntimeErrorBanner(
 ) {
     // raft-ui PanelNotice under the header: the runtime error, then Copy Info and View Logs.
     RaftPanelNotice(
-        message = if (canViewPrivate) errorText else stringResource(MR.strings.member_state_agent_error),
+        message = if (canViewPrivate) errorText else stringResource(Res.string.member_state_agent_error),
         modifier = modifier,
         status = RaftBannerStatus.Warning,
         // The error text gets the full width and up to 4 lines; the actions go underneath.
@@ -8421,13 +8416,13 @@ private fun MembersAgentRuntimeErrorBanner(
         actions = if (canViewPrivate) {
             {
                 RaftButton(
-                    text = stringResource(MR.strings.member_action_copy_info),
+                    text = stringResource(Res.string.member_action_copy_info),
                     onClick = onCopyInfo,
                     variant = RaftButtonVariant.Ghost
                 )
                 if (showViewLogs) {
                     RaftButton(
-                        text = stringResource(MR.strings.member_action_view_logs),
+                        text = stringResource(Res.string.member_action_view_logs),
                         onClick = onViewLogs,
                         variant = RaftButtonVariant.Ghost
                     )
@@ -8608,7 +8603,7 @@ private fun MembersHumanProfileSummary(
                 }
                 if (isSelf) {
                     RaftBadge(
-                        text = stringResource(MR.strings.member_label_you_suffix),
+                        text = stringResource(Res.string.member_label_you_suffix),
                         appearance = RaftBadgeAppearance.Outline
                     )
                 }
@@ -8622,9 +8617,9 @@ private fun MembersHumanDescriptionSection(member: MemberProfile) {
     val colors = RaftTheme.colors
     val description = member.description?.takeIf { it.isNotBlank() }
     // Web: eyebrow `mb-1`, then `text-callout text-foreground-muted`; the empty state is hint ink.
-    MembersHumanSection(title = stringResource(MR.strings.member_section_description), titleGap = 4.dp) {
+    MembersHumanSection(title = stringResource(Res.string.member_section_description), titleGap = 4.dp) {
         RaftText(
-            text = description ?: stringResource(MR.strings.member_state_no_description),
+            text = description ?: stringResource(Res.string.member_state_no_description),
             style = RaftTheme.typography.callout,
             color = if (description == null) colors.foregroundHint else colors.foregroundMuted
         )
@@ -8647,8 +8642,8 @@ private fun MembersHumanInfoSection(
     val joinedDate = member.joinedAt.membersJoinedDateOrNull(timeContext)
     val joined = joinedDate?.let { date ->
         stringResource(
-            MR.strings.member_joined_date,
-            membersJoinedMonthLabel(stringResource(MR.strings.member_joined_date_months), date.month),
+            Res.string.member_joined_date,
+            membersJoinedMonthLabel(stringResource(Res.string.member_joined_date_months), date.month),
             date.day.toString(),
             date.year.toString()
         )
@@ -8665,8 +8660,8 @@ private fun MembersHumanInfoSection(
     var roleError by remember(member.id.value) { mutableStateOf<String?>(null) }
     var roleHelpOpen by remember(member.id.value) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val permissionErrorTemplate = membersStringTemplate(MR.strings.member_error_permission)
-    val saveErrorTemplate = membersStringTemplate(MR.strings.member_error_save)
+    val permissionErrorTemplate = membersStringTemplate(Res.string.member_error_permission)
+    val saveErrorTemplate = membersStringTemplate(Res.string.member_error_save)
     val editableRoles = membersEditableHumanServerRoles(
         actorRole = actorRole,
         accessMode = accessMode,
@@ -8683,15 +8678,15 @@ private fun MembersHumanInfoSection(
         serverRole = displayedRole?.wireValue ?: member.serverRole,
         roleDescription = member.roleDescription
     )
-    val roleHelpLabel = stringResource(MR.strings.member_title_human_roles)
-    val editRoleLabel = stringResource(MR.strings.member_action_edit_role)
-    MembersHumanSection(title = stringResource(MR.strings.member_section_info)) {
+    val roleHelpLabel = stringResource(Res.string.member_title_human_roles)
+    val editRoleLabel = stringResource(Res.string.member_action_edit_role)
+    MembersHumanSection(title = stringResource(Res.string.member_section_info)) {
         RaftDescriptionList {
             Item(
                 term = if (departure != null) {
-                    stringResource(MR.strings.member_label_status)
+                    stringResource(Res.string.member_label_status)
                 } else {
-                    stringResource(MR.strings.member_label_role)
+                    stringResource(Res.string.member_label_role)
                 },
                 termAccessory = if (departure != null) {
                     null
@@ -8809,12 +8804,12 @@ private fun MembersHumanInfoSection(
                 }
             }
             member.email?.takeIf { it.isNotBlank() }?.let { email ->
-                Item(term = stringResource(MR.strings.member_label_email)) {
+                Item(term = stringResource(Res.string.member_label_email)) {
                     RaftDescriptionValue(email)
                 }
             }
             joined?.takeIf { it.isNotBlank() }?.let { joinedText ->
-                Item(term = stringResource(MR.strings.member_label_joined)) {
+                Item(term = stringResource(Res.string.member_label_joined)) {
                     RaftDescriptionValue(joinedText, mono = true)
                 }
             }
@@ -8828,24 +8823,24 @@ private fun MembersHumanInfoSection(
 @Composable
 private fun MembersHumanDeparture.localizedLabel(): String =
     when (this) {
-        MembersHumanDeparture.Left -> stringResource(MR.strings.member_status_left)
-        MembersHumanDeparture.Removed -> stringResource(MR.strings.member_role_removed)
+        MembersHumanDeparture.Left -> stringResource(Res.string.member_status_left)
+        MembersHumanDeparture.Removed -> stringResource(Res.string.member_role_removed)
     }
 
 @Composable
 private fun MembersHumanRoleBadge.localizedLabel(): String =
     when (this) {
-        MembersHumanRoleBadge.Owner -> stringResource(MR.strings.member_role_owner)
-        MembersHumanRoleBadge.Admin -> stringResource(MR.strings.member_role_admin)
-        MembersHumanRoleBadge.Member -> stringResource(MR.strings.member_role_member)
-        MembersHumanRoleBadge.Guest -> stringResource(MR.strings.channel_member_role_guest)
-        MembersHumanRoleBadge.Unknown -> stringResource(MR.strings.member_role_unknown)
+        MembersHumanRoleBadge.Owner -> stringResource(Res.string.member_role_owner)
+        MembersHumanRoleBadge.Admin -> stringResource(Res.string.member_role_admin)
+        MembersHumanRoleBadge.Member -> stringResource(Res.string.member_role_member)
+        MembersHumanRoleBadge.Guest -> stringResource(Res.string.channel_member_role_guest)
+        MembersHumanRoleBadge.Unknown -> stringResource(Res.string.member_role_unknown)
     }
 
 @Composable
 private fun MembersHumanRoleHelpDialog(onDismiss: () -> Unit) {
     RaftUnifiedDialog(
-        title = stringResource(MR.strings.member_title_human_roles),
+        title = stringResource(Res.string.member_title_human_roles),
         onDismiss = onDismiss,
         // Web RolePermissionHelpDialog: DialogCard max-w-md, rows stack-y-2.
         maxWidth = 448.dp
@@ -8855,19 +8850,19 @@ private fun MembersHumanRoleHelpDialog(onDismiss: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             MembersAgentRoleHelpRow(
-                role = stringResource(MR.strings.member_role_owner),
-                summary = stringResource(MR.strings.member_roles_help_owner_summary),
-                details = stringResource(MR.strings.member_roles_help_owner_details)
+                role = stringResource(Res.string.member_role_owner),
+                summary = stringResource(Res.string.member_roles_help_owner_summary),
+                details = stringResource(Res.string.member_roles_help_owner_details)
             )
             MembersAgentRoleHelpRow(
-                role = stringResource(MR.strings.member_role_admin),
-                summary = stringResource(MR.strings.member_roles_help_admin_summary),
-                details = stringResource(MR.strings.member_roles_help_human_admin_details)
+                role = stringResource(Res.string.member_role_admin),
+                summary = stringResource(Res.string.member_roles_help_admin_summary),
+                details = stringResource(Res.string.member_roles_help_human_admin_details)
             )
             MembersAgentRoleHelpRow(
-                role = stringResource(MR.strings.member_role_member),
-                summary = stringResource(MR.strings.member_roles_help_member_summary),
-                details = stringResource(MR.strings.member_roles_help_human_member_details)
+                role = stringResource(Res.string.member_role_member),
+                summary = stringResource(Res.string.member_roles_help_member_summary),
+                details = stringResource(Res.string.member_roles_help_human_member_details)
             )
         }
     }
@@ -8918,7 +8913,7 @@ internal fun MembersServerRoleEditor(
         }
         if (expanded && enabled) {
             RaftUiSelectionPopover(
-                title = stringResource(MR.strings.member_label_role),
+                title = stringResource(Res.string.member_label_role),
                 options = options,
                 selectedId = selectedId,
                 modifier = Modifier.widthIn(min = 160.dp),
@@ -8929,14 +8924,14 @@ internal fun MembersServerRoleEditor(
         // Web HumanDetailPanel role editor: accent md Save, default md Cancel.
         Row(horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
             RaftButton(
-                text = if (saving) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
+                text = if (saving) stringResource(Res.string.member_action_saving) else stringResource(Res.string.common_save),
                 onClick = onSave,
                 enabled = enabled && saveEnabled,
                 variant = RaftButtonVariant.Primary,
                 size = RaftButtonSize.Md
             )
             RaftButton(
-                text = stringResource(MR.strings.common_cancel),
+                text = stringResource(Res.string.common_cancel),
                 onClick = onCancel,
                 enabled = enabled,
                 variant = RaftButtonVariant.Default,
@@ -8997,7 +8992,7 @@ internal fun MembersAgentServerRoleChip(display: MembersAgentServerRoleDisplay) 
 @Composable
 private fun MembersAgentRoleHelpDialog(onDismiss: () -> Unit) {
     RaftUnifiedDialog(
-        title = stringResource(MR.strings.member_title_agent_roles).raftDisplayUppercase(),
+        title = stringResource(Res.string.member_title_agent_roles).raftDisplayUppercase(),
         onDismiss = onDismiss,
         // Web RolePermissionHelpDialog: DialogCard max-w-md, rows space-y-3.
         maxWidth = 448.dp
@@ -9007,14 +9002,14 @@ private fun MembersAgentRoleHelpDialog(onDismiss: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             MembersAgentRoleHelpRow(
-                role = stringResource(MR.strings.member_role_admin),
-                summary = stringResource(MR.strings.member_roles_help_admin_summary),
-                details = stringResource(MR.strings.member_roles_help_agent_admin_details)
+                role = stringResource(Res.string.member_role_admin),
+                summary = stringResource(Res.string.member_roles_help_admin_summary),
+                details = stringResource(Res.string.member_roles_help_agent_admin_details)
             )
             MembersAgentRoleHelpRow(
-                role = stringResource(MR.strings.member_role_member),
-                summary = stringResource(MR.strings.member_roles_help_member_summary),
-                details = stringResource(MR.strings.member_roles_help_agent_member_details)
+                role = stringResource(Res.string.member_role_member),
+                summary = stringResource(Res.string.member_roles_help_member_summary),
+                details = stringResource(Res.string.member_roles_help_agent_member_details)
             )
         }
     }
@@ -9073,12 +9068,12 @@ private fun MembersHumanCreatedAgentsSection(
 ) {
     val createdAgents = member.createdAgents
     MembersHumanSection(
-        title = stringResource(MR.strings.member_section_created_agents),
+        title = stringResource(Res.string.member_section_created_agents),
         count = createdAgents.size.toString()
     ) {
         if (createdAgents.isEmpty()) {
             RaftText(
-                text = stringResource(MR.strings.member_state_no_created_agents),
+                text = stringResource(Res.string.member_state_no_created_agents),
                 style = RaftTheme.typography.callout,
                 color = RaftTheme.colors.foregroundHint
             )
@@ -9102,10 +9097,10 @@ private fun MembersHumanCreatedAgentsSection(
 
 @Composable
 private fun MembersHumanActionsSection(onRemoveMember: () -> Unit) {
-    MembersHumanSection(title = stringResource(MR.strings.member_section_actions)) {
+    MembersHumanSection(title = stringResource(Res.string.member_section_actions)) {
         // Web: raft-ui Button size="lg" variant="danger", full width, Trash2 18.
         RaftButton(
-            text = stringResource(MR.strings.member_action_remove_member),
+            text = stringResource(Res.string.member_action_remove_member),
             onClick = onRemoveMember,
             variant = RaftButtonVariant.Danger,
             size = RaftButtonSize.Lg,
@@ -9184,12 +9179,12 @@ private val MembersMachineStatusLineHeight = 16.sp
  */
 internal fun MembersMachineRunLabel.resource(): StringResource =
     when (this) {
-        is MembersMachineRunLabel.ComputerVersion -> MR.strings.member_machine_run_computer_version
-        is MembersMachineRunLabel.DaemonVersion -> MR.strings.member_machine_run_daemon_version
-        MembersMachineRunLabel.ComputerOnline -> MR.strings.member_machine_run_computer_online
-        MembersMachineRunLabel.DaemonOnline -> MR.strings.member_machine_run_daemon_online
-        MembersMachineRunLabel.ComputerOffline -> MR.strings.member_machine_run_computer_offline
-        MembersMachineRunLabel.DaemonOffline -> MR.strings.member_machine_run_daemon_offline
+        is MembersMachineRunLabel.ComputerVersion -> Res.string.member_machine_run_computer_version
+        is MembersMachineRunLabel.DaemonVersion -> Res.string.member_machine_run_daemon_version
+        MembersMachineRunLabel.ComputerOnline -> Res.string.member_machine_run_computer_online
+        MembersMachineRunLabel.DaemonOnline -> Res.string.member_machine_run_daemon_online
+        MembersMachineRunLabel.ComputerOffline -> Res.string.member_machine_run_computer_offline
+        MembersMachineRunLabel.DaemonOffline -> Res.string.member_machine_run_daemon_offline
     }
 
 /** The single `%1$s` argument for the two version labels; null for the four argument-free ones. */
@@ -9456,11 +9451,11 @@ private fun MembersAgentProfileFieldsSection(
     val errorStrings = edit.errorStrings
     val scope = rememberCoroutineScope()
     val currentProfileEditAuthority by rememberUpdatedState(agentProfileEditAuthority)
-    val profileEditingUnavailable = stringResource(MR.strings.member_error_profile_edit_unavailable)
-    val displayNameRequired = stringResource(MR.strings.member_error_display_name_required)
-    val permissionErrorTemplate = membersStringTemplate(MR.strings.member_error_permission)
-    val saveErrorTemplate = membersStringTemplate(MR.strings.member_error_save)
-    val descriptionTooLongTemplate = membersStringTemplate(MR.strings.member_error_description_too_long)
+    val profileEditingUnavailable = stringResource(Res.string.member_error_profile_edit_unavailable)
+    val displayNameRequired = stringResource(Res.string.member_error_display_name_required)
+    val permissionErrorTemplate = membersStringTemplate(Res.string.member_error_permission)
+    val saveErrorTemplate = membersStringTemplate(Res.string.member_error_save)
+    val descriptionTooLongTemplate = membersStringTemplate(Res.string.member_error_description_too_long)
 
     // Display Name: independent edit state machine, mirrors React `editingDisplayName`
     // (AgentDetailPanel.tsx ~L1073). Pencil icon toggles edit mode; inline Save/Cancel
@@ -9698,7 +9693,7 @@ private fun MembersAgentProfileFieldsSection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             MembersEditableSectionTitleRow(
-                title = stringResource(MR.strings.member_label_display_name),
+                title = stringResource(Res.string.member_label_display_name),
                 showEdit = canEdit && !editingDisplayName,
                 onEditClick = {
                     displayNameEditorAuthority = agentProfileEditAuthority
@@ -9737,7 +9732,7 @@ private fun MembersAgentProfileFieldsSection(
                         )
                     RaftTextField(
                         value = draftDisplayName,
-                        placeholder = stringResource(MR.strings.member_label_display_name),
+                        placeholder = stringResource(Res.string.member_label_display_name),
                         modifier = Modifier.fillMaxWidth().then(displayNameEditor.modifier),
                         keyboardOptions = displayNameEditor.keyboardOptions,
                         onValueChange = {
@@ -9755,14 +9750,14 @@ private fun MembersAgentProfileFieldsSection(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)) {
                     RaftButton(
-                        text = if (savingDisplayName) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
+                        text = if (savingDisplayName) stringResource(Res.string.member_action_saving) else stringResource(Res.string.common_save),
                         onClick = { saveDisplayName() },
                         enabled = !savingDisplayName,
                         variant = RaftButtonVariant.Primary,
                         size = RaftButtonSize.Lg
                     )
                     RaftButton(
-                        text = stringResource(MR.strings.common_cancel),
+                        text = stringResource(Res.string.common_cancel),
                         variant = RaftButtonVariant.Default,
                         size = RaftButtonSize.Lg,
                         onClick = {
@@ -9797,7 +9792,7 @@ private fun MembersAgentProfileFieldsSection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             MembersEditableSectionTitleRow(
-                title = stringResource(MR.strings.member_section_description),
+                title = stringResource(Res.string.member_section_description),
                 showEdit = canEdit && !editingRole,
                 onEditClick = {
                     roleEditorAuthority = agentProfileEditAuthority
@@ -9830,7 +9825,7 @@ private fun MembersAgentProfileFieldsSection(
                     }
                     RaftTextarea(
                         value = draftRole,
-                        placeholder = stringResource(MR.strings.member_placeholder_description),
+                        placeholder = stringResource(Res.string.member_placeholder_description),
                         modifier = Modifier.fillMaxWidth(),
                         inputModifier = Modifier.focusRequester(descriptionFocus),
                         onValueChange = {
@@ -9852,14 +9847,14 @@ private fun MembersAgentProfileFieldsSection(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     RaftButton(
-                        text = if (savingRole) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.common_save),
+                        text = if (savingRole) stringResource(Res.string.member_action_saving) else stringResource(Res.string.common_save),
                         onClick = { saveRole() },
                         enabled = !savingRole,
                         variant = RaftButtonVariant.Primary,
                         size = RaftButtonSize.Lg
                     )
                     RaftButton(
-                        text = stringResource(MR.strings.common_cancel),
+                        text = stringResource(Res.string.common_cancel),
                         variant = RaftButtonVariant.Default,
                         size = RaftButtonSize.Lg,
                         onClick = {
@@ -9886,7 +9881,7 @@ private fun MembersAgentProfileFieldsSection(
         } else {
             Text(
                 text = member.description?.takeIf { it.isNotBlank() }
-                    ?: stringResource(MR.strings.member_state_no_description),
+                    ?: stringResource(Res.string.member_state_no_description),
                 style = RaftType.Body.copy(
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
@@ -9924,11 +9919,11 @@ private fun MembersAgentInfoSection(
     val errorStrings = edit.errorStrings
     val scope = rememberCoroutineScope()
     val currentProfileEditAuthority by rememberUpdatedState(agentProfileEditAuthority)
-    val roleEditingUnavailable = stringResource(MR.strings.member_error_role_edit_unavailable)
-    val permissionErrorTemplate = membersStringTemplate(MR.strings.member_error_permission)
-    val saveErrorTemplate = membersStringTemplate(MR.strings.member_error_save)
-    val emptyResponseMessage = stringResource(MR.strings.member_error_empty_response)
-    val roleUpdateUnconfirmedMessage = stringResource(MR.strings.member_error_role_update_unconfirmed)
+    val roleEditingUnavailable = stringResource(Res.string.member_error_role_edit_unavailable)
+    val permissionErrorTemplate = membersStringTemplate(Res.string.member_error_permission)
+    val saveErrorTemplate = membersStringTemplate(Res.string.member_error_save)
+    val emptyResponseMessage = stringResource(Res.string.member_error_empty_response)
+    val roleUpdateUnconfirmedMessage = stringResource(Res.string.member_error_role_update_unconfirmed)
     val serverRoleDisplay =
         membersAgentDisplayServerRole(member.serverRole, summary?.serverRole, deleted = deleted)
     val currentServerRole = (serverRoleDisplay as? MembersAgentServerRoleDisplay.Known)?.role
@@ -10032,7 +10027,7 @@ private fun MembersAgentInfoSection(
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
         MembersDetailSectionDivider()
-        MembersDetailSectionTitle(stringResource(MR.strings.member_section_info))
+        MembersDetailSectionTitle(stringResource(Res.string.member_section_info))
         // Role row: React keeps this as a label affordance plus an inline role chip/editor,
         // not the compact two-column metadata row used by Computer/Created/Creator.
         Column(
@@ -10045,7 +10040,7 @@ private fun MembersAgentInfoSection(
             ) {
                 // raft-ui DescriptionTerm with its help accessory 6dp after it.
                 RaftText(
-                    text = stringResource(MR.strings.member_label_role),
+                    text = stringResource(Res.string.member_label_role),
                     style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Medium),
                     color = RaftTheme.colors.foregroundHint
                 )
@@ -10116,7 +10111,7 @@ private fun MembersAgentInfoSection(
         // column is what made a long machine name ellipsize: the gutter never
         // yields, so the value gets whatever is left. Stacked, the value owns the
         // full width and wraps instead.
-        MembersAgentInfoField(label = stringResource(MR.strings.member_label_computer)) {
+        MembersAgentInfoField(label = stringResource(Res.string.member_label_computer)) {
             val machineName = summary?.machineName.orBadgeFallback(member.membersComputerName)
             val machineNameStyle =
                 RaftType.Body.copy(
@@ -10155,7 +10150,7 @@ private fun MembersAgentInfoSection(
                 MembersMachineStatusRow.Loading -> Unit
                 MembersMachineStatusRow.NoComputer ->
                     Text(
-                        text = stringResource(MR.strings.member_machine_no_computer_assigned),
+                        text = stringResource(Res.string.member_machine_no_computer_assigned),
                         style = RaftType.Caption.copy(
                             fontSize = MembersMachineStatusFontSize,
                             lineHeight = MembersMachineStatusLineHeight
@@ -10180,7 +10175,7 @@ private fun MembersAgentInfoSection(
                         }
                         Text(
                             text = stringResource(
-                                if (statusRow.online) MR.strings.member_label_connected else MR.strings.member_label_offline
+                                if (statusRow.online) Res.string.member_label_connected else Res.string.member_label_offline
                             ),
                             style = RaftType.Caption.copy(
                                 fontSize = MembersMachineStatusFontSize,
@@ -10213,7 +10208,7 @@ private fun MembersAgentInfoSection(
             verticalArrangement = Arrangement.spacedBy(MembersInfoFieldGapY)
         ) {
             summary?.createdAt?.membersAgentCreatedDate(timeContext)?.takeIf { it.isNotBlank() }?.let { createdDate ->
-                MembersAgentInfoField(label = stringResource(MR.strings.member_label_created), copyText = createdDate) {
+                MembersAgentInfoField(label = stringResource(Res.string.member_label_created), copyText = createdDate) {
                     Text(
                         text = createdDate,
                         style = RaftType.Body.copy(
@@ -10229,7 +10224,7 @@ private fun MembersAgentInfoSection(
             }
             // Creator value stays a clickable identity chip (web opens the profile).
             val creatorProfile = summary?.creator?.toStrictMemberProfile()
-            MembersAgentInfoField(label = stringResource(MR.strings.member_label_creator), copyText = creatorProfile?.displayName) {
+            MembersAgentInfoField(label = stringResource(Res.string.member_label_creator), copyText = creatorProfile?.displayName) {
                 if (creatorProfile != null) {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(MembersInfoStatusGapX),
@@ -10268,7 +10263,7 @@ private fun MembersAgentInfoSection(
                     }
                 } else {
                     Text(
-                        text = stringResource(MR.strings.member_state_no_creator_assigned),
+                        text = stringResource(Res.string.member_state_no_creator_assigned),
                         style = RaftType.Body.copy(
                             fontSize = MembersInfoValueFontSize,
                             lineHeight = MembersInfoValueLineHeight
@@ -10334,10 +10329,10 @@ private fun MembersAgentRuntimeConfigSection(
     val scope = rememberCoroutineScope()
     val currentProfileEditAuthority by rememberUpdatedState(agentProfileEditAuthority)
     val currentRuntimeModelGenerations by rememberUpdatedState(agentRuntimeModelGenerationsByRuntime)
-    val runtimeEditingUnavailable = stringResource(MR.strings.member_error_runtime_edit_unavailable)
-    val runtimeFormV2SavedRefresh = stringResource(MR.strings.runtime_form_v2_saved_refresh)
-    val permissionErrorTemplate = membersStringTemplate(MR.strings.member_error_permission)
-    val saveErrorTemplate = membersStringTemplate(MR.strings.member_error_save)
+    val runtimeEditingUnavailable = stringResource(Res.string.member_error_runtime_edit_unavailable)
+    val runtimeFormV2SavedRefresh = stringResource(Res.string.runtime_form_v2_saved_refresh)
+    val permissionErrorTemplate = membersStringTemplate(Res.string.member_error_permission)
+    val saveErrorTemplate = membersStringTemplate(Res.string.member_error_save)
     var editingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
     var runtimeEditorAuthority by remember(member.id.value) {
         mutableStateOf<MembersAgentProfileEditAuthority?>(null)
@@ -10570,7 +10565,7 @@ private fun MembersAgentRuntimeConfigSection(
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
         ) {
             MembersEditableSectionTitleRow(
-                title = stringResource(MR.strings.member_section_runtime_config),
+                title = stringResource(Res.string.member_section_runtime_config),
                 showEdit = canEdit && runtimeEditorReady && !editingRuntimeConfig,
                 onEditClick = {
                     runtimeConfigError = null
@@ -10666,7 +10661,7 @@ private fun MembersExternalAgentSetupSection(
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
-    val tokenFailed = stringResource(MR.strings.member_external_setup_token_failed)
+    val tokenFailed = stringResource(Res.string.member_external_setup_token_failed)
     var token by remember(agentId) { mutableStateOf<String?>(null) }
     var tokenLoading by remember(agentId) { mutableStateOf(false) }
     var error by remember(agentId) { mutableStateOf<String?>(null) }
@@ -10694,9 +10689,9 @@ private fun MembersExternalAgentSetupSection(
         modifier = modifier.fillMaxWidth().membersRaftCard().padding(RaftAppSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        RaftSectionEyebrow(text = stringResource(MR.strings.member_external_setup_title))
+        RaftSectionEyebrow(text = stringResource(Res.string.member_external_setup_title))
         RaftText(
-            stringResource(MR.strings.member_external_setup_description),
+            stringResource(Res.string.member_external_setup_description),
             style = RaftTheme.typography.callout,
             color = RaftTheme.colors.foregroundMuted
         )
@@ -10704,7 +10699,7 @@ private fun MembersExternalAgentSetupSection(
         // generate action must be reachable without scrolling past the copy commands.
         if (canManage && agentsApiClient != null) {
             RaftButton(
-                text = stringResource(if (tokenLoading) MR.strings.member_external_setup_generating else MR.strings.member_external_setup_generate),
+                text = stringResource(if (tokenLoading) Res.string.member_external_setup_generating else Res.string.member_external_setup_generate),
                 enabled = !tokenLoading,
                 onClick = {
                     tokenLoading = true
@@ -10722,11 +10717,11 @@ private fun MembersExternalAgentSetupSection(
             )
             token?.let { value ->
                 RaftText(
-                    stringResource(MR.strings.member_external_setup_token_once),
+                    stringResource(Res.string.member_external_setup_token_once),
                     style = RaftTheme.typography.caption,
                     color = RaftTheme.colors.foregroundHint
                 )
-                MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_token_label), value, onCopy)
+                MembersExternalSetupCommand(stringResource(Res.string.member_external_setup_token_label), value, onCopy)
             }
             error?.let {
                 RaftText(it, style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.SemiBold), color = RaftTheme.colors.dangerStrong)
@@ -10744,21 +10739,21 @@ private fun MembersExternalAgentSetupSection(
                 MembersExternalHarness.entries.firstOrNull { it.value == value }?.let { selectedHarness = it }
             }
         )
-        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_install), installCommand, onCopy)
-        MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_login), loginCommand, onCopy)
+        MembersExternalSetupCommand(stringResource(Res.string.member_external_setup_install), installCommand, onCopy)
+        MembersExternalSetupCommand(stringResource(Res.string.member_external_setup_login), loginCommand, onCopy)
         when (selectedHarness) {
             MembersExternalHarness.ClaudeCode ->
-                MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_start), startCommand, onCopy)
+                MembersExternalSetupCommand(stringResource(Res.string.member_external_setup_start), startCommand, onCopy)
             MembersExternalHarness.Hermes ->
-                MembersExternalSetupCommand(stringResource(MR.strings.member_external_setup_hermes), hermesCommand, onCopy)
+                MembersExternalSetupCommand(stringResource(Res.string.member_external_setup_hermes), hermesCommand, onCopy)
         }
     }
 }
 
 /** External runtimes offered in the setup section, one tab each (task #4). */
 internal enum class MembersExternalHarness(val value: String, val labelRes: StringResource) {
-    ClaudeCode("claude-code", MR.strings.member_external_setup_harness_claude),
-    Hermes("hermes", MR.strings.member_external_setup_harness_hermes)
+    ClaudeCode("claude-code", Res.string.member_external_setup_harness_claude),
+    Hermes("hermes", Res.string.member_external_setup_harness_hermes)
 }
 
 @Composable
@@ -10774,7 +10769,7 @@ private fun MembersExternalSetupCommand(label: String, command: String, onCopy: 
             modifier = Modifier.fillMaxWidth(),
             action = {
                 RaftButton(
-                    text = stringResource(MR.strings.member_external_setup_copy),
+                    text = stringResource(Res.string.member_external_setup_copy),
                     onClick = { onCopy(command) },
                     variant = RaftButtonVariant.Ghost
                 )
@@ -10955,9 +10950,9 @@ private fun MembersAgentProfileActionsSection(
         )
     val primaryLabel =
         when (primaryAction) {
-            MembersAgentLifecycleAction.Start -> stringResource(MR.strings.member_action_start_agent)
-            MembersAgentLifecycleAction.Stop -> stringResource(MR.strings.member_action_stop_agent)
-            null -> stringResource(MR.strings.member_action_start_agent)
+            MembersAgentLifecycleAction.Start -> stringResource(Res.string.member_action_start_agent)
+            MembersAgentLifecycleAction.Stop -> stringResource(Res.string.member_action_stop_agent)
+            null -> stringResource(Res.string.member_action_start_agent)
             else -> primaryAction.localizedLabel()
         }
     val primaryBusy = lifecycleInFlight == primaryAction?.actionKey
@@ -10970,7 +10965,7 @@ private fun MembersAgentProfileActionsSection(
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
         MembersDetailSectionDivider()
-        MembersDetailSectionTitle(stringResource(MR.strings.member_section_actions))
+        MembersDetailSectionTitle(stringResource(Res.string.member_section_actions))
         // raft-ui agent page Actions: full-width 44dp outline buttons, the irreversible one red, last.
         if (primaryAction != null) {
             MembersAgentActionButton(
@@ -10981,25 +10976,25 @@ private fun MembersAgentProfileActionsSection(
             )
         }
         MembersAgentActionButton(
-            label = stringResource(MR.strings.member_label_restart_reset),
+            label = stringResource(Res.string.member_label_restart_reset),
             iconName = RaftLucideIconName.RotateCcw,
             enabled = lifecycleInFlight == null,
             onClick = onOpenRestartReset
         )
         MembersAgentActionButton(
-            label = copyState?.successLabel ?: stringResource(MR.strings.member_action_copy_diagnostic_info),
+            label = copyState?.successLabel ?: stringResource(Res.string.member_action_copy_diagnostic_info),
             iconName = if (copyState?.successLabel != null) RaftLucideIconName.Check else RaftLucideIconName.Copy,
             enabled = !diagnosticBusy,
             onClick = onCopyDiagnostics
         )
         MembersAgentActionButton(
-            label = if (reportState?.inProgress == true) stringResource(MR.strings.member_action_reporting) else stringResource(MR.strings.member_action_report_issue),
+            label = if (reportState?.inProgress == true) stringResource(Res.string.member_action_reporting) else stringResource(Res.string.member_action_report_issue),
             iconName = RaftLucideIconName.Bug,
             enabled = !diagnosticBusy,
             onClick = onReportIssue
         )
         MembersAgentActionButton(
-            label = if (lifecycleInFlight == MembersAgentLifecycleAction.Delete.actionKey) stringResource(MR.strings.member_action_deleting) else stringResource(MR.strings.member_action_delete_agent),
+            label = if (lifecycleInFlight == MembersAgentLifecycleAction.Delete.actionKey) stringResource(Res.string.member_action_deleting) else stringResource(Res.string.member_action_delete_agent),
             iconName = RaftLucideIconName.Archive,
             enabled = lifecycleInFlight == null,
             variant = RaftButtonVariant.Danger,
@@ -11038,7 +11033,7 @@ internal fun MembersAgentRuntimeConfigRows(
     val runtimeConfig = (resolution as? MembersAgentRuntimeConfigResolution.Content)?.config
     if (runtimeConfig == null) {
         Text(
-            text = stringResource(MR.strings.member_state_runtime_config_unavailable),
+            text = stringResource(Res.string.member_state_runtime_config_unavailable),
             style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
             color = RaftColor.AccentRed
         )
@@ -11063,7 +11058,7 @@ internal fun MembersAgentRuntimeConfigRows(
         horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Md),
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
-        MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_runtime)) {
+        MembersAgentRuntimeConfigField(stringResource(Res.string.member_label_runtime)) {
             MembersAgentRuntimeUsageChip(
                 label = getRuntimeDisplayName(runtimeId),
                 runtimeId = runtimeId,
@@ -11071,7 +11066,7 @@ internal fun MembersAgentRuntimeConfigRows(
             )
         }
         if (modelLabel != null) {
-            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_model), copyText = modelLabel) {
+            MembersAgentRuntimeConfigField(stringResource(Res.string.member_label_model), copyText = modelLabel) {
                 MembersAgentRuntimeChip(
                     label = modelLabel,
                     kind = MembersAgentRuntimeChipKind.Model
@@ -11089,26 +11084,26 @@ internal fun MembersAgentRuntimeConfigRows(
                 runtimeModelsOverride = runtimeModelsCatalog?.models.orEmpty()
             ) != null
         ) {
-            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_reasoning)) {
+            MembersAgentRuntimeConfigField(stringResource(Res.string.member_label_reasoning)) {
                 MembersAgentRuntimeChip(
-                    label = runtimeConfig.reasoningEffort?.toMembersDisplayLabel() ?: stringResource(MR.strings.member_label_default),
+                    label = runtimeConfig.reasoningEffort?.toMembersDisplayLabel() ?: stringResource(Res.string.member_label_default),
                     kind = MembersAgentRuntimeChipKind.Reasoning
                 )
             }
         }
         if (supportsRuntimeFastMode(runtimeId)) {
-            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_mode)) {
+            MembersAgentRuntimeConfigField(stringResource(Res.string.member_label_mode)) {
                 MembersAgentRuntimeChip(
-                    label = if (runtimeConfig.mode is RuntimeModeConfig.Fast) stringResource(MR.strings.member_label_fast) else stringResource(MR.strings.member_label_default),
+                    label = if (runtimeConfig.mode is RuntimeModeConfig.Fast) stringResource(Res.string.member_label_fast) else stringResource(Res.string.member_label_default),
                     kind = MembersAgentRuntimeChipKind.Mode
                 )
             }
         }
         if (runtimeId == CREATE_AGENT_BUILTIN_RUNTIME_ID) {
             val providerId = runtimeConfig.provider.membersBuiltInProviderId()
-            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_provider), copyText = providerId.ifBlank { null }) {
+            MembersAgentRuntimeConfigField(stringResource(Res.string.member_label_provider), copyText = providerId.ifBlank { null }) {
                 Text(
-                    text = providerId.ifBlank { stringResource(MR.strings.member_label_default) },
+                    text = providerId.ifBlank { stringResource(Res.string.member_label_default) },
                     style = RaftType.Caption.copy(
                         fontFamily = if (providerId.isBlank()) RaftType.Caption.fontFamily else RaftMonoFamily,
                         fontSize = 11.sp,
@@ -11123,9 +11118,9 @@ internal fun MembersAgentRuntimeConfigRows(
         if (runtimeId == "pi") {
             val providerId =
                 (runtimeConfig.provider as? RuntimeProviderConfig.PiBuiltin)?.providerId
-            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_provider), copyText = providerId) {
+            MembersAgentRuntimeConfigField(stringResource(Res.string.member_label_provider), copyText = providerId) {
                 Text(
-                    text = providerId ?: stringResource(MR.strings.member_label_default),
+                    text = providerId ?: stringResource(Res.string.member_label_default),
                     style = RaftType.Caption.copy(
                         fontFamily = if (providerId == null) RaftType.Caption.fontFamily else RaftMonoFamily,
                         fontSize = 11.sp,
@@ -11140,11 +11135,11 @@ internal fun MembersAgentRuntimeConfigRows(
         if (runtimeId == "claude") {
             val provider = runtimeConfig.provider as? RuntimeProviderConfig.Custom
             MembersAgentRuntimeConfigField(
-                stringResource(MR.strings.member_label_provider),
+                stringResource(Res.string.member_label_provider),
                 copyText = provider?.apiUrl?.takeIf { it.isNotBlank() }
             ) {
                 Text(
-                    text = provider?.apiUrl?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.member_label_default),
+                    text = provider?.apiUrl?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.member_label_default),
                     style = RaftType.Caption.copy(
                         fontFamily = if (provider == null) RaftType.Caption.fontFamily else RaftMonoFamily,
                         fontSize = 11.sp,
@@ -11157,9 +11152,9 @@ internal fun MembersAgentRuntimeConfigRows(
                 )
             }
             val command = runtimeConfig.command?.takeIf { it.isNotBlank() }
-            MembersAgentRuntimeConfigField(stringResource(MR.strings.member_label_command), copyText = command) {
+            MembersAgentRuntimeConfigField(stringResource(Res.string.member_label_command), copyText = command) {
                 Text(
-                    text = command ?: stringResource(MR.strings.member_label_default),
+                    text = command ?: stringResource(Res.string.member_label_default),
                     style = RaftType.Caption.copy(
                         fontFamily = if (command == null) RaftType.Caption.fontFamily else RaftMonoFamily,
                         fontSize = 11.sp,
@@ -11232,10 +11227,10 @@ private fun MembersAgentRuntimeEnvVars(summary: AgentDetailSummary?) {
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        RaftSectionEyebrow(text = stringResource(MR.strings.member_section_environment_variables))
+        RaftSectionEyebrow(text = stringResource(Res.string.member_section_environment_variables))
         if (envVarNames.isEmpty()) {
             RaftText(
-                text = stringResource(MR.strings.member_state_no_environment_variables),
+                text = stringResource(Res.string.member_state_no_environment_variables),
                 style = RaftTheme.typography.footnote,
                 color = RaftTheme.colors.foregroundHint
             )
@@ -11711,7 +11706,7 @@ private fun MembersAgentRuntimeConfigDialog(
     // Read here: dialog content is hosted at the page root, outside the route's usage access.
     val runtimeQuotaMachine = machineId?.takeIf { it.isNotBlank() }?.let { RuntimeQuotaMachine(it, access = LocalMembersRuntimeAccountUsageAccess.current) }
     RaftUnifiedDialog(
-        title = stringResource(MR.strings.member_dialog_edit_runtime_config).raftDisplayUppercase(),
+        title = stringResource(Res.string.member_dialog_edit_runtime_config).raftDisplayUppercase(),
         dismissEnabled = !saving,
         keyboardAvoidanceEnabled = true,
         onDismiss = onDismiss
@@ -11805,7 +11800,7 @@ private fun MembersAgentRuntimeConfigDialog(
                                 color = RaftColor.AccentRed
                             )
                             RaftButton(
-                                text = stringResource(MR.strings.common_retry),
+                                text = stringResource(Res.string.common_retry),
                                 leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) },
                                 enabled = !builtInFormLoading && !saving,
                                 variant = RaftButtonVariant.Default,
@@ -11899,7 +11894,7 @@ private fun MembersAgentRuntimeConfigDialog(
                 }
                 item {
                     Text(
-                        text = stringResource(MR.strings.member_hint_runtime_restart),
+                        text = stringResource(Res.string.member_hint_runtime_restart),
                         style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                         color = RaftColor.TextMutedGray
                     )
@@ -11927,7 +11922,7 @@ private fun MembersAgentRuntimeConfigDialog(
             }
             RaftDialogFooter {
                 RaftButton(
-                    text = stringResource(MR.strings.common_cancel),
+                    text = stringResource(Res.string.common_cancel),
                     enabled = !saving,
                     onClick = onDismiss,
                     variant = RaftButtonVariant.Ghost,
@@ -11935,7 +11930,7 @@ private fun MembersAgentRuntimeConfigDialog(
                 )
                 // Web AgentDetailPanel runtime editor: accent (primary) lg commit.
                 RaftButton(
-                    text = if (saving) stringResource(MR.strings.member_action_saving) else stringResource(MR.strings.member_action_save_runtime_config),
+                    text = if (saving) stringResource(Res.string.member_action_saving) else stringResource(Res.string.member_action_save_runtime_config),
                     enabled =
                         !saving &&
                             !catalogValidationInFlight &&
@@ -12171,13 +12166,13 @@ internal fun membersRuntimeConfigSwitchConfirmation(
                 "The agent will launch with model $nextModelLabel$reasoningCopy$modeCopy; MEMORY.md and workspace files are preserved."
         }
     return MembersRuntimeConfigSwitchConfirmation(
-        title = MR.strings.member_action_switch_runtime_config.desc(),
+        title = Res.string.member_action_switch_runtime_config.desc(),
         message = message,
         confirmLabel =
             if (activeAgent) {
-                MR.strings.member_action_reset_runtime_session.desc()
+                Res.string.member_action_reset_runtime_session.desc()
             } else {
-                MR.strings.member_action_save_runtime_change.desc()
+                Res.string.member_action_save_runtime_change.desc()
             }
     )
 }
@@ -12222,7 +12217,7 @@ private fun MembersRuntimeConfigSwitchConfirmationDialog(
             }
             RaftDialogFooter {
                 RaftButton(
-                    text = stringResource(MR.strings.common_cancel),
+                    text = stringResource(Res.string.common_cancel),
                     onClick = onCancel,
                     variant = RaftButtonVariant.Ghost,
                     size = RaftButtonSize.Lg
@@ -12468,11 +12463,11 @@ private fun MembersAgentSkillsSection(detail: AgentDetailSnapshot?) {
     ) {
         MembersDetailSectionDivider()
         MembersDetailSectionTitle(
-            stringResource(MR.strings.member_section_skills_count).replace("%1\$s", totalSkills.toString())
+            stringResource(Res.string.member_section_skills_count).replace("%1\$s", totalSkills.toString())
         )
         if (groups.isEmpty()) {
             RaftText(
-                text = stringResource(MR.strings.member_state_no_skills),
+                text = stringResource(Res.string.member_state_no_skills),
                 style = RaftTheme.typography.callout,
                 color = RaftTheme.colors.foregroundHint
             )
@@ -12518,9 +12513,9 @@ private fun MembersAgentSkillSubSection(group: AgentSkillGroup) {
         if (group.paths.isEmpty()) {
             Text(
                 text = if (group.title.equals("workspace", ignoreCase = true)) {
-                    stringResource(MR.strings.member_state_no_workspace_skills)
+                    stringResource(Res.string.member_state_no_workspace_skills)
                 } else {
-                    stringResource(MR.strings.member_state_no_global_skills)
+                    stringResource(Res.string.member_state_no_global_skills)
                 },
                 style = RaftTheme.typography.footnote,
                 color = RaftTheme.colors.foregroundHint
@@ -12616,12 +12611,12 @@ private fun MembersAgentCreatedAgentsSection(
     ) {
         MembersDetailSectionDivider()
         RaftSectionEyebrow(
-            text = stringResource(MR.strings.member_section_created_agents),
+            text = stringResource(Res.string.member_section_created_agents),
             count = createdAgents.size.toString()
         )
         if (createdAgents.isEmpty()) {
             RaftText(
-                text = stringResource(MR.strings.member_state_no_created_agents),
+                text = stringResource(Res.string.member_state_no_created_agents),
                 style = RaftTheme.typography.callout,
                 color = RaftTheme.colors.foregroundHint
             )
@@ -12668,7 +12663,7 @@ private fun MembersAgentCreatedAgentRow(
         title = profile.displayName,
         divider = divider,
         subtitle = agent.runtime?.takeIf { it.isNotBlank() }?.let { getRuntimeDisplayName(it) }
-            ?: stringResource(MR.strings.member_label_agent),
+            ?: stringResource(Res.string.member_label_agent),
         leading = {
             MembersRaftAvatar(
                 member = profile,
@@ -12727,16 +12722,16 @@ private fun MembersAgentChatTabContent(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
-        RaftSectionEyebrow(text = stringResource(MR.strings.member_section_agent_channels_dms))
+        RaftSectionEyebrow(text = stringResource(Res.string.member_section_agent_channels_dms))
         RaftText(
-            text = stringResource(MR.strings.member_section_channels),
+            text = stringResource(Res.string.member_section_channels),
             style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.SemiBold),
             color = RaftTheme.colors.foregroundMuted
         )
         val channels = detail?.channels.orEmpty().filter { it.archivedAt.isNullOrBlank() }
         if (channels.isEmpty()) {
             RaftText(
-                text = stringResource(MR.strings.member_state_no_active_channels),
+                text = stringResource(Res.string.member_state_no_active_channels),
                 style = RaftTheme.typography.footnote,
                 color = RaftTheme.colors.foregroundHint
             )
@@ -12750,12 +12745,12 @@ private fun MembersAgentChatTabContent(
         }
         RaftSeparator()
         RaftText(
-            text = stringResource(MR.strings.member_section_private_chats),
+            text = stringResource(Res.string.member_section_private_chats),
             style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.SemiBold),
             color = RaftTheme.colors.foregroundMuted
         )
         RaftText(
-            text = stringResource(MR.strings.member_hint_chat_audit_only),
+            text = stringResource(Res.string.member_hint_chat_audit_only),
             style = RaftTheme.typography.footnote,
             color = RaftTheme.colors.foregroundHint
         )
@@ -12763,7 +12758,7 @@ private fun MembersAgentChatTabContent(
         val rows = detail?.directMessages.orEmpty()
         if (rows.isEmpty()) {
             RaftText(
-                text = stringResource(MR.strings.member_state_no_agent_dms),
+                text = stringResource(Res.string.member_state_no_agent_dms),
                 style = RaftTheme.typography.footnote,
                 color = RaftTheme.colors.foregroundHint
             )
@@ -12793,7 +12788,7 @@ private fun MembersAgentChannelRow(channel: AgentChannelSummary, divider: Boolea
             {
                 RaftContentLucideIcon(RaftLucideIconName.BellOff)
                 RaftBadge(
-                    text = stringResource(MR.strings.member_label_muted),
+                    text = stringResource(Res.string.member_label_muted),
                     appearance = RaftBadgeAppearance.Soft,
                     variant = RaftBadgeVariant.Muted
                 )
@@ -12836,7 +12831,7 @@ private fun MembersAgentDmRow(
     RaftListRow(
         title = row.peerName,
         divider = divider,
-        subtitle = "${stringResource(MR.strings.member_label_agent_dm)} · @${row.peerName}",
+        subtitle = "${stringResource(Res.string.member_label_agent_dm)} · @${row.peerName}",
         description = row.lastMessagePreview?.let(::markdownToPreviewText)?.takeIf { it.isNotBlank() },
         wrapDescription = true,
         descriptionMaxLines = 3,
@@ -12859,7 +12854,7 @@ private fun MembersAgentDmRow(
         },
         badge = {
             RaftBadge(
-                text = stringResource(MR.strings.member_label_activity_only),
+                text = stringResource(Res.string.member_label_activity_only),
                 appearance = RaftBadgeAppearance.Soft,
                 variant = RaftBadgeVariant.Muted
             )
@@ -12889,8 +12884,8 @@ private fun MembersAgentRemindersTab(
     ) {
         if (rows.isEmpty()) {
             RaftEmptyState(
-                title = stringResource(MR.strings.member_state_no_reminders),
-                detail = stringResource(MR.strings.member_hint_no_scheduled_reminders),
+                title = stringResource(Res.string.member_state_no_reminders),
+                detail = stringResource(Res.string.member_hint_no_scheduled_reminders),
                 iconName = RaftLucideIconName.BellRing,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -13019,14 +13014,14 @@ private fun MembersAgentWorkspaceTab(
 ) {
     val errorStrings = localizedErrorPresentationStrings()
     MembersDetailSection(
-        title = stringResource(MR.strings.member_section_workspace),
+        title = stringResource(Res.string.member_section_workspace),
         modifier = modifier,
         framed = false,
         trailingContent = {
             // Ghost Lg: the 18dp glyph is unchanged, the touch target is 44dp.
             RaftIconButton(
                 onClick = onRefresh,
-                tooltip = stringResource(MR.strings.member_action_refresh),
+                tooltip = stringResource(Res.string.member_action_refresh),
                 variant = RaftButtonVariant.Ghost,
                 size = RaftIconButtonSize.Lg
             ) {
@@ -13038,15 +13033,15 @@ private fun MembersAgentWorkspaceTab(
             MembersAgentWorkspaceTreeState.Idle,
             MembersAgentWorkspaceTreeState.Loading ->
                 MembersDetailField(
-                    stringResource(MR.strings.member_label_status),
-                    stringResource(MR.strings.member_state_workspace_loading)
+                    stringResource(Res.string.member_label_status),
+                    stringResource(Res.string.member_state_workspace_loading)
                 )
             MembersAgentWorkspaceTreeState.Empty ->
-                MembersWorkspaceEmptyState(stringResource(MR.strings.member_state_no_files), onRefresh)
+                MembersWorkspaceEmptyState(stringResource(Res.string.member_state_no_files), onRefresh)
             is MembersAgentWorkspaceTreeState.Error ->
                 MembersWorkspaceErrorState(
                     stringResource(
-                        MR.strings.member_error_workspace_load,
+                        Res.string.member_error_workspace_load,
                         treeState.error.userFacingMessage(errorStrings)
                     ),
                     onRefresh
@@ -13054,7 +13049,7 @@ private fun MembersAgentWorkspaceTab(
             is MembersAgentWorkspaceTreeState.NoPermission ->
                 MembersWorkspaceErrorState(
                     stringResource(
-                        MR.strings.member_error_workspace_hidden,
+                        Res.string.member_error_workspace_hidden,
                         treeState.blocker.userFacingMessage(errorStrings)
                     ),
                     onRefresh
@@ -13087,7 +13082,7 @@ private fun MembersWorkspaceTreeView(
         membersWorkspaceRows(root.children, expandedDirs, loadedDirs)
     }
     if (rows.isEmpty()) {
-        MembersDetailField(stringResource(MR.strings.member_section_workspace), stringResource(MR.strings.member_state_no_files))
+        MembersDetailField(stringResource(Res.string.member_section_workspace), stringResource(Res.string.member_state_no_files))
         return
     }
     // The tree sits in one raft-ui Card, its rows flush inside it.
@@ -13185,7 +13180,7 @@ private fun MembersWorkspaceNodeRow(
             }
             if (loading) {
                 RaftText(
-                    text = stringResource(MR.strings.common_loading),
+                    text = stringResource(Res.string.common_loading),
                     style = typography.caption,
                     color = colors.foregroundHint,
                     maxLines = 1
@@ -13195,7 +13190,7 @@ private fun MembersWorkspaceNodeRow(
         errorMessage?.let {
             Box(Modifier.padding(start = (12 + (row.depth + 1) * 16).dp, end = 12.dp, bottom = 6.dp)) {
                 RaftText(
-                    text = stringResource(MR.strings.member_error_workspace_child_load, it),
+                    text = stringResource(Res.string.member_error_workspace_child_load, it),
                     style = typography.caption.copy(fontWeight = FontWeight.SemiBold),
                     color = colors.dangerStrong
                 )
@@ -13206,9 +13201,9 @@ private fun MembersWorkspaceNodeRow(
 
 @Composable
 private fun MembersWorkspaceEmptyState(message: String, onRefresh: () -> Unit) {
-    MembersDetailField(stringResource(MR.strings.member_label_files), message)
+    MembersDetailField(stringResource(Res.string.member_label_files), message)
     RaftButton(
-        text = stringResource(MR.strings.common_retry),
+        text = stringResource(Res.string.common_retry),
         onClick = onRefresh,
         modifier = Modifier.fillMaxWidth(),
         size = RaftButtonSize.Lg,
@@ -13218,9 +13213,9 @@ private fun MembersWorkspaceEmptyState(message: String, onRefresh: () -> Unit) {
 
 @Composable
 private fun MembersWorkspaceErrorState(message: String, onRefresh: () -> Unit) {
-    MembersDetailField(stringResource(MR.strings.member_label_state), message)
+    MembersDetailField(stringResource(Res.string.member_label_state), message)
     RaftButton(
-        text = stringResource(MR.strings.common_retry),
+        text = stringResource(Res.string.common_retry),
         onClick = onRefresh,
         modifier = Modifier.fillMaxWidth(),
         size = RaftButtonSize.Lg,
@@ -13236,9 +13231,9 @@ private fun MembersAgentAppsTab(
     modifier: Modifier = Modifier
 ) {
     val errorStrings = localizedErrorPresentationStrings()
-    MembersDetailSection(title = stringResource(MR.strings.member_section_connected_apps), modifier = modifier) {
+    MembersDetailSection(title = stringResource(Res.string.member_section_connected_apps), modifier = modifier) {
         RaftText(
-            text = stringResource(MR.strings.member_hint_connected_apps),
+            text = stringResource(Res.string.member_hint_connected_apps),
             style = RaftTheme.typography.callout,
             color = RaftTheme.colors.foregroundMuted
         )
@@ -13246,16 +13241,16 @@ private fun MembersAgentAppsTab(
         when (appLogins?.loadState) {
             AgentAppLoginLoadState.NoPermission ->
                 MembersDetailField(
-                    stringResource(MR.strings.member_tab_apps),
+                    stringResource(Res.string.member_tab_apps),
                     appLogins.permissionBlocker?.userFacingMessage(errorStrings)
                         ?: appLogins.errorCode?.userFacingErrorCodeMessage(errorStrings)
-                        ?: stringResource(MR.strings.member_error_apps_private)
+                        ?: stringResource(Res.string.member_error_apps_private)
                 )
             AgentAppLoginLoadState.Error ->
                 MembersDetailField(
-                    stringResource(MR.strings.member_tab_apps),
+                    stringResource(Res.string.member_tab_apps),
                     stringResource(
-                        MR.strings.member_error_apps_load,
+                        Res.string.member_error_apps_load,
                         appLogins.screenError?.userFacingMessage(errorStrings)
                             ?: appLogins.errorCode.userFacingErrorCodeMessage(errorStrings)
                     )
@@ -13265,8 +13260,8 @@ private fun MembersAgentAppsTab(
                     .filter { it.type == AgentAppLoginType.Active && it.revokedAt.isNullOrBlank() }
                 if (activeItems.isEmpty()) {
                     MembersDetailField(
-                        stringResource(MR.strings.member_tab_apps),
-                        stringResource(MR.strings.member_state_no_connected_apps)
+                        stringResource(Res.string.member_tab_apps),
+                        stringResource(Res.string.member_state_no_connected_apps)
                     )
                 } else {
                     activeItems.forEach { item ->
@@ -13312,7 +13307,7 @@ private fun MembersAgentAppLoginCard(
                 item.createdAt?.let {
                     RaftText(
                         text = stringResource(
-                            MR.strings.member_label_connected_since,
+                            Res.string.member_label_connected_since,
                             it.membersActivityDisplayTime(timeContext)
                         ),
                         style = RaftTheme.typography.caption,
@@ -13320,7 +13315,7 @@ private fun MembersAgentAppLoginCard(
                     )
                 }
             }
-            MembersAgentAppLoginStatusBadge(stringResource(MR.strings.member_label_active))
+            MembersAgentAppLoginStatusBadge(stringResource(Res.string.member_label_active))
         }
         item.clientDescription?.takeIf { it.isNotBlank() }?.let {
             RaftText(
@@ -13330,7 +13325,7 @@ private fun MembersAgentAppLoginCard(
             )
         }
         item.clientAgentManifestUrl?.takeIf { it.isNotBlank() }?.let {
-            MembersDetailField(stringResource(MR.strings.member_label_agent_manifest), it)
+            MembersDetailField(stringResource(Res.string.member_label_agent_manifest), it)
         }
         if (item.scopes.isNotEmpty()) {
             @OptIn(ExperimentalLayoutApi::class)
@@ -13346,7 +13341,7 @@ private fun MembersAgentAppLoginCard(
         }
         item.clientHomepageUrl?.takeIf { it.isNotBlank() }?.let { homepageUrl ->
             RaftButton(
-                text = stringResource(MR.strings.member_action_view_service),
+                text = stringResource(Res.string.member_action_view_service),
                 onClick = { onOpenUrl(homepageUrl) },
                 modifier = Modifier.fillMaxWidth(),
                 size = RaftButtonSize.Lg,
@@ -13427,12 +13422,12 @@ private fun MembersAgentActivityTab(
                 Spacer(Modifier.weight(1f))
             } else {
                 MembersDetailSectionTitle(
-                    stringResource(MR.strings.member_section_activity_diagnostics),
+                    stringResource(Res.string.member_section_activity_diagnostics),
                     modifier = Modifier.weight(1f)
                 )
             }
             RaftButton(
-                text = if (copySucceeded) stringResource(MR.strings.common_done) else stringResource(MR.strings.member_action_copy_info),
+                text = if (copySucceeded) stringResource(Res.string.common_done) else stringResource(Res.string.member_action_copy_info),
                 onClick = onCopyDiagnostics,
                 enabled = diagnosticActionState?.inProgress != true,
                 leadingIcon = {
@@ -13484,12 +13479,12 @@ private fun MembersAgentActivityTab(
         }
         if (!hasRows && (loadState is MembersAgentActivityLoadState.Loading || loadState is MembersAgentActivityLoadState.Refreshing)) {
             RaftCenteredLoading(
-                message = stringResource(MR.strings.member_state_loading_activity),
+                message = stringResource(Res.string.member_state_loading_activity),
                 modifier = Modifier.fillMaxWidth().weight(1f)
             )
         } else if (!hasRows && loadState is MembersAgentActivityLoadState.Error) {
             RaftEmptyState(
-                title = stringResource(MR.strings.member_error_load_activity),
+                title = stringResource(Res.string.member_error_load_activity),
                 detail = loadState.error.userFacingMessage(errorStrings),
                 iconName = RaftLucideIconName.Activity,
                 modifier = Modifier
@@ -13498,8 +13493,8 @@ private fun MembersAgentActivityTab(
             )
         } else if (rows.isEmpty()) {
             RaftEmptyState(
-                title = stringResource(MR.strings.member_state_no_activity),
-                detail = stringResource(MR.strings.member_state_activity_start_agent),
+                title = stringResource(Res.string.member_state_no_activity),
+                detail = stringResource(Res.string.member_state_activity_start_agent),
                 iconName = RaftLucideIconName.Activity,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -13560,9 +13555,9 @@ private fun MembersAgentActivityLoadNotice(
     val errorStrings = localizedErrorPresentationStrings()
     val message =
         when (state) {
-            MembersAgentActivityLoadState.Refreshing -> stringResource(MR.strings.member_state_refreshing_activity)
+            MembersAgentActivityLoadState.Refreshing -> stringResource(Res.string.member_state_refreshing_activity)
             is MembersAgentActivityLoadState.Error ->
-                "${stringResource(MR.strings.member_error_load_activity)}: ${state.error.userFacingMessage(errorStrings)}"
+                "${stringResource(Res.string.member_error_load_activity)}: ${state.error.userFacingMessage(errorStrings)}"
             MembersAgentActivityLoadState.Idle,
             MembersAgentActivityLoadState.Loading -> return
         }
@@ -13643,7 +13638,7 @@ private fun MembersAgentActivityRow(
         }
         if (longBody) {
             RaftTextLink(
-                text = if (expanded) stringResource(MR.strings.member_label_show_less) else stringResource(MR.strings.member_label_show_more),
+                text = if (expanded) stringResource(Res.string.member_label_show_less) else stringResource(Res.string.member_label_show_more),
                 onClick = { expanded = !expanded },
                 style = RaftTheme.typography.caption
             )
@@ -13664,13 +13659,13 @@ private fun membersActivityRowMemoryLimitText(activity: AgentActivityEntry): Mem
     if (activity.type == "status") {
         val exit = if (activity.statusDetailKind == "runtime_crashed") agentMemoryLimitExit(activity.statusDetail, "runtime_crashed") else null
         if (exit != null) {
-            val title = exit.memoryLimit?.let { stringResource(MR.strings.agent_activity_memory_limit_stopped_with_limit, it) }
-                ?: stringResource(MR.strings.agent_activity_memory_limit_stopped)
+            val title = exit.memoryLimit?.let { stringResource(Res.string.agent_activity_memory_limit_stopped_with_limit, it) }
+                ?: stringResource(Res.string.agent_activity_memory_limit_stopped)
             return MembersActivityRowText(title, "")
         }
         if (activity.statusDetailKind == "system_message" && isAgentBackgroundOomActivityTitle(activity.statusDetail)) {
             // The notice's own system row says it once.
-            return MembersActivityRowText(stringResource(MR.strings.agent_activity_background_oom), "")
+            return MembersActivityRowText(stringResource(Res.string.agent_activity_background_oom), "")
         }
         return null
     }
@@ -13679,10 +13674,10 @@ private fun membersActivityRowMemoryLimitText(activity: AgentActivityEntry): Mem
         val body = when {
             parsed == null -> activity.body.orEmpty()
             parsed.memoryLimit != null ->
-                stringResource(MR.strings.agent_activity_log_background_oom_detail_with_limit, parsed.memoryLimit)
-            else -> stringResource(MR.strings.agent_activity_log_background_oom_detail)
+                stringResource(Res.string.agent_activity_log_background_oom_detail_with_limit, parsed.memoryLimit)
+            else -> stringResource(Res.string.agent_activity_log_background_oom_detail)
         }
-        return MembersActivityRowText(stringResource(MR.strings.agent_activity_log_background_oom_title), body)
+        return MembersActivityRowText(stringResource(Res.string.agent_activity_log_background_oom_title), body)
     }
     return null
 }
@@ -13690,7 +13685,7 @@ private fun membersActivityRowMemoryLimitText(activity: AgentActivityEntry): Mem
 @Composable
 private fun MembersAgentPlaceholderTab(title: String, detail: String, modifier: Modifier = Modifier) {
     MembersDetailSection(title = title, modifier = modifier) {
-        MembersDetailField(stringResource(MR.strings.member_label_state), detail)
+        MembersDetailField(stringResource(Res.string.member_label_state), detail)
     }
 }
 
@@ -13815,65 +13810,65 @@ private val membersAgentScopeGroups: List<MembersAgentScopeGroup> = listOf(
 @Composable
 private fun MembersAgentScopeGroup.localizedLabel(): String =
     when (resource) {
-        "inbox" -> stringResource(MR.strings.member_permission_inbox)
-        "server" -> stringResource(MR.strings.member_permission_server)
-        "channel" -> stringResource(MR.strings.member_permission_channels)
-        "thread" -> stringResource(MR.strings.member_permission_threads)
-        "message" -> stringResource(MR.strings.member_permission_messages)
-        "attachment" -> stringResource(MR.strings.member_permission_attachments)
-        "task" -> stringResource(MR.strings.member_permission_tasks)
-        "knowledge" -> stringResource(MR.strings.member_permission_knowledge)
-        "action" -> stringResource(MR.strings.member_permission_actions)
+        "inbox" -> stringResource(Res.string.member_permission_inbox)
+        "server" -> stringResource(Res.string.member_permission_server)
+        "channel" -> stringResource(Res.string.member_permission_channels)
+        "thread" -> stringResource(Res.string.member_permission_threads)
+        "message" -> stringResource(Res.string.member_permission_messages)
+        "attachment" -> stringResource(Res.string.member_permission_attachments)
+        "task" -> stringResource(Res.string.member_permission_tasks)
+        "knowledge" -> stringResource(Res.string.member_permission_knowledge)
+        "action" -> stringResource(Res.string.member_permission_actions)
         else -> label
     }
 
 @Composable
 private fun MembersAgentScopeGroup.localizedDescription(): String =
     when (resource) {
-        "inbox" -> stringResource(MR.strings.member_permission_inbox_hint)
-        "server" -> stringResource(MR.strings.member_permission_server_hint)
-        "channel" -> stringResource(MR.strings.member_permission_channels_hint)
-        "thread" -> stringResource(MR.strings.member_permission_threads_hint)
-        "message" -> stringResource(MR.strings.member_permission_messages_hint)
-        "attachment" -> stringResource(MR.strings.member_permission_attachments_hint)
-        "task" -> stringResource(MR.strings.member_permission_tasks_hint)
-        "knowledge" -> stringResource(MR.strings.member_permission_knowledge_hint)
-        "action" -> stringResource(MR.strings.member_permission_actions_hint)
+        "inbox" -> stringResource(Res.string.member_permission_inbox_hint)
+        "server" -> stringResource(Res.string.member_permission_server_hint)
+        "channel" -> stringResource(Res.string.member_permission_channels_hint)
+        "thread" -> stringResource(Res.string.member_permission_threads_hint)
+        "message" -> stringResource(Res.string.member_permission_messages_hint)
+        "attachment" -> stringResource(Res.string.member_permission_attachments_hint)
+        "task" -> stringResource(Res.string.member_permission_tasks_hint)
+        "knowledge" -> stringResource(Res.string.member_permission_knowledge_hint)
+        "action" -> stringResource(Res.string.member_permission_actions_hint)
         else -> description
     }
 
 @Composable
 private fun MembersAgentScopeRow.localizedVerbLabel(): String =
     when (scope) {
-        "inbox:receive" -> stringResource(MR.strings.member_permission_receive)
-        "channel:join" -> stringResource(MR.strings.member_permission_join)
-        "channel:leave" -> stringResource(MR.strings.member_permission_leave)
-        "thread:unfollow" -> stringResource(MR.strings.member_permission_unfollow)
-        "message:send" -> stringResource(MR.strings.member_permission_send)
-        "attachment:upload" -> stringResource(MR.strings.member_permission_upload)
-        "attachment:view" -> stringResource(MR.strings.member_permission_view)
-        "task:write" -> stringResource(MR.strings.member_permission_write)
-        "action:prepare" -> stringResource(MR.strings.member_permission_prepare)
-        else -> stringResource(MR.strings.member_permission_read)
+        "inbox:receive" -> stringResource(Res.string.member_permission_receive)
+        "channel:join" -> stringResource(Res.string.member_permission_join)
+        "channel:leave" -> stringResource(Res.string.member_permission_leave)
+        "thread:unfollow" -> stringResource(Res.string.member_permission_unfollow)
+        "message:send" -> stringResource(Res.string.member_permission_send)
+        "attachment:upload" -> stringResource(Res.string.member_permission_upload)
+        "attachment:view" -> stringResource(Res.string.member_permission_view)
+        "task:write" -> stringResource(Res.string.member_permission_write)
+        "action:prepare" -> stringResource(Res.string.member_permission_prepare)
+        else -> stringResource(Res.string.member_permission_read)
     }
 
 @Composable
 private fun MembersAgentScopeRow.localizedDescription(): String =
     when (scope) {
-        "inbox:receive" -> stringResource(MR.strings.member_permission_receive_hint)
-        "server:read" -> stringResource(MR.strings.member_permission_server_read_hint)
-        "channel:read" -> stringResource(MR.strings.member_permission_channel_read_hint)
-        "channel:join" -> stringResource(MR.strings.member_permission_channel_join_hint)
-        "channel:leave" -> stringResource(MR.strings.member_permission_channel_leave_hint)
-        "thread:unfollow" -> stringResource(MR.strings.member_permission_thread_unfollow_hint)
-        "message:read" -> stringResource(MR.strings.member_permission_message_read_hint)
-        "message:send" -> stringResource(MR.strings.member_permission_message_send_hint)
-        "attachment:upload" -> stringResource(MR.strings.member_permission_attachment_upload_hint)
-        "attachment:view" -> stringResource(MR.strings.member_permission_attachment_view_hint)
-        "task:read" -> stringResource(MR.strings.member_permission_task_read_hint)
-        "task:write" -> stringResource(MR.strings.member_permission_task_write_hint)
-        "knowledge:read" -> stringResource(MR.strings.member_permission_knowledge_read_hint)
-        "action:prepare" -> stringResource(MR.strings.member_permission_action_prepare_hint)
+        "inbox:receive" -> stringResource(Res.string.member_permission_receive_hint)
+        "server:read" -> stringResource(Res.string.member_permission_server_read_hint)
+        "channel:read" -> stringResource(Res.string.member_permission_channel_read_hint)
+        "channel:join" -> stringResource(Res.string.member_permission_channel_join_hint)
+        "channel:leave" -> stringResource(Res.string.member_permission_channel_leave_hint)
+        "thread:unfollow" -> stringResource(Res.string.member_permission_thread_unfollow_hint)
+        "message:read" -> stringResource(Res.string.member_permission_message_read_hint)
+        "message:send" -> stringResource(Res.string.member_permission_message_send_hint)
+        "attachment:upload" -> stringResource(Res.string.member_permission_attachment_upload_hint)
+        "attachment:view" -> stringResource(Res.string.member_permission_attachment_view_hint)
+        "task:read" -> stringResource(Res.string.member_permission_task_read_hint)
+        "task:write" -> stringResource(Res.string.member_permission_task_write_hint)
+        "knowledge:read" -> stringResource(Res.string.member_permission_knowledge_read_hint)
+        "action:prepare" -> stringResource(Res.string.member_permission_action_prepare_hint)
         else -> description
     }
 
@@ -13897,15 +13892,15 @@ internal fun MembersAgentPermissionsTab(
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    val agentApiUnavailable = stringResource(MR.strings.member_error_agent_api_unavailable)
-    val loadPermissionsFailed = stringResource(MR.strings.member_error_load_permissions)
-    val noPermissionsData = stringResource(MR.strings.member_state_no_permissions_data)
-    val viewPermissionsForbidden = stringResource(MR.strings.member_error_view_permissions)
-    val savePermissionsFailed = stringResource(MR.strings.member_error_save_permissions)
-    val emptyResponse = stringResource(MR.strings.member_error_empty_response)
-    val savePermissionsForbidden = stringResource(MR.strings.member_error_save_permissions_forbidden)
-    val resetPermissionsFailed = stringResource(MR.strings.member_error_reset_permissions)
-    val resetPermissionsForbidden = stringResource(MR.strings.member_error_reset_permissions_forbidden)
+    val agentApiUnavailable = stringResource(Res.string.member_error_agent_api_unavailable)
+    val loadPermissionsFailed = stringResource(Res.string.member_error_load_permissions)
+    val noPermissionsData = stringResource(Res.string.member_state_no_permissions_data)
+    val viewPermissionsForbidden = stringResource(Res.string.member_error_view_permissions)
+    val savePermissionsFailed = stringResource(Res.string.member_error_save_permissions)
+    val emptyResponse = stringResource(Res.string.member_error_empty_response)
+    val savePermissionsForbidden = stringResource(Res.string.member_error_save_permissions_forbidden)
+    val resetPermissionsFailed = stringResource(Res.string.member_error_reset_permissions)
+    val resetPermissionsForbidden = stringResource(Res.string.member_error_reset_permissions_forbidden)
 
     suspend fun loadScopes() {
         if (agentsApiClient == null) {
@@ -13990,7 +13985,7 @@ internal fun MembersAgentPermissionsTab(
             // over the error.
             ErrorBanner(
                 text = error ?: "",
-                action = stringResource(MR.strings.common_retry),
+                action = stringResource(Res.string.common_retry),
                 onAction = { scope.launch { loadScopes() } }
             )
             return
@@ -13998,7 +13993,7 @@ internal fun MembersAgentPermissionsTab(
         if (loading || currentServer == null || currentDraft == null) {
             // Loading state: text "Loading permissions…"
             Text(
-                text = stringResource(MR.strings.member_state_loading_permissions),
+                text = stringResource(Res.string.member_state_loading_permissions),
                 style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                 color = RaftColor.TextMutedGray,
                 modifier = Modifier.padding(RaftAppSpacing.Sm)
@@ -14041,19 +14036,19 @@ internal fun MembersAgentPermissionsTab(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = if (isCustom) stringResource(MR.strings.member_status_permissions_custom) else stringResource(MR.strings.member_status_permissions_default),
+                    text = if (isCustom) stringResource(Res.string.member_status_permissions_custom) else stringResource(Res.string.member_status_permissions_default),
                     style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
                     color = RaftColor.TextBlack
                 )
                 Text(
-                    text = if (isCustom) stringResource(MR.strings.member_hint_permissions_custom) else stringResource(MR.strings.member_hint_permissions_default),
+                    text = if (isCustom) stringResource(Res.string.member_hint_permissions_custom) else stringResource(Res.string.member_hint_permissions_default),
                     style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
                     color = RaftColor.TextMutedGray
                 )
             }
             if (isCustom) {
                 RaftButton(
-                    text = stringResource(MR.strings.member_action_use_default),
+                    text = stringResource(Res.string.member_action_use_default),
                     onClick = {
                         scope.launch { resetToDefault() }
                     },
@@ -14068,8 +14063,8 @@ internal fun MembersAgentPermissionsTab(
         val notificationGroups = membersAgentScopeGroups.filter { it.section == "notifications" }
         val cliGroups = membersAgentScopeGroups.filter { it.section == "cli" }
 
-        PermissionsSection(title = stringResource(MR.strings.member_label_notifications_inbox), description = stringResource(MR.strings.member_hint_permissions_notifications), groups = notificationGroups, draft = currentDraft, canManage = canManage, onToggle = ::toggle)
-        PermissionsSection(title = stringResource(MR.strings.member_role_raft_cli), description = stringResource(MR.strings.member_hint_permissions_cli), groups = cliGroups, draft = currentDraft, canManage = canManage, onToggle = ::toggle)
+        PermissionsSection(title = stringResource(Res.string.member_label_notifications_inbox), description = stringResource(Res.string.member_hint_permissions_notifications), groups = notificationGroups, draft = currentDraft, canManage = canManage, onToggle = ::toggle)
+        PermissionsSection(title = stringResource(Res.string.member_role_raft_cli), description = stringResource(Res.string.member_hint_permissions_cli), groups = cliGroups, draft = currentDraft, canManage = canManage, onToggle = ::toggle)
 
         // Action bar
         Row(
@@ -14078,7 +14073,7 @@ internal fun MembersAgentPermissionsTab(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             RaftButton(
-                text = if (saving) stringResource(MR.strings.common_loading) else stringResource(MR.strings.member_action_save_permissions),
+                text = if (saving) stringResource(Res.string.common_loading) else stringResource(Res.string.member_action_save_permissions),
                 onClick = {
                     scope.launch { save() }
                 },
@@ -14087,14 +14082,14 @@ internal fun MembersAgentPermissionsTab(
                 size = RaftButtonSize.Lg
             )
             RaftButton(
-                text = stringResource(MR.strings.member_action_discard),
+                text = stringResource(Res.string.member_action_discard),
                 onClick = ::discard,
                 enabled = !saving && isDirty,
                 variant = RaftButtonVariant.Default,
                 size = RaftButtonSize.Lg
             )
             Text(
-                text = stringResource(MR.strings.member_label_revision, currentServer.revision.toString()),
+                text = stringResource(Res.string.member_label_revision, currentServer.revision.toString()),
                 style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
                 color = RaftColor.TextMutedGray.copy(alpha = 0.4f),
                 modifier = Modifier.padding(start = 4.dp)
@@ -14213,8 +14208,8 @@ private fun MemberKindBadge(kind: MemberKind) {
     // hero, `sidebar.findConversationAgentTag`), in the UI language rather than the enum name.
     val label =
         when (kind) {
-            MemberKind.Human -> stringResource(MR.strings.composer_mention_actor_human)
-            MemberKind.Agent, MemberKind.System, MemberKind.External -> stringResource(MR.strings.member_label_agent)
+            MemberKind.Human -> stringResource(Res.string.composer_mention_actor_human)
+            MemberKind.Agent, MemberKind.System, MemberKind.External -> stringResource(Res.string.member_label_agent)
         }
     RaftBadge(text = label, appearance = RaftBadgeAppearance.Outline)
 }
@@ -14368,7 +14363,7 @@ private fun MembersCreateAgentAction(
     Box {
         RaftSidebarSectionAction(
             glyph = RaftGlyph.Plus,
-            tooltip = stringResource(MR.strings.agent_create_action_create),
+            tooltip = stringResource(Res.string.agent_create_action_create),
             onClick = onOpenMenu
         )
         RaftDropdownMenu(
@@ -14377,12 +14372,12 @@ private fun MembersCreateAgentAction(
             minWidth = MembersCreateAgentMenuMinWidth
         ) {
             RaftMenuItem(
-                text = stringResource(MR.strings.agent_create_action_create),
+                text = stringResource(Res.string.agent_create_action_create),
                 leadingIcon = { MembersMenuIcon(RaftLucideIconName.Bot) },
                 onClick = { onSelect(MembersCreateAgentMode.Managed) }
             )
             RaftMenuItem(
-                text = stringResource(MR.strings.agent_create_action_create_external),
+                text = stringResource(Res.string.agent_create_action_create_external),
                 leadingIcon = { MembersMenuIcon(RaftLucideIconName.Link2) },
                 onClick = { onSelect(MembersCreateAgentMode.External) }
             )
@@ -14465,8 +14460,8 @@ private fun MembersListRow(
     val isGuest =
         member.kind == MemberKind.Human &&
             membersHumanRoleBadge(member.serverRole, member.roleDescription) == MembersHumanRoleBadge.Guest
-    val youSuffix = stringResource(MR.strings.member_label_you_suffix)
-    val guestLabel = stringResource(MR.strings.channel_member_role_guest)
+    val youSuffix = stringResource(Res.string.member_label_you_suffix)
+    val guestLabel = stringResource(Res.string.channel_member_role_guest)
     RaftSidebarItem(
         title = member.displayName,
         modifier = modifier,

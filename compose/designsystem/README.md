@@ -104,7 +104,7 @@ RaftTheme(appearance = RaftAppearance.Light) { ... }
   a busy button's and spinner's "Loading") come from `LocalRaftStrings` (`RaftStrings`,
   read as `RaftTheme.strings`), English by default. The app provides its translations once
   round its design-system screens (`LocalRaftStrings provides RaftStrings(optional =
-  stringResource(MR.strings.common_optional_suffix), …)`); `closeLabel` / `loadingLabel`
+  stringResource(Res.string.common_optional_suffix), …)`); `closeLabel` / `loadingLabel`
   parameters default to it and still take a per-call value.
 - `RaftTheme` also provides `LocalTextSelectionColors`: a selection is `selection`
   (raft-web `::selection`, raft-ui 0.23 #730: `brand-soft` in light, brand at 22% in dark),

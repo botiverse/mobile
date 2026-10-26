@@ -1,11 +1,11 @@
 package build.raft.app.components
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import build.raft.app.RaftDialogFooter
 import build.raft.app.RaftUnifiedDialog
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftButton
@@ -13,7 +13,6 @@ import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /**
  * The neutral "Pro" tag web puts next to a Pro feature's title (a DS outline
@@ -23,7 +22,7 @@ import com.tencent.tmm.kmmresource.compose.stringResource
 @Composable
 internal fun RaftProBadge(modifier: Modifier = Modifier) {
     RaftBadge(
-        text = stringResource(MR.strings.raft_pro_badge),
+        text = stringResource(Res.string.raft_pro_badge),
         modifier = modifier,
         appearance = RaftBadgeAppearance.Outline
     )
@@ -55,13 +54,13 @@ internal fun RaftProUpgradeDialog(
         )
         RaftDialogFooter {
             RaftButton(
-                text = stringResource(MR.strings.common_cancel),
+                text = stringResource(Res.string.common_cancel),
                 onClick = onDismiss,
                 variant = RaftButtonVariant.Ghost,
                 size = RaftButtonSize.Lg
             )
             RaftButton(
-                text = stringResource(MR.strings.raft_pro_upgrade),
+                text = stringResource(Res.string.raft_pro_upgrade),
                 onClick = onUpgrade,
                 variant = RaftButtonVariant.Primary,
                 size = RaftButtonSize.Lg

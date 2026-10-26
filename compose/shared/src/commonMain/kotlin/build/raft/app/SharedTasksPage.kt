@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftButtonVariant
@@ -47,7 +48,6 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -101,7 +101,6 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftStorePullToRefreshBox
 import build.raft.app.components.rememberRaftStorePullRefreshState
 import androidx.compose.ui.unit.sp
-import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.flow.distinctUntilChanged
 
@@ -186,7 +185,7 @@ internal fun SharedTasksPanel(
                     SharedTasksHeader(refreshing = state.refreshing)
                 }
                 SharedTasksStateBody(
-                    title = stringResource(MR.strings.common_loading),
+                    title = stringResource(Res.string.common_loading),
                     detail = "",
                     loading = true
                 )
@@ -255,9 +254,9 @@ internal fun SharedTasksPanel(
                     SharedTasksHeader(refreshing = state.refreshing)
                 }
                 SharedTasksStateBody(
-                    title = stringResource(MR.strings.tasks_error_load),
+                    title = stringResource(Res.string.tasks_error_load),
                     detail = loadState.error.code,
-                    actionLabel = stringResource(MR.strings.common_retry),
+                    actionLabel = stringResource(Res.string.common_retry),
                     onAction = { onIntent(SharedTasksRouteIntent.Refresh) }
                 )
             }
@@ -266,7 +265,7 @@ internal fun SharedTasksPanel(
                     SharedTasksHeader(refreshing = state.refreshing)
                 }
                 SharedTasksStateBody(
-                    title = stringResource(MR.strings.tasks_unavailable),
+                    title = stringResource(Res.string.tasks_unavailable),
                     detail = loadState.blocker.requiredCapability ?: loadState.blocker.code
                 )
             }
@@ -280,8 +279,8 @@ private fun SharedTasksHeader(
     refreshing: Boolean = false
 ) {
     RaftMainTabPageHeader(
-        title = stringResource(MR.strings.tasks_title),
-        subtitle = subtitle ?: stringResource(MR.strings.tasks_header_channel_tasks),
+        title = stringResource(Res.string.tasks_title),
+        subtitle = subtitle ?: stringResource(Res.string.tasks_header_channel_tasks),
         refreshing = refreshing
     )
 }
@@ -291,9 +290,9 @@ private fun localizedTasksHeaderSubtitle(totalTasks: Int, visibleTasks: Int = to
     val safeTotal = totalTasks.coerceAtLeast(0)
     val safeVisible = visibleTasks.coerceIn(0, safeTotal)
     return if (safeVisible != safeTotal) {
-        stringResource(MR.strings.tasks_header_channel_tasks_filtered, safeVisible, safeTotal)
+        stringResource(Res.string.tasks_header_channel_tasks_filtered, safeVisible, safeTotal)
     } else {
-        stringResource(MR.strings.tasks_header_channel_tasks_count, safeTotal)
+        stringResource(Res.string.tasks_header_channel_tasks_count, safeTotal)
     }
 }
 
@@ -342,18 +341,18 @@ private fun localizedSharedTasksEmptyStateCopy(
     when {
         hasAnyFilter ->
             SharedTasksEmptyStateCopy(
-                title = stringResource(MR.strings.tasks_empty_filtered),
-                description = stringResource(MR.strings.tasks_empty_filtered_detail)
+                title = stringResource(Res.string.tasks_empty_filtered),
+                description = stringResource(Res.string.tasks_empty_filtered_detail)
             )
         isChannelMode ->
             SharedTasksEmptyStateCopy(
-                title = stringResource(MR.strings.tasks_empty),
-                description = stringResource(MR.strings.tasks_create_hint)
+                title = stringResource(Res.string.tasks_empty),
+                description = stringResource(Res.string.tasks_create_hint)
             )
         else ->
             SharedTasksEmptyStateCopy(
-                title = stringResource(MR.strings.tasks_empty),
-                description = stringResource(MR.strings.tasks_empty_server_detail)
+                title = stringResource(Res.string.tasks_empty),
+                description = stringResource(Res.string.tasks_empty_server_detail)
             )
     }
 
@@ -630,7 +629,7 @@ private fun SharedTasksLoadedBodyContent(
     val creatorFilterOptions = remember(visibleContent.creatorOptions) {
         visibleContent.creatorOptions.map { RaftFilterOption(id = it.tasksIdentityFilterId(), label = it.displayName, icon = RaftLucideIconName.CircleUser) }
     }
-    val unassignedAssigneeLabel = stringResource(MR.strings.tasks_assignee_unassigned)
+    val unassignedAssigneeLabel = stringResource(Res.string.tasks_assignee_unassigned)
     val assigneeFilterOptions = remember(visibleContent.assigneeOptions, unassignedAssigneeLabel) {
         tasksAssigneeFilterOptions(visibleContent.assigneeOptions, unassignedAssigneeLabel)
     }
@@ -666,10 +665,10 @@ private fun SharedTasksLoadedBodyContent(
         Box(modifier = Modifier.weight(1f).background(RaftColor.SurfaceWhite)) {
             Column(modifier = Modifier.fillMaxSize()) {
                 state.navigationErrorCode?.let { code ->
-                    SharedTasksNotice(stringResource(MR.strings.tasks_error_action_unavailable), code, modifier = Modifier.padding(RaftAppSpacing.Md))
+                    SharedTasksNotice(stringResource(Res.string.tasks_error_action_unavailable), code, modifier = Modifier.padding(RaftAppSpacing.Md))
                 }
                 state.statusUpdateErrorCode?.let { code ->
-                    SharedTasksNotice(stringResource(MR.strings.tasks_error_update_status), code, modifier = Modifier.padding(RaftAppSpacing.Md))
+                    SharedTasksNotice(stringResource(Res.string.tasks_error_update_status), code, modifier = Modifier.padding(RaftAppSpacing.Md))
                 }
                 SharedTasksToolbar(
                     channelOptions = visibleContent.channelOptions,
@@ -886,8 +885,8 @@ private fun SharedTasksLoadedBodyContent(
         when (presentationState.openFilterId) {
             "channel" ->
                 RaftFilterSheet(
-                    title = stringResource(MR.strings.tasks_filter_channel),
-                    searchPlaceholder = stringResource(MR.strings.tasks_search_channels),
+                    title = stringResource(Res.string.tasks_filter_channel),
+                    searchPlaceholder = stringResource(Res.string.tasks_search_channels),
                     searchText = channelSearchValue.text,
                     onSearchChange = { channelSearchValue = TextFieldValue(it); presentationState = presentationState.reduce(TasksPresentationIntent.SetChannelSearch(it)) },
                     options = channelFilterOptions,
@@ -898,8 +897,8 @@ private fun SharedTasksLoadedBodyContent(
                 )
             "creator" ->
                 RaftFilterSheet(
-                    title = stringResource(MR.strings.tasks_filter_creator),
-                    searchPlaceholder = stringResource(MR.strings.tasks_search_creators),
+                    title = stringResource(Res.string.tasks_filter_creator),
+                    searchPlaceholder = stringResource(Res.string.tasks_search_creators),
                     searchText = creatorSearchValue.text,
                     onSearchChange = { creatorSearchValue = TextFieldValue(it); presentationState = presentationState.reduce(TasksPresentationIntent.SetCreatorSearch(it)) },
                     options = creatorFilterOptions,
@@ -910,8 +909,8 @@ private fun SharedTasksLoadedBodyContent(
                 )
             "assignee" ->
                 RaftFilterSheet(
-                    title = stringResource(MR.strings.tasks_filter_assignee),
-                    searchPlaceholder = stringResource(MR.strings.tasks_search_assignees),
+                    title = stringResource(Res.string.tasks_filter_assignee),
+                    searchPlaceholder = stringResource(Res.string.tasks_search_assignees),
                     searchText = assigneeSearchValue.text,
                     onSearchChange = { assigneeSearchValue = TextFieldValue(it); presentationState = presentationState.reduce(TasksPresentationIntent.SetAssigneeSearch(it)) },
                     options = assigneeFilterOptions,
@@ -956,7 +955,7 @@ private fun SharedTasksLoadedBodyContent(
             // The picker opens for the task whose assignee chip was tapped.
             assigneeMenuAnchor?.takeIf { it.belongsTo(tasksStatusMenuOwnerIdentity(task.id.value)) }
                 ?: return@let
-            val unassignedLabel = stringResource(MR.strings.tasks_assignee_unassigned)
+            val unassignedLabel = stringResource(Res.string.tasks_assignee_unassigned)
             val needle = assigneeMenuSearch.trim().lowercase()
             val people =
                 visibleContent.assigneeOptions
@@ -965,8 +964,8 @@ private fun SharedTasksLoadedBodyContent(
                     .sortedWith(compareByDescending<MemberProfile> { it.kind == MemberKind.Human }.thenBy { it.displayName.lowercase() })
             val selectedId = task.assignee?.tasksIdentityFilterId() ?: TasksUnassignedAssigneeFilterId
             RaftFilterSheet(
-                title = stringResource(MR.strings.tasks_filter_assignee),
-                searchPlaceholder = stringResource(MR.strings.tasks_search_assignees),
+                title = stringResource(Res.string.tasks_filter_assignee),
+                searchPlaceholder = stringResource(Res.string.tasks_search_assignees),
                 searchText = assigneeMenuSearch,
                 onSearchChange = { assigneeMenuSearch = it },
                 options =
@@ -1107,9 +1106,9 @@ private fun SharedTasksToolbar(
     onCreateClick: () -> Unit
 ) {
     val anyFilterActive = selectedChannels.isNotEmpty() || selectedCreatorIds.isNotEmpty() || selectedAssigneeIds.isNotEmpty()
-    val channelLabel = stringResource(MR.strings.tasks_chip_channel)
-    val creatorLabel = stringResource(MR.strings.tasks_chip_creator)
-    val assigneeLabel = stringResource(MR.strings.tasks_chip_assignee)
+    val channelLabel = stringResource(Res.string.tasks_chip_channel)
+    val creatorLabel = stringResource(Res.string.tasks_chip_creator)
+    val assigneeLabel = stringResource(Res.string.tasks_chip_assignee)
     val channelChip: @Composable () -> Unit = {
         RaftAnchoredPickerTrigger(
             label = if (selectedChannels.isEmpty()) channelLabel else "$channelLabel · ${selectedChannels.size}",
@@ -1146,7 +1145,7 @@ private fun SharedTasksToolbar(
     }
     val clearAllChip: @Composable () -> Unit = {
         RaftToolbarChip(
-            label = stringResource(MR.strings.tasks_action_clear_all),
+            label = stringResource(Res.string.tasks_action_clear_all),
             iconName = RaftLucideIconName.X,
             uppercase = false,
             active = false,
@@ -1155,7 +1154,7 @@ private fun SharedTasksToolbar(
     }
     val newTaskButton: @Composable () -> Unit = {
         RaftButton(
-            text = stringResource(MR.strings.tasks_action_new_task),
+            text = stringResource(Res.string.tasks_action_new_task),
             leadingIcon = { RaftSlotIcon(RaftLucideIconName.Plus) },
             onClick = onCreateClick,
             variant = RaftButtonVariant.Primary
@@ -1361,11 +1360,11 @@ private fun SharedTasksBoardColumn(
 private fun localizedTasksEmptyStatus(status: TaskStatus): String =
     stringResource(
         when (status) {
-            TaskStatus.Todo -> MR.strings.tasks_empty_todo
-            TaskStatus.InProgress -> MR.strings.tasks_empty_in_progress
-            TaskStatus.InReview -> MR.strings.tasks_empty_in_review
-            TaskStatus.Done -> MR.strings.tasks_empty_done
-            TaskStatus.Closed -> MR.strings.tasks_empty_closed
+            TaskStatus.Todo -> Res.string.tasks_empty_todo
+            TaskStatus.InProgress -> Res.string.tasks_empty_in_progress
+            TaskStatus.InReview -> Res.string.tasks_empty_in_review
+            TaskStatus.Done -> Res.string.tasks_empty_done
+            TaskStatus.Closed -> Res.string.tasks_empty_closed
         }
     )
 
@@ -1569,7 +1568,7 @@ private fun SharedTaskCard(
                 val assigneeDisplayName = task.tasksAssigneeDisplayName()
                 RaftAnchoredMetaChip(
                     label = assigneeDisplayName?.let { "@$it" }
-                        ?: stringResource(MR.strings.tasks_assignee_unassigned),
+                        ?: stringResource(Res.string.tasks_assignee_unassigned),
                     iconName = null,
                     color = RaftColor.SurfaceWhite,
                     onClick = onAssigneeBadgeClick,
@@ -1665,8 +1664,8 @@ private fun SharedTasksSegmentedControl(
         selectedValue = selectedMode.name,
         options =
             listOf(
-                SegmentedControlOption(value = TasksViewMode.Board.name, label = stringResource(MR.strings.tasks_view_board), iconName = RaftLucideIconName.Columns3),
-                SegmentedControlOption(value = TasksViewMode.List.name, label = stringResource(MR.strings.tasks_view_list), iconName = RaftLucideIconName.LayoutList)
+                SegmentedControlOption(value = TasksViewMode.Board.name, label = stringResource(Res.string.tasks_view_board), iconName = RaftLucideIconName.Columns3),
+                SegmentedControlOption(value = TasksViewMode.List.name, label = stringResource(Res.string.tasks_view_list), iconName = RaftLucideIconName.LayoutList)
             ),
         onValueSelected = { value ->
             when (value) {
@@ -1724,11 +1723,11 @@ private fun SharedTasksStateBody(
 internal fun TaskStatus.localizedLabel(): String =
     stringResource(
         when (this) {
-            TaskStatus.Todo -> MR.strings.tasks_status_todo
-            TaskStatus.InProgress -> MR.strings.tasks_status_in_progress
-            TaskStatus.InReview -> MR.strings.tasks_status_in_review
-            TaskStatus.Done -> MR.strings.tasks_status_done
-            TaskStatus.Closed -> MR.strings.tasks_status_closed
+            TaskStatus.Todo -> Res.string.tasks_status_todo
+            TaskStatus.InProgress -> Res.string.tasks_status_in_progress
+            TaskStatus.InReview -> Res.string.tasks_status_in_review
+            TaskStatus.Done -> Res.string.tasks_status_done
+            TaskStatus.Closed -> Res.string.tasks_status_closed
         }
     )
 
@@ -1808,7 +1807,7 @@ private fun TasksStatusDialog(
     onSelect: (TaskStatus) -> Unit
 ) {
     RaftUnifiedDialog(
-        title = stringResource(MR.strings.tasks_label_status),
+        title = stringResource(Res.string.tasks_label_status),
         onDismiss = onDismiss,
         dismissEnabled = !updating,
         contentSpacing = RaftAppSpacing.Sm
@@ -1829,7 +1828,7 @@ private fun TasksStatusDialog(
             }
             item {
                 Text(
-                    text = stringResource(MR.strings.tasks_current_status, task.status.localizedLabel()),
+                    text = stringResource(Res.string.tasks_current_status, task.status.localizedLabel()),
                     style = RaftType.Caption,
                     color = RaftColor.TextBlack.copy(alpha = 0.65f)
                 )
@@ -1848,7 +1847,7 @@ private fun TasksStatusDialog(
             errorCode?.takeIf { it.isNotBlank() }?.let { code ->
                 item {
                     Text(
-                        text = "${stringResource(MR.strings.tasks_error_update_status)}: $code",
+                        text = "${stringResource(Res.string.tasks_error_update_status)}: $code",
                         style = RaftType.Caption,
                         color = RaftColor.AccentRed
                     )
@@ -1868,7 +1867,7 @@ private fun TasksCreateDialog(
     var titles by remember { mutableStateOf(listOf("")) }
     val anyNonBlank = titles.any { it.isNotBlank() }
     RaftUnifiedDialog(
-        title = stringResource(MR.strings.tasks_label_new_tasks),
+        title = stringResource(Res.string.tasks_label_new_tasks),
         onDismiss = onDismiss,
         dismissEnabled = !loading,
         keyboardAvoidanceEnabled = true,
@@ -1883,7 +1882,7 @@ private fun TasksCreateDialog(
         ) {
             item {
                 Text(
-                    text = stringResource(MR.strings.tasks_create_multiple_hint),
+                    text = stringResource(Res.string.tasks_create_multiple_hint),
                     style = RaftType.Caption,
                     color = RaftColor.TextMutedGray
                 )
@@ -1895,7 +1894,7 @@ private fun TasksCreateDialog(
                     onValueChange = { next ->
                         titles = titles.toMutableList().also { it[index] = next }
                     },
-                    placeholder = stringResource(MR.strings.tasks_label_title),
+                    placeholder = stringResource(Res.string.tasks_label_title),
                     placeholderColor = RaftColor.TextMutedGray,
                     enabled = !loading,
                     autoFocus = index == 0,
@@ -1910,7 +1909,7 @@ private fun TasksCreateDialog(
             }
             item {
                 RaftToolbarChip(
-                    label = stringResource(MR.strings.tasks_action_add_another),
+                    label = stringResource(Res.string.tasks_action_add_another),
                     iconName = RaftLucideIconName.Plus,
                     active = false,
                     enabled = !loading,
@@ -1931,7 +1930,7 @@ private fun TasksCreateDialog(
         }
         RaftDialogFooter {
             RaftButton(
-                text = stringResource(MR.strings.common_cancel),
+                text = stringResource(Res.string.common_cancel),
                 enabled = !loading,
                 onClick = onDismiss,
                 variant = RaftButtonVariant.Ghost,
@@ -1939,9 +1938,9 @@ private fun TasksCreateDialog(
             )
             RaftButton(
                 text = if (loading) {
-                        stringResource(MR.strings.tasks_create_action_creating)
+                        stringResource(Res.string.tasks_create_action_creating)
                     } else {
-                        stringResource(MR.strings.tasks_create_action)
+                        stringResource(Res.string.tasks_create_action)
                     },
                 leadingIcon = { RaftSlotIcon(RaftLucideIconName.Check) },
                 enabled = anyNonBlank && !loading,

@@ -1,5 +1,6 @@
 package build.raft.app.components
 
+import build.raft.app.resources.*
 import build.raft.app.RaftAppThemeState
 import build.raft.app.RaftUiTextLocaleState
 import build.raft.app.raftMultiWeightFontFamily
@@ -7,8 +8,6 @@ import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
-import com.tencent.tmm.kmmresource.compose.stringResource
-import build.raft.app.resources.MR
 import build.raft.app.cmp.RaftCmpRouter
 import build.raft.app.host.HostFeedbackCapability
 import build.raft.designsystem.components.LocalRaftCopyHandler
@@ -36,7 +35,7 @@ import build.raft.designsystem.theme.RaftTheme
  * characters in the ja / ko / zh-Hant glyph forms the UI language asks for.
  *
  * The components' own words ([LocalRaftStrings]: the optional-field marker, the close, clear
- * and loading names) come from the app's `MR.strings`, so they follow the UI language.
+ * and loading names) come from the app's `Res.string` resources, so they follow the UI language.
  *
  * Debug builds fail on design-system misuse ([RaftProvideDesignSystemMisuse]); release stays
  * silent.
@@ -93,19 +92,19 @@ internal fun RaftProvideDesignSystemMisuse(
 
 /**
  * The design-system components' own words ([LocalRaftStrings]) in the UI language, from the
- * app's `MR.strings`. Provided round every page ([RaftProvideDesignSystemStrings] in the pager
+ * app's `Res.string` resources. Provided round every page ([RaftProvideDesignSystemStrings] in the pager
  * host) and again inside [RaftDesignSystemTheme], whose [RaftTheme] sits below that.
  */
 @Composable
 internal fun raftAppDesignSystemStrings(): RaftStrings =
     RaftStrings(
-        optional = stringResource(MR.strings.common_optional_suffix),
-        close = stringResource(MR.strings.common_close),
-        clear = stringResource(MR.strings.common_clear),
-        loading = stringResource(MR.strings.common_loading),
-        cancel = stringResource(MR.strings.common_cancel),
-        dismiss = stringResource(MR.strings.common_dismiss),
-        copy = stringResource(MR.strings.common_copy),
+        optional = stringResource(Res.string.common_optional_suffix),
+        close = stringResource(Res.string.common_close),
+        clear = stringResource(Res.string.common_clear),
+        loading = stringResource(Res.string.common_loading),
+        cancel = stringResource(Res.string.common_cancel),
+        dismiss = stringResource(Res.string.common_dismiss),
+        copy = stringResource(Res.string.common_copy),
     )
 
 /** Provides [raftAppDesignSystemStrings] as [LocalRaftStrings] to [content]. */
@@ -122,7 +121,7 @@ internal fun RaftProvideDesignSystemStrings(content: @Composable () -> Unit) {
  */
 @Composable
 internal fun RaftProvideDesignSystemCopy(feedback: HostFeedbackCapability, content: @Composable () -> Unit) {
-    val copied = stringResource(MR.strings.common_copied)
+    val copied = stringResource(Res.string.common_copied)
     val handler =
         remember(feedback, copied) {
             RaftCopyHandler { text ->

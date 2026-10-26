@@ -13,7 +13,6 @@ import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSData
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
-import platform.Foundation.NSURL
 import platform.Foundation.NSUserDomainMask
 import platform.Foundation.dataWithContentsOfFile
 import platform.UIKit.UIImage
@@ -22,8 +21,7 @@ import platform.posix.memcpy
 
 /**
  * `assets://<path>`, ported from `KuiklyRenderComponentExpandHandler.slock_bundledImageForAssetURLString`:
- * main bundle file, then the kmmresource MR bundle (`build.raft.app.resources.MR.bundle`, which
- * flattens `/` to `+` and may use a Contents/Resources layout), then the asset catalog.
+ * main bundle file, then the asset catalog. (Compose resources files are read in common code.)
  */
 internal actual suspend fun raftReadBundledImageAsset(context: PlatformContext, path: String): ByteArray? {
     val relativePath = path.trimStart('/')
@@ -33,7 +31,6 @@ internal actual suspend fun raftReadBundledImageAsset(context: PlatformContext, 
         val candidate = "$root/$relativePath"
         if (fileManager.fileExistsAtPath(candidate)) readRaftFile(candidate)?.let { return it }
     }
-    raftMrBundleAssetPath(relativePath)?.let { candidate -> readRaftFile(candidate)?.let { return it } }
     val catalogName = relativePath.substringBeforeLast('.').replace('/', '-')
     return UIImage.imageNamed(catalogName)?.let { UIImagePNGRepresentation(it) }?.toRaftByteArray()
 }
@@ -42,29 +39,6 @@ internal actual fun raftImageDiskCacheDirectory(context: PlatformContext): Path?
     @Suppress("UNCHECKED_CAST")
     val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true) as List<String>
     return caches.firstOrNull()?.let { "$it/raft_image_cache".toPath() }
-}
-
-private val raftMrResourceBundle: NSBundle? by lazy {
-    NSBundle.mainBundle.URLForResource("build.raft.app.resources.MR", withExtension = "bundle")
-        ?.let { url: NSURL -> NSBundle.bundleWithURL(url) }
-}
-
-private fun raftMrBundleAssetPath(relativePath: String): String? {
-    val bundle = raftMrResourceBundle ?: return null
-    val ext = relativePath.substringAfterLast('.', "").takeIf { it.isNotEmpty() && '/' !in it }
-    val stem = if (ext != null) relativePath.removeSuffix(".$ext") else relativePath
-    val names = listOf(stem.replace('/', '+'), stem, stem.substringAfterLast('/'))
-    val dirs = listOfNotNull("${bundle.bundlePath}/Contents/Resources", bundle.resourcePath, bundle.bundlePath)
-    val fileManager = NSFileManager.defaultManager
-    for (name in names) {
-        bundle.pathForResource(name, ofType = ext)?.let { return it }
-        val fileName = if (ext != null) "$name.$ext" else name
-        for (dir in dirs) {
-            val candidate = "$dir/$fileName"
-            if (fileManager.fileExistsAtPath(candidate)) return candidate
-        }
-    }
-    return null
 }
 
 @OptIn(BetaInteropApi::class)

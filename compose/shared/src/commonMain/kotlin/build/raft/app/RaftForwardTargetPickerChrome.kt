@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -29,7 +30,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftAvatarType
@@ -47,7 +47,6 @@ import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 // web ForwardComposerMobile (targets step): a phone PanelHeader whose 44dp ghost Back and
 // trailing actions sit 3dp from the screen edges, `main p-3` around the search InputGroup,
@@ -76,9 +75,9 @@ internal fun RaftForwardPickerHeader(
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val backLabel =
-        if (multiSelect && multiSelectAvailable) stringResource(MR.strings.common_cancel) else stringResource(MR.strings.common_back)
+        if (multiSelect && multiSelectAvailable) stringResource(Res.string.common_cancel) else stringResource(Res.string.common_back)
     RaftTopPageHeader(
-        title = stringResource(MR.strings.thread_forward_select_destinations),
+        title = stringResource(Res.string.thread_forward_select_destinations),
         backgroundColor = RaftColor.Canvas,
         contentStartPadding = ForwardPickerHeaderEdgeInset,
         contentEndPadding = ForwardPickerHeaderEdgeInset,
@@ -102,7 +101,7 @@ internal fun RaftForwardPickerHeader(
         titleContent = {
             Column(modifier = Modifier.weight(1f)) {
                 RaftText(
-                    text = stringResource(MR.strings.thread_forward_select_destinations),
+                    text = stringResource(Res.string.thread_forward_select_destinations),
                     style = typography.headline,
                     color = colors.foreground,
                     maxLines = 1,
@@ -121,7 +120,7 @@ internal fun RaftForwardPickerHeader(
             if (multiSelectAvailable && !multiSelect) {
                 {
                     RaftButton(
-                        text = stringResource(MR.strings.thread_forward_select_multiple),
+                        text = stringResource(Res.string.thread_forward_select_multiple),
                         onClick = onStartMultiSelect,
                         variant = RaftButtonVariant.Ghost
                     )
@@ -157,7 +156,7 @@ internal fun RaftForwardPickerSearchField(
     RaftTextField(
         value = query,
         onValueChange = onQueryChange,
-        placeholder = stringResource(MR.strings.thread_forward_search_targets),
+        placeholder = stringResource(Res.string.thread_forward_search_targets),
         enabled = enabled,
         leading = { ForwardPickerGlyph(RaftLucideIconName.Search, 18.dp) },
         trailing =

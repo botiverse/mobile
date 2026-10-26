@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.transfer.RaftTransferMeter
 import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.markdown.markdownToPreviewText
@@ -292,7 +293,6 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.isInternalJointStorageIdentity
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -431,11 +431,7 @@ import build.raft.app.compat.json.JSONArray
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.IPagerEventObserver
 import build.raft.app.compat.pager.Pager
-import com.tencent.tmm.kmmresource.compose.localized
-import com.tencent.tmm.kmmresource.compose.stringResource
-import com.tencent.tmm.kmmresource.resource.StringResource
-import com.tencent.tmm.kmmresource.resource.desc.StringDesc
-import com.tencent.tmm.kmmresource.resource.desc.desc
+import org.jetbrains.compose.resources.StringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -4183,9 +4179,9 @@ private fun RaftThreadTab.toRaftTabSpec(): RaftTabSpec<RaftThreadTab> =
         key = this,
         label =
             when (this) {
-                RaftThreadTab.Chat -> stringResource(MR.strings.thread_tab_chat)
-                RaftThreadTab.Tasks -> stringResource(MR.strings.thread_tab_tasks)
-                RaftThreadTab.Files -> stringResource(MR.strings.thread_tab_files)
+                RaftThreadTab.Chat -> stringResource(Res.string.thread_tab_chat)
+                RaftThreadTab.Tasks -> stringResource(Res.string.thread_tab_tasks)
+                RaftThreadTab.Files -> stringResource(Res.string.thread_tab_files)
             },
         iconName = icon
     )
@@ -4529,8 +4525,8 @@ private fun ThreadPageScreen(
     val routerModule = remember(pager) {
         pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
     }
-    val unableToOpenThreadLabel = stringResource(MR.strings.thread_error_open_thread)
-    val unableToOpenProfileLabel = stringResource(MR.strings.thread_error_open_profile)
+    val unableToOpenThreadLabel = stringResource(Res.string.thread_error_open_thread)
+    val unableToOpenProfileLabel = stringResource(Res.string.thread_error_open_profile)
     fun openStandaloneThreadPayload(
         nextPayload: RaftThreadScreenPayload,
         serverIdOverride: String? = null
@@ -4771,7 +4767,7 @@ private fun ThreadMembersPageScreen() {
                     iconName = RaftLucideIconName.Users,
                     onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
                 )
-                ThreadStateMessage(title = stringResource(MR.strings.common_error), detail = null)
+                ThreadStateMessage(title = stringResource(Res.string.common_error), detail = null)
             }
         }
         return
@@ -4789,11 +4785,11 @@ private fun ThreadMembersPageScreen() {
         Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
             Column(modifier = Modifier.fillMaxSize()) {
                 RaftTopPageHeader(
-                    title = stringResource(MR.strings.thread_members_title, 0),
+                    title = stringResource(Res.string.thread_members_title, 0),
                     iconName = RaftLucideIconName.Users,
                     onBack = router::closePage,
                 )
-                ThreadStateMessage(title = stringResource(MR.strings.common_error), detail = null)
+                ThreadStateMessage(title = stringResource(Res.string.common_error), detail = null)
             }
         }
         return
@@ -4928,8 +4924,8 @@ private fun ThreadMembersPageScreen() {
     var addMemberErrorCode by remember { mutableStateOf<String?>(null) }
     var removalGate by
         remember(route.serverId, route.channelId) { mutableStateOf(ThreadMemberRemovalGateState()) }
-    val unableToOpenProfileLabel = stringResource(MR.strings.thread_error_open_profile)
-    val memberRemovedLabel = stringResource(MR.strings.thread_feedback_member_removed)
+    val unableToOpenProfileLabel = stringResource(Res.string.thread_error_open_profile)
+    val memberRemovedLabel = stringResource(Res.string.thread_feedback_member_removed)
     val channelName =
         channelProjections[route.channelId.value]
             ?.title
@@ -5209,8 +5205,8 @@ private fun ThreadMembersPageScreen() {
                 errorMessage =
                     when (removalGate.failure) {
                         ThreadMemberRemovalFailure.NoPermission ->
-                            stringResource(MR.strings.thread_members_remove_no_permission)
-                        ThreadMemberRemovalFailure.Failed -> stringResource(MR.strings.thread_members_remove_failed)
+                            stringResource(Res.string.thread_members_remove_no_permission)
+                        ThreadMemberRemovalFailure.Failed -> stringResource(Res.string.thread_members_remove_failed)
                         else -> null
                     },
                 onDismiss = {
@@ -5278,7 +5274,7 @@ internal fun ThreadMembersPageContent(
     RaftDesignSystemTheme {
     Column(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
         ChannelMembersPageHeader(
-            title = stringResource(if (addDialogVisible) MR.strings.thread_action_add_member else MR.strings.thread_members_heading),
+            title = stringResource(if (addDialogVisible) Res.string.thread_action_add_member else Res.string.thread_members_heading),
             count = (members.size + externalMemberCount).takeIf { !addDialogVisible && !membersLoading },
             refreshing = rosterPullState.headerRefreshing(refreshing),
             onBack = {
@@ -5303,9 +5299,9 @@ internal fun ThreadMembersPageContent(
         if (removalGate.failure != null) {
             ChannelMembersWarning(
                 if (removalGate.failure == ThreadMemberRemovalFailure.NoPermission) {
-                    stringResource(MR.strings.thread_members_remove_no_permission)
+                    stringResource(Res.string.thread_members_remove_no_permission)
                 } else {
-                    stringResource(MR.strings.thread_members_remove_failed)
+                    stringResource(Res.string.thread_members_remove_failed)
                 }
             )
         }
@@ -5326,8 +5322,8 @@ internal fun ThreadMembersPageContent(
                 item {
                     ChannelMembersEmptyState(
                         icon = RaftLucideIconName.TriangleAlert,
-                        title = stringResource(MR.strings.common_error),
-                        actionLabel = stringResource(MR.strings.common_retry),
+                        title = stringResource(Res.string.common_error),
+                        actionLabel = stringResource(Res.string.common_retry),
                         onAction = onRefresh,
                     )
                 }
@@ -5339,12 +5335,12 @@ internal fun ThreadMembersPageContent(
                     if (query.isNotEmpty() && (members.isNotEmpty() || externalMemberCount > 0)) {
                         ChannelMembersEmptyState(
                             icon = RaftLucideIconName.Search,
-                            title = stringResource(MR.strings.thread_members_no_matches, query),
+                            title = stringResource(Res.string.thread_members_no_matches, query),
                         )
                     } else {
                         ChannelMembersEmptyState(
                             icon = RaftLucideIconName.Users,
-                            title = stringResource(MR.strings.thread_members_empty),
+                            title = stringResource(Res.string.thread_members_empty),
                         )
                     }
                 }
@@ -5355,7 +5351,7 @@ internal fun ThreadMembersPageContent(
                 if (humans.isNotEmpty()) {
                     item(key = "section:humans") {
                         RaftSidebarSectionHeader(
-                            title = stringResource(MR.strings.thread_members_humans), count = humans.size,
+                            title = stringResource(Res.string.thread_members_humans), count = humans.size,
                             expanded = humansExpanded, onExpandedChange = onHumansExpandedChange,
                             countSeparator = " · ",
                         )
@@ -5375,7 +5371,7 @@ internal fun ThreadMembersPageContent(
                 if (agents.isNotEmpty()) {
                     item(key = "section:agents") {
                         RaftSidebarSectionHeader(
-                            title = stringResource(MR.strings.thread_members_agents), count = agents.size,
+                            title = stringResource(Res.string.thread_members_agents), count = agents.size,
                             expanded = agentsExpanded, onExpandedChange = onAgentsExpandedChange,
                             countSeparator = " · ",
                         )
@@ -5395,7 +5391,7 @@ internal fun ThreadMembersPageContent(
                 if (filteredExternal.isNotEmpty()) {
                     item(key = "section:external") {
                         RaftSidebarSectionHeader(
-                            title = stringResource(MR.strings.thread_members_external), count = filteredExternal.size,
+                            title = stringResource(Res.string.thread_members_external), count = filteredExternal.size,
                             expanded = externalExpanded, onExpandedChange = onExternalExpandedChange,
                             countSeparator = " · ",
                         )
@@ -5869,7 +5865,7 @@ internal fun ChannelSettingsPanelVisualScreen(pinned: Boolean = false) {
     Box(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         ThreadSettingsModal(
             channelName = "design",
-            subtitle = stringResource(MR.strings.channel_description_design),
+            subtitle = stringResource(Res.string.channel_description_design),
             actions = channelPanelVisualSettingsActions(),
             conversationPinState =
                 ThreadConversationPinUiState(
@@ -6315,7 +6311,7 @@ private fun SharedThreadRouteContentContent(
     val pager = LocalActivity.current.getPager() as Pager
     val linkNavigator = rememberRaftLinkNavigator(pager, bridge)
     val externalAuthorHintTemplate =
-        stringResource(MR.strings.thread_external_author_hint, ThreadLocalizedFeedbackPlaceholder)
+        stringResource(Res.string.thread_external_author_hint, ThreadLocalizedFeedbackPlaceholder)
     // task #395: external (Slack-bridge) authors have no member profile; the avatar/name
     // tap surfaces a provider identity hint instead of silently doing nothing.
     val onExternalAuthorHint: (RaftThreadMessageItem) -> Unit = { message ->
@@ -6437,7 +6433,7 @@ private fun SharedThreadRouteContentContent(
     val conversationAccessLost by remember(threadViewModel) {
         threadViewModel.conversationAccessLostFlow()
     }.collectAsState(threadViewModel.state.value.conversationAccessLost)
-    val conversationUnavailableLabel = stringResource(MR.strings.home_error_conversation_unavailable)
+    val conversationUnavailableLabel = stringResource(Res.string.home_error_conversation_unavailable)
     LaunchedEffect(conversationAccessLost) {
         if (conversationAccessLost) {
             bridge.logWarn("thread_access_lost_leave instanceKey=${initialRouteIdentity.instanceKey}")
@@ -7574,21 +7570,21 @@ private fun SharedThreadRouteContentContent(
         }
     val actionCardSuccessLabels =
         mapOf(
-            "channel:create" to stringResource(MR.strings.thread_action_card_success_channel),
-            "agent:create" to stringResource(MR.strings.thread_action_card_success_agent),
-            "channel:add_member" to stringResource(MR.strings.thread_action_card_success_members),
-            "integration:approve_agent_login" to stringResource(MR.strings.thread_action_card_login_approved)
+            "channel:create" to stringResource(Res.string.thread_action_card_success_channel),
+            "agent:create" to stringResource(Res.string.thread_action_card_success_agent),
+            "channel:add_member" to stringResource(Res.string.thread_action_card_success_members),
+            "integration:approve_agent_login" to stringResource(Res.string.thread_action_card_login_approved)
         )
     val actionCardFailureLabels =
         mapOf(
-            "channel:create" to stringResource(MR.strings.thread_action_card_failure_channel),
-            "agent:create" to stringResource(MR.strings.thread_action_card_failure_agent),
-            "channel:add_member" to stringResource(MR.strings.thread_action_card_failure_members),
-            "integration:approve_agent_login" to stringResource(MR.strings.thread_action_card_failure_login)
+            "channel:create" to stringResource(Res.string.thread_action_card_failure_channel),
+            "agent:create" to stringResource(Res.string.thread_action_card_failure_agent),
+            "channel:add_member" to stringResource(Res.string.thread_action_card_failure_members),
+            "integration:approve_agent_login" to stringResource(Res.string.thread_action_card_failure_login)
         )
-    val genericActionCardSuccessLabel = stringResource(MR.strings.thread_action_card_success_action)
-    val genericActionCardFailureLabel = stringResource(MR.strings.thread_action_card_failure_action)
-    val actionCardReconfirmFailedLabel = stringResource(MR.strings.thread_action_card_reconfirm_failed)
+    val genericActionCardSuccessLabel = stringResource(Res.string.thread_action_card_success_action)
+    val genericActionCardFailureLabel = stringResource(Res.string.thread_action_card_failure_action)
+    val actionCardReconfirmFailedLabel = stringResource(Res.string.thread_action_card_reconfirm_failed)
     val composerSendKeyEnabled = chatLayoutPreferenceStore.readComposerSendKeyEnabledSync()
     // Effective "Collapse long messages": this conversation's device-local override ?: the global switch.
     val longMessageCollapseConversationSetting =
@@ -7599,24 +7595,24 @@ private fun SharedThreadRouteContentContent(
     val longMessageCollapseEnabled = longMessageCollapseConversationSetting.effective
     val singleTapOpensThreadEnabled = chatLayoutPreferenceStore.readSingleTapOpensThreadEnabledSync()
     val newMessageMenuEnabled = chatLayoutPreferenceStore.readNewMessageMenuEnabledSync()
-    val commentsUnavailableLabel = stringResource(MR.strings.thread_error_comments_unavailable)
-    val unableToSendCommentLabel = stringResource(MR.strings.thread_error_send_comment)
-    val unableToResolveCommentLabel = stringResource(MR.strings.thread_error_resolve_comment)
-    val unableToOpenAttachmentLabel = stringResource(MR.strings.thread_error_open_attachment)
-    val unableToDownloadAttachmentLabel = stringResource(MR.strings.file_preview_error_download_attachment)
+    val commentsUnavailableLabel = stringResource(Res.string.thread_error_comments_unavailable)
+    val unableToSendCommentLabel = stringResource(Res.string.thread_error_send_comment)
+    val unableToResolveCommentLabel = stringResource(Res.string.thread_error_resolve_comment)
+    val unableToOpenAttachmentLabel = stringResource(Res.string.thread_error_open_attachment)
+    val unableToDownloadAttachmentLabel = stringResource(Res.string.file_preview_error_download_attachment)
     val attachmentOpenResultTerms =
         RaftAttachmentOpenResultTerms(
-            downloadStopped = stringResource(MR.strings.file_preview_download_stopped),
+            downloadStopped = stringResource(Res.string.file_preview_download_stopped),
             unableToDownloadAttachment = unableToDownloadAttachmentLabel,
-            noAppCanOpenFile = stringResource(MR.strings.file_preview_error_no_app),
-            storageUnavailable = stringResource(MR.strings.file_preview_error_storage_unavailable),
-            downloadFailed = stringResource(MR.strings.file_preview_download_failed),
+            noAppCanOpenFile = stringResource(Res.string.file_preview_error_no_app),
+            storageUnavailable = stringResource(Res.string.file_preview_error_storage_unavailable),
+            downloadFailed = stringResource(Res.string.file_preview_download_failed),
             unableToOpenAttachment = unableToOpenAttachmentLabel
         )
-    val attachmentSavedToDownloadsLabel = stringResource(MR.strings.file_preview_download_saved)
-    val attachmentSavedToFilesLabel = stringResource(MR.strings.file_preview_export_saved)
-    val attachmentSavedToPhotosLabel = stringResource(MR.strings.thread_image_preview_saved_to_photos)
-    val attachmentDownloadedLabel = stringResource(MR.strings.file_preview_private_download_saved)
+    val attachmentSavedToDownloadsLabel = stringResource(Res.string.file_preview_download_saved)
+    val attachmentSavedToFilesLabel = stringResource(Res.string.file_preview_export_saved)
+    val attachmentSavedToPhotosLabel = stringResource(Res.string.thread_image_preview_saved_to_photos)
+    val attachmentDownloadedLabel = stringResource(Res.string.file_preview_private_download_saved)
     val attachmentSavedLabel =
         raftFilePreviewSavedMessage(
             exportPrivateDownload = false,
@@ -7628,129 +7624,129 @@ private fun SharedThreadRouteContentContent(
             fileExportSaved = attachmentSavedToFilesLabel,
             imageSavedToPhotos = attachmentSavedToPhotosLabel
         )
-    val attachmentUploadFailedLabel = stringResource(MR.strings.thread_error_attachment_upload)
-    val preparingAttachmentPreviewLabel = stringResource(MR.strings.thread_state_preparing_attachment)
+    val attachmentUploadFailedLabel = stringResource(Res.string.thread_error_attachment_upload)
+    val preparingAttachmentPreviewLabel = stringResource(Res.string.thread_state_preparing_attachment)
     val attachmentUploadFailedDetailTemplate =
-        stringResource(MR.strings.thread_error_attachment_upload_detail, ThreadLocalizedFeedbackPlaceholder)
-    val attachmentLimitUnavailableLabel = stringResource(MR.strings.thread_error_attachment_limit_unavailable)
+        stringResource(Res.string.thread_error_attachment_upload_detail, ThreadLocalizedFeedbackPlaceholder)
+    val attachmentLimitUnavailableLabel = stringResource(Res.string.thread_error_attachment_limit_unavailable)
     val attachmentTooLargeTemplate =
         stringResource(
-            MR.strings.thread_error_attachment_too_large_detail,
+            Res.string.thread_error_attachment_too_large_detail,
             ThreadLocalizedFeedbackPlaceholder,
             "__RAFT_ATTACHMENT_LIMIT__"
         )
-    val unableToOpenRepliesLabel = stringResource(MR.strings.thread_error_open_replies)
-    val unableToOpenParentMessageLabel = stringResource(MR.strings.thread_error_open_parent_message)
-    val unableToOpenTaskLabel = stringResource(MR.strings.thread_error_open_task)
+    val unableToOpenRepliesLabel = stringResource(Res.string.thread_error_open_replies)
+    val unableToOpenParentMessageLabel = stringResource(Res.string.thread_error_open_parent_message)
+    val unableToOpenTaskLabel = stringResource(Res.string.thread_error_open_task)
     val unableToOpenTargetTemplate =
-        stringResource(MR.strings.thread_error_open_target, ThreadLocalizedFeedbackPlaceholder)
+        stringResource(Res.string.thread_error_open_target, ThreadLocalizedFeedbackPlaceholder)
     val unableToOpenTaskNumberTemplate =
-        stringResource(MR.strings.thread_error_open_task_number, ThreadLocalizedFeedbackPlaceholder)
-    val genericThreadErrorLabel = stringResource(MR.strings.common_error)
+        stringResource(Res.string.thread_error_open_task_number, ThreadLocalizedFeedbackPlaceholder)
+    val genericThreadErrorLabel = stringResource(Res.string.common_error)
     val pendingMentionActionBatchStrings =
         PendingMentionActionBatchStrings(
             resultTemplate =
                 stringResource(
-                    MR.strings.thread_composer_mention_batch_result,
+                    Res.string.thread_composer_mention_batch_result,
                     "__RAFT_ADDED__",
                     "__RAFT_TOTAL__",
                     "__RAFT_ERROR__"
                 ),
             resultSummaryTemplate =
                 stringResource(
-                    MR.strings.thread_composer_mention_batch_result_summary,
+                    Res.string.thread_composer_mention_batch_result_summary,
                     "__RAFT_ADDED__",
                     "__RAFT_TOTAL__"
                 ),
-            missing = stringResource(MR.strings.thread_composer_mention_batch_error_missing),
-            deliveryUnavailable = stringResource(MR.strings.thread_composer_mention_batch_error_delivery_unavailable),
-            dropped = stringResource(MR.strings.thread_composer_mention_batch_error_dropped),
-            notifyDropped = stringResource(MR.strings.thread_composer_mention_action_error_notify_dropped),
-            senderLacksChannelAccess = stringResource(MR.strings.thread_composer_mention_batch_error_sender_access),
-            targetLacksReadAccess = stringResource(MR.strings.thread_composer_mention_batch_error_target_access),
-            addNotAllowedForSurface = stringResource(MR.strings.thread_composer_mention_batch_error_surface),
-            addRequiresHumanAuthority = stringResource(MR.strings.thread_composer_mention_batch_error_human_authority),
+            missing = stringResource(Res.string.thread_composer_mention_batch_error_missing),
+            deliveryUnavailable = stringResource(Res.string.thread_composer_mention_batch_error_delivery_unavailable),
+            dropped = stringResource(Res.string.thread_composer_mention_batch_error_dropped),
+            notifyDropped = stringResource(Res.string.thread_composer_mention_action_error_notify_dropped),
+            senderLacksChannelAccess = stringResource(Res.string.thread_composer_mention_batch_error_sender_access),
+            targetLacksReadAccess = stringResource(Res.string.thread_composer_mention_batch_error_target_access),
+            addNotAllowedForSurface = stringResource(Res.string.thread_composer_mention_batch_error_surface),
+            addRequiresHumanAuthority = stringResource(Res.string.thread_composer_mention_batch_error_human_authority),
             addRequiresMemberManagementAuthority =
-                stringResource(MR.strings.thread_composer_mention_batch_error_member_authority),
-            noPermission = stringResource(MR.strings.thread_composer_mention_batch_error_permission),
-            targetAlreadyMember = stringResource(MR.strings.thread_composer_mention_batch_error_already_member),
-            targetUnavailable = stringResource(MR.strings.thread_composer_mention_batch_error_target_unavailable),
-            stale = stringResource(MR.strings.thread_composer_mention_batch_error_stale),
-            expired = stringResource(MR.strings.thread_composer_mention_batch_error_expired),
-            ambiguous = stringResource(MR.strings.thread_composer_mention_batch_error_ambiguous),
-            generic = stringResource(MR.strings.thread_composer_mention_batch_error_generic),
-            requestConnection = stringResource(MR.strings.thread_composer_mention_request_error_connection),
+                stringResource(Res.string.thread_composer_mention_batch_error_member_authority),
+            noPermission = stringResource(Res.string.thread_composer_mention_batch_error_permission),
+            targetAlreadyMember = stringResource(Res.string.thread_composer_mention_batch_error_already_member),
+            targetUnavailable = stringResource(Res.string.thread_composer_mention_batch_error_target_unavailable),
+            stale = stringResource(Res.string.thread_composer_mention_batch_error_stale),
+            expired = stringResource(Res.string.thread_composer_mention_batch_error_expired),
+            ambiguous = stringResource(Res.string.thread_composer_mention_batch_error_ambiguous),
+            generic = stringResource(Res.string.thread_composer_mention_batch_error_generic),
+            requestConnection = stringResource(Res.string.thread_composer_mention_request_error_connection),
             requestAuthentication =
-                stringResource(MR.strings.thread_composer_mention_request_error_authentication),
-            requestPermission = stringResource(MR.strings.thread_composer_mention_request_error_permission),
-            requestRateLimited = stringResource(MR.strings.thread_composer_mention_request_error_rate_limited),
-            requestServer = stringResource(MR.strings.thread_composer_mention_request_error_server),
+                stringResource(Res.string.thread_composer_mention_request_error_authentication),
+            requestPermission = stringResource(Res.string.thread_composer_mention_request_error_permission),
+            requestRateLimited = stringResource(Res.string.thread_composer_mention_request_error_rate_limited),
+            requestServer = stringResource(Res.string.thread_composer_mention_request_error_server),
             requestUnexpectedResponse =
-                stringResource(MR.strings.thread_composer_mention_request_error_unexpected_response),
-            requestGeneric = stringResource(MR.strings.thread_composer_mention_request_error_generic)
+                stringResource(Res.string.thread_composer_mention_request_error_unexpected_response),
+            requestGeneric = stringResource(Res.string.thread_composer_mention_request_error_generic)
         )
     val userFacingErrorLabels = threadUserFacingErrorLabels()
-    val attachmentPickerUnavailableLabel = stringResource(MR.strings.thread_error_attachment_picker)
-    val fileSourceUnavailableLabel = stringResource(MR.strings.thread_error_file_source)
-    val copiedLabel = stringResource(MR.strings.thread_feedback_copied)
-    val failureDetailsCopiedLabel = stringResource(MR.strings.thread_send_failure_details_copied)
-    val linksCopiedLabel = stringResource(MR.strings.thread_feedback_links_copied)
+    val attachmentPickerUnavailableLabel = stringResource(Res.string.thread_error_attachment_picker)
+    val fileSourceUnavailableLabel = stringResource(Res.string.thread_error_file_source)
+    val copiedLabel = stringResource(Res.string.thread_feedback_copied)
+    val failureDetailsCopiedLabel = stringResource(Res.string.thread_send_failure_details_copied)
+    val linksCopiedLabel = stringResource(Res.string.thread_feedback_links_copied)
     val forwardNeedsApiTemplate =
         stringResource(
-            MR.strings.thread_forward_needs_api,
+            Res.string.thread_forward_needs_api,
             ThreadLocalizedFeedbackPlaceholder,
             "__RAFT_TARGET__"
         )
     val forwardCompletedTemplate =
         stringResource(
-            MR.strings.thread_forward_completed,
+            Res.string.thread_forward_completed,
             ThreadLocalizedFeedbackPlaceholder,
             "__RAFT_TARGET__"
         )
     val forwardJoinFirstTemplate =
-        stringResource(MR.strings.thread_forward_join_first, ThreadLocalizedFeedbackPlaceholder)
-    val forwardGroupUnavailableLabel = stringResource(MR.strings.thread_forward_group_unavailable)
-    val forwardMultiSelectUnavailableLabel = stringResource(MR.strings.thread_forward_multi_select_unavailable)
-    val unableToCopyLinkLabel = stringResource(MR.strings.thread_error_copy_link)
-    val noTextToSelectLabel = stringResource(MR.strings.thread_error_no_text_select)
-    val followedThreadLabel = stringResource(MR.strings.thread_feedback_followed)
-    val unableToFollowThreadLabel = stringResource(MR.strings.thread_error_follow)
-    val unfollowedThreadLabel = stringResource(MR.strings.thread_feedback_unfollowed)
-    val unableToUnfollowThreadLabel = stringResource(MR.strings.thread_error_unfollow)
-    val searchUnavailableLabel = stringResource(MR.strings.thread_error_search_unavailable)
-    val actionUnavailableLabel = stringResource(MR.strings.thread_error_action_unavailable)
-    val actionUnsupportedLabel = stringResource(MR.strings.thread_error_action_unsupported)
-    val unableToUpdateReactionLabel = stringResource(MR.strings.thread_error_update_reaction)
-    val commentSourceUnavailableLabel = stringResource(MR.strings.thread_error_comment_source)
+        stringResource(Res.string.thread_forward_join_first, ThreadLocalizedFeedbackPlaceholder)
+    val forwardGroupUnavailableLabel = stringResource(Res.string.thread_forward_group_unavailable)
+    val forwardMultiSelectUnavailableLabel = stringResource(Res.string.thread_forward_multi_select_unavailable)
+    val unableToCopyLinkLabel = stringResource(Res.string.thread_error_copy_link)
+    val noTextToSelectLabel = stringResource(Res.string.thread_error_no_text_select)
+    val followedThreadLabel = stringResource(Res.string.thread_feedback_followed)
+    val unableToFollowThreadLabel = stringResource(Res.string.thread_error_follow)
+    val unfollowedThreadLabel = stringResource(Res.string.thread_feedback_unfollowed)
+    val unableToUnfollowThreadLabel = stringResource(Res.string.thread_error_unfollow)
+    val searchUnavailableLabel = stringResource(Res.string.thread_error_search_unavailable)
+    val actionUnavailableLabel = stringResource(Res.string.thread_error_action_unavailable)
+    val actionUnsupportedLabel = stringResource(Res.string.thread_error_action_unsupported)
+    val unableToUpdateReactionLabel = stringResource(Res.string.thread_error_update_reaction)
+    val commentSourceUnavailableLabel = stringResource(Res.string.thread_error_comment_source)
     val memberNotFoundTemplate =
-        stringResource(MR.strings.thread_error_member_not_found, ThreadLocalizedFeedbackPlaceholder)
-    val memberAddedLabel = stringResource(MR.strings.thread_feedback_member_added)
-    val unableToAddMemberLabel = stringResource(MR.strings.thread_error_add_member)
-    val memberRemovedLabel = stringResource(MR.strings.thread_feedback_member_removed)
-    val unableToRemoveMemberLabel = stringResource(MR.strings.thread_error_remove_member)
-    val visibilityNotWiredLabel = stringResource(MR.strings.thread_error_visibility_not_wired)
-    val channelArchivedLabel = stringResource(MR.strings.thread_feedback_channel_archived)
-    val unableToArchiveChannelLabel = stringResource(MR.strings.thread_error_archive_channel)
-    val channelDeletedLabel = stringResource(MR.strings.thread_feedback_channel_deleted)
-    val unableToDeleteChannelLabel = stringResource(MR.strings.thread_error_delete_channel)
-    val unableToConvertMessageLabel = stringResource(MR.strings.thread_error_convert_message)
-    val taskCreatedLabel = stringResource(MR.strings.thread_feedback_task_created)
-    val unsupportedTaskStatusLabel = stringResource(MR.strings.thread_error_task_status_unsupported)
-    val unableToUpdateTaskLabel = stringResource(MR.strings.thread_error_update_task)
-    val unableToUpdateAssigneeLabel = stringResource(MR.strings.thread_error_update_assignee)
-    val unableToJoinChannelLabel = stringResource(MR.strings.thread_error_join_channel)
-    val joinedChannelLabel = stringResource(MR.strings.thread_feedback_joined_channel)
-    val attachmentRetryUnavailableLabel = stringResource(MR.strings.thread_error_attachment_retry)
-    val mergedForwardModeLabel = stringResource(MR.strings.thread_forward_mode_merged)
-    val individualForwardModeLabel = stringResource(MR.strings.thread_forward_mode_individual)
-    val imageSavedLabel = stringResource(MR.strings.thread_feedback_image_saved)
-    val unableToExportImageLabel = stringResource(MR.strings.thread_error_export_image)
-    val unableToForwardLabel = stringResource(MR.strings.thread_error_forward)
-    val unableToSaveMessageLabel = stringResource(MR.strings.thread_error_save_message)
-    val unableToRemoveSavedMessageLabel = stringResource(MR.strings.thread_error_remove_saved_message)
-    val attachmentSkippedOneLabel = stringResource(MR.strings.thread_attachment_skipped_one)
+        stringResource(Res.string.thread_error_member_not_found, ThreadLocalizedFeedbackPlaceholder)
+    val memberAddedLabel = stringResource(Res.string.thread_feedback_member_added)
+    val unableToAddMemberLabel = stringResource(Res.string.thread_error_add_member)
+    val memberRemovedLabel = stringResource(Res.string.thread_feedback_member_removed)
+    val unableToRemoveMemberLabel = stringResource(Res.string.thread_error_remove_member)
+    val visibilityNotWiredLabel = stringResource(Res.string.thread_error_visibility_not_wired)
+    val channelArchivedLabel = stringResource(Res.string.thread_feedback_channel_archived)
+    val unableToArchiveChannelLabel = stringResource(Res.string.thread_error_archive_channel)
+    val channelDeletedLabel = stringResource(Res.string.thread_feedback_channel_deleted)
+    val unableToDeleteChannelLabel = stringResource(Res.string.thread_error_delete_channel)
+    val unableToConvertMessageLabel = stringResource(Res.string.thread_error_convert_message)
+    val taskCreatedLabel = stringResource(Res.string.thread_feedback_task_created)
+    val unsupportedTaskStatusLabel = stringResource(Res.string.thread_error_task_status_unsupported)
+    val unableToUpdateTaskLabel = stringResource(Res.string.thread_error_update_task)
+    val unableToUpdateAssigneeLabel = stringResource(Res.string.thread_error_update_assignee)
+    val unableToJoinChannelLabel = stringResource(Res.string.thread_error_join_channel)
+    val joinedChannelLabel = stringResource(Res.string.thread_feedback_joined_channel)
+    val attachmentRetryUnavailableLabel = stringResource(Res.string.thread_error_attachment_retry)
+    val mergedForwardModeLabel = stringResource(Res.string.thread_forward_mode_merged)
+    val individualForwardModeLabel = stringResource(Res.string.thread_forward_mode_individual)
+    val imageSavedLabel = stringResource(Res.string.thread_feedback_image_saved)
+    val unableToExportImageLabel = stringResource(Res.string.thread_error_export_image)
+    val unableToForwardLabel = stringResource(Res.string.thread_error_forward)
+    val unableToSaveMessageLabel = stringResource(Res.string.thread_error_save_message)
+    val unableToRemoveSavedMessageLabel = stringResource(Res.string.thread_error_remove_saved_message)
+    val attachmentSkippedOneLabel = stringResource(Res.string.thread_attachment_skipped_one)
     val attachmentSkippedManyTemplate =
-        stringResource(MR.strings.thread_attachment_skipped_many, ThreadLocalizedFeedbackPlaceholder)
+        stringResource(Res.string.thread_attachment_skipped_many, ThreadLocalizedFeedbackPlaceholder)
     fun localizedAttachmentUploadFailedDetail(detail: String): String =
         attachmentUploadFailedDetailTemplate.replace(ThreadLocalizedFeedbackPlaceholder, detail)
     fun localizedAttachmentTooLarge(fileSize: Long, maxBytes: Long): String =
@@ -13446,7 +13442,7 @@ private fun ThreadMarkdownTaskCandidateModal(
     onSelect: (TaskSummary) -> Unit
 ) {
     RaftUnifiedDialog(
-        title = stringResource(MR.strings.thread_open_task_number, state.taskNumber),
+        title = stringResource(Res.string.thread_open_task_number, state.taskNumber),
         onDismiss = onDismiss,
         minWidth = 320.dp,
         maxWidth = 392.dp,
@@ -13470,8 +13466,8 @@ private fun ThreadMarkdownTaskCandidateModal(
                 if (state.candidates.isEmpty()) {
                     item {
                         ThreadModalEmptyState(
-                            title = stringResource(MR.strings.thread_state_no_tasks),
-                            detail = stringResource(MR.strings.thread_members_refresh_detail)
+                            title = stringResource(Res.string.thread_state_no_tasks),
+                            detail = stringResource(Res.string.thread_members_refresh_detail)
                         )
                     }
                 } else {
@@ -13541,7 +13537,7 @@ private fun ThreadMarkdownTaskCandidateRow(
                     )
                 }
                 Text(
-                    text = task.title.ifBlank { stringResource(MR.strings.thread_task_candidate_untitled) },
+                    text = task.title.ifBlank { stringResource(Res.string.thread_task_candidate_untitled) },
                     style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
                     color = RaftColor.TextBlack,
                     maxLines = 2,
@@ -13572,7 +13568,7 @@ private fun ThreadMarkdownTaskCandidateRow(
                 )
                 if (currentChannel) {
                     RaftAnchoredMetaChip(
-                        label = stringResource(MR.strings.thread_task_candidate_current),
+                        label = stringResource(Res.string.thread_task_candidate_current),
                         iconName = RaftLucideIconName.Hash,
                         iconSize = 10.dp,
                         color = RaftColor.BrandYellow,
@@ -13597,9 +13593,9 @@ private fun ThreadMarkdownTaskCandidateModalState.threadMarkdownTaskCandidateHel
 @Composable
 private fun ThreadMarkdownTaskCandidateModalState.localizedThreadMarkdownTaskCandidateHelperText(): String =
     when (candidates.size) {
-        0 -> stringResource(MR.strings.thread_task_candidate_none, taskNumber)
-        1 -> stringResource(MR.strings.thread_task_candidate_open_match)
-        else -> stringResource(MR.strings.thread_task_candidate_choose, taskNumber)
+        0 -> stringResource(Res.string.thread_task_candidate_none, taskNumber)
+        1 -> stringResource(Res.string.thread_task_candidate_open_match)
+        else -> stringResource(Res.string.thread_task_candidate_choose, taskNumber)
     }
 
 private fun TaskSummary.threadMarkdownTaskCandidateChannelLabel(): String =
@@ -13608,7 +13604,7 @@ private fun TaskSummary.threadMarkdownTaskCandidateChannelLabel(): String =
 @Composable
 private fun TaskSummary.localizedThreadMarkdownTaskCandidateChannelLabel(): String =
     channelName?.trim()?.takeIf { it.isNotBlank() }?.let { "#$it" }
-        ?: stringResource(MR.strings.thread_task_candidate_unknown_channel)
+        ?: stringResource(Res.string.thread_task_candidate_unknown_channel)
 
 private fun TaskSummary.threadMarkdownTaskCandidateDetail(currentChannel: Boolean): String =
     if (currentChannel) {
@@ -13620,9 +13616,9 @@ private fun TaskSummary.threadMarkdownTaskCandidateDetail(currentChannel: Boolea
 @Composable
 private fun TaskSummary.localizedThreadMarkdownTaskCandidateDetail(currentChannel: Boolean): String =
     if (currentChannel) {
-        stringResource(MR.strings.thread_task_candidate_current_conversation)
+        stringResource(Res.string.thread_task_candidate_current_conversation)
     } else {
-        stringResource(MR.strings.thread_task_candidate_tap_open)
+        stringResource(Res.string.thread_task_candidate_tap_open)
     }
 
 private fun threadMarkdownTaskCandidateListHeight(count: Int): Dp =
@@ -15548,11 +15544,11 @@ private fun ThreadPageContentContent(
         ) {
             if (renderAccessRetry) {
                 ThreadStateActionMessage(
-                    title = stringResource(MR.strings.thread_error_load),
+                    title = stringResource(Res.string.thread_error_load),
                     detail =
                         accessErrorLabels.forErrorCode(payload.errorCode)
-                            ?: stringResource(MR.strings.thread_error_access_resolution),
-                    actionLabel = stringResource(MR.strings.common_retry),
+                            ?: stringResource(Res.string.thread_error_access_resolution),
+                    actionLabel = stringResource(Res.string.common_retry),
                     onClick = {
                         onThreadEvent(
                             threadRetryAction(canonicalAccessResolved),
@@ -15565,14 +15561,14 @@ private fun ThreadPageContentContent(
             } else if (accessResolution == ThreadAccessResolution.NoPermission) {
                 ThreadStateMessage(
                     if (payload.errorServerMessage.isEdgeBlockedMarker()) {
-                        stringResource(MR.strings.thread_state_edge_blocked)
+                        stringResource(Res.string.thread_state_edge_blocked)
                     } else {
-                        stringResource(MR.strings.thread_state_no_permission)
+                        stringResource(Res.string.thread_state_no_permission)
                     },
                     if (payload.errorServerMessage.isEdgeBlockedMarker()) {
-                        stringResource(MR.strings.error_edge_blocked)
+                        stringResource(Res.string.error_edge_blocked)
                     } else {
-                        stringResource(MR.strings.thread_error_no_permission)
+                        stringResource(Res.string.thread_error_no_permission)
                     }
                 )
             } else if (renderEarlyLoadingShell) {
@@ -15820,14 +15816,14 @@ private fun ThreadPageContentContent(
                         else RaftUiBannerStatus.Warning,
                     title =
                         stringResource(
-                            if (jointBillingNotice == JointBillingNotice.Locked) MR.strings.joint_billing_locked_title
-                            else MR.strings.joint_over_limit_grace_title
+                            if (jointBillingNotice == JointBillingNotice.Locked) Res.string.joint_billing_locked_title
+                            else Res.string.joint_over_limit_grace_title
                         ),
                     description =
                         if (jointBillingNotice == JointBillingNotice.Locked) {
-                            stringResource(MR.strings.joint_billing_locked_detail)
+                            stringResource(Res.string.joint_billing_locked_detail)
                         } else {
-                            stringResource(MR.strings.joint_over_limit_grace_detail, deadlineLabel ?: "")
+                            stringResource(Res.string.joint_over_limit_grace_detail, deadlineLabel ?: "")
                         },
                     size = RaftUiBannerSize.Medium,
                     iconName = RaftLucideIconName.TriangleAlert,
@@ -15882,8 +15878,8 @@ private fun ThreadPageContentContent(
                             stringResource(
                                 when (replyParentAuthority) {
                                     ReplyParentAuthorityStatus.ParentDeleted ->
-                                        MR.strings.thread_parent_channel_deleted_composer
-                                    else -> MR.strings.thread_parent_authority_resolving
+                                        Res.string.thread_parent_channel_deleted_composer
+                                    else -> Res.string.thread_parent_authority_resolving
                                 }
                             ),
                         style = RaftType.Body.copy(
@@ -16404,8 +16400,8 @@ internal fun ThreadPageHeader(
         if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread && headerDisplay.title == ThreadReplyPageTitle) {
             replyThreadHeaderPreviewTitle(
                 origin = originMessage,
-                imageLabel = stringResource(MR.strings.thread_reply_title_preview_image),
-                fileLabel = stringResource(MR.strings.thread_reply_title_preview_file)
+                imageLabel = stringResource(Res.string.thread_reply_title_preview_image),
+                fileLabel = stringResource(Res.string.thread_reply_title_preview_file)
             )
         } else {
             null
@@ -16413,17 +16409,17 @@ internal fun ThreadPageHeader(
     val replyThreadReplyCountLabel =
         when {
             headerDisplay.surfaceKind != RaftThreadSurfaceKind.ReplyThread || originReplyCount <= 0 -> null
-            originReplyCount == 1 -> stringResource(MR.strings.thread_inline_reply_count_one)
-            else -> stringResource(MR.strings.thread_inline_reply_count_many, originReplyCount)
+            originReplyCount == 1 -> stringResource(Res.string.thread_inline_reply_count_one)
+            else -> stringResource(Res.string.thread_inline_reply_count_many, originReplyCount)
         }
     val headerSubtitle = replyThreadHeaderSubtitle(headerDisplay.subtitle, replyThreadReplyCountLabel)
     val localizedHeaderTitle =
         replyThreadPreviewTitle ?: localizedThreadHeaderTitle(
             title = headerDisplay.title,
             surfaceKind = headerDisplay.surfaceKind,
-            localizedReplyThread = stringResource(MR.strings.thread_reply_title),
-            localizedChannel = stringResource(MR.strings.thread_channel_title),
-            localizedDirectMessage = stringResource(MR.strings.thread_direct_message_title)
+            localizedReplyThread = stringResource(Res.string.thread_reply_title),
+            localizedChannel = stringResource(Res.string.thread_channel_title),
+            localizedDirectMessage = stringResource(Res.string.thread_direct_message_title)
         )
     val resolvedDmPeerAvatarWireValue =
         rememberRaftMemberAvatarWireValue(
@@ -16455,7 +16451,7 @@ internal fun ThreadPageHeader(
         titleLeadingContent = {
             // Back is the same 44dp frameless PanelAction as the trailing actions (not the shared
             // 36dp leading slot), so its arrow mirrors the last trailing glyph 14dp from the edge.
-            RaftBackButton(onClick = onBack, label = stringResource(MR.strings.common_back))
+            RaftBackButton(onClick = onBack, label = stringResource(Res.string.common_back))
             if (headerDisplay.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
                 ThreadDmPeerAvatarTile(
                     avatarWireValue = resolvedDmPeerAvatarWireValue ?: headerDisplay.dmPeerAvatarWireValue,
@@ -16582,7 +16578,7 @@ private fun ThreadActivityMutedBadge() {
             color = raftArgbHex(RaftColor.ForegroundHint)
         )
         Text(
-            text = stringResource(MR.strings.member_label_muted),
+            text = stringResource(Res.string.member_label_muted),
             style = RaftType.Caption.withRaftFontWeight(FontWeight.Medium).copy(fontSize = 11.sp, lineHeight = 11.sp),
             color = RaftColor.ForegroundHint,
             maxLines = 1
@@ -17089,9 +17085,9 @@ private fun ThreadHeaderFocusModeMenu(
                     label =
                         stringResource(
                             if (focused) {
-                                MR.strings.thread_focus_mode_standard
+                                Res.string.thread_focus_mode_standard
                             } else {
-                                MR.strings.thread_focus_mode_focus
+                                Res.string.thread_focus_mode_focus
                             }
                         ),
                     // Only Maximize2 exists in the icon catalog; Square reads as "back to the standard pane".
@@ -17109,9 +17105,9 @@ private fun ThreadHeaderFocusModeMenu(
                         label =
                             stringResource(
                                 if (followed) {
-                                    MR.strings.thread_action_unfollow_thread
+                                    Res.string.thread_action_unfollow_thread
                                 } else {
-                                    MR.strings.thread_action_follow_thread
+                                    Res.string.thread_action_follow_thread
                                 }
                             ),
                         icon = threadFollowMenuIcon(followed),
@@ -17220,7 +17216,7 @@ private fun ThreadHeaderFocusModeMenu(
             )
         },
         modifier = Modifier.raftCaptureLiveRootAnchor(anchorRef),
-        contentDescription = stringResource(MR.strings.thread_focus_mode_menu_more)
+        contentDescription = stringResource(Res.string.thread_focus_mode_menu_more)
     )
 }
 
@@ -17816,24 +17812,24 @@ private fun ThreadChatTabContent(
             }
         "error" ->
             ThreadStateActionMessage(
-                title = stringResource(MR.strings.thread_error_load),
+                title = stringResource(Res.string.thread_error_load),
                 detail =
                     userFacingErrorLabels.forErrorCode(renderConfig.errorCode)
-                        ?: stringResource(MR.strings.common_error),
-                actionLabel = stringResource(MR.strings.common_retry),
+                        ?: stringResource(Res.string.common_error),
+                actionLabel = stringResource(Res.string.common_retry),
                 onClick = { onThreadEvent("retryThreadLoad", null, null, null) }
             )
         "no_permission" ->
             ThreadStateMessage(
                 if (renderConfig.errorServerMessage.isEdgeBlockedMarker()) {
-                    stringResource(MR.strings.thread_state_edge_blocked)
+                    stringResource(Res.string.thread_state_edge_blocked)
                 } else {
-                    stringResource(MR.strings.thread_state_no_permission)
+                    stringResource(Res.string.thread_state_no_permission)
                 },
                 if (renderConfig.errorServerMessage.isEdgeBlockedMarker()) {
-                    stringResource(MR.strings.error_edge_blocked)
+                    stringResource(Res.string.error_edge_blocked)
                 } else {
-                    stringResource(MR.strings.thread_error_no_permission)
+                    stringResource(Res.string.thread_error_no_permission)
                 }
             )
         "empty" ->
@@ -21570,7 +21566,7 @@ private fun ThreadMessagesListContent(
                     when {
                         renderPayload.canLoadMoreBefore && renderPayload.olderMessagesStatus == "error" ->
                             ThreadInlineActionRow(
-                                label = stringResource(MR.strings.thread_retry_older),
+                                label = stringResource(Res.string.thread_retry_older),
                                 onClick = { onThreadEvent("retryLoadOlder", null, null, null) }
                             )
                         renderPayload.canLoadMoreBefore ->
@@ -22174,9 +22170,9 @@ private fun ThreadMessagesListContent(
                     RaftMessageListJumpPill(
                         text =
                             when {
-                                bottomJumpCount <= 0 -> stringResource(MR.strings.thread_action_back_to_bottom)
-                                bottomJumpCount == 1 -> stringResource(MR.strings.thread_jump_new_messages_one)
-                                else -> stringResource(MR.strings.thread_jump_new_messages_many, bottomJumpCount)
+                                bottomJumpCount <= 0 -> stringResource(Res.string.thread_action_back_to_bottom)
+                                bottomJumpCount == 1 -> stringResource(Res.string.thread_jump_new_messages_one)
+                                else -> stringResource(Res.string.thread_jump_new_messages_many, bottomJumpCount)
                             },
                         onClick = onBackToBottomClick,
                     )
@@ -22538,7 +22534,7 @@ private fun ThreadMessagesListContent(
         }
         reactionPickerMessageId?.let { messageId ->
             RaftEmojiPickerDialog(
-                title = stringResource(MR.strings.thread_action_add_reaction),
+                title = stringResource(Res.string.thread_action_add_reaction),
                 onDismiss = { reactionPickerMessageId = null },
                 onSelect = { emoji ->
                     reactionPickerMessageId = null
@@ -22654,7 +22650,7 @@ private fun ThreadInlineSearchBar(
                 onSubmit = {},
                 onClear = onClear,
                 autoFocus = true,
-                placeholder = stringResource(MR.strings.thread_placeholder_search),
+                placeholder = stringResource(Res.string.thread_placeholder_search),
                 modifier = Modifier.weight(1f),
             )
             Box(
@@ -22853,20 +22849,20 @@ internal fun threadOlderMessagesStatusSpec(
 ): ThreadHistoryStatusSpec =
     when {
         // Task #168 step 2b: a stand-in whose stored window still has older pages pages like any frame.
-        canLoadMoreBefore -> ThreadHistoryStatusSpec(label = MR.strings.thread_state_loading_older.desc())
+        canLoadMoreBefore -> ThreadHistoryStatusSpec(label = Res.string.thread_state_loading_older.desc())
         // Task #80 (artin): a stand-in (the Activity seed, a stored frame) while its first load is still
         // running has the rest of the conversation on the way: say so, with the spinner, as the web's
         // list top does while it loads. "Not available offline" is only true once that load failed,
         // the same gate as the offline tip (Hands e0a5248d).
         durableLastKnown && !durableReachedOldest && !mainLoadFailed ->
-            ThreadHistoryStatusSpec(label = MR.strings.thread_state_loading_older.desc(), loading = true)
+            ThreadHistoryStatusSpec(label = Res.string.thread_state_loading_older.desc(), loading = true)
         // Task #1125: an offline stand-in frame with paging closed is NOT the beginning of the
         // conversation. Say what is true instead of claiming a boundary the frame cannot prove —
         // unless the stored window itself reaches the start (task #168): then it is the beginning.
-        durableLastKnown && !durableReachedOldest -> ThreadHistoryStatusSpec(label = MR.strings.thread_offline_older_unavailable.desc())
+        durableLastKnown && !durableReachedOldest -> ThreadHistoryStatusSpec(label = Res.string.thread_offline_older_unavailable.desc())
         else ->
             ThreadHistoryStatusSpec(
-                label = MR.strings.thread_state_beginning_conversation.desc(),
+                label = Res.string.thread_state_beginning_conversation.desc(),
                 secondaryLabel = secondaryLabel,
                 secondaryReplyCount = secondaryReplyCount
             )
@@ -22982,7 +22978,7 @@ private fun ThreadOfflineLastKnownTip(modifier: Modifier = Modifier) {
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = stringResource(MR.strings.thread_offline_last_known_tip),
+            text = stringResource(Res.string.thread_offline_last_known_tip),
             style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
             color = RaftColor.TextMutedGray,
             textAlign = TextAlign.Center,
@@ -22994,9 +22990,9 @@ private fun ThreadOfflineLastKnownTip(modifier: Modifier = Modifier) {
 
 internal fun threadNewerMessagesActionSpec(newerMessagesStatus: String): ThreadInlineActionSpec =
     when (newerMessagesStatus) {
-        "loading" -> ThreadInlineActionSpec(label = MR.strings.thread_state_loading_new.desc())
-        "error" -> ThreadInlineActionSpec(label = MR.strings.thread_retry_new.desc(), event = "retryLoadNewer")
-        else -> ThreadInlineActionSpec(label = MR.strings.thread_load_new.desc())
+        "loading" -> ThreadInlineActionSpec(label = Res.string.thread_state_loading_new.desc())
+        "error" -> ThreadInlineActionSpec(label = Res.string.thread_retry_new.desc(), event = "retryLoadNewer")
+        else -> ThreadInlineActionSpec(label = Res.string.thread_load_new.desc())
     }
 
 internal fun threadMessagesLazyItemCount(
@@ -24498,15 +24494,15 @@ private fun ThreadUnreadThreadJumpPill(
             text =
                 when (jump.direction) {
                     ThreadUnreadThreadJumpDirection.Next ->
-                        stringResource(MR.strings.thread_jump_next_unread_thread, jump.count)
+                        stringResource(Res.string.thread_jump_next_unread_thread, jump.count)
                     ThreadUnreadThreadJumpDirection.Earliest ->
-                        stringResource(MR.strings.thread_jump_earliest_unread_thread, jump.count)
+                        stringResource(Res.string.thread_jump_earliest_unread_thread, jump.count)
                 },
             onClick = onJump,
             icon = if (jump.direction == ThreadUnreadThreadJumpDirection.Earliest) RaftGlyph.ArrowUp else RaftGlyph.ArrowDown,
         )
         RaftMessageListJumpPillDismiss(
-            label = stringResource(MR.strings.thread_jump_unread_thread_dismiss),
+            label = stringResource(Res.string.thread_jump_unread_thread_dismiss),
             onClick = onDismiss,
         )
     }
@@ -24699,8 +24695,8 @@ internal fun ThreadHistoryStatusRow(
         val secondaryText =
             when (val count = spec.secondaryReplyCount) {
                 null -> spec.secondaryLabel
-                1 -> stringResource(MR.strings.thread_inline_reply_count_one)
-                else -> stringResource(MR.strings.thread_inline_reply_count_many, count)
+                1 -> stringResource(Res.string.thread_inline_reply_count_one)
+                else -> stringResource(Res.string.thread_inline_reply_count_many, count)
             }
         if (!secondaryText.isNullOrBlank()) {
             Spacer(Modifier.height(2.dp))
@@ -24799,18 +24795,18 @@ internal fun ThreadQuotedPermalinkCard(
     when (state) {
         ThreadQuotedPermalinkUiState.Loading ->
             build.raft.designsystem.components.RaftMessageQuotedPreviewLoading(
-                label = stringResource(MR.strings.thread_quoted_permalink_loading),
+                label = stringResource(Res.string.thread_quoted_permalink_loading),
                 modifier = modifier
             )
         ThreadQuotedPermalinkUiState.Unavailable ->
             build.raft.designsystem.components.RaftMessageQuotedPreviewUnavailable(
-                text = stringResource(MR.strings.thread_quoted_permalink_unavailable),
+                text = stringResource(Res.string.thread_quoted_permalink_unavailable),
                 modifier = modifier
             )
         // Quoted as one muted line, like an unavailable quote (web QuoteCardContent).
         ThreadQuotedPermalinkUiState.Retracted ->
             build.raft.designsystem.components.RaftMessageQuotedPreviewUnavailable(
-                text = stringResource(MR.strings.message_delegated_retracted),
+                text = stringResource(Res.string.message_delegated_retracted),
                 modifier = modifier
             )
         is ThreadQuotedPermalinkUiState.Loaded -> {
@@ -24820,9 +24816,9 @@ internal fun ThreadQuotedPermalinkCard(
             val channel =
                 resolvedChannel?.trim()?.removePrefix("#")?.removePrefix("@")?.takeIf { it.isNotBlank() }
                     ?: if (direct) {
-                        stringResource(MR.strings.thread_quoted_permalink_direct_message)
+                        stringResource(Res.string.thread_quoted_permalink_direct_message)
                     } else {
-                        stringResource(MR.strings.thread_quoted_permalink_channel_fallback)
+                        stringResource(Res.string.thread_quoted_permalink_channel_fallback)
                     }
             val senderKind = item.authorKind.parsedMemberKindOrNull()
             val avatarWireValue =
@@ -24830,21 +24826,21 @@ internal fun ThreadQuotedPermalinkCard(
                     ?: item.avatarWireValue
             val liveTimeContext = LocalRaftTimeContextProvider.current?.current
             build.raft.designsystem.components.RaftMessageQuotedPreview(
-                authorName = item.authorName.ifBlank { stringResource(MR.strings.thread_comments_unknown_author) },
+                authorName = item.authorName.ifBlank { stringResource(Res.string.thread_comments_unknown_author) },
                 text = markdownToPreviewText(item.body).takeIf { it.isNotBlank() }
-                    ?: stringResource(MR.strings.thread_quoted_permalink_no_content),
+                    ?: stringResource(Res.string.thread_quoted_permalink_no_content),
                 modifier = modifier,
                 // A resolved DM title names the peer; without one the fallback reads as a place.
                 channel = channel,
                 direct = direct && resolvedChannel != null,
                 threadLabel =
                     if (target?.threadParentMessageId != null) {
-                        stringResource(MR.strings.thread_quoted_permalink_thread)
+                        stringResource(Res.string.thread_quoted_permalink_thread)
                     } else {
                         null
                     },
                 archivedLabel =
-                    if (state.message.channelArchived) stringResource(MR.strings.thread_quoted_permalink_archived) else null,
+                    if (state.message.channelArchived) stringResource(Res.string.thread_quoted_permalink_archived) else null,
                 avatar = {
                     RaftAppAvatar(
                         avatarWireValue = avatarWireValue,
@@ -24894,10 +24890,10 @@ private fun threadQuotedAttachmentLabel(attachments: List<RaftThreadAttachmentIt
     if (attachments.isEmpty()) return null
     val images = attachments.count { it.mimeType.startsWith("image/") }
     return when {
-        attachments.size == 1 && images == 1 -> stringResource(MR.strings.thread_quoted_permalink_one_image)
-        attachments.size == 1 -> stringResource(MR.strings.thread_quoted_permalink_one_file)
-        images == attachments.size -> stringResource(MR.strings.thread_quoted_permalink_images, images)
-        else -> stringResource(MR.strings.thread_quoted_permalink_attachments, attachments.size)
+        attachments.size == 1 && images == 1 -> stringResource(Res.string.thread_quoted_permalink_one_image)
+        attachments.size == 1 -> stringResource(Res.string.thread_quoted_permalink_one_file)
+        images == attachments.size -> stringResource(Res.string.thread_quoted_permalink_images, images)
+        else -> stringResource(Res.string.thread_quoted_permalink_attachments, attachments.size)
     }
 }
 
@@ -25233,10 +25229,10 @@ private fun ThreadMessageCardContent(
         }
     val localizedAuthorName =
         when {
-            message.isOwn && message.authorName == "You" -> stringResource(MR.strings.thread_author_you)
+            message.isOwn && message.authorName == "You" -> stringResource(Res.string.thread_author_you)
             // Task #80: a row whose sender no source could name yet (a seeded stand-in) shows the
             // neutral "Unknown", never a raw id, until the canonical load names it.
-            message.authorName.isBlank() -> stringResource(MR.strings.thread_comments_unknown_author)
+            message.authorName.isBlank() -> stringResource(Res.string.thread_comments_unknown_author)
             else -> message.authorName
         }
     // task #392 (port of Web PR #7545): agent model label, resolved live from
@@ -26214,41 +26210,41 @@ internal fun ThreadNewMessageMenuTool.compactLabelResource(
     when (this) {
         ThreadNewMessageMenuTool.Copy ->
             if (availability.selectionContext && availability.partialSelection) {
-                MR.strings.thread_text_selection_copy_selection
+                Res.string.thread_text_selection_copy_selection
             } else {
-                MR.strings.thread_action_copy_markdown
+                Res.string.thread_action_copy_markdown
             }
-        ThreadNewMessageMenuTool.Reply -> MR.strings.thread_new_message_menu_reply
-        ThreadNewMessageMenuTool.Forward -> MR.strings.thread_action_forward
+        ThreadNewMessageMenuTool.Reply -> Res.string.thread_new_message_menu_reply
+        ThreadNewMessageMenuTool.Forward -> Res.string.thread_action_forward
         ThreadNewMessageMenuTool.Save ->
             if (availability.saved) {
-                MR.strings.thread_action_remove_from_saved
+                Res.string.thread_action_remove_from_saved
             } else {
-                MR.strings.thread_action_save_message
+                Res.string.thread_action_save_message
             }
         ThreadNewMessageMenuTool.Translate ->
             if (availability.translatePending) {
-                MR.strings.translation_state_in_progress
+                Res.string.translation_state_in_progress
             } else {
-                MR.strings.thread_action_translate
+                Res.string.thread_action_translate
             }
-        ThreadNewMessageMenuTool.Select -> MR.strings.thread_action_select_message
-        ThreadNewMessageMenuTool.AddReaction -> MR.strings.thread_action_add_reaction
-        ThreadNewMessageMenuTool.CopyLink -> MR.strings.thread_action_copy_link
+        ThreadNewMessageMenuTool.Select -> Res.string.thread_action_select_message
+        ThreadNewMessageMenuTool.AddReaction -> Res.string.thread_action_add_reaction
+        ThreadNewMessageMenuTool.CopyLink -> Res.string.thread_action_copy_link
         ThreadNewMessageMenuTool.FollowThread ->
             if (availability.threadFollowed) {
-                MR.strings.thread_action_unfollow_thread
+                Res.string.thread_action_unfollow_thread
             } else {
-                MR.strings.thread_action_follow_thread
+                Res.string.thread_action_follow_thread
             }
         ThreadNewMessageMenuTool.TaskStatus ->
             if (availability.taskDone) {
-                MR.strings.thread_action_reopen_task
+                Res.string.thread_action_reopen_task
             } else {
-                MR.strings.thread_action_mark_done
+                Res.string.thread_action_mark_done
             }
-        ThreadNewMessageMenuTool.ConvertToTask -> MR.strings.thread_action_convert_to_task
-        ThreadNewMessageMenuTool.SelectAll -> MR.strings.thread_text_selection_select_all
+        ThreadNewMessageMenuTool.ConvertToTask -> Res.string.thread_action_convert_to_task
+        ThreadNewMessageMenuTool.SelectAll -> Res.string.thread_text_selection_select_all
     }
 
 internal fun ThreadNewMessageMenuTool.compactIcon(
@@ -26302,7 +26298,7 @@ private fun ThreadNewMessageMenuMoreOverlay(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    val label = stringResource(MR.strings.thread_new_message_menu_more)
+    val label = stringResource(Res.string.thread_new_message_menu_more)
     Box(
         modifier =
             Modifier
@@ -26449,7 +26445,7 @@ private fun ThreadMessageLocalSendStatus(
     val userFacingLabels = threadUserFacingErrorLabels()
     val summary = threadSendFailureSummary(message.pendingSendErrorCode, userFacingLabels)
     val label = if (isFailed) {
-        stringResource(MR.strings.thread_send_failure_summary, summary)
+        stringResource(Res.string.thread_send_failure_summary, summary)
     } else if (message.pendingSendContext?.asTask == true) {
         "Sending as task..."
     } else {
@@ -26496,8 +26492,8 @@ private fun ThreadMessageLocalSendStatus(
             ) {
                 Text(
                     text = stringResource(
-                        if (detailsExpanded) MR.strings.thread_send_failure_hide_details
-                        else MR.strings.thread_send_failure_details
+                        if (detailsExpanded) Res.string.thread_send_failure_hide_details
+                        else Res.string.thread_send_failure_details
                     ),
                     style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
                     color = RaftColor.TextMutedGray,
@@ -26505,7 +26501,7 @@ private fun ThreadMessageLocalSendStatus(
                 )
                 if (detailsExpanded) {
                     Text(
-                        text = stringResource(MR.strings.thread_send_failure_copy_details),
+                        text = stringResource(Res.string.thread_send_failure_copy_details),
                         style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
                         color = RaftColor.TextMutedGray,
                         modifier = Modifier.clickable(onClick = onCopyDetails).padding(vertical = 2.dp)
@@ -26543,7 +26539,7 @@ private fun ThreadMessageLocalSendStatus(
                         color = "#FFF97264"
                     )
                     Text(
-                        text = stringResource(MR.strings.thread_send_failure_retry),
+                        text = stringResource(Res.string.thread_send_failure_retry),
                         style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
                         color = RaftColor.AccentRed
                     )
@@ -26564,7 +26560,7 @@ internal fun ThreadMessageFullBodyLoadingIndicator(modifier: Modifier = Modifier
         modifier = modifier.padding(top = RaftAppSpacing.Xs),
         size = RaftSpinnerSize.Xs,
         color = RaftColor.TextMutedGray,
-        contentDescription = stringResource(MR.strings.thread_message_loading_full),
+        contentDescription = stringResource(Res.string.thread_message_loading_full),
     )
 }
 
@@ -26615,8 +26611,8 @@ internal fun ThreadActionCardView(
         when {
             card.isExecuted -> null
             card.sourceServerId != null && viewerServerId != null && card.sourceServerId != viewerServerId ->
-                card.targetServerName?.let { stringResource(MR.strings.thread_action_card_blocked_target_server, it) }
-                    ?: stringResource(MR.strings.thread_action_card_blocked_source_workspace)
+                card.targetServerName?.let { stringResource(Res.string.thread_action_card_blocked_target_server, it) }
+                    ?: stringResource(Res.string.thread_action_card_blocked_source_workspace)
             else -> null
         }
     val viewOnly = !card.isExecuted && (!commitEnabled || blockedReason != null)
@@ -26643,10 +26639,10 @@ internal fun ThreadActionCardView(
                     ?: blockedReason?.takeIf { foldsByDefault }?.let { reason -> { RaftMessageActionCardHeaderDescription(reason) } },
             status =
                 when {
-                    card.isExecuted -> stringResource(MR.strings.common_done)
-                    card.isFrozen -> stringResource(MR.strings.thread_action_card_frozen)
-                    card.needsReconfirmation -> stringResource(MR.strings.thread_action_card_status_reconfirm)
-                    viewOnly -> stringResource(MR.strings.thread_action_card_view_only)
+                    card.isExecuted -> stringResource(Res.string.common_done)
+                    card.isFrozen -> stringResource(Res.string.thread_action_card_frozen)
+                    card.needsReconfirmation -> stringResource(Res.string.thread_action_card_status_reconfirm)
+                    viewOnly -> stringResource(Res.string.thread_action_card_view_only)
                     else -> null
                 },
             statusTone =
@@ -26659,7 +26655,7 @@ internal fun ThreadActionCardView(
             expanded = expanded,
             onExpandedChange =
                 if (card.isExecuted || card.isFrozen || card.needsReconfirmation || viewOnly) ({ expanded = it }) else null,
-            toggleLabel = stringResource(MR.strings.thread_action_card_toggle_details),
+            toggleLabel = stringResource(Res.string.thread_action_card_toggle_details),
         ) {
             card.actionCardNotice()?.let { notice -> RaftMessageActionCardNotice(notice) }
             if (properties.isNotEmpty()) {
@@ -26675,15 +26671,15 @@ internal fun ThreadActionCardView(
                 }
             }
             card.actionCardDraftHint()?.let { hint ->
-                RaftMessageActionCardHint(hint, label = stringResource(MR.strings.thread_action_card_reason))
+                RaftMessageActionCardHint(hint, label = stringResource(Res.string.thread_action_card_reason))
             }
             if (card.isIntegrationApproveLoginAction() || card.isInstallMarketplaceAppAction()) {
                 val scopes =
                     card.scopes.takeIf { it.isNotEmpty() }
                         ?: if (card.isInstallMarketplaceAppAction()) emptyList() else listOf("openid", "profile", "identity")
                 if (scopes.isNotEmpty()) RaftMessageActionCardScopeList(
-                    label = stringResource(MR.strings.thread_action_card_permissions, scopes.size),
-                    viewportDescription = stringResource(MR.strings.thread_action_card_permissions_label),
+                    label = stringResource(Res.string.thread_action_card_permissions, scopes.size),
+                    viewportDescription = stringResource(Res.string.thread_action_card_permissions_label),
                 ) {
                     scopes.forEach { scope ->
                         RaftMessageActionCardScope(scope.trim(), localizedIntegrationScopeDescription(scope))
@@ -26697,8 +26693,8 @@ internal fun ThreadActionCardView(
                     RaftButton(
                         text =
                             when {
-                                card.isFrozen -> stringResource(MR.strings.thread_action_card_frozen)
-                                card.needsReconfirmation -> stringResource(MR.strings.thread_action_card_reconfirm)
+                                card.isFrozen -> stringResource(Res.string.thread_action_card_frozen)
+                                card.needsReconfirmation -> stringResource(Res.string.thread_action_card_reconfirm)
                                 pending -> pendingLabel
                                 else -> verb
                             },
@@ -26741,13 +26737,13 @@ private fun ThreadActionCard.actionCardIconName(): RaftLucideIconName? =
 /** The values to check, per action (web useActionCardDetail); other actions list their metadata. */
 @Composable
 private fun ThreadActionCard.localizedActionCardProperties(): List<ThreadActionCardProperty> {
-    val descriptionLabel = stringResource(MR.strings.thread_action_card_field_description)
-    val humansLabel = stringResource(MR.strings.thread_action_card_field_humans)
-    val agentsLabel = stringResource(MR.strings.thread_action_card_field_agents)
+    val descriptionLabel = stringResource(Res.string.thread_action_card_field_description)
+    val humansLabel = stringResource(Res.string.thread_action_card_field_humans)
+    val agentsLabel = stringResource(Res.string.thread_action_card_field_agents)
     // The card stores ids: show names (web useActionCardDetail), never a UUID.
     val names = LocalThreadActionCardNames.current
-    val unknownMember = stringResource(MR.strings.thread_action_card_unknown_member)
-    val unknownAgent = stringResource(MR.strings.thread_action_card_unknown_agent)
+    val unknownMember = stringResource(Res.string.thread_action_card_unknown_member)
+    val unknownAgent = stringResource(Res.string.thread_action_card_unknown_agent)
     fun humanNames(ids: List<String>) =
         ids.joinToString(", ") { names.displayName(ThreadActionCardEntityKind.Human, it, unknownMember) }
     fun agentNames(ids: List<String>) =
@@ -26765,7 +26761,7 @@ private fun ThreadActionCard.localizedActionCardProperties(): List<ThreadActionC
                     description?.takeIf { it.isNotBlank() }?.let { ThreadActionCardProperty(descriptionLabel, it) }
                         ?: ThreadActionCardProperty(
                             descriptionLabel,
-                            stringResource(MR.strings.thread_action_card_no_description),
+                            stringResource(Res.string.thread_action_card_no_description),
                             muted = true
                         )
                 )
@@ -26776,9 +26772,9 @@ private fun ThreadActionCard.localizedActionCardProperties(): List<ThreadActionC
                         ThreadActionCardProperty(
                             stringResource(
                                 if (required != null) {
-                                    MR.strings.thread_action_card_field_required_computer
+                                    Res.string.thread_action_card_field_required_computer
                                 } else {
-                                    MR.strings.thread_action_card_field_suggested_computer
+                                    Res.string.thread_action_card_field_suggested_computer
                                 }
                             ),
                             computer,
@@ -26791,20 +26787,20 @@ private fun ThreadActionCard.localizedActionCardProperties(): List<ThreadActionC
             buildList {
                 // web: the row only when the channel is known.
                 actionCardChannelName(names)?.let {
-                    add(ThreadActionCardProperty(stringResource(MR.strings.thread_action_card_field_channel), "#$it"))
+                    add(ThreadActionCardProperty(stringResource(Res.string.thread_action_card_field_channel), "#$it"))
                 }
                 if (humans.isNotEmpty()) add(ThreadActionCardProperty(humansLabel, humanNames(humans)))
                 if (agents.isNotEmpty()) add(ThreadActionCardProperty(agentsLabel, agentNames(agents)))
             }
         "integration:approve_agent_login",
         InstallMarketplaceAppActionCardType -> {
-            val service = clientName?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.thread_action_card_app)
+            val service = clientName?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.thread_action_card_app)
             val agent = agentName?.takeIf { it.isNotBlank() }
                 ?: name.takeIf { it.isNotBlank() }
-                ?: stringResource(MR.strings.thread_action_card_agent)
+                ?: stringResource(Res.string.thread_action_card_agent)
             listOf(
-                ThreadActionCardProperty(stringResource(MR.strings.thread_action_card_label_service), service),
-                ThreadActionCardProperty(stringResource(MR.strings.thread_action_card_label_agent), "@${agent.removePrefix("@")}", mono = true),
+                ThreadActionCardProperty(stringResource(Res.string.thread_action_card_label_service), service),
+                ThreadActionCardProperty(stringResource(Res.string.thread_action_card_label_agent), "@${agent.removePrefix("@")}", mono = true),
             )
         }
         // web: the client key and the new owner by name, not the stored ids.
@@ -26813,9 +26809,9 @@ private fun ThreadActionCard.localizedActionCardProperties(): List<ThreadActionC
                 genericActionCardProperties()
             } else {
                 listOf(
-                    ThreadActionCardProperty(stringResource(MR.strings.thread_action_card_field_client_key), clientKey, mono = true),
+                    ThreadActionCardProperty(stringResource(Res.string.thread_action_card_field_client_key), clientKey, mono = true),
                     ThreadActionCardProperty(
-                        stringResource(MR.strings.thread_action_card_field_recovery_owner),
+                        stringResource(Res.string.thread_action_card_field_recovery_owner),
                         "@${names.displayName(ThreadActionCardEntityKind.Agent, targetAgent, unknownAgent).removePrefix("@")}",
                         mono = true
                     ),
@@ -26829,9 +26825,9 @@ private fun ThreadActionCard.localizedActionCardProperties(): List<ThreadActionC
 @Composable
 private fun ThreadActionCard.genericActionCardProperties(): List<ThreadActionCardProperty> =
     if (metadataItems.isEmpty()) {
-        listOf(ThreadActionCardProperty(stringResource(MR.strings.thread_action_card_label_type), type, mono = true))
+        listOf(ThreadActionCardProperty(stringResource(Res.string.thread_action_card_label_type), type, mono = true))
     } else {
-        val hidden = stringResource(MR.strings.thread_action_card_hidden_value)
+        val hidden = stringResource(Res.string.thread_action_card_hidden_value)
         metadataItems.map { item ->
             ThreadActionCardProperty(
                 label = humanizeActionCardMetadataKey(item.key),
@@ -26855,14 +26851,14 @@ private fun ThreadActionCard.actionCardChannelName(names: ThreadActionCardNameLo
 private fun ThreadActionCard.actionCardNotice(): String? =
     when {
         type.equals("integration:update_app_registration", ignoreCase = true) ->
-            stringResource(MR.strings.thread_action_card_legacy_unavailable_hint)
-        isInstallMarketplaceAppAction() -> stringResource(MR.strings.thread_action_card_install_owner_only)
+            stringResource(Res.string.thread_action_card_legacy_unavailable_hint)
+        isInstallMarketplaceAppAction() -> stringResource(Res.string.thread_action_card_install_owner_only)
         isIntegrationApproveLoginAction() -> {
-            val service = clientName?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.thread_action_card_app)
+            val service = clientName?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.thread_action_card_app)
             val agent = agentName?.takeIf { it.isNotBlank() }
                 ?: name.takeIf { it.isNotBlank() }
-                ?: stringResource(MR.strings.thread_action_card_agent)
-            stringResource(MR.strings.thread_action_card_approval_hint, agent.removePrefix("@"), service)
+                ?: stringResource(Res.string.thread_action_card_agent)
+            stringResource(Res.string.thread_action_card_approval_hint, agent.removePrefix("@"), service)
         }
         else -> presentationWarning?.takeIf { it.isNotBlank() }
     }
@@ -26882,28 +26878,28 @@ private fun ThreadActionCard.actionCardVerb(): String =
 @Composable
 private fun ThreadActionCard.localizedActionCardVerb(): String =
     when (type) {
-        "channel:create" -> stringResource(MR.strings.thread_action_card_create_channel)
-        "agent:create" -> stringResource(MR.strings.thread_action_card_create_agent)
-        "channel:add_member" -> stringResource(MR.strings.thread_action_card_add_members)
-        "integration:approve_agent_login" -> stringResource(MR.strings.thread_action_card_approve_login)
-        InstallMarketplaceAppActionCardType -> stringResource(MR.strings.thread_action_card_install_app)
-        "integration:register_app" -> stringResource(MR.strings.thread_action_card_register_app)
-        "integration:recover_app_owner" -> stringResource(MR.strings.thread_action_card_recover_owner)
-        "integration:update_app_registration" -> stringResource(MR.strings.thread_action_card_unavailable)
+        "channel:create" -> stringResource(Res.string.thread_action_card_create_channel)
+        "agent:create" -> stringResource(Res.string.thread_action_card_create_agent)
+        "channel:add_member" -> stringResource(Res.string.thread_action_card_add_members)
+        "integration:approve_agent_login" -> stringResource(Res.string.thread_action_card_approve_login)
+        InstallMarketplaceAppActionCardType -> stringResource(Res.string.thread_action_card_install_app)
+        "integration:register_app" -> stringResource(Res.string.thread_action_card_register_app)
+        "integration:recover_app_owner" -> stringResource(Res.string.thread_action_card_recover_owner)
+        "integration:update_app_registration" -> stringResource(Res.string.thread_action_card_unavailable)
         else ->
             presentationConfirmLabel?.takeIf { it.isNotBlank() }
-                ?: stringResource(MR.strings.thread_action_card_approve_action)
+                ?: stringResource(Res.string.thread_action_card_approve_action)
     }
 
 @Composable
 private fun ThreadActionCard.localizedActionCardPendingLabel(): String =
     when (type) {
-        "channel:add_member" -> stringResource(MR.strings.thread_action_card_adding)
-        "integration:approve_agent_login" -> stringResource(MR.strings.thread_action_card_approving)
-        InstallMarketplaceAppActionCardType -> stringResource(MR.strings.thread_action_card_installing)
+        "channel:add_member" -> stringResource(Res.string.thread_action_card_adding)
+        "integration:approve_agent_login" -> stringResource(Res.string.thread_action_card_approving)
+        InstallMarketplaceAppActionCardType -> stringResource(Res.string.thread_action_card_installing)
         "integration:register_app",
-        "integration:recover_app_owner" -> stringResource(MR.strings.thread_action_card_approving)
-        else -> stringResource(MR.strings.thread_action_card_creating)
+        "integration:recover_app_owner" -> stringResource(Res.string.thread_action_card_approving)
+        else -> stringResource(Res.string.thread_action_card_creating)
     }
 
 @Composable
@@ -26912,60 +26908,60 @@ private fun ThreadActionCard.localizedActionCardTitle(): String =
         "channel:create" -> {
             val localizedVisibility =
                 when (visibility?.lowercase()) {
-                    "private" -> stringResource(MR.strings.thread_action_card_private)
-                    else -> stringResource(MR.strings.thread_action_card_public)
+                    "private" -> stringResource(Res.string.thread_action_card_private)
+                    else -> stringResource(Res.string.thread_action_card_public)
                 }
             stringResource(
-                MR.strings.thread_action_card_title_create_channel,
+                Res.string.thread_action_card_title_create_channel,
                 localizedVisibility,
                 name.removePrefix("#")
             )
         }
         "agent:create" ->
-            stringResource(MR.strings.thread_action_card_title_create_agent, name.removePrefix("@"))
+            stringResource(Res.string.thread_action_card_title_create_agent, name.removePrefix("@"))
         "channel:add_member" -> {
             val count = humans.size + agents.size
             val target = actionCardChannelName(LocalThreadActionCardNames.current)?.let { "#$it" }
-                ?: stringResource(MR.strings.thread_action_card_channel)
+                ?: stringResource(Res.string.thread_action_card_channel)
             if (count == 1) {
-                stringResource(MR.strings.thread_action_card_title_add_member, target)
+                stringResource(Res.string.thread_action_card_title_add_member, target)
             } else {
-                stringResource(MR.strings.thread_action_card_title_add_members, count, target)
+                stringResource(Res.string.thread_action_card_title_add_members, count, target)
             }
         }
         "integration:approve_agent_login" -> {
             val service = clientName?.takeIf { it.isNotBlank() }
-                ?: stringResource(MR.strings.thread_action_card_app)
+                ?: stringResource(Res.string.thread_action_card_app)
             val agent = agentName?.takeIf { it.isNotBlank() }
                 ?: name.takeIf { it.isNotBlank() }
-                ?: stringResource(MR.strings.thread_action_card_agent)
+                ?: stringResource(Res.string.thread_action_card_agent)
             stringResource(
-                MR.strings.thread_action_card_title_approve_login,
+                Res.string.thread_action_card_title_approve_login,
                 service,
                 agent.removePrefix("@")
             )
         }
         InstallMarketplaceAppActionCardType -> {
             val service = clientName?.takeIf { it.isNotBlank() }
-                ?: stringResource(MR.strings.thread_action_card_app)
+                ?: stringResource(Res.string.thread_action_card_app)
             val agent = agentName?.takeIf { it.isNotBlank() }
-                ?: stringResource(MR.strings.thread_action_card_agent)
-            stringResource(MR.strings.thread_action_card_title_install_app, service, agent.removePrefix("@"))
+                ?: stringResource(Res.string.thread_action_card_agent)
+            stringResource(Res.string.thread_action_card_title_install_app, service, agent.removePrefix("@"))
         }
         "integration:register_app" -> {
             val appName = name.takeIf { it.isNotBlank() }
                 ?: clientName?.takeIf { it.isNotBlank() }
                 ?: clientKey?.takeIf { it.isNotBlank() }
-                ?: stringResource(MR.strings.thread_action_card_app)
-            stringResource(MR.strings.thread_action_card_title_register_app, appName)
+                ?: stringResource(Res.string.thread_action_card_app)
+            stringResource(Res.string.thread_action_card_title_register_app, appName)
         }
         "integration:recover_app_owner" ->
-            stringResource(MR.strings.thread_action_card_title_recover_owner)
+            stringResource(Res.string.thread_action_card_title_recover_owner)
         "integration:update_app_registration" ->
-            stringResource(MR.strings.thread_action_card_unavailable)
+            stringResource(Res.string.thread_action_card_unavailable)
         else ->
             presentationTitle?.takeIf { it.isNotBlank() }
-                ?: stringResource(MR.strings.thread_action_card_title_generic, humanizeActionCardType(type))
+                ?: stringResource(Res.string.thread_action_card_title_generic, humanizeActionCardType(type))
     }
 
 private fun ThreadActionCard.actionCardPendingLabel(): String =
@@ -27152,7 +27148,7 @@ private fun ThreadActionCard.actionCardCommittedLabel(): String =
  */
 private fun ThreadActionCard.localizedActionCardDoneLine(executedTimeLabel: String?): String {
     val committedBy = executedByUserName?.takeIf { it.isNotBlank() }?.let {
-        stringResource(MR.strings.thread_action_card_committed_by, it)
+        stringResource(Res.string.thread_action_card_committed_by, it)
     }
     val result =
         when (resultKind) {
@@ -27161,7 +27157,7 @@ private fun ThreadActionCard.localizedActionCardDoneLine(executedTimeLabel: Stri
             "channel-members" -> {
                 val total = resultAddedHumanIds.size + resultAddedAgentIds.size
                 resultChannelName?.let {
-                    stringResource(MR.strings.thread_action_card_members_added, total, it.removePrefix("#"))
+                    stringResource(Res.string.thread_action_card_members_added, total, it.removePrefix("#"))
                 }
             }
             "agent-integration-login" -> {
@@ -27170,13 +27166,13 @@ private fun ThreadActionCard.localizedActionCardDoneLine(executedTimeLabel: Stri
                 when {
                     !service.isNullOrBlank() && !agent.isNullOrBlank() ->
                         stringResource(
-                            MR.strings.thread_action_card_service_approved_for,
+                            Res.string.thread_action_card_service_approved_for,
                             service,
                             agent.removePrefix("@")
                         )
                     !service.isNullOrBlank() ->
-                        stringResource(MR.strings.thread_action_card_service_approved, service)
-                    else -> stringResource(MR.strings.thread_action_card_login_approved)
+                        stringResource(Res.string.thread_action_card_service_approved, service)
+                    else -> stringResource(Res.string.thread_action_card_login_approved)
                 }
             }
             "integration-app-registration" ->
@@ -27187,14 +27183,14 @@ private fun ThreadActionCard.localizedActionCardDoneLine(executedTimeLabel: Stri
                 resultName?.takeIf { it.isNotBlank() }
             "marketplace-app-installation" ->
                 (resultName?.takeIf { it.isNotBlank() } ?: clientName?.takeIf { it.isNotBlank() })
-                    ?.let { stringResource(MR.strings.thread_action_card_installed_on_server, it) }
+                    ?.let { stringResource(Res.string.thread_action_card_installed_on_server, it) }
             else -> null
         }
     val who = committedBy?.let { by -> executedTimeLabel?.let { "$by · $it" } ?: by }
     return when {
         who != null && result != null -> "$who → $result"
         who != null -> who
-        result != null -> stringResource(MR.strings.thread_action_card_result, result)
+        result != null -> stringResource(Res.string.thread_action_card_result, result)
         else -> executedTimeLabel.orEmpty()
     }
 }
@@ -27203,34 +27199,34 @@ private fun ThreadActionCard.localizedActionCardDoneLine(executedTimeLabel: Stri
 private fun threadCreateAgentDialogErrorCopy(code: String, serverMessage: String? = null): String =
     when (code) {
         "agent_name_required",
-        "action_card_agent_name_missing" -> stringResource(MR.strings.thread_action_card_error_agent_name_required)
-        "action_card_agents_api_missing" -> stringResource(MR.strings.thread_action_card_error_agent_unavailable)
-        "action_card_actions_api_missing" -> stringResource(MR.strings.thread_action_card_error_completion_unavailable)
+        "action_card_agent_name_missing" -> stringResource(Res.string.thread_action_card_error_agent_name_required)
+        "action_card_agents_api_missing" -> stringResource(Res.string.thread_action_card_error_agent_unavailable)
+        "action_card_actions_api_missing" -> stringResource(Res.string.thread_action_card_error_completion_unavailable)
         "action_card_mark_executed_empty",
-        "action_mark_executed_contract_mismatch" -> stringResource(MR.strings.thread_action_card_error_mark_done)
-        "agent_create_empty" -> stringResource(MR.strings.thread_action_card_error_agent_not_created)
+        "action_mark_executed_contract_mismatch" -> stringResource(Res.string.thread_action_card_error_mark_done)
+        "agent_create_empty" -> stringResource(Res.string.thread_action_card_error_agent_not_created)
         AGENT_CREATE_NAME_TAKEN ->
-            stringResource(MR.strings.agent_create_error_name_taken)
+            stringResource(Res.string.agent_create_error_name_taken)
         "agent_create_form_refresh_required" ->
-            stringResource(MR.strings.thread_action_card_error_agent_form_refresh_required)
+            stringResource(Res.string.thread_action_card_error_agent_form_refresh_required)
         "agent_create_form_refresh_failed" ->
-            stringResource(MR.strings.thread_action_card_error_agent_form_refresh_failed)
+            stringResource(Res.string.thread_action_card_error_agent_form_refresh_failed)
         // task #193 honest-states: unmapped code -> raw server reason first,
         // localized generic-with-code only when the server sent no text.
         else ->
             serverMessage?.takeIf { it.isNotBlank() }
-                ?: stringResource(MR.strings.thread_action_card_error_agent_create, code)
+                ?: stringResource(Res.string.thread_action_card_error_agent_create, code)
     }
 
 @Composable
 private fun threadCreateAgentMachinesErrorCopy(code: String): String =
     when (code) {
-        "server_id_missing" -> stringResource(MR.strings.thread_action_card_error_select_server)
+        "server_id_missing" -> stringResource(Res.string.thread_action_card_error_select_server)
         "auth_required",
         "auth_session_missing",
-        "auth_session_expired" -> stringResource(MR.strings.thread_action_card_error_sign_in_computers)
-        "server_forbidden" -> stringResource(MR.strings.thread_action_card_error_computers_permission)
-        else -> stringResource(MR.strings.thread_action_card_error_load_computers, code)
+        "auth_session_expired" -> stringResource(Res.string.thread_action_card_error_sign_in_computers)
+        "server_forbidden" -> stringResource(Res.string.thread_action_card_error_computers_permission)
+        else -> stringResource(Res.string.thread_action_card_error_load_computers, code)
     }
 
 @Composable
@@ -27342,7 +27338,7 @@ private fun ThreadReactionAddChip(
     messageId: String,
     onClick: (RaftPopoverAnchor) -> Unit
 ) {
-    val addReactionDescription = stringResource(MR.strings.thread_action_add_reaction)
+    val addReactionDescription = stringResource(Res.string.thread_action_add_reaction)
     Button(
         onClick2 = onClick,
         clickIdentity = "thread_reaction_add:$messageId",
@@ -28368,12 +28364,12 @@ internal fun threadDateDividerLabel(
 @Composable
 private fun ThreadDateDividerDay.localizedLabel(): String =
     when {
-        todayEpochDay != null && epochDay == todayEpochDay -> stringResource(MR.strings.thread_date_divider_today)
-        todayEpochDay != null && epochDay == todayEpochDay - 1L -> stringResource(MR.strings.thread_date_divider_yesterday)
+        todayEpochDay != null && epochDay == todayEpochDay -> stringResource(Res.string.thread_date_divider_today)
+        todayEpochDay != null && epochDay == todayEpochDay - 1L -> stringResource(Res.string.thread_date_divider_yesterday)
         else -> {
             val date = threadCivilDateFromEpochDay(epochDay)
             stringResource(
-                MR.strings.thread_date_divider_date,
+                Res.string.thread_date_divider_date,
                 stringResource(ThreadWeekdayNameResources[threadWeekdayIndex(epochDay)]),
                 stringResource(ThreadMonthNameResources[date.month - 1]),
                 date.day
@@ -28469,29 +28465,29 @@ private val ThreadMonthNames =
 
 private val ThreadWeekdayNameResources =
     listOf(
-        MR.strings.thread_date_divider_weekday_sunday,
-        MR.strings.thread_date_divider_weekday_monday,
-        MR.strings.thread_date_divider_weekday_tuesday,
-        MR.strings.thread_date_divider_weekday_wednesday,
-        MR.strings.thread_date_divider_weekday_thursday,
-        MR.strings.thread_date_divider_weekday_friday,
-        MR.strings.thread_date_divider_weekday_saturday
+        Res.string.thread_date_divider_weekday_sunday,
+        Res.string.thread_date_divider_weekday_monday,
+        Res.string.thread_date_divider_weekday_tuesday,
+        Res.string.thread_date_divider_weekday_wednesday,
+        Res.string.thread_date_divider_weekday_thursday,
+        Res.string.thread_date_divider_weekday_friday,
+        Res.string.thread_date_divider_weekday_saturday
     )
 
 private val ThreadMonthNameResources =
     listOf(
-        MR.strings.thread_date_divider_month_january,
-        MR.strings.thread_date_divider_month_february,
-        MR.strings.thread_date_divider_month_march,
-        MR.strings.thread_date_divider_month_april,
-        MR.strings.thread_date_divider_month_may,
-        MR.strings.thread_date_divider_month_june,
-        MR.strings.thread_date_divider_month_july,
-        MR.strings.thread_date_divider_month_august,
-        MR.strings.thread_date_divider_month_september,
-        MR.strings.thread_date_divider_month_october,
-        MR.strings.thread_date_divider_month_november,
-        MR.strings.thread_date_divider_month_december
+        Res.string.thread_date_divider_month_january,
+        Res.string.thread_date_divider_month_february,
+        Res.string.thread_date_divider_month_march,
+        Res.string.thread_date_divider_month_april,
+        Res.string.thread_date_divider_month_may,
+        Res.string.thread_date_divider_month_june,
+        Res.string.thread_date_divider_month_july,
+        Res.string.thread_date_divider_month_august,
+        Res.string.thread_date_divider_month_september,
+        Res.string.thread_date_divider_month_october,
+        Res.string.thread_date_divider_month_november,
+        Res.string.thread_date_divider_month_december
     )
 
 private const val ThreadMillisPerMinute = 60_000L
@@ -28578,15 +28574,15 @@ private fun ThreadInlineRepliesSurface(
     val countLabel =
         when (countLabelSpec.kind) {
             ThreadInlineReplyCountLabel.Kind.One ->
-                stringResource(MR.strings.thread_inline_reply_count_one)
+                stringResource(Res.string.thread_inline_reply_count_one)
             ThreadInlineReplyCountLabel.Kind.Many ->
-                stringResource(MR.strings.thread_inline_reply_count_many, countLabelSpec.count)
+                stringResource(Res.string.thread_inline_reply_count_many, countLabelSpec.count)
         }
     val unreadLabel =
         presentation.unreadCount.takeIf { it > 0 }?.let { count ->
-            stringResource(MR.strings.thread_inline_new_replies, count)
+            stringResource(Res.string.thread_inline_new_replies, count)
         }
-    val draftLabel = stringResource(MR.strings.thread_inline_draft)
+    val draftLabel = stringResource(Res.string.thread_inline_draft)
     // raft-ui MessageReplies (gap 7): `fill-muted` block, the pink new-reply sticker, a pencil
     // before Draft and no chevron, as the web's InlineThreadReplies draws it.
     build.raft.designsystem.components.RaftMessageReplies(
@@ -28776,7 +28772,7 @@ internal fun ThreadMessageFooterMeta(
         if (showSavedBadge) {
             // raft-ui MessageItemSavedIndicator (gap 23): `fill-muted`, an ink bookmark, muted label.
             build.raft.designsystem.components.RaftMessageSavedIndicator(
-                label = stringResource(MR.strings.thread_label_saved),
+                label = stringResource(Res.string.thread_label_saved),
                 modifier = Modifier.widthIn(max = 96.dp)
             )
         }
@@ -29307,7 +29303,7 @@ internal fun threadMessageMenuActions(
         if (showAddReactionAction) {
             add(
                 ThreadMessageMenuAction(
-                    label = MR.strings.thread_action_add_reaction.desc(),
+                    label = Res.string.thread_action_add_reaction.desc(),
                     icon = RaftLucideIconName.SmilePlus,
                     group = "reaction",
                     onClick = onAddReaction
@@ -29317,23 +29313,23 @@ internal fun threadMessageMenuActions(
         if (showCopyLinkAction) {
             add(
                 ThreadMessageMenuAction(
-                    label = MR.strings.thread_action_copy_link.desc(),
+                    label = Res.string.thread_action_copy_link.desc(),
                     icon = RaftLucideIconName.Link,
                     group = "copy",
                     onClick = onCopyLink
                 )
             )
         }
-        add(ThreadMessageMenuAction(MR.strings.thread_action_copy_markdown.desc(), RaftLucideIconName.Copy, "copy", onClick = onCopy))
-        add(ThreadMessageMenuAction(MR.strings.thread_action_select_text.desc(), RaftLucideIconName.FileText, "copy", onClick = onSelectText))
+        add(ThreadMessageMenuAction(Res.string.thread_action_copy_markdown.desc(), RaftLucideIconName.Copy, "copy", onClick = onCopy))
+        add(ThreadMessageMenuAction(Res.string.thread_action_select_text.desc(), RaftLucideIconName.FileText, "copy", onClick = onSelectText))
         if (showTranslateAction) {
             add(
                 ThreadMessageMenuAction(
                     label =
                         if (translatePending) {
-                            MR.strings.translation_state_in_progress.desc()
+                            Res.string.translation_state_in_progress.desc()
                         } else {
-                            MR.strings.thread_action_translate.desc()
+                            Res.string.thread_action_translate.desc()
                         },
                     icon = RaftLucideIconName.Languages,
                     group = "copy",
@@ -29345,7 +29341,7 @@ internal fun threadMessageMenuActions(
         if (showShareMessagesAction) {
             add(
                 ThreadMessageMenuAction(
-                    label = MR.strings.thread_action_select_message.desc(),
+                    label = Res.string.thread_action_select_message.desc(),
                     icon = RaftLucideIconName.CircleCheck,
                     group = "copy",
                     onClick = onShareMessages
@@ -29353,20 +29349,20 @@ internal fun threadMessageMenuActions(
             )
         }
         if (showReplyAction) {
-            add(ThreadMessageMenuAction(MR.strings.thread_action_reply_in_thread.desc(), RaftLucideIconName.MessageSquare, "message", onClick = onReply))
+            add(ThreadMessageMenuAction(Res.string.thread_action_reply_in_thread.desc(), RaftLucideIconName.MessageSquare, "message", onClick = onReply))
         }
         if (showForwardAction) {
             // Web uses the select-mode Forward glyph (lucide send) for the per-message entry.
-            add(ThreadMessageMenuAction(MR.strings.thread_action_forward.desc(), RaftLucideIconName.Send, "message", onClick = onForward))
+            add(ThreadMessageMenuAction(Res.string.thread_action_forward.desc(), RaftLucideIconName.Send, "message", onClick = onForward))
         }
         if (showSaveAction) {
             add(
                 ThreadMessageMenuAction(
                     label =
                         if (message.isSaved) {
-                            MR.strings.thread_action_remove_from_saved.desc()
+                            Res.string.thread_action_remove_from_saved.desc()
                         } else {
-                            MR.strings.thread_action_save_message.desc()
+                            Res.string.thread_action_save_message.desc()
                         },
                     icon = if (message.isSaved) RaftLucideIconName.BookmarkMinus else RaftLucideIconName.Bookmark,
                     group = "message",
@@ -29380,9 +29376,9 @@ internal fun threadMessageMenuActions(
                 ThreadMessageMenuAction(
                     label =
                         if (replyMetadata.isThreadFollowed) {
-                            MR.strings.thread_action_unfollow_thread.desc()
+                            Res.string.thread_action_unfollow_thread.desc()
                         } else {
-                            MR.strings.thread_action_follow_thread.desc()
+                            Res.string.thread_action_follow_thread.desc()
                         },
                     icon = threadFollowMenuIcon(replyMetadata.isThreadFollowed),
                     group = "message",
@@ -29399,7 +29395,7 @@ internal fun threadMessageMenuActions(
         if (showDeleteAction) {
             add(
                 ThreadMessageMenuAction(
-                    label = MR.strings.common_delete.desc(),
+                    label = Res.string.common_delete.desc(),
                     icon = RaftLucideIconName.Trash,
                     group = "destructive",
                     onClick = onDelete
@@ -29409,7 +29405,7 @@ internal fun threadMessageMenuActions(
         if (showCancelAction) {
             add(
                 ThreadMessageMenuAction(
-                    label = MR.strings.common_cancel.desc(),
+                    label = Res.string.common_cancel.desc(),
                     icon = RaftLucideIconName.X,
                     group = "destructive",
                     onClick = onCancel
@@ -29422,9 +29418,9 @@ internal fun threadMessageMenuActions(
                 ThreadMessageMenuAction(
                     label =
                         if (isDone) {
-                            MR.strings.thread_action_reopen_task.desc()
+                            Res.string.thread_action_reopen_task.desc()
                         } else {
-                            MR.strings.thread_action_mark_done.desc()
+                            Res.string.thread_action_mark_done.desc()
                         },
                     icon = if (isDone) RaftLucideIconName.RefreshCw else RaftLucideIconName.CircleCheckBig,
                     group = "task",
@@ -29435,7 +29431,7 @@ internal fun threadMessageMenuActions(
         if (showConvertToTaskAction && message.canConvertToTask()) {
             add(
                 ThreadMessageMenuAction(
-                    label = MR.strings.thread_action_convert_to_task.desc(),
+                    label = Res.string.thread_action_convert_to_task.desc(),
                     icon = RaftLucideIconName.ClipboardCheck,
                     group = "task",
                     onClick = onConvertToTask
@@ -29768,7 +29764,7 @@ private fun ThreadMessageTextSelectionDialog(
                 ) {
                     RaftBackButton(
                         onClick = onDismiss,
-                        label = stringResource(MR.strings.common_close),
+                        label = stringResource(Res.string.common_close),
                         glyph = RaftGlyph.X,
                     )
                 }
@@ -29943,8 +29939,8 @@ private fun ThreadQuickReactionGlyph(
     reactionAtlasImage: ImageBitmap? = null
 ) {
     // task #421 / #423: use the sprite path only when the atlas bitmap has
-    // actually decoded. Since task #423 the MR bundle resolves on iOS too (so
-    // `spriteAtlasAvailable` is now true there), but the atlas ImageBitmap may
+    // actually decoded. The atlas file resolves on every platform (so
+    // `spriteAtlasAvailable` is true there), but the atlas ImageBitmap may
     // still fail to decode in some environments — gating on mere bundle
     // availability then drew a *blank* atlas rect instead of falling back to the
     // emoji glyph. Gate on the decoded image (the same value the sprite glyph
@@ -30085,7 +30081,7 @@ private fun ThreadOriginCard(
         when (timelineSlice.originStatus) {
             "loading" -> {
                 Text(
-                    text = stringResource(MR.strings.thread_state_refreshing_original),
+                    text = stringResource(Res.string.thread_state_refreshing_original),
                     style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                     color = RaftColor.TextMutedGray,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = RaftAppSpacing.Md, vertical = RaftAppSpacing.Sm)
@@ -30099,15 +30095,15 @@ private fun ThreadOriginCard(
                     Text(
                         // The launch fallback preview is the root message's Markdown.
                         text = renderConfig.originPreview?.let(::markdownToPreviewText)?.takeIf { it.isNotBlank() }
-                            ?: stringResource(MR.strings.thread_state_original_unavailable),
+                            ?: stringResource(Res.string.thread_state_original_unavailable),
                         style = messageBodyTextStyle,
                         color = RaftColor.TextBlack
                     )
                     renderConfig.originErrorCode?.takeIf { it.isNotBlank() }?.let {
                         Text(
                             text = stringResource(
-                                MR.strings.thread_error_refresh_original,
-                                userFacingErrorLabels.forErrorCode(it) ?: stringResource(MR.strings.common_error)
+                                Res.string.thread_error_refresh_original,
+                                userFacingErrorLabels.forErrorCode(it) ?: stringResource(Res.string.common_error)
                             ),
                             style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                             color = RaftColor.TextMutedGray
@@ -31201,8 +31197,8 @@ private fun ThreadAttachmentChip(
     val isOpening = openState.threadAttachmentIsOpening()
     val metaLabel =
         attachment.threadAttachmentCardMetaLabel(
-            htmlPreviewLabel = stringResource(MR.strings.file_preview_html),
-            fileLabel = stringResource(MR.strings.thread_attachment_meta_file)
+            htmlPreviewLabel = stringResource(Res.string.file_preview_html),
+            fileLabel = stringResource(Res.string.thread_attachment_meta_file)
         )
     // A download started on the file page keeps running in the download centre; the card only
     // mirrors it (task #75). The card itself never downloads.
@@ -31214,9 +31210,9 @@ private fun ThreadAttachmentChip(
             entry = centerEntry,
             terms =
                 RaftFilePreviewDownloadStatusTerms(
-                    downloading = stringResource(MR.strings.file_preview_download_downloading),
-                    paused = stringResource(MR.strings.file_preview_download_paused),
-                    saving = stringResource(MR.strings.file_preview_download_saving)
+                    downloading = stringResource(Res.string.file_preview_download_downloading),
+                    paused = stringResource(Res.string.file_preview_download_paused),
+                    saving = stringResource(Res.string.file_preview_download_saving)
                 )
         )
     // Download progress and open failures take the size's place on the meta line, as the web's
@@ -31229,13 +31225,13 @@ private fun ThreadAttachmentChip(
         if (route is RaftThreadAttachmentOpenRoute.Preview) {
             RaftAttachmentPreviewCardAction(
                 RaftLucideIconName.Eye,
-                "${stringResource(MR.strings.file_preview_action_open)} ${attachment.name}",
+                "${stringResource(Res.string.file_preview_action_open)} ${attachment.name}",
                 onOpen
             )
         } else {
             RaftAttachmentPreviewCardAction(
                 RaftLucideIconName.Download,
-                "${stringResource(MR.strings.file_preview_action_download)} ${attachment.name}",
+                "${stringResource(Res.string.file_preview_action_download)} ${attachment.name}",
                 onOpen
             )
         }
@@ -31296,7 +31292,7 @@ internal fun ThreadAttachmentCommentsSheet(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = stringResource(MR.strings.thread_comments_title),
+                            text = stringResource(Res.string.thread_comments_title),
                             style =
                                 RaftType.PageTitle.copy(
                                     fontSize = 18.sp,
@@ -31310,7 +31306,7 @@ internal fun ThreadAttachmentCommentsSheet(
                         )
                         RaftBackButton(
                             onClick = onDismiss,
-                            label = stringResource(MR.strings.common_close),
+                            label = stringResource(Res.string.common_close),
                             glyph = RaftGlyph.X,
                         )
                     }
@@ -31370,30 +31366,30 @@ internal fun ThreadAttachmentCommentsContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             ThreadAttachmentCommentsFilterChip(
-                label = stringResource(MR.strings.thread_comments_filter_all),
+                label = stringResource(Res.string.thread_comments_filter_all),
                 selected = state.filter != "unresolved",
                 onClick = { onFilterChange("all") }
             )
             ThreadAttachmentCommentsFilterChip(
-                label = stringResource(MR.strings.thread_comments_filter_unresolved),
+                label = stringResource(Res.string.thread_comments_filter_unresolved),
                 selected = state.filter == "unresolved",
                 onClick = { onFilterChange("unresolved") }
             )
         }
         when (state.status) {
             "loading" ->
-                ThreadStateMessage(stringResource(MR.strings.thread_comments_loading), null)
+                ThreadStateMessage(stringResource(Res.string.thread_comments_loading), null)
             "error" ->
                 ThreadStateActionMessage(
-                    title = stringResource(MR.strings.thread_comments_load_failed),
+                    title = stringResource(Res.string.thread_comments_load_failed),
                     detail =
                         attachmentCommentsVisibleErrorMessage(
                             errorCode = state.errorCode,
                             serverMessage = state.errorServerMessage,
                             labels = userFacingErrorLabels,
-                            genericMessage = stringResource(MR.strings.common_error)
+                            genericMessage = stringResource(Res.string.common_error)
                         ),
-                    actionLabel = stringResource(MR.strings.common_retry),
+                    actionLabel = stringResource(Res.string.common_retry),
                     onClick = onRetry
                 )
             else ->
@@ -31401,12 +31397,12 @@ internal fun ThreadAttachmentCommentsContent(
                     if (comments.isEmpty()) {
                         item {
                             ThreadModalEmptyState(
-                                title = stringResource(MR.strings.thread_state_no_comments),
+                                title = stringResource(Res.string.thread_state_no_comments),
                                 detail =
                                     if (state.filter == "unresolved") {
-                                        stringResource(MR.strings.thread_comments_all_resolved)
+                                        stringResource(Res.string.thread_comments_all_resolved)
                                     } else {
-                                        stringResource(MR.strings.thread_comments_start_below)
+                                        stringResource(Res.string.thread_comments_start_below)
                                     }
                             )
                         }
@@ -31430,7 +31426,7 @@ internal fun ThreadAttachmentCommentsContent(
                         errorCode = code,
                         serverMessage = state.errorServerMessage,
                         labels = userFacingErrorLabels,
-                        genericMessage = stringResource(MR.strings.common_error)
+                        genericMessage = stringResource(Res.string.common_error)
                     ),
                 style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.AccentRed),
                 color = RaftColor.AccentRed,
@@ -31517,7 +31513,7 @@ private fun ThreadAttachmentCommentRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
-                text = comment.senderName.ifBlank { stringResource(MR.strings.thread_comments_unknown_author) },
+                text = comment.senderName.ifBlank { stringResource(Res.string.thread_comments_unknown_author) },
                 style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack),
                 color = RaftColor.TextBlack,
                 maxLines = 1,
@@ -31535,7 +31531,7 @@ private fun ThreadAttachmentCommentRow(
             }
         }
         comment.anchorLabel?.takeIf { it.isNotBlank() }?.let { label ->
-            ThreadInlineMetaTag(stringResource(MR.strings.thread_comments_anchor, label))
+            ThreadInlineMetaTag(stringResource(Res.string.thread_comments_anchor, label))
         }
         Text(
             text = comment.content,
@@ -31550,7 +31546,7 @@ private fun ThreadAttachmentCommentRow(
             horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
         ) {
             ThreadAttachmentCommentTinyButton(
-                label = stringResource(MR.strings.thread_action_quote),
+                label = stringResource(Res.string.thread_action_quote),
                 icon = RaftLucideIconName.MessageSquarePlus,
                 enabled = canComment && comment.content.isNotBlank(),
                 onClick = onQuote
@@ -31558,9 +31554,9 @@ private fun ThreadAttachmentCommentRow(
             ThreadAttachmentCommentTinyButton(
                 label =
                     when {
-                        resolved -> stringResource(MR.strings.thread_comments_resolved)
-                        resolving -> stringResource(MR.strings.thread_comments_resolving)
-                        else -> stringResource(MR.strings.thread_comments_resolve)
+                        resolved -> stringResource(Res.string.thread_comments_resolved)
+                        resolving -> stringResource(Res.string.thread_comments_resolving)
+                        else -> stringResource(Res.string.thread_comments_resolve)
                     },
                 icon = if (resolved) RaftLucideIconName.CircleCheckBig else RaftLucideIconName.Check,
                 enabled = canComment && !resolved && !resolving,
@@ -31606,10 +31602,10 @@ private fun ThreadAttachmentCommentComposer(
             verticalAlignment = Alignment.CenterVertically
         ) {
             state.pendingAnchorLabel?.takeIf { it.isNotBlank() }?.let { label ->
-                ThreadInlineMetaTag(stringResource(MR.strings.thread_comments_anchor, label))
+                ThreadInlineMetaTag(stringResource(Res.string.thread_comments_anchor, label))
             }
             state.pendingQuoteLabel?.takeIf { it.isNotBlank() }?.let { label ->
-                ThreadInlineMetaTag(stringResource(MR.strings.thread_comments_quote, label))
+                ThreadInlineMetaTag(stringResource(Res.string.thread_comments_quote, label))
             }
         }
         if (!canComment) {
@@ -31620,9 +31616,9 @@ private fun ThreadAttachmentCommentComposer(
             )
         }
         RaftBrutalTextField(
-            label = stringResource(MR.strings.thread_comments_label),
+            label = stringResource(Res.string.thread_comments_label),
             value = state.draft,
-            placeholder = stringResource(MR.strings.thread_comments_placeholder),
+            placeholder = stringResource(Res.string.thread_comments_placeholder),
             enabled = enabled,
             maxLines = if (compact) 3 else 4,
             fieldMinHeight = if (compact) 64.dp else 82.dp,
@@ -31632,9 +31628,9 @@ private fun ThreadAttachmentCommentComposer(
         RaftModalFullWidthActionButton(
             label =
                 if (state.sending) {
-                    stringResource(MR.strings.thread_comments_sending)
+                    stringResource(Res.string.thread_comments_sending)
                 } else {
-                    stringResource(MR.strings.thread_comments_send)
+                    stringResource(Res.string.thread_comments_send)
                 },
             icon = RaftLucideIconName.Send,
             // Busy keeps the button's colour under the spinner (raft-ui Button > States).
@@ -31682,11 +31678,11 @@ private fun threadAttachmentCommentsListHeight(count: Int): Dp =
 @Composable
 internal fun threadAttachmentCommentBlockedCopy(reason: String?): String =
     when (reason?.trim()?.lowercase()) {
-        "archived" -> stringResource(MR.strings.thread_comments_blocked_archived)
-        "not_member" -> stringResource(MR.strings.thread_comments_blocked_not_member)
-        "read_only" -> stringResource(MR.strings.thread_comments_blocked_read_only)
-        "unlinked" -> stringResource(MR.strings.thread_comments_blocked_unlinked)
-        else -> stringResource(MR.strings.thread_comments_blocked_unavailable)
+        "archived" -> stringResource(Res.string.thread_comments_blocked_archived)
+        "not_member" -> stringResource(Res.string.thread_comments_blocked_not_member)
+        "read_only" -> stringResource(Res.string.thread_comments_blocked_read_only)
+        "unlinked" -> stringResource(Res.string.thread_comments_blocked_unlinked)
+        else -> stringResource(Res.string.thread_comments_blocked_unavailable)
     }
 
 @Composable
@@ -31857,7 +31853,7 @@ private fun ThreadForwardAttachments(
         val files = item.attachments.filterNot { it in images }
         Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (images.isNotEmpty()) {
-                val openLabels = images.map { stringResource(MR.strings.thread_forward_open_attachment, it.filename) }
+                val openLabels = images.map { stringResource(Res.string.thread_forward_open_attachment, it.filename) }
                 build.raft.designsystem.components.RaftMessageForwardedBundleGallery(
                     count = images.size,
                     onClick =
@@ -31887,7 +31883,7 @@ private fun ThreadForwardAttachments(
                                 } else {
                                     null
                                 },
-                            onClickLabel = stringResource(MR.strings.thread_forward_open_attachment, attachment.filename)
+                            onClickLabel = stringResource(Res.string.thread_forward_open_attachment, attachment.filename)
                         )
                     }
                 }
@@ -31961,9 +31957,9 @@ internal fun ThreadForwardBundleCard(
     val source =
         bundle.visibleSource?.let { visible ->
             if (visible.thread && !visible.label.endsWith(" · thread")) {
-                stringResource(MR.strings.thread_forward_from_thread, visible.label)
+                stringResource(Res.string.thread_forward_from_thread, visible.label)
             } else {
-                stringResource(MR.strings.thread_forward_from_source, visible.label)
+                stringResource(Res.string.thread_forward_from_source, visible.label)
             }
         }
     val openableSource = bundle.visibleSource?.takeIf { it.channelId != null && it.messageId != null }
@@ -31975,25 +31971,25 @@ internal fun ThreadForwardBundleCard(
         }
     val liveTimeContext = LocalRaftTimeContextProvider.current?.current
     build.raft.designsystem.components.RaftMessageForwardedBundle(
-        label = stringResource(MR.strings.thread_forward_badge),
+        label = stringResource(Res.string.thread_forward_badge),
         countLabel =
             if (count == 1) {
-                stringResource(MR.strings.thread_message_count_one)
+                stringResource(Res.string.thread_message_count_one)
             } else {
-                stringResource(MR.strings.thread_message_count_many, count)
+                stringResource(Res.string.thread_message_count_many, count)
             },
         // raft-ui `mt-1`: the message column already spaces its parts 4dp apart.
         modifier = modifier,
         source = source,
         // web `canOpenSourceLabel`: only a source with a conversation and message opens.
         onOpenSource = openSource,
-        onOpenSourceLabel = stringResource(MR.strings.thread_forward_open_source),
+        onOpenSourceLabel = stringResource(Res.string.thread_forward_open_source),
         footerLabel =
             onOpenAll?.let {
                 if (count == 1) {
-                    stringResource(MR.strings.thread_forward_view_message)
+                    stringResource(Res.string.thread_forward_view_message)
                 } else {
-                    stringResource(MR.strings.thread_forward_view_all, count)
+                    stringResource(Res.string.thread_forward_view_all, count)
                 }
             },
         onFooterClick = onOpenAll,
@@ -32004,7 +32000,7 @@ internal fun ThreadForwardBundleCard(
             val item = preview.item
             val hasAttachments = item.attachments.isNotEmpty() || item.attachmentCount > 0
             build.raft.designsystem.components.RaftMessageForwardedBundleItem(
-                author = item.authorName.ifBlank { stringResource(MR.strings.thread_comments_unknown_author) },
+                author = item.authorName.ifBlank { stringResource(Res.string.thread_comments_unknown_author) },
                 time =
                     if (item.timestampLabel.isNotBlank()) {
                         {
@@ -32058,9 +32054,9 @@ private fun ForwardMessageBundle.forwardTitle(): String =
 private fun ForwardMessageBundle.localizedForwardTitle(): String =
     title.takeIf { it.isNotBlank() }
         ?: sourceTitle.takeIf { it.isNotBlank() }?.let {
-            stringResource(MR.strings.thread_forward_chat_history_named, it)
+            stringResource(Res.string.thread_forward_chat_history_named, it)
         }
-        ?: stringResource(MR.strings.thread_forward_chat_history)
+        ?: stringResource(Res.string.thread_forward_chat_history)
 
 private fun ForwardMessageBundle.displayCount(): Int =
     totalCount?.takeIf { it > 0 } ?: messages.size
@@ -32096,8 +32092,8 @@ private fun ForwardMessageItem.forwardAttachmentLabel(): String =
 private fun ForwardMessageItem.localizedForwardAttachmentLabel(): String =
     when (attachmentCount) {
         0 -> ""
-        1 -> stringResource(MR.strings.thread_forward_attachment_one)
-        else -> stringResource(MR.strings.thread_forward_attachment_many, attachmentCount)
+        1 -> stringResource(Res.string.thread_forward_attachment_one)
+        else -> stringResource(Res.string.thread_forward_attachment_many, attachmentCount)
     }
 
 private fun ForwardMessageItem.memberDetailIdentity(): MemberDetailIdentity? =
@@ -32398,13 +32394,13 @@ private fun ForwardMessageTarget.threadForwardTargetSubtitle(): String =
 @Composable
 private fun <T> RaftForwardTargetPickerItem<T>.localizedForwardTargetSubtitle(): String =
     when (subtitle) {
-        "Join channel before forwarding" -> stringResource(MR.strings.thread_forward_join_channel_first)
-        "Start DM before forwarding" -> stringResource(MR.strings.thread_forward_start_dm_first)
-        "Recent channel" -> stringResource(MR.strings.thread_forward_recent_channel)
-        "Recent DM" -> stringResource(MR.strings.thread_forward_recent_dm)
-        "Public channel" -> stringResource(MR.strings.thread_forward_public_channel)
-        "Member" -> stringResource(MR.strings.thread_forward_member)
-        "Agent" -> stringResource(MR.strings.thread_forward_agent)
+        "Join channel before forwarding" -> stringResource(Res.string.thread_forward_join_channel_first)
+        "Start DM before forwarding" -> stringResource(Res.string.thread_forward_start_dm_first)
+        "Recent channel" -> stringResource(Res.string.thread_forward_recent_channel)
+        "Recent DM" -> stringResource(Res.string.thread_forward_recent_dm)
+        "Public channel" -> stringResource(Res.string.thread_forward_public_channel)
+        "Member" -> stringResource(Res.string.thread_forward_member)
+        "Agent" -> stringResource(Res.string.thread_forward_agent)
         else -> subtitle
     }
 
@@ -32552,7 +32548,7 @@ private fun ThreadForwardBundleScreen() {
     val bundle = if (visualFixture) threadForwardBundleVisualFixtureBundle() else detailState.bundle
     Column(modifier = Modifier.fillMaxSize().background(RaftColor.SurfaceWhite)) {
         RaftTopPageHeader(
-            title = bundle?.localizedForwardTitle() ?: stringResource(MR.strings.thread_forward_bundle_fallback_title),
+            title = bundle?.localizedForwardTitle() ?: stringResource(Res.string.thread_forward_bundle_fallback_title),
             iconName = RaftLucideIconName.Share2,
             backgroundColor = RaftColor.Canvas,
             onBack = {
@@ -32617,7 +32613,7 @@ private fun ThreadForwardBundleScreen() {
             }
             detailState.status == ThreadForwardBundleDetailStatus.Loading ->
                 RaftCenteredLoading(
-                    message = stringResource(MR.strings.common_loading),
+                    message = stringResource(Res.string.common_loading),
                     modifier = Modifier.weight(1f).fillMaxWidth()
                 )
             else ->
@@ -32648,13 +32644,13 @@ private fun ThreadForwardBundleLoadFailure(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = stringResource(MR.strings.thread_forward_bundle_unavailable),
+            text = stringResource(Res.string.thread_forward_bundle_unavailable),
             style = RaftType.Body.withRaftFontWeight(FontWeight.Bold),
             color = RaftColor.TextBlack
         )
         Spacer(Modifier.height(RaftAppSpacing.Md))
         RaftBrutalActionButton(
-            label = stringResource(MR.strings.common_retry),
+            label = stringResource(Res.string.common_retry),
             onClick = onRetry,
             backgroundColor = RaftColor.SurfaceWhite,
             minWidth = 0.dp,
@@ -32804,8 +32800,8 @@ internal fun <T> RaftForwardTargetPicker(
             RaftForwardPickerHeader(
                 subtitle =
                     sourceLabel?.takeIf { it.isNotBlank() }?.let { source ->
-                        stringResource(MR.strings.thread_forward_selected_from, messageCount, source)
-                    } ?: stringResource(MR.strings.thread_forward_messages_selected, messageCount),
+                        stringResource(Res.string.thread_forward_selected_from, messageCount, source)
+                    } ?: stringResource(Res.string.thread_forward_messages_selected, messageCount),
                 multiSelect = multiSelect,
                 multiSelectAvailable = singleTapContinues,
                 dismissEnabled = state.dismissEnabled,
@@ -32857,9 +32853,9 @@ internal fun <T> RaftForwardTargetPicker(
                 text =
                     when {
                         multiSelect && singleTapContinues && state.selectedKeys.isNotEmpty() ->
-                            stringResource(MR.strings.thread_forward_selected, state.selectedKeys.size)
-                        state.query.isBlank() -> stringResource(MR.strings.thread_forward_recent)
-                        else -> stringResource(MR.strings.thread_forward_search_results)
+                            stringResource(Res.string.thread_forward_selected, state.selectedKeys.size)
+                        state.query.isBlank() -> stringResource(Res.string.thread_forward_recent)
+                        else -> stringResource(Res.string.thread_forward_search_results)
                     },
                 modifier = Modifier.padding(top = ForwardPickerBodyPadding)
             )
@@ -32872,23 +32868,23 @@ internal fun <T> RaftForwardTargetPicker(
                     ThreadModalEmptyState(
                         title =
                             when {
-                                state.errorCode != null -> stringResource(MR.strings.thread_forward_targets_unavailable)
-                                state.query.isBlank() -> stringResource(MR.strings.thread_forward_no_recent_targets)
-                                else -> stringResource(MR.strings.thread_forward_no_targets)
+                                state.errorCode != null -> stringResource(Res.string.thread_forward_targets_unavailable)
+                                state.query.isBlank() -> stringResource(Res.string.thread_forward_no_recent_targets)
+                                else -> stringResource(Res.string.thread_forward_no_targets)
                             },
                         detail =
                             when {
                                 state.errorCode != null ->
                                     userFacingErrorLabels.forErrorCode(state.errorCode)
-                                        ?: stringResource(MR.strings.common_error)
-                                state.query.isBlank() -> stringResource(MR.strings.thread_forward_recent_targets_hint)
-                                else -> stringResource(MR.strings.thread_add_member_try_different_search)
+                                        ?: stringResource(Res.string.common_error)
+                                state.query.isBlank() -> stringResource(Res.string.thread_forward_recent_targets_hint)
+                                else -> stringResource(Res.string.thread_add_member_try_different_search)
                             }
                     )
                     if (state.errorCode != null) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                             RaftModalActionButton(
-                                label = stringResource(MR.strings.common_retry),
+                                label = stringResource(Res.string.common_retry),
                                 icon = RaftLucideIconName.RefreshCw,
                                 onClick = { onIntent(RaftForwardTargetPickerIntent.Retry) }
                             )
@@ -32964,12 +32960,12 @@ internal fun <T> RaftForwardTargetPicker(
                                     verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     Text(
-                                        text = stringResource(MR.strings.thread_forward_targets_unavailable),
+                                        text = stringResource(Res.string.thread_forward_targets_unavailable),
                                         style = RaftType.Body,
                                         color = RaftColor.TextBlack
                                     )
                                     RaftModalActionButton(
-                                        label = stringResource(MR.strings.common_retry),
+                                        label = stringResource(Res.string.common_retry),
                                         icon = RaftLucideIconName.RefreshCw,
                                         onClick = { onIntent(RaftForwardTargetPickerIntent.Retry) }
                                     )
@@ -32994,7 +32990,7 @@ internal fun <T> RaftForwardTargetPicker(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = stringResource(MR.strings.thread_forward_destinations_selected, state.selectedItems.size),
+                        text = stringResource(Res.string.thread_forward_destinations_selected, state.selectedItems.size),
                         style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                         color = RaftColor.TextMutedGray
                     )
@@ -33013,7 +33009,7 @@ internal fun <T> RaftForwardTargetPicker(
                         }
                     }
                     RaftModalFullWidthActionButton(
-                        label = stringResource(MR.strings.common_continue),
+                        label = stringResource(Res.string.common_continue),
                         icon = RaftLucideIconName.ChevronRight,
                         onClick = { onIntent(RaftForwardTargetPickerIntent.Continue) },
                         enabled = state.interactive
@@ -33035,7 +33031,7 @@ internal fun ThreadForwardNoteDialog(
     onSend: () -> Unit
 ) {
     RaftUnifiedDialog(
-        title = stringResource(MR.strings.thread_forward_add_note),
+        title = stringResource(Res.string.thread_forward_add_note),
         uppercaseTitle = false,
         onDismiss = onDismiss,
         dismissEnabled = !sending,
@@ -33049,7 +33045,7 @@ internal fun ThreadForwardNoteDialog(
         ) {
             item {
                 Text(
-                    text = stringResource(MR.strings.thread_forward_destination),
+                    text = stringResource(Res.string.thread_forward_destination),
                     style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                     color = RaftColor.TextMutedGray
                 )
@@ -33065,13 +33061,13 @@ internal fun ThreadForwardNoteDialog(
             }
             item {
                 RaftBrutalTextField(
-                    label = stringResource(MR.strings.thread_state_note),
+                    label = stringResource(Res.string.thread_state_note),
                     value = note,
                     placeholder =
                         if (messageCount == 1) {
-                            stringResource(MR.strings.thread_forward_placeholder_one)
+                            stringResource(Res.string.thread_forward_placeholder_one)
                         } else {
-                            stringResource(MR.strings.thread_forward_placeholder_many, messageCount)
+                            stringResource(Res.string.thread_forward_placeholder_many, messageCount)
                         },
                     maxLines = 3,
                     fieldMinHeight = 76.dp,
@@ -33082,7 +33078,7 @@ internal fun ThreadForwardNoteDialog(
         }
         RaftDialogFooter {
             RaftModalActionButton(
-                label = stringResource(MR.strings.common_back),
+                label = stringResource(Res.string.common_back),
                 icon = RaftLucideIconName.ArrowLeft,
                 onClick = onDismiss,
                 enabled = !sending
@@ -33090,9 +33086,9 @@ internal fun ThreadForwardNoteDialog(
             RaftModalActionButton(
                 label =
                     if (sending) {
-                        stringResource(MR.strings.thread_forward_sending)
+                        stringResource(Res.string.thread_forward_sending)
                     } else {
-                        stringResource(MR.strings.common_send)
+                        stringResource(Res.string.common_send)
                     },
                 icon = RaftLucideIconName.Send,
                 onClick = onSend,
@@ -33230,14 +33226,14 @@ internal fun ThreadShareSelectionToolbar(
         listOfNotNull(
             RaftBrutalDropdownMenuItem(
                 id = "generate-image",
-                label = stringResource(MR.strings.thread_share_generate_image),
+                label = stringResource(Res.string.thread_share_generate_image),
                 icon = RaftLucideIconName.Image,
                 enabled = hasSelection
             ),
             onCopyMarkdown?.let {
                 RaftBrutalDropdownMenuItem(
                     id = "copy-md",
-                    label = stringResource(MR.strings.thread_share_copy_markdown),
+                    label = stringResource(Res.string.thread_share_copy_markdown),
                     icon = RaftLucideIconName.Copy,
                     enabled = hasSelection
                 )
@@ -33262,7 +33258,7 @@ internal fun ThreadShareSelectionToolbar(
             // then `gap-1` sm buttons — ghost Cancel, accent Forward, outline icon-sm Copy
             // and More (14dp glyphs).
             build.raft.designsystem.text.RaftText(
-                text = stringResource(MR.strings.thread_forward_selected, selectedCount),
+                text = stringResource(Res.string.thread_forward_selected, selectedCount),
                 style = build.raft.designsystem.theme.RaftTheme.typography.monoMeta,
                 color = build.raft.designsystem.theme.RaftTheme.colors.foregroundMuted,
                 maxLines = 1
@@ -33274,7 +33270,7 @@ internal fun ThreadShareSelectionToolbar(
             ) {
                 if (onSelectAll != null) {
                     ThreadShareSelectionActionButton(
-                        label = stringResource(MR.strings.thread_comments_filter_all),
+                        label = stringResource(Res.string.thread_comments_filter_all),
                         icon = RaftLucideIconName.Check,
                         onClick = onSelectAll,
                         enabled = hasSelection && selectedCount < selectableCount,
@@ -33282,14 +33278,14 @@ internal fun ThreadShareSelectionToolbar(
                     )
                 }
                 ThreadShareSelectionActionButton(
-                    label = stringResource(MR.strings.common_cancel),
+                    label = stringResource(Res.string.common_cancel),
                     icon = RaftLucideIconName.X,
                     onClick = onCancel,
                     enabled = true,
                     variant = build.raft.designsystem.components.RaftButtonVariant.Ghost
                 )
                 ThreadShareSelectionActionButton(
-                    label = stringResource(MR.strings.thread_action_forward),
+                    label = stringResource(Res.string.thread_action_forward),
                     icon = RaftLucideIconName.Send,
                     onClick = onForward,
                     enabled = hasSelection && forwardEnabled,
@@ -33297,13 +33293,13 @@ internal fun ThreadShareSelectionToolbar(
                 )
                 ThreadShareSelectionIconButton(
                     icon = RaftLucideIconName.Copy,
-                    tooltip = stringResource(MR.strings.thread_action_copy_link),
+                    tooltip = stringResource(Res.string.thread_action_copy_link),
                     onClick = onCopyLinks,
                     enabled = hasSelection
                 )
                 ThreadShareSelectionIconButton(
                     icon = RaftLucideIconName.Ellipsis,
-                    tooltip = stringResource(MR.strings.thread_new_message_menu_more),
+                    tooltip = stringResource(Res.string.thread_new_message_menu_more),
                     onClick = {
                         moreAnchor.resolve(RaftPopoverLocalPoint.BottomEnd)?.let { moreMenuAnchor = it }
                     },
@@ -33383,7 +33379,7 @@ internal fun ThreadSharePreviewModal(
     onDownloadImage: () -> Unit
 ) {
     RaftUnifiedDialog(
-        title = stringResource(MR.strings.thread_share_preview_title),
+        title = stringResource(Res.string.thread_share_preview_title),
         uppercaseTitle = false,
         onDismiss = onDismiss,
         minWidth = 320.dp,
@@ -33396,8 +33392,8 @@ internal fun ThreadSharePreviewModal(
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             if (image?.uri.isNullOrBlank()) {
                 ThreadModalEmptyState(
-                    title = stringResource(MR.strings.thread_share_export_failed),
-                    detail = stringResource(MR.strings.thread_share_export_failed_detail)
+                    title = stringResource(Res.string.thread_share_export_failed),
+                    detail = stringResource(Res.string.thread_share_export_failed_detail)
                 )
             } else {
                 Box(
@@ -33410,7 +33406,7 @@ internal fun ThreadSharePreviewModal(
                 ) {
                     RaftCachedImage(
                         source = image.uri,
-                        contentDescription = stringResource(MR.strings.thread_share_image_description),
+                        contentDescription = stringResource(Res.string.thread_share_image_description),
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit
                     )
@@ -33418,13 +33414,13 @@ internal fun ThreadSharePreviewModal(
             }
             RaftDialogFooter {
                 RaftModalActionButton(
-                    label = stringResource(MR.strings.thread_share_copy_markdown),
+                    label = stringResource(Res.string.thread_share_copy_markdown),
                     icon = RaftLucideIconName.Copy,
                     onClick = onCopyMarkdown,
                     enabled = messages.isNotEmpty()
                 )
                 RaftModalActionButton(
-                    label = stringResource(MR.strings.thread_share_download),
+                    label = stringResource(Res.string.thread_share_download),
                     icon = RaftLucideIconName.Download,
                     onClick = onDownloadImage,
                     enabled = !image?.path.isNullOrBlank()
@@ -33449,7 +33445,7 @@ private fun ThreadRemoveMemberConfirmationDialog(
     onConfirm: () -> Unit
 ) {
     RaftUnifiedDialog(
-        title = stringResource(MR.strings.thread_members_remove_confirm_title),
+        title = stringResource(Res.string.thread_members_remove_confirm_title),
         onDismiss = onDismiss,
         dismissEnabled = !removing,
         minWidth = 320.dp,
@@ -33461,11 +33457,11 @@ private fun ThreadRemoveMemberConfirmationDialog(
             status = RaftUiBannerStatus.Destructive,
             title =
                 stringResource(
-                    MR.strings.thread_members_remove_confirm_question,
+                    Res.string.thread_members_remove_confirm_question,
                     confirmation.memberLabel,
                     confirmation.channelName
                 ),
-            description = stringResource(MR.strings.thread_members_remove_confirm_detail),
+            description = stringResource(Res.string.thread_members_remove_confirm_detail),
             size = RaftUiBannerSize.Medium,
             iconName = RaftLucideIconName.TriangleAlert
         )
@@ -33478,7 +33474,7 @@ private fun ThreadRemoveMemberConfirmationDialog(
         }
         RaftDialogFooter {
             RaftButton(
-                text = stringResource(MR.strings.common_cancel),
+                text = stringResource(Res.string.common_cancel),
                 onClick = onDismiss,
                 enabled = !removing,
                 leadingIcon = { RaftSlotIcon(RaftLucideIconName.X) },
@@ -33487,9 +33483,9 @@ private fun ThreadRemoveMemberConfirmationDialog(
             )
             RaftButton(
                 text = if (removing) {
-                        stringResource(MR.strings.thread_members_removing)
+                        stringResource(Res.string.thread_members_removing)
                     } else {
-                        stringResource(MR.strings.thread_members_remove_confirm)
+                        stringResource(Res.string.thread_members_remove_confirm)
                     },
                 onClick = onConfirm,
                 enabled = !removing,
@@ -33527,8 +33523,8 @@ private fun ThreadMembersPagerRow(
         ?: member.modalAvatarWireValue()
     val roleBadge =
         when (member.effectiveChannelRole) {
-            "owner", "admin" -> ChannelMemberBadge(stringResource(MR.strings.thread_members_channel_admin), ChannelMemberBadgeKind.Admin)
-            "guest" -> ChannelMemberBadge(stringResource(MR.strings.channel_member_role_guest), ChannelMemberBadgeKind.External)
+            "owner", "admin" -> ChannelMemberBadge(stringResource(Res.string.thread_members_channel_admin), ChannelMemberBadgeKind.Admin)
+            "guest" -> ChannelMemberBadge(stringResource(Res.string.channel_member_role_guest), ChannelMemberBadgeKind.External)
             else -> null
         }
     val serverBadge = member.sourceServerLabel?.takeIf { it.isNotBlank() }?.let { ChannelMemberBadge(it, ChannelMemberBadgeKind.External) }
@@ -33545,7 +33541,7 @@ private fun ThreadMembersPagerRow(
         badges = listOfNotNull(serverBadge, roleBadge),
         divider = divider,
         removing = removing,
-        removeLabel = stringResource(MR.strings.thread_members_remove_name, member.displayName),
+        removeLabel = stringResource(Res.string.thread_members_remove_name, member.displayName),
         onRemove = if (member.canRemove && !removing) ({ onRemove(member) }) else null,
         onClick = { onOpen(member) },
     )
@@ -33591,12 +33587,12 @@ private fun ThreadAddMemberModal(
     val adding = addMemberStatus == "adding"
     var createAgentMenuOpen by remember { mutableStateOf(false) }
     var createAgentMenuAnchor by remember { mutableStateOf<RaftPopoverAnchor?>(null) }
-    val addFailedLabel = stringResource(MR.strings.thread_add_member_failed)
-    val genericErrorLabel = stringResource(MR.strings.common_error)
+    val addFailedLabel = stringResource(Res.string.thread_add_member_failed)
+    val genericErrorLabel = stringResource(Res.string.common_error)
     val errorText =
         when {
-            blocked -> stringResource(MR.strings.thread_add_member_no_permission)
-            localError -> stringResource(MR.strings.thread_add_member_select_before_adding)
+            blocked -> stringResource(Res.string.thread_add_member_no_permission)
+            localError -> stringResource(Res.string.thread_add_member_select_before_adding)
             addMemberStatus == "failed" ->
                 "$addFailedLabel: " +
                     (userFacingErrorLabels.forErrorCode(addMemberErrorCode ?: "member_add_failed")
@@ -33613,13 +33609,13 @@ private fun ThreadAddMemberModal(
                 )
             }
             Text(
-                text = stringResource(MR.strings.thread_add_member_search),
+                text = stringResource(Res.string.thread_add_member_search),
                 style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold).copy(color = RaftColor.TextBlack),
                 color = RaftColor.TextBlack
             )
             RaftBrutalSearchField(
                 value = query,
-                placeholder = stringResource(MR.strings.thread_add_member_name_placeholder),
+                placeholder = stringResource(Res.string.thread_add_member_name_placeholder),
                 leadingIcon = RaftLucideIconName.Search,
                 enabled = !blocked,
                 onValueChange = {
@@ -33645,21 +33641,21 @@ private fun ThreadAddMemberModal(
                         ThreadModalEmptyState(
                             title =
                                 if (candidates.isEmpty()) {
-                                    stringResource(MR.strings.thread_add_member_no_people_loaded)
+                                    stringResource(Res.string.thread_add_member_no_people_loaded)
                                 } else {
-                                    stringResource(MR.strings.thread_add_member_no_matching_people)
+                                    stringResource(Res.string.thread_add_member_no_matching_people)
                                 },
                             detail =
                                 if (candidates.isEmpty()) {
-                                    stringResource(MR.strings.thread_members_refresh_detail)
+                                    stringResource(Res.string.thread_members_refresh_detail)
                                 } else {
-                                    stringResource(MR.strings.thread_add_member_try_different_search)
+                                    stringResource(Res.string.thread_add_member_try_different_search)
                                 }
                         )
                     }
                 } else {
                     if (humanCandidates.isNotEmpty()) {
-                        item { RaftModalSectionHeader(stringResource(MR.strings.thread_members_humans)) }
+                        item { RaftModalSectionHeader(stringResource(Res.string.thread_members_humans)) }
                         items(humanCandidates.size, key = { humanCandidates[it].memberKey }) { index ->
                             val member = humanCandidates[index]
                             val alreadyJoined = member.memberKey in currentKeys
@@ -33690,7 +33686,7 @@ private fun ThreadAddMemberModal(
                                 clickEnabled = interaction.clickEnabled,
                                 avatarSize = 26.dp,
                                 trailingIcon = if (!inline && showSelectedCheckmark && (if (inline) member.memberKey in selectedKeys else member.memberKey == selectedKey)) RaftLucideIconName.Check else null,
-                                trailingText = if (alreadyJoined) stringResource(MR.strings.thread_add_member_joined) else "",
+                                trailingText = if (alreadyJoined) stringResource(Res.string.thread_add_member_joined) else "",
                                 onClick = {
                                     if (inline) {
                                         selectedKeys = if (member.memberKey in selectedKeys) selectedKeys - member.memberKey else selectedKeys + member.memberKey
@@ -33704,7 +33700,7 @@ private fun ThreadAddMemberModal(
                         }
                     }
                     if (agentCandidates.isNotEmpty()) {
-                        item { RaftModalSectionHeader(stringResource(MR.strings.thread_members_agents)) }
+                        item { RaftModalSectionHeader(stringResource(Res.string.thread_members_agents)) }
                         items(agentCandidates.size, key = { agentCandidates[it].memberKey }) { index ->
                             val member = agentCandidates[index]
                             val alreadyJoined = member.memberKey in currentKeys
@@ -33735,7 +33731,7 @@ private fun ThreadAddMemberModal(
                                 clickEnabled = interaction.clickEnabled,
                                 avatarSize = 26.dp,
                                 trailingIcon = if (!inline && showSelectedCheckmark && (if (inline) member.memberKey in selectedKeys else member.memberKey == selectedKey)) RaftLucideIconName.Check else null,
-                                trailingText = if (alreadyJoined) stringResource(MR.strings.thread_add_member_joined) else "",
+                                trailingText = if (alreadyJoined) stringResource(Res.string.thread_add_member_joined) else "",
                                 onClick = {
                                     if (inline) {
                                         selectedKeys = if (member.memberKey in selectedKeys) selectedKeys - member.memberKey else selectedKeys + member.memberKey
@@ -33754,8 +33750,8 @@ private fun ThreadAddMemberModal(
             if (inline) {
                 LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), content = candidateRows)
                 RaftBrutalActionButton(
-                    label = if (createName.isBlank()) stringResource(MR.strings.thread_members_create_agent)
-                        else stringResource(MR.strings.thread_members_create_named_agent, createName),
+                    label = if (createName.isBlank()) stringResource(Res.string.thread_members_create_agent)
+                        else stringResource(Res.string.thread_members_create_named_agent, createName),
                     modifier = Modifier.fillMaxWidth(), leadingIcon = RaftLucideIconName.Plus,
                     enabled = !adding && canCreateAgents,
                     onClick = {},
@@ -33766,9 +33762,9 @@ private fun ThreadAddMemberModal(
                         }
                     },
                 )
-                if (!canCreateAgents) Text(stringResource(MR.strings.thread_members_create_no_permission), style = RaftType.Caption)
+                if (!canCreateAgents) Text(stringResource(Res.string.thread_members_create_no_permission), style = RaftType.Caption)
                 RaftButton(
-                    text = stringResource(MR.strings.thread_members_add_selected, selectedCandidates.size),
+                    text = stringResource(Res.string.thread_members_add_selected, selectedCandidates.size),
                     modifier = Modifier.fillMaxWidth(),
                     leadingIcon = { RaftSlotIcon(RaftLucideIconName.Plus) },
                     enabled = !blocked && !adding && selectedCandidates.isNotEmpty(),
@@ -33788,7 +33784,7 @@ private fun ThreadAddMemberModal(
         }
     } else {
         RaftUnifiedDialog(
-            title = stringResource(MR.strings.thread_action_add_member), uppercaseTitle = false, onDismiss = onDismiss,
+            title = stringResource(Res.string.thread_action_add_member), uppercaseTitle = false, onDismiss = onDismiss,
             minWidth = 356.dp, maxWidth = 356.dp, contentPadding = 24.dp,
             titleFontSize = 18, titleLineHeight = 22,
         ) { content() }
@@ -33801,12 +33797,12 @@ private fun ThreadAddMemberModal(
             items = listOf(
                 RaftUiMenuItem(
                     id = MembersCreateAgentMode.Managed.name,
-                    label = stringResource(MR.strings.agent_create_action_create),
+                    label = stringResource(Res.string.agent_create_action_create),
                     icon = RaftLucideIconName.Bot
                 ),
                 RaftUiMenuItem(
                     id = MembersCreateAgentMode.External.name,
-                    label = stringResource(MR.strings.agent_create_action_create_external),
+                    label = stringResource(Res.string.agent_create_action_create_external),
                     icon = RaftLucideIconName.Link2
                 )
             ),
@@ -34028,9 +34024,9 @@ internal fun resolveThreadMemberAgentStatusIndicatorState(
 @Composable
 private fun RaftThreadMemberItem.localizedModalRoleLabel(): String =
     when {
-        roleLabel.equals("Agent", ignoreCase = true) -> stringResource(MR.strings.thread_member_role_agent)
-        roleLabel.equals("Member", ignoreCase = true) -> stringResource(MR.strings.thread_member_role_member)
-        roleLabel.equals("System", ignoreCase = true) -> stringResource(MR.strings.thread_member_role_system)
+        roleLabel.equals("Agent", ignoreCase = true) -> stringResource(Res.string.thread_member_role_agent)
+        roleLabel.equals("Member", ignoreCase = true) -> stringResource(Res.string.thread_member_role_member)
+        roleLabel.equals("System", ignoreCase = true) -> stringResource(Res.string.thread_member_role_system)
         else -> roleLabel
     }
 
@@ -34126,18 +34122,18 @@ private fun ThreadSettingsActionUi.localizedThreadSettingsAction(): ThreadSettin
     when (id) {
         "visibility" ->
             copy(
-                title = stringResource(MR.strings.thread_settings_make_private),
-                subtitle = stringResource(MR.strings.thread_settings_make_private_detail)
+                title = stringResource(Res.string.thread_settings_make_private),
+                subtitle = stringResource(Res.string.thread_settings_make_private_detail)
             )
         "archive" ->
             copy(
-                title = stringResource(MR.strings.thread_settings_archive),
-                subtitle = stringResource(MR.strings.thread_settings_archive_detail)
+                title = stringResource(Res.string.thread_settings_archive),
+                subtitle = stringResource(Res.string.thread_settings_archive_detail)
             )
         "delete" ->
             copy(
-                title = stringResource(MR.strings.thread_settings_delete),
-                subtitle = stringResource(MR.strings.thread_settings_delete_detail)
+                title = stringResource(Res.string.thread_settings_delete),
+                subtitle = stringResource(Res.string.thread_settings_delete_detail)
             )
         else -> this
     }
@@ -34171,17 +34167,17 @@ internal fun ThreadSettingsChannelActionButtons(
 @Composable
 private fun ThreadSettingsDangerAction.localizedTitle(): String =
     when (this) {
-        ThreadSettingsDangerAction.Visibility -> stringResource(MR.strings.thread_settings_make_private_title)
-        ThreadSettingsDangerAction.Archive -> stringResource(MR.strings.thread_settings_archive_title)
-        ThreadSettingsDangerAction.Delete -> stringResource(MR.strings.thread_settings_delete_title)
+        ThreadSettingsDangerAction.Visibility -> stringResource(Res.string.thread_settings_make_private_title)
+        ThreadSettingsDangerAction.Archive -> stringResource(Res.string.thread_settings_archive_title)
+        ThreadSettingsDangerAction.Delete -> stringResource(Res.string.thread_settings_delete_title)
     }
 
 @Composable
 private fun ThreadSettingsDangerAction.localizedButtonLabel(): String =
     when (this) {
-        ThreadSettingsDangerAction.Visibility -> stringResource(MR.strings.thread_settings_make_private)
-        ThreadSettingsDangerAction.Archive -> stringResource(MR.strings.thread_settings_archive_confirm)
-        ThreadSettingsDangerAction.Delete -> stringResource(MR.strings.thread_settings_delete)
+        ThreadSettingsDangerAction.Visibility -> stringResource(Res.string.thread_settings_make_private)
+        ThreadSettingsDangerAction.Archive -> stringResource(Res.string.thread_settings_archive_confirm)
+        ThreadSettingsDangerAction.Delete -> stringResource(Res.string.thread_settings_delete)
     }
 
 private fun RaftThreadSettingsAction.canonicalThreadSettingsActionId(): String? =
@@ -34204,21 +34200,21 @@ private fun ThreadDirectMessageSettingsModal(
     onTogglePin: (() -> Unit)?
 ) {
     RaftUnifiedDialog(
-        title = stringResource(MR.strings.thread_dm_settings_title),
+        title = stringResource(Res.string.thread_dm_settings_title),
         onDismiss = onDismiss
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             ThreadDirectMessagePreferenceRow(
-                title = stringResource(MR.strings.thread_dm_settings_mute_person),
-                detail = stringResource(MR.strings.thread_dm_settings_mute_person_detail),
+                title = stringResource(Res.string.thread_dm_settings_mute_person),
+                detail = stringResource(Res.string.thread_dm_settings_mute_person_detail),
                 checked = activityMuteState?.muted == true,
                 enabled = activityMuteState != null && onToggleActivityMute != null,
                 onClick = { onToggleActivityMute?.invoke() }
             )
             Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
             ThreadDirectMessagePreferenceRow(
-                title = stringResource(MR.strings.thread_dm_settings_pin_person),
-                detail = stringResource(MR.strings.thread_dm_settings_pin_person_detail),
+                title = stringResource(Res.string.thread_dm_settings_pin_person),
+                detail = stringResource(Res.string.thread_dm_settings_pin_person_detail),
                 checked = conversationPinState?.pinned == true,
                 enabled = conversationPinState?.available == true && onTogglePin != null,
                 onClick = { onTogglePin?.invoke() }
@@ -34226,7 +34222,7 @@ private fun ThreadDirectMessageSettingsModal(
             longMessageCollapseSetting?.takeIf { it.available }?.let { setting ->
                 Box(modifier = Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftColor.BorderHairline))
                 ThreadDirectMessagePreferenceRow(
-                    title = stringResource(MR.strings.conversation_long_message_collapse),
+                    title = stringResource(Res.string.conversation_long_message_collapse),
                     detail = setting.preference.localizedDetail(),
                     checked = setting.effective,
                     enabled = true,
@@ -34320,7 +34316,7 @@ internal fun ThreadSettingsModal(
     val profileValid = trimmedName.isSubmittableChannelName() && trimmedDescription.length <= 500
     val profileSaving = updateStatus == ChannelProfileUpdateStatus.InFlight
     RaftUnifiedDialog(
-        title = activeDanger?.localizedTitle() ?: stringResource(MR.strings.thread_settings_edit_channel),
+        title = activeDanger?.localizedTitle() ?: stringResource(Res.string.thread_settings_edit_channel),
         keyboardAvoidanceEnabled = true,
         onDismiss = onDismiss
     ) {
@@ -34331,10 +34327,10 @@ internal fun ThreadSettingsModal(
             ) {
                 item {
                     RaftBrutalTextField(
-                        label = stringResource(MR.strings.thread_settings_name),
+                        label = stringResource(Res.string.thread_settings_name),
                         value = name,
                         keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
-                        placeholder = stringResource(MR.strings.thread_settings_name_placeholder),
+                        placeholder = stringResource(Res.string.thread_settings_name_placeholder),
                         onValueChange = { name = it },
                         required = true,
                         textStyle = RaftType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextBlack)
@@ -34342,9 +34338,9 @@ internal fun ThreadSettingsModal(
                 }
                 item {
                     RaftBrutalTextField(
-                        label = stringResource(MR.strings.thread_settings_description),
+                        label = stringResource(Res.string.thread_settings_description),
                         value = description,
-                        placeholder = stringResource(MR.strings.thread_settings_description_placeholder),
+                        placeholder = stringResource(Res.string.thread_settings_description_placeholder),
                         onValueChange = { description = it },
                         optional = true,
                         fieldMinHeight = 66.dp,
@@ -34355,7 +34351,7 @@ internal fun ThreadSettingsModal(
                 if (trimmedName.isNotEmpty() && !trimmedName.isSubmittableChannelName()) {
                     item {
                         Text(
-                            text = stringResource(MR.strings.channel_create_error_name_format),
+                            text = stringResource(Res.string.channel_create_error_name_format),
                             style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
                             color = RaftColor.AccentRed
                         )
@@ -34366,9 +34362,9 @@ internal fun ThreadSettingsModal(
                         Text(
                             text =
                                 if (updateErrorCode == "channel_name_invalid") {
-                                    stringResource(MR.strings.channel_create_error_name_format)
+                                    stringResource(Res.string.channel_create_error_name_format)
                                 } else {
-                                    stringResource(MR.strings.thread_settings_update_failed)
+                                    stringResource(Res.string.thread_settings_update_failed)
                                 },
                             style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
                             color = RaftColor.AccentRed
@@ -34379,13 +34375,13 @@ internal fun ThreadSettingsModal(
                     RaftDialogFooter {
                         // React's Edit Channel form buttons carry no leading icons
                         // (btn-brutal text-only Cancel / Save Changes) — task #348.
-                        RaftModalActionButton(label = stringResource(MR.strings.common_cancel), onClick = onDismiss)
+                        RaftModalActionButton(label = stringResource(Res.string.common_cancel), onClick = onDismiss)
                         RaftModalActionButton(
                             label =
                                 if (profileSaving) {
-                                    stringResource(MR.strings.thread_settings_saving)
+                                    stringResource(Res.string.thread_settings_saving)
                                 } else {
-                                    stringResource(MR.strings.thread_action_save_changes)
+                                    stringResource(Res.string.thread_action_save_changes)
                                 },
                             color = RaftColor.AccentPink,
                             enabled = profileValid && profileChanged,
@@ -34410,7 +34406,7 @@ internal fun ThreadSettingsModal(
                                 RaftModalFullWidthActionButton(
                                     label =
                                         stringResource(
-                                            if (muteState.muted) MR.strings.home_action_unmute else MR.strings.home_action_mute
+                                            if (muteState.muted) Res.string.home_action_unmute else Res.string.home_action_mute
                                         ),
                                     icon = if (muteState.muted) RaftLucideIconName.Bell else RaftLucideIconName.BellOff,
                                     color = if (muteState.muted) RaftColor.AccentOrange else RaftColor.SurfaceWhite,
@@ -34421,7 +34417,7 @@ internal fun ThreadSettingsModal(
                                 RaftModalFullWidthActionButton(
                                     label =
                                         stringResource(
-                                            if (pinState.pinned) MR.strings.home_action_unpin else MR.strings.home_action_pin
+                                            if (pinState.pinned) Res.string.home_action_unpin else Res.string.home_action_pin
                                         ),
                                     icon = if (pinState.pinned) RaftLucideIconName.PinOff else RaftLucideIconName.Pin,
                                     color = if (pinState.pinned) RaftColor.AccentPink else RaftColor.SurfaceWhite,
@@ -34452,12 +34448,12 @@ internal fun ThreadSettingsModal(
                             // A lazy item stacks its children; the Column keeps the two lines apart.
                             Column(verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)) {
                                 Text(
-                                    text = stringResource(MR.strings.thread_settings_visibility_question, channelName),
+                                    text = stringResource(Res.string.thread_settings_visibility_question, channelName),
                                     style = RaftType.Body,
                                     color = RaftColor.TextBlack
                                 )
                                 Text(
-                                    text = stringResource(MR.strings.thread_settings_visibility_detail),
+                                    text = stringResource(Res.string.thread_settings_visibility_detail),
                                     style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
                                     color = RaftColor.TextMutedGray
                                 )
@@ -34475,9 +34471,9 @@ internal fun ThreadSettingsModal(
                     RaftModalActionButton(
                         label =
                             if (isSingleConfirm) {
-                                stringResource(MR.strings.common_cancel)
+                                stringResource(Res.string.common_cancel)
                             } else {
-                                stringResource(MR.strings.common_back)
+                                stringResource(Res.string.common_back)
                             },
                         icon = if (isSingleConfirm) RaftLucideIconName.X else RaftLucideIconName.ArrowLeft,
                         onClick = { dangerAction = null }
@@ -34500,8 +34496,8 @@ private fun ThreadChannelActionWarning(
 ) {
     val warningText =
         when (action) {
-            ThreadSettingsDangerAction.Archive -> stringResource(MR.strings.thread_settings_archive_question, channelName)
-            ThreadSettingsDangerAction.Delete -> stringResource(MR.strings.thread_settings_delete_warning, channelName)
+            ThreadSettingsDangerAction.Archive -> stringResource(Res.string.thread_settings_archive_question, channelName)
+            ThreadSettingsDangerAction.Delete -> stringResource(Res.string.thread_settings_delete_warning, channelName)
             ThreadSettingsDangerAction.Visibility -> return
         }
     Row(
@@ -34552,23 +34548,23 @@ private fun ThreadModalEmptyState(title: String, detail: String) {
 @Composable
 private fun localizedThreadStateTitle(value: String): String =
     when (value) {
-        ThreadReplyEmptyTitle -> stringResource(MR.strings.thread_state_no_replies)
-        "No messages yet" -> stringResource(MR.strings.thread_state_no_messages)
-        "Loading..." -> stringResource(MR.strings.thread_state_loading)
+        ThreadReplyEmptyTitle -> stringResource(Res.string.thread_state_no_replies)
+        "No messages yet" -> stringResource(Res.string.thread_state_no_messages)
+        "Loading..." -> stringResource(Res.string.thread_state_loading)
         else -> value
     }
 
 @Composable
 private fun localizedThreadStateDetail(value: String?): String? =
     when (value) {
-        "This conversation has no messages yet." -> stringResource(MR.strings.thread_state_no_messages_detail)
+        "This conversation has no messages yet." -> stringResource(Res.string.thread_state_no_messages_detail)
         else -> value
     }
 
 @Composable
 private fun localizedThreadJoinLabel(value: String): String =
     if (value == "Join channel") {
-        stringResource(MR.strings.thread_action_join_channel)
+        stringResource(Res.string.thread_action_join_channel)
     } else {
         value
     }
@@ -34580,7 +34576,7 @@ private fun localizedThreadJoinLabel(value: String): String =
  */
 @Composable
 internal fun ThreadLoadingState(spinnerStillStep: Int? = null) {
-    val label = stringResource(MR.strings.thread_state_loading)
+    val label = stringResource(Res.string.thread_state_loading)
     Box(
         modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 32.dp),
         contentAlignment = Alignment.Center
@@ -34651,8 +34647,8 @@ private fun ThreadForwardSuccessBannerView(
     onDismiss: () -> Unit
 ) {
     val targetLabel = banner.target.forwardSuccessDisplayTitle()
-    val successLabel = stringResource(MR.strings.thread_forward_success_banner, targetLabel)
-    val viewInChatLabel = stringResource(MR.strings.thread_forward_view_in_chat)
+    val successLabel = stringResource(Res.string.thread_forward_success_banner, targetLabel)
+    val viewInChatLabel = stringResource(Res.string.thread_forward_view_in_chat)
     LaunchedEffect(banner) {
         delay(5_000)
         onDismiss()
@@ -34723,11 +34719,11 @@ private fun ThreadTaskDetailDialog(
     onStatusSelect: (String) -> Unit,
     onAssigneeSelect: (MemberProfile?) -> Unit
 ) {
-    val statusLabel = stringResource(MR.strings.tasks_label_status)
-    val assigneeLabel = stringResource(MR.strings.tasks_chip_assignee)
-    val creatorLabel = stringResource(MR.strings.tasks_chip_creator)
-    val unassignedLabel = stringResource(MR.strings.tasks_assignee_unassigned)
-    val searchPlaceholder = stringResource(MR.strings.tasks_search_assignees)
+    val statusLabel = stringResource(Res.string.tasks_label_status)
+    val assigneeLabel = stringResource(Res.string.tasks_chip_assignee)
+    val creatorLabel = stringResource(Res.string.tasks_chip_creator)
+    val unassignedLabel = stringResource(Res.string.tasks_assignee_unassigned)
+    val searchPlaceholder = stringResource(Res.string.tasks_search_assignees)
     // Task #258 (artin msg=6f430fed/9c943070/909777d9): status and assignee pills
     // reuse the task-card RaftAnchoredMetaChip (i18n, vertical centering) and are
     // tap-to-open-menu controls — the status pill opens the exact same menu as the
@@ -34754,7 +34750,7 @@ private fun ThreadTaskDetailDialog(
     // never the task title, which can be too long for the header. The task title
     // and description render inside the body instead.
     val taskNumberLabel = task.taskNumber?.let { number ->
-        stringResource(MR.strings.tasks_detail_task_identifier, number)
+        stringResource(Res.string.tasks_detail_task_identifier, number)
     }
     val headerOverline = task.taskNumber?.let { task.channelName?.takeIf { name -> name.isNotBlank() }?.let { "#$it" } }
     val dialogTitle = taskNumberLabel ?: task.channelName.orEmpty()
@@ -34908,10 +34904,10 @@ private fun ThreadTaskDetailDialog(
             searchValue = assigneeMenuSearch,
             onSearchValueChange = { assigneeMenuSearch = it },
             searchPlaceholder = searchPlaceholder,
-            modalTitle = stringResource(MR.strings.tasks_assignee_picker_title),
+            modalTitle = stringResource(Res.string.tasks_assignee_picker_title),
             unassignedLabel = unassignedLabel,
-            humansHeaderLabel = stringResource(MR.strings.thread_members_humans),
-            agentsHeaderLabel = stringResource(MR.strings.thread_members_agents),
+            humansHeaderLabel = stringResource(Res.string.thread_members_humans),
+            agentsHeaderLabel = stringResource(Res.string.thread_members_agents),
             onSelect = { selectedId ->
                 assigneeMenuOpen = null
                 assigneeMenuSearch = TextFieldValue("")

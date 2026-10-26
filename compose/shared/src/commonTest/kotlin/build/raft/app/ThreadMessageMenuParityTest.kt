@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.data.SharedMessageTranslationEntry
 import build.raft.app.data.SharedMessageTranslationSettings
 import build.raft.app.data.SharedMessageTranslationState
@@ -10,8 +11,6 @@ import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.TranslationModePreference
 import build.raft.app.model.ExternalMessageAuthor
 import build.raft.app.model.ForwardMessageBundle
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -129,20 +128,20 @@ class ThreadMessageMenuParityTest {
 
         assertEquals(
             listOf(
-                MR.strings.thread_action_add_reaction.desc(),
-                MR.strings.thread_action_copy_link.desc(),
-                MR.strings.thread_action_copy_markdown.desc(),
-                MR.strings.thread_action_select_text.desc(),
-                MR.strings.thread_action_select_message.desc(),
-                MR.strings.thread_action_reply_in_thread.desc(),
-                MR.strings.thread_action_forward.desc(),
-                MR.strings.thread_action_save_message.desc()
+                Res.string.thread_action_add_reaction.desc(),
+                Res.string.thread_action_copy_link.desc(),
+                Res.string.thread_action_copy_markdown.desc(),
+                Res.string.thread_action_select_text.desc(),
+                Res.string.thread_action_select_message.desc(),
+                Res.string.thread_action_reply_in_thread.desc(),
+                Res.string.thread_action_forward.desc(),
+                Res.string.thread_action_save_message.desc()
             ),
             actions.map { it.label }
         )
         assertEquals(RaftLucideIconName.SmilePlus, actions.first().icon)
-        assertEquals(RaftLucideIconName.Send, actions.single { it.label == MR.strings.thread_action_forward.desc() }.icon)
-        actions.single { it.label == MR.strings.thread_action_forward.desc() }.onClick()
+        assertEquals(RaftLucideIconName.Send, actions.single { it.label == Res.string.thread_action_forward.desc() }.icon)
+        actions.single { it.label == Res.string.thread_action_forward.desc() }.onClick()
         actions.first().onClick()
         assertEquals(1, forwarded)
         assertEquals(1, reactionPickerOpened)
@@ -152,18 +151,18 @@ class ThreadMessageMenuParityTest {
     fun classicTranslateShowsADisabledTranslatingEntryWhilePending() {
         val pending = classicActions(message(), showTranslateAction = true, translatePending = true)
         val entry = pending.single { it.icon == RaftLucideIconName.Languages }
-        assertEquals(MR.strings.translation_state_in_progress.desc(), entry.label)
+        assertEquals(Res.string.translation_state_in_progress.desc(), entry.label)
         assertFalse(entry.enabled)
 
         val idle = classicActions(message(), showTranslateAction = true).single { it.icon == RaftLucideIconName.Languages }
-        assertEquals(MR.strings.thread_action_translate.desc(), idle.label)
+        assertEquals(Res.string.thread_action_translate.desc(), idle.label)
         assertTrue(idle.enabled)
     }
 
     @Test
     fun classicSaveTogglesToRemoveFromSaved() {
         val saved = classicActions(message(isSaved = true)).single { it.group == "message" && it.icon == RaftLucideIconName.BookmarkMinus }
-        assertEquals(MR.strings.thread_action_remove_from_saved.desc(), saved.label)
+        assertEquals(Res.string.thread_action_remove_from_saved.desc(), saved.label)
     }
 
     @Test

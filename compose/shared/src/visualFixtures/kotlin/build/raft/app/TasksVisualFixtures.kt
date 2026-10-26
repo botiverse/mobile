@@ -30,7 +30,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tencent.tmm.kmmresource.resource.desc.StringDesc
+import build.raft.app.resources.StringDesc
 
 private const val TasksPanelChineseLocalizationFixture = "zh-cn-localization"
 

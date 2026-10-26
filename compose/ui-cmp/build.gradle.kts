@@ -71,19 +71,21 @@ compose.resources {
 }
 
 /*
- * iOS: copy the Compose resources (fonts, ...) of every CMP module into the app bundle.
+ * iOS: copy the Compose resources (fonts, the app strings and files, ...) of every CMP module into
+ * the app bundle.
  *
  * compose/gradle.properties sets compose.ios.resources.sync=false (the CocoaPods sync would run for
  * :shared's Kuikly framework too), so nothing ships `composeResources` to iOS on its own. The
  * runtime reads `<App>.app/compose-resources/composeResources/<packageOfResClass>/...`; this task
  * lays the prepared (XML values already converted) resources out the same way. Called from the
- * Podfile script phase "Copy kmmresource MR bundle to app" with
+ * Podfile script phase "Copy Compose resources to app" with
  * -Praft.cmp.resources.dir="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/compose-resources".
  */
 val cmpComposeResourceModules =
     mapOf(
         ":designsystem" to "build.raft.designsystem.resources",
         ":ui-cmp" to "build.raft.app.cmp.resources",
+        ":shared" to "build.raft.app.resources",
     )
 
 val syncComposeResourcesForXcodeApp by tasks.registering(Sync::class) {

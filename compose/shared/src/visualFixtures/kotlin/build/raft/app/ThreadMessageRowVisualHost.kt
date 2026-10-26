@@ -181,7 +181,6 @@ import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -290,10 +289,10 @@ import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.IPagerEventObserver
 import build.raft.app.compat.pager.Pager
-import com.tencent.tmm.kmmresource.compose.localized
-import com.tencent.tmm.kmmresource.compose.stringResource
-import com.tencent.tmm.kmmresource.resource.desc.StringDesc
-import com.tencent.tmm.kmmresource.resource.desc.desc
+import build.raft.app.resources.localized
+import build.raft.app.resources.stringResource
+import build.raft.app.resources.StringDesc
+import build.raft.app.resources.desc
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope

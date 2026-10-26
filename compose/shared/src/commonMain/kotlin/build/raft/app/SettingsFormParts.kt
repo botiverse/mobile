@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.components.RaftIconSpinner
 import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftFieldLabel
@@ -18,8 +19,6 @@ import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftTextField
 import build.raft.app.components.RaftSlotIcon
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.compose.stringResource
 import build.raft.app.components.RaftSwitchButton
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
@@ -289,13 +288,13 @@ internal fun SettingsComboboxField(
     enabled: Boolean
 ) {
     RaftField(label = label, description = description, enabled = enabled, labelSize = RaftFieldLabelSize.Sm) {
-        val noMatches = stringResource(MR.strings.common_no_matches)
+        val noMatches = stringResource(Res.string.common_no_matches)
         RaftCombobox(
             value = value,
             options = options,
             onValueChange = onValueChange,
             emptyText = { noMatches },
-            searchPlaceholder = stringResource(MR.strings.thread_action_search)
+            searchPlaceholder = stringResource(Res.string.thread_action_search)
         )
     }
 }

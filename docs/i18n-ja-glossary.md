@@ -1,7 +1,7 @@
 # Raft Japanese (ja) UI Glossary
 
 Shared terminology source of truth for Japanese UI text across platforms
-(mobile `MR/ja/strings.xml` today; the web `i18n/messages/ja.ts` catalog should
+(mobile `composeResources/values-ja/strings.xml` today; the web `i18n/messages/ja.ts` catalog should
 reuse these exact terms when it is added). Keep this file updated whenever a
 new product concept gets a Japanese rendering.
 

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftCombobox
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftFieldLabel
@@ -33,7 +34,6 @@ import build.raft.app.data.runtimeform.v2.runtimeFormV2SelectedConnection
 import build.raft.app.data.runtimeform.v2.runtimeFormV2SourceStatus
 import build.raft.app.data.runtimeform.v2.stringMapValue
 import build.raft.app.data.runtimeform.v2.text
-import build.raft.app.resources.MR
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -45,7 +45,6 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -93,13 +92,13 @@ internal fun RuntimeFormV2Fields(
     // `provider.saved_connection`: while a field holds a saved connection, the fields it owns are the
     // connection's: disabled, not required, and (by runtimeFormV2Submission) never submitted.
     val connection = loaded.form.fields.firstNotNullOfOrNull { runtimeFormV2SelectedConnection(it, loaded.sources, values) }
-    val connectionOwnedHint = stringResource(MR.strings.runtime_form_v2_connection_owned, connection?.label.orEmpty())
+    val connectionOwnedHint = stringResource(Res.string.runtime_form_v2_connection_owned, connection?.label.orEmpty())
     val managedHint = connectionOwnedHint.takeIf { connection != null }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (loaded.form.blockingFieldKeys.isNotEmpty()) {
             Text(
-                text = stringResource(MR.strings.runtime_form_v2_update_required_blocking),
+                text = stringResource(Res.string.runtime_form_v2_update_required_blocking),
                 style = RaftType.Caption,
                 color = RaftColor.AccentRed
             )
@@ -165,17 +164,17 @@ private fun runtimeFormV2ErrorText(
     serverMessage: String?
 ): String? =
     if (field.key in serverErrorKeys) {
-        serverMessage?.takeIf { it.isNotBlank() } ?: stringResource(MR.strings.runtime_form_v2_error_rejected)
+        serverMessage?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.runtime_form_v2_error_rejected)
     } else {
         when (errors[field.key]) {
-            RuntimeFormV2ErrorCode.Required -> stringResource(MR.strings.runtime_form_v2_error_required)
-            RuntimeFormV2ErrorCode.InvalidUrl -> stringResource(MR.strings.runtime_form_v2_error_invalid_url)
-            RuntimeFormV2ErrorCode.NotAChoice -> stringResource(MR.strings.runtime_form_v2_error_not_a_choice)
-            RuntimeFormV2ErrorCode.UnsupportedRequired -> stringResource(MR.strings.runtime_form_v2_update_required)
+            RuntimeFormV2ErrorCode.Required -> stringResource(Res.string.runtime_form_v2_error_required)
+            RuntimeFormV2ErrorCode.InvalidUrl -> stringResource(Res.string.runtime_form_v2_error_invalid_url)
+            RuntimeFormV2ErrorCode.NotAChoice -> stringResource(Res.string.runtime_form_v2_error_not_a_choice)
+            RuntimeFormV2ErrorCode.UnsupportedRequired -> stringResource(Res.string.runtime_form_v2_update_required)
             // The field's source status line already says why, with its retry.
             RuntimeFormV2ErrorCode.SourceUnavailable -> null
-            RuntimeFormV2ErrorCode.ConnectionUnavailable -> stringResource(MR.strings.runtime_form_v2_saved_provider_unavailable)
-            RuntimeFormV2ErrorCode.SecretReentryRequired -> stringResource(MR.strings.runtime_form_v2_error_secret_reentry_required)
+            RuntimeFormV2ErrorCode.ConnectionUnavailable -> stringResource(Res.string.runtime_form_v2_saved_provider_unavailable)
+            RuntimeFormV2ErrorCode.SecretReentryRequired -> stringResource(Res.string.runtime_form_v2_error_secret_reentry_required)
             null -> null
         }
     }
@@ -224,7 +223,7 @@ private fun RuntimeFormV2FieldRow(
                 },
                 placeholder = field.placeholder.orEmpty(),
                 required = required && !editing,
-                hint = if (editing && !connectionOwned) stringResource(MR.strings.runtime_form_v2_secret_keep_hint) else hint,
+                hint = if (editing && !connectionOwned) stringResource(Res.string.runtime_form_v2_secret_keep_hint) else hint,
                 error = error,
                 enabled = fieldEnabled,
                 password = true
@@ -287,12 +286,12 @@ private fun RuntimeFormV2FieldRow(
                         enabled = fieldEnabled
                     )
                 is RuntimeFormV2Choices.Select -> {
-                    val defaultLabel = stringResource(MR.strings.runtime_form_v2_option_default)
-                    val savedGroupLabel = stringResource(MR.strings.runtime_form_v2_saved_providers)
-                    val directGroupLabel = stringResource(MR.strings.runtime_form_v2_direct_providers)
-                    val noMatches = stringResource(MR.strings.common_no_matches)
-                    val searchLabel = stringResource(MR.strings.search_filter_search)
-                    val useCustomLabel = stringResource(MR.strings.runtime_form_v2_use_custom, "%1\$s")
+                    val defaultLabel = stringResource(Res.string.runtime_form_v2_option_default)
+                    val savedGroupLabel = stringResource(Res.string.runtime_form_v2_saved_providers)
+                    val directGroupLabel = stringResource(Res.string.runtime_form_v2_direct_providers)
+                    val noMatches = stringResource(Res.string.common_no_matches)
+                    val searchLabel = stringResource(Res.string.search_filter_search)
+                    val useCustomLabel = stringResource(Res.string.runtime_form_v2_use_custom, "%1\$s")
                     // `provider.saved_connection`: headings only when the list mixes saved and direct choices.
                     val grouped = choices.options.mapNotNull { it.group }.distinct().size > 1
                     val unlisted = current.isNotEmpty() && choices.options.none { it.value == current }
@@ -413,7 +412,7 @@ private fun RuntimeFormV2FieldRow(
                         }
                         if (refreshableSource != null && sourceRefresh != null && refreshableSource in sourceRefresh.failed) {
                             Text(
-                                stringResource(MR.strings.runtime_form_v2_source_refresh_failed),
+                                stringResource(Res.string.runtime_form_v2_source_refresh_failed),
                                 style = RaftType.Caption,
                                 color = RaftColor.AccentRed
                             )
@@ -427,7 +426,7 @@ private fun RuntimeFormV2FieldRow(
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 RaftFieldLabel(text = field.label, required = field.required)
                 Text(
-                    text = stringResource(MR.strings.runtime_form_v2_update_required),
+                    text = stringResource(Res.string.runtime_form_v2_update_required),
                     style = RaftType.Caption,
                     color = RaftColor.AccentRed
                 )
@@ -439,20 +438,20 @@ private fun RuntimeFormV2FieldRow(
 @Composable
 private fun RuntimeFormV2SourceStatusLine(status: RuntimeFormV2SourceStatus, retrying: Boolean, onRetry: (() -> Unit)?) {
     val reason = when (status.reason) {
-        "probe_timeout" -> stringResource(MR.strings.runtime_form_v2_source_status_probe_timeout)
-        "probe_failed" -> stringResource(MR.strings.runtime_form_v2_source_status_probe_failed)
-        "missing_config" -> stringResource(MR.strings.runtime_form_v2_source_status_missing_config)
-        "no_models" -> stringResource(MR.strings.runtime_form_v2_source_status_no_models)
-        "unsupported" -> stringResource(MR.strings.runtime_form_v2_source_status_unsupported)
-        "machine_offline" -> stringResource(MR.strings.runtime_form_v2_source_status_machine_offline)
-        else -> stringResource(MR.strings.runtime_form_v2_source_status_unknown)
+        "probe_timeout" -> stringResource(Res.string.runtime_form_v2_source_status_probe_timeout)
+        "probe_failed" -> stringResource(Res.string.runtime_form_v2_source_status_probe_failed)
+        "missing_config" -> stringResource(Res.string.runtime_form_v2_source_status_missing_config)
+        "no_models" -> stringResource(Res.string.runtime_form_v2_source_status_no_models)
+        "unsupported" -> stringResource(Res.string.runtime_form_v2_source_status_unsupported)
+        "machine_offline" -> stringResource(Res.string.runtime_form_v2_source_status_machine_offline)
+        else -> stringResource(Res.string.runtime_form_v2_source_status_unknown)
     }
-    val text = if (status.unavailable) reason else "$reason ${stringResource(MR.strings.runtime_form_v2_source_status_fallback)}"
+    val text = if (status.unavailable) reason else "$reason ${stringResource(Res.string.runtime_form_v2_source_status_fallback)}"
     Text(text, style = RaftType.Caption, color = if (status.unavailable) RaftColor.AccentRed else RaftColor.TextMutedGray)
     // Retry only when the server says it may help.
     if (status.retryable && onRetry != null) {
         RaftLinkButton(
-            text = stringResource(MR.strings.common_retry),
+            text = stringResource(Res.string.common_retry),
             onClick = onRetry,
             enabled = !retrying,
             fontSize = 12.sp,
@@ -538,11 +537,11 @@ internal fun RuntimeFormV2RuntimeSection(
         machineRuntimeIds = machineRuntimeIds,
         allowStaticFallback = false,
         currentRuntimeId = runtime,
-        comingSoonSuffix = stringResource(MR.strings.agent_create_suffix_coming_soon),
-        notInstalledSuffix = stringResource(MR.strings.agent_create_suffix_not_installed)
+        comingSoonSuffix = stringResource(Res.string.agent_create_suffix_coming_soon),
+        notInstalledSuffix = stringResource(Res.string.agent_create_suffix_not_installed)
     )
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        RaftFieldLabel(text = stringResource(MR.strings.agent_create_label_runtime))
+        RaftFieldLabel(text = stringResource(Res.string.agent_create_label_runtime))
         RuntimeSelectChoice(
             runtime = runtime,
             runtimeOptions = runtimeOptions,

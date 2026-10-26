@@ -1,10 +1,10 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.model.RaftRelativeTimeLabel
 import build.raft.app.model.RaftRelativeTimeUnit
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.resolveRaftRelativeTimeLabel
-import build.raft.app.resources.MR
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -29,7 +29,7 @@ class RaftRelativeTimeFutureClampTest {
         )
         for (skew in listOf(31_000L, 50_000L, 5 * 60_000L, 3 * 3_600_000L, 3 * 86_400_000L)) {
             assertEquals(
-                RaftRelativeTimeStringSelection(MR.strings.thread_timestamp_now),
+                RaftRelativeTimeStringSelection(Res.string.thread_timestamp_now),
                 clampedSelection(now + skew),
                 "skew ${skew}ms",
             )
@@ -39,7 +39,7 @@ class RaftRelativeTimeFutureClampTest {
     @Test
     fun pastAndNonRelativeLabelsAreUntouched() {
         assertEquals(
-            RaftRelativeTimeStringSelection(MR.strings.relative_time_minute_past_many, 5),
+            RaftRelativeTimeStringSelection(Res.string.relative_time_minute_past_many, 5),
             clampedSelection(now - 5 * 60_000L),
         )
         assertEquals(

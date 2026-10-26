@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.resources.Res
+import build.raft.app.resources.RaftBundledFiles
+import kotlinx.coroutines.runBlocking
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,7 +26,6 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.network.sync.initialThreadRepliesReadModel
-import build.raft.app.resources.MR
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -72,9 +74,8 @@ class ThreadMessageFooterScreenshotTest {
             val pager = livePager
             val atlas =
                 remember {
-                    it.assets.open(MR.assets.reactions.reaction_atlas_v1.originalPath).use { stream ->
-                        BitmapFactory.decodeStream(stream).asImageBitmap()
-                    }
+                    val bytes = runBlocking { Res.readBytes(RaftBundledFiles.reactionAtlasV1.path) }
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size).asImageBitmap()
                 }
             val clock =
                 remember {

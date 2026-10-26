@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -15,8 +16,6 @@ import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputerWorkspaceSnapshot
 import build.raft.app.data.SettingsComputersSnapshot
 import build.raft.app.model.RaftTimeContext
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 const val SETTINGS_COMPUTERS_VISUAL_PAGE = "compose_settings_computers_visual"
 
@@ -81,7 +80,7 @@ private fun SettingsComputersVisualContent() {
                     else -> ScreenLoadState.Content(visualComputers())
                 }
             SettingsDetailShell(
-                title = stringResource(MR.strings.settings_computers_title),
+                title = stringResource(Res.string.settings_computers_title),
                 subtitle = "",
                 onBack = {},
             ) {

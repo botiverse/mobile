@@ -1,10 +1,9 @@
 package build.raft.app.data
 
+import build.raft.app.resources.*
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
 import build.raft.app.network.MultipartFile
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -681,12 +680,12 @@ class RealSettingsRepository(
                 sections = listOf(
                     SettingsServerSectionSnapshot(
                         key = "machine_status_events",
-                        title = MR.strings.settings_section_status_events_title.desc(),
+                        title = Res.string.settings_section_status_events_title.desc(),
                         detail = "Web updates status through realtime machine status events; no Settings detail REST contract is confirmed yet."
                     ),
                     SettingsServerSectionSnapshot(
                         key = "machine_logs",
-                        title = MR.strings.settings_section_logs_title.desc(),
+                        title = Res.string.settings_section_logs_title.desc(),
                         detail = "Machine logs or heartbeat history endpoint is not confirmed for Android yet."
                     )
                 ),
@@ -936,49 +935,49 @@ class RealSettingsRepository(
         val sections = listOf(
             SettingsServerSectionSnapshot(
                 key = "admins",
-                title = MR.strings.settings_section_admins_title.desc(),
+                title = Res.string.settings_section_admins_title.desc(),
                 detail = adminsSectionDetail(members, adminCount),
                 state = members.sectionState(admins.isEmpty()),
                 errorPresentation = members.errorPresentationOrNull()
             ),
             SettingsServerSectionSnapshot(
                 key = "billing",
-                title = MR.strings.settings_section_billing_title.desc(),
+                title = Res.string.settings_section_billing_title.desc(),
                 detail = billingSectionDetail(server.plan, billing, usageRows.size),
                 state = combineSectionState(billing, usage, usageRows.isEmpty()),
                 errorPresentation = billing.errorPresentationOrNull() ?: usage.errorPresentationOrNull()
             ),
             SettingsServerSectionSnapshot(
                 key = "pending_invites",
-                title = MR.strings.settings_section_pending_invites_title.desc(),
+                title = Res.string.settings_section_pending_invites_title.desc(),
                 detail = invitesSectionDetail(invites, pendingInvites.size),
                 state = invites.sectionState(pendingInvites.isEmpty()),
                 errorPresentation = invites.errorPresentationOrNull()
             ),
             SettingsServerSectionSnapshot(
                 key = "join_links",
-                title = MR.strings.settings_section_join_links_title.desc(),
+                title = Res.string.settings_section_join_links_title.desc(),
                 detail = joinLinksSectionDetail(joinLinks, joinLinkRows.size),
                 state = joinLinks.sectionState(joinLinkRows.isEmpty()),
                 errorPresentation = joinLinks.errorPresentationOrNull()
             ),
             SettingsServerSectionSnapshot(
                 key = "pre_join_agreement",
-                title = MR.strings.settings_section_pre_join_agreement_title.desc(),
+                title = Res.string.settings_section_pre_join_agreement_title.desc(),
                 detail = agreementSectionDetail(agreement, agreementSnapshot),
                 state = agreement.sectionState(agreementSnapshot == null),
                 errorPresentation = agreement.errorPresentationOrNull()
             ),
             SettingsServerSectionSnapshot(
                 key = "onboarding_agent",
-                title = MR.strings.settings_section_onboarding_title.desc(),
+                title = Res.string.settings_section_onboarding_title.desc(),
                 detail = onboardingSectionDetail(onboarding, onboardingSnapshot),
                 state = onboarding.sectionState(onboardingSnapshot == null),
                 errorPresentation = onboarding.errorPresentationOrNull()
             ),
             SettingsServerSectionSnapshot(
                 key = "member_permissions",
-                title = MR.strings.settings_section_member_permissions_title.desc(),
+                title = Res.string.settings_section_member_permissions_title.desc(),
                 detail = if (canManageServer) {
                     "Control whether members can see the human directory and counts."
                 } else {
@@ -988,21 +987,21 @@ class RealSettingsRepository(
             ),
             SettingsServerSectionSnapshot(
                 key = "translation",
-                title = MR.strings.settings_section_translation_title.desc(),
+                title = Res.string.settings_section_translation_title.desc(),
                 detail = translationSectionDetail(translation, translationSnapshot),
                 state = translation.sectionState(translationSnapshot == null),
                 errorPresentation = translation.errorPresentationOrNull()
             ),
             SettingsServerSectionSnapshot(
                 key = "sidebar_order",
-                title = MR.strings.settings_section_sidebar_order_title.desc(),
+                title = Res.string.settings_section_sidebar_order_title.desc(),
                 detail = sidebarOrderSectionDetail(sidebarOrder, sidebarOrderSnapshot),
                 state = sidebarOrder.sectionState(sidebarOrderSnapshot == null),
                 errorPresentation = sidebarOrder.errorPresentationOrNull()
             ),
             SettingsServerSectionSnapshot(
                 key = "danger",
-                title = MR.strings.settings_section_danger_zone_title.desc(),
+                title = Res.string.settings_section_danger_zone_title.desc(),
                 detail = if (server.role == "owner") {
                     "Delete Server endpoint is confirmed, but Android keeps the action disabled until confirmation UI is added."
                 } else {
@@ -2921,7 +2920,7 @@ private fun <T> DataResult<T>.mapSettingsDetailError(
                     sections = listOf(
                         SettingsServerSectionSnapshot(
                             key = "machine_detail_unavailable",
-                            title = MR.strings.settings_section_computer_detail_title.desc(),
+                            title = Res.string.settings_section_computer_detail_title.desc(),
                             detail = "No detail rows were returned for server $serverId."
                         )
                     )

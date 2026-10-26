@@ -1,5 +1,6 @@
 package build.raft.app.markdown
 
+import build.raft.app.resources.*
 import build.raft.app.components.RaftIconSpinner
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -26,7 +27,6 @@ import build.raft.app.network.sync.DiagnosticFeatureFlagScope
 import build.raft.app.toRaftMessagePermalinkTarget
 import build.raft.app.components.RaftCheckMarker
 import build.raft.app.components.RaftCheckMarkerTone
-import build.raft.app.resources.MR
 import build.raft.app.raftFontFamilyForWeight
 import build.raft.app.raftSpanStyleForWeight
 import build.raft.app.raftMonoFamilyForWeight
@@ -158,7 +158,6 @@ import com.tencent.kuiklybase.markdown.compose.components.MarkdownComponentModel
 import com.tencent.kuiklybase.markdown.model.MarkdownDimens
 import com.tencent.kuiklybase.markdown.model.markdownPadding
 import com.tencent.kuiklybase.markdown.model.prepareMarkdownContent
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -1995,11 +1994,11 @@ private val LocalRaftMarkdownBodyClick = compositionLocalOf<(() -> Unit)?> { nul
 @Composable
 private fun RaftMarkdownTaskCheckbox(model: MarkdownComponentModel) {
     val checked = markdownTaskListCheckboxChecked(model.node.getTextInNode(model.content).toString())
-    val checkboxLabel = stringResource(MR.strings.markdown_task_list_checkbox)
+    val checkboxLabel = stringResource(Res.string.markdown_task_list_checkbox)
     val stateLabel =
         stringResource(
-            if (checked) MR.strings.markdown_task_list_checked
-            else MR.strings.markdown_task_list_unchecked
+            if (checked) Res.string.markdown_task_list_checked
+            else Res.string.markdown_task_list_unchecked
         )
     Row(modifier = Modifier.wrapContentWidth()) {
         Box(

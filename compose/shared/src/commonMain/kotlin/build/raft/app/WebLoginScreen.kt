@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -17,7 +18,6 @@ import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.RaftWebLoginCompletion
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
-import build.raft.app.resources.MR
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Text
@@ -25,7 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.pager.Pager
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -81,8 +80,8 @@ internal fun WebLoginScreen(
         AuthFormColumn {
             AuthError(
                 when {
-                    failed -> stringResource(MR.strings.auth_web_login_failed)
-                    staleCallback -> stringResource(MR.strings.auth_web_login_stale_callback)
+                    failed -> stringResource(Res.string.auth_web_login_failed)
+                    staleCallback -> stringResource(Res.string.auth_web_login_stale_callback)
                     else -> null
                 }
             )
@@ -93,7 +92,7 @@ internal fun WebLoginScreen(
                 onOpenPrivacy = { linkNavigator.open(AUTH_PRIVACY_URL) },
             )
             AuthActionButton(
-                text = stringResource(MR.strings.auth_web_login_button),
+                text = stringResource(Res.string.auth_web_login_button),
                 tone = AuthButtonTone.Pink,
                 enabled = consentAccepted && !starting,
                 loading = starting,
@@ -116,13 +115,13 @@ internal fun WebLoginScreen(
             )
             Text(
                 // Follows the current environment: the official web app by default, the private web address once set.
-                text = stringResource(MR.strings.auth_web_login_hint, webLoginHintHost(webUrl)),
+                text = stringResource(Res.string.auth_web_login_hint, webLoginHintHost(webUrl)),
                 modifier = Modifier.fillMaxWidth(),
                 style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                 textAlign = TextAlign.Center,
             )
             AuthTextLink(
-                text = stringResource(MR.strings.auth_web_login_private_entry),
+                text = stringResource(Res.string.auth_web_login_private_entry),
                 onClick = onOpenPrivateDeployment,
             )
         }

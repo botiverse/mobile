@@ -1,11 +1,10 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.components.RaftBrutalInputField
 import build.raft.app.components.RaftMetrics
 import build.raft.app.components.RaftLookSeparator
 import build.raft.app.components.raftLookOverlaySurface
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.compose.stringResource
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -241,7 +240,7 @@ private fun RaftLookFilterPopover(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = stringResource(MR.strings.common_clear),
+                            text = stringResource(Res.string.common_clear),
                             style = RaftType.Body
                                 .copy(fontSize = 13.sp, lineHeight = 18.sp)
                                 .withRaftFontWeight(FontWeight.SemiBold),
@@ -262,7 +261,7 @@ private fun RaftLookFilterPopover(
             if (filtered.isEmpty()) {
                 Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
                     Text(
-                        text = stringResource(MR.strings.common_no_matches),
+                        text = stringResource(Res.string.common_no_matches),
                         style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
                         color = RaftColor.ForegroundHint
                     )
@@ -350,9 +349,9 @@ internal fun RaftFilterSheet(
         } else {
             { option -> icons[option.value]?.let { RaftSlotIcon(it, size = 16.dp) } }
         }
-    val noMatches = stringResource(MR.strings.common_no_matches)
+    val noMatches = stringResource(Res.string.common_no_matches)
     val emptyFor: (String) -> String = { status ?: noMatches }
-    val clearLabel = stringResource(MR.strings.common_clear)
+    val clearLabel = stringResource(Res.string.common_clear)
     if (multiSelect) {
         RaftMultiComboboxSheet(
             values = options.map { it.id }.filter { it in selectedIds },
@@ -372,7 +371,7 @@ internal fun RaftFilterSheet(
             query = searchText,
             onQueryChange = onSearchChange,
             searchPlaceholder = searchPlaceholder,
-            doneLabel = stringResource(MR.strings.common_done),
+            doneLabel = stringResource(Res.string.common_done),
             clearLabel = clearLabel.takeIf { showClear },
             optionLeading = leading
         )

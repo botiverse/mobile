@@ -1,8 +1,8 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.data.SettingsComputerAgentScopesSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
-import build.raft.app.resources.MR
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -39,13 +39,13 @@ class RaftComputerMemoryLimitBannerTest {
     @Test
     fun reasonsReadAsAShortPhraseWithAnUnknownFallback() {
         assertEquals(
-            MR.strings.settings_computers_memory_limit_reason_memory_controller_not_delegated,
+            Res.string.settings_computers_memory_limit_reason_memory_controller_not_delegated,
             raftComputerMemoryLimitReasonText("memory_controller_not_delegated"),
         )
         assertEquals(
-            MR.strings.settings_computers_memory_limit_reason_slice_property_failed,
+            Res.string.settings_computers_memory_limit_reason_slice_property_failed,
             raftComputerMemoryLimitReasonText("slice_property_failed"),
         )
-        assertEquals(MR.strings.settings_computers_memory_limit_reason_unknown, raftComputerMemoryLimitReasonText("some_future_reason"))
+        assertEquals(Res.string.settings_computers_memory_limit_reason_unknown, raftComputerMemoryLimitReasonText("some_future_reason"))
     }
 }

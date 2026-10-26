@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,7 +48,6 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.jointSameAdminContext
 import build.raft.app.data.runCatchingPreservingCancellation
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
@@ -67,7 +67,6 @@ import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextarea
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 internal const val JOINT_CHANNEL_CONNECTIONS_PAGE = "compose_joint_channel_connections"
 
@@ -108,15 +107,15 @@ private fun JointChannelConnectionsScreen() {
     val bridge = Utils.bridgeModule(pager.pagerId)
     val params = pager.pageData.params
     val router = remember(pager) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME) }
-    val title = stringResource(MR.strings.joint_connections_title)
+    val title = stringResource(Res.string.joint_connections_title)
     val route = remember(params.toString()) { params.toChannelSettingsRouteOrNull() }
     val routeOwner = remember(params.toString()) { params.authenticatedRouteOwnerOrNull() }
     if (route == null || routeOwner == null || routeOwner.serverId != route.serverId.value) {
         SettingsDetailShell(title = title, subtitle = "", onBack = router::closePage) {
             RaftDesignSystemTheme {
                 JointConnectionsStateBlock(
-                    title = stringResource(MR.strings.channel_settings_unavailable),
-                    detail = stringResource(MR.strings.channel_settings_invalid_route),
+                    title = stringResource(Res.string.channel_settings_unavailable),
+                    detail = stringResource(Res.string.channel_settings_invalid_route),
                 )
             }
         }
@@ -228,12 +227,12 @@ private fun JointChannelConnectionsScreen() {
                         }
                     state.status == JointChannelConnectionsLoadStatus.Error ->
                         JointConnectionsStateBlock(
-                            title = stringResource(MR.strings.joint_connections_load_failed),
+                            title = stringResource(Res.string.joint_connections_load_failed),
                             detail = state.loadFailure?.let { jointChannelFailureMessage(it, fallback = "") },
-                            actionLabel = stringResource(MR.strings.common_retry),
+                            actionLabel = stringResource(Res.string.common_retry),
                             onAction = { store.dispatch(JointChannelConnectionsIntent.Refresh) },
                         )
-                    else -> JointConnectionsStateBlock(title = stringResource(MR.strings.common_loading), loading = true)
+                    else -> JointConnectionsStateBlock(title = stringResource(Res.string.common_loading), loading = true)
                 }
             }
         }
@@ -258,19 +257,19 @@ private fun JointConnectionsContent(
     LazyColumn(Modifier.fillMaxSize()) {
         item(key = "servers") {
             RaftSection(
-                title = stringResource(MR.strings.joint_connections_title),
+                title = stringResource(Res.string.joint_connections_title),
                 count = connections.servers.size.toString(),
                 separator = false,
             ) {
                 RaftText(
-                    stringResource(MR.strings.joint_connections_rule),
+                    stringResource(Res.string.joint_connections_rule),
                     modifier = Modifier.padding(bottom = 12.dp),
                     style = RaftTheme.typography.footnote,
                     color = RaftTheme.colors.foregroundHint,
                 )
                 if (connections.servers.isEmpty()) {
                     RaftText(
-                        stringResource(MR.strings.joint_connections_meta_unavailable),
+                        stringResource(Res.string.joint_connections_meta_unavailable),
                         style = RaftTheme.typography.callout,
                         color = RaftTheme.colors.foregroundHint,
                     )
@@ -287,17 +286,17 @@ private fun JointConnectionsContent(
                         horizontalArrangement = Arrangement.End,
                     ) {
                         RaftButton(
-                            text = stringResource(MR.strings.joint_connections_resend),
+                            text = stringResource(Res.string.joint_connections_resend),
                             onClick = onResend,
                             enabled = state.actionInFlight == null,
                             loading = state.actionInFlight == JointChannelConnectionsAction.Resend,
-                            loadingLabel = stringResource(MR.strings.joint_connections_resending),
+                            loadingLabel = stringResource(Res.string.joint_connections_resending),
                             leadingIcon = { RaftComputersIcon(RaftLucideIconName.Mail) },
                         )
                     }
                     state.resendFailure?.let { failure ->
                         RaftText(
-                            jointChannelFailureMessage(failure, stringResource(MR.strings.joint_connections_resend_failed)),
+                            jointChannelFailureMessage(failure, stringResource(Res.string.joint_connections_resend_failed)),
                             modifier = Modifier.padding(top = 8.dp),
                             style = RaftTheme.typography.caption,
                             color = RaftTheme.colors.dangerStrong,
@@ -339,26 +338,26 @@ private fun jointConnectionsReceiptText(receipt: JointChannelConnectionsEffect):
     when (receipt) {
         is JointChannelConnectionsEffect.InviteSent -> {
             // Web: "Connected X directly." first, then the emails sent to anyone else on the list.
-            val connected = receipt.connectedServerName?.let { stringResource(MR.strings.joint_same_admin_connected, it) }
+            val connected = receipt.connectedServerName?.let { stringResource(Res.string.joint_same_admin_connected, it) }
             val emailed =
                 when {
                     receipt.emailedCount <= 0 && connected != null -> null
-                    receipt.emailedCount == 1 -> stringResource(MR.strings.joint_connections_invite_sent_one)
-                    else -> stringResource(MR.strings.joint_connections_invite_sent_many, receipt.emailedCount)
+                    receipt.emailedCount == 1 -> stringResource(Res.string.joint_connections_invite_sent_one)
+                    else -> stringResource(Res.string.joint_connections_invite_sent_many, receipt.emailedCount)
                 }
             listOfNotNull(connected, emailed).joinToString(" ")
         }
         is JointChannelConnectionsEffect.Resent ->
             if (receipt.resentCount == 1) {
-                stringResource(MR.strings.joint_connections_resent_one)
+                stringResource(Res.string.joint_connections_resent_one)
             } else {
-                stringResource(MR.strings.joint_connections_resent_many, receipt.resentCount)
+                stringResource(Res.string.joint_connections_resent_many, receipt.resentCount)
             }
     }
 
 @Composable
 private fun JointConnectedServerRow(server: JointChannelServer, divider: Boolean) {
-    val thisServer = stringResource(MR.strings.joint_connections_this_server)
+    val thisServer = stringResource(Res.string.joint_connections_this_server)
     RaftListRow(
         title = server.name.ifBlank { server.slug },
         divider = divider,
@@ -372,9 +371,9 @@ private fun JointConnectedServerRow(server: JointChannelServer, divider: Boolean
                     text =
                         stringResource(
                             if (plan == JointChannelServerPlan.Paid) {
-                                MR.strings.joint_connections_plan_paid
+                                Res.string.joint_connections_plan_paid
                             } else {
-                                MR.strings.joint_connections_plan_free
+                                Res.string.joint_connections_plan_free
                             }
                         ),
                     appearance = RaftBadgeAppearance.Outline,
@@ -383,7 +382,7 @@ private fun JointConnectedServerRow(server: JointChannelServer, divider: Boolean
             RaftBadge(
                 text =
                     stringResource(
-                        if (server.active) MR.strings.joint_connections_status_active else MR.strings.joint_connections_status_pending
+                        if (server.active) Res.string.joint_connections_status_active else Res.string.joint_connections_status_pending
                     ),
                 appearance = RaftBadgeAppearance.Soft,
                 variant = if (server.active) RaftBadgeVariant.Success else RaftBadgeVariant.Warning,
@@ -408,33 +407,33 @@ private fun JointInviteSection(
     val inviting = state.actionInFlight == JointChannelConnectionsAction.Invite
     val failure = state.inviteFailure
     val failureField = failure?.let { jointInviteFailureField(it.code) }
-    val failureText = failure?.let { jointChannelFailureMessage(it, stringResource(MR.strings.joint_connections_invite_failed)) }
+    val failureText = failure?.let { jointChannelFailureMessage(it, stringResource(Res.string.joint_connections_invite_failed)) }
     val slugError =
         when {
-            JointInviteValidation.SlugRequired in state.inviteValidation -> stringResource(MR.strings.joint_connections_slug_required)
-            JointInviteValidation.SlugPattern in state.inviteValidation -> stringResource(MR.strings.joint_connections_slug_pattern)
+            JointInviteValidation.SlugRequired in state.inviteValidation -> stringResource(Res.string.joint_connections_slug_required)
+            JointInviteValidation.SlugPattern in state.inviteValidation -> stringResource(Res.string.joint_connections_slug_pattern)
             failureField == JointInviteField.Slug -> failureText
             else -> null
         }
     val peopleError =
         when {
-            JointInviteValidation.PeopleRequired in state.inviteValidation -> stringResource(MR.strings.joint_connections_people_required)
+            JointInviteValidation.PeopleRequired in state.inviteValidation -> stringResource(Res.string.joint_connections_people_required)
             failureField == JointInviteField.People -> failureText
             else -> null
         }
     val formError =
         when {
             JointInviteValidation.ServerLimitReached in state.inviteValidation ->
-                stringResource(MR.strings.joint_connections_max_servers, JOINT_CHANNEL_MAX_SERVERS)
+                stringResource(Res.string.joint_connections_max_servers, JOINT_CHANNEL_MAX_SERVERS)
             JointInviteValidation.SameAdminConfirmRequired in state.inviteValidation ->
-                stringResource(MR.strings.joint_same_admin_confirm_required)
+                stringResource(Res.string.joint_same_admin_confirm_required)
             failureField == JointInviteField.Form -> failureText
             else -> null
         }
-    RaftSection(title = stringResource(MR.strings.joint_connections_invite_section)) {
+    RaftSection(title = stringResource(Res.string.joint_connections_invite_section)) {
         if (connections.serverLimitReached) {
             RaftText(
-                stringResource(MR.strings.joint_connections_max_servers, JOINT_CHANNEL_MAX_SERVERS),
+                stringResource(Res.string.joint_connections_max_servers, JOINT_CHANNEL_MAX_SERVERS),
                 style = RaftTheme.typography.callout,
                 color = RaftTheme.colors.foregroundHint,
             )
@@ -442,7 +441,7 @@ private fun JointInviteSection(
         }
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             RaftField(
-                label = stringResource(MR.strings.joint_connections_slug_label),
+                label = stringResource(Res.string.joint_connections_slug_label),
                 required = true,
                 error = slugError,
                 enabled = !inviting,
@@ -452,13 +451,13 @@ private fun JointInviteSection(
                     keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
                     onValueChange = onSlugChange,
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = stringResource(MR.strings.joint_connections_slug_placeholder),
+                    placeholder = stringResource(Res.string.joint_connections_slug_placeholder),
                 )
             }
             RaftField(
-                label = stringResource(MR.strings.joint_connections_people_label),
+                label = stringResource(Res.string.joint_connections_people_label),
                 required = true,
-                description = stringResource(MR.strings.joint_connections_people_hint),
+                description = stringResource(Res.string.joint_connections_people_hint),
                 error = peopleError,
                 enabled = !inviting,
             ) {
@@ -466,7 +465,7 @@ private fun JointInviteSection(
                     value = people,
                     onValueChange = onPeopleChange,
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = stringResource(MR.strings.joint_connections_people_placeholder),
+                    placeholder = stringResource(Res.string.joint_connections_people_placeholder),
                 )
             }
             sameAdminTarget?.let { target ->
@@ -480,11 +479,11 @@ private fun JointInviteSection(
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 RaftButton(
-                    text = stringResource(MR.strings.joint_connections_send_invite),
+                    text = stringResource(Res.string.joint_connections_send_invite),
                     onClick = onSendInvite,
                     enabled = state.actionInFlight == null && slug.isNotBlank() && people.isNotBlank(),
                     loading = inviting,
-                    loadingLabel = stringResource(MR.strings.joint_connections_inviting),
+                    loadingLabel = stringResource(Res.string.joint_connections_inviting),
                     leadingIcon = { RaftComputersIcon(RaftLucideIconName.Mail) },
                 )
             }
@@ -526,9 +525,9 @@ private fun JointConnectionsStateBlock(
 @Composable
 internal fun jointInviteRateLimitedMessage(retryAfterSeconds: Long?): String =
     when (val minutes = jointInviteRateLimitMinutes(retryAfterSeconds)) {
-        null -> stringResource(MR.strings.joint_invite_rate_limited_later)
-        1 -> stringResource(MR.strings.joint_invite_rate_limited_one)
-        else -> stringResource(MR.strings.joint_invite_rate_limited_other, minutes)
+        null -> stringResource(Res.string.joint_invite_rate_limited_later)
+        1 -> stringResource(Res.string.joint_invite_rate_limited_one)
+        else -> stringResource(Res.string.joint_invite_rate_limited_other, minutes)
     }
 
 /** Localized copy for each joint failure, with the web's precedence. */
@@ -582,9 +581,9 @@ internal fun jointChannelFailureMessage(failure: JointChannelFailure, fallback: 
     val rateLimited = jointInviteRateLimitedMessage((failure as? JointChannelFailure.Error)?.error?.retryAfterSeconds)
     val copy =
         JointFailureCopy(
-            freeServerLimit = stringResource(MR.strings.joint_limit_free_servers),
-            serverLimit = stringResource(MR.strings.joint_limit_servers, JOINT_CHANNEL_MAX_SERVERS),
-            hostFreeLimit = stringResource(MR.strings.joint_limit_host_free),
+            freeServerLimit = stringResource(Res.string.joint_limit_free_servers),
+            serverLimit = stringResource(Res.string.joint_limit_servers, JOINT_CHANNEL_MAX_SERVERS),
+            hostFreeLimit = stringResource(Res.string.joint_limit_host_free),
             fallback = fallback,
             inviteRateLimited = { rateLimited },
         )

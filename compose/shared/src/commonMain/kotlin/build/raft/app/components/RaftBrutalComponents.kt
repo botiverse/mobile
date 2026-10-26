@@ -73,7 +73,6 @@ import build.raft.app.compat.ui.KeyboardParams
 import build.raft.app.compat.ui.raftColorFromArgbHex
 import build.raft.app.raftAppEditorBehavior
 import build.raft.app.raftResolvedKeyboardOptions
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftDialogHeader
@@ -86,7 +85,7 @@ import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextFieldClearAction
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
+import build.raft.app.resources.stringResource
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
 

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.app.components.RaftSlotIcon
@@ -18,13 +19,12 @@ import build.raft.app.data.MOBILE_ACTION_PUSH_PREVIEW_MODE
 import build.raft.app.data.MOBILE_ACTION_SETTINGS
 import build.raft.app.data.MOBILE_ACTION_TEST_NOTIFICATION
 import build.raft.app.data.SharedSettingsActionState
-import com.tencent.tmm.kmmresource.resource.StringResource
+import org.jetbrains.compose.resources.StringResource
 import build.raft.app.data.NotificationPreferenceSnapshot
 import build.raft.app.data.ServerPushMode
 import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsMobileSnapshot
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -52,7 +52,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 
@@ -86,8 +85,8 @@ internal fun SettingsNotificationsContent(
                 item {
                     SettingsLoadStateCard(
                         RaftLucideIconName.Bell,
-                        stringResource(MR.strings.common_loading),
-                        stringResource(MR.strings.settings_notifications_loading),
+                        stringResource(Res.string.common_loading),
+                        stringResource(Res.string.settings_notifications_loading),
                         null,
                         onRetry,
                         loading = true
@@ -97,9 +96,9 @@ internal fun SettingsNotificationsContent(
                 item {
                     SettingsLoadStateCard(
                         RaftLucideIconName.Bell,
-                        stringResource(MR.strings.settings_state_unavailable),
+                        stringResource(Res.string.settings_state_unavailable),
                         state.reason.localizedUserFacingMessage(),
-                        stringResource(MR.strings.common_retry),
+                        stringResource(Res.string.common_retry),
                         onRetry
                     )
                 }
@@ -107,9 +106,9 @@ internal fun SettingsNotificationsContent(
                 item {
                     SettingsLoadStateCard(
                         RaftLucideIconName.TriangleAlert,
-                        stringResource(MR.strings.settings_error_notification),
+                        stringResource(Res.string.settings_error_notification),
                         state.error.localizedUserFacingMessage(),
-                        stringResource(MR.strings.common_retry),
+                        stringResource(Res.string.common_retry),
                         onRetry
                     )
                 }
@@ -117,7 +116,7 @@ internal fun SettingsNotificationsContent(
                 item {
                     SettingsLoadStateCard(
                         RaftLucideIconName.Lock,
-                        stringResource(MR.strings.settings_state_permission_required),
+                        stringResource(Res.string.settings_state_permission_required),
                         state.blocker.localizedUserFacingMessage(),
                         null,
                         onRetry
@@ -167,9 +166,9 @@ internal fun SettingsNotificationsContent(
 
 @Composable
 private fun SettingsPwaInstallCard() {
-    SettingsFormSectionCard(iconName = RaftLucideIconName.AppWindow, title = stringResource(MR.strings.settings_pwa_install_title)) {
-        SettingsFormDetailText(stringResource(MR.strings.settings_pwa_install_native_detail))
-        SettingsFormEmptyText(stringResource(MR.strings.settings_connected_apps_no_install_prompt))
+    SettingsFormSectionCard(iconName = RaftLucideIconName.AppWindow, title = stringResource(Res.string.settings_pwa_install_title)) {
+        SettingsFormDetailText(stringResource(Res.string.settings_pwa_install_native_detail))
+        SettingsFormEmptyText(stringResource(Res.string.settings_connected_apps_no_install_prompt))
     }
 }
 
@@ -193,7 +192,7 @@ private fun SettingsPushStatusCard(
     val anyActionBusy = actionState?.inProgress == true
     val permissionGranted = settingsNotificationPermissionGranted(snapshot.notificationPermission.statusLabel)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsNotificationSectionLabel(stringResource(MR.strings.settings_notifications_system))
+        SettingsNotificationSectionLabel(stringResource(Res.string.settings_notifications_system))
         SettingsNotificationPermissionBanner(
             detail = settingsNotificationPermissionDetail(
                 permissionGranted = permissionGranted,
@@ -210,11 +209,11 @@ private fun SettingsPushStatusCard(
             SettingsFormErrorText(actionState)
         }
 
-        SettingsNotificationSectionLabel(stringResource(MR.strings.settings_notifications_on_device))
+        SettingsNotificationSectionLabel(stringResource(Res.string.settings_notifications_on_device))
         SettingsNotificationPreferenceGroup {
             SettingsNotificationToggleRow(
-                title = stringResource(MR.strings.settings_notifications_message_title),
-                detail = stringResource(MR.strings.settings_notifications_message_detail),
+                title = stringResource(Res.string.settings_notifications_message_title),
+                detail = stringResource(Res.string.settings_notifications_message_detail),
                 checked = notificationPreferenceSnapshot.enabled,
                 enabled = !preferenceBusy,
                 onCheckedChange = onNotificationPreferenceChange
@@ -225,8 +224,8 @@ private fun SettingsPushStatusCard(
                 // Android without Google Play services: the same preference keeps the realtime connection
                 // alive from a foreground service, the only notification path such a device has.
                 SettingsNotificationToggleRow(
-                    title = stringResource(MR.strings.settings_notifications_keep_connection_title),
-                    detail = stringResource(MR.strings.settings_notifications_keep_connection_detail),
+                    title = stringResource(Res.string.settings_notifications_keep_connection_title),
+                    detail = stringResource(Res.string.settings_notifications_keep_connection_detail),
                     checked = notificationPreferenceSnapshot.foregroundKeepAliveEnabled,
                     enabled = !foregroundKeepAliveBusy,
                     onCheckedChange = { enabled ->
@@ -243,8 +242,8 @@ private fun SettingsPushStatusCard(
                 SettingsNotificationDivider()
             } else if (raftPlatformSupportsBackgroundRealtime()) {
                 SettingsNotificationToggleRow(
-                    title = stringResource(MR.strings.settings_notifications_background_realtime_title),
-                    detail = stringResource(MR.strings.settings_notifications_background_realtime_detail, raftPlatformProductName()),
+                    title = stringResource(Res.string.settings_notifications_background_realtime_title),
+                    detail = stringResource(Res.string.settings_notifications_background_realtime_detail, raftPlatformProductName()),
                     checked = notificationPreferenceSnapshot.foregroundKeepAliveEnabled,
                     enabled = !foregroundKeepAliveBusy,
                     onCheckedChange = onForegroundKeepAlivePreferenceChange
@@ -252,23 +251,23 @@ private fun SettingsPushStatusCard(
                 SettingsNotificationDivider()
             }
             SettingsNotificationToggleRow(
-                title = stringResource(MR.strings.settings_notifications_offline_computers_title),
-                detail = stringResource(MR.strings.settings_notifications_offline_computers_detail),
+                title = stringResource(Res.string.settings_notifications_offline_computers_title),
+                detail = stringResource(Res.string.settings_notifications_offline_computers_detail),
                 checked = notificationPreferenceSnapshot.offlineComputerAlertsEnabled,
                 enabled = !offlineComputerAlertsBusy,
                 onCheckedChange = onOfflineComputerAlertsChange
             )
             SettingsNotificationDivider()
             SettingsNotificationToggleRow(
-                title = stringResource(MR.strings.settings_foreground_banners_title),
-                detail = stringResource(MR.strings.settings_foreground_banners_detail),
+                title = stringResource(Res.string.settings_foreground_banners_title),
+                detail = stringResource(Res.string.settings_foreground_banners_detail),
                 checked = snapshot.foregroundMessageBanners.enabled,
                 enabled = snapshot.foregroundMessageBanners.available && !foregroundMessageBannersBusy,
                 onCheckedChange = onForegroundMessageBannersChange
             )
             SettingsNotificationDivider()
             SettingsNotificationActionRow(
-                title = stringResource(MR.strings.settings_notifications_test_title),
+                title = stringResource(Res.string.settings_notifications_test_title),
                 detail = snapshot.testNotification.localizedTestNotificationDetail(),
                 status = snapshot.testNotification.localizedTestNotificationStatus(),
                 enabled = snapshot.testNotification.available && snapshot.sendTestEnabled && !anyActionBusy,
@@ -320,11 +319,11 @@ private fun settingsNotificationPermissionDetail(
 ): String =
     when (settingsNotificationPermissionCopy(permissionGranted, permissionAvailable)) {
         SettingsNotificationPermissionCopy.Allowed ->
-            stringResource(MR.strings.settings_notifications_permission_allowed_detail)
+            stringResource(Res.string.settings_notifications_permission_allowed_detail)
         SettingsNotificationPermissionCopy.Needed ->
-            stringResource(MR.strings.settings_notifications_permission_open_settings, raftPlatformProductName())
+            stringResource(Res.string.settings_notifications_permission_open_settings, raftPlatformProductName())
         SettingsNotificationPermissionCopy.Unavailable ->
-            stringResource(MR.strings.settings_notifications_permission_unavailable_detail)
+            stringResource(Res.string.settings_notifications_permission_unavailable_detail)
     }
 
 internal enum class SettingsTestNotificationCopy {
@@ -351,21 +350,21 @@ internal fun settingsTestNotificationCopy(
 @Composable
 private fun build.raft.app.data.SettingsMobileActionSnapshot.localizedTestNotificationStatus(): String =
     when (settingsTestNotificationCopy(statusLabel, available)) {
-        SettingsTestNotificationCopy.Ready -> stringResource(MR.strings.settings_state_ready)
-        SettingsTestNotificationCopy.Sent -> stringResource(MR.strings.settings_notifications_test_status_sent)
-        SettingsTestNotificationCopy.Requested -> stringResource(MR.strings.settings_notifications_test_status_requested)
-        SettingsTestNotificationCopy.Unavailable -> stringResource(MR.strings.settings_state_unavailable)
-        SettingsTestNotificationCopy.Error -> stringResource(MR.strings.settings_state_error)
+        SettingsTestNotificationCopy.Ready -> stringResource(Res.string.settings_state_ready)
+        SettingsTestNotificationCopy.Sent -> stringResource(Res.string.settings_notifications_test_status_sent)
+        SettingsTestNotificationCopy.Requested -> stringResource(Res.string.settings_notifications_test_status_requested)
+        SettingsTestNotificationCopy.Unavailable -> stringResource(Res.string.settings_state_unavailable)
+        SettingsTestNotificationCopy.Error -> stringResource(Res.string.settings_state_error)
     }
 
 @Composable
 private fun build.raft.app.data.SettingsMobileActionSnapshot.localizedTestNotificationDetail(): String =
     when (settingsTestNotificationCopy(statusLabel, available)) {
-        SettingsTestNotificationCopy.Ready -> stringResource(MR.strings.settings_notifications_test_detail)
-        SettingsTestNotificationCopy.Sent -> stringResource(MR.strings.settings_notifications_test_sent_detail)
-        SettingsTestNotificationCopy.Requested -> stringResource(MR.strings.settings_notifications_test_requested_detail)
-        SettingsTestNotificationCopy.Unavailable -> stringResource(MR.strings.settings_notifications_test_unavailable_detail)
-        SettingsTestNotificationCopy.Error -> stringResource(MR.strings.settings_notifications_test_error_detail)
+        SettingsTestNotificationCopy.Ready -> stringResource(Res.string.settings_notifications_test_detail)
+        SettingsTestNotificationCopy.Sent -> stringResource(Res.string.settings_notifications_test_sent_detail)
+        SettingsTestNotificationCopy.Requested -> stringResource(Res.string.settings_notifications_test_requested_detail)
+        SettingsTestNotificationCopy.Unavailable -> stringResource(Res.string.settings_notifications_test_unavailable_detail)
+        SettingsTestNotificationCopy.Error -> stringResource(Res.string.settings_notifications_test_error_detail)
     }
 
 @Composable
@@ -413,9 +412,9 @@ private fun SettingsNotificationPermissionBanner(
                 Text(
                     text =
                         if (permissionGranted) {
-                            stringResource(MR.strings.settings_notifications_permission_allowed)
+                            stringResource(Res.string.settings_notifications_permission_allowed)
                         } else {
-                            stringResource(MR.strings.settings_notifications_permission_needed)
+                            stringResource(Res.string.settings_notifications_permission_needed)
                         },
                     style = RaftType.Button.copy(color = RaftColor.TextBlack),
                     color = RaftColor.TextBlack,
@@ -434,7 +433,7 @@ private fun SettingsNotificationPermissionBanner(
         }
         if (!permissionGranted) {
             RaftButton(
-                text = stringResource(MR.strings.settings_notifications_request_permission),
+                text = stringResource(Res.string.settings_notifications_request_permission),
                 onClick = onPermission,
                 enabled = permissionAvailable && !busy,
                 size = RaftButtonSize.Md,
@@ -505,13 +504,13 @@ private fun SettingsNotificationActionRow(
 private fun RaftBackgroundConnectionBatteryRow(controls: RaftBackgroundConnectionControls) {
     val exempt by controls.batteryOptimizationExemptState.collectAsState()
     SettingsNotificationActionRow(
-        title = stringResource(MR.strings.settings_notifications_battery_optimization_title),
-        detail = stringResource(MR.strings.settings_notifications_battery_optimization_detail),
+        title = stringResource(Res.string.settings_notifications_battery_optimization_title),
+        detail = stringResource(Res.string.settings_notifications_battery_optimization_detail),
         status =
             if (exempt) {
-                stringResource(MR.strings.settings_notifications_battery_optimization_allowed)
+                stringResource(Res.string.settings_notifications_battery_optimization_allowed)
             } else {
-                stringResource(MR.strings.settings_notifications_battery_optimization_request)
+                stringResource(Res.string.settings_notifications_battery_optimization_request)
             },
         enabled = !exempt,
         onClick = { controls.requestBatteryOptimizationExemption() }
@@ -558,7 +557,7 @@ private fun SettingsServerNotificationModeCard(
     val busy = actionState?.action == MOBILE_ACTION_SERVER_MUTE && actionState.inProgress
     val preference = snapshot.serverNotificationMode
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsNotificationSectionLabel(stringResource(MR.strings.settings_notifications_workspace))
+        SettingsNotificationSectionLabel(stringResource(Res.string.settings_notifications_workspace))
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             preference.options.mapNotNull { option -> ServerPushMode.fromWire(option.key) }.forEach { mode ->
                 SettingsServerSelectRow(
@@ -592,13 +591,13 @@ private fun SettingsPushPreviewModeCard(
             verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
             Text(
-                text = stringResource(MR.strings.settings_notifications_preview_mode_title),
+                text = stringResource(Res.string.settings_notifications_preview_mode_title),
                 style = RaftType.Button.copy(color = RaftColor.TextBlack),
                 color = RaftColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            SettingsFormDetailText(stringResource(MR.strings.settings_notifications_preview_mode_detail))
+            SettingsFormDetailText(stringResource(Res.string.settings_notifications_preview_mode_detail))
         }
         SettingsSegmentedControlField(
             modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
@@ -632,23 +631,23 @@ internal fun PushPreviewMode.settingsPreviewModeIcon(): RaftLucideIconName =
 
 internal fun PushPreviewMode.settingsPreviewModeLabel(): StringResource =
     when (this) {
-        PushPreviewMode.Full -> MR.strings.settings_notifications_preview_mode_full
-        PushPreviewMode.SenderOnly -> MR.strings.settings_notifications_preview_mode_sender_only
-        PushPreviewMode.Hidden -> MR.strings.settings_notifications_preview_mode_hidden
+        PushPreviewMode.Full -> Res.string.settings_notifications_preview_mode_full
+        PushPreviewMode.SenderOnly -> Res.string.settings_notifications_preview_mode_sender_only
+        PushPreviewMode.Hidden -> Res.string.settings_notifications_preview_mode_hidden
     }
 
 @Composable
 private fun ServerPushMode.settingsNotificationModeTitle(): String =
     when (this) {
-        ServerPushMode.All -> stringResource(MR.strings.settings_notifications_mode_all)
-        ServerPushMode.Mentions -> stringResource(MR.strings.settings_notifications_mode_mentions)
-        ServerPushMode.None -> stringResource(MR.strings.settings_notifications_mode_none)
+        ServerPushMode.All -> stringResource(Res.string.settings_notifications_mode_all)
+        ServerPushMode.Mentions -> stringResource(Res.string.settings_notifications_mode_mentions)
+        ServerPushMode.None -> stringResource(Res.string.settings_notifications_mode_none)
     }
 
 @Composable
 private fun ServerPushMode.settingsNotificationModeDetail(): String =
     when (this) {
-        ServerPushMode.All -> stringResource(MR.strings.settings_notifications_mode_all_detail)
-        ServerPushMode.Mentions -> stringResource(MR.strings.settings_notifications_mode_mentions_detail)
-        ServerPushMode.None -> stringResource(MR.strings.settings_notifications_mode_none_detail)
+        ServerPushMode.All -> stringResource(Res.string.settings_notifications_mode_all_detail)
+        ServerPushMode.Mentions -> stringResource(Res.string.settings_notifications_mode_mentions_detail)
+        ServerPushMode.None -> stringResource(Res.string.settings_notifications_mode_none_detail)
     }

@@ -734,8 +734,9 @@ val generateReleaseOssLicenses by tasks.registering(GenerateOssLicensesTask::cla
     sourceConfigurationLabel.set("Android release runtime + shared KMP metadata")
     requiredModules.set(
         listOf(
-            "com.tencent.kuiklybase:resource-core",
-            "com.tencent.kuiklybase:resource-core-android",
+            // Shared KMP metadata (common) and its Android variant must both be disclosed.
+            "org.jetbrains.compose.components:components-resources",
+            "org.jetbrains.compose.components:components-resources-android",
             handsAndroidSdkModule
         )
     )

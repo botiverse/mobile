@@ -1,12 +1,12 @@
 package build.raft.app.components
 
+import build.raft.app.resources.*
 import build.raft.app.raftDisplayUppercase
 import androidx.compose.runtime.Composable
 import build.raft.app.RaftColor
 import build.raft.app.RaftMonoFamily
 import build.raft.app.RaftAppStroke
 import build.raft.app.RaftType
-import build.raft.app.resources.MR
 import build.raft.app.raftSquareCorners
 import build.raft.app.withRaftFontWeight
 import androidx.compose.foundation.background
@@ -21,7 +21,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /** task #396: wire value of `channel.bridge.provider` for a Slack-bridged channel. */
 internal const val RaftExternalBridgeProviderSlack = "slack"
@@ -51,7 +50,7 @@ internal fun RaftExternalBridgeBadge(
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = stringResource(MR.strings.channel_bridge_provider_slack).raftDisplayUppercase(),
+            text = stringResource(Res.string.channel_bridge_provider_slack).raftDisplayUppercase(),
             style =
                 RaftType.Caption
                     .copy(

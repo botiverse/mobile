@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,7 +23,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.data.RaftAvatarCacheSubject
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -42,7 +42,6 @@ import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /*
  * The channel members page (web `ChannelMembers` presentation="page", ChannelMemberList.tsx)
@@ -97,7 +96,7 @@ internal fun ChannelMembersSearchBar(
                 value = query,
                 onValueChange = onQueryChange,
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = stringResource(MR.strings.thread_members_search_placeholder),
+                placeholder = stringResource(Res.string.thread_members_search_placeholder),
                 leading = { ChannelMembersIcon(RaftLucideIconName.Search) },
             )
         }
@@ -208,7 +207,7 @@ internal fun ChannelMembersRow(
 /** Web members-page loading line: a spinner and "Loading members…", centred. */
 @Composable
 internal fun ChannelMembersLoading() {
-    val label = stringResource(MR.strings.thread_members_loading)
+    val label = stringResource(Res.string.thread_members_loading)
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 48.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -285,7 +284,7 @@ internal fun ChannelMembersAddBar(
         Box(Modifier.fillMaxWidth().height(RaftAppStroke.Thin).background(RaftTheme.colors.lineSeam))
         Box(Modifier.fillMaxWidth().padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 12.dp + bottomSafeArea)) {
             RaftButton(
-                text = stringResource(MR.strings.thread_action_add_member),
+                text = stringResource(Res.string.thread_action_add_member),
                 onClick = onClick,
                 modifier = Modifier.fillMaxWidth(),
                 variant = RaftButtonVariant.Default,

@@ -279,7 +279,7 @@ Apply the house format from the release-practices document:
 - align every shipped locale with its current canonical catalog before review.
   Shared Web/mobile terms come from `botiverse/slock` under
   `packages/web/src/i18n/messages/`; mobile-only terms and locales also use
-  `compose/shared/src/commonMain/resources/MR/<locale>/strings.xml`. Reuse
+  `compose/shared/src/commonMain/composeResources/values-<locale>/strings.xml`. Reuse
   user-visible nouns and status labels; do not expose implementation terms such
   as chip or spinner unless the product itself displays them. Current zh-CN
   terms include `回应`, `任务状态`, and `处理中`; current Japanese terms

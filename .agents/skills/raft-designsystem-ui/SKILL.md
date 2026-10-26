@@ -45,7 +45,7 @@ Discipline".
   component.
 - New page class? Annotate it with `@Page("name")` and regenerate the
   registry: `python3 scripts/cmp_generate_page_registry.py` (CI runs `--check`).
-- User-visible strings go through `MR.strings` (see `raft-i18n-strings`).
+- User-visible strings go through `Res.string` (see `raft-i18n-strings`).
 
 ## 3. Missing component or variant
 

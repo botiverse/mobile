@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
@@ -26,7 +27,6 @@ import build.raft.app.data.RuntimeAccountUsageWindowStatus
 import build.raft.app.data.SharedComputersOwner
 import build.raft.app.data.SharedRuntimeAccountUsageStore
 import build.raft.app.model.RaftTimeContext
-import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -44,7 +44,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -220,8 +219,8 @@ internal fun MembersAgentRuntimeUsageChip(
         statusDescription =
             when {
                 !offered -> null
-                attention -> stringResource(MR.strings.member_runtime_usage_attention)
-                else -> stringResource(MR.strings.settings_computers_runtime_usage_healthy)
+                attention -> stringResource(Res.string.member_runtime_usage_attention)
+                else -> stringResource(Res.string.settings_computers_runtime_usage_healthy)
             },
         // Long press copies the runtime name (never the usage status); a tap opens usage.
         modifier = Modifier.raftCopyable(label) {
@@ -255,31 +254,31 @@ private fun MembersRuntimeAccountUsageDialog(
     onDismiss: () -> Unit
 ) {
     RaftUnifiedDialog(
-        title = stringResource(MR.strings.member_runtime_usage_title),
+        title = stringResource(Res.string.member_runtime_usage_title),
         overline = runtimeLabel,
         onDismiss = onDismiss,
         contentSpacing = 12.dp
     ) {
         when (load) {
-            null -> MembersRuntimeUsageNote(stringResource(MR.strings.member_runtime_usage_reading))
+            null -> MembersRuntimeUsageNote(stringResource(Res.string.member_runtime_usage_reading))
             RuntimeAccountUsageLoad.Forbidden, RuntimeAccountUsageLoad.Superseded -> Unit
             is RuntimeAccountUsageLoad.Failed ->
                 MembersRuntimeUsageNote(
-                    text = stringResource(MR.strings.member_runtime_usage_read_failed),
+                    text = stringResource(Res.string.member_runtime_usage_read_failed),
                     color = RaftColor.AccentRed
                 )
             is RuntimeAccountUsageLoad.Loaded ->
                 when (val read = load.read) {
                     RuntimeAccountUsageRead.Missing -> {
                         MembersRuntimeUsageNote(
-                            text = stringResource(MR.strings.member_runtime_usage_missing),
+                            text = stringResource(Res.string.member_runtime_usage_missing),
                             bold = true
                         )
-                        MembersRuntimeUsageNote(stringResource(MR.strings.member_runtime_usage_missing_detail))
+                        MembersRuntimeUsageNote(stringResource(Res.string.member_runtime_usage_missing_detail))
                     }
                     is RuntimeAccountUsageRead.Available -> {
                         if (read.stale) {
-                            MembersRuntimeUsageBanner(stringResource(MR.strings.member_runtime_usage_stale))
+                            MembersRuntimeUsageBanner(stringResource(Res.string.member_runtime_usage_stale))
                         }
                         read.snapshot.accounts.forEach { account ->
                             MembersRuntimeUsageAccountCard(account = account, stale = read.stale, timeContext = timeContext)
@@ -289,9 +288,9 @@ private fun MembersRuntimeAccountUsageDialog(
         }
         RaftButton(
             text = if (loading) {
-                    stringResource(MR.strings.member_runtime_usage_reading)
+                    stringResource(Res.string.member_runtime_usage_reading)
                 } else {
-                    stringResource(MR.strings.member_runtime_usage_reload)
+                    stringResource(Res.string.member_runtime_usage_reload)
                 },
             enabled = !loading,
             modifier = Modifier.fillMaxWidth(),
@@ -326,7 +325,7 @@ private fun MembersRuntimeUsageAccountCard(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = account.planLabel ?: stringResource(MR.strings.member_runtime_usage_account_fallback),
+                    text = account.planLabel ?: stringResource(Res.string.member_runtime_usage_account_fallback),
                     style = RaftType.Caption.copy(fontSize = 13.sp, lineHeight = 17.sp)
                         .withRaftFontWeight(FontWeight.Bold),
                     color = RaftColor.TextBlack,
@@ -346,7 +345,7 @@ private fun MembersRuntimeUsageAccountCard(
             MembersRuntimeUsageHealthBadge(account.health)
         }
         if (account.health == RuntimeAccountUsageHealth.Unsupported) {
-            MembersRuntimeUsageNote(stringResource(MR.strings.member_runtime_usage_unsupported))
+            MembersRuntimeUsageNote(stringResource(Res.string.member_runtime_usage_unsupported))
         }
         account.windows.forEach { window -> MembersRuntimeUsageWindowRow(window, timeContext) }
     }
@@ -362,7 +361,7 @@ private fun MembersRuntimeUsageWindowRow(
         if (percent == null) {
             // Never drawn as a bar: an unusable window is not "0% used".
             Text(
-                text = window.label + " · " + stringResource(MR.strings.member_runtime_usage_window_unavailable),
+                text = window.label + " · " + stringResource(Res.string.member_runtime_usage_window_unavailable),
                 style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 15.sp),
                 color = RaftColor.TextMutedGray,
                 maxLines = 1,
@@ -382,7 +381,7 @@ private fun MembersRuntimeUsageWindowRow(
             )
             if (window.status == RuntimeAccountUsageWindowStatus.LimitReached) {
                 Text(
-                    text = stringResource(MR.strings.member_runtime_usage_limit_reached),
+                    text = stringResource(Res.string.member_runtime_usage_limit_reached),
                     style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp).withRaftFontWeight(FontWeight.Bold),
                     color = RaftColor.TextBlack
                 )
@@ -390,7 +389,7 @@ private fun MembersRuntimeUsageWindowRow(
             window.resetsAt?.let { resetsAt ->
                 val resetLabel = raftRelativeTimestampLabel(resetsAt, timeContext)
                 Text(
-                    text = stringResource(MR.strings.member_runtime_usage_resets_at, resetLabel),
+                    text = stringResource(Res.string.member_runtime_usage_resets_at, resetLabel),
                     style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
                     color = RaftColor.TextMutedGray,
                     maxLines = 1
@@ -411,17 +410,17 @@ internal fun RuntimeAccountUsageWindow.displayPercentOrNull(): Int? {
 private fun MembersRuntimeUsageHealthBadge(health: RuntimeAccountUsageHealth) {
     val (label, color) =
         when (health) {
-            RuntimeAccountUsageHealth.Ok -> stringResource(MR.strings.member_runtime_usage_health_ok) to RaftColor.AccentLime
+            RuntimeAccountUsageHealth.Ok -> stringResource(Res.string.member_runtime_usage_health_ok) to RaftColor.AccentLime
             RuntimeAccountUsageHealth.RateLimited ->
-                stringResource(MR.strings.member_runtime_usage_health_rate_limited) to RaftColor.AccentOrange
+                stringResource(Res.string.member_runtime_usage_health_rate_limited) to RaftColor.AccentOrange
             RuntimeAccountUsageHealth.ReauthRequired ->
-                stringResource(MR.strings.member_runtime_usage_health_reauth_required) to RaftColor.AccentOrange
+                stringResource(Res.string.member_runtime_usage_health_reauth_required) to RaftColor.AccentOrange
             RuntimeAccountUsageHealth.Unsupported ->
-                stringResource(MR.strings.member_runtime_usage_health_unsupported) to RaftColor.SurfaceCream
+                stringResource(Res.string.member_runtime_usage_health_unsupported) to RaftColor.SurfaceCream
             RuntimeAccountUsageHealth.Error ->
-                stringResource(MR.strings.member_runtime_usage_health_error) to RaftColor.AccentRed
+                stringResource(Res.string.member_runtime_usage_health_error) to RaftColor.AccentRed
             RuntimeAccountUsageHealth.Unknown ->
-                stringResource(MR.strings.member_runtime_usage_health_unknown) to RaftColor.SurfaceCream
+                stringResource(Res.string.member_runtime_usage_health_unknown) to RaftColor.SurfaceCream
         }
     // Accent fills are stickers (fixed ink); the cream fill is a themed surface.
     val sticker = color != RaftColor.SurfaceCream

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.base.Utils
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.RaftNotificationPreferenceEvents
@@ -35,7 +36,6 @@ import build.raft.app.data.SettingsAppearanceUpdateRequest
 import build.raft.app.data.SettingsLanguageRegionPreferenceUpdateRequest
 import build.raft.app.data.SettingsServerProfileUpdateRequest
 import build.raft.app.model.RaftTimeContext
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -59,7 +59,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.Pager
-import com.tencent.tmm.kmmresource.compose.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -77,14 +76,14 @@ internal fun SettingsNativeDetailScreen() {
     }
     if (route == null) {
         SettingsDetailShell(
-            title = stringResource(MR.strings.settings_title),
+            title = stringResource(Res.string.settings_title),
             subtitle = "",
             iconName = RaftLucideIconName.Settings,
             onBack = closePage,
         ) {
             SettingsSharedPlaceholder(
-                title = stringResource(MR.strings.settings_title),
-                detail = stringResource(MR.strings.empty_no_settings_available),
+                title = stringResource(Res.string.settings_title),
+                detail = stringResource(Res.string.empty_no_settings_available),
                 iconName = RaftLucideIconName.Settings,
             )
         }
@@ -751,16 +750,16 @@ private fun <T> ScreenLoadState<T>.currentContent(): T? =
 @Composable
 private fun settingsNativeDetailPageTitle(route: SettingsNativeDetailRoute): String =
     when (route.page) {
-        SettingsNativeDetailPage.LanguageRegion -> stringResource(MR.strings.settings_language_region_title)
-        SettingsNativeDetailPage.Appearance -> stringResource(MR.strings.settings_appearance_title)
-        SettingsNativeDetailPage.Notifications -> stringResource(MR.strings.settings_notifications_title)
-        SettingsNativeDetailPage.Mobile -> stringResource(MR.strings.settings_mobile_title)
-        SettingsNativeDetailPage.Server -> stringResource(MR.strings.settings_server_profile_title)
-        SettingsNativeDetailPage.About -> stringResource(MR.strings.settings_about_title)
-        SettingsNativeDetailPage.Developer -> stringResource(MR.strings.settings_developer_title)
-        SettingsNativeDetailPage.OpenSourceLicenses -> stringResource(MR.strings.settings_open_source_licenses_title)
-        SettingsNativeDetailPage.ApiEnvironment -> stringResource(MR.strings.settings_developer_api_environment)
-        SettingsNativeDetailPage.Diagnostics -> stringResource(MR.strings.settings_diagnostics_title)
+        SettingsNativeDetailPage.LanguageRegion -> stringResource(Res.string.settings_language_region_title)
+        SettingsNativeDetailPage.Appearance -> stringResource(Res.string.settings_appearance_title)
+        SettingsNativeDetailPage.Notifications -> stringResource(Res.string.settings_notifications_title)
+        SettingsNativeDetailPage.Mobile -> stringResource(Res.string.settings_mobile_title)
+        SettingsNativeDetailPage.Server -> stringResource(Res.string.settings_server_profile_title)
+        SettingsNativeDetailPage.About -> stringResource(Res.string.settings_about_title)
+        SettingsNativeDetailPage.Developer -> stringResource(Res.string.settings_developer_title)
+        SettingsNativeDetailPage.OpenSourceLicenses -> stringResource(Res.string.settings_open_source_licenses_title)
+        SettingsNativeDetailPage.ApiEnvironment -> stringResource(Res.string.settings_developer_api_environment)
+        SettingsNativeDetailPage.Diagnostics -> stringResource(Res.string.settings_diagnostics_title)
         SettingsNativeDetailPage.LocalFeatureOverrides -> "Local Feature Overrides"
         SettingsNativeDetailPage.LocalFeatureOverride ->
             route.itemId

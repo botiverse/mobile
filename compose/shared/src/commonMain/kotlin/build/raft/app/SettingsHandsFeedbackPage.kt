@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -78,6 +79,6 @@ private fun SettingsHandsFeedbackScreen() {
 
 @Composable
 private fun settingsHandsFeedbackTitle(): String =
-    com.tencent.tmm.kmmresource.compose.stringResource(
-        build.raft.app.resources.MR.strings.settings_feedback_title
+    build.raft.app.resources.stringResource(
+        Res.string.settings_feedback_title
     )

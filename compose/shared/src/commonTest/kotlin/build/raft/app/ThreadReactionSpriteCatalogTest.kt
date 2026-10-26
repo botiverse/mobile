@@ -35,21 +35,20 @@ class ThreadReactionSpriteCatalogTest {
     }
 
     @Test
-    fun resourceAdapterUsesGeneratedKmmResourcePath() {
-        // kmmresource packs MR assets at assets/<originalPath> in the APK, and the
-        // image adapter opens exactly the path after "assets://" — a "common/"
-        // segment here points at a file that exists in no APK (silent legacy
-        // fallback on every device).
-        // task #421: the atlas resource is nullable now (null on iOS where the
-        // asset can't bundle); on this JVM test target it resolves, so assert it.
+    fun resourceAdapterUsesComposeResourcesFilePath() {
+        // The atlas ships as a Compose resources file; the image loader reads
+        // "assets://compose-resources/<path>" through Res.readBytes(<path>). A "common/"
+        // segment (the old Kuikly asset URL) points at no file (silent legacy fallback).
+        // task #421: the atlas resource stays nullable; on this JVM test target it
+        // resolves, so assert it.
         val atlasResource = assertNotNull(ThreadReactionSpriteAtlasResource)
         assertTrue(atlasResource.imageUrl.startsWith("assets://"))
         assertTrue(!atlasResource.imageUrl.startsWith("assets://common/"))
         assertEquals(
-            "assets://${atlasResource.image.originalPath}",
+            "assets://compose-resources/${atlasResource.image.path}",
             atlasResource.imageUrl
         )
         assertTrue(atlasResource.imageUrl.endsWith("reaction_atlas_v1.png"))
-        assertTrue(atlasResource.manifest.originalPath.endsWith("reaction_atlas_v1_manifest.json"))
+        assertTrue(atlasResource.manifest.path.endsWith("reaction_atlas_v1_manifest.json"))
     }
 }

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftReadOnlyField
 import build.raft.designsystem.components.raftCopyable
@@ -19,7 +20,7 @@ import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.ServerPublicExposedChannel
 import build.raft.app.data.ServerPublicVisibilityRepository
-import com.tencent.tmm.kmmresource.resource.StringResource
+import org.jetbrains.compose.resources.StringResource
 import build.raft.app.data.SERVER_ACTION_CONFIRM
 import build.raft.app.data.SERVER_ACTION_DELETE
 import build.raft.app.data.SERVER_ACTION_LEAVE
@@ -31,7 +32,6 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.SettingsServerSectionSnapshot
 import build.raft.app.data.SettingsServerSnapshot
 import build.raft.app.model.RaftTimeContext
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -69,7 +69,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 @Composable
 internal fun rememberSettingsServerPublicAccessBinding(
@@ -200,10 +199,10 @@ private fun SettingsServerProfileFormCard(
     val trimmedName = draftName.trim()
     val dirty = trimmedName.isNotBlank() && trimmedName != currentName
     val enabled = canSave && dirty && !busy
-    val status = actionState.serverLocalizedStatusFor(SERVER_ACTION_PROFILE_SAVE, if (canSave) stringResource(MR.strings.settings_server_action_save_profile) else stringResource(MR.strings.settings_server_state_read_only))
-    SettingsFormSectionCard(iconName = RaftLucideIconName.Building2, title = stringResource(MR.strings.settings_profile_title)) {
+    val status = actionState.serverLocalizedStatusFor(SERVER_ACTION_PROFILE_SAVE, if (canSave) stringResource(Res.string.settings_server_action_save_profile) else stringResource(Res.string.settings_server_state_read_only))
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Building2, title = stringResource(Res.string.settings_profile_title)) {
         RaftField(
-            label = stringResource(MR.strings.settings_server_label_name),
+            label = stringResource(Res.string.settings_server_label_name),
             modifier = Modifier.fillMaxWidth(),
             labelSize = RaftFieldLabelSize.Sm,
             required = true,
@@ -213,16 +212,16 @@ private fun SettingsServerProfileFormCard(
                 value = if (canSave) draftName else currentName,
                 keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
                 onValueChange = onNameChange,
-                placeholder = currentName.ifBlank { stringResource(MR.strings.settings_server_placeholder_name) }
+                placeholder = currentName.ifBlank { stringResource(Res.string.settings_server_placeholder_name) }
             )
         }
         RaftField(
-            label = stringResource(MR.strings.settings_server_label_slug),
+            label = stringResource(Res.string.settings_server_label_slug),
             modifier = Modifier.fillMaxWidth(),
             labelSize = RaftFieldLabelSize.Sm
         ) {
             RaftReadOnlyField(
-                text = currentSlug.ifBlank { stringResource(MR.strings.settings_server_state_not_provided) },
+                text = currentSlug.ifBlank { stringResource(Res.string.settings_server_state_not_provided) },
                 copyText = currentSlug.takeIf { it.isNotBlank() }
             )
         }
@@ -267,12 +266,12 @@ private fun SettingsServerDangerZoneCard(
     val leaveBusy = actionState?.action == SERVER_ACTION_LEAVE && actionState.inProgress
     val trimmedModalSlug = modalConfirmationSlug.trim()
     val deleteEnabled = canDelete && !deleteBusy && expectedServerSlug.isNotBlank() && trimmedModalSlug == expectedServerSlug
-    SettingsFormSectionCard(iconName = RaftLucideIconName.TriangleAlert, title = stringResource(MR.strings.settings_section_danger_zone_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.TriangleAlert, title = stringResource(Res.string.settings_section_danger_zone_title)) {
         if (canLeave) {
             SettingsServerActionRow(
-                title = stringResource(MR.strings.settings_server_action_leave),
-                detail = stringResource(MR.strings.settings_server_leave_detail),
-                buttonLabel = actionState.serverLocalizedStatusFor(SERVER_ACTION_LEAVE, stringResource(MR.strings.settings_server_action_leave)),
+                title = stringResource(Res.string.settings_server_action_leave),
+                detail = stringResource(Res.string.settings_server_leave_detail),
+                buttonLabel = actionState.serverLocalizedStatusFor(SERVER_ACTION_LEAVE, stringResource(Res.string.settings_server_action_leave)),
                 buttonIcon = RaftLucideIconName.LogOut,
                 buttonVariant = RaftButtonVariant.Warning,
                 enabled = !leaveBusy,
@@ -280,7 +279,7 @@ private fun SettingsServerDangerZoneCard(
             )
             if (leaveConfirmed) {
                 Text(
-                    stringResource(MR.strings.settings_server_leave_confirm),
+                    stringResource(Res.string.settings_server_leave_confirm),
                     style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                     color = RaftColor.TextMutedGray
                 )
@@ -288,9 +287,9 @@ private fun SettingsServerDangerZoneCard(
         }
         if (canDelete) {
             SettingsServerActionRow(
-                title = stringResource(MR.strings.settings_server_action_delete),
-                detail = stringResource(MR.strings.settings_server_delete_detail),
-                buttonLabel = stringResource(MR.strings.settings_server_action_delete),
+                title = stringResource(Res.string.settings_server_action_delete),
+                detail = stringResource(Res.string.settings_server_delete_detail),
+                buttonLabel = stringResource(Res.string.settings_server_action_delete),
                 buttonIcon = RaftLucideIconName.Trash2,
                 buttonVariant = RaftButtonVariant.Danger,
                 enabled = !deleteBusy,
@@ -347,7 +346,7 @@ internal fun SettingsServerDeleteConfirmationDialog(
     onCancel: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val resolvedName = serverName.ifBlank { stringResource(MR.strings.settings_server_this_server) }
+    val resolvedName = serverName.ifBlank { stringResource(Res.string.settings_server_this_server) }
     val resolvedSlug = expectedServerSlug.ifBlank { "server-slug" }
     Modal(onWillDismiss = { if (!deleteBusy) onDismiss() }) {
         Box(
@@ -383,7 +382,7 @@ internal fun SettingsServerDeleteConfirmationDialog(
                         // raft-ui Dialog title: 17/22 bold in source case (web
                         // "Delete Server"), with the ghost 32dp close.
                         Text(
-                            stringResource(MR.strings.settings_server_action_delete),
+                            stringResource(Res.string.settings_server_action_delete),
                             style =
                                 RaftType.PageTitle
                                     .copy(fontSize = 17.sp, lineHeight = 22.sp, color = RaftColor.TextBlack)
@@ -395,7 +394,7 @@ internal fun SettingsServerDeleteConfirmationDialog(
                         )
                         RaftBackButton(
                             onClick = onDismiss,
-                            label = stringResource(MR.strings.common_close),
+                            label = stringResource(Res.string.common_close),
                             glyph = RaftGlyph.X,
                             enabled = !deleteBusy,
                         )
@@ -406,7 +405,7 @@ internal fun SettingsServerDeleteConfirmationDialog(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            stringResource(MR.strings.settings_server_delete_type_prefix) + " ",
+                            stringResource(Res.string.settings_server_delete_type_prefix) + " ",
                             style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
                             color = RaftColor.TextMutedGray
                         )
@@ -420,7 +419,7 @@ internal fun SettingsServerDeleteConfirmationDialog(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            stringResource(MR.strings.settings_server_delete_confirm_suffix),
+                            stringResource(Res.string.settings_server_delete_confirm_suffix),
                             style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = RaftColor.TextMutedGray),
                             color = RaftColor.TextMutedGray
                         )
@@ -436,14 +435,14 @@ internal fun SettingsServerDeleteConfirmationDialog(
                     }
                     RaftDialogFooter {
                         RaftButton(
-                            text = stringResource(MR.strings.common_cancel),
+                            text = stringResource(Res.string.common_cancel),
                             onClick = onCancel,
                             enabled = !deleteBusy,
                             modifier = Modifier.widthIn(min = 72.dp),
                             variant = RaftButtonVariant.Ghost
                         )
                         RaftButton(
-                            text = if (deleteBusy) stringResource(MR.strings.settings_server_action_deleting) else stringResource(MR.strings.settings_server_action_delete),
+                            text = if (deleteBusy) stringResource(Res.string.settings_server_action_deleting) else stringResource(Res.string.settings_server_action_delete),
                             onClick = onDelete,
                             enabled = deleteEnabled,
                             modifier = Modifier.widthIn(min = 112.dp),
@@ -461,9 +460,9 @@ private fun SettingsServerDeleteWarningBanner(
     serverName: String?,
     text: String? = null
 ) {
-    val fallbackName = stringResource(MR.strings.settings_server_this_server)
-    val prefix = stringResource(MR.strings.settings_server_delete_warning_prefix)
-    val suffix = stringResource(MR.strings.settings_server_delete_warning_suffix)
+    val fallbackName = stringResource(Res.string.settings_server_this_server)
+    val prefix = stringResource(Res.string.settings_server_delete_warning_prefix)
+    val suffix = stringResource(Res.string.settings_server_delete_warning_suffix)
     val message = remember(serverName, text, fallbackName, prefix, suffix) {
         settingsServerDeleteWarningBannerText(
             serverName = serverName,
@@ -563,11 +562,11 @@ private fun SettingsServerPublicAccessCard(
     val channels = state.readback?.exposedChannels.orEmpty()
     SettingsFormSectionCard(
         iconName = RaftLucideIconName.Globe,
-        title = stringResource(MR.strings.settings_public_visibility_section_label)
+        title = stringResource(Res.string.settings_public_visibility_section_label)
     ) {
         SettingsPublicAccessSwitchRow(
-            title = stringResource(MR.strings.settings_public_visibility_title),
-            detail = stringResource(MR.strings.settings_public_visibility_description),
+            title = stringResource(Res.string.settings_public_visibility_title),
+            detail = stringResource(Res.string.settings_public_visibility_description),
             checked = state.visibilityChecked,
             enabled = state.visibilitySwitchEnabled,
             nested = false,
@@ -576,7 +575,7 @@ private fun SettingsServerPublicAccessCard(
         if (publicUrl != null) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    stringResource(MR.strings.settings_public_visibility_public_url),
+                    stringResource(Res.string.settings_public_visibility_public_url),
                     style = RaftType.Caption.withRaftFontWeight(FontWeight.Bold),
                     color = RaftColor.TextMutedGray
                 )
@@ -589,7 +588,7 @@ private fun SettingsServerPublicAccessCard(
                         modifier = Modifier.weight(1f)
                     )
                     RaftButton(
-                        text = stringResource(MR.strings.settings_public_visibility_copy_url),
+                        text = stringResource(Res.string.settings_public_visibility_copy_url),
                         onClick = { onCopyUrl(publicUrl) },
                         size = RaftButtonSize.Lg,
                         leadingIcon = { RaftSlotIcon(RaftLucideIconName.Copy) }
@@ -599,8 +598,8 @@ private fun SettingsServerPublicAccessCard(
         }
         if (state.guestJoinApplicable) {
             SettingsPublicAccessSwitchRow(
-                title = stringResource(MR.strings.settings_public_visibility_allow_guest_join),
-                detail = stringResource(MR.strings.settings_public_visibility_allow_guest_join_description),
+                title = stringResource(Res.string.settings_public_visibility_allow_guest_join),
+                detail = stringResource(Res.string.settings_public_visibility_allow_guest_join_description),
                 checked = state.guestJoinChecked,
                 enabled = state.subSwitchesEnabled,
                 nested = true,
@@ -608,8 +607,8 @@ private fun SettingsServerPublicAccessCard(
             )
         }
         SettingsPublicAccessSwitchRow(
-            title = stringResource(MR.strings.settings_public_visibility_allow_search),
-            detail = stringResource(MR.strings.settings_public_visibility_allow_search_description),
+            title = stringResource(Res.string.settings_public_visibility_allow_search),
+            detail = stringResource(Res.string.settings_public_visibility_allow_search_description),
             checked = state.searchChecked,
             enabled = state.subSwitchesEnabled,
             nested = true,
@@ -617,7 +616,7 @@ private fun SettingsServerPublicAccessCard(
         )
         Box(Modifier.fillMaxWidth().height(1.dp).background(RaftColor.BorderBlack.copy(alpha = 0.15f)))
         Text(
-            stringResource(MR.strings.settings_public_visibility_channel_list_label),
+            stringResource(Res.string.settings_public_visibility_channel_list_label),
             style = RaftType.Button.copy(color = RaftColor.TextBlack),
             color = RaftColor.TextBlack
         )
@@ -638,13 +637,13 @@ private fun SettingsServerPublicAccessCard(
     }
     if (state.confirmOpen) {
         RaftUnifiedDialog(
-            title = stringResource(MR.strings.settings_public_visibility_confirm_title),
+            title = stringResource(Res.string.settings_public_visibility_confirm_title),
             onDismiss = { onIntent(ServerPublicVisibilityIntent.DismissConfirm) },
             dismissEnabled = !state.saving,
             uppercaseTitle = false
         ) {
             Text(
-                stringResource(MR.strings.settings_public_visibility_confirm_description),
+                stringResource(Res.string.settings_public_visibility_confirm_description),
                 style = RaftType.Body,
                 color = RaftColor.TextBlack
             )
@@ -654,23 +653,23 @@ private fun SettingsServerPublicAccessCard(
             ) {
                 item { SettingsPublicAccessChannelList(channels) }
             }
-            SettingsFormDetailText(stringResource(MR.strings.settings_public_visibility_confirm_audience_change))
+            SettingsFormDetailText(stringResource(Res.string.settings_public_visibility_confirm_audience_change))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 RaftButton(
-                    text = stringResource(MR.strings.common_cancel),
+                    text = stringResource(Res.string.common_cancel),
                     onClick = { onIntent(ServerPublicVisibilityIntent.DismissConfirm) },
                     enabled = !state.saving,
                     size = RaftButtonSize.Lg
                 )
                 RaftButton(
                     text = if (state.saving) {
-                            stringResource(MR.strings.settings_public_visibility_confirm_saving)
+                            stringResource(Res.string.settings_public_visibility_confirm_saving)
                         } else {
-                            stringResource(MR.strings.settings_public_visibility_confirm_action)
+                            stringResource(Res.string.settings_public_visibility_confirm_action)
                         },
                     onClick = { onIntent(ServerPublicVisibilityIntent.ConfirmMakePublic) },
                     enabled = !state.saving,
@@ -684,10 +683,10 @@ private fun SettingsServerPublicAccessCard(
 
 private fun ServerPublicVisibilityErrorKind.fallbackMessage(): StringResource =
     when (this) {
-        ServerPublicVisibilityErrorKind.Load -> MR.strings.settings_public_visibility_failed_load
-        ServerPublicVisibilityErrorKind.Update -> MR.strings.settings_public_visibility_failed_update
-        ServerPublicVisibilityErrorKind.GuestJoinUpdate -> MR.strings.settings_public_visibility_failed_guest_join_update
-        ServerPublicVisibilityErrorKind.SearchUpdate -> MR.strings.settings_public_visibility_failed_search_update
+        ServerPublicVisibilityErrorKind.Load -> Res.string.settings_public_visibility_failed_load
+        ServerPublicVisibilityErrorKind.Update -> Res.string.settings_public_visibility_failed_update
+        ServerPublicVisibilityErrorKind.GuestJoinUpdate -> Res.string.settings_public_visibility_failed_guest_join_update
+        ServerPublicVisibilityErrorKind.SearchUpdate -> Res.string.settings_public_visibility_failed_search_update
     }
 
 @Composable
@@ -744,7 +743,7 @@ private fun SettingsPublicAccessChannelList(channels: List<ServerPublicExposedCh
             contentAlignment = Alignment.Center
         ) {
             Text(
-                stringResource(MR.strings.settings_public_visibility_empty_channels),
+                stringResource(Res.string.settings_public_visibility_empty_channels),
                 style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                 color = RaftColor.TextMutedGray,
                 textAlign = TextAlign.Center
@@ -876,12 +875,12 @@ private fun build.raft.app.data.SharedSettingsActionState?.serverLocalizedStatus
     itemId: String? = null
 ): String =
     when {
-        isServerConfirmation(action, itemId) -> stringResource(MR.strings.settings_state_confirm)
+        isServerConfirmation(action, itemId) -> stringResource(Res.string.settings_state_confirm)
         this == null || this.action != action -> fallback
         itemId != null && this.itemId != itemId -> fallback
-        inProgress -> stringResource(MR.strings.settings_state_loading)
-        hasUserFacingError() -> stringResource(MR.strings.settings_state_error)
-        else -> stringResource(MR.strings.settings_state_saved)
+        inProgress -> stringResource(Res.string.settings_state_loading)
+        hasUserFacingError() -> stringResource(Res.string.settings_state_error)
+        else -> stringResource(Res.string.settings_state_saved)
     }
 
 private fun build.raft.app.data.SharedSettingsActionState?.isServerConfirmation(

@@ -1,10 +1,10 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.base.BridgeAttachmentDownloadProgress
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.format.RaftFormat
 import build.raft.app.data.isEdgeBlockedMarker
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -51,8 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.tencent.tmm.kmmresource.compose.stringResource
-import com.tencent.tmm.kmmresource.resource.StringResource
+import org.jetbrains.compose.resources.StringResource
 import androidx.compose.ui.unit.sp
 import kotlinx.serialization.Serializable
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -172,12 +171,12 @@ internal fun ThreadAttachmentOpenUiState?.threadAttachmentIsOpening(): Boolean =
 
 internal fun ThreadAttachmentOpenUiState?.threadAttachmentTerminalStatusResource(): StringResource? =
     when (this?.status) {
-        "cancelled" -> MR.strings.file_preview_download_stopped
-        "missing" -> MR.strings.file_preview_error_download_attachment
-        "no_app" -> MR.strings.file_preview_error_no_app
-        "storage_failed" -> MR.strings.file_preview_error_storage_unavailable
-        "download_failed" -> MR.strings.file_preview_download_failed
-        "failed" -> MR.strings.file_preview_error_open_attachment
+        "cancelled" -> Res.string.file_preview_download_stopped
+        "missing" -> Res.string.file_preview_error_download_attachment
+        "no_app" -> Res.string.file_preview_error_no_app
+        "storage_failed" -> Res.string.file_preview_error_storage_unavailable
+        "download_failed" -> Res.string.file_preview_download_failed
+        "failed" -> Res.string.file_preview_error_open_attachment
         else -> null
     }
 
@@ -195,21 +194,21 @@ internal fun ThreadFilesContent(
         verticalArrangement = Arrangement.Top
     ) {
         when (payload.status) {
-            "loading" -> ThreadFilesStateMessage(stringResource(MR.strings.thread_files_loading), null)
+            "loading" -> ThreadFilesStateMessage(stringResource(Res.string.thread_files_loading), null)
             "error" -> ThreadFilesError(payload.errorCode ?: "unknown_error") { onEvent("retry", null) }
             "no_permission" ->
                 if (payload.errorServerMessage.isEdgeBlockedMarker()) {
                     ThreadFilesStateMessage(
-                        stringResource(MR.strings.thread_state_edge_blocked),
-                        stringResource(MR.strings.error_edge_blocked)
+                        stringResource(Res.string.thread_state_edge_blocked),
+                        stringResource(Res.string.error_edge_blocked)
                     )
                 } else {
                     ThreadFilesStateMessage(
-                        stringResource(MR.strings.thread_files_no_permission),
+                        stringResource(Res.string.thread_files_no_permission),
                         payload.errorCode ?: "missing capability"
                     )
                 }
-            "empty" -> ThreadFilesStateMessage(stringResource(MR.strings.thread_files_empty_title), stringResource(MR.strings.thread_files_empty_detail))
+            "empty" -> ThreadFilesStateMessage(stringResource(Res.string.thread_files_empty_title), stringResource(Res.string.thread_files_empty_detail))
             else -> ThreadFilesList(payload, attachmentOpenStates, autoLoadRouteListKey, refreshing, onEvent)
         }
     }
@@ -224,7 +223,7 @@ private fun ThreadFilesList(
     onEvent: (action: String, attachmentId: String?) -> Unit
 ) {
     if (payload.items.isEmpty()) {
-        ThreadFilesStateMessage(stringResource(MR.strings.thread_files_empty_title), stringResource(MR.strings.thread_files_empty_detail))
+        ThreadFilesStateMessage(stringResource(Res.string.thread_files_empty_title), stringResource(Res.string.thread_files_empty_detail))
         return
     }
     val listState = rememberLazyListState()
@@ -288,9 +287,9 @@ private fun ThreadFilesList(
                     onClick = { onEvent("loadMore", null) },
                     label =
                         if (payload.errorCode != null) {
-                            stringResource(MR.strings.common_retry)
+                            stringResource(Res.string.common_retry)
                         } else {
-                            stringResource(MR.strings.thread_files_load_more)
+                            stringResource(Res.string.thread_files_load_more)
                         }
                 )
             }
@@ -636,7 +635,7 @@ private fun ThreadFileOverflowMenu(
         RaftDesignSystemTheme {
             RaftIconButton(
                 onClick = { if (!busy) expanded = true },
-                tooltip = stringResource(MR.strings.thread_files_file_actions, fileName),
+                tooltip = stringResource(Res.string.thread_files_file_actions, fileName),
                 variant = RaftButtonVariant.Ghost,
                 size = RaftIconButtonSize.Md,
                 loading = busy
@@ -653,7 +652,7 @@ private fun ThreadFileOverflowMenu(
                 onDismissRequest = { expanded = false }
             ) {
                 RaftMenuItem(
-                    text = stringResource(MR.strings.thread_files_jump_to_message),
+                    text = stringResource(Res.string.thread_files_jump_to_message),
                     enabled = canOpenSource,
                     leadingIcon = {
                         RaftLucideIcon(RaftLucideIconName.MapPin, Modifier.size(16.dp), color = raftArgbHex(RaftColor.TextBlack))
@@ -664,7 +663,7 @@ private fun ThreadFileOverflowMenu(
                     }
                 )
                 RaftMenuItem(
-                    text = stringResource(MR.strings.thread_files_download_file),
+                    text = stringResource(Res.string.thread_files_download_file),
                     leadingIcon = {
                         RaftLucideIcon(RaftLucideIconName.Download, Modifier.size(16.dp), color = raftArgbHex(RaftColor.TextBlack))
                     },
@@ -708,7 +707,7 @@ private fun ThreadFilesLoadMore(
     ) {
         RaftDesignSystemTheme {
             RaftButton(
-                text = if (loading) stringResource(MR.strings.common_loading) else label,
+                text = if (loading) stringResource(Res.string.common_loading) else label,
                 onClick = onClick,
                 enabled = !loading,
                 variant = RaftButtonVariant.Default,
@@ -726,7 +725,7 @@ private fun ThreadFilesError(errorCode: String, onRetry: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = stringResource(MR.strings.thread_files_error_load),
+            text = stringResource(Res.string.thread_files_error_load),
             style = RaftType.Input.copy(fontSize = 18.sp, lineHeight = 22.sp, color = RaftColor.TextBlack),
             color = RaftColor.TextBlack
         )
@@ -735,7 +734,7 @@ private fun ThreadFilesError(errorCode: String, onRetry: () -> Unit) {
             style = RaftType.Body.copy(color = RaftColor.TextMutedGray),
             color = RaftColor.TextMutedGray
         )
-        ThreadFilesLoadMore(loading = false, onClick = onRetry, label = stringResource(MR.strings.common_retry))
+        ThreadFilesLoadMore(loading = false, onClick = onRetry, label = stringResource(Res.string.common_retry))
     }
 }
 

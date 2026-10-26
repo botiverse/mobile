@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.RaftBadge
@@ -48,7 +49,6 @@ import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.RAFT_MOBILE_OAUTH_COMPLETION_EVENT
 import build.raft.app.data.RaftEventBuses
 import build.raft.app.data.StoredAuthSession
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -90,7 +90,6 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.Pager
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.serialization.Serializable
 
 const val SETTINGS_ACCOUNT_PAGE = "compose_settings_account"
@@ -198,36 +197,36 @@ internal data class RaftSettingsConnectedAccount(
 @Composable
 private fun RaftSettingsAccountPayload.localizedPresentationCopy(): RaftSettingsAccountPayload =
     copy(
-        profileSectionTitle = stringResource(MR.strings.settings_account_profile_section),
-        displayNameLabel = stringResource(MR.strings.settings_account_display_name),
-        displayNamePlaceholder = stringResource(MR.strings.settings_account_display_name_placeholder),
-        handleLabel = stringResource(MR.strings.settings_account_name),
-        handlePlaceholder = stringResource(MR.strings.settings_account_handle_placeholder),
-        emailLabel = stringResource(MR.strings.settings_account_email),
-        emailPlaceholder = stringResource(MR.strings.settings_account_email_placeholder),
-        verifiedLabel = stringResource(MR.strings.settings_account_verified),
-        saveChangesLabel = stringResource(MR.strings.settings_account_save_profile),
-        cancelLabel = stringResource(MR.strings.common_cancel),
-        connectedAccountsTitle = stringResource(MR.strings.settings_account_connected_accounts),
-        connectedLabel = stringResource(MR.strings.settings_account_connected),
-        connectLabel = stringResource(MR.strings.settings_account_connect),
-        connectingLabel = stringResource(MR.strings.settings_account_connecting),
-        failedLabel = stringResource(MR.strings.settings_account_failed),
-        logoutTitle = stringResource(MR.strings.settings_account_logout),
-        logoutDetail = stringResource(MR.strings.settings_account_logout_detail),
-        logoutLabel = stringResource(MR.strings.settings_account_logout_action),
-        logoutConfirmMessage = stringResource(MR.strings.settings_account_logout_confirm),
-        logoutConfirmLabel = stringResource(MR.strings.settings_account_logout_action),
-        logoutCancelLabel = stringResource(MR.strings.common_cancel),
-        changePasswordTitle = stringResource(MR.strings.settings_account_change_password),
-        changePasswordSubtitle = stringResource(MR.strings.settings_account_change_password_detail),
-        currentPasswordLabel = stringResource(MR.strings.settings_account_current_password),
-        newPasswordLabel = stringResource(MR.strings.settings_account_new_password),
-        confirmPasswordLabel = stringResource(MR.strings.settings_account_confirm_password),
-        newPasswordPlaceholder = stringResource(MR.strings.settings_account_password_minimum),
-        changePasswordButtonLabel = stringResource(MR.strings.settings_account_change_password),
-        passwordUpdatingLabel = stringResource(MR.strings.settings_account_updating),
-        passwordUpdatedLabel = stringResource(MR.strings.settings_account_password_updated)
+        profileSectionTitle = stringResource(Res.string.settings_account_profile_section),
+        displayNameLabel = stringResource(Res.string.settings_account_display_name),
+        displayNamePlaceholder = stringResource(Res.string.settings_account_display_name_placeholder),
+        handleLabel = stringResource(Res.string.settings_account_name),
+        handlePlaceholder = stringResource(Res.string.settings_account_handle_placeholder),
+        emailLabel = stringResource(Res.string.settings_account_email),
+        emailPlaceholder = stringResource(Res.string.settings_account_email_placeholder),
+        verifiedLabel = stringResource(Res.string.settings_account_verified),
+        saveChangesLabel = stringResource(Res.string.settings_account_save_profile),
+        cancelLabel = stringResource(Res.string.common_cancel),
+        connectedAccountsTitle = stringResource(Res.string.settings_account_connected_accounts),
+        connectedLabel = stringResource(Res.string.settings_account_connected),
+        connectLabel = stringResource(Res.string.settings_account_connect),
+        connectingLabel = stringResource(Res.string.settings_account_connecting),
+        failedLabel = stringResource(Res.string.settings_account_failed),
+        logoutTitle = stringResource(Res.string.settings_account_logout),
+        logoutDetail = stringResource(Res.string.settings_account_logout_detail),
+        logoutLabel = stringResource(Res.string.settings_account_logout_action),
+        logoutConfirmMessage = stringResource(Res.string.settings_account_logout_confirm),
+        logoutConfirmLabel = stringResource(Res.string.settings_account_logout_action),
+        logoutCancelLabel = stringResource(Res.string.common_cancel),
+        changePasswordTitle = stringResource(Res.string.settings_account_change_password),
+        changePasswordSubtitle = stringResource(Res.string.settings_account_change_password_detail),
+        currentPasswordLabel = stringResource(Res.string.settings_account_current_password),
+        newPasswordLabel = stringResource(Res.string.settings_account_new_password),
+        confirmPasswordLabel = stringResource(Res.string.settings_account_confirm_password),
+        newPasswordPlaceholder = stringResource(Res.string.settings_account_password_minimum),
+        changePasswordButtonLabel = stringResource(Res.string.settings_account_change_password),
+        passwordUpdatingLabel = stringResource(Res.string.settings_account_updating),
+        passwordUpdatedLabel = stringResource(Res.string.settings_account_password_updated)
     )
 
 internal val settingsAccountSmokePayload: RaftSettingsAccountPayload
@@ -287,7 +286,7 @@ private fun SettingsAccountScreen() {
     }
     StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     SettingsDetailShell(
-        title = stringResource(MR.strings.settings_account_title),
+        title = stringResource(Res.string.settings_account_title),
         subtitle = "",
         onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
     ) {
@@ -490,12 +489,12 @@ private fun SettingsAccountUsageDataRow(
     saving: Boolean,
     onEvent: (String, String?) -> Unit
 ) {
-    val title = stringResource(MR.strings.settings_usage_data_title)
+    val title = stringResource(Res.string.settings_usage_data_title)
     RaftListRowGroup(Modifier.fillMaxWidth()) {
         RaftListRow(
             title = title,
             variant = RaftListRowVariant.Plain,
-            description = stringResource(MR.strings.settings_usage_data_description),
+            description = stringResource(Res.string.settings_usage_data_description),
             wrapDescription = true,
             trailing = {
                 RaftSwitch(
@@ -510,7 +509,7 @@ private fun SettingsAccountUsageDataRow(
         )
         Box(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
             RaftTextLink(
-                text = stringResource(MR.strings.settings_usage_data_learn_more),
+                text = stringResource(Res.string.settings_usage_data_learn_more),
                 onClick = { onEvent(SETTINGS_ACCOUNT_ACTION_OPEN_USAGE_DATA_PRIVACY, null) },
                 variant = RaftTextLinkVariant.Strong,
                 style = RaftTheme.typography.callout
@@ -553,15 +552,15 @@ private fun SettingsAccountProfileCard(
     val newPasswordState = remember { mutableStateOf(TextFieldValue("")) }
     val confirmPasswordState = remember { mutableStateOf(TextFieldValue("")) }
     val passwordDraftError = remember { mutableStateOf<String?>(null) }
-    val passwordMinimumError = stringResource(MR.strings.settings_account_password_too_short)
-    val passwordMismatchError = stringResource(MR.strings.settings_account_password_mismatch)
+    val passwordMinimumError = stringResource(Res.string.settings_account_password_too_short)
+    val passwordMismatchError = stringResource(Res.string.settings_account_password_mismatch)
     val displayName = displayNameState.value
     SettingsAccountHardShadowCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             SettingsProfileAvatar(profile, payload, avatarCacheIdentity, onEvent)
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    profile.displayName.ifBlank { stringResource(MR.strings.settings_account_title) },
+                    profile.displayName.ifBlank { stringResource(Res.string.settings_account_title) },
                     modifier = Modifier.raftCopyable(profile.displayName),
                     style = RaftType.Body.withRaftFontWeight(FontWeight.Bold).copy(fontSize = 15.sp, lineHeight = 20.sp, color = RaftColor.TextBlack),
                     color = RaftColor.TextBlack,
@@ -582,7 +581,7 @@ private fun SettingsAccountProfileCard(
             }
         }
         payload.avatarErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
-            SettingsAccountWarning(stringResource(MR.strings.settings_account_avatar_upload_failed, code))
+            SettingsAccountWarning(stringResource(Res.string.settings_account_avatar_upload_failed, code))
         }
         RaftBrutalReadOnlyField(
             label = payload.handleLabel,
@@ -609,7 +608,7 @@ private fun SettingsAccountProfileCard(
             onClick = { onEvent("saveProfile", displayName.trim()) }
         )
         payload.saveErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
-            SettingsAccountWarning(stringResource(MR.strings.settings_account_profile_save_failed, code))
+            SettingsAccountWarning(stringResource(Res.string.settings_account_profile_save_failed, code))
         }
         RaftSeparator()
         if (connectedAccounts.isNotEmpty()) {
@@ -744,7 +743,7 @@ private fun SettingsEmailField(
                 )
             } else if (value.isNotBlank()) {
                 RaftBadge(
-                    text = stringResource(MR.strings.settings_account_unverified),
+                    text = stringResource(Res.string.settings_account_unverified),
                     appearance = RaftBadgeAppearance.Soft,
                     variant = RaftBadgeVariant.Warning
                 )
@@ -768,8 +767,8 @@ private fun SettingsProfileSaveButton(text: String, enabled: Boolean = true, onC
 @Composable
 private fun RaftSettingsAccountPayload.profileSaveButtonLabel(): String =
     when {
-        saveInProgress -> stringResource(MR.strings.settings_account_saving)
-        saveErrorCode != null -> stringResource(MR.strings.common_retry)
+        saveInProgress -> stringResource(Res.string.settings_account_saving)
+        saveErrorCode != null -> stringResource(Res.string.common_retry)
         else -> saveChangesLabel
     }
 
@@ -856,7 +855,7 @@ private fun SettingsPasswordForm(
         )
         draftError?.let { SettingsAccountWarning(it) }
         payload.passwordErrorCode?.takeIf { it.isNotBlank() }?.let {
-            SettingsAccountWarning(stringResource(MR.strings.settings_account_password_update_failed, it))
+            SettingsAccountWarning(stringResource(Res.string.settings_account_password_update_failed, it))
         }
         SettingsProfileSaveButton(
             text = if (payload.passwordInProgress) payload.passwordUpdatingLabel else payload.changePasswordButtonLabel,
@@ -884,8 +883,8 @@ private fun SettingsConnectedAccounts(
         )
         if (accounts.isEmpty()) {
             SettingsAccountEmptyMessage(
-                stringResource(MR.strings.settings_account_no_connected_accounts),
-                stringResource(MR.strings.settings_account_no_connected_accounts_detail)
+                stringResource(Res.string.settings_account_no_connected_accounts),
+                stringResource(Res.string.settings_account_no_connected_accounts_detail)
             )
         } else {
             accounts.forEachIndexed { index, account ->
@@ -916,7 +915,7 @@ private fun SettingsConnectedAccountRow(
     val connecting = payload.providerConnectingId == providerId
     val failed = payload.providerErrorId == providerId
     val connected = account.status == "connected"
-    val label = account.provider.ifBlank { stringResource(MR.strings.settings_account_provider_fallback, index + 1) }
+    val label = account.provider.ifBlank { stringResource(Res.string.settings_account_provider_fallback, index + 1) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         RaftCard(modifier = Modifier.fillMaxWidth(), variant = RaftCardVariant.Inset) {
             Row(
@@ -958,7 +957,7 @@ private fun SettingsConnectedAccountRow(
                 }
                 if (connected) {
                     RaftButton(
-                        text = stringResource(MR.strings.settings_account_disconnect),
+                        text = stringResource(Res.string.settings_account_disconnect),
                         onClick = { onRequestDisconnect(providerId) },
                         enabled = payload.providerDisconnectingId != providerId,
                         variant = RaftButtonVariant.Default,
@@ -979,7 +978,7 @@ private fun SettingsConnectedAccountRow(
             RaftBanner(
                 description =
                     stringResource(
-                        MR.strings.settings_account_provider_link_failed,
+                        Res.string.settings_account_provider_link_failed,
                         payload.providerErrorCode ?: payload.failedLabel
                     ),
                 status = RaftBannerStatus.Warning,
@@ -1004,31 +1003,31 @@ private fun SettingsDisconnectProviderDialog(
 ) {
     RaftDialog(
         onDismissRequest = onDismiss,
-        title = stringResource(MR.strings.settings_account_disconnect_title, label),
+        title = stringResource(Res.string.settings_account_disconnect_title, label),
         size = RaftDialogSize.Sm,
         dismissOnClickOutside = false,
-        closeLabel = stringResource(MR.strings.common_close),
+        closeLabel = stringResource(Res.string.common_close),
         footer = {
             RaftButton(
-                text = stringResource(MR.strings.common_cancel),
+                text = stringResource(Res.string.common_cancel),
                 onClick = onDismiss,
                 variant = RaftButtonVariant.Ghost,
                 size = RaftButtonSize.Lg,
                 enabled = !busy
             )
             RaftButton(
-                text = stringResource(MR.strings.settings_account_disconnect),
+                text = stringResource(Res.string.settings_account_disconnect),
                 onClick = onConfirm,
                 variant = RaftButtonVariant.Danger,
                 size = RaftButtonSize.Lg,
                 loading = busy,
-                loadingLabel = stringResource(MR.strings.settings_account_disconnecting)
+                loadingLabel = stringResource(Res.string.settings_account_disconnecting)
             )
         }
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             RaftBanner(
-                description = stringResource(MR.strings.settings_account_disconnect_message, label),
+                description = stringResource(Res.string.settings_account_disconnect_message, label),
                 status = RaftBannerStatus.Destructive
             )
             error?.takeIf { it.isNotBlank() }?.let {
@@ -1042,7 +1041,7 @@ private fun SettingsDisconnectProviderDialog(
 private fun SettingsLogoutAction(payload: RaftSettingsAccountPayload, onConfirmLogout: () -> Unit) {
     val confirming = remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsAccountSectionTitle(stringResource(MR.strings.settings_account_session), RaftLucideIconName.LogOut)
+        SettingsAccountSectionTitle(stringResource(Res.string.settings_account_session), RaftLucideIconName.LogOut)
         SettingsAccountHardShadowCard {
             Text(
                 payload.logoutTitle,
@@ -1105,7 +1104,7 @@ private fun SettingsAccountWarning(text: String) {
 
 // Known providers keep their own marks. Unknown social identities retain the
 // existing GitHub fallback rather than borrowing another provider's logo.
-// task #60: every platform loads the MR-bundled SVG asset (see ProviderIconAsset.kt).
+// task #60: every platform loads the bundled SVG file (see ProviderIconAsset.kt).
 // The GitHub and Apple marks are ink (web `text-foreground`): the white files in dark.
 private fun providerIconAssetSource(provider: String, dark: Boolean): String? =
     when {
@@ -1147,8 +1146,8 @@ internal fun List<RaftSettingsConnectedAccount>.visibleSettingsConnectedAccounts
 private fun connectedAccountStatusDetail(account: RaftSettingsConnectedAccount, connected: Boolean): String =
     if (connected) {
         account.identifier.takeIf { it.isNotBlank() }?.let {
-            stringResource(MR.strings.settings_account_connected_as, it)
-        } ?: stringResource(MR.strings.settings_account_connected)
+            stringResource(Res.string.settings_account_connected_as, it)
+        } ?: stringResource(Res.string.settings_account_connected)
     } else {
-        stringResource(MR.strings.settings_account_not_connected)
+        stringResource(Res.string.settings_account_not_connected)
     }

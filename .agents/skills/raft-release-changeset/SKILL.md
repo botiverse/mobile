@@ -65,7 +65,7 @@ author; the release lane owns aggregation.
    name; fold small related fixes into one line.
 3. Terms: compare nouns/status labels with the live catalogs —
    slock `packages/web/src/i18n/messages/` and
-   `compose/shared/src/commonMain/resources/MR/<locale>/strings.xml`; Japanese
+   `compose/shared/src/commonMain/composeResources/values-<locale>/strings.xml`; Japanese
    terms in `docs/i18n-ja-glossary.md`.
 4. All three locales carry the same claims and section counts; the owner
    approves the files before any draft notes are applied.

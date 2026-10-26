@@ -10,7 +10,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ServerNotificationPreferencesChanged
-import com.tencent.tmm.kmmresource.resource.desc.desc
+import build.raft.app.resources.desc
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -767,7 +767,7 @@ class SharedSettingsStoreTest {
                 settingsRepository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot())),
                 localeRepository = localeRepository
             )
-        val originalLocaleType = com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType
+        val originalLocaleType = build.raft.app.resources.StringDesc.localeType
         val originalRuntimeLocale = KmmResourceLocaleRuntime.locale.value
         try {
             val store =
@@ -778,25 +778,25 @@ class SharedSettingsStoreTest {
 
             val result0 = dataSource.setLocale("system")
             assertIs<DataResult.Content<*>>(result0)
-            assertEquals(originalLocaleType, com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType)
+            assertEquals(originalLocaleType, build.raft.app.resources.StringDesc.localeType)
             assertEquals(AppLocale.System, KmmResourceLocaleRuntime.locale.value)
 
             val result1 = dataSource.setLocale("zh-Hans")
             assertIs<DataResult.Content<*>>(result1)
-            assertEquals(originalLocaleType, com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType)
+            assertEquals(originalLocaleType, build.raft.app.resources.StringDesc.localeType)
             assertEquals(AppLocale.SimplifiedChinese, KmmResourceLocaleRuntime.locale.value)
 
             val result2 = dataSource.setLocale("ja")
             assertIs<DataResult.Content<*>>(result2)
-            assertEquals(originalLocaleType, com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType)
+            assertEquals(originalLocaleType, build.raft.app.resources.StringDesc.localeType)
             assertEquals(AppLocale.Japanese, KmmResourceLocaleRuntime.locale.value)
 
             val result3 = dataSource.setLocale("en")
             assertIs<DataResult.Content<*>>(result3)
-            assertEquals(originalLocaleType, com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType)
+            assertEquals(originalLocaleType, build.raft.app.resources.StringDesc.localeType)
             assertEquals(AppLocale.English, KmmResourceLocaleRuntime.locale.value)
         } finally {
-            com.tencent.tmm.kmmresource.resource.desc.StringDesc.localeType = originalLocaleType
+            build.raft.app.resources.StringDesc.localeType = originalLocaleType
             KmmResourceLocaleRuntime.replaceForTest(originalRuntimeLocale)
         }
         scope.cancel()

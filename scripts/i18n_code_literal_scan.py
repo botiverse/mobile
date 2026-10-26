@@ -37,7 +37,7 @@ DEFAULT_ROOTS = (
     Path("compose/androidApp/src/main/java"),
 )
 DEFAULT_ALLOWLIST = Path("scripts/i18n_code_literal_allowlist.json")
-DEFAULT_MR_BASE = Path("compose/shared/src/commonMain/resources/MR/base/strings.xml")
+DEFAULT_MR_BASE = Path("compose/shared/src/commonMain/composeResources/values/strings.xml")
 
 ASCII_LETTER_RE = re.compile(r"[A-Za-z]")
 LOCALIZED_CHAR_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")

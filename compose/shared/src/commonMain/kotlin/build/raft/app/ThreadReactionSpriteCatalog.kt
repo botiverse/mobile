@@ -1,14 +1,14 @@
 package build.raft.app
 
 import build.raft.app.base.putIfAbsent
-import build.raft.app.resources.MR
 import build.raft.app.compat.ui.DrawableResource
 import build.raft.app.compat.ui.InternalResourceApi
-import com.tencent.tmm.kmmresource.resource.AssetResource
+import build.raft.app.resources.RaftBundledFile
+import build.raft.app.resources.RaftBundledFiles
 
 internal data class ThreadReactionAtlasResource(
-    val image: AssetResource,
-    val manifest: AssetResource,
+    val image: RaftBundledFile,
+    val manifest: RaftBundledFile,
     val imageUrl: String
 )
 
@@ -52,8 +52,8 @@ internal data class ThreadReactionSprite(
 
 internal data class ThreadReactionSpriteCatalog(
     val schemaVersion: Int,
-    // Nullable: the atlas asset resource can't initialize on iOS (task #421 —
-    // MR assets aren't bundled there), so it resolves to null on that platform.
+    // Nullable (task #421): the former kmmresource atlas asset could not
+    // initialize on iOS; the guard stays so a missing file degrades to null.
     // The sprite `reactions`/`atlas` metadata is pure data and always present;
     // `resource` is only needed to load the atlas image.
     val resource: ThreadReactionAtlasResource?,
@@ -98,28 +98,23 @@ internal data class ThreadReactionSpriteCatalog(
     }
 }
 
-// kmmresource packs MR assets at the APK root: assets/<originalPath>
-// (e.g. assets/slock_reactions/reaction_atlas_v1.png). The image adapter
-// resolves "assets://<path>" by stripping the scheme and opening <path>
-// relative to the assets root, so the URL must NOT carry the Kuikly
-// "common/" segment — ImageUri.commonAssets produced
-// "assets://common/slock_reactions/..." which exists in no APK and made
-// the atlas silently fall back to legacy glyphs on every Android build
-// (task #335 follow-up).
-// task #421: the reaction atlas asset lives under MR (resources/MR/assets/
-// reactions/). The kmmresource plugin packs MR assets into the Android APK's
-// assets root, but there is no iOS bundle equivalent, so *touching*
-// MR.assets.reactions throws FileFailedToInitializeException on iOS. Probe it
-// once, lazily and guarded, so class initialization never crashes; everything
+// The reaction atlas ships as a Compose resources file
+// (composeResources/files/reactions/). The image loader resolves
+// "assets://compose-resources/<path>" through Res.readBytes(<path>); the URL
+// must NOT carry the Kuikly "common/" segment — ImageUri.commonAssets produced
+// "assets://common/slock_reactions/..." which exists nowhere and made the atlas
+// silently fall back to legacy glyphs (task #335 follow-up).
+// task #421: touching the former kmmresource MR.assets could throw on iOS. The
+// probe stays lazy and guarded, so class initialization never crashes; everything
 // that needs the atlas image checks this first and otherwise falls back to
 // emoji glyphs (see ThreadQuickReactionGlyph), matching Android's legacy-glyph
 // fallback semantics (task #379).
 internal val spriteAtlasAvailable: Boolean by lazy {
-    runCatching { MR.assets.reactions.reaction_atlas_v1.originalPath }.isSuccess
+    runCatching { RaftBundledFiles.reactionAtlasV1.path }.isSuccess
 }
 
 private val ThreadReactionSpriteAtlasImageUrl: String? by lazy {
-    runCatching { "assets://${MR.assets.reactions.reaction_atlas_v1.originalPath}" }.getOrNull()
+    runCatching { RaftBundledFiles.reactionAtlasV1.imageUrl }.getOrNull()
 }
 
 @OptIn(InternalResourceApi::class)
@@ -131,8 +126,8 @@ internal val ThreadReactionSpriteAtlasResource: ThreadReactionAtlasResource? by 
     val url = ThreadReactionSpriteAtlasImageUrl ?: return@lazy null
     runCatching {
         ThreadReactionAtlasResource(
-            image = MR.assets.reactions.reaction_atlas_v1,
-            manifest = MR.assets.reactions.reaction_atlas_v1_manifest,
+            image = RaftBundledFiles.reactionAtlasV1,
+            manifest = RaftBundledFiles.reactionAtlasV1Manifest,
             imageUrl = url
         )
     }.getOrNull()

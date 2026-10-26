@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import com.tencent.tmm.kmmresource.resource.desc.StringDesc
+import build.raft.app.resources.StringDesc
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json

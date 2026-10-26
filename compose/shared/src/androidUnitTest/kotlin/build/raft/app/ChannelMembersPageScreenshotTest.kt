@@ -17,7 +17,7 @@ import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.Presence
-import com.tencent.tmm.kmmresource.resource.desc.StringDesc
+import build.raft.app.resources.StringDesc
 import kotlin.test.Test
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Rule

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -63,7 +64,6 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
-import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -92,7 +92,6 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 internal const val CHANNEL_SETTINGS_PAGE = "compose_channel_settings"
 
@@ -514,8 +513,8 @@ private fun ChannelSettingsPageScreen() {
                 settingsState.status == ChannelSettingsLoadStatus.Error ||
                     settingsState.status == ChannelSettingsLoadStatus.AuthorityRejected ->
                     ChannelSettingsMessage(
-                        title = stringResource(MR.strings.channel_settings_unavailable),
-                        detail = stringResource(MR.strings.channel_settings_unavailable_detail),
+                        title = stringResource(Res.string.channel_settings_unavailable),
+                        detail = stringResource(Res.string.channel_settings_unavailable_detail),
                         onRetry = { settingsStore.dispatch(ChannelSettingsIntent.Refresh) }
                     )
                 else -> ChannelSettingsLoading()
@@ -611,13 +610,13 @@ internal data class ChannelSettingsFailureLabels(
 @Composable
 private fun channelSettingsFailureLabels(): ChannelSettingsFailureLabels =
     ChannelSettingsFailureLabels(
-        update = stringResource(MR.strings.thread_settings_update_failed),
-        visibility = stringResource(MR.strings.channel_settings_visibility_failed),
-        archive = stringResource(MR.strings.thread_error_archive_channel),
-        unarchive = stringResource(MR.strings.channel_settings_unarchive_failed),
-        delete = stringResource(MR.strings.thread_error_delete_channel),
-        disconnect = stringResource(MR.strings.joint_disconnect_failed),
-        guestAccess = stringResource(MR.strings.channel_settings_guest_failed),
+        update = stringResource(Res.string.thread_settings_update_failed),
+        visibility = stringResource(Res.string.channel_settings_visibility_failed),
+        archive = stringResource(Res.string.thread_error_archive_channel),
+        unarchive = stringResource(Res.string.channel_settings_unarchive_failed),
+        delete = stringResource(Res.string.thread_error_delete_channel),
+        disconnect = stringResource(Res.string.joint_disconnect_failed),
+        guestAccess = stringResource(Res.string.channel_settings_guest_failed),
     )
 
 /**
@@ -663,7 +662,7 @@ internal fun ChannelSettingsScaffold(
     RaftDesignSystemTheme {
         Column(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
             RaftTopPageHeader(
-                title = stringResource(MR.strings.channel_settings_title),
+                title = stringResource(Res.string.channel_settings_title),
                 iconName = RaftLucideIconName.Settings,
                 backgroundColor = RaftColor.SurfaceWhite,
                 refreshing = refreshing,
@@ -824,7 +823,7 @@ private fun ChannelIdentityHeader(channel: HomeChannelRow) {
             RaftBadge(text = channelSettingsStatusLabel(channel), appearance = RaftBadgeAppearance.Outline)
         }
         RaftText(
-            text = description ?: stringResource(MR.strings.channel_settings_description_empty),
+            text = description ?: stringResource(Res.string.channel_settings_description_empty),
             modifier = Modifier.raftCopyable(description),
             style = RaftTheme.typography.callout,
             color = if (description != null) colors.foregroundMuted else colors.foregroundHint,
@@ -840,10 +839,10 @@ internal fun channelSettingsHeaderName(name: String): String = "#${name.removePr
 @Composable
 private fun channelSettingsStatusLabel(channel: HomeChannelRow): String =
     when {
-        channel.archived -> stringResource(MR.strings.channel_settings_status_archived)
-        channelSettingsIsJoint(channel) -> stringResource(MR.strings.channel_settings_status_joint)
-        channelSettingsIsPrivate(channel) -> stringResource(MR.strings.channel_settings_status_private)
-        else -> stringResource(MR.strings.channel_settings_status_public)
+        channel.archived -> stringResource(Res.string.channel_settings_status_archived)
+        channelSettingsIsJoint(channel) -> stringResource(Res.string.channel_settings_status_joint)
+        channelSettingsIsPrivate(channel) -> stringResource(Res.string.channel_settings_status_private)
+        else -> stringResource(Res.string.channel_settings_status_public)
     }
 
 /**
@@ -865,7 +864,7 @@ private fun ChannelMembersSection(
     val loading = slice.status == SharedServerMembersLoadStatus.InFlight && members.isEmpty()
     val summary = channelSettingsMemberSummary(slice = slice, fallbackCount = fallbackCount)
     RaftSection(
-        title = stringResource(MR.strings.channel_settings_members),
+        title = stringResource(Res.string.channel_settings_members),
         modifier = Modifier.clickable(onClick = onOpen),
         action = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -900,7 +899,7 @@ private fun ChannelMembersSection(
                 if (canAdd) {
                     RaftAvatarEmpty(
                         size = RaftAvatarSize.Md,
-                        contentDescription = stringResource(MR.strings.thread_action_add_member),
+                        contentDescription = stringResource(Res.string.thread_action_add_member),
                         enabled = !loading,
                         onClick = onAdd,
                     )
@@ -931,7 +930,7 @@ internal fun channelSettingsMemberStripVisibleCount(total: Int, columns: Int, wi
 @Composable
 private fun channelSettingsMemberSummary(slice: SharedServerChannelMembersSlice, fallbackCount: Int?): String {
     if (slice.status == SharedServerMembersLoadStatus.InFlight && slice.members.isEmpty()) {
-        return stringResource(MR.strings.common_loading)
+        return stringResource(Res.string.common_loading)
     }
     if (slice.status != SharedServerMembersLoadStatus.Loaded && slice.members.isEmpty()) {
         return (fallbackCount ?: 0).toString()
@@ -942,15 +941,15 @@ private fun channelSettingsMemberSummary(slice: SharedServerChannelMembersSlice,
     val parts =
         buildList {
             add(
-                if (humans == 1) stringResource(MR.strings.channel_settings_members_humans_one, humans)
-                else stringResource(MR.strings.channel_settings_members_humans_other, humans)
+                if (humans == 1) stringResource(Res.string.channel_settings_members_humans_one, humans)
+                else stringResource(Res.string.channel_settings_members_humans_other, humans)
             )
             add(
-                if (agents == 1) stringResource(MR.strings.channel_settings_members_agents_one, agents)
-                else stringResource(MR.strings.channel_settings_members_agents_other, agents)
+                if (agents == 1) stringResource(Res.string.channel_settings_members_agents_one, agents)
+                else stringResource(Res.string.channel_settings_members_agents_other, agents)
             )
             if (slice.externalMembers.isNotEmpty()) {
-                add(stringResource(MR.strings.channel_settings_members_slack, slice.externalMembers.size))
+                add(stringResource(Res.string.channel_settings_members_slack, slice.externalMembers.size))
             }
         }
     return parts.joinToString(" · ")
@@ -1031,22 +1030,22 @@ private fun ChannelInfoSection(
     val nameInvalid = trimmedName.isNotEmpty() && !trimmedName.isSubmittableChannelName()
     val nameError =
         when {
-            nameInvalid -> stringResource(MR.strings.channel_create_error_name_format)
+            nameInvalid -> stringResource(Res.string.channel_create_error_name_format)
             status == ChannelProfileUpdateStatus.Failed && errorCode == "channel_name_invalid" ->
-                stringResource(MR.strings.channel_create_error_name_format)
+                stringResource(Res.string.channel_create_error_name_format)
             else -> null
         }
     val clearStatusOnEdit: () -> Unit = { if (status != ChannelProfileUpdateStatus.Idle && !saving) onClearStatus() }
-    RaftSection(title = stringResource(MR.strings.channel_settings_info)) {
+    RaftSection(title = stringResource(Res.string.channel_settings_info)) {
         RaftText(
-            stringResource(MR.strings.channel_settings_info_detail),
+            stringResource(Res.string.channel_settings_info_detail),
             modifier = Modifier.padding(bottom = 12.dp),
             style = RaftTheme.typography.footnote,
             color = RaftTheme.colors.foregroundHint,
         )
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             RaftField(
-                label = stringResource(MR.strings.thread_settings_name),
+                label = stringResource(Res.string.thread_settings_name),
                 required = true,
                 error = nameError,
                 enabled = enabled && nameEditable && !saving,
@@ -1058,11 +1057,11 @@ private fun ChannelInfoSection(
                         name = it
                         clearStatusOnEdit()
                     },
-                    placeholder = stringResource(MR.strings.thread_settings_name_placeholder),
+                    placeholder = stringResource(Res.string.thread_settings_name_placeholder),
                 )
             }
             RaftField(
-                label = stringResource(MR.strings.thread_settings_description),
+                label = stringResource(Res.string.thread_settings_description),
                 optional = true,
                 enabled = enabled && !saving,
             ) {
@@ -1072,7 +1071,7 @@ private fun ChannelInfoSection(
                         description = it
                         clearStatusOnEdit()
                     },
-                    placeholder = stringResource(MR.strings.thread_settings_description_placeholder),
+                    placeholder = stringResource(Res.string.thread_settings_description_placeholder),
                     limit = ChannelSettingsDescriptionLimit,
                 )
             }
@@ -1092,9 +1091,9 @@ private fun ChannelInfoSection(
                     description =
                         stringResource(
                             if (errorCode == CHANNEL_SETTINGS_SLACK_BRIDGE_PARTIAL_FAILURE) {
-                                MR.strings.channel_settings_slack_partial_failure
+                                Res.string.channel_settings_slack_partial_failure
                             } else {
-                                MR.strings.thread_settings_update_failed
+                                Res.string.thread_settings_update_failed
                             }
                         ),
                     status = RaftBannerStatus.Warning,
@@ -1108,14 +1107,14 @@ private fun ChannelInfoSection(
             ) {
                 if (status == ChannelProfileUpdateStatus.Succeeded && !dirty) {
                     RaftText(
-                        stringResource(MR.strings.channel_settings_save_success),
+                        stringResource(Res.string.channel_settings_save_success),
                         modifier = Modifier.weight(1f),
                         style = RaftTheme.typography.footnote,
                         color = RaftTheme.colors.foregroundHint,
                     )
                 }
                 RaftButton(
-                    text = stringResource(MR.strings.common_cancel),
+                    text = stringResource(Res.string.common_cancel),
                     onClick = {
                         name = savedName
                         description = savedDescription
@@ -1126,7 +1125,7 @@ private fun ChannelInfoSection(
                     enabled = dirty && !saving,
                 )
                 RaftButton(
-                    text = stringResource(MR.strings.common_save),
+                    text = stringResource(Res.string.common_save),
                     onClick = {
                         onSave(trimmedName, trimmedDescription, if (slackDirty) ChannelSlackBridgeSelection(slackPick) else null)
                     },
@@ -1137,7 +1136,7 @@ private fun ChannelInfoSection(
                             trimmedName.isSubmittableChannelName() &&
                             trimmedDescription.length <= ChannelSettingsDescriptionLimit,
                     loading = saving,
-                    loadingLabel = stringResource(MR.strings.thread_settings_saving),
+                    loadingLabel = stringResource(Res.string.thread_settings_saving),
                 )
             }
         }
@@ -1157,23 +1156,23 @@ private fun ChannelSlackBridgeField(
     enabled: Boolean,
     onSelect: (String?) -> Unit,
 ) {
-    val notConnected = stringResource(MR.strings.channel_settings_slack_not_connected)
+    val notConnected = stringResource(Res.string.channel_settings_slack_not_connected)
     val options: List<ChannelSlackBridgeOption?> = listOf(null) + state.options
     val labels =
         options.associateWith { option ->
             when {
                 option == null -> notConnected
-                option.membershipRequired -> stringResource(MR.strings.channel_settings_slack_membership_required, option.name)
+                option.membershipRequired -> stringResource(Res.string.channel_settings_slack_membership_required, option.name)
                 option.pairedElsewhere && option.slackChannelId != selected ->
-                    stringResource(MR.strings.channel_settings_slack_already_paired, option.name)
-                else -> stringResource(MR.strings.channel_settings_slack_channel, option.name)
+                    stringResource(Res.string.channel_settings_slack_already_paired, option.name)
+                else -> stringResource(Res.string.channel_settings_slack_channel, option.name)
             }
         }
     RaftField(
-        label = stringResource(MR.strings.channel_settings_slack_title),
-        description = stringResource(MR.strings.channel_settings_slack_detail),
+        label = stringResource(Res.string.channel_settings_slack_title),
+        description = stringResource(Res.string.channel_settings_slack_detail),
         enabled = enabled,
-        labelTrailing = { RaftBadge(text = stringResource(MR.strings.channel_bridge_provider_slack), appearance = RaftBadgeAppearance.Outline) },
+        labelTrailing = { RaftBadge(text = stringResource(Res.string.channel_bridge_provider_slack), appearance = RaftBadgeAppearance.Outline) },
     ) {
         RaftSelect(
             value = options.firstOrNull { it?.slackChannelId == selected },
@@ -1203,17 +1202,17 @@ private fun ChannelGuestAccessSection(
     onSetVisible: (Boolean) -> Unit,
     onSetJoinable: (Boolean) -> Unit,
 ) {
-    RaftSection(title = stringResource(MR.strings.channel_settings_guest_title)) {
+    RaftSection(title = stringResource(Res.string.channel_settings_guest_title)) {
         RaftText(
-            stringResource(MR.strings.channel_settings_guest_detail),
+            stringResource(Res.string.channel_settings_guest_detail),
             modifier = Modifier.padding(bottom = 12.dp),
             style = RaftTheme.typography.footnote,
             color = RaftTheme.colors.foregroundHint,
         )
         RaftListRowGroup(Modifier.fillMaxWidth()) {
             ChannelPreferenceRow(
-                title = stringResource(MR.strings.channel_settings_guest_visible),
-                detail = stringResource(MR.strings.channel_settings_guest_visible_detail),
+                title = stringResource(Res.string.channel_settings_guest_visible),
+                detail = stringResource(Res.string.channel_settings_guest_visible_detail),
                 checked = channel.guestVisible,
                 enabled = enabled,
                 divider = false,
@@ -1221,8 +1220,8 @@ private fun ChannelGuestAccessSection(
             )
             if (!channelSettingsIsAllChannel(channel)) {
                 ChannelPreferenceRow(
-                    title = stringResource(MR.strings.channel_settings_guest_joinable),
-                    detail = stringResource(MR.strings.channel_settings_guest_joinable_detail),
+                    title = stringResource(Res.string.channel_settings_guest_joinable),
+                    detail = stringResource(Res.string.channel_settings_guest_joinable_detail),
                     checked = channel.guestJoinable,
                     enabled = enabled,
                     divider = true,
@@ -1244,19 +1243,19 @@ private fun ChannelPreferencesSection(
     onToggleMute: () -> Unit,
     onTogglePin: () -> Unit
 ) {
-    RaftSection(title = stringResource(MR.strings.channel_settings_preferences)) {
+    RaftSection(title = stringResource(Res.string.channel_settings_preferences)) {
         RaftListRowGroup(Modifier.fillMaxWidth()) {
             ChannelPreferenceRow(
-                title = stringResource(MR.strings.channel_settings_pin),
-                detail = stringResource(MR.strings.channel_settings_pin_detail),
+                title = stringResource(Res.string.channel_settings_pin),
+                detail = stringResource(Res.string.channel_settings_pin_detail),
                 checked = pinned,
                 enabled = enabled,
                 divider = false,
                 onToggle = onTogglePin
             )
             ChannelPreferenceRow(
-                title = stringResource(MR.strings.channel_settings_mute),
-                detail = stringResource(MR.strings.channel_settings_mute_detail),
+                title = stringResource(Res.string.channel_settings_mute),
+                detail = stringResource(Res.string.channel_settings_mute_detail),
                 checked = muted,
                 enabled = muteSupported && enabled,
                 divider = true,
@@ -1264,7 +1263,7 @@ private fun ChannelPreferencesSection(
             )
             // Device-local display preference: available without write permission on the channel.
             ChannelPreferenceRow(
-                title = stringResource(MR.strings.conversation_long_message_collapse),
+                title = stringResource(Res.string.conversation_long_message_collapse),
                 detail = longMessageCollapseSetting.preference.localizedDetail(),
                 checked = longMessageCollapseSetting.effective,
                 enabled = longMessageCollapseSetting.available,
@@ -1310,60 +1309,60 @@ private fun ChannelActionsSection(
     actionInFlight: ChannelSettingsAction?,
     callbacks: ChannelSettingsCallbacks,
 ) {
-    RaftSection(title = stringResource(MR.strings.channel_settings_actions)) {
+    RaftSection(title = stringResource(Res.string.channel_settings_actions)) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             actions.forEach { row ->
                 val buttonEnabled = enabled && actionInFlight == null
                 when (row) {
                     ChannelSettingsActionRow.MakePrivate ->
                         ChannelActionButton(
-                            stringResource(MR.strings.thread_settings_make_private),
+                            stringResource(Res.string.thread_settings_make_private),
                             RaftLucideIconName.Lock,
                             enabled = buttonEnabled,
                         ) { callbacks.onConfirm(ChannelSettingsConfirm.MakePrivate) }
                     ChannelSettingsActionRow.MakePublic ->
                         ChannelActionButton(
-                            stringResource(MR.strings.channel_settings_make_public),
+                            stringResource(Res.string.channel_settings_make_public),
                             RaftLucideIconName.Hash,
                             enabled = buttonEnabled,
                         ) { callbacks.onConfirm(ChannelSettingsConfirm.MakePublic) }
                     ChannelSettingsActionRow.Archive ->
                         ChannelActionButton(
-                            stringResource(MR.strings.thread_settings_archive),
+                            stringResource(Res.string.thread_settings_archive),
                             RaftLucideIconName.Archive,
                             enabled = buttonEnabled,
                         ) { callbacks.onConfirm(ChannelSettingsConfirm.Archive) }
                     ChannelSettingsActionRow.Unarchive ->
                         ChannelActionButton(
-                            stringResource(MR.strings.channel_settings_unarchive),
+                            stringResource(Res.string.channel_settings_unarchive),
                             RaftLucideIconName.Archive,
                             enabled = enabled && (actionInFlight == null || actionInFlight == ChannelSettingsAction.Unarchive),
                             loading = actionInFlight == ChannelSettingsAction.Unarchive,
-                            loadingLabel = stringResource(MR.strings.channel_settings_unarchiving),
+                            loadingLabel = stringResource(Res.string.channel_settings_unarchiving),
                             onClick = callbacks.onUnarchive,
                         )
                     ChannelSettingsActionRow.Leave ->
                         ChannelActionButton(
-                            stringResource(MR.strings.channel_settings_leave),
+                            stringResource(Res.string.channel_settings_leave),
                             RaftLucideIconName.LogOut,
                             enabled = buttonEnabled,
                         ) { callbacks.onConfirm(ChannelSettingsConfirm.Leave) }
                     ChannelSettingsActionRow.StopAllAgents ->
                         ChannelActionButton(
-                            stringResource(MR.strings.channel_sos_entry),
+                            stringResource(Res.string.channel_sos_entry),
                             RaftLucideIconName.Square,
                             onClick = callbacks.onStopAllAgents,
                         )
                     ChannelSettingsActionRow.Delete ->
                         ChannelActionButton(
-                            stringResource(MR.strings.thread_settings_delete),
+                            stringResource(Res.string.thread_settings_delete),
                             RaftLucideIconName.Trash2,
                             variant = RaftButtonVariant.Danger,
                             enabled = buttonEnabled,
                         ) { callbacks.onConfirm(ChannelSettingsConfirm.Delete) }
                     ChannelSettingsActionRow.Disconnect ->
                         ChannelActionButton(
-                            stringResource(MR.strings.joint_disconnect_channel),
+                            stringResource(Res.string.joint_disconnect_channel),
                             RaftLucideIconName.Unlink,
                             variant = RaftButtonVariant.Danger,
                             enabled = buttonEnabled,
@@ -1404,9 +1403,9 @@ private fun ChannelJointConnectionsEntry(onClick: () -> Unit) {
         RaftSeparator()
         RaftListRowGroup(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp)) {
             RaftListRow(
-                title = stringResource(MR.strings.joint_connections_title),
+                title = stringResource(Res.string.joint_connections_title),
                 onClick = onClick,
-                description = stringResource(MR.strings.joint_connections_rule),
+                description = stringResource(Res.string.joint_connections_rule),
                 wrapDescription = true,
                 descriptionMaxLines = 2,
                 leading = { RaftComputersIcon(RaftLucideIconName.GitBranch, size = 20.dp) },
@@ -1437,45 +1436,45 @@ private fun ChannelSettingsConfirmDialog(
     val variant: RaftButtonVariant
     when (confirm) {
         ChannelSettingsConfirm.MakePrivate -> {
-            title = stringResource(MR.strings.thread_settings_make_private_title)
-            description = stringResource(MR.strings.channel_settings_make_private_confirm, channelName)
-            confirmLabel = stringResource(MR.strings.thread_settings_make_private)
-            loadingLabel = stringResource(MR.strings.channel_settings_updating)
+            title = stringResource(Res.string.thread_settings_make_private_title)
+            description = stringResource(Res.string.channel_settings_make_private_confirm, channelName)
+            confirmLabel = stringResource(Res.string.thread_settings_make_private)
+            loadingLabel = stringResource(Res.string.channel_settings_updating)
             variant = RaftButtonVariant.Warning
         }
         ChannelSettingsConfirm.MakePublic -> {
-            title = stringResource(MR.strings.channel_settings_make_public_title)
-            description = stringResource(MR.strings.channel_settings_make_public_confirm, channelName)
-            confirmLabel = stringResource(MR.strings.channel_settings_make_public)
-            loadingLabel = stringResource(MR.strings.channel_settings_updating)
+            title = stringResource(Res.string.channel_settings_make_public_title)
+            description = stringResource(Res.string.channel_settings_make_public_confirm, channelName)
+            confirmLabel = stringResource(Res.string.channel_settings_make_public)
+            loadingLabel = stringResource(Res.string.channel_settings_updating)
             variant = RaftButtonVariant.Warning
         }
         ChannelSettingsConfirm.Archive -> {
-            title = stringResource(MR.strings.thread_settings_archive_title)
-            description = stringResource(MR.strings.channel_settings_archive_confirm, channelName)
-            confirmLabel = stringResource(MR.strings.thread_settings_archive_confirm)
-            loadingLabel = stringResource(MR.strings.channel_settings_archiving)
+            title = stringResource(Res.string.thread_settings_archive_title)
+            description = stringResource(Res.string.channel_settings_archive_confirm, channelName)
+            confirmLabel = stringResource(Res.string.thread_settings_archive_confirm)
+            loadingLabel = stringResource(Res.string.channel_settings_archiving)
             variant = RaftButtonVariant.Warning
         }
         ChannelSettingsConfirm.Leave -> {
-            title = stringResource(MR.strings.channel_settings_leave)
-            description = stringResource(MR.strings.channel_settings_leave_confirm, channelName)
-            confirmLabel = stringResource(MR.strings.channel_settings_leave_action)
-            loadingLabel = stringResource(MR.strings.channel_settings_leaving)
+            title = stringResource(Res.string.channel_settings_leave)
+            description = stringResource(Res.string.channel_settings_leave_confirm, channelName)
+            confirmLabel = stringResource(Res.string.channel_settings_leave_action)
+            loadingLabel = stringResource(Res.string.channel_settings_leaving)
             variant = RaftButtonVariant.Warning
         }
         ChannelSettingsConfirm.Delete -> {
-            title = stringResource(MR.strings.thread_settings_delete_title)
-            description = stringResource(MR.strings.channel_settings_delete_confirm, channelName)
-            confirmLabel = stringResource(MR.strings.thread_settings_delete)
-            loadingLabel = stringResource(MR.strings.channel_settings_deleting)
+            title = stringResource(Res.string.thread_settings_delete_title)
+            description = stringResource(Res.string.channel_settings_delete_confirm, channelName)
+            confirmLabel = stringResource(Res.string.thread_settings_delete)
+            loadingLabel = stringResource(Res.string.channel_settings_deleting)
             variant = RaftButtonVariant.Danger
         }
         ChannelSettingsConfirm.Disconnect -> {
-            title = stringResource(MR.strings.joint_disconnect_title)
-            description = stringResource(MR.strings.joint_disconnect_confirm, channelName)
-            confirmLabel = stringResource(MR.strings.joint_disconnect_action)
-            loadingLabel = stringResource(MR.strings.joint_disconnecting)
+            title = stringResource(Res.string.joint_disconnect_title)
+            description = stringResource(Res.string.joint_disconnect_confirm, channelName)
+            confirmLabel = stringResource(Res.string.joint_disconnect_action)
+            loadingLabel = stringResource(Res.string.joint_disconnecting)
             variant = RaftButtonVariant.Danger
         }
     }
@@ -1486,10 +1485,10 @@ private fun ChannelSettingsConfirmDialog(
             description = description,
             size = RaftDialogSize.Sm,
             dismissOnClickOutside = !busy,
-            closeLabel = stringResource(MR.strings.common_close),
+            closeLabel = stringResource(Res.string.common_close),
             footer = {
                 RaftButton(
-                    text = stringResource(MR.strings.common_cancel),
+                    text = stringResource(Res.string.common_cancel),
                     onClick = onDismiss,
                     variant = RaftButtonVariant.Ghost,
                     size = RaftButtonSize.Lg,
@@ -1562,7 +1561,7 @@ private fun ChannelSettingsMessage(title: String, detail: String, onRetry: () ->
         RaftText(title, style = RaftTheme.typography.headline, color = RaftTheme.colors.foreground, textAlign = TextAlign.Center)
         RaftText(detail, style = RaftTheme.typography.callout, color = RaftTheme.colors.foregroundMuted, textAlign = TextAlign.Center)
         RaftButton(
-            text = stringResource(MR.strings.common_retry),
+            text = stringResource(Res.string.common_retry),
             onClick = onRetry,
             leadingIcon = { RaftComputersIcon(RaftLucideIconName.RefreshCw) },
         )
@@ -1573,8 +1572,8 @@ private fun ChannelSettingsMessage(title: String, detail: String, onRetry: () ->
 private fun ChannelSettingsInvalidRouteScreen(onBack: () -> Unit) {
     ChannelSettingsScaffold(refreshing = false, onBack = onBack) {
         ChannelSettingsMessage(
-            title = stringResource(MR.strings.channel_settings_unavailable),
-            detail = stringResource(MR.strings.channel_settings_invalid_route),
+            title = stringResource(Res.string.channel_settings_unavailable),
+            detail = stringResource(Res.string.channel_settings_invalid_route),
             onRetry = onBack
         )
     }

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
@@ -18,7 +19,6 @@ import build.raft.app.data.SettingsMobileSelectionSnapshot
 import build.raft.app.data.SettingsMobileSnapshot
 import build.raft.app.data.SettingsLanguageRegionSnapshot
 import build.raft.app.data.TranslationTargetLanguages
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.foundation.background
@@ -32,8 +32,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.tencent.tmm.kmmresource.compose.stringResource
-import com.tencent.tmm.kmmresource.resource.format
 import kotlinx.coroutines.flow.map
 
 @Composable
@@ -65,8 +63,8 @@ internal fun SettingsLanguageRegionContent(
                 item {
                     SettingsLoadStateCard(
                         RaftLucideIconName.Languages,
-                        stringResource(MR.strings.common_loading),
-                        stringResource(MR.strings.settings_language_loading),
+                        stringResource(Res.string.common_loading),
+                        stringResource(Res.string.settings_language_loading),
                         null,
                         onRetry,
                         loading = true
@@ -76,9 +74,9 @@ internal fun SettingsLanguageRegionContent(
                 item {
                     SettingsLoadStateCard(
                         RaftLucideIconName.Languages,
-                        stringResource(MR.strings.settings_state_unavailable),
+                        stringResource(Res.string.settings_state_unavailable),
                         state.reason.localizedUserFacingMessage(),
-                        stringResource(MR.strings.common_retry),
+                        stringResource(Res.string.common_retry),
                         onRetry
                     )
                 }
@@ -86,9 +84,9 @@ internal fun SettingsLanguageRegionContent(
                 item {
                     SettingsLoadStateCard(
                         RaftLucideIconName.TriangleAlert,
-                        stringResource(MR.strings.settings_error_language),
+                        stringResource(Res.string.settings_error_language),
                         state.error.localizedUserFacingMessage(),
-                        stringResource(MR.strings.common_retry),
+                        stringResource(Res.string.common_retry),
                         onRetry
                     )
                 }
@@ -96,7 +94,7 @@ internal fun SettingsLanguageRegionContent(
                 item {
                     SettingsLoadStateCard(
                         RaftLucideIconName.Lock,
-                        stringResource(MR.strings.settings_state_permission_required),
+                        stringResource(Res.string.settings_state_permission_required),
                         state.blocker.localizedUserFacingMessage(),
                         null,
                         onRetry
@@ -164,10 +162,10 @@ private fun SettingsLanguagePreferenceCard(
             dirty &&
             ((languageDirty && snapshot.browserLanguage.available) || displayDirty)
     val saveLabel = actionState.languageRegionSaveLabel(LANGUAGE_REGION_LANGUAGE_ACTIONS)
-    SettingsFormSectionCard(iconName = RaftLucideIconName.Languages, title = stringResource(MR.strings.settings_language_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Languages, title = stringResource(Res.string.settings_language_title)) {
         SettingsSegmentedControlField(
-            label = stringResource(MR.strings.settings_translation_mode),
-            detail = stringResource(MR.strings.settings_translation_mode_detail),
+            label = stringResource(Res.string.settings_translation_mode),
+            detail = stringResource(Res.string.settings_translation_mode_detail),
             selectedValue = selectedDisplay,
             options = snapshot.translationDisplay.toTranslationModeOptions(),
             onValueSelected = onDisplayDraftChange,
@@ -178,8 +176,8 @@ private fun SettingsLanguagePreferenceCard(
         }
         if (selectedDisplay != "original") {
             SettingsComboboxField(
-                label = stringResource(MR.strings.settings_preferred_translation_language_title),
-                description = stringResource(MR.strings.settings_preferred_translation_language_detail),
+                label = stringResource(Res.string.settings_preferred_translation_language_title),
+                description = stringResource(Res.string.settings_preferred_translation_language_detail),
                 value = languageDraft.ifBlank { snapshot.browserLanguage.selectedKey },
                 options = snapshot.browserLanguage.toTranslationTargetOptions(),
                 onValueChange = onLanguageDraftChange,
@@ -213,23 +211,23 @@ private fun SettingsDateTimePreferenceCard(
     val dirty = timezoneDraft != snapshot.timezone.selectedKey || timeFormatDraft != snapshot.timeFormat.selectedKey
     val canSave = dirty && !busy && (snapshot.timezone.available || snapshot.timeFormat.available)
     val saveLabel = actionState.languageRegionSaveLabel(LANGUAGE_REGION_TIME_ACTIONS)
-    SettingsFormSectionCard(iconName = RaftLucideIconName.Clock, title = stringResource(MR.strings.settings_date_time_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Clock, title = stringResource(Res.string.settings_date_time_title)) {
         SettingsComboboxField(
-            label = stringResource(MR.strings.settings_timezone),
-            description = stringResource(MR.strings.settings_timezone_detail),
+            label = stringResource(Res.string.settings_timezone),
+            description = stringResource(Res.string.settings_timezone_detail),
             value = timezoneDraft.ifBlank { snapshot.timezone.selectedKey },
             options = snapshot.timezone.toComboboxOptions(),
             onValueChange = onTimezoneDraftChange,
             enabled = snapshot.timezone.available && !busy
         )
         SettingsSegmentedControlField(
-            label = stringResource(MR.strings.settings_time_format),
-            detail = stringResource(MR.strings.settings_time_format_detail),
+            label = stringResource(Res.string.settings_time_format),
+            detail = stringResource(Res.string.settings_time_format_detail),
             selectedValue = timeFormatDraft.ifBlank { snapshot.timeFormat.selectedKey },
             options =
                 listOf(
-                    SegmentedControlOption("12h", stringResource(MR.strings.settings_time_format_12_hour), RaftLucideIconName.Clock3),
-                    SegmentedControlOption("24h", stringResource(MR.strings.settings_time_format_24_hour), RaftLucideIconName.Clock)
+                    SegmentedControlOption("12h", stringResource(Res.string.settings_time_format_12_hour), RaftLucideIconName.Clock3),
+                    SegmentedControlOption("24h", stringResource(Res.string.settings_time_format_24_hour), RaftLucideIconName.Clock)
                 ),
             onValueSelected = onTimeFormatDraftChange,
             enabled = snapshot.timeFormat.available && !busy
@@ -284,10 +282,10 @@ private fun build.raft.app.data.SharedSettingsActionState?.languageRegionSaveLab
     actions: Set<String>
 ): String =
     when {
-        this == null || action !in actions -> stringResource(MR.strings.common_save)
-        inProgress -> stringResource(MR.strings.settings_state_saving)
-        errorCode != null -> stringResource(MR.strings.common_retry)
-        else -> stringResource(MR.strings.settings_state_saved)
+        this == null || action !in actions -> stringResource(Res.string.common_save)
+        inProgress -> stringResource(Res.string.settings_state_saving)
+        errorCode != null -> stringResource(Res.string.common_retry)
+        else -> stringResource(Res.string.settings_state_saved)
     }
 
 @Composable
@@ -309,14 +307,14 @@ private fun SettingsServerTranslationPreferenceCard(
     onServerTranslationChange: (Boolean) -> Unit
 ) {
     val busy = actionState?.action == LANGUAGE_REGION_ACTION_SERVER_TRANSLATION && actionState.inProgress
-    SettingsFormSectionCard(iconName = RaftLucideIconName.Wand, title = stringResource(MR.strings.settings_workspace_translation)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Wand, title = stringResource(Res.string.settings_workspace_translation)) {
         SettingsSegmentedControlField(
             detail = snapshot.serverTranslation.detail,
             selectedValue = if (snapshot.serverTranslation.enabled) "on" else "off",
             options =
                 listOf(
-                    SegmentedControlOption("on", stringResource(MR.strings.settings_option_on), RaftLucideIconName.CircleCheck),
-                    SegmentedControlOption("off", stringResource(MR.strings.settings_option_off), RaftLucideIconName.X)
+                    SegmentedControlOption("on", stringResource(Res.string.settings_option_on), RaftLucideIconName.CircleCheck),
+                    SegmentedControlOption("off", stringResource(Res.string.settings_option_off), RaftLucideIconName.X)
                 ),
             onValueSelected = { onServerTranslationChange(it == "on") },
             enabled = snapshot.serverTranslation.available && !busy
@@ -335,7 +333,7 @@ private fun SettingsMobileSelectionSnapshot.toComboboxOptions(): List<RaftCombob
 
 @Composable
 private fun SettingsMobileSelectionSnapshot.toTranslationTargetOptions(): List<RaftComboboxOption<String>> {
-    val systemLanguageLabel = stringResource(MR.strings.settings_translation_target_follow_display_language)
+    val systemLanguageLabel = stringResource(Res.string.settings_translation_target_follow_display_language)
     return toComboboxOptions().map { option ->
         if (option.value == TranslationTargetLanguages.System) option.copy(label = systemLanguageLabel) else option
     }

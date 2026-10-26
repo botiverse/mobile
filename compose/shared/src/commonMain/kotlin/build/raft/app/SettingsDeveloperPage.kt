@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
@@ -16,7 +17,6 @@ import build.raft.app.data.SharedSettingsDiagnosticsEntry
 import build.raft.app.data.SharedSettingsDiagnosticsSnapshot
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.DIAGNOSTICS_ACTION_APPLE_SIGNIN_LOCAL_OVERRIDE
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -44,7 +44,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.flow.map
 
 @Composable
@@ -111,7 +110,7 @@ internal fun SharedSettingsApiEnvironmentContent(
                 option.webUrl == normalizedWeb
         }
     val requestKey = matchingPreset?.key ?: "custom"
-    val customLabel = stringResource(MR.strings.settings_developer_custom)
+    val customLabel = stringResource(Res.string.settings_developer_custom)
     val requestLabel = matchingPreset?.label ?: label.trim().ifBlank { customLabel }
     val canSave = normalizedApi.startsWith("http") && normalizedSocket.startsWith("http") && !busy
 
@@ -121,8 +120,8 @@ internal fun SharedSettingsApiEnvironmentContent(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            SettingsFormSectionCard(iconName = RaftLucideIconName.SlidersHorizontal, title = stringResource(MR.strings.settings_developer_presets)) {
-                SettingsFormDetailText(stringResource(MR.strings.settings_developer_presets_detail))
+            SettingsFormSectionCard(iconName = RaftLucideIconName.SlidersHorizontal, title = stringResource(Res.string.settings_developer_presets)) {
+                SettingsFormDetailText(stringResource(Res.string.settings_developer_presets_detail))
                 snapshot?.options.orEmpty().forEach { option ->
                     SettingsApiEnvironmentPresetRow(
                         option = option,
@@ -139,15 +138,15 @@ internal fun SharedSettingsApiEnvironmentContent(
                     )
                 }
                 if (snapshot?.options.isNullOrEmpty()) {
-                    SettingsFormEmptyText(stringResource(MR.strings.settings_developer_presets_empty))
+                    SettingsFormEmptyText(stringResource(Res.string.settings_developer_presets_empty))
                 }
             }
         }
         item {
-            SettingsFormSectionCard(iconName = RaftLucideIconName.Server, title = stringResource(MR.strings.settings_developer_environment_form)) {
-                SettingsFormDetailText(stringResource(MR.strings.settings_developer_environment_save_detail))
+            SettingsFormSectionCard(iconName = RaftLucideIconName.Server, title = stringResource(Res.string.settings_developer_environment_form)) {
+                SettingsFormDetailText(stringResource(Res.string.settings_developer_environment_save_detail))
                 SettingsTextField(
-                    label = stringResource(MR.strings.settings_developer_label),
+                    label = stringResource(Res.string.settings_developer_label),
                     value = label,
                     placeholder = customLabel,
                     onValueChange = {
@@ -157,7 +156,7 @@ internal fun SharedSettingsApiEnvironmentContent(
                     enabled = !busy
                 )
                 SettingsTextField(
-                    label = stringResource(MR.strings.settings_developer_api_base_url),
+                    label = stringResource(Res.string.settings_developer_api_base_url),
                     value = apiBaseUrl,
                     placeholder = "https://api.example.com/api/",
                     onValueChange = {
@@ -168,7 +167,7 @@ internal fun SharedSettingsApiEnvironmentContent(
                     enabled = !busy
                 )
                 SettingsTextField(
-                    label = stringResource(MR.strings.settings_developer_socket_base_url),
+                    label = stringResource(Res.string.settings_developer_socket_base_url),
                     value = socketBaseUrl,
                     placeholder = "https://api.example.com",
                     onValueChange = {
@@ -179,7 +178,7 @@ internal fun SharedSettingsApiEnvironmentContent(
                     enabled = !busy
                 )
                 SettingsTextField(
-                    label = stringResource(MR.strings.settings_developer_web_url),
+                    label = stringResource(Res.string.settings_developer_web_url),
                     value = webUrl,
                     placeholder = "https://app.raft.build",
                     onValueChange = {
@@ -190,7 +189,7 @@ internal fun SharedSettingsApiEnvironmentContent(
                     enabled = !busy
                 )
                 RaftButton(
-                    text = if (busy) stringResource(MR.strings.settings_developer_action_saving) else stringResource(MR.strings.settings_developer_action_save_environment),
+                    text = if (busy) stringResource(Res.string.settings_developer_action_saving) else stringResource(Res.string.settings_developer_action_save_environment),
                     onClick = {
                         onSaveApiEnvironment(
                             SharedSettingsApiEnvironmentRequest(
@@ -209,7 +208,7 @@ internal fun SharedSettingsApiEnvironmentContent(
                     size = RaftButtonSize.Lg
                 )
                 if (!canSave && !busy) {
-                    SettingsFormErrorText(stringResource(MR.strings.settings_developer_error_urls))
+                    SettingsFormErrorText(stringResource(Res.string.settings_developer_error_urls))
                 }
                 if (actionState?.action == DEVELOPER_ACTION_API_ENVIRONMENT && actionState.errorCode != null) {
                     SettingsFormErrorText(actionState)
@@ -260,7 +259,7 @@ private fun SettingsApiEnvironmentPresetRow(
             )
         }
         Text(
-            text = if (selected) stringResource(MR.strings.settings_developer_state_current) else stringResource(MR.strings.settings_developer_state_preset),
+            text = if (selected) stringResource(Res.string.settings_developer_state_current) else stringResource(Res.string.settings_developer_state_preset),
             style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
             color = RaftColor.TextMutedGray
         )
@@ -420,28 +419,28 @@ internal data class SettingsDeveloperPayloadCopy(
 @Composable
 private fun settingsDeveloperPayloadCopy(): SettingsDeveloperPayloadCopy =
     SettingsDeveloperPayloadCopy(
-        title = stringResource(MR.strings.settings_developer_title),
-        detail = stringResource(MR.strings.settings_developer_detail),
-        apiServer = stringResource(MR.strings.settings_developer_section_api_server),
-        currentApi = stringResource(MR.strings.settings_developer_current_api),
-        currentSocket = stringResource(MR.strings.settings_developer_current_socket),
-        apiEnvironment = stringResource(MR.strings.settings_developer_api_environment),
-        environmentLoading = stringResource(MR.strings.settings_developer_environment_loading),
-        environmentDetail = stringResource(MR.strings.settings_developer_environment_detail),
-        saving = stringResource(MR.strings.settings_state_saving),
-        loading = stringResource(MR.strings.settings_state_loading),
-        open = stringResource(MR.strings.settings_state_open),
-        unknown = stringResource(MR.strings.settings_about_state_unknown),
-        current = stringResource(MR.strings.settings_developer_state_current),
-        realtime = stringResource(MR.strings.settings_developer_state_realtime),
-        diagnostics = stringResource(MR.strings.settings_diagnostics_title),
-        diagnosticsDetail = stringResource(MR.strings.settings_developer_diagnostics_detail),
-        routeLauncher = stringResource(MR.strings.settings_developer_route_launcher),
-        routeLauncherDetail = stringResource(MR.strings.settings_developer_route_launcher_detail),
-        textInputTrace = stringResource(MR.strings.settings_developer_text_input_trace),
-        textInputTraceDetail = stringResource(MR.strings.settings_developer_text_input_trace_detail),
-        on = stringResource(MR.strings.settings_state_on),
-        off = stringResource(MR.strings.settings_state_off)
+        title = stringResource(Res.string.settings_developer_title),
+        detail = stringResource(Res.string.settings_developer_detail),
+        apiServer = stringResource(Res.string.settings_developer_section_api_server),
+        currentApi = stringResource(Res.string.settings_developer_current_api),
+        currentSocket = stringResource(Res.string.settings_developer_current_socket),
+        apiEnvironment = stringResource(Res.string.settings_developer_api_environment),
+        environmentLoading = stringResource(Res.string.settings_developer_environment_loading),
+        environmentDetail = stringResource(Res.string.settings_developer_environment_detail),
+        saving = stringResource(Res.string.settings_state_saving),
+        loading = stringResource(Res.string.settings_state_loading),
+        open = stringResource(Res.string.settings_state_open),
+        unknown = stringResource(Res.string.settings_about_state_unknown),
+        current = stringResource(Res.string.settings_developer_state_current),
+        realtime = stringResource(Res.string.settings_developer_state_realtime),
+        diagnostics = stringResource(Res.string.settings_diagnostics_title),
+        diagnosticsDetail = stringResource(Res.string.settings_developer_diagnostics_detail),
+        routeLauncher = stringResource(Res.string.settings_developer_route_launcher),
+        routeLauncherDetail = stringResource(Res.string.settings_developer_route_launcher_detail),
+        textInputTrace = stringResource(Res.string.settings_developer_text_input_trace),
+        textInputTraceDetail = stringResource(Res.string.settings_developer_text_input_trace_detail),
+        on = stringResource(Res.string.settings_state_on),
+        off = stringResource(Res.string.settings_state_off)
     )
 
 internal data class SettingsDiagnosticsPayloadCopy(
@@ -490,46 +489,46 @@ internal data class SettingsDiagnosticsPayloadCopy(
 @Composable
 private fun settingsDiagnosticsPayloadCopy(): SettingsDiagnosticsPayloadCopy =
     SettingsDiagnosticsPayloadCopy(
-        title = stringResource(MR.strings.settings_diagnostics_title),
-        detailBasic = stringResource(MR.strings.settings_diagnostics_detail_basic),
-        environment = stringResource(MR.strings.settings_diagnostics_section_environment),
-        loadStatus = stringResource(MR.strings.settings_diagnostics_section_load_status),
-        actions = stringResource(MR.strings.settings_diagnostics_section_actions),
-        partialDiagnostics = stringResource(MR.strings.settings_diagnostics_partial),
-        partial = stringResource(MR.strings.settings_diagnostics_state_partial),
-        appleSignInOverride = stringResource(MR.strings.settings_diagnostics_apple_signin_override),
-        appleSignInOverrideDetail = stringResource(MR.strings.settings_diagnostics_apple_signin_override_detail),
-        loading = stringResource(MR.strings.settings_state_loading),
-        on = stringResource(MR.strings.settings_state_on),
-        off = stringResource(MR.strings.settings_state_off),
-        export = stringResource(MR.strings.settings_state_export),
-        disabled = stringResource(MR.strings.settings_state_disabled),
-        send = stringResource(MR.strings.settings_state_send),
-        exportLogs = stringResource(MR.strings.settings_diagnostics_action_export_logs),
-        exportLogsDetail = stringResource(MR.strings.settings_diagnostics_export_logs_detail),
-        sendDiagnostics = stringResource(MR.strings.settings_diagnostics_action_send),
-        sendDiagnosticsDetail = stringResource(MR.strings.settings_diagnostics_send_detail),
-        app = stringResource(MR.strings.settings_diagnostics_label_app),
-        build = stringResource(MR.strings.settings_diagnostics_label_build),
-        versionCode = stringResource(MR.strings.settings_diagnostics_label_version_code),
-        packageLabel = stringResource(MR.strings.settings_diagnostics_label_package),
-        platform = stringResource(MR.strings.settings_diagnostics_label_platform),
-        deviceFacts = stringResource(MR.strings.settings_diagnostics_label_device_facts),
-        display = stringResource(MR.strings.settings_diagnostics_label_display),
-        installTime = stringResource(MR.strings.settings_diagnostics_label_install_time),
-        session = stringResource(MR.strings.settings_diagnostics_label_session),
-        selectedServer = stringResource(MR.strings.settings_diagnostics_label_selected_server),
-        unknown = stringResource(MR.strings.settings_about_state_unknown),
-        version = stringResource(MR.strings.settings_diagnostics_state_version),
-        source = stringResource(MR.strings.settings_diagnostics_state_source),
-        sdk = stringResource(MR.strings.settings_diagnostics_state_sdk),
-        host = stringResource(MR.strings.settings_diagnostics_state_host),
-        device = stringResource(MR.strings.settings_diagnostics_state_device),
-        screen = stringResource(MR.strings.settings_diagnostics_state_screen),
-        density = stringResource(MR.strings.settings_diagnostics_state_density),
-        fontScale = stringResource(MR.strings.settings_diagnostics_state_font_scale),
-        noSignedInUser = stringResource(MR.strings.settings_diagnostics_state_no_user),
-        socket = stringResource(MR.strings.settings_diagnostics_state_socket)
+        title = stringResource(Res.string.settings_diagnostics_title),
+        detailBasic = stringResource(Res.string.settings_diagnostics_detail_basic),
+        environment = stringResource(Res.string.settings_diagnostics_section_environment),
+        loadStatus = stringResource(Res.string.settings_diagnostics_section_load_status),
+        actions = stringResource(Res.string.settings_diagnostics_section_actions),
+        partialDiagnostics = stringResource(Res.string.settings_diagnostics_partial),
+        partial = stringResource(Res.string.settings_diagnostics_state_partial),
+        appleSignInOverride = stringResource(Res.string.settings_diagnostics_apple_signin_override),
+        appleSignInOverrideDetail = stringResource(Res.string.settings_diagnostics_apple_signin_override_detail),
+        loading = stringResource(Res.string.settings_state_loading),
+        on = stringResource(Res.string.settings_state_on),
+        off = stringResource(Res.string.settings_state_off),
+        export = stringResource(Res.string.settings_state_export),
+        disabled = stringResource(Res.string.settings_state_disabled),
+        send = stringResource(Res.string.settings_state_send),
+        exportLogs = stringResource(Res.string.settings_diagnostics_action_export_logs),
+        exportLogsDetail = stringResource(Res.string.settings_diagnostics_export_logs_detail),
+        sendDiagnostics = stringResource(Res.string.settings_diagnostics_action_send),
+        sendDiagnosticsDetail = stringResource(Res.string.settings_diagnostics_send_detail),
+        app = stringResource(Res.string.settings_diagnostics_label_app),
+        build = stringResource(Res.string.settings_diagnostics_label_build),
+        versionCode = stringResource(Res.string.settings_diagnostics_label_version_code),
+        packageLabel = stringResource(Res.string.settings_diagnostics_label_package),
+        platform = stringResource(Res.string.settings_diagnostics_label_platform),
+        deviceFacts = stringResource(Res.string.settings_diagnostics_label_device_facts),
+        display = stringResource(Res.string.settings_diagnostics_label_display),
+        installTime = stringResource(Res.string.settings_diagnostics_label_install_time),
+        session = stringResource(Res.string.settings_diagnostics_label_session),
+        selectedServer = stringResource(Res.string.settings_diagnostics_label_selected_server),
+        unknown = stringResource(Res.string.settings_about_state_unknown),
+        version = stringResource(Res.string.settings_diagnostics_state_version),
+        source = stringResource(Res.string.settings_diagnostics_state_source),
+        sdk = stringResource(Res.string.settings_diagnostics_state_sdk),
+        host = stringResource(Res.string.settings_diagnostics_state_host),
+        device = stringResource(Res.string.settings_diagnostics_state_device),
+        screen = stringResource(Res.string.settings_diagnostics_state_screen),
+        density = stringResource(Res.string.settings_diagnostics_state_density),
+        fontScale = stringResource(Res.string.settings_diagnostics_state_font_scale),
+        noSignedInUser = stringResource(Res.string.settings_diagnostics_state_no_user),
+        socket = stringResource(Res.string.settings_diagnostics_state_socket)
     )
 
 internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(

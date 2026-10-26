@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,7 +16,6 @@ import build.raft.app.downloads.RaftDownloadEntry
 import build.raft.app.downloads.RaftDownloadErrorKind
 import build.raft.app.downloads.RaftDownloadStatus
 import build.raft.app.format.RaftFormat
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftButtonVariant
@@ -30,7 +30,6 @@ import build.raft.designsystem.components.RaftSection
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /** Intents of the download centre list (Settings › Storage › Downloads). */
 internal sealed interface RaftDownloadCenterAction {
@@ -69,7 +68,7 @@ internal fun RaftDownloadCenterSection(
         val colors = RaftTheme.colors
         val typography = RaftTheme.typography
         RaftSection(
-            title = stringResource(MR.strings.download_center_title),
+            title = stringResource(Res.string.download_center_title),
             modifier = modifier.fillMaxWidth(),
             count = entries.size.takeIf { it > 0 }?.toString(),
             separator = false,
@@ -77,7 +76,7 @@ internal fun RaftDownloadCenterSection(
                 if (entries.any { !it.status.isActive }) {
                     {
                         RaftButton(
-                            text = stringResource(MR.strings.download_center_clear_finished),
+                            text = stringResource(Res.string.download_center_clear_finished),
                             onClick = onClearFinished,
                             variant = RaftButtonVariant.Ghost
                         )
@@ -88,7 +87,7 @@ internal fun RaftDownloadCenterSection(
         ) {
             if (entries.isEmpty()) {
                 RaftText(
-                    text = stringResource(MR.strings.download_center_empty),
+                    text = stringResource(Res.string.download_center_empty),
                     style = typography.callout,
                     color = colors.foregroundMuted
                 )
@@ -137,7 +136,7 @@ private fun RaftDownloadCenterRow(
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 RaftText(
-                    text = entry.fileName.ifBlank { stringResource(MR.strings.file_preview_fallback_file) },
+                    text = entry.fileName.ifBlank { stringResource(Res.string.file_preview_fallback_file) },
                     // A long press copies the file name (not the "File" stand-in).
                     modifier = Modifier.raftCopyable(entry.fileName),
                     style = typography.body.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold),
@@ -163,9 +162,9 @@ private fun RaftDownloadCenterRow(
                 label =
                     stringResource(
                         when {
-                            entry.status == RaftDownloadStatus.Paused -> MR.strings.file_preview_download_paused
-                            entry.saving -> MR.strings.download_center_status_saving
-                            else -> MR.strings.file_preview_download_downloading
+                            entry.status == RaftDownloadStatus.Paused -> Res.string.file_preview_download_paused
+                            entry.saving -> Res.string.download_center_status_saving
+                            else -> Res.string.file_preview_download_downloading
                         }
                     ),
                 animated = animated && entry.status == RaftDownloadStatus.Downloading
@@ -174,7 +173,7 @@ private fun RaftDownloadCenterRow(
             val detail =
                 when {
                     entry.errorKind == RaftDownloadErrorKind.Interrupted || !canRetry ->
-                        stringResource(MR.strings.download_center_retry_unavailable)
+                        stringResource(Res.string.download_center_retry_unavailable)
                     else -> entry.errorMessage
                 }
             if (!detail.isNullOrBlank()) {
@@ -195,7 +194,7 @@ private fun RaftDownloadCenterTrailing(
             RaftDownloadStatus.Downloading, RaftDownloadStatus.Paused -> {
                 val paused = entry.status == RaftDownloadStatus.Paused
                 if (!entry.saving) {
-                    val label = stringResource(if (paused) MR.strings.file_preview_download_resume else MR.strings.file_preview_download_pause)
+                    val label = stringResource(if (paused) Res.string.file_preview_download_resume else Res.string.file_preview_download_pause)
                     RaftIconButton(
                         onClick = { onAction(if (paused) RaftDownloadCenterAction.Resume(entry.id) else RaftDownloadCenterAction.Pause(entry.id)) },
                         tooltip = label,
@@ -204,14 +203,14 @@ private fun RaftDownloadCenterTrailing(
                 }
                 RaftIconButton(
                     onClick = { onAction(RaftDownloadCenterAction.Cancel(entry.id)) },
-                    tooltip = stringResource(MR.strings.common_cancel),
+                    tooltip = stringResource(Res.string.common_cancel),
                     variant = RaftButtonVariant.Ghost
                 ) { RaftDownloadIcon(RaftLucideIconName.X) }
             }
             RaftDownloadStatus.Completed -> {
                 RaftIconButton(
                     onClick = { onAction(RaftDownloadCenterAction.Open(entry.id)) },
-                    tooltip = stringResource(MR.strings.common_open),
+                    tooltip = stringResource(Res.string.common_open),
                     variant = RaftButtonVariant.Ghost
                 ) { RaftDownloadIcon(RaftLucideIconName.ArrowUpRight) } // raft-ui 0.26 (#758): another app leaves Raft: ↗.
                 RaftDownloadCenterRemoveButton(entry, onAction)
@@ -220,7 +219,7 @@ private fun RaftDownloadCenterTrailing(
                 if (canRetry) {
                     RaftIconButton(
                         onClick = { onAction(RaftDownloadCenterAction.Retry(entry.id)) },
-                        tooltip = stringResource(MR.strings.common_retry),
+                        tooltip = stringResource(Res.string.common_retry),
                         variant = RaftButtonVariant.Default
                     ) { RaftDownloadIcon(RaftLucideIconName.RotateCcw) }
                 }
@@ -234,7 +233,7 @@ private fun RaftDownloadCenterTrailing(
 private fun RaftDownloadCenterRemoveButton(entry: RaftDownloadEntry, onAction: (RaftDownloadCenterAction) -> Unit) {
     RaftIconButton(
         onClick = { onAction(RaftDownloadCenterAction.Delete(entry.id)) },
-        tooltip = stringResource(MR.strings.common_remove),
+        tooltip = stringResource(Res.string.common_remove),
         variant = RaftButtonVariant.Ghost,
         size = RaftIconButtonSize.Md
     ) { RaftDownloadIcon(RaftLucideIconName.Trash2) }
@@ -258,15 +257,15 @@ private fun raftDownloadCenterMeta(entry: RaftDownloadEntry, timeLabel: @Composa
             parts +=
                 stringResource(
                     if (entry.errorKind == RaftDownloadErrorKind.Interrupted) {
-                        MR.strings.download_center_status_interrupted
+                        Res.string.download_center_status_interrupted
                     } else {
-                        MR.strings.download_center_status_failed
+                        Res.string.download_center_status_failed
                     }
                 )
             parts += timeLabel(entry.updatedAtMillis)
         }
         RaftDownloadStatus.Cancelled -> {
-            parts += stringResource(MR.strings.download_center_status_cancelled)
+            parts += stringResource(Res.string.download_center_status_cancelled)
             parts += timeLabel(entry.updatedAtMillis)
         }
     }

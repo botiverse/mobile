@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -37,8 +38,6 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.MessageMention
 import build.raft.app.model.ScopeReadUpdated
 import build.raft.app.model.ServerId
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /**
  * Read receipts (`read_receipts_v0`) as the web shows them (botiverse/slock staging dac70954,
@@ -245,7 +244,7 @@ internal fun rememberThreadPeerReadReceipts(
  */
 @Composable
 internal fun ThreadDmReadStatusRow(modifier: Modifier = Modifier) {
-    val label = stringResource(MR.strings.thread_message_read_status)
+    val label = stringResource(Res.string.thread_message_read_status)
     Row(
         modifier =
             modifier

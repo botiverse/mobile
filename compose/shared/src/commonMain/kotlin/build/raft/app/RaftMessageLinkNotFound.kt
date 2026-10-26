@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -27,14 +28,12 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.RaftShellStoreScope
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 internal const val RAFT_MESSAGE_LINK_NOT_FOUND_PAGE = "compose_message_link_not_found"
 
@@ -93,7 +92,7 @@ internal fun RaftMessageLinkNotFoundScreen(
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
         ) {
             RaftPanelBackHeader(
-                title = stringResource(MR.strings.message_link_title),
+                title = stringResource(Res.string.message_link_title),
                 subtitle = null,
                 onBack = onBack,
                 topSafeArea = topSafeArea,
@@ -116,21 +115,21 @@ internal fun RaftMessageLinkNotFoundScreen(
                     }
                     Spacer(Modifier.height(16.dp))
                     RaftText(
-                        text = stringResource(MR.strings.message_link_not_found_title),
+                        text = stringResource(Res.string.message_link_not_found_title),
                         style = RaftTheme.typography.headline,
                         color = colors.foreground,
                         textAlign = TextAlign.Center,
                     )
                     Spacer(Modifier.height(6.dp))
                     RaftText(
-                        text = stringResource(MR.strings.message_link_not_found_body),
+                        text = stringResource(Res.string.message_link_not_found_body),
                         style = RaftTheme.typography.callout,
                         color = colors.foregroundMuted,
                         textAlign = TextAlign.Center,
                     )
                     Spacer(Modifier.height(24.dp))
                     RaftButton(
-                        text = stringResource(MR.strings.common_back),
+                        text = stringResource(Res.string.common_back),
                         onClick = onBack,
                         size = RaftButtonSize.Lg,
                         modifier = Modifier.widthIn(min = 200.dp),

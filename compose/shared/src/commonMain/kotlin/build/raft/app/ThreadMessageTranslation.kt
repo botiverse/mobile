@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.data.SharedMessageTranslationCandidate
 import build.raft.app.data.SharedMessageTranslationEntry
 import build.raft.app.data.SharedMessageTranslationSettings
@@ -7,7 +8,6 @@ import build.raft.app.data.SharedMessageTranslationState
 import build.raft.app.data.SharedMessageTranslationStatus
 import build.raft.app.data.TranslationModePreference
 import build.raft.app.data.isSilentTranslationEntry
-import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -34,7 +34,6 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /**
  * Per-message translation render model, aligned with the React `MessageItem`
@@ -197,18 +196,18 @@ internal fun ThreadMessageTranslationIndicator(
 ) {
     val localizedMessage =
         when {
-            indicator.pending -> stringResource(MR.strings.translation_state_in_progress)
-            indicator.failed -> stringResource(MR.strings.translation_state_unavailable)
+            indicator.pending -> stringResource(Res.string.translation_state_in_progress)
+            indicator.failed -> stringResource(Res.string.translation_state_unavailable)
             else -> indicator.message
         }
     val localizedActionLabel =
         when (indicator.action) {
-            ThreadMessageTranslationIndicatorAction.Retry -> stringResource(MR.strings.common_retry)
+            ThreadMessageTranslationIndicatorAction.Retry -> stringResource(Res.string.common_retry)
             ThreadMessageTranslationIndicatorAction.ToggleOriginal ->
                 if (indicator.actionLabel == "Show translation") {
-                    stringResource(MR.strings.translation_state_show_translation)
+                    stringResource(Res.string.translation_state_show_translation)
                 } else {
-                    stringResource(MR.strings.translation_state_show_original)
+                    stringResource(Res.string.translation_state_show_original)
                 }
             ThreadMessageTranslationIndicatorAction.None -> indicator.actionLabel
         }

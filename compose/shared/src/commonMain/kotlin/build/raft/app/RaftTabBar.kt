@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.ui.text.TextStyle
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
@@ -56,8 +57,6 @@ import build.raft.designsystem.components.raftUnreadCountDescription
 import build.raft.designsystem.components.raftUnreadCountText
 import kotlinx.serialization.Serializable
 import build.raft.app.components.RaftAttentionDot
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 @Serializable
 internal data class RaftTabItemPayload(
@@ -351,7 +350,7 @@ private fun RaftBottomTabItem(
     // cell), the label 4dp under it, the attention pixel on the slot's top-right corner. The
     // app adds its glyph (the Activity one optically scaled) and its unread count.
     val attentionDescription =
-        if (item.key == "more") stringResource(MR.strings.tab_more_attention_dot) else stringResource(MR.strings.tab_activity_unread_dot)
+        if (item.key == "more") stringResource(Res.string.tab_more_attention_dot) else stringResource(Res.string.tab_activity_unread_dot)
     RaftDesignSystemTheme {
         RaftMobileNavItem(
             label = item.label,
@@ -525,7 +524,7 @@ private fun RaftNavigationRailTabItem(
     // raft-ui AppRail: a rail icon shows only the attention pixel, never a count (Badge rules),
     // so an unread count reads as the dot here.
     val attentionDescription =
-        if (item.key == "more") stringResource(MR.strings.tab_more_attention_dot) else stringResource(MR.strings.tab_activity_unread_dot)
+        if (item.key == "more") stringResource(Res.string.tab_more_attention_dot) else stringResource(Res.string.tab_activity_unread_dot)
     RaftAppRailItem(
         label = item.label,
         selected = item.selected,
@@ -592,7 +591,7 @@ private fun RaftVerticalTabItem(
                 modifier = Modifier.weight(1f)
             )
             if (item.attentionDot) {
-                val description = stringResource(MR.strings.more_row_attention_dot)
+                val description = stringResource(Res.string.more_row_attention_dot)
                 RaftAttentionDot(modifier = Modifier.semantics { contentDescription = description })
             }
         }

@@ -29,8 +29,8 @@ const KOTLIN_ROOTS = [
   "compose/androidApp/src/main/java",
 ];
 const RESOURCE_GLOBS = [
-  "compose/shared/src/commonMain/resources/MR/base/strings.xml",
-  "compose/shared/src/commonMain/resources/MR/zh-rCN/strings.xml",
+  "compose/shared/src/commonMain/composeResources/values/strings.xml",
+  "compose/shared/src/commonMain/composeResources/values-zh-rCN/strings.xml",
   "compose/androidApp/src/main/res/values/strings.xml",
   "compose/androidApp/src/main/res/values-zh-rCN/strings.xml",
 ];

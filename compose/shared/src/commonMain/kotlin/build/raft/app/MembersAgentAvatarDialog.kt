@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -51,7 +52,6 @@ import build.raft.app.data.ScreenError
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.avatarWireValueForAvatarSlot
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftAvatarType
@@ -71,7 +71,6 @@ import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -193,29 +192,29 @@ internal fun membersAgentAvatarSaveError(
 private fun MembersAgentAvatarError.message(): String {
     val errorStrings = localizedErrorPresentationStrings()
     return when (this) {
-        MembersAgentAvatarError.TooLarge -> stringResource(MR.strings.member_avatar_too_large)
-        MembersAgentAvatarError.Unchanged -> stringResource(MR.strings.member_error_avatar_unchanged)
+        MembersAgentAvatarError.TooLarge -> stringResource(Res.string.member_avatar_too_large)
+        MembersAgentAvatarError.Unchanged -> stringResource(Res.string.member_error_avatar_unchanged)
         is MembersAgentAvatarError.Upload ->
-            stringResource(MR.strings.member_error_avatar_upload, error.userFacingMessage(errorStrings))
+            stringResource(Res.string.member_error_avatar_upload, error.userFacingMessage(errorStrings))
         is MembersAgentAvatarError.Save ->
-            stringResource(MR.strings.member_error_avatar_save, error.userFacingMessage(errorStrings))
+            stringResource(Res.string.member_error_avatar_save, error.userFacingMessage(errorStrings))
         is MembersAgentAvatarError.Permission ->
-            stringResource(MR.strings.member_error_permission, blocker.userFacingMessage(errorStrings))
+            stringResource(Res.string.member_error_permission, blocker.userFacingMessage(errorStrings))
     }
 }
 
 @Composable
 private fun membersAgentAvatarSeriesTitle(seriesKey: String?): String? =
     when (seriesKey) {
-        "bots" -> stringResource(MR.strings.member_avatar_series_bots)
-        "critters" -> stringResource(MR.strings.member_avatar_series_critters)
-        "space" -> stringResource(MR.strings.member_avatar_series_space)
-        "desk" -> stringResource(MR.strings.member_avatar_series_desk)
-        "food" -> stringResource(MR.strings.member_avatar_series_food)
-        "quest" -> stringResource(MR.strings.member_avatar_series_quest)
-        "weather" -> stringResource(MR.strings.member_avatar_series_weather)
-        "plants" -> stringResource(MR.strings.member_avatar_series_plants)
-        "spooky" -> stringResource(MR.strings.member_avatar_series_spooky)
+        "bots" -> stringResource(Res.string.member_avatar_series_bots)
+        "critters" -> stringResource(Res.string.member_avatar_series_critters)
+        "space" -> stringResource(Res.string.member_avatar_series_space)
+        "desk" -> stringResource(Res.string.member_avatar_series_desk)
+        "food" -> stringResource(Res.string.member_avatar_series_food)
+        "quest" -> stringResource(Res.string.member_avatar_series_quest)
+        "weather" -> stringResource(Res.string.member_avatar_series_weather)
+        "plants" -> stringResource(Res.string.member_avatar_series_plants)
+        "spooky" -> stringResource(Res.string.member_avatar_series_spooky)
         // A series the app has no name for yet (a newer avatar table) shows without a heading.
         else -> null
     }
@@ -236,7 +235,7 @@ internal fun MembersAgentAvatarEditTrigger(
         avatar()
         return
     }
-    val label = stringResource(MR.strings.member_action_choose_avatar)
+    val label = stringResource(Res.string.member_action_choose_avatar)
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     Box(
@@ -348,15 +347,15 @@ internal fun MembersAgentAvatarDialog(
 
     RaftDialogSheet(
         onDismissRequest = ::requestClose,
-        title = stringResource(MR.strings.member_action_choose_avatar),
-        commitLabel = stringResource(MR.strings.common_save),
+        title = stringResource(Res.string.member_action_choose_avatar),
+        commitLabel = stringResource(Res.string.common_save),
         onCommit = ::save,
         commitEnabled = dirty && !picking,
         commitLoading = saving,
         // Web `closeDisabled={saving}`.
         closeEnabled = !saving,
-        closeLabel = stringResource(MR.strings.common_close),
-        cancelLabel = stringResource(MR.strings.common_cancel)
+        closeLabel = stringResource(Res.string.common_close),
+        cancelLabel = stringResource(Res.string.common_cancel)
     ) {
         MembersAgentAvatarDialogBody(
             member = member,
@@ -389,18 +388,18 @@ internal fun MembersAgentAvatarDialog(
 private fun MembersAgentAvatarDiscardDialog(onKeepEditing: () -> Unit, onDiscard: () -> Unit) {
     RaftDialog(
         onDismissRequest = onKeepEditing,
-        title = stringResource(MR.strings.member_avatar_unsaved_title),
-        description = stringResource(MR.strings.member_avatar_discard_body),
+        title = stringResource(Res.string.member_avatar_unsaved_title),
+        description = stringResource(Res.string.member_avatar_discard_body),
         showClose = false,
         footer = {
             RaftButton(
-                text = stringResource(MR.strings.member_avatar_keep_editing),
+                text = stringResource(Res.string.member_avatar_keep_editing),
                 onClick = onKeepEditing,
                 variant = RaftButtonVariant.Ghost,
                 size = RaftButtonSize.Lg
             )
             RaftButton(
-                text = stringResource(MR.strings.member_avatar_discard_changes),
+                text = stringResource(Res.string.member_avatar_discard_changes),
                 onClick = onDiscard,
                 variant = RaftButtonVariant.Danger,
                 size = RaftButtonSize.Lg
@@ -551,7 +550,7 @@ private fun MembersAgentAvatarUploadTile(
     onClick: () -> Unit
 ) {
     val colors = RaftTheme.colors
-    val label = stringResource(MR.strings.member_avatar_upload_image)
+    val label = stringResource(Res.string.member_avatar_upload_image)
     val dashed = colors.lineStrong
     MembersAgentAvatarTileFrame(
         selected = selected,

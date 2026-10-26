@@ -1,10 +1,10 @@
 package build.raft.app.components
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import build.raft.app.RaftColor
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
-import build.raft.app.resources.MR
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Alignment
@@ -13,7 +13,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /**
  * Web parity for "anyone can read this channel on the server's public page"
@@ -47,7 +46,7 @@ internal fun RaftHashGlobeIcon(
     color: String = RaftColor.TextBlackArgb,
     modifier: Modifier = Modifier,
 ) {
-    val label = stringResource(MR.strings.channel_public_page_readable)
+    val label = stringResource(Res.string.channel_public_page_readable)
     Box(
         modifier = modifier.size(size).semantics { contentDescription = label },
     ) {
@@ -77,7 +76,7 @@ internal fun RaftPublicPageGlobe(
     modifier: Modifier = Modifier,
 ) {
     if (!live) return
-    val label = stringResource(MR.strings.layout_server_public_page_live)
+    val label = stringResource(Res.string.layout_server_public_page_live)
     Box(
         modifier = modifier.size(size).semantics { contentDescription = label },
         contentAlignment = Alignment.Center,

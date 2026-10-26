@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.components.RaftSwitchButton
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.data.MOBILE_ACTION_LANGUAGE
@@ -25,7 +26,6 @@ import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsMobileSelectionSnapshot
 import build.raft.app.data.SettingsMobileSnapshot
 import build.raft.app.data.SettingsMobileToggleSnapshot
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
@@ -49,7 +49,6 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 @Composable
 internal fun SettingsMobileContent(
@@ -204,7 +203,7 @@ private fun SettingsMultiShellHostCard(
     val preference = snapshot.multiShellHost
     SettingsFormSectionCard(
         iconName = RaftLucideIconName.AppWindow,
-        title = stringResource(MR.strings.settings_mobile_multi_shell_host)
+        title = stringResource(Res.string.settings_mobile_multi_shell_host)
     ) {
         Row(
             modifier =
@@ -219,7 +218,7 @@ private fun SettingsMultiShellHostCard(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_badge_beta))
+                    SettingsConnectedAppsBadge(stringResource(Res.string.settings_badge_beta))
                     Text(
                         preference.localizedToggleStatus(),
                         style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
@@ -227,7 +226,7 @@ private fun SettingsMultiShellHostCard(
                     )
                 }
                 Text(
-                    stringResource(MR.strings.settings_mobile_multi_shell_host_detail),
+                    stringResource(Res.string.settings_mobile_multi_shell_host_detail),
                     style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                     color = RaftColor.TextMutedGray,
                     maxLines = 3,
@@ -259,7 +258,7 @@ private fun SettingsDesktopModeCard(
     }
     SettingsFormSectionCard(
         iconName = RaftLucideIconName.Monitor,
-        title = stringResource(MR.strings.settings_mobile_desktop_mode)
+        title = stringResource(Res.string.settings_mobile_desktop_mode)
     ) {
         Row(
             modifier =
@@ -283,7 +282,7 @@ private fun SettingsDesktopModeCard(
                     color = RaftColor.TextMutedGray
                 )
                 Text(
-                    stringResource(MR.strings.settings_mobile_desktop_mode_detail),
+                    stringResource(Res.string.settings_mobile_desktop_mode_detail),
                     style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                     color = RaftColor.TextMutedGray,
                     maxLines = 3,
@@ -315,7 +314,7 @@ private fun SettingsServerDrawerCard(
     }
     SettingsFormSectionCard(
         iconName = RaftLucideIconName.Menu,
-        title = stringResource(MR.strings.settings_mobile_server_drawer)
+        title = stringResource(Res.string.settings_mobile_server_drawer)
     ) {
         Row(
             modifier =
@@ -334,7 +333,7 @@ private fun SettingsServerDrawerCard(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_badge_beta))
+                    SettingsConnectedAppsBadge(stringResource(Res.string.settings_badge_beta))
                     Text(
                         preference.localizedToggleStatus(),
                         style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
@@ -342,7 +341,7 @@ private fun SettingsServerDrawerCard(
                     )
                 }
                 Text(
-                    stringResource(MR.strings.settings_mobile_server_drawer_detail),
+                    stringResource(Res.string.settings_mobile_server_drawer_detail),
                     style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                     color = RaftColor.TextMutedGray,
                     maxLines = 3,
@@ -367,7 +366,7 @@ private fun SettingsHomeServerAvatarCard(
     val preference = snapshot.homeServerAvatar
     SettingsFormSectionCard(
         iconName = RaftLucideIconName.Image,
-        title = stringResource(MR.strings.settings_mobile_home_server_avatar)
+        title = stringResource(Res.string.settings_mobile_home_server_avatar)
     ) {
         Row(
             modifier =
@@ -387,7 +386,7 @@ private fun SettingsHomeServerAvatarCard(
                     color = RaftColor.TextMutedGray
                 )
                 Text(
-                    stringResource(MR.strings.settings_mobile_home_server_avatar_detail),
+                    stringResource(Res.string.settings_mobile_home_server_avatar_detail),
                     style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                     color = RaftColor.TextMutedGray,
                     maxLines = 3,
@@ -413,7 +412,7 @@ private fun SettingsThreadReverseLayoutCard(
     val preference = snapshot.threadReverseLayout
     SettingsFormSectionCard(
         iconName = RaftLucideIconName.MessageSquare,
-        title = stringResource(MR.strings.settings_mobile_thread_reverse_layout)
+        title = stringResource(Res.string.settings_mobile_thread_reverse_layout)
     ) {
         Row(
             modifier =
@@ -433,7 +432,7 @@ private fun SettingsThreadReverseLayoutCard(
                     color = RaftColor.TextMutedGray
                 )
                 Text(
-                    stringResource(MR.strings.settings_mobile_thread_reverse_layout_detail),
+                    stringResource(Res.string.settings_mobile_thread_reverse_layout_detail),
                     style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                     color = RaftColor.TextMutedGray,
                     maxLines = 3,
@@ -458,28 +457,28 @@ internal fun SettingsAppLanguageCard(
     val busy = actionState?.action == MOBILE_ACTION_LANGUAGE && actionState.inProgress
     SettingsFormSectionCard(
         iconName = RaftLucideIconName.Languages,
-        title = stringResource(MR.strings.settings_app_language_title)
+        title = stringResource(Res.string.settings_app_language_title)
     ) {
         SettingsSegmentedControlField(
-            detail = stringResource(MR.strings.settings_app_language_detail),
+            detail = stringResource(Res.string.settings_app_language_detail),
             selectedValue = preference.selectedKey.ifBlank { AppLocale.System.languageTag },
             options =
                 listOf(
                     SegmentedControlOption(
                         AppLocale.System.languageTag,
-                        stringResource(MR.strings.settings_app_language_system)
+                        stringResource(Res.string.settings_app_language_system)
                     ),
                     SegmentedControlOption(
                         AppLocale.English.languageTag,
-                        stringResource(MR.strings.settings_app_language_english)
+                        stringResource(Res.string.settings_app_language_english)
                     ),
                     SegmentedControlOption(
                         AppLocale.SimplifiedChinese.languageTag,
-                        stringResource(MR.strings.settings_app_language_simplified_chinese)
+                        stringResource(Res.string.settings_app_language_simplified_chinese)
                     ),
                     SegmentedControlOption(
                         AppLocale.Japanese.languageTag,
-                        stringResource(MR.strings.settings_app_language_japanese)
+                        stringResource(Res.string.settings_app_language_japanese)
                     )
                 ),
             onValueSelected = { selected -> selected?.let(onLocaleChange) },
@@ -499,14 +498,14 @@ private fun SettingsMessageAlignmentCard(
 ) {
     val busy = actionState?.action == MOBILE_ACTION_MESSAGE_ALIGNMENT && actionState.inProgress
     val selectedKey = snapshot.messageAlignmentPreference.selectedKey
-    SettingsFormSectionCard(iconName = RaftLucideIconName.Columns3, title = stringResource(MR.strings.settings_message_alignment_title)) {
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Columns3, title = stringResource(Res.string.settings_message_alignment_title)) {
         SettingsSegmentedControlField(
-            detail = stringResource(MR.strings.settings_message_alignment_detail),
+            detail = stringResource(Res.string.settings_message_alignment_detail),
             selectedValue = selectedKey.ifBlank { "left" },
             options =
                 listOf(
-                    SegmentedControlOption("left", stringResource(MR.strings.settings_message_alignment_left)),
-                    SegmentedControlOption("right", stringResource(MR.strings.settings_message_alignment_right))
+                    SegmentedControlOption("left", stringResource(Res.string.settings_message_alignment_left)),
+                    SegmentedControlOption("right", stringResource(Res.string.settings_message_alignment_right))
                 ),
             onValueSelected = onAlignmentChange,
             enabled = snapshot.messageAlignmentPreference.available && !busy
@@ -527,20 +526,20 @@ private fun SettingsLinkOpenModeCard(
     val busy = actionState?.action == MOBILE_ACTION_LINK_OPEN_MODE && actionState.inProgress
     SettingsFormSectionCard(
         iconName = RaftLucideIconName.ArrowUpRight,
-        title = stringResource(MR.strings.settings_mobile_link_open_mode_title)
+        title = stringResource(Res.string.settings_mobile_link_open_mode_title)
     ) {
         SettingsSegmentedControlField(
-            detail = stringResource(MR.strings.settings_mobile_link_open_mode_detail),
+            detail = stringResource(Res.string.settings_mobile_link_open_mode_detail),
             selectedValue = preference.selectedKey.ifBlank { LinkOpenMode.Default.storageKey },
             options =
                 listOf(
                     SegmentedControlOption(
                         LinkOpenMode.SystemBrowser.storageKey,
-                        stringResource(MR.strings.settings_mobile_link_open_mode_system_browser)
+                        stringResource(Res.string.settings_mobile_link_open_mode_system_browser)
                     ),
                     SegmentedControlOption(
                         LinkOpenMode.InAppBrowser.storageKey,
-                        stringResource(MR.strings.settings_mobile_link_open_mode_in_app_browser)
+                        stringResource(Res.string.settings_mobile_link_open_mode_in_app_browser)
                     )
                 ),
             onValueSelected = onLinkOpenModeChange,
@@ -560,8 +559,8 @@ private fun SettingsCompactMessagesCard(
 ) {
     val busy = actionState?.action == MOBILE_ACTION_COMPACT_MESSAGES && actionState.inProgress
     val preference = snapshot.compactConsecutiveMessages
-    SettingsFormSectionCard(iconName = RaftLucideIconName.MessageSquare, title = stringResource(MR.strings.settings_mobile_compact_messages)) {
-        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_compact_detail))
+    SettingsFormSectionCard(iconName = RaftLucideIconName.MessageSquare, title = stringResource(Res.string.settings_mobile_compact_messages)) {
+        SettingsFormDetailText(stringResource(Res.string.settings_mobile_compact_detail))
         Row(
             modifier =
                 Modifier
@@ -584,9 +583,9 @@ private fun SettingsCompactMessagesCard(
                 Text(
                     text =
                         if (preference.enabled) {
-                            stringResource(MR.strings.settings_mobile_compact_enabled)
+                            stringResource(Res.string.settings_mobile_compact_enabled)
                         } else {
-                            stringResource(MR.strings.settings_mobile_compact_disabled)
+                            stringResource(Res.string.settings_mobile_compact_disabled)
                         },
                     style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                     color = RaftColor.TextMutedGray,
@@ -613,8 +612,8 @@ private fun SettingsLongMessageCollapseCard(
 ) {
     val busy = actionState?.action == MOBILE_ACTION_LONG_MESSAGE_COLLAPSE && actionState.inProgress
     val preference = snapshot.longMessageCollapse
-    SettingsFormSectionCard(iconName = RaftLucideIconName.ClipboardList, title = stringResource(MR.strings.settings_mobile_long_message_collapse)) {
-        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_long_message_collapse_detail))
+    SettingsFormSectionCard(iconName = RaftLucideIconName.ClipboardList, title = stringResource(Res.string.settings_mobile_long_message_collapse)) {
+        SettingsFormDetailText(stringResource(Res.string.settings_mobile_long_message_collapse_detail))
         Row(
             modifier =
                 Modifier
@@ -635,9 +634,9 @@ private fun SettingsLongMessageCollapseCard(
                 Text(
                     text =
                         if (preference.enabled) {
-                            stringResource(MR.strings.settings_mobile_long_message_collapse_enabled)
+                            stringResource(Res.string.settings_mobile_long_message_collapse_enabled)
                         } else {
-                            stringResource(MR.strings.settings_mobile_long_message_collapse_disabled)
+                            stringResource(Res.string.settings_mobile_long_message_collapse_disabled)
                         },
                     style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                     color = RaftColor.TextMutedGray
@@ -664,9 +663,9 @@ private fun SettingsSingleTapOpensThreadCard(
     val preference = snapshot.singleTapOpensThread
     SettingsFormSectionCard(
         iconName = RaftLucideIconName.MessageSquare,
-        title = stringResource(MR.strings.settings_mobile_single_tap_thread)
+        title = stringResource(Res.string.settings_mobile_single_tap_thread)
     ) {
-        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_single_tap_thread_detail))
+        SettingsFormDetailText(stringResource(Res.string.settings_mobile_single_tap_thread_detail))
         Row(
             modifier =
                 Modifier
@@ -687,9 +686,9 @@ private fun SettingsSingleTapOpensThreadCard(
                 Text(
                     text =
                         if (preference.enabled) {
-                            stringResource(MR.strings.settings_mobile_single_tap_thread_enabled)
+                            stringResource(Res.string.settings_mobile_single_tap_thread_enabled)
                         } else {
-                            stringResource(MR.strings.settings_mobile_single_tap_thread_disabled)
+                            stringResource(Res.string.settings_mobile_single_tap_thread_disabled)
                         },
                     style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                     color = RaftColor.TextMutedGray
@@ -716,7 +715,7 @@ private fun SettingsNewMessageMenuCard(
     val preference = snapshot.newMessageMenu
     SettingsFormSectionCard(
         iconName = RaftLucideIconName.PanelBottomOpen,
-        title = stringResource(MR.strings.settings_mobile_new_message_menu)
+        title = stringResource(Res.string.settings_mobile_new_message_menu)
     ) {
         Row(
             modifier =
@@ -734,7 +733,7 @@ private fun SettingsNewMessageMenuCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_badge_beta))
+                    SettingsConnectedAppsBadge(stringResource(Res.string.settings_badge_beta))
                     Text(
                         preference.localizedToggleStatus(),
                         style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
@@ -742,7 +741,7 @@ private fun SettingsNewMessageMenuCard(
                     )
                 }
                 Text(
-                    stringResource(MR.strings.settings_mobile_new_message_menu_detail),
+                    stringResource(Res.string.settings_mobile_new_message_menu_detail),
                     style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                     color = RaftColor.TextMutedGray,
                     maxLines = 3,
@@ -770,14 +769,14 @@ private fun SettingsConversationForwardGestureCard(
         actionState?.action == MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE && actionState.inProgress
     val preference = snapshot.conversationForwardGesture
     val accessibilityDescription =
-        stringResource(MR.strings.settings_mobile_conversation_forward_gesture_accessibility)
+        stringResource(Res.string.settings_mobile_conversation_forward_gesture_accessibility)
     val localizedStateDescription = preference.localizedToggleStatus()
     SettingsFormSectionCard(
         iconName = RaftLucideIconName.Redo2,
-        title = stringResource(MR.strings.settings_mobile_conversation_forward_gesture)
+        title = stringResource(Res.string.settings_mobile_conversation_forward_gesture)
     ) {
         SettingsFormDetailText(
-            stringResource(MR.strings.settings_mobile_conversation_forward_gesture_detail)
+            stringResource(Res.string.settings_mobile_conversation_forward_gesture_detail)
         )
         Row(
             modifier =
@@ -802,7 +801,7 @@ private fun SettingsConversationForwardGestureCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SettingsConnectedAppsBadge(stringResource(MR.strings.settings_badge_beta))
+                    SettingsConnectedAppsBadge(stringResource(Res.string.settings_badge_beta))
                     Text(
                         localizedStateDescription,
                         style = RaftType.Button.copy(color = RaftColor.TextBlack),
@@ -832,8 +831,8 @@ private fun SettingsActivityTaskStatusBadgesCard(
 ) {
     val busy = actionState?.action == MOBILE_ACTION_ACTIVITY_TASK_STATUS_BADGES && actionState.inProgress
     val preference = snapshot.activityTaskStatusBadges
-    SettingsFormSectionCard(iconName = RaftLucideIconName.ClipboardCheck, title = stringResource(MR.strings.settings_mobile_activity_task_badges)) {
-        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_activity_task_badges_detail))
+    SettingsFormSectionCard(iconName = RaftLucideIconName.ClipboardCheck, title = stringResource(Res.string.settings_mobile_activity_task_badges)) {
+        SettingsFormDetailText(stringResource(Res.string.settings_mobile_activity_task_badges_detail))
         Row(
             modifier =
                 Modifier
@@ -856,9 +855,9 @@ private fun SettingsActivityTaskStatusBadgesCard(
                 Text(
                     text =
                         if (preference.enabled) {
-                            stringResource(MR.strings.settings_mobile_activity_task_badges_enabled)
+                            stringResource(Res.string.settings_mobile_activity_task_badges_enabled)
                         } else {
-                            stringResource(MR.strings.settings_mobile_activity_task_badges_disabled)
+                            stringResource(Res.string.settings_mobile_activity_task_badges_disabled)
                         },
                     style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                     color = RaftColor.TextMutedGray,
@@ -885,8 +884,8 @@ private fun SettingsComposerSendKeyCard(
 ) {
     val busy = actionState?.action == MOBILE_ACTION_COMPOSER_SEND_KEY && actionState.inProgress
     val preference = snapshot.composerSendKey
-    SettingsFormSectionCard(iconName = RaftLucideIconName.Send, title = stringResource(MR.strings.settings_mobile_composer_key)) {
-        SettingsFormDetailText(stringResource(MR.strings.settings_mobile_composer_key_detail))
+    SettingsFormSectionCard(iconName = RaftLucideIconName.Send, title = stringResource(Res.string.settings_mobile_composer_key)) {
+        SettingsFormDetailText(stringResource(Res.string.settings_mobile_composer_key_detail))
         Row(
             modifier =
                 Modifier
@@ -902,9 +901,9 @@ private fun SettingsComposerSendKeyCard(
                 Text(
                     text =
                         if (preference.enabled) {
-                            stringResource(MR.strings.settings_mobile_composer_key_send)
+                            stringResource(Res.string.settings_mobile_composer_key_send)
                         } else {
-                            stringResource(MR.strings.settings_mobile_composer_key_new_line)
+                            stringResource(Res.string.settings_mobile_composer_key_new_line)
                         },
                     style = RaftType.Button.copy(color = RaftColor.TextBlack),
                     color = RaftColor.TextBlack,
@@ -914,9 +913,9 @@ private fun SettingsComposerSendKeyCard(
                 Text(
                     text =
                         if (preference.enabled) {
-                            stringResource(MR.strings.settings_mobile_composer_key_enabled)
+                            stringResource(Res.string.settings_mobile_composer_key_enabled)
                         } else {
-                            stringResource(MR.strings.settings_mobile_composer_key_disabled)
+                            stringResource(Res.string.settings_mobile_composer_key_disabled)
                         },
                     style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                     color = RaftColor.TextMutedGray,
@@ -938,9 +937,9 @@ private fun SettingsComposerSendKeyCard(
 @Composable
 private fun SettingsMobileToggleSnapshot.localizedToggleStatus(): String =
     when {
-        !available -> stringResource(MR.strings.settings_state_unavailable)
-        enabled -> stringResource(MR.strings.settings_mobile_status_enabled)
-        else -> stringResource(MR.strings.settings_state_off)
+        !available -> stringResource(Res.string.settings_state_unavailable)
+        enabled -> stringResource(Res.string.settings_mobile_status_enabled)
+        else -> stringResource(Res.string.settings_state_off)
     }
 
 internal fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(

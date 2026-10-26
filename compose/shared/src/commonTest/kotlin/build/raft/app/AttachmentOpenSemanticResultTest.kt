@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.app.resources.MR
+import build.raft.app.resources.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -207,12 +207,12 @@ class AttachmentOpenSemanticResultTest {
     @Test
     fun threadFileInlineStatusUsesOpenSpecificLocalizedResource() {
         mapOf(
-            "cancelled" to MR.strings.file_preview_download_stopped,
-            "missing" to MR.strings.file_preview_error_download_attachment,
-            "no_app" to MR.strings.file_preview_error_no_app,
-            "storage_failed" to MR.strings.file_preview_error_storage_unavailable,
-            "download_failed" to MR.strings.file_preview_download_failed,
-            "failed" to MR.strings.file_preview_error_open_attachment
+            "cancelled" to Res.string.file_preview_download_stopped,
+            "missing" to Res.string.file_preview_error_download_attachment,
+            "no_app" to Res.string.file_preview_error_no_app,
+            "storage_failed" to Res.string.file_preview_error_storage_unavailable,
+            "download_failed" to Res.string.file_preview_download_failed,
+            "failed" to Res.string.file_preview_error_open_attachment
         ).forEach { (status, expectedResource) ->
             assertEquals(
                 expectedResource,
@@ -220,7 +220,7 @@ class AttachmentOpenSemanticResultTest {
             )
         }
         assertNotEquals(
-            MR.strings.file_preview_download_failed,
+            Res.string.file_preview_download_failed,
             ThreadAttachmentOpenUiState(status = "failed").threadAttachmentTerminalStatusResource()
         )
         assertNull(ThreadAttachmentOpenUiState(status = "downloading").threadAttachmentTerminalStatusResource())

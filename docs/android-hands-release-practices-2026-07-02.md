@@ -315,7 +315,7 @@ partial or not-yet-open capabilities (e.g. a Billing page that only lists plans
 locale's nouns, actions, and status labels with its current catalog. Shared
 Web/mobile concepts come from `botiverse/slock` under
 `packages/web/src/i18n/messages/`; mobile-only concepts and locales also use
-`compose/shared/src/commonMain/resources/MR/<locale>/strings.xml`. Use the
+`compose/shared/src/commonMain/composeResources/values-<locale>/strings.xml`. Use the
 catalog's user-visible wording and avoid implementation labels such as chip,
 badge, or spinner unless they appear in the product UI. Record every source
 exact and key checked in the review receipt. Current zh-CN terms include

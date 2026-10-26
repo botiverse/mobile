@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail on ASCII edge spaces in moko string resources (task #536, S8).
+"""Fail on ASCII edge spaces in the shared string resources (task #536, S8).
 
 Android's resource compiler trims leading/trailing whitespace of an unquoted
 <string> value, so `"I agree to the "` reaches the app as `"I agree to the"` and
@@ -10,7 +10,7 @@ target. This check has no allow-list on purpose: an edge space in a
 resource is never what the author meant.
 
 Usage: check_string_edge_spaces.py [--fix] [paths...]
-  default paths: compose/shared/src/commonMain/resources/MR/*/strings.xml
+  default paths: compose/shared/src/commonMain/composeResources/values*/strings.xml
   --fix rewrites ASCII edge spaces to &#160; in place (idempotent).
 """
 from __future__ import annotations
@@ -20,7 +20,7 @@ import re
 import sys
 from pathlib import Path
 
-DEFAULT_GLOB = "compose/shared/src/commonMain/resources/MR/*/strings.xml"
+DEFAULT_GLOB = "compose/shared/src/commonMain/composeResources/values*/strings.xml"
 # Only <string> entries: as of 2026-09-03 the three MR files carry no <plurals> /
 # <string-array> <item>s at all (LiBai counted 0), so this is a description of the
 # current resource shape, not a judgement that <item> is exempt. aapt trims those

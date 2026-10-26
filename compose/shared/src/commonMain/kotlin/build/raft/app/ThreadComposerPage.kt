@@ -1,7 +1,7 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import kotlinx.serialization.Transient
-import com.tencent.tmm.kmmresource.compose.localized
 import build.raft.app.transfer.raftComposerUploadDisplay
 import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.transfer.RaftTransferMeter
@@ -40,7 +40,6 @@ import build.raft.app.format.RaftFormat
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -112,7 +111,6 @@ import androidx.compose.ui.unit.sp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.IPagerEventObserver
 import build.raft.app.compat.pager.Pager
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -2730,7 +2728,7 @@ internal fun ThreadComposerContentLeaf(
             val localizedMentionActionNotice =
                 state.mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
                     if (notice == ThreadComposerMentionBatchPartialNoticeVisualMarker) {
-                        stringResource(MR.strings.thread_composer_mention_batch_error_member_authority)
+                        stringResource(Res.string.thread_composer_mention_batch_error_member_authority)
                     } else {
                         notice
                     }
@@ -2738,7 +2736,7 @@ internal fun ThreadComposerContentLeaf(
             val localizedMentionActionNoticeTitle =
                 state.mentionActionNoticeTitle?.takeIf { it.isNotBlank() }?.let { title ->
                     if (title == ThreadComposerMentionBatchPartialNoticeTitleVisualMarker) {
-                        stringResource(MR.strings.thread_composer_mention_batch_result_summary, 1, 3)
+                        stringResource(Res.string.thread_composer_mention_batch_result_summary, 1, 3)
                     } else {
                         title
                     }
@@ -2945,8 +2943,8 @@ internal fun ThreadComposerContentLeaf(
                                     ComposerIconButton(
                                         icon = RaftLucideIconName.ImagePlus,
                                         enabled = composerEnabled,
-                                        contentDescription = stringResource(MR.strings.composer_add_image),
-                                        longClickLabel = stringResource(MR.strings.composer_take_photo),
+                                        contentDescription = stringResource(Res.string.composer_add_image),
+                                        longClickLabel = stringResource(Res.string.composer_take_photo),
                                         onLongClick = {
                                             onEvent(threadComposerImageAction(longPress = true), null, null, null)
                                         },
@@ -2957,7 +2955,7 @@ internal fun ThreadComposerContentLeaf(
                                     ComposerIconButton(
                                         icon = RaftLucideIconName.Camera,
                                         enabled = composerEnabled,
-                                        contentDescription = stringResource(MR.strings.composer_take_photo),
+                                        contentDescription = stringResource(Res.string.composer_take_photo),
                                         onClick = {
                                             // longPress = true is what makes this the camera: it emits
                                             // captureImage, so capture keeps its existing confirm/cancel
@@ -2976,7 +2974,7 @@ internal fun ThreadComposerContentLeaf(
                                     ComposerIconButton(
                                         icon = RaftLucideIconName.Paperclip,
                                         enabled = composerEnabled,
-                                        contentDescription = stringResource(MR.strings.composer_attach_file),
+                                        contentDescription = stringResource(Res.string.composer_attach_file),
                                         onClick = { onEvent("attachFile", null, null, null) }
                                     )
                                 }
@@ -3012,7 +3010,7 @@ internal fun ThreadComposerContentLeaf(
                                         // foreground, foreground-disabled when the composer is off.
                                         val labelColor = if (composerEnabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled
                                         Text(
-                                            text = stringResource(MR.strings.thread_composer_as_task),
+                                            text = stringResource(Res.string.thread_composer_as_task),
                                             style =
                                                 RaftType.Caption
                                                     .withRaftFontWeight(FontWeight.SemiBold)
@@ -3132,14 +3130,14 @@ private fun ComposerSuggestionPanelContent(
         ThreadComposerSuggestionPanelState.MemberLoading -> {
             ComposerSuggestionStatusPanel(
                 title = surface.memberSuggestionTitle(),
-                message = stringResource(MR.strings.thread_state_loading)
+                message = stringResource(Res.string.thread_state_loading)
             )
         }
 
         ThreadComposerSuggestionPanelState.MemberEmpty -> {
             ComposerSuggestionStatusPanel(
                 title = surface.memberSuggestionTitle(),
-                message = stringResource(MR.strings.composer_state_no_matching_members)
+                message = stringResource(Res.string.composer_state_no_matching_members)
             )
         }
 
@@ -3147,7 +3145,7 @@ private fun ComposerSuggestionPanelContent(
             ComposerSuggestionStatusPanel(
                 title = surface.memberSuggestionTitle(),
                 message = memberErrorCode?.takeIf { it.isNotBlank() }
-                    ?: stringResource(MR.strings.thread_composer_load_members_failed)
+                    ?: stringResource(Res.string.thread_composer_load_members_failed)
             )
         }
 
@@ -3178,14 +3176,14 @@ private fun ComposerSuggestionPanelContent(
         ThreadComposerSuggestionPanelState.ChannelLoading -> {
             ComposerSuggestionStatusPanel(
                 title = null,
-                message = stringResource(MR.strings.thread_state_loading)
+                message = stringResource(Res.string.thread_state_loading)
             )
         }
 
         ThreadComposerSuggestionPanelState.ChannelEmpty -> {
             ComposerSuggestionStatusPanel(
                 title = null,
-                message = stringResource(MR.strings.composer_state_no_matching_channels)
+                message = stringResource(Res.string.composer_state_no_matching_channels)
             )
         }
 
@@ -3193,7 +3191,7 @@ private fun ComposerSuggestionPanelContent(
             ComposerSuggestionStatusPanel(
                 title = null,
                 message = channelErrorCode?.takeIf { it.isNotBlank() }
-                    ?: stringResource(MR.strings.thread_composer_load_channels_failed)
+                    ?: stringResource(Res.string.thread_composer_load_channels_failed)
             )
         }
 
@@ -3207,30 +3205,30 @@ private fun ThreadComposerSurface.memberSuggestionTitle(): String? =
         null
     } else {
         when (kind) {
-            RaftThreadSurfaceKind.ReplyThread -> stringResource(MR.strings.thread_composer_members_parent_channel)
-            else -> stringResource(MR.strings.thread_composer_members_this_channel)
+            RaftThreadSurfaceKind.ReplyThread -> stringResource(Res.string.thread_composer_members_parent_channel)
+            else -> stringResource(Res.string.thread_composer_members_this_channel)
         }
     }
 
 @Composable
 private fun ThreadComposerSurface.localizedMentionScopeChannelLabel(): String =
     mentionChannelLabel.toComposerChannelMentionLabel()
-        ?: stringResource(MR.strings.thread_composer_scope_this_channel)
+        ?: stringResource(Res.string.thread_composer_scope_this_channel)
 
 @Composable
 private fun localizedThreadComposerPlaceholder(rawPlaceholder: String): String {
     val normalized = rawPlaceholder.trim()
     return when {
-        normalized == "Message" -> stringResource(MR.strings.thread_composer_placeholder_message)
-        normalized == "Reply in thread" -> stringResource(MR.strings.thread_composer_placeholder_reply)
+        normalized == "Message" -> stringResource(Res.string.thread_composer_placeholder_message)
+        normalized == "Reply in thread" -> stringResource(Res.string.thread_composer_placeholder_reply)
         normalized.startsWith("Message @") ->
             stringResource(
-                MR.strings.thread_composer_placeholder_dm,
+                Res.string.thread_composer_placeholder_dm,
                 normalized.removePrefix("Message @")
             )
         normalized.startsWith("Message #") ->
             stringResource(
-                MR.strings.thread_composer_placeholder_channel,
+                Res.string.thread_composer_placeholder_channel,
                 normalized.removePrefix("Message #")
             )
         else -> rawPlaceholder
@@ -3240,7 +3238,7 @@ private fun localizedThreadComposerPlaceholder(rawPlaceholder: String): String {
 @Composable
 private fun localizedThreadComposerStatusLabel(status: String): String =
     if (status == "Composer payload parse failed") {
-        stringResource(MR.strings.thread_composer_payload_failed)
+        stringResource(Res.string.thread_composer_payload_failed)
     } else {
         status
     }
@@ -3408,23 +3406,23 @@ private fun RaftPendingMentionActionItem.localizedPendingMentionActionDescriptio
 ): String {
     val target = targetLabel()
     if (localState == "added") {
-        return stringResource(MR.strings.thread_composer_mention_added, target, channelLabel)
+        return stringResource(Res.string.thread_composer_mention_added, target, channelLabel)
     }
     if (localState == "notified") {
-        return stringResource(MR.strings.thread_composer_mention_notified, target, channelLabel)
+        return stringResource(Res.string.thread_composer_mention_notified, target, channelLabel)
     }
     val actionHint =
         when {
             supportsMentionAction("invite") && supportsMentionAction("notify") ->
-                stringResource(MR.strings.thread_composer_mention_add_or_notify, channelLabel)
+                stringResource(Res.string.thread_composer_mention_add_or_notify, channelLabel)
             supportsMentionAction("invite") ->
-                stringResource(MR.strings.thread_composer_mention_add_hint, channelLabel)
+                stringResource(Res.string.thread_composer_mention_add_hint, channelLabel)
             supportsMentionAction("notify") ->
-                stringResource(MR.strings.thread_composer_mention_notify_hint)
+                stringResource(Res.string.thread_composer_mention_notify_hint)
             else ->
-                stringResource(MR.strings.thread_composer_mention_dismiss_hint)
+                stringResource(Res.string.thread_composer_mention_dismiss_hint)
         }
-    return stringResource(MR.strings.thread_composer_mention_not_in_channel, target, channelLabel, actionHint)
+    return stringResource(Res.string.thread_composer_mention_not_in_channel, target, channelLabel, actionHint)
 }
 
 @Composable
@@ -3461,15 +3459,15 @@ private fun ComposerMemberSuggestionPanel(
         }
         return
     }
-    val localizedParentChannelTitle = stringResource(MR.strings.thread_composer_members_parent_channel)
-    val localizedNotInParentChannelTitle = stringResource(MR.strings.thread_composer_members_not_parent_channel)
-    val localizedNotInThisChannelTitle = stringResource(MR.strings.thread_composer_members_not_this_channel)
+    val localizedParentChannelTitle = stringResource(Res.string.thread_composer_members_parent_channel)
+    val localizedNotInParentChannelTitle = stringResource(Res.string.thread_composer_members_not_parent_channel)
+    val localizedNotInThisChannelTitle = stringResource(Res.string.thread_composer_members_not_this_channel)
     val panelEntries =
         composerMemberSuggestionPanelEntries(
             title = title,
             members = members,
-            inThreadTitle = stringResource(MR.strings.thread_composer_members_this_thread),
-            inThisChannelTitle = stringResource(MR.strings.thread_composer_members_this_channel),
+            inThreadTitle = stringResource(Res.string.thread_composer_members_this_thread),
+            inThisChannelTitle = stringResource(Res.string.thread_composer_members_this_channel),
             notInParentChannelTitle = localizedNotInParentChannelTitle,
             notInThisChannelTitle = localizedNotInThisChannelTitle,
             notInScopeTitle =
@@ -3701,8 +3699,8 @@ private fun ComposerMemberSuggestionRow(
     val serverLabel = member.sourceServerLabel?.trim()?.takeIf { it.isNotBlank() }
     val actorTypeLabel =
         when (member.kind) {
-            MemberKind.Human -> stringResource(MR.strings.composer_mention_actor_human)
-            MemberKind.Agent -> stringResource(MR.strings.composer_mention_actor_agent)
+            MemberKind.Human -> stringResource(Res.string.composer_mention_actor_human)
+            MemberKind.Agent -> stringResource(Res.string.composer_mention_actor_agent)
             else -> null
         }
     val muted = !inChannel
@@ -4000,7 +3998,7 @@ private fun PendingMentionActionBatchSummary(
     val visibleNames = actions.take(2).joinToString(separator = " · ") { it.targetLabel() }
     val namesLabel =
         if (overflowCount > 0) {
-            "$visibleNames · ${stringResource(MR.strings.thread_composer_mention_batch_more, overflowCount)}"
+            "$visibleNames · ${stringResource(Res.string.thread_composer_mention_batch_more, overflowCount)}"
         } else {
             visibleNames
         }
@@ -4012,7 +4010,7 @@ private fun PendingMentionActionBatchSummary(
         PendingMentionActionAvatarStack(
             actions = actions,
             memberSuggestions = memberSuggestions,
-            contentDescription = stringResource(MR.strings.thread_composer_mention_batch_avatar_description, actions.size)
+            contentDescription = stringResource(Res.string.thread_composer_mention_batch_avatar_description, actions.size)
         )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
@@ -4040,9 +4038,9 @@ private fun PendingMentionActionBatchSummary(
             ComposerTextChip(
                 text =
                     if (batchExecuting) {
-                        stringResource(MR.strings.thread_composer_mention_batch_adding)
+                        stringResource(Res.string.thread_composer_mention_batch_adding)
                     } else {
-                        stringResource(MR.strings.thread_composer_mention_batch_add_all)
+                        stringResource(Res.string.thread_composer_mention_batch_add_all)
                     },
                 variant = ComposerTextChipVariant.Pink,
                 enabled = !batchExecuting,
@@ -4052,7 +4050,7 @@ private fun PendingMentionActionBatchSummary(
             )
         }
         ComposerTextChip(
-            text = stringResource(MR.strings.thread_composer_mention_batch_view),
+            text = stringResource(Res.string.thread_composer_mention_batch_view),
             variant = ComposerTextChipVariant.White,
             enabled = true,
             leadingIcon = RaftLucideIconName.Users,
@@ -4094,7 +4092,7 @@ private fun PendingMentionActionAvatarStack(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = stringResource(MR.strings.thread_composer_mention_batch_more, overflowCount),
+                    text = stringResource(Res.string.thread_composer_mention_batch_more, overflowCount),
                     style = RaftType.Caption.copy(fontSize = 9.sp, lineHeight = 11.sp),
                     color = RaftColor.TextBlack,
                     maxLines = 1
@@ -4155,9 +4153,9 @@ private fun PendingMentionActionDetailsActions(
         RaftButton(
             text =
                 if (batchExecuting) {
-                    stringResource(MR.strings.thread_composer_mention_batch_adding)
+                    stringResource(Res.string.thread_composer_mention_batch_adding)
                 } else {
-                    stringResource(MR.strings.thread_composer_mention_batch_add_all)
+                    stringResource(Res.string.thread_composer_mention_batch_add_all)
                 },
             onClick = onAddAll,
             modifier = Modifier.fillMaxWidth(),
@@ -4171,7 +4169,7 @@ private fun PendingMentionActionDetailsActions(
         )
     }
     RaftButton(
-        text = stringResource(MR.strings.common_done),
+        text = stringResource(Res.string.common_done),
         onClick = onClose,
         modifier = Modifier.fillMaxWidth(),
         size = RaftButtonSize.Lg
@@ -4224,7 +4222,7 @@ private fun PendingMentionActionCompactRow(
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = stringResource(MR.strings.thread_composer_mention_batch_row_status, channelLabel),
+                text = stringResource(Res.string.thread_composer_mention_batch_row_status, channelLabel),
                 style = RaftType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
                 color = RaftColor.TextMutedGray.copy(alpha = contentAlpha),
                 maxLines = 1,
@@ -4237,7 +4235,7 @@ private fun PendingMentionActionCompactRow(
         ) {
             if (localState == "added") {
                 ComposerTextChip(
-                    stringResource(MR.strings.thread_composer_mention_added_chip),
+                    stringResource(Res.string.thread_composer_mention_added_chip),
                     variant = ComposerTextChipVariant.Disabled,
                     enabled = false,
                     leadingIcon = RaftLucideIconName.Check,
@@ -4246,9 +4244,9 @@ private fun PendingMentionActionCompactRow(
             } else if (canInvite) {
                 ComposerTextChip(
                     if (executingState == "added") {
-                        stringResource(MR.strings.thread_composer_mention_adding_chip)
+                        stringResource(Res.string.thread_composer_mention_adding_chip)
                     } else {
-                        stringResource(MR.strings.thread_composer_mention_add_chip)
+                        stringResource(Res.string.thread_composer_mention_add_chip)
                     },
                     variant = ComposerTextChipVariant.Pink,
                     enabled = !executing,
@@ -4259,7 +4257,7 @@ private fun PendingMentionActionCompactRow(
             }
             if (localState == "notified") {
                 ComposerTextChip(
-                    stringResource(MR.strings.thread_composer_mention_notified_chip),
+                    stringResource(Res.string.thread_composer_mention_notified_chip),
                     variant = ComposerTextChipVariant.Disabled,
                     enabled = false,
                     leadingIcon = RaftLucideIconName.Check,
@@ -4268,9 +4266,9 @@ private fun PendingMentionActionCompactRow(
             } else if (canNotify) {
                 ComposerTextChip(
                     if (executingState == "notified") {
-                        stringResource(MR.strings.thread_composer_mention_notifying_chip)
+                        stringResource(Res.string.thread_composer_mention_notifying_chip)
                     } else {
-                        stringResource(MR.strings.thread_composer_mention_notify_chip)
+                        stringResource(Res.string.thread_composer_mention_notify_chip)
                     },
                     variant = ComposerTextChipVariant.White,
                     enabled = !executing,
@@ -4280,7 +4278,7 @@ private fun PendingMentionActionCompactRow(
                 )
             }
             ComposerTextChip(
-                stringResource(MR.strings.common_dismiss),
+                stringResource(Res.string.common_dismiss),
                 variant = ComposerTextChipVariant.MutedText,
                 enabled = !executing,
                 onClick = onDismiss
@@ -4292,9 +4290,9 @@ private fun PendingMentionActionCompactRow(
 @Composable
 private fun localizedPendingMentionBatchSummary(count: Int, channelLabel: String): String =
     if (count == 1) {
-        stringResource(MR.strings.thread_composer_mention_batch_summary_one, channelLabel)
+        stringResource(Res.string.thread_composer_mention_batch_summary_one, channelLabel)
     } else {
-        stringResource(MR.strings.thread_composer_mention_batch_summary_many, count, channelLabel)
+        stringResource(Res.string.thread_composer_mention_batch_summary_many, count, channelLabel)
     }
 
 @Composable
@@ -4371,7 +4369,7 @@ private fun PendingMentionActionRow(
         ) {
             if (localState == "added") {
                 ComposerTextChip(
-                    stringResource(MR.strings.thread_composer_mention_added_chip),
+                    stringResource(Res.string.thread_composer_mention_added_chip),
                     variant = ComposerTextChipVariant.Disabled,
                     enabled = false,
                     leadingIcon = RaftLucideIconName.Check,
@@ -4380,9 +4378,9 @@ private fun PendingMentionActionRow(
             } else if (canInvite) {
                 ComposerTextChip(
                     if (executingState == "added") {
-                        stringResource(MR.strings.thread_composer_mention_adding_chip)
+                        stringResource(Res.string.thread_composer_mention_adding_chip)
                     } else {
-                        stringResource(MR.strings.thread_composer_mention_add_chip)
+                        stringResource(Res.string.thread_composer_mention_add_chip)
                     },
                     variant = ComposerTextChipVariant.Pink,
                     enabled = !executing,
@@ -4393,7 +4391,7 @@ private fun PendingMentionActionRow(
             }
             if (localState == "notified") {
                 ComposerTextChip(
-                    stringResource(MR.strings.thread_composer_mention_notified_chip),
+                    stringResource(Res.string.thread_composer_mention_notified_chip),
                     variant = ComposerTextChipVariant.Disabled,
                     enabled = false,
                     leadingIcon = RaftLucideIconName.Check,
@@ -4402,9 +4400,9 @@ private fun PendingMentionActionRow(
             } else if (canNotify) {
                 ComposerTextChip(
                     if (executingState == "notified") {
-                        stringResource(MR.strings.thread_composer_mention_notifying_chip)
+                        stringResource(Res.string.thread_composer_mention_notifying_chip)
                     } else {
-                        stringResource(MR.strings.thread_composer_mention_notify_chip)
+                        stringResource(Res.string.thread_composer_mention_notify_chip)
                     },
                     variant = ComposerTextChipVariant.White,
                     enabled = !executing,
@@ -4414,7 +4412,7 @@ private fun PendingMentionActionRow(
                 )
             }
             ComposerTextChip(
-                stringResource(MR.strings.common_dismiss),
+                stringResource(Res.string.common_dismiss),
                 variant = ComposerTextChipVariant.MutedText,
                 enabled = !executing,
                 onClick = onDismiss
@@ -4499,7 +4497,7 @@ private fun ComposerAttachmentPreviewChip(
                 title = attachment.fileName,
                 meta =
                     listOf(
-                        stringResource(MR.strings.thread_composer_attachment_file),
+                        stringResource(Res.string.thread_composer_attachment_file),
                         attachment.displaySizeLabel(),
                     ).filter { it.isNotBlank() }.joinToString(" · "),
                 onClick = onOpen
@@ -4514,14 +4512,14 @@ private fun ComposerAttachmentPreviewChip(
                 phase = upload.phase.toComposerAttachmentPhase(),
                 percent = upload.percent,
                 label = upload.label.localized(),
-                action = stringResource(MR.strings.common_retry).takeIf { failed },
+                action = stringResource(Res.string.common_retry).takeIf { failed },
                 onAction = onRetry.takeIf { failed }
             )
         }
         if (enabled) {
             RaftComposerAttachmentRemove(
                 onClick = onRemove,
-                contentDescription = "${stringResource(MR.strings.common_remove)} ${attachment.fileName}"
+                contentDescription = "${stringResource(Res.string.common_remove)} ${attachment.fileName}"
             )
         }
     }
@@ -4838,7 +4836,7 @@ private fun ComposerSendButton(
     onClick: () -> Unit
 ) {
     val icon = RaftLucideIconName.Send
-    val contentDescription = stringResource(MR.strings.common_send)
+    val contentDescription = stringResource(Res.string.common_send)
     if (sending) {
         ComposerIconButton(
             icon = icon,

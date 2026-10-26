@@ -16,7 +16,7 @@ on:
       - "compose/shared/src/commonMain/kotlin/**/*.kt"
       # Same glob as check_string_edge_spaces.py: a fourth locale must trigger
       # this job on its own PR, not only after it lands (LiBai, #2327 review).
-      - "compose/shared/src/commonMain/resources/MR/*/strings.xml"
+      - "compose/shared/src/commonMain/composeResources/values*/strings.xml"
       - "scripts/ci/check_source_constraints.py"
       # check_native_apple_authentication_services (task #82) reads these iOS files.
       - "compose/iosApp/iosApp/RaftIosMobileOAuthHost.swift"

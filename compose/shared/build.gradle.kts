@@ -9,13 +9,9 @@ plugins {
     id("org.jetbrains.compose")
     kotlin("plugin.compose")
     id("app.cash.sqldelight")
-    id("com.tencent.kuiklybase.resource.generator")
 }
 
-val generatedTmmResourceDir = layout.buildDirectory.dir("generated/tmm-res")
-val generatedTmmCommonSourceDir = layout.buildDirectory.dir("generated/tmm-res-common/commonMain")
 val generatedRaftDatetimeConfigDir = layout.buildDirectory.dir("generated/slock-datetime/commonMain/kotlin")
-val commonTmmResourceInputDir = layout.projectDirectory.dir("src/commonMain/resources/MR")
 val raftKuiklyBaseDatetimeEnabled =
     providers.gradleProperty("slock.kuiklyBaseDatetime.enabled")
         .orElse(providers.environmentVariable("SLOCK_KUIKLYBASE_DATETIME_ENABLED"))
@@ -49,28 +45,18 @@ val raftVisualFixturesEnabled =
         .orElse(providers.environmentVariable("SLOCK_VISUAL_FIXTURES"))
         .map { it.equals("true", ignoreCase = true) }
         .getOrElse(false)
-val prepareTmmCommonResources by tasks.registering(Sync::class) {
-    from(commonTmmResourceInputDir)
-    into(generatedTmmResourceDir.map { it.dir("commonMain/res") })
-}
-val stageTmmCommonSources by tasks.registering(Sync::class) {
-    dependsOn("generateMRcommonMain")
-    outputs.upToDateWhen { false }
-    from(generatedTmmResourceDir.map { it.dir("commonMain/src") })
-    into(generatedTmmCommonSourceDir.map { it.dir("src") })
-}
-
-multiplatformResources {
-    multiplatformResourcesPackage = "build.raft.app.resources"
-    multiplatformResourcesPrefix = "slock_"
-    multiplatformResourcesClassName = "MR"
+// App strings and bundled files: Compose Multiplatform resources (src/commonMain/composeResources),
+// generated as the internal `build.raft.app.resources.Res`. Read strings through the Raft string
+// layer (build.raft.app.resources.stringResource / StringDesc), which follows the in-app language.
+compose.resources {
+    packageOfResClass = "build.raft.app.resources"
+    publicResClass = false
+    generateResClass = always
 }
 
 kotlin {
-    // kmmresource generates MR as expect/actual classes; Kotlin 2.x marks
-    // expect/actual CLASSES (not functions) Beta and warns once per generated
-    // declaration, flooding CI logs. This is the officially suggested
-    // suppression (KT-61573) — zero behavior change.
+    // Kotlin 2.x marks expect/actual CLASSES (not functions) Beta and warns once per
+    // declaration; this is the officially suggested suppression (KT-61573).
     compilerOptions {
         freeCompilerArgs.add("-Xexpect-actual-classes")
         // :core declarations that are public only for :shared (see RaftCoreInternalApi).
@@ -110,14 +96,13 @@ kotlin {
             export(project(":ui-cmp"))
         }
         extraSpecAttributes["libraries"] = "['c++', 'sqlite3']"
-        extraSpecAttributes["resources"] = "['src/commonMain/assets/**', 'src/commonMain/resources/MR/assets/**']"
+        extraSpecAttributes["resources"] = "['src/commonMain/assets/**']"
     }
 
     sourceSets {
         val commonMain by getting {
             kotlin.srcDir(rootProject.file("../third_party/kuikly-compose-markdown/src/commonMain/kotlin"))
             kotlin.srcDir(rootProject.file("../third_party/markdown-parser/src/commonMain/kotlin"))
-            kotlin.srcDir(generatedTmmCommonSourceDir.map { it.dir("src") })
             kotlin.srcDir(generatedRaftDatetimeConfigDir)
             if (raftVisualFixturesEnabled) {
                 kotlin.srcDir("src/visualFixtures/kotlin")
@@ -164,7 +149,7 @@ kotlin {
                 // Common platform-safe monitor used by the synchronous shell-store cache.
                 implementation(libs.atomicfu)
                 implementation("app.cash.sqldelight:runtime:2.1.0")
-                implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.6")
+                implementation(libs.cmp.components.resources)
                 // Time zone offsets (RaftDatetimeFoundation); the clock is kotlin.time.Clock.
                 implementation(libs.kotlinx.datetime)
                 // Unified network infra (task #12): all platforms' HTTP goes
@@ -191,7 +176,6 @@ kotlin {
             }
             dependencies {
                 implementation(kotlin("test"))
-                implementation("com.tencent.kuiklybase:resource-core:0.1.0-raft.6")
                 // Virtual-time coroutine testing (runTest/advanceTimeBy) — the
                 // required default for new async tests; see AGENTS.md unit-test
                 // rules (task #18). Version tracks kotlinx-coroutines-core above.
@@ -291,33 +275,8 @@ sqldelight {
     }
 }
 
-fun org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet.removeGeneratedTmmPluginCommonSourceDir() {
-    kotlin.setSrcDirs(
-        kotlin.srcDirs.filterNot { sourceDir ->
-            sourceDir.path.replace(File.separatorChar, '/')
-                .endsWith("/build/generated/tmm-res/commonMain/src")
-        }
-    )
-}
-
-afterEvaluate {
-    extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension>("kotlin") {
-        sourceSets.named("commonMain").configure {
-            removeGeneratedTmmPluginCommonSourceDir()
-        }
-    }
-}
-
-tasks.matching { it.name == "compileDebugKotlinAndroid" }.configureEach {
-    dependsOn(stageTmmCommonSources, "generateMRandroidMain")
-}
-
-tasks.matching { it.name == "compileReleaseKotlinAndroid" }.configureEach {
-    dependsOn(stageTmmCommonSources, "generateMRandroidMain")
-}
-
-// The afterEvaluate setSrcDirs above drops the SQLDelight source dir's task dependency; the
-// Kuikly KSP tasks used to carry it. Kotlin compilations now depend on the generator directly.
+// Kotlin compilations depend on the SQLDelight generator directly (the Kuikly KSP tasks used to
+// carry that dependency).
 tasks.matching { task ->
     task.name.startsWith("compile") && task.name.contains("Kotlin") && !task.name.contains("Test")
 }.configureEach {
@@ -325,7 +284,7 @@ tasks.matching { task ->
 }
 
 tasks.matching { it.name == "kspDebugKotlinAndroid" || it.name == "kspReleaseKotlinAndroid" }.configureEach {
-    dependsOn(stageTmmCommonSources, "generateMRandroidMain", "generateCommonMainRaftDatabaseInterface")
+    dependsOn("generateCommonMainRaftDatabaseInterface")
 }
 
 if (raftVisualFixturesEnabled) {
@@ -340,59 +299,20 @@ if (raftVisualFixturesEnabled) {
 }
 
 tasks.matching { it.name.startsWith("kspKotlinIos") }.configureEach {
-    val generatedResourcesTask =
-        when (name) {
-            "kspKotlinIosArm64" -> "generateMRiosArm64Main"
-            "kspKotlinIosSimulatorArm64" -> "generateMRiosSimulatorArm64Main"
-            else -> null
-        }
-    if (generatedResourcesTask != null) {
-        dependsOn(stageTmmCommonSources, generatedResourcesTask, "generateCommonMainRaftDatabaseInterface")
-    }
-}
-
-tasks.matching { it.name.startsWith("compileKotlinIos") }.configureEach {
-    dependsOn(stageTmmCommonSources)
-}
-
-tasks.matching { it.name == "generateMRcommonMain" }.configureEach {
-    dependsOn(prepareTmmCommonResources)
+    dependsOn("generateCommonMainRaftDatabaseInterface")
 }
 
 tasks.matching { it.name.startsWith("compile") || it.name.startsWith("ksp") }.configureEach {
     dependsOn(generateRaftDatetimeBuildConfig)
 }
 
-tasks.matching { it.name == "generateMRandroidMain" }.configureEach {
-    mustRunAfter(stageTmmCommonSources)
-}
-
-tasks.matching { task ->
-    task.name.startsWith("process") && task.name.endsWith("NavigationResources")
-}.configureEach {
-    dependsOn("generateMRandroidMain")
-}
-
-// The MR generator adds build/generated/tmm-res/androidMain to the Android source sets without a
-// task dependency; Gradle 9 rejects every Android variant task (resources, assets, source-set
-// path maps, ...) that reads it undeclared.
-tasks.matching { task ->
-    task.name.contains("Debug") || task.name.contains("Release")
-}.configureEach {
-    dependsOn("generateMRandroidMain")
-}
-
-// Xcode runs Gradle twice per iOS build: the CocoaPods "Build shared" phase
-// (:shared:syncFramework) or a CI step links the framework, then the app's
-// "[CP-User] Copy kmmresource MR bundle to app" phase runs
-// :shared:copyFrameworkResourcesToApp, which depends on the same link task.
-// When that second invocation sees the link as out of date (cold ~/.konan
-// snapshot, see visual-testing.yml), it relinks the whole release framework a
-// second time: ~24 of the ~51 min of the iOS release archive (run 39403554694).
-// With RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES (set as an xcodebuild build setting,
-// which Xcode exports to script phases) a link task whose framework binary
-// already exists is skipped; the resource tasks still run against it. Unset
-// (local Xcode / IDE builds) nothing changes.
+// Xcode can run Gradle more than once per iOS build: the CocoaPods "Build shared" phase
+// (:shared:syncFramework) or a CI step links the framework, and a later invocation that sees
+// the link as out of date (cold ~/.konan snapshot, see visual-testing.yml) relinks the whole
+// release framework a second time: ~24 of the ~51 min of the iOS release archive
+// (run 39403554694). With RAFT_IOS_REUSE_LINKED_FRAMEWORK=YES (set as an xcodebuild build
+// setting, which Xcode exports to script phases) a link task whose framework binary already
+// exists is skipped. Unset (local Xcode / IDE builds) nothing changes.
 val raftReuseLinkedIosFramework =
     providers.environmentVariable("RAFT_IOS_REUSE_LINKED_FRAMEWORK")
         .map { it.trim().uppercase() in setOf("YES", "TRUE", "1") }
@@ -411,17 +331,6 @@ tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinNativeLink::class.java).c
 providers.gradleProperty("raft.iosSimulatorTestDevice").orNull?.takeIf { it.isNotBlank() }?.let { simulator ->
     tasks.withType(org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest::class.java).configureEach {
         device.set(simulator)
-    }
-}
-
-gradle.taskGraph.whenReady {
-    tasks.matching { it.name.startsWith("compileKotlinIos") }.configureEach {
-        // The bundled TMM resource plugin attaches PackResourcesToKLibAction after task
-        // configuration. It expects file-backed KLIBs, while Kotlin 2.1 produces directory
-        // KLIBs here, so leave Kotlin compilation intact and drop only the late wrapper.
-        actions.removeIf { action ->
-            action.javaClass.name == "org.gradle.api.internal.AbstractTask\$TaskActionWrapper"
-        }
     }
 }
 

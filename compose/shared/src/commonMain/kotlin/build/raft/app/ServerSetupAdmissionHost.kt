@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -20,12 +21,10 @@ import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.ServerFeatureFlagSnapshot
 import build.raft.app.data.WEBVIEW_ONBOARDING_V0_FEATURE_FLAG_KEY
 import build.raft.app.model.ServerId
-import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -184,7 +183,7 @@ internal fun rememberServerSetupAdmissionHost(
                         null -> SettingsWebViewLoadingCover()
                         is ServerSetupAdmissionState.Loading -> SettingsWebViewLoadingCover()
                         is ServerSetupAdmissionState.Failed -> SettingsWebViewErrorContent(
-                            actionLabel = stringResource(MR.strings.common_retry),
+                            actionLabel = stringResource(Res.string.common_retry),
                             actionIcon = RaftLucideIconName.RefreshCw,
                             onAction = retry,
                         )

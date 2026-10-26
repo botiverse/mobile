@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.base.Utils
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
@@ -17,7 +18,6 @@ import build.raft.app.data.SettingsHandsFeedbackDraftSnapshot
 import build.raft.app.data.SettingsHandsFeedbackDraftStore
 import build.raft.app.format.RaftFormat
 import build.raft.app.data.raftSharedPreferenceStore
-import build.raft.app.resources.MR
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -54,8 +54,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
-import com.tencent.tmm.kmmresource.compose.stringResource
-import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -1196,39 +1194,39 @@ internal fun SettingsHandsFeedbackCopy.submissionPermissionFailure(): SettingsHa
 
 @Composable
 private fun settingsHandsFeedbackCopy(attachmentMaxLabel: String): SettingsHandsFeedbackCopy {
-    val attachmentLimitReachedTemplate = stringResource(MR.strings.settings_feedback_attachment_limit_reached)
-    val attachmentTooLargeTemplate = stringResource(MR.strings.settings_feedback_attachment_too_large)
-    val attachmentLimitTrimmedTemplate = stringResource(MR.strings.settings_feedback_attachment_limit_trimmed)
-    val submissionSucceededTemplate = stringResource(MR.strings.settings_feedback_submission_succeeded)
+    val attachmentLimitReachedTemplate = stringResource(Res.string.settings_feedback_attachment_limit_reached)
+    val attachmentTooLargeTemplate = stringResource(Res.string.settings_feedback_attachment_too_large)
+    val attachmentLimitTrimmedTemplate = stringResource(Res.string.settings_feedback_attachment_limit_trimmed)
+    val submissionSucceededTemplate = stringResource(Res.string.settings_feedback_submission_succeeded)
     return SettingsHandsFeedbackCopy(
-        title = stringResource(MR.strings.settings_feedback_title),
-        introduction = stringResource(MR.strings.settings_feedback_introduction),
-        you = stringResource(MR.strings.settings_feedback_you),
-        attachment = stringResource(MR.strings.settings_feedback_attachment),
+        title = stringResource(Res.string.settings_feedback_title),
+        introduction = stringResource(Res.string.settings_feedback_introduction),
+        you = stringResource(Res.string.settings_feedback_you),
+        attachment = stringResource(Res.string.settings_feedback_attachment),
         attachmentLimitReached = { limit -> attachmentLimitReachedTemplate.replaceLocalizedFormatArgs(limit) },
         attachmentTooLarge = { maxSize -> attachmentTooLargeTemplate.replaceLocalizedFormatArgs(maxSize) },
         attachmentLimitTrimmed = { limit -> attachmentLimitTrimmedTemplate.replaceLocalizedFormatArgs(limit) },
-        attachmentPickerFailed = stringResource(MR.strings.settings_feedback_attachment_picker_failed),
-        attachmentPickerPermissionNeeded = stringResource(MR.strings.settings_feedback_attachment_permission_needed),
-        messageRequired = stringResource(MR.strings.settings_feedback_message_required),
-        submissionUnavailable = stringResource(MR.strings.settings_feedback_submission_unavailable),
-        submissionFailedTitle = stringResource(MR.strings.settings_feedback_submission_failed_title),
-        submissionFailedBody = stringResource(MR.strings.settings_feedback_submission_failed_body),
-        submissionNetworkBody = stringResource(MR.strings.settings_feedback_submission_network_body),
-        submissionRateLimitedBody = stringResource(MR.strings.settings_feedback_submission_rate_limited_body),
-        submissionAttachmentReadBody = stringResource(MR.strings.settings_feedback_submission_attachment_read_body),
+        attachmentPickerFailed = stringResource(Res.string.settings_feedback_attachment_picker_failed),
+        attachmentPickerPermissionNeeded = stringResource(Res.string.settings_feedback_attachment_permission_needed),
+        messageRequired = stringResource(Res.string.settings_feedback_message_required),
+        submissionUnavailable = stringResource(Res.string.settings_feedback_submission_unavailable),
+        submissionFailedTitle = stringResource(Res.string.settings_feedback_submission_failed_title),
+        submissionFailedBody = stringResource(Res.string.settings_feedback_submission_failed_body),
+        submissionNetworkBody = stringResource(Res.string.settings_feedback_submission_network_body),
+        submissionRateLimitedBody = stringResource(Res.string.settings_feedback_submission_rate_limited_body),
+        submissionAttachmentReadBody = stringResource(Res.string.settings_feedback_submission_attachment_read_body),
         submissionAttachmentTooLargeBody =
-            stringResource(MR.strings.settings_feedback_submission_attachment_too_large_body)
+            stringResource(Res.string.settings_feedback_submission_attachment_too_large_body)
                 .replaceLocalizedFormatArgs(attachmentMaxLabel),
-        submissionAuthBody = stringResource(MR.strings.settings_feedback_submission_auth_body),
-        submissionPermissionTitle = stringResource(MR.strings.settings_feedback_submission_permission_title),
-        submissionPermissionBody = stringResource(MR.strings.settings_feedback_submission_permission_body),
+        submissionAuthBody = stringResource(Res.string.settings_feedback_submission_auth_body),
+        submissionPermissionTitle = stringResource(Res.string.settings_feedback_submission_permission_title),
+        submissionPermissionBody = stringResource(Res.string.settings_feedback_submission_permission_body),
         submissionSucceeded = { ticket -> submissionSucceededTemplate.replaceLocalizedFormatArgs(ticket) },
-        referenceCopied = stringResource(MR.strings.settings_feedback_reference_copied),
-        submitting = stringResource(MR.strings.settings_feedback_submitting),
-        placeholder = stringResource(MR.strings.settings_feedback_placeholder),
-        copyResult = stringResource(MR.strings.settings_feedback_copy_result),
-        retry = stringResource(MR.strings.common_retry)
+        referenceCopied = stringResource(Res.string.settings_feedback_reference_copied),
+        submitting = stringResource(Res.string.settings_feedback_submitting),
+        placeholder = stringResource(Res.string.settings_feedback_placeholder),
+        copyResult = stringResource(Res.string.settings_feedback_copy_result),
+        retry = stringResource(Res.string.common_retry)
     )
 }
 
@@ -1328,9 +1326,9 @@ internal fun PlatformFile.toSettingsHandsFeedbackAttachmentPreviewPayload(
         requestedKind = previewKind,
         titleDesc =
             if (image) {
-                MR.strings.file_preview_image.desc()
+                Res.string.file_preview_image.desc()
             } else {
-                MR.strings.file_preview_title.desc()
+                Res.string.file_preview_title.desc()
             },
         subtitle = displayName,
         name = displayName,

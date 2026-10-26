@@ -34,7 +34,7 @@ class ErrorPresentationResourceParityTest {
         val resourcesRoot = resolveResourcesRoot()
         val localeKeySets =
             listOf("base", "zh-rCN", "ja").associateWith { locale ->
-                val xml = String(Files.readAllBytes(resourcesRoot.resolve(locale).resolve("strings.xml")), Charsets.UTF_8)
+                val xml = String(Files.readAllBytes(resourcesRoot.resolve(raftComposeValuesDir(locale)).resolve("strings.xml")), Charsets.UTF_8)
                 val matches = STRING_NAME.findAll(xml).map { it.groupValues[1] }.toList()
                 assertEquals(matches.size, matches.toSet().size, "$locale strings.xml contains duplicate keys")
                 matches.filterTo(mutableSetOf()) { it in canonicalKeys }
@@ -50,12 +50,12 @@ class ErrorPresentationResourceParityTest {
         val workingDirectory = Paths.get(System.getProperty("user.dir")).toAbsolutePath().normalize()
         val candidates =
             listOf(
-                workingDirectory.resolve("src/commonMain/resources/MR"),
-                workingDirectory.resolve("shared/src/commonMain/resources/MR"),
-                workingDirectory.resolve("compose/shared/src/commonMain/resources/MR")
+                workingDirectory.resolve("src/commonMain/composeResources"),
+                workingDirectory.resolve("shared/src/commonMain/composeResources"),
+                workingDirectory.resolve("compose/shared/src/commonMain/composeResources")
             )
         return candidates.firstOrNull(Files::isDirectory)
-            ?: error("Unable to locate shared MR resources from $workingDirectory")
+            ?: error("Unable to locate shared composeResources from $workingDirectory")
     }
 
     private companion object {

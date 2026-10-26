@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -32,7 +33,6 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
-import build.raft.app.resources.MR
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -84,11 +84,6 @@ import androidx.compose.ui.unit.sp
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
-import com.tencent.tmm.kmmresource.compose.localized
-import com.tencent.tmm.kmmresource.compose.stringResource
-import com.tencent.tmm.kmmresource.resource.desc.ResourceFormatted
-import com.tencent.tmm.kmmresource.resource.desc.StringDesc
-import com.tencent.tmm.kmmresource.resource.desc.desc
 import build.raft.app.compat.pager.Pager
 import kotlin.time.TimeSource
 import kotlinx.coroutines.launch
@@ -149,20 +144,20 @@ internal fun AuthValidationError?.localizedMessage(): String? {
         when (this) {
             AuthValidationError.UsernameTooShort ->
                 StringDesc.ResourceFormatted(
-                    MR.strings.auth_validation_username_min_length,
+                    Res.string.auth_validation_username_min_length,
                     listOf(AUTH_IDENTITY_NAME_MIN_LENGTH.toString())
                 )
             AuthValidationError.UsernameTooLong ->
                 StringDesc.ResourceFormatted(
-                    MR.strings.auth_validation_username_max_length,
+                    Res.string.auth_validation_username_max_length,
                     listOf(AUTH_IDENTITY_NAME_MAX_LENGTH.toString())
                 )
-            AuthValidationError.UsernameInvalidFormat -> MR.strings.auth_validation_username_format.desc()
-            AuthValidationError.UsernameReserved -> MR.strings.auth_validation_username_reserved.desc()
-            AuthValidationError.DisplayNameRequired -> MR.strings.auth_validation_display_name_required.desc()
+            AuthValidationError.UsernameInvalidFormat -> Res.string.auth_validation_username_format.desc()
+            AuthValidationError.UsernameReserved -> Res.string.auth_validation_username_reserved.desc()
+            AuthValidationError.DisplayNameRequired -> Res.string.auth_validation_display_name_required.desc()
             AuthValidationError.DisplayNameTooLong ->
                 StringDesc.ResourceFormatted(
-                    MR.strings.auth_validation_display_name_max_length,
+                    Res.string.auth_validation_display_name_max_length,
                     listOf(AUTH_IDENTITY_DISPLAY_NAME_MAX_LENGTH.toString())
                 )
             null -> null
@@ -309,7 +304,7 @@ private fun AuthProfileSetupScreen() {
             SharedAuthResult.Unauthenticated -> pager.openAuthPage(LOGIN_PAGE)
             null -> {
                 state = state.copy(submitting = false)
-                errorPresentation = AuthErrorPresentation.Static(MR.strings.auth_error_profile_setup_failed.desc())
+                errorPresentation = AuthErrorPresentation.Static(Res.string.auth_error_profile_setup_failed.desc())
             }
         }
     }
@@ -390,7 +385,7 @@ internal fun rememberAuthSettingsDataSource(
                 bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext()
             )
         }
-    val copiedMessage = stringResource(MR.strings.common_copied)
+    val copiedMessage = stringResource(Res.string.common_copied)
     val settingsCapabilities =
         remember(bridge, bridgeCallScope, linkNavigator, copiedMessage) {
             BridgeSettingsPlatformCapabilities(
@@ -448,7 +443,7 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                 bridgeCallContext = bridgeCallScope.kuiklyBridgeCallContext()
             )
         }
-    val copiedMessage = stringResource(MR.strings.common_copied)
+    val copiedMessage = stringResource(Res.string.common_copied)
     val settingsCapabilities =
         remember(bridge, bridgeCallScope, linkNavigator, copiedMessage) {
             BridgeSettingsPlatformCapabilities(
@@ -512,15 +507,15 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
         RaftTopPageHeader(
             title =
                 when (destination) {
-                    AuthAboutDestination.About -> stringResource(MR.strings.settings_about_title)
-                    AuthAboutDestination.ApiEnvironment -> stringResource(MR.strings.settings_developer_api_environment)
-                    AuthAboutDestination.Diagnostics -> stringResource(MR.strings.settings_diagnostics_title)
+                    AuthAboutDestination.About -> stringResource(Res.string.settings_about_title)
+                    AuthAboutDestination.ApiEnvironment -> stringResource(Res.string.settings_developer_api_environment)
+                    AuthAboutDestination.Diagnostics -> stringResource(Res.string.settings_diagnostics_title)
                 },
             subtitle =
                 when (destination) {
-                    AuthAboutDestination.About -> stringResource(MR.strings.settings_about_subtitle)
-                    AuthAboutDestination.ApiEnvironment -> stringResource(MR.strings.settings_developer_environment_detail)
-                    AuthAboutDestination.Diagnostics -> stringResource(MR.strings.settings_developer_diagnostics_detail)
+                    AuthAboutDestination.About -> stringResource(Res.string.settings_about_subtitle)
+                    AuthAboutDestination.ApiEnvironment -> stringResource(Res.string.settings_developer_environment_detail)
+                    AuthAboutDestination.Diagnostics -> stringResource(Res.string.settings_developer_diagnostics_detail)
                 },
             iconName =
                 when (destination) {
@@ -536,9 +531,9 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                 }
             }
         )
-        val sourceLicensesSignInMessage = stringResource(MR.strings.auth_notice_source_licenses_sign_in)
-        val reportSubmittedPrefix = stringResource(MR.strings.auth_notice_report_submitted_prefix)
-        val reportFailedDiagnosticsCopiedMessage = stringResource(MR.strings.auth_notice_report_failed_diagnostics_copied)
+        val sourceLicensesSignInMessage = stringResource(Res.string.auth_notice_source_licenses_sign_in)
+        val reportSubmittedPrefix = stringResource(Res.string.auth_notice_report_submitted_prefix)
+        val reportFailedDiagnosticsCopiedMessage = stringResource(Res.string.auth_notice_report_failed_diagnostics_copied)
         // task #177: standalone page outside the app shell; the lists reserve the
         // system navigation bar themselves.
         val aboutBottomContentPadding = raftBottomSafeAreaPadding() + RaftAppSpacing.Lg
@@ -547,7 +542,7 @@ private fun AuthAboutScreen(initialDestination: AuthAboutDestination = AuthAbout
                 SharedSettingsAboutContent(
                     bottomContentPadding = aboutBottomContentPadding,
                     state = aboutState,
-                    fallback = SharedSettingsAboutSnapshot(sessionStatusLabel = stringResource(MR.strings.settings_about_state_signed_out)),
+                    fallback = SharedSettingsAboutSnapshot(sessionStatusLabel = stringResource(Res.string.settings_about_state_signed_out)),
                     developerState = developerState,
                     includeDeveloperShortcuts = true,
                     updateCheck = (developerState as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data?.updateCheck,
@@ -782,13 +777,13 @@ internal fun AuthProfileSetupContent(
     AuthScaffold(onDiagnosticsShortcut = onOpenDiagnostics, contentScrollable = true) {
         AuthCenterMark()
         Text(
-            text = stringResource(MR.strings.auth_title_profile_setup),
+            text = stringResource(Res.string.auth_title_profile_setup),
             style = RaftType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = RaftColor.TextBlack),
             color = RaftColor.TextBlack,
             modifier = Modifier.authPageStaticTextFocus()
         )
         Text(
-            text = stringResource(MR.strings.auth_hint_profile_setup),
+            text = stringResource(Res.string.auth_hint_profile_setup),
             style = RaftType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = RaftColor.TextMutedGray),
             color = RaftColor.TextMutedGray,
             modifier = Modifier.authPageStaticTextFocus()
@@ -797,8 +792,8 @@ internal fun AuthProfileSetupContent(
             AuthTextField(
                 handle,
                 onHandleChange,
-                stringResource(MR.strings.auth_label_username),
-                placeholder = stringResource(MR.strings.auth_username_placeholder),
+                stringResource(Res.string.auth_label_username),
+                placeholder = stringResource(Res.string.auth_username_placeholder),
                 isError = !handleError.isNullOrBlank(),
                 errorText = handleError,
                 forceFocused = true,
@@ -806,7 +801,7 @@ internal fun AuthProfileSetupContent(
                 keyboardActions = KeyboardActions(onNext = { displayNameFocusRequester.requestFocus() })
             )
             Text(
-                text = stringResource(MR.strings.auth_hint_username),
+                text = stringResource(Res.string.auth_hint_username),
                 style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                 color = RaftColor.TextMutedGray,
                 modifier = Modifier.authPageStaticTextFocus()
@@ -814,8 +809,8 @@ internal fun AuthProfileSetupContent(
             AuthTextField(
                 displayName,
                 onDisplayNameChange,
-                stringResource(MR.strings.auth_label_display_name),
-                placeholder = stringResource(MR.strings.auth_display_name_placeholder),
+                stringResource(Res.string.auth_label_display_name),
+                placeholder = stringResource(Res.string.auth_display_name_placeholder),
                 isError = !displayNameError.isNullOrBlank(),
                 errorText = displayNameError,
                 focusRequester = displayNameFocusRequester,
@@ -823,7 +818,7 @@ internal fun AuthProfileSetupContent(
                 keyboardActions = KeyboardActions(onDone = { submitIfAllowed() })
             )
             Text(
-                text = stringResource(MR.strings.auth_hint_display_name),
+                text = stringResource(Res.string.auth_hint_display_name),
                 style = RaftType.Caption.copy(color = RaftColor.TextMutedGray),
                 color = RaftColor.TextMutedGray,
                 modifier = Modifier.authPageStaticTextFocus()
@@ -831,9 +826,9 @@ internal fun AuthProfileSetupContent(
             AuthError(errorMessage)
             AuthActionButton(
                 text = if (submitting) {
-                    stringResource(MR.strings.auth_state_finishing_profile)
+                    stringResource(Res.string.auth_state_finishing_profile)
                 } else {
-                    stringResource(MR.strings.auth_action_continue)
+                    stringResource(Res.string.auth_action_continue)
                 },
                 onClick = submitIfAllowed,
                 tone = AuthButtonTone.Pink,
@@ -853,12 +848,12 @@ internal fun AuthTermsAgreement(
 ) {
     val agreementText =
         authTermsAgreementText(
-            prefix = stringResource(MR.strings.auth_terms_agreement_prefix),
-            terms = stringResource(MR.strings.auth_link_terms_of_service),
-            connector = stringResource(MR.strings.auth_terms_agreement_connector),
-            acknowledgement = stringResource(MR.strings.auth_terms_agreement_acknowledgement),
-            privacy = stringResource(MR.strings.auth_link_privacy_policy),
-            suffix = stringResource(MR.strings.auth_terms_agreement_suffix),
+            prefix = stringResource(Res.string.auth_terms_agreement_prefix),
+            terms = stringResource(Res.string.auth_link_terms_of_service),
+            connector = stringResource(Res.string.auth_terms_agreement_connector),
+            acknowledgement = stringResource(Res.string.auth_terms_agreement_acknowledgement),
+            privacy = stringResource(Res.string.auth_link_privacy_policy),
+            suffix = stringResource(Res.string.auth_terms_agreement_suffix),
             onOpenTerms = onOpenTerms,
             onOpenPrivacy = onOpenPrivacy,
         )

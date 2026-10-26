@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,7 +31,6 @@ import build.raft.app.downloads.RaftDownloadStatus
 import build.raft.app.transfer.RaftTransferPhase
 import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.format.RaftFormat
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftBannerStatus
@@ -44,7 +44,6 @@ import build.raft.designsystem.components.RaftProgressBar
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -173,7 +172,7 @@ internal fun raftDownloadBytesLabel(downloadedBytes: Long, totalBytes: Long?): S
     return when {
         total != null ->
             stringResource(
-                MR.strings.download_center_progress_bytes,
+                Res.string.download_center_progress_bytes,
                 RaftFormat.bytes(downloadedBytes.coerceIn(0L, total)),
                 RaftFormat.bytes(total)
             )
@@ -200,9 +199,9 @@ internal fun RaftFilePreviewDownloadProgressBlock(
     val typography = RaftTheme.typography
     val label =
         when (view.phase) {
-            RaftFilePreviewDownloadPhase.Paused -> stringResource(MR.strings.file_preview_download_paused)
-            RaftFilePreviewDownloadPhase.Saving -> stringResource(MR.strings.download_center_status_saving)
-            else -> stringResource(MR.strings.file_preview_download_downloading)
+            RaftFilePreviewDownloadPhase.Paused -> stringResource(Res.string.file_preview_download_paused)
+            RaftFilePreviewDownloadPhase.Saving -> stringResource(Res.string.download_center_status_saving)
+            else -> stringResource(Res.string.file_preview_download_downloading)
         }
     val percent = view.percent
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -229,7 +228,7 @@ internal fun RaftFilePreviewDownloadProgressBlock(
                 // The MediaStore copy after the transfer is cancellable but not resumable.
                 if (toggle != null && view.phase != RaftFilePreviewDownloadPhase.Saving) {
                     RaftButton(
-                        text = stringResource(if (paused) MR.strings.file_preview_download_resume else MR.strings.file_preview_download_pause),
+                        text = stringResource(if (paused) Res.string.file_preview_download_resume else Res.string.file_preview_download_pause),
                         onClick = toggle,
                         modifier = Modifier.weight(1f),
                         leadingIcon = { RaftDownloadIcon(if (paused) RaftLucideIconName.Play else RaftLucideIconName.Pause) }
@@ -237,7 +236,7 @@ internal fun RaftFilePreviewDownloadProgressBlock(
                 }
                 if (onCancel != null) {
                     RaftButton(
-                        text = stringResource(MR.strings.common_cancel),
+                        text = stringResource(Res.string.common_cancel),
                         onClick = onCancel,
                         modifier = Modifier.weight(1f),
                         leadingIcon = { RaftDownloadIcon(RaftLucideIconName.X) }
@@ -294,7 +293,7 @@ internal fun RaftFilePreviewFileDownloadCard(
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     RaftText(
-                        text = name.ifBlank { stringResource(MR.strings.file_preview_fallback_file) },
+                        text = name.ifBlank { stringResource(Res.string.file_preview_fallback_file) },
                         // A long press copies the file name (not the "File" stand-in).
                         modifier = Modifier.raftCopyable(name),
                         style = typography.headline,
@@ -326,7 +325,7 @@ internal fun RaftFilePreviewFileDownloadCard(
                             )
                         }
                         RaftText(
-                            text = stringResource(MR.strings.file_preview_download_background_hint),
+                            text = stringResource(Res.string.file_preview_download_background_hint),
                             style = typography.footnote,
                             color = colors.foregroundHint,
                             textAlign = TextAlign.Center
@@ -334,7 +333,7 @@ internal fun RaftFilePreviewFileDownloadCard(
                     }
                     view.phase == RaftFilePreviewDownloadPhase.Failed ->
                         RaftBanner(
-                            title = stringResource(MR.strings.file_preview_download_failed),
+                            title = stringResource(Res.string.file_preview_download_failed),
                             description = view.errorMessage ?: message,
                             status = RaftBannerStatus.Warning,
                             modifier = Modifier.fillMaxWidth()
@@ -352,7 +351,7 @@ internal fun RaftFilePreviewFileDownloadCard(
                 if (!view.inProgress && actionLabel != null && onAction != null) {
                     val failed = view.phase == RaftFilePreviewDownloadPhase.Failed
                     RaftButton(
-                        text = if (failed) stringResource(MR.strings.common_retry) else actionLabel,
+                        text = if (failed) stringResource(Res.string.common_retry) else actionLabel,
                         onClick = onAction,
                         modifier = Modifier.fillMaxWidth(),
                         variant = RaftButtonVariant.Primary,
@@ -365,7 +364,7 @@ internal fun RaftFilePreviewFileDownloadCard(
                 // Once the file is on the device: Share next to Open / Install (task #75).
                 if (onShare != null && !view.inProgress) {
                     RaftButton(
-                        text = stringResource(MR.strings.common_share),
+                        text = stringResource(Res.string.common_share),
                         onClick = onShare,
                         modifier = Modifier.fillMaxWidth(),
                         size = RaftButtonSize.Lg,

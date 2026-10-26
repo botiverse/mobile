@@ -1,9 +1,6 @@
 package build.raft.app.transfer
 
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.resource.desc.Raw
-import com.tencent.tmm.kmmresource.resource.desc.StringDesc
-import com.tencent.tmm.kmmresource.resource.desc.desc
+import build.raft.app.resources.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -18,22 +15,22 @@ class RaftComposerUploadDisplayTest {
         val cases =
             listOf(
                 Case("checking: nothing sent yet", "uploading", null,
-                    RaftComposerUploadDisplay(RaftComposerUploadPhase.Checking, null, MR.strings.thread_composer_attachment_checking.desc())),
+                    RaftComposerUploadDisplay(RaftComposerUploadPhase.Checking, null, Res.string.thread_composer_attachment_checking.desc())),
                 Case("0%: Uploading over the empty bar", "uploading", meter().progress,
-                    RaftComposerUploadDisplay(RaftComposerUploadPhase.Uploading, 0, MR.strings.thread_composer_attachment_uploading.desc())),
+                    RaftComposerUploadDisplay(RaftComposerUploadPhase.Uploading, 0, Res.string.thread_composer_attachment_uploading.desc())),
                 Case("unknown total: Uploading", "uploading", RaftTransferMeter().bytes(500L),
-                    RaftComposerUploadDisplay(RaftComposerUploadPhase.Uploading, null, MR.strings.thread_composer_attachment_uploading.desc())),
+                    RaftComposerUploadDisplay(RaftComposerUploadPhase.Uploading, null, Res.string.thread_composer_attachment_uploading.desc())),
                 Case("first byte is 1%", "uploading", meter().bytes(1L),
                     RaftComposerUploadDisplay(RaftComposerUploadPhase.Uploading, 1, StringDesc.Raw("1%"))),
                 Case("mid", "uploading", meter().bytes(420L),
                     RaftComposerUploadDisplay(RaftComposerUploadPhase.Uploading, 42, StringDesc.Raw("42%"))),
                 Case("last byte handed off: finishing, not 100", "uploading", meter().bytes(1_000L),
-                    RaftComposerUploadDisplay(RaftComposerUploadPhase.Finishing, 99, MR.strings.thread_composer_attachment_finishing.desc())),
+                    RaftComposerUploadDisplay(RaftComposerUploadPhase.Finishing, 99, Res.string.thread_composer_attachment_finishing.desc())),
                 Case("server verifying", "uploading", meter().apply { bytes(1_000L) }.finishing(),
-                    RaftComposerUploadDisplay(RaftComposerUploadPhase.Finishing, 99, MR.strings.thread_composer_attachment_finishing.desc())),
+                    RaftComposerUploadDisplay(RaftComposerUploadPhase.Finishing, 99, Res.string.thread_composer_attachment_finishing.desc())),
                 Case("queued behind others: no overlay", "queued", null, null),
                 Case("failed", "failed", meter().bytes(420L),
-                    RaftComposerUploadDisplay(RaftComposerUploadPhase.Failed, null, MR.strings.thread_composer_attachment_upload_failed.desc())),
+                    RaftComposerUploadDisplay(RaftComposerUploadPhase.Failed, null, Res.string.thread_composer_attachment_upload_failed.desc())),
                 Case("ready: no overlay", "ready", meter().done(), null)
             )
         for (case in cases) {

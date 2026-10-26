@@ -40,19 +40,19 @@ class RelativeTimeSpacingResourceTest {
 
     private fun readStrings(locale: String): Map<String, String> =
         STRING_ENTRY.findAll(
-            String(Files.readAllBytes(resourcesRoot().resolve(locale).resolve("strings.xml")), Charsets.UTF_8)
+            String(Files.readAllBytes(resourcesRoot().resolve(raftComposeValuesDir(locale)).resolve("strings.xml")), Charsets.UTF_8)
         ).associate { it.groupValues[1] to it.groupValues[2] }
 
     private fun resourcesRoot(): Path {
         val workingDirectory = Paths.get(System.getProperty("user.dir")).toAbsolutePath().normalize()
         val candidates =
             listOf(
-                workingDirectory.resolve("src/commonMain/resources/MR"),
-                workingDirectory.resolve("shared/src/commonMain/resources/MR"),
-                workingDirectory.resolve("compose/shared/src/commonMain/resources/MR")
+                workingDirectory.resolve("src/commonMain/composeResources"),
+                workingDirectory.resolve("shared/src/commonMain/composeResources"),
+                workingDirectory.resolve("compose/shared/src/commonMain/composeResources")
             )
         return candidates.firstOrNull(Files::isDirectory)
-            ?: error("Unable to locate shared MR resources from $workingDirectory")
+            ?: error("Unable to locate shared composeResources from $workingDirectory")
     }
 
     private companion object {

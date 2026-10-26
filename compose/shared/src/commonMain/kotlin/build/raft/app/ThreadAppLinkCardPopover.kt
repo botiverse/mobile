@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,10 +26,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLinkResult
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /** The card open in one message: its link and where its chip was when it was tapped. */
 internal data class ThreadAppLinkOpenCard(val url: String, val anchor: RaftPopoverAnchor)
@@ -174,7 +173,7 @@ internal fun ThreadAppLinkCardPopover(
                         .pointerInput(Unit) { detectTapGestures {} },
                 actions = {
                     RaftButton(
-                        text = stringResource(MR.strings.thread_link_preview_open_link),
+                        text = stringResource(Res.string.thread_link_preview_open_link),
                         onClick = onOpenLink,
                         variant = RaftButtonVariant.Default,
                     )

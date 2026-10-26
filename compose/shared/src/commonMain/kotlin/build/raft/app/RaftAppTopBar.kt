@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
@@ -13,7 +14,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftPublicPageGlobe
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftAvatarAttentionLight
 import build.raft.designsystem.components.RaftAvatarBadgeBox
 import build.raft.designsystem.components.RaftAvatarSize
@@ -25,7 +25,6 @@ import build.raft.designsystem.components.RaftWorkspaceButtonDefaults
 import build.raft.designsystem.components.RaftWorkspaceStrip
 import build.raft.designsystem.components.RaftWorkspaceStripEntry
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /**
  * The wide layout's top bar (artin task #8; web AppTopBar, raft-design page-structure.md), above
@@ -56,8 +55,8 @@ internal fun RaftAppShellTopBar(
     /** A tap on the bell, before it toggles (the shell closes the server panel). */
     onBellToggle: () -> Unit = {},
 ) {
-    val unreadDescription = stringResource(MR.strings.tab_activity_unread_dot)
-    val otherUnreadDescription = stringResource(MR.strings.home_server_switcher_other_unread)
+    val unreadDescription = stringResource(Res.string.tab_activity_unread_dot)
+    val otherUnreadDescription = stringResource(Res.string.home_server_switcher_other_unread)
     RaftDesignSystemTheme {
         RaftTopBar(
             modifier = modifier,

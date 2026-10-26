@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.data.AgentResetMode
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.RuntimeConfig
@@ -7,8 +8,6 @@ import build.raft.app.model.RuntimeModeConfig
 import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.RuntimeProviderConfig
 import build.raft.app.data.AgentDetailSummary
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -163,8 +162,8 @@ class MembersRuntimeConfigTest {
 
         val confirmation = membersRuntimeConfigSwitchConfirmation(current, next, activeAgent = true)
 
-        assertEquals(MR.strings.member_action_switch_runtime_config.desc(), confirmation?.title)
-        assertEquals(MR.strings.member_action_reset_runtime_session.desc(), confirmation?.confirmLabel)
+        assertEquals(Res.string.member_action_switch_runtime_config.desc(), confirmation?.title)
+        assertEquals(Res.string.member_action_reset_runtime_session.desc(), confirmation?.confirmLabel)
         assertEquals(
             "Changing runtime configuration from Claude Code to Codex CLI will reset the current runtime session. " +
                 "The next launch will use model GPT-5 with High reasoning in fast mode; MEMORY.md and workspace files are preserved.",
@@ -186,7 +185,7 @@ class MembersRuntimeConfigTest {
 
         val confirmation = membersRuntimeConfigSwitchConfirmation(current, next, activeAgent = false)
 
-        assertEquals(MR.strings.member_action_save_runtime_change.desc(), confirmation?.confirmLabel)
+        assertEquals(Res.string.member_action_save_runtime_change.desc(), confirmation?.confirmLabel)
         assertEquals(
             "Changing runtime configuration from Claude Code to Codex CLI will apply on the next start with a fresh runtime session. " +
                 "The agent will launch with model GPT-5 and Medium reasoning; MEMORY.md and workspace files are preserved.",

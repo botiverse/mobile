@@ -9,7 +9,7 @@ import kotlinx.coroutines.withContext
 import okio.Path
 import okio.Path.Companion.toOkioPath
 
-/** `assets://<path>` resolves to the APK assets root (where kmmresource packs MR assets). */
+/** `assets://<path>` resolves to the APK assets root. */
 internal actual suspend fun raftReadBundledImageAsset(context: PlatformContext, path: String): ByteArray? =
     withContext(Dispatchers.IO) {
         runCatching { context.assets.open(path).use { input -> input.readBytes() } }.getOrNull()

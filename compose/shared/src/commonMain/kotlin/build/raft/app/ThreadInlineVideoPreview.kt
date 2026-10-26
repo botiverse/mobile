@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -38,7 +39,6 @@ import build.raft.app.compat.ui.PlayState
 import build.raft.app.compat.ui.VideoPlayControl
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftEmbeddedControls
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftSpinner
@@ -49,7 +49,6 @@ import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftSpacing
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 
 internal enum class ThreadInlineVideoPreviewStatus {
@@ -167,7 +166,7 @@ internal fun ThreadInlineVideoAttachmentCard(
         }
     }
 
-    val name = attachment.name.ifBlank { stringResource(MR.strings.thread_video_attachment_fallback_name) }
+    val name = attachment.name.ifBlank { stringResource(Res.string.thread_video_attachment_fallback_name) }
     RaftDesignSystemTheme {
         val outer = RoundedCornerShape(RaftRadius.Container)
         Box(
@@ -193,7 +192,7 @@ internal fun ThreadInlineVideoAttachmentCard(
                 RaftEmbeddedControls {
                     RaftIconButton(
                         onClick = onOpenPreview,
-                        tooltip = stringResource(MR.strings.thread_video_open_in_preview, name),
+                        tooltip = stringResource(Res.string.thread_video_open_in_preview, name),
                         modifier = Modifier.align(Alignment.TopEnd).padding(ThreadInlineVideoControlInset)
                     ) { RaftSlotIcon(RaftLucideIconName.Eye, size = 16.dp) }
                 }
@@ -248,12 +247,12 @@ private fun BoxScope.ThreadInlineVideoSurface(
     when {
         !previewEnabled ->
             ThreadInlineVideoFailure(
-                title = stringResource(MR.strings.thread_video_preview_unavailable),
+                title = stringResource(Res.string.thread_video_preview_unavailable),
                 onDownload = onDownload
             )
         renderMode == ThreadInlineVideoRenderMode.Error ->
             ThreadInlineVideoFailure(
-                title = stringResource(MR.strings.thread_video_preview_unavailable),
+                title = stringResource(Res.string.thread_video_preview_unavailable),
                 onRetry = onRetry,
                 onDownload = onDownload
             )
@@ -267,7 +266,7 @@ private fun BoxScope.ThreadInlineVideoSurface(
             ) {
                 ThreadInlineVideoSpinner()
                 RaftText(
-                    text = stringResource(MR.strings.thread_video_preview_processing),
+                    text = stringResource(Res.string.thread_video_preview_processing),
                     style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.SemiBold),
                     color = ThreadInlineVideoMutedInk,
                     textAlign = TextAlign.Center,
@@ -278,7 +277,7 @@ private fun BoxScope.ThreadInlineVideoSurface(
             }
         playState == PlayState.ERROR && playbackAutoRefreshed ->
             ThreadInlineVideoFailure(
-                title = stringResource(MR.strings.thread_video_playback_failed),
+                title = stringResource(Res.string.thread_video_playback_failed),
                 onRetry = onRetry,
                 onDownload = onDownload
             )
@@ -287,7 +286,7 @@ private fun BoxScope.ThreadInlineVideoSurface(
                 val playing = playState == PlayState.PLAYING
                 RaftIconButton(
                     onClick = { playControl = if (playing) VideoPlayControl.PAUSE else VideoPlayControl.PLAY },
-                    tooltip = stringResource(if (playing) MR.strings.common_pause else MR.strings.common_play),
+                    tooltip = stringResource(if (playing) Res.string.common_pause else Res.string.common_play),
                     modifier = Modifier.align(Alignment.BottomEnd).padding(ThreadInlineVideoControlInset)
                 ) { RaftSlotIcon(if (playing) RaftLucideIconName.Pause else RaftLucideIconName.Play, size = 16.dp) }
             }
@@ -336,13 +335,13 @@ private fun ThreadInlineVideoFailure(
             if (onRetry != null) {
                 ThreadInlineVideoFailureAction(
                     icon = RaftLucideIconName.RotateCcw,
-                    label = stringResource(MR.strings.common_retry),
+                    label = stringResource(Res.string.common_retry),
                     onClick = onRetry
                 )
             }
             ThreadInlineVideoFailureAction(
                 icon = RaftLucideIconName.Download,
-                label = stringResource(MR.strings.thread_video_download_to_view),
+                label = stringResource(Res.string.thread_video_download_to_view),
                 onClick = onDownload
             )
         }

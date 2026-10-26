@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.app.data.AgentActivityEntry
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
@@ -24,9 +25,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerPermissions
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.RaftTimeFormat12Hour
-import build.raft.app.resources.MR
 import build.raft.app.compat.json.JSONObject
-import com.tencent.tmm.kmmresource.resource.desc.desc
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -1350,7 +1349,7 @@ class SharedMembersParserTest {
 
         assertEquals(listOf("stop", "restart"), onlineItems.map { it.id })
         assertEquals(
-            listOf(MR.strings.member_action_stop_agent.desc(), MR.strings.member_label_restart_reset.desc()),
+            listOf(Res.string.member_action_stop_agent.desc(), Res.string.member_label_restart_reset.desc()),
             onlineItems.map { it.label }
         )
         assertEquals(RaftLucideIconName.Square, onlineItems[0].icon)
@@ -1366,7 +1365,7 @@ class SharedMembersParserTest {
 
         assertEquals(listOf("start", "restart"), offlineItems.map { it.id })
         assertEquals(
-            listOf(MR.strings.member_action_start_agent.desc(), MR.strings.member_label_restart_reset.desc()),
+            listOf(Res.string.member_action_start_agent.desc(), Res.string.member_label_restart_reset.desc()),
             offlineItems.map { it.label }
         )
     }

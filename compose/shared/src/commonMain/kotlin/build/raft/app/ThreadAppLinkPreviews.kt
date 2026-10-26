@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,7 +33,6 @@ import build.raft.app.markdown.LocalRaftAppLinkChips
 import build.raft.app.markdown.RaftAppLinkChipHost
 import build.raft.app.markdown.raftAppLinkAsciiHost
 import build.raft.app.markdown.raftAppLinkKeepEnd
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
@@ -40,7 +40,6 @@ import build.raft.designsystem.components.RaftSheet
 import build.raft.designsystem.components.RaftSheetSurface
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.launch
 
 /**
@@ -127,9 +126,9 @@ private fun ThreadAppLinkConsentSheet(
     val status = state.status[appLinkAppKey(host.viewerKey, prompt.app.id)]
     val scope = rememberCoroutineScope()
     val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
-    val unavailable = stringResource(MR.strings.thread_link_preview_prompt_unavailable, prompt.app.name)
-    val declined = stringResource(MR.strings.thread_link_preview_prompt_declined, prompt.app.name)
-    val declineFailed = stringResource(MR.strings.thread_link_preview_prompt_decline_failed, prompt.app.name)
+    val unavailable = stringResource(Res.string.thread_link_preview_prompt_unavailable, prompt.app.name)
+    val declined = stringResource(Res.string.thread_link_preview_prompt_declined, prompt.app.name)
+    val declineFailed = stringResource(Res.string.thread_link_preview_prompt_decline_failed, prompt.app.name)
     RaftDesignSystemTheme {
         ThreadAppLinkConsentPrompt(
             app = prompt.app,
@@ -185,33 +184,33 @@ internal fun ThreadAppLinkConsentPrompt(
     inWindow: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
-    val title = stringResource(MR.strings.thread_link_preview_prompt_title, app.name)
+    val title = stringResource(Res.string.thread_link_preview_prompt_title, app.name)
     val description =
         if (status == AppLinkConsentStatus.Failed) {
-            stringResource(MR.strings.thread_link_preview_prompt_allow_failed, app.name)
+            stringResource(Res.string.thread_link_preview_prompt_allow_failed, app.name)
         } else {
-            stringResource(MR.strings.thread_link_preview_prompt_disclosure, app.name)
+            stringResource(Res.string.thread_link_preview_prompt_disclosure, app.name)
         }
     val actions: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit = {
         RaftButton(
-            text = stringResource(if (status == AppLinkConsentStatus.Failed) MR.strings.common_retry else MR.strings.thread_link_preview_prompt_allow),
+            text = stringResource(if (status == AppLinkConsentStatus.Failed) Res.string.common_retry else Res.string.thread_link_preview_prompt_allow),
             onClick = onAllow,
             modifier = Modifier.fillMaxWidth(),
             variant = RaftButtonVariant.Default,
             size = RaftButtonSize.Lg,
             enabled = status != AppLinkConsentStatus.Declining,
             loading = status == AppLinkConsentStatus.Allowing,
-            loadingLabel = stringResource(MR.strings.thread_link_preview_prompt_allowing),
+            loadingLabel = stringResource(Res.string.thread_link_preview_prompt_allowing),
         )
         RaftButton(
-            text = stringResource(MR.strings.thread_link_preview_prompt_dont_allow),
+            text = stringResource(Res.string.thread_link_preview_prompt_dont_allow),
             onClick = onDecline,
             modifier = Modifier.fillMaxWidth(),
             variant = RaftButtonVariant.Ghost,
             size = RaftButtonSize.Lg,
             enabled = status != AppLinkConsentStatus.Allowing,
             loading = status == AppLinkConsentStatus.Declining,
-            loadingLabel = stringResource(MR.strings.thread_link_preview_prompt_saving),
+            loadingLabel = stringResource(Res.string.thread_link_preview_prompt_saving),
         )
     }
     val body: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit = {
@@ -245,7 +244,7 @@ private fun ThreadAppLinkConsentDestination(app: AppLinkPromptApp, url: String, 
             overflow = TextOverflow.Ellipsis,
         )
         RaftButton(
-            text = stringResource(MR.strings.thread_link_preview_open_link),
+            text = stringResource(Res.string.thread_link_preview_open_link),
             onClick = onOpenLink,
             variant = RaftButtonVariant.Ghost,
         )

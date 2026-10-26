@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -39,7 +40,6 @@ import build.raft.app.data.RuntimeAccountUsageWindow
 import build.raft.app.data.RuntimeAccountUsageWindowStatus
 import build.raft.app.data.SharedRuntimeAccountUsageStore
 import build.raft.app.model.RaftTimeContext
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -60,7 +60,6 @@ import build.raft.designsystem.components.RaftStatusVariant
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -329,7 +328,7 @@ private fun ComputerRuntimeUsageChip(
     val load = controller?.load
     val offered = controller != null && load !is RuntimeAccountUsageLoad.Forbidden
     val health = load.computerRuntimeUsageHealth()
-    val dialogLabel = stringResource(MR.strings.settings_computers_runtime_usage_dialog_label, label)
+    val dialogLabel = stringResource(Res.string.settings_computers_runtime_usage_dialog_label, label)
     val healthDot: (@Composable () -> Unit)? =
         if (health == null) {
             null
@@ -341,9 +340,9 @@ private fun ComputerRuntimeUsageChip(
                     contentDescription =
                         stringResource(
                             if (health == RaftStatusVariant.Warning) {
-                                MR.strings.settings_computers_runtime_usage_attention
+                                Res.string.settings_computers_runtime_usage_attention
                             } else {
-                                MR.strings.settings_computers_runtime_usage_healthy
+                                Res.string.settings_computers_runtime_usage_healthy
                             }
                         ),
                 )
@@ -403,7 +402,7 @@ private fun ComputerRuntimeUsageSheet(
 ) {
     RaftSheet(
         onDismissRequest = onDismiss,
-        title = stringResource(MR.strings.settings_computers_runtime_usage_title, runtimeLabel),
+        title = stringResource(Res.string.settings_computers_runtime_usage_title, runtimeLabel),
         actions = { ComputerRuntimeUsageActions(state, timeContext, onRefresh, onDismiss) },
         content = { ComputerRuntimeUsageContents(state, timeContext) },
     )
@@ -418,7 +417,7 @@ internal fun ComputerRuntimeUsageSheetSurface(
     modifier: Modifier = Modifier,
 ) {
     RaftSheetSurface(
-        title = stringResource(MR.strings.settings_computers_runtime_usage_title, runtimeLabel),
+        title = stringResource(Res.string.settings_computers_runtime_usage_title, runtimeLabel),
         modifier = modifier,
         actions = { ComputerRuntimeUsageActions(state, timeContext, onRefresh = {}, onDismiss = {}) },
         content = { ComputerRuntimeUsageContents(state, timeContext) },
@@ -440,26 +439,26 @@ private fun ColumnScope.ComputerRuntimeUsageActions(
             available.snapshot.collectedAt
                 ?.let { raftRelativeTimestampLabel(it, timeContext, clampFuture = true) }
                 ?.takeIf { it.isNotEmpty() }
-                ?: stringResource(MR.strings.settings_computers_runtime_usage_recently)
+                ?: stringResource(Res.string.settings_computers_runtime_usage_recently)
         RaftText(
-            stringResource(MR.strings.settings_computers_runtime_usage_metadata, updated),
+            stringResource(Res.string.settings_computers_runtime_usage_metadata, updated),
             style = RaftTheme.typography.caption,
             color = colors.foregroundHint,
         )
     }
     val status =
         when {
-            state.refresh == ComputerRuntimeUsageRefreshStatus.Requested -> stringResource(MR.strings.settings_computers_runtime_usage_refresh_requested)
-            state.refresh == ComputerRuntimeUsageRefreshStatus.Unconfirmed -> stringResource(MR.strings.settings_computers_runtime_usage_refresh_unconfirmed)
-            state.refresh == ComputerRuntimeUsageRefreshStatus.Timeout -> stringResource(MR.strings.settings_computers_runtime_usage_refresh_timeout)
+            state.refresh == ComputerRuntimeUsageRefreshStatus.Requested -> stringResource(Res.string.settings_computers_runtime_usage_refresh_requested)
+            state.refresh == ComputerRuntimeUsageRefreshStatus.Unconfirmed -> stringResource(Res.string.settings_computers_runtime_usage_refresh_unconfirmed)
+            state.refresh == ComputerRuntimeUsageRefreshStatus.Timeout -> stringResource(Res.string.settings_computers_runtime_usage_refresh_timeout)
             state.cooldownLeftMillis > 0L ->
-                stringResource(MR.strings.settings_computers_runtime_usage_refresh_cooldown_countdown, ((state.cooldownLeftMillis + 999L) / 1_000L).toInt())
-            state.refresh == ComputerRuntimeUsageRefreshStatus.ComputerOffline -> stringResource(MR.strings.settings_computers_runtime_usage_computer_offline)
-            else -> stringResource(MR.strings.settings_computers_runtime_usage_cache_only)
+                stringResource(Res.string.settings_computers_runtime_usage_refresh_cooldown_countdown, ((state.cooldownLeftMillis + 999L) / 1_000L).toInt())
+            state.refresh == ComputerRuntimeUsageRefreshStatus.ComputerOffline -> stringResource(Res.string.settings_computers_runtime_usage_computer_offline)
+            else -> stringResource(Res.string.settings_computers_runtime_usage_cache_only)
         }
     RaftText(status, style = RaftTheme.typography.caption, color = colors.foregroundHint)
     RaftButton(
-        text = stringResource(MR.strings.settings_computers_runtime_usage_refresh),
+        text = stringResource(Res.string.settings_computers_runtime_usage_refresh),
         onClick = onRefresh,
         modifier = Modifier.fillMaxWidth(),
         variant = RaftButtonVariant.Default,
@@ -469,7 +468,7 @@ private fun ColumnScope.ComputerRuntimeUsageActions(
         leadingIcon = { RaftComputersIcon(RaftLucideIconName.RefreshCw) },
     )
     RaftButton(
-        text = stringResource(MR.strings.common_close),
+        text = stringResource(Res.string.common_close),
         onClick = onDismiss,
         modifier = Modifier.fillMaxWidth(),
         variant = RaftButtonVariant.Ghost,
@@ -483,17 +482,17 @@ internal fun ComputerRuntimeUsageContents(state: ComputerRuntimeUsageSheetState,
     val typography = RaftTheme.typography
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         RaftText(
-            stringResource(MR.strings.settings_computers_runtime_usage_private),
+            stringResource(Res.string.settings_computers_runtime_usage_private),
             style = typography.caption,
             color = colors.foregroundHint,
         )
         val load = state.load
         when {
             load == null && state.loading ->
-                RaftText(stringResource(MR.strings.settings_computers_runtime_usage_reading), style = typography.callout, color = colors.foregroundMuted)
+                RaftText(stringResource(Res.string.settings_computers_runtime_usage_reading), style = typography.callout, color = colors.foregroundMuted)
             load is RuntimeAccountUsageLoad.Failed ->
                 RaftBanner(
-                    description = stringResource(MR.strings.settings_computers_runtime_usage_read_failed),
+                    description = stringResource(Res.string.settings_computers_runtime_usage_read_failed),
                     status = RaftBannerStatus.Warning,
                     size = RaftBannerSize.Sm,
                 )
@@ -502,12 +501,12 @@ internal fun ComputerRuntimeUsageContents(state: ComputerRuntimeUsageSheetState,
             else -> {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     RaftText(
-                        stringResource(MR.strings.settings_computers_runtime_usage_no_snapshot),
+                        stringResource(Res.string.settings_computers_runtime_usage_no_snapshot),
                         style = typography.callout.copy(fontWeight = FontWeight.Bold),
                         color = colors.foreground,
                     )
                     RaftText(
-                        stringResource(MR.strings.settings_computers_runtime_usage_no_snapshot_description),
+                        stringResource(Res.string.settings_computers_runtime_usage_no_snapshot_description),
                         style = typography.footnote,
                         color = colors.foregroundMuted,
                     )
@@ -524,7 +523,7 @@ private fun ComputerRuntimeUsageSnapshot(read: RuntimeAccountUsageRead.Available
     // A stale snapshot is recoverable: warning, never red.
     if (read.stale) {
         RaftBanner(
-            description = stringResource(MR.strings.settings_computers_runtime_usage_stale),
+            description = stringResource(Res.string.settings_computers_runtime_usage_stale),
             status = RaftBannerStatus.Warning,
             size = RaftBannerSize.Sm,
         )
@@ -548,7 +547,7 @@ private fun ComputerRuntimeUsageAccountBlock(account: RuntimeAccountUsageAccount
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 RaftText(
-                    account.planLabel ?: stringResource(MR.strings.settings_computers_runtime_usage_account_fallback),
+                    account.planLabel ?: stringResource(Res.string.settings_computers_runtime_usage_account_fallback),
                     style = typography.callout.copy(fontWeight = FontWeight.Bold),
                     color = colors.foreground,
                     maxLines = 1,
@@ -572,9 +571,9 @@ private fun ComputerRuntimeUsageAccountBlock(account: RuntimeAccountUsageAccount
                 RaftText(
                     stringResource(
                         if (account.health == RuntimeAccountUsageHealth.Unsupported) {
-                            MR.strings.settings_computers_runtime_usage_unsupported_description
+                            Res.string.settings_computers_runtime_usage_unsupported_description
                         } else {
-                            MR.strings.settings_computers_runtime_usage_read_failed
+                            Res.string.settings_computers_runtime_usage_read_failed
                         }
                     ),
                     style = typography.footnote,
@@ -582,7 +581,7 @@ private fun ComputerRuntimeUsageAccountBlock(account: RuntimeAccountUsageAccount
                 )
             RuntimeAccountUsageHealth.ReauthRequired ->
                 RaftText(
-                    stringResource(MR.strings.settings_computers_runtime_usage_reauth_description),
+                    stringResource(Res.string.settings_computers_runtime_usage_reauth_description),
                     style = typography.footnote,
                     color = colors.foregroundMuted,
                 )
@@ -607,7 +606,7 @@ private fun ComputerRuntimeUsageWindowRow(window: RuntimeAccountUsageWindow, tim
                 overflow = TextOverflow.Ellipsis,
             )
             RaftText(
-                stringResource(MR.strings.settings_computers_runtime_usage_parse_unavailable),
+                stringResource(Res.string.settings_computers_runtime_usage_parse_unavailable),
                 style = RaftTheme.typography.footnote,
                 color = RaftTheme.colors.warningStrong,
             )
@@ -620,15 +619,15 @@ private fun ComputerRuntimeUsageWindowRow(window: RuntimeAccountUsageWindow, tim
     val reset =
         window.resetsAt?.let { resetsAt ->
             raftRelativeTimestampLabel(resetsAt, timeContext).takeIf { it.isNotEmpty() }
-                ?: stringResource(MR.strings.settings_computers_runtime_usage_later)
+                ?: stringResource(Res.string.settings_computers_runtime_usage_later)
         }
     val percentLeft = "${runtimeUsagePercentLeft(ratio)}%"
     val valueText =
         when {
-            usedUp && reset == null -> stringResource(MR.strings.settings_computers_runtime_usage_window_used_up_reset_unavailable)
-            usedUp -> stringResource(MR.strings.settings_computers_runtime_usage_window_used_up, reset.orEmpty())
-            reset == null -> stringResource(MR.strings.settings_computers_runtime_usage_window_left_reset_unavailable, percentLeft)
-            else -> stringResource(MR.strings.settings_computers_runtime_usage_window_left, percentLeft, reset)
+            usedUp && reset == null -> stringResource(Res.string.settings_computers_runtime_usage_window_used_up_reset_unavailable)
+            usedUp -> stringResource(Res.string.settings_computers_runtime_usage_window_used_up, reset.orEmpty())
+            reset == null -> stringResource(Res.string.settings_computers_runtime_usage_window_left_reset_unavailable, percentLeft)
+            else -> stringResource(Res.string.settings_computers_runtime_usage_window_left, percentLeft, reset)
         }
     RaftMeter(
         used = if (usedUp) 100f else (ratio * 100.0).toFloat(),
@@ -645,11 +644,11 @@ internal fun runtimeUsagePercentLeft(usedRatio: Double): Int = 100 - kotlin.math
 private fun RuntimeAccountUsageHealth.label(): String =
     stringResource(
         when (this) {
-            RuntimeAccountUsageHealth.Ok -> MR.strings.settings_computers_runtime_usage_health_ok
-            RuntimeAccountUsageHealth.RateLimited -> MR.strings.settings_computers_runtime_usage_health_rate_limited
-            RuntimeAccountUsageHealth.ReauthRequired -> MR.strings.settings_computers_runtime_usage_health_reauth_required
-            RuntimeAccountUsageHealth.Unsupported -> MR.strings.settings_computers_runtime_usage_health_unsupported
-            RuntimeAccountUsageHealth.Error -> MR.strings.settings_computers_runtime_usage_health_error
-            RuntimeAccountUsageHealth.Unknown -> MR.strings.settings_computers_runtime_usage_health_unknown
+            RuntimeAccountUsageHealth.Ok -> Res.string.settings_computers_runtime_usage_health_ok
+            RuntimeAccountUsageHealth.RateLimited -> Res.string.settings_computers_runtime_usage_health_rate_limited
+            RuntimeAccountUsageHealth.ReauthRequired -> Res.string.settings_computers_runtime_usage_health_reauth_required
+            RuntimeAccountUsageHealth.Unsupported -> Res.string.settings_computers_runtime_usage_health_unsupported
+            RuntimeAccountUsageHealth.Error -> Res.string.settings_computers_runtime_usage_health_error
+            RuntimeAccountUsageHealth.Unknown -> Res.string.settings_computers_runtime_usage_health_unknown
         }
     )

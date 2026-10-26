@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -16,8 +17,6 @@ import build.raft.app.data.SharedJointInviteState
 import build.raft.app.data.SharedJointInviteStore
 import build.raft.app.data.jointInviteHomeNotificationId
 import build.raft.app.model.ConversationKind
-import build.raft.app.resources.MR
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.flow.MutableStateFlow
 
 internal class HomeJointInvitesUi(
@@ -62,10 +61,10 @@ internal fun rememberHomeJointInvites(
     val rateLimitedLater = jointInviteRateLimitedMessage(null)
     val failureCopy =
         JointFailureCopy(
-            freeServerLimit = stringResource(MR.strings.joint_limit_free_servers),
-            serverLimit = stringResource(MR.strings.joint_limit_servers, JOINT_CHANNEL_MAX_SERVERS),
-            hostFreeLimit = stringResource(MR.strings.joint_limit_host_free),
-            fallback = stringResource(MR.strings.joint_invite_accept_failed),
+            freeServerLimit = stringResource(Res.string.joint_limit_free_servers),
+            serverLimit = stringResource(Res.string.joint_limit_servers, JOINT_CHANNEL_MAX_SERVERS),
+            hostFreeLimit = stringResource(Res.string.joint_limit_host_free),
+            fallback = stringResource(Res.string.joint_invite_accept_failed),
             // Accepting spends no invite budget; the code only comes from create and invite.
             inviteRateLimited = { rateLimitedLater },
         )
@@ -101,10 +100,10 @@ internal fun rememberHomeJointInvites(
         }
         if (state.effect != null) store?.dispatch(SharedJointInviteIntent.ConsumeEffect)
     }
-    val accept = stringResource(MR.strings.joint_invite_notification_accept)
-    val accepting = stringResource(MR.strings.joint_invite_notification_accepting)
-    val titleRes = MR.strings.joint_invite_notification_title
-    val bodyRes = MR.strings.joint_invite_notification_body
+    val accept = stringResource(Res.string.joint_invite_notification_accept)
+    val accepting = stringResource(Res.string.joint_invite_notification_accepting)
+    val titleRes = Res.string.joint_invite_notification_title
+    val bodyRes = Res.string.joint_invite_notification_body
     val rows = state.homeJointInviteRows(serverId)
     val items =
         rows.map { invite ->

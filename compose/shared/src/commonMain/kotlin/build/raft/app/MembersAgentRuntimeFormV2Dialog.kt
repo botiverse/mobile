@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
@@ -19,7 +20,6 @@ import build.raft.app.data.runtimeform.v2.runtimeFormV2Submission
 import build.raft.app.data.runtimeform.v2.runtimeFormV2ValuesAfterSourceReload
 import build.raft.app.data.runtimeform.v2.validateRuntimeFormV2
 import build.raft.app.model.MemberId
-import build.raft.app.resources.MR
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -34,7 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tencent.tmm.kmmresource.compose.stringResource
 
 /**
  * Edit an agent's runtime settings through runtime form v2: the same form create
@@ -90,7 +89,7 @@ internal fun MembersAgentRuntimeFormV2Dialog(
     // Read here: dialog content is hosted at the page root, outside the route's usage access.
     val quotaMachine = RuntimeQuotaMachine(machineId, access = LocalMembersRuntimeAccountUsageAccess.current)
     RaftUnifiedDialog(
-        title = stringResource(MR.strings.member_dialog_edit_runtime_config),
+        title = stringResource(Res.string.member_dialog_edit_runtime_config),
         dismissEnabled = !saving,
         keyboardAvoidanceEnabled = true,
         onDismiss = onDismiss
@@ -113,7 +112,7 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                     ) {
                         if (form == null) {
                             Text(
-                                text = stringResource(MR.strings.agent_create_state_computers_loading),
+                                text = stringResource(Res.string.agent_create_state_computers_loading),
                                 style = RaftType.Caption,
                                 color = RaftColor.TextMutedGray
                             )
@@ -140,7 +139,7 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                 }
                 item(key = "restart-hint") {
                     Text(
-                        text = stringResource(MR.strings.member_hint_runtime_restart),
+                        text = stringResource(Res.string.member_hint_runtime_restart),
                         style = RaftType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                         color = RaftColor.TextMutedGray
                     )
@@ -157,7 +156,7 @@ internal fun MembersAgentRuntimeFormV2Dialog(
             }
             RaftDialogFooter {
                 RaftButton(
-                    text = stringResource(MR.strings.common_cancel),
+                    text = stringResource(Res.string.common_cancel),
                     enabled = !saving,
                     onClick = onDismiss,
                     variant = RaftButtonVariant.Ghost,
@@ -166,8 +165,8 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                 // Web AgentDetailPanel runtime editor: accent (primary) lg commit.
                 RaftButton(
                     text =
-                        if (saving) stringResource(MR.strings.member_action_saving)
-                        else stringResource(MR.strings.member_action_save_runtime_config),
+                        if (saving) stringResource(Res.string.member_action_saving)
+                        else stringResource(Res.string.member_action_save_runtime_config),
                     enabled = !saving && form != null && changed && errors.isEmpty(),
                     variant = RaftButtonVariant.Primary,
                     size = RaftButtonSize.Lg,

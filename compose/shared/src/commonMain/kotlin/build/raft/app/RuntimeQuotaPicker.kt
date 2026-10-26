@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateMapOf
@@ -12,11 +13,9 @@ import build.raft.app.data.canViewMachineRuntimeAccountUsage
 import build.raft.app.data.RuntimeQuotaLinePart
 import build.raft.app.data.runtimeQuotaLineParts
 import build.raft.app.data.summarizeRuntimeQuota
-import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftChoicePicker
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.designsystem.components.RaftSelectTrigger
-import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.launch
 
 /**
@@ -64,12 +63,12 @@ internal fun RuntimeAccountUsageLoad?.quotaSummary(key: RuntimeAccountUsageKey):
 
 @Composable
 internal fun rememberRuntimeQuotaLineCopy(): RuntimeQuotaLineCopy {
-    val fiveHour = stringResource(MR.strings.runtime_quota_window_five_hour)
-    val week = stringResource(MR.strings.runtime_quota_window_week)
-    val left = stringResource(MR.strings.runtime_quota_left, "\u0001", "\u0002")
-    val usedUp = stringResource(MR.strings.runtime_quota_used_up, "\u0001", "\u0002")
-    val usedUpNoReset = stringResource(MR.strings.runtime_quota_used_up_no_reset, "\u0001")
-    val attention = stringResource(MR.strings.runtime_quota_attention, "\u0001")
+    val fiveHour = stringResource(Res.string.runtime_quota_window_five_hour)
+    val week = stringResource(Res.string.runtime_quota_window_week)
+    val left = stringResource(Res.string.runtime_quota_left, "\u0001", "\u0002")
+    val usedUp = stringResource(Res.string.runtime_quota_used_up, "\u0001", "\u0002")
+    val usedUpNoReset = stringResource(Res.string.runtime_quota_used_up_no_reset, "\u0001")
+    val attention = stringResource(Res.string.runtime_quota_attention, "\u0001")
     return remember(fiveHour, week, left, usedUp, usedUpNoReset, attention) {
         RuntimeQuotaLineCopy(
             fiveHour = fiveHour,
@@ -189,7 +188,7 @@ internal fun RuntimePickerChoice(
         RaftSelectTrigger(value = emptyLabel, onClick = {}, placeholder = placeholder, enabled = false)
         return
     }
-    val noMatches = stringResource(MR.strings.runtime_picker_no_matches, "\u0001")
+    val noMatches = stringResource(Res.string.runtime_picker_no_matches, "\u0001")
     RaftChoicePicker(
         value = value,
         options = options,
@@ -197,7 +196,7 @@ internal fun RuntimePickerChoice(
         title = title,
         emptyText = { query -> noMatches.replace("\u0001", query) },
         placeholder = placeholder,
-        searchPlaceholder = stringResource(MR.strings.runtime_picker_search),
+        searchPlaceholder = stringResource(Res.string.runtime_picker_search),
         enabled = enabled,
         label = title
     )
@@ -227,8 +226,8 @@ internal fun RuntimeSelectChoice(
         value = runtime.takeIf { id -> runtimeOptions.any { it.id == id } },
         options = runtimeOptions.map { RaftComboboxOption(it.id, it.label, description = quotaLines[it.id], enabled = it.enabled) },
         onValueChange = onSelect,
-        title = stringResource(MR.strings.agent_create_label_runtime),
-        placeholder = stringResource(MR.strings.agent_create_placeholder_select_runtime),
+        title = stringResource(Res.string.agent_create_label_runtime),
+        placeholder = stringResource(Res.string.agent_create_placeholder_select_runtime),
         enabled = enabled,
         emptyLabel = emptyLabel
     )

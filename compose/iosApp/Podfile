@@ -25,15 +25,10 @@ target 'iosApp' do
     inherit! :search_paths
   end
 
-  # task #423: the moko/TMM kmmresource plugin packs the `MR` resource bundle
-  # (strings + the reaction sprite atlas) into the shared klib/framework. Because
-  # `shared` is a *static* framework, that `.bundle` is not auto-copied into the
-  # .app, so the plugin's `copyFrameworkResourcesToApp` task copies it out of the
-  # built framework (resource-core >= 0.1.0-raft.2 lands the bundle at the
-  # framework root and reads the Xcode destination from these gradle -P props).
-  # Without this build phase, any `MR.*` access throws
-  # FileFailedToInitializeException on iOS.
-  script_phase :name => 'Copy kmmresource MR bundle to app',
+  # App strings, bundled files and fonts are Compose Multiplatform resources. `shared` is a
+  # static framework and compose.ios.resources.sync=false, so this phase copies them into the
+  # .app (see :ui-cmp:syncComposeResourcesForXcodeApp).
+  script_phase :name => 'Copy Compose resources to app',
     :execution_position => :after_compile,
     :shell_path => '/bin/sh',
     :script => <<-CMD
@@ -42,40 +37,11 @@ set -e
 # one level up from this target's $SRCROOT (compose/iosApp).
 GRADLE_ROOT="$SRCROOT/.."
 # :ui-cmp:syncComposeResourcesForXcodeApp copies the Compose Multiplatform resources
-# (Raft fonts) to <App>.app/compose-resources, where the CMP runtime reads them;
-# compose.ios.resources.sync=false keeps the CMP plugin from doing it.
-"$GRADLE_ROOT/gradlew" -p "$GRADLE_ROOT" :shared:copyFrameworkResourcesToApp \\
-  :ui-cmp:syncComposeResourcesForXcodeApp \\
-  -Praft.cmp.resources.dir="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/compose-resources" \\
-  -Ptmm.resources.BUILT_PRODUCTS_DIR="$BUILT_PRODUCTS_DIR" \\
-  -Ptmm.resources.CONTENTS_FOLDER_PATH="$CONTENTS_FOLDER_PATH" \\
-  -Ptmm.resources.CONFIGURATION="$CONFIGURATION" \\
-  -Ptmm.resources.PLATFORM_NAME="$PLATFORM_NAME" \\
-  -Ptmm.resources.ARCHS="$ARCHS"
-
-# The kmmresource generator packs MR strings but NOT MR/assets into the bundle.
-# The runtime reads assets via the moko convention: relativePath with '/'
-# flattened to '+' and no 'assets/' prefix (see slock_mrBundleURLForRelativePath,
-# #409). Inject every MR/assets file flattened to the bundle root, e.g.
-#   assets/reactions/reaction_atlas_v1.png -> MR.bundle/reactions+reaction_atlas_v1.png
-MR_ASSETS_SRC="$GRADLE_ROOT/shared/src/commonMain/resources/MR/assets"
-MR_BUNDLE_DST="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/build.raft.app.resources.MR.bundle"
-if [ -d "$MR_ASSETS_SRC" ] && [ -d "$MR_BUNDLE_DST" ]; then
-  # Land under Contents/Resources/ to exactly match the verified-working Debug
-  # simulator bundle shape (KMP task #22 evidence: assets live at
-  # MR.bundle/Contents/Resources/<flattened>); the moko handler checks there
-  # first. Create the dir if the Release bundle didn't have it.
-  MR_DEST="$MR_BUNDLE_DST/Contents/Resources"
-  mkdir -p "$MR_DEST"
-  find "$MR_ASSETS_SRC" -type f | while IFS= read -r f; do
-    rel=${f#"$MR_ASSETS_SRC/"}
-    flat=$(printf '%s' "$rel" | tr '/' '+')
-    cp -f "$f" "$MR_DEST/$flat"
-    echo "MR asset injected: Contents/Resources/$flat"
-  done
-else
-  echo "warning: MR assets src or bundle dst missing (src=$MR_ASSETS_SRC dst=$MR_BUNDLE_DST)" >&2
-fi
+# (Raft fonts, the app strings and bundled files of :shared) to <App>.app/compose-resources,
+# where the CMP runtime reads them; compose.ios.resources.sync=false keeps the CMP plugin
+# from doing it.
+"$GRADLE_ROOT/gradlew" -p "$GRADLE_ROOT" :ui-cmp:syncComposeResourcesForXcodeApp \\
+  -Praft.cmp.resources.dir="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/compose-resources"
 CMD
 end
 

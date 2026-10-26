@@ -2,7 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.*
 import build.raft.app.network.sync.ReplyPreview
-import com.tencent.tmm.kmmresource.resource.desc.StringDesc
+import build.raft.app.resources.StringDesc
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import kotlinx.serialization.json.JsonArray
