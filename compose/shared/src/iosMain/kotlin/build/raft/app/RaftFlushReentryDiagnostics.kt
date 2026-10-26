@@ -3,7 +3,6 @@ package build.raft.app
 import androidx.compose.runtime.snapshots.ObserverHandle
 import androidx.compose.runtime.snapshots.Snapshot
 import build.raft.app.data.defaultNowMillis
-import platform.Foundation.NSLog
 
 /**
  * DIAGNOSTIC ONLY (branch ios-flush-reentry-diag, not for main): finds what re-enters CMP 1.12.2's
@@ -19,8 +18,8 @@ import platform.Foundation.NSLog
  * - **At the crash.** [onUnhandledException], called from the unhandled-exception hook, prints the
  *   fatal throwable's full stack under the same tag when it involves the dispatcher.
  *
- * Every report goes to the device log (`NSLog`, one line per stack frame so os_log does not
- * truncate it, plus `println`) and to the app diagnostics log (`raftPlatformLog`, synchronous
+ * Every report goes to stdout (`println`, one line per stack frame so the console does not
+ * truncate it) and to the app diagnostics log (`raftPlatformLog`, synchronous
  * critical path so it survives the termination that follows). grep `RAFT_FLUSH_REENTRY`.
  */
 internal object RaftFlushReentryDiagnostics {
@@ -95,12 +94,10 @@ internal object RaftFlushReentryDiagnostics {
     private fun emit(summary: String, stack: String?) {
         val id = defaultNowMillis()
         val head = "[$Tag] id=$id $summary"
-        NSLog("%@", head)
         println(head)
         val lines = stack?.lines()?.filter { it.isNotBlank() }.orEmpty()
         lines.forEachIndexed { index, line ->
             val out = "[$Tag] id=$id ${index + 1}/${lines.size} ${line.trim()}"
-            NSLog("%@", out)
             println(out)
         }
         runCatching {
