@@ -29,7 +29,13 @@ APP=""
 BUILD=""
 CHANNEL=""
 HANDS_JSON=""
+# Resolution mirrors `finalize_android_hands_release.sh`: a locally installed CLI wins,
+# otherwise fall back to the pinned npm package. A fallback is required here because a
+# machine without `hands` must still be able to run the guard; relying on the local
+# binary alone turns "no CLI installed" into "cannot publish at all".
 HANDS_CLI="${HANDS_CLI:-hands}"
+HANDS_CLI_PACKAGE="${HANDS_CLI_PACKAGE:-@botiverse/hands-cli@0.5.32}"
+HANDS_NPM_REGISTRY="${HANDS_NPM_REGISTRY:-https://registry.npmjs.org}"
 
 die() {
   echo "release-channel-guard: $*" >&2
@@ -62,10 +68,25 @@ if [ -n "${HANDS_JSON}" ]; then
   [ -f "${HANDS_JSON}" ] || die "hands json not found: ${HANDS_JSON}"
   BODY="$(cat "${HANDS_JSON}")"
 else
-  command -v "${HANDS_CLI}" >/dev/null 2>&1 ||
-    die "${HANDS_CLI} not found; pass --hands-json to check a recorded response"
-  BODY="$("${HANDS_CLI}" api GET "/api/apps/${APP}/builds/${BUILD}" --json 2>/dev/null)" ||
-    die "could not read build ${BUILD} from Hands"
+  # Same two-branch resolution as the finalizer: local binary first, pinned package
+  # second. Both use `--json`, which only prints machine-readable output from 0.5.32
+  # onwards; on 0.5.17 the body is human text and parsing fails later, which is harder
+  # to diagnose than an outright error here.
+  if command -v "${HANDS_CLI}" >/dev/null 2>&1; then
+    BODY="$("${HANDS_CLI}" api GET "/api/apps/${APP}/builds/${BUILD}" --json 2>/dev/null)" ||
+      die "could not read build ${BUILD} from Hands via ${HANDS_CLI}"
+  elif command -v npm >/dev/null 2>&1; then
+    BODY="$(npm exec --yes --registry "${HANDS_NPM_REGISTRY}" \
+      --package "${HANDS_CLI_PACKAGE}" -- hands \
+      api GET "/api/apps/${APP}/builds/${BUILD}" --json 2>/dev/null)" ||
+      die "could not read build ${BUILD} from Hands via npm package ${HANDS_CLI_PACKAGE}"
+  else
+    die "neither ${HANDS_CLI} nor npm is available; pass --hands-json to check a recorded response"
+  fi
+  if [ -z "${BODY}" ]; then
+    die "Hands returned no body for build ${BUILD}; if a local CLI is installed, check that
+     it is 0.5.32 or newer (older builds print human text for --json)"
+  fi
 fi
 
 [ -n "${BODY}" ] || die "Hands returned an empty body for build ${BUILD}"

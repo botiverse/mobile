@@ -88,6 +88,38 @@ else
   failures=$((failures + 1))
 fi
 
+# With neither a local CLI nor npm, the guard must fail closed rather than skip the check.
+got=0
+env HANDS_CLI=definitely-not-a-real-binary PATH=/usr/bin:/bin \
+  "${GUARD}" --app "${APP}" --build "${BUILD}" --channel main >/dev/null 2>&1 || got=$?
+if [ "${got}" = "1" ]; then
+  echo "ok   no-cli-and-no-npm (exit 1)"
+else
+  echo "FAIL no-cli-and-no-npm: expected exit 1, got ${got}" >&2
+  failures=$((failures + 1))
+fi
+
+# The npm fallback must reach the pinned package and parse its --json output. This is the
+# branch a machine without `hands` takes, and the one 0.5.17 would break (human text for
+# --json). Skipped when npm or the network is unavailable, so the suite stays runnable
+# offline; a skip is reported, never silently counted as a pass.
+if command -v npm >/dev/null 2>&1; then
+  got=0
+  env HANDS_CLI=definitely-not-a-real-binary HANDS_NPM_REGISTRY="${HANDS_NPM_REGISTRY:-https://registry.npmjs.org}" \
+    "${GUARD}" --app "${APP}" --build "${BUILD}" --channel main --hands-json "" >"${WORK}/npm.out" 2>&1 || got=$?
+  if [ "${got}" = "0" ]; then
+    echo "ok   npm-fallback-reaches-pinned-package (exit 0)"
+  elif grep -q "ENOTFOUND\|EAI_AGAIN\|network" "${WORK}/npm.out" 2>/dev/null; then
+    echo "skip npm-fallback-reaches-pinned-package (registry unreachable)"
+  else
+    echo "FAIL npm-fallback-reaches-pinned-package: expected exit 0, got ${got}" >&2
+    sed 's/^/    /' "${WORK}/npm.out" >&2
+    failures=$((failures + 1))
+  fi
+else
+  echo "skip npm-fallback-reaches-pinned-package (npm not installed)"
+fi
+
 if [ "${failures}" -ne 0 ]; then
   echo "${failures} failure(s)" >&2
   exit 1
