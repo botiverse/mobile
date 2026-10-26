@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
  *
  * These tests do **not** exercise the locale-resolved runtime string lookup
  * (RaftStringDescResolutionTest does). They prove the generator picked up
- * `composeResources/values*/strings.xml` and exposed the keys as
+ * the `composeResources` values catalogs and exposed the keys as
  * `StringResource` handles in the generated `Res`.
  *
  * The 2 cases:

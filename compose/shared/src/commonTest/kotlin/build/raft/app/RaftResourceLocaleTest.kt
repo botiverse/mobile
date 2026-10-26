@@ -7,32 +7,40 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class RaftResourceLocaleTest {
-    private fun system(language: String, script: String = "", region: String = "") =
-        raftResourceLocale(StringDesc.LocaleType.System, language, script, region)
+    private val english = RaftResourceLocale("en", "")
+    private val japanese = RaftResourceLocale("ja", "")
+    private val simplifiedChinese = RaftResourceLocale("zh", "CN")
 
-    private fun custom(tag: String) = raftResourceLocale(StringDesc.LocaleType.Custom(tag), "fr", "", "FR")
+    private fun system(vararg tags: String) = raftResourceLocale(StringDesc.LocaleType.System, tags.toList())
 
     @Test
     fun explicitAppLanguagesPickTheirCatalog() {
-        assertEquals(RaftResourceLocale("en", ""), custom("en"))
-        assertEquals(RaftResourceLocale("ja", ""), custom("ja"))
-        assertEquals(RaftResourceLocale("zh", "CN"), custom("zh-CN"))
+        listOf("en" to english, "ja" to japanese, "zh-CN" to simplifiedChinese).forEach { (tag, expected) ->
+            assertEquals(expected, raftResourceLocale(StringDesc.LocaleType.Custom(tag), listOf("fr-FR")), tag)
+        }
     }
 
     @Test
-    fun systemLanguageMatchesTheShippedCatalogs() {
-        assertEquals(RaftResourceLocale("ja", ""), system("ja", region = "JP"))
-        assertEquals(RaftResourceLocale("zh", "CN"), system("zh", region = "CN"))
-        assertEquals(RaftResourceLocale("zh", "CN"), system("zh", script = "Hans", region = "US"))
-        assertEquals(RaftResourceLocale("zh", "CN"), system("zh", region = "SG"))
-        assertEquals(RaftResourceLocale("en", ""), system("en", region = "US"))
-        assertEquals(RaftResourceLocale("en", ""), system("fr", region = "FR"))
+    fun systemLanguagePicksTheFirstPreferredLanguageWithACatalog() {
+        mapOf(
+            listOf("ja-JP") to japanese,
+            listOf("zh-CN") to simplifiedChinese,
+            listOf("zh-Hans-US") to simplifiedChinese,
+            listOf("zh_SG") to simplifiedChinese,
+            listOf("en-US", "ja-JP") to english,
+            listOf("fr", "ja") to japanese,
+            listOf("fr-FR", "de-DE") to english,
+            emptyList<String>() to english,
+        ).forEach { (tags, expected) -> assertEquals(expected, system(*tags.toTypedArray()), "$tags") }
     }
 
     @Test
-    fun traditionalChineseFallsBackToTheBaseCatalog() {
-        assertEquals(RaftResourceLocale("en", ""), system("zh", script = "Hant", region = "TW"))
-        assertEquals(RaftResourceLocale("en", ""), system("zh", region = "TW"))
-        assertEquals(RaftResourceLocale("en", ""), system("zh", region = "HK"))
+    fun traditionalChineseIsSkippedLikeAnyUnsupportedLanguage() {
+        mapOf(
+            listOf("zh-Hant-TW") to english,
+            listOf("zh-TW") to english,
+            listOf("zh-HK", "ja-JP") to japanese,
+            listOf("zh-Hant", "zh-Hans") to simplifiedChinese,
+        ).forEach { (tags, expected) -> assertEquals(expected, system(*tags.toTypedArray()), "$tags") }
     }
 }

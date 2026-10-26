@@ -83,7 +83,7 @@ fun StringResource.format(args: List<Any>): ResourceFormattedStringDesc = Resour
 fun StringResource.format(vararg args: Any): ResourceFormattedStringDesc = ResourceFormattedStringDesc(this, args.toList())
 
 /** [this] in the app language, outside composition (host strings, toasts, logs shown to users). */
-fun StringDesc.resolve(): String = resolveIn(raftResourceEnvironment(StringDesc.localeType, Locale.current))
+fun StringDesc.resolve(): String = resolveIn(raftResourceEnvironment(StringDesc.localeType, raftSystemPreferredLanguageTags()))
 
 /** [this] in the app language; recomposes when the app language changes. */
 @Composable
@@ -116,8 +116,12 @@ fun stringResource(resource: StringResource, vararg args: Any): String {
 private fun rememberRaftResourceEnvironment(): ResourceEnvironment {
     val runtimeLocale by KmmResourceLocaleRuntime.locale.collectAsState()
     val localeType = StringDesc.localeType
+    // Locale.current is the recomposition key for system language changes; the lookup walks the
+    // whole preferred-language list.
     val systemLocale = Locale.current
-    return remember(runtimeLocale, localeType, systemLocale) { raftResourceEnvironment(localeType, systemLocale) }
+    return remember(runtimeLocale, localeType, systemLocale) {
+        raftResourceEnvironment(localeType, raftSystemPreferredLanguageTags())
+    }
 }
 
 /**
@@ -140,49 +144,68 @@ private fun StringDesc.resolveIn(environment: ResourceEnvironment): String =
 internal data class RaftResourceLocale(val language: String, val region: String)
 
 /**
- * Catalog selection, matching what the platform resource lookups did for kmmresource:
- * an explicit tag picks its catalog; the system language picks Japanese for `ja`, Simplified
- * Chinese for Chinese except Traditional (Hant script, or TW/HK/MO without a script), and the
- * English base catalog otherwise.
+ * The system's preferred languages, most preferred first, as BCP 47 tags (Android: the locale
+ * list; iOS: `NSLocale.preferredLanguages`).
+ */
+internal expect fun raftSystemPreferredLanguageTags(): List<String>
+
+/**
+ * Catalog selection, matching what the platform resource lookups did for kmmresource: an
+ * explicit tag picks its catalog; for the system language the first preferred language with a
+ * shipped catalog wins (Japanese; Simplified Chinese, i.e. Chinese that is not Traditional by
+ * Hant script or a TW/HK/MO region without a script; English). Unsupported languages are
+ * skipped; with no match the English base catalog applies.
  */
 internal fun raftResourceLocale(
     localeType: StringDesc.LocaleType,
-    systemLanguage: String,
-    systemScript: String,
-    systemRegion: String,
+    systemLanguageTags: List<String>,
 ): RaftResourceLocale =
     when (localeType) {
         is StringDesc.LocaleType.Custom -> {
-            val parts = localeType.localeTag.replace('_', '-').split('-').filter { it.isNotEmpty() }
+            val parts = raftLanguageTagParts(localeType.localeTag)
             RaftResourceLocale(
                 language = parts.firstOrNull()?.lowercase().orEmpty(),
                 region = parts.drop(1).firstOrNull { it.length == 2 }?.uppercase().orEmpty(),
             )
         }
         StringDesc.LocaleType.System ->
-            when (systemLanguage.lowercase()) {
-                "ja" -> RaftResourceLocale("ja", "")
-                "zh" -> {
-                    val traditional =
-                        systemScript.equals("Hant", ignoreCase = true) ||
-                            (systemScript.isEmpty() && systemRegion.uppercase() in setOf("TW", "HK", "MO"))
-                    if (traditional) RaftResourceLocale("en", "") else RaftResourceLocale("zh", "CN")
-                }
-                else -> RaftResourceLocale("en", "")
-            }
+            systemLanguageTags.firstNotNullOfOrNull(::raftSupportedResourceLocale) ?: RaftResourceLocale("en", "")
     }
+
+private fun raftLanguageTagParts(tag: String): List<String> =
+    tag.trim().replace('_', '-').split('-').filter { it.isNotEmpty() }
+
+/** The shipped catalog for one preferred-language [tag], or null when there is none. */
+private fun raftSupportedResourceLocale(tag: String): RaftResourceLocale? {
+    val parts = raftLanguageTagParts(tag)
+    val language = parts.firstOrNull()?.lowercase() ?: return null
+    val subtags = parts.drop(1)
+    val script = subtags.firstOrNull { it.length == 4 && it.all(Char::isLetter) }.orEmpty()
+    val region = subtags.firstOrNull { (it.length == 2 && it.all(Char::isLetter)) || (it.length == 3 && it.all(Char::isDigit)) }
+        ?.uppercase().orEmpty()
+    return when (language) {
+        "ja" -> RaftResourceLocale("ja", "")
+        "en" -> RaftResourceLocale("en", "")
+        "zh" -> {
+            val traditional =
+                script.equals("Hant", ignoreCase = true) || (script.isEmpty() && region in setOf("TW", "HK", "MO"))
+            if (traditional) null else RaftResourceLocale("zh", "CN")
+        }
+        else -> null
+    }
+}
 
 /**
  * Compose resources picks a catalog from a [ResourceEnvironment] but only builds one for the
  * system locale (`getSystemResourceEnvironment`); its constructor is library-internal. The app
  * language is an in-app setting that must not change the process locale (that would also change
  * date and number formatting and CJK glyph selection), so the environment is built directly.
- * Covered by RaftStringDescResolutionTest; revisit when Compose resources gains a public
- * locale override.
+ * A removed or changed constructor fails the compile or RaftStringDescResolutionTest.
+ * TODO(compose-resources): switch to a public API once Compose resources offers a locale override.
  */
 @Suppress("INVISIBLE_REFERENCE", "INVISIBLE_MEMBER")
-private fun raftResourceEnvironment(localeType: StringDesc.LocaleType, systemLocale: Locale): ResourceEnvironment {
-    val locale = raftResourceLocale(localeType, systemLocale.language, systemLocale.script, systemLocale.region)
+private fun raftResourceEnvironment(localeType: StringDesc.LocaleType, systemLanguageTags: List<String>): ResourceEnvironment {
+    val locale = raftResourceLocale(localeType, systemLanguageTags)
     // Strings carry no theme or density qualifiers; these two only satisfy the constructor.
     return ResourceEnvironment(
         LanguageQualifier(locale.language),
