@@ -2,9 +2,15 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HANDS_CLI="${HANDS_CLI:-hands}"
-HANDS_CLI_PACKAGE="${HANDS_CLI_PACKAGE:-@botiverse/hands-cli@0.5.17}"
+# The Hands CLI is pinned so every machine finalizes with the same version. A `hands`
+# already on PATH is ignored on purpose: 1.15.5 ran 0.5.31 on one machine and 0.5.17 on
+# another. Set HANDS_CLI_PACKAGE to use another published version, or HANDS_CLI to a
+# local binary for development; either choice is printed before anything else runs.
+HANDS_CLI="${HANDS_CLI:-}"
+HANDS_CLI_PACKAGE="${HANDS_CLI_PACKAGE:-@botiverse/hands-cli@0.5.32}"
 HANDS_NPM_REGISTRY="${HANDS_NPM_REGISTRY:-https://registry.npmjs.org/}"
+# The channel guard runs as a child process and must use the same CLI.
+export HANDS_CLI HANDS_CLI_PACKAGE HANDS_NPM_REGISTRY
 HANDS_API="${HANDS_API:-https://hands.build}"
 HANDS_APP_SLUG="${HANDS_APP_SLUG:-raft-android}"
 HANDS_ARCH="${SLOCK_ANDROID_ARCH:-arm64-v8a}"
@@ -47,12 +53,13 @@ USAGE
 }
 
 run_hands() {
-  if command -v "${HANDS_CLI}" >/dev/null 2>&1; then
+  if [ -n "${HANDS_CLI}" ]; then
+    command -v "${HANDS_CLI}" >/dev/null 2>&1 || die "HANDS_CLI=${HANDS_CLI} not found"
     "${HANDS_CLI}" "$@"
   elif command -v npm >/dev/null 2>&1; then
     npm exec --yes --registry "${HANDS_NPM_REGISTRY}" --package "${HANDS_CLI_PACKAGE}" -- hands "$@"
   else
-    die "Hands CLI or npm is required"
+    die "npm is required to run ${HANDS_CLI_PACKAGE}"
   fi
 }
 
@@ -128,26 +135,26 @@ RELEASE_JSON="$(mktemp)"
 PUBLIC_JSON="$(mktemp)"
 trap 'rm -f "${RELEASE_JSON}" "${PUBLIC_JSON}"' EXIT
 
+if [ -n "${HANDS_CLI}" ]; then
+  echo "Hands CLI: $(run_hands --version) (HANDS_CLI=${HANDS_CLI})"
+else
+  echo "Hands CLI: $(run_hands --version) (${HANDS_CLI_PACKAGE})"
+fi
 run_hands whoami
-# `hands releases show --json` prints human text on CLI 0.5.17, so read the
-# release through the raw API instead. Resolve the app slug to its id first.
-APPS_JSON="$(mktemp)"
-trap 'rm -f "${RELEASE_JSON}" "${PUBLIC_JSON}" "${APPS_JSON}"' EXIT
-run_hands api GET /api/apps --json >"${APPS_JSON}"
-APP_ID="$(python3 - "${APPS_JSON}" "${HANDS_APP_SLUG}" <<'PY'
+# `releases show --json` needs CLI 0.5.32+; older versions print human text here.
+run_hands releases show "${HANDS_APP_SLUG}" "${RELEASE_ID}" --json >"${RELEASE_JSON}"
+APP_ID="$(
+  python3 - "${RELEASE_JSON}" <<'PYAPP'
 import json
 import sys
 
-path, slug = sys.argv[1], sys.argv[2]
-with open(path, encoding="utf-8") as source:
+with open(sys.argv[1], encoding="utf-8") as source:
     payload = json.load(source)
-matches = [app["id"] for app in payload.get("apps", []) if app.get("slug") == slug]
-if len(matches) != 1:
-    raise SystemExit(f"expected exactly one Hands app with slug {slug}; saw {len(matches)}")
-print(matches[0])
-PY
+release = payload.get("release") if isinstance(payload, dict) else None
+print((release.get("app_id") or "") if isinstance(release, dict) else "")
+PYAPP
 )"
-run_hands api GET "/api/apps/${APP_ID}/releases/${RELEASE_ID}" --json >"${RELEASE_JSON}"
+[ -n "${APP_ID}" ] || die "Hands release reports no app id; refusing to publish"
 python3 - "${RELEASE_JSON}" "${EXPECTED_CODE}" <<'PY'
 import json
 import sys

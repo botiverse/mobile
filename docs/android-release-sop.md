@@ -442,10 +442,13 @@ export HANDS_API=https://hands.build
 hands whoami
 ```
 
-Hands CLI `0.5.2` or newer is required for `HANDS_BEARER_TOKEN`. The finalizer
-falls back to `@botiverse/hands-cli@0.5.17` from the official npm registry when
-`hands` is not installed. This avoids delayed package-mirror propagation;
-override `HANDS_NPM_REGISTRY` only for a trusted registry that already carries
+The finalizer and the channel guard always run the pinned
+`@botiverse/hands-cli@0.5.32` from the official npm registry, even when `hands`
+is installed locally, so every machine finalizes with the same CLI. The first
+line of output names the CLI version that ran. Set `HANDS_CLI_PACKAGE` to use
+another published version (`0.5.32` or newer: older versions break
+`releases show --json`), or `HANDS_CLI` to a local binary for development.
+Override `HANDS_NPM_REGISTRY` only for a trusted registry that already carries
 the required CLI version.
 
 A Raft agent may instead use its integration session cookie when the Hands
