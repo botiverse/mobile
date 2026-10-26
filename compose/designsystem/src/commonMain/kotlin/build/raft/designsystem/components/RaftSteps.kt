@@ -100,9 +100,10 @@ internal fun raftStepLook(status: RaftStepStatus, colors: RaftUiThemeColors): Ra
         // Ahead: a seam outline on paper, the number and the title in hint ink.
         RaftStepStatus.Wait ->
             RaftStepLook(colors.layerCard, colors.lineSeam, RaftStroke.Hairline, colors.foregroundHint, colors.foregroundHint, colors.foregroundHint)
-        // Current: the yellow sticker (1.5dp ink edge) with an ink number.
+        // Current: the `selected` sticker (steps.css `--r-steps-indicator-color-process`), 1.5dp
+        // ink edge, an ink number.
         RaftStepStatus.Process ->
-            RaftStepLook(RaftUiPalette.brand400, RaftUiPalette.stickerInk, RaftStroke.Control, RaftUiPalette.stickerInk, colors.foreground, colors.foregroundMuted)
+            RaftStepLook(RaftUiPalette.selected, RaftUiPalette.stickerInk, RaftStroke.Control, RaftUiPalette.stickerInk, colors.foreground, colors.foregroundMuted)
         // Finished: solid ink with a paper check.
         RaftStepStatus.Finish ->
             RaftStepLook(colors.foreground, colors.foreground, RaftStroke.Control, colors.layerCanvas, colors.foregroundMuted, colors.foregroundHint)

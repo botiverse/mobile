@@ -25,9 +25,9 @@ internal object RaftColor {
         level = DeprecationLevel.WARNING,
     )
     val BrandYellow = RaftUiPalette.paletteYellow
-    // Semantic alias for react `--color-palette-yellow` (raft-ui 0.6 `--color-palette-yellow`,
-    // == brand yellow), used for the self-mention chip highlight so callsites read intent, not hue.
-    val SoftSignal = RaftUiPalette.paletteYellow
+    // The self-mention chip's fill: raft-ui 0.33 #791 `bg-you` (message-reference.recipe.ts),
+    // the yellow of what is addressed to you. Was `--color-palette-yellow` (#FFD441).
+    val SoftSignal = RaftUiPalette.you
     @Deprecated(
         "Legacy brutal accent: use RaftColor.Attention (sticker solid) or RaftColor.AttentionSoft (wash). Add no new uses; see docs/raftbrutal-migration.md.",
         level = DeprecationLevel.WARNING,
@@ -115,6 +115,11 @@ internal object RaftColor {
     val InactiveSoft: Color get() = RaftAppThemeState.colors.inactiveSoft
     // Sticker solids (`bg-brand`, `bg-attention`, ...): ink type on colour in both modes.
     val Brand = RaftUiPalette.brand
+    // raft-ui 0.33 #791: their own values, not `brand`, so a theme that grays the brand keeps
+    // them yellow. `Selected`: where you are and what is on (a selected row, a switch).
+    // `You`: what is addressed to you (a mention of you, a search hit).
+    val Selected = RaftUiPalette.selected
+    val You = RaftUiPalette.you
     val Attention = RaftUiPalette.attention
     val Info = RaftUiPalette.info
     val Success = RaftUiPalette.success

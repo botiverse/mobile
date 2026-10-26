@@ -129,16 +129,16 @@ fun RaftUnreadCount(
 }
 
 /**
- * The @ marker: someone mentioned the person. A 20dp `brand` sticker holding a 13dp
- * `at-sign`, with the ink edge and the die-cut edge (raft-ui `SidebarItemIndicator`). It
- * replaces the unread count and never holds a number.
+ * The @ marker: someone mentioned the person. A 20dp `you` sticker holding a 13dp
+ * `at-sign`, with the ink edge and the die-cut edge (raft-ui `SidebarItemIndicator`,
+ * `bg-you`: addressed to you). It replaces the unread count and never holds a number.
  */
 @Composable
 fun RaftMentionMarker(
     modifier: Modifier = Modifier,
     contentDescription: String? = "Mentions you",
 ) {
-    val look = raftActiveStickerLook(active = true, colors = RaftTheme.colors)
+    val look = raftActiveStickerLook(active = true, colors = RaftTheme.colors).copy(fill = RaftUiPalette.you)
     Box(
         modifier
             .size(20.dp)

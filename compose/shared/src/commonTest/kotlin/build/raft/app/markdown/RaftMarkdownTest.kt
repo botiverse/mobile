@@ -891,8 +891,9 @@ class RaftMarkdownTest {
         assertEquals(6.dp, channelBox?.paddingEnd)
         assertEquals(4.dp, channelBox?.cornerRadius)
 
-        assertEquals(RaftColor.SoftSignal, RaftColor.BrandYellow)
-        assertEquals(RaftColor.BrandYellow, selfMentionBox?.backgroundColor)
+        // raft-ui 0.33 #791: the reader's own mention is a `you` sticker.
+        assertEquals(RaftColor.You, RaftColor.SoftSignal)
+        assertEquals(RaftColor.You, selfMentionBox?.backgroundColor)
         assertEquals(RaftColor.StickerInk, selfMentionBox?.borderColor)
         assertEquals(1.5.dp, selfMentionBox?.borderWidth)
         assertEquals(6.dp, selfMentionBox?.paddingStart)

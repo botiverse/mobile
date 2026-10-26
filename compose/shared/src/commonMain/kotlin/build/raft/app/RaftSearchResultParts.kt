@@ -230,7 +230,7 @@ internal fun RaftSearchEmptyState(
 /**
  * Text with the DS search hit (raft-ui lib/search-hit.ts, stdrc S1) on every [query] term: the
  * hit keeps the surrounding font and weight in `sticker-ink` on a `you` fill (yellow in every
- * theme: [RaftColor.Brand]), sticker radius, no border or ring. The fill is drawn behind the
+ * theme: [RaftColor.You]), sticker radius, no border or ring. The fill is drawn behind the
  * glyphs, so it takes no layout room: web pads it 2px each side and 1px above and below the
  * line box, and here it reaches up to 2dp into a neighbouring space or line edge but never over
  * a neighbouring glyph. Touching hits are already one range ([homeSearchHighlightRanges]), so
@@ -251,7 +251,7 @@ internal fun RaftSearchHitText(
     val ranges = remember(text, query, highlightRange) { homeSearchHighlightRanges(text, query, highlightRange) }
     val annotated = remember(text, ranges) { raftSearchHitAnnotatedString(text, ranges) }
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
-    val fill = RaftColor.Brand
+    val fill = RaftColor.You
     RaftText(
         text = annotated,
         style = style,

@@ -96,7 +96,7 @@ object RaftMobileNavDefaults {
     /** From the bar's top seam to the tab pills. */
     val TopPadding: Dp = 7.dp
 
-    /** The slot every tab holds: the selected tab fills it with the brand sticker. */
+    /** The slot every tab holds: the selected tab fills it with the `selected` sticker. */
     val PillWidth: Dp = 56.dp
     val PillHeight: Dp = 32.dp
     val PillRadius: Dp = 9.dp
@@ -228,7 +228,7 @@ fun Modifier.raftMobileNavServerPopoverTarget(state: RaftMobileNavServerPopoverS
 
 /**
  * raft-ui `MobileNavItem`: one tab of the phone bar, a 56x32 slot holding the [icon] and the
- * label 4dp under it. The selected tab fills the slot with the brand sticker (2dp ink
+ * label 4dp under it. The selected tab fills the slot with the `selected` sticker (2dp ink
  * border, 9dp radius); a press washes it. [attention] puts the attention pixel on the slot's
  * top-right corner; the selected tab never wears it (nav spec §4). [badge] draws over the slot
  * (a count on its top-right corner, placed by the caller). A disabled tab draws its icon and
@@ -695,7 +695,7 @@ fun RowScope.RaftMobileNavServerPopoverDestination(
     }
 }
 
-/** The 56x32 tab slot: the brand sticker when [selected], the press wash when [washed]. */
+/** The 56x32 tab slot: the `selected` sticker when [selected], the press wash when [washed]. */
 @Composable
 private fun RaftMobileNavPill(selected: Boolean, washed: Boolean, open: Boolean = false, content: @Composable () -> Unit) {
     val colors = RaftTheme.colors
@@ -720,7 +720,7 @@ private fun RaftMobileNavPill(selected: Boolean, washed: Boolean, open: Boolean 
                                 )
                             }
                         }
-                        .background(RaftUiPalette.brand, shape)
+                        .background(RaftUiPalette.selected, shape)
                         .border(RaftMobileNavDefaults.PillBorder, RaftUiPalette.stickerInk, shape)
                 } else {
                     Modifier

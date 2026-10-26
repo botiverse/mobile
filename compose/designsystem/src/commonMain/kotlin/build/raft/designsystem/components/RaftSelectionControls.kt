@@ -105,7 +105,7 @@ internal data class RaftSwitchLook(
 
 /**
  * switch.tsx: off is a `fill-muted` track with a `line-strong` edge and a `layer-card`
- * knob ringed in `line-strong`; on is a brand sticker (`brand`, `sticker-ink` edge, the
+ * knob ringed in `line-strong`; on is the selected sticker (`selected`, `sticker-ink` edge, the
  * die-cut edge) with a `sticker-paper` knob ringed in `sticker-ink`. Disabled, on or off,
  * is `fill-muted` with `foreground-disabled` edges: no longer a sticker.
  */
@@ -114,7 +114,7 @@ internal fun raftSwitchLook(checked: Boolean, enabled: Boolean, colors: RaftUiTh
         !enabled -> RaftSwitchLook(colors.fillMuted, colors.foregroundDisabled, Color.Transparent, colors.fillMuted, colors.foregroundDisabled)
         checked ->
             RaftSwitchLook(
-                RaftUiPalette.brand,
+                RaftUiPalette.selected,
                 RaftUiPalette.stickerInk,
                 colors.stickerEdge,
                 RaftUiPalette.stickerPaper,
