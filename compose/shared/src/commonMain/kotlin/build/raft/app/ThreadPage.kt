@@ -33389,7 +33389,7 @@ private fun ThreadMembersPagerRow(
 
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
-private fun ThreadAddMemberModal(
+internal fun ThreadAddMemberModal(
     members: List<RaftThreadMemberItem>,
     candidates: List<RaftThreadMemberItem>,
     canAddMembers: Boolean,
