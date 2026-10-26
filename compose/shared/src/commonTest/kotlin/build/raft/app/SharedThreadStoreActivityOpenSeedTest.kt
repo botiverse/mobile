@@ -36,16 +36,38 @@ import kotlin.test.assertTrue
 class SharedThreadStoreActivityOpenSeedTest {
     @Test
     fun theActivityRowMessageIsTheFirstFrameAndTheCanonicalLoadReplacesIt() = runBlocking {
+        // artin 10-26: a cut preview stands in without its "…" and flagged (the card ends it with a
+        // loading indicator); the canonical message replaces it and is never flagged. When the load
+        // fails (offline), the stand-in stays but stops loading and gets its "…" back.
+        val cut = "c".repeat(140)
+        assertSeedThenCanonical(preview = "seen in Activity", expectedBody = "seen in Activity", expectedTruncated = false)
+        assertSeedThenCanonical(preview = "$cut…", expectedBody = cut, expectedTruncated = true)
+        assertSeedThenCanonical(
+            preview = "$cut…",
+            expectedBody = cut,
+            expectedTruncated = true,
+            loadFails = true,
+            expectedAfterLoad = Triple("m1", "$cut…", false),
+        )
+    }
+
+    private suspend fun assertSeedThenCanonical(
+        preview: String,
+        expectedBody: String,
+        expectedTruncated: Boolean,
+        loadFails: Boolean = false,
+        expectedAfterLoad: Triple<String, String, Boolean> = Triple("m1", "network body", false),
+    ) {
         // runBlocking, not virtual time: the canonical page resumes off the test dispatcher (the
         // existing gated-fetch store tests wait the same way), so the replacement is awaited with a
         // bounded wait that fails with the state it saw.
         val scopeJob = SupervisorJob()
         val scope = CoroutineScope(scopeJob + Dispatchers.Unconfined)
-        val api = SharedThreadStoreTest.FakeThreadApi()
+        val api = SharedThreadStoreTest.FakeThreadApi(failChannelMessages = loadFails)
         api.channelMessagesStarted = CompletableDeferred()
         api.releaseChannelMessages = CompletableDeferred()
         // The row's latest message is the same message the canonical page returns ("m1").
-        val source = source(channelRow(channelId = "channel-1", messageId = "m1", preview = "seen in Activity"))
+        val source = source(channelRow(channelId = "channel-1", messageId = "m1", preview = preview))
         try {
             val store = SharedThreadStore(dataSource = dataSource(api, source), scope = scope)
             store.dispatch(SharedThreadIntent.Start(channelRoute()))
@@ -53,18 +75,29 @@ class SharedThreadStoreActivityOpenSeedTest {
 
             val first = store.state.value.payload
             assertEquals("content", first.status, "the row's message stands in while the load runs")
-            assertEquals(listOf("m1" to "seen in Activity"), first.messages.map { it.id to it.body })
+            assertEquals(
+                listOf(Triple("m1", expectedBody, expectedTruncated)),
+                first.messages.map { Triple(it.id, it.body, it.activityPreviewTruncated) },
+            )
             assertTrue(first.durableLastKnown, "a stand-in: no paging authority")
             assertFalse(first.canLoadMoreBefore)
 
             api.releaseChannelMessages!!.complete(Unit)
             withTimeoutOrNull(5_000) {
-                while (store.state.value.payload.durableLastKnown) delay(10)
-            } ?: error("waited for the canonical page to replace the seed, state=${store.state.value.payload.messages}")
+                while (
+                    if (loadFails) !store.state.value.payload.mainLoadFailed else store.state.value.payload.durableLastKnown
+                ) {
+                    delay(10)
+                }
+            } ?: error("waited for the load to answer (fails=$loadFails), state=${store.state.value.payload.messages}")
 
-            val canonical = store.state.value.payload
-            assertEquals("content", canonical.status)
-            assertEquals(listOf("m1" to "network body"), canonical.messages.map { it.id to it.body }, "replaced, not doubled")
+            val after = store.state.value.payload
+            assertEquals("content", after.status)
+            assertEquals(
+                listOf(expectedAfterLoad),
+                after.messages.map { Triple(it.id, it.body, it.activityPreviewTruncated) },
+                "replaced (or settled on failure), not doubled, never flagged",
+            )
         } finally {
             api.releaseChannelMessages?.complete(Unit)
             scopeJob.cancelAndJoin()

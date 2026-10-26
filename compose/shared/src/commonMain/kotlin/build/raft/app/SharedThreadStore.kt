@@ -7634,10 +7634,17 @@ internal class SharedThreadStore(
                 } else {
                     routeContextPayload.copy(status = "loading", errorCode = null)
                 }
-        val seededStandIn = standInFirstFrame.withActivityOpenSeed(activitySeed)
+        // artin 10-26: a seed message whose Activity preview was cut shows the full copy when either
+        // route-matched local frame already holds that message.
+        val activitySeedBodies =
+            activitySeed.withLocalFullMessages(
+                listOfNotNull(supersededMemory, durableLastKnownWithReplies).flatMap { it.messages }
+            )
+        val seededStandIn = standInFirstFrame.withActivityOpenSeed(activitySeedBodies)
         if (activitySeed.isNotEmpty()) {
             diagnosticsLogger?.invoke(
                 "thread_start_activity_seed threadId=${threadId.orEmpty()} seed=${activitySeed.size} " +
+                    "truncated=${activitySeedBodies.count { it.activityPreviewTruncated }} " +
                     "standIn=${standInFirstFrame.status}/${standInFirstFrame.messages.size} " +
                     "added=${seededStandIn.messages.size - standInFirstFrame.messages.size}"
             )
@@ -11853,6 +11860,10 @@ internal class SharedThreadViewModel(
 }
 
 private fun RaftThreadScreenPayload.asRefreshFailed(code: String): RaftThreadScreenPayload =
+    // artin 10-26: a failed load brings no full message, so a cut Activity seed stops loading.
+    withActivityPreviewsSettled().asRefreshFailedSettled(code)
+
+private fun RaftThreadScreenPayload.asRefreshFailedSettled(code: String): RaftThreadScreenPayload =
     if (hasRenderableThreadContent()) {
         copy(status = "content", backgroundRefreshing = false, errorCode = code, errorServerMessage = null)
     } else if (isDurableEmptyStandIn()) {
@@ -14585,6 +14596,8 @@ internal fun RaftThreadMessageItem.mergeRealtimeUpdate(
         systemEventType = update.systemEventType ?: systemEventType,
         metadata = update.metadata.ifEmpty { metadata },
         body = update.body.ifBlank { body },
+        // A realtime update with a body carries the full text: a cut Activity seed is no longer cut.
+        activityPreviewTruncated = activityPreviewTruncated && update.body.isBlank(),
         threadChannelId = update.threadChannelId ?: threadChannelId,
         replyCount = maxOf(replyCount, update.replyCount),
         unreadReplyCount = maxOf(unreadReplyCount, update.unreadReplyCount),

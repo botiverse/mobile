@@ -547,6 +547,7 @@
     <string name="thread_add_member_failed">メンバーを追加できませんでした</string>
     <string name="thread_member_role_agent">エージェント</string>
     <string name="thread_quoted_permalink_loading">メッセージを読み込み中…</string>
+    <string name="thread_message_loading_full">メッセージ全文を読み込み中…</string>
     <string name="thread_quoted_permalink_no_content">（内容なし）</string>
     <string name="thread_quoted_permalink_unavailable">メッセージプレビューを利用できません</string>
 <string name="thread_member_role_member">メンバー</string>
