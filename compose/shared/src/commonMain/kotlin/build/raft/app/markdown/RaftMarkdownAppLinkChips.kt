@@ -48,14 +48,24 @@ import build.raft.app.raftSpanStyleForWeight
 import coil3.compose.AsyncImagePainter
 
 /**
- * The App link results of the message being rendered (web `AppLinkResultsProvider`), and what a
- * tap on a grey chip does: ask the viewer first. Null outside a message that reads them.
+ * The App link results of the message being rendered (web `AppLinkResultsProvider`), what a
+ * tap on a grey chip does (ask the viewer first) and, where it is given, what a tap on a cyan
+ * chip whose App sent a card body does: open its item card ([onOpenCard]). Null outside a
+ * message that reads them.
  */
 @Immutable
 internal data class RaftAppLinkChipHost(
     val results: Map<String, AppLinkResult>,
     val onAsk: (AppLinkResult.Consent) -> Unit,
+    val onOpenCard: ((AppLinkResult.Card) -> Unit)? = null,
 )
+
+/**
+ * Whether a tap on this preview's chip opens its item card instead of the link: the App sent a
+ * card body ([AppLinkResult.Card.card]) and the message can show it. A preview with only its
+ * title keeps the plain chip, a tap opening the link.
+ */
+internal fun RaftAppLinkChipHost.opensCard(result: AppLinkResult.Card): Boolean = onOpenCard != null && result.card != null
 
 internal val LocalRaftAppLinkChips = staticCompositionLocalOf<RaftAppLinkChipHost?> { null }
 
@@ -70,7 +80,8 @@ internal data class RaftAppLinkChipContent(
  *
  * - [AppLinkResult.Card]: `MessageReferenceChip variant="info" capped`, a cyan chip with the
  *   App's icon, its title and, since a finger opens it without a hover card first, the link's
- *   domain as `MessageReferenceSuffix`. A tap opens the link.
+ *   domain as `MessageReferenceSuffix`. A tap opens the link or, with a card body
+ *   ([opensCard]), the item card (the web's hover card, which a finger can't open).
  * - [AppLinkResult.Consent]: `variant="muted"`, a grey chip with the App's icon and the
  *   shortened address. A tap asks first ([RaftAppLinkChipHost.onAsk]); nothing is opened.
  * - [AppLinkResult.Pending]: `MessageReferencePending`, the Link icon and the shortened
@@ -122,11 +133,19 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
         val annotation: LinkAnnotation? =
             when (result) {
                 is AppLinkResult.Card ->
-                    LinkAnnotation.Url(
-                        url = result.url,
-                        styles = raftAppLinkChipLinkStyles(),
-                        linkInteractionListener = LinkInteractionListener { openUri(result.url) },
-                    )
+                    if (host.opensCard(result)) {
+                        LinkAnnotation.Clickable(
+                            tag = RaftAppLinkCardTag,
+                            styles = raftAppLinkChipLinkStyles(),
+                            linkInteractionListener = LinkInteractionListener { host.onOpenCard?.invoke(result) },
+                        )
+                    } else {
+                        LinkAnnotation.Url(
+                            url = result.url,
+                            styles = raftAppLinkChipLinkStyles(),
+                            linkInteractionListener = LinkInteractionListener { openUri(result.url) },
+                        )
+                    }
                 is AppLinkResult.Consent ->
                     LinkAnnotation.Clickable(
                         tag = RaftAppLinkConsentTag,
@@ -178,6 +197,7 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
 }
 
 internal const val RaftAppLinkConsentTag = "raft.build.markdown.appLinkConsent"
+internal const val RaftAppLinkCardTag = "raft.build.markdown.appLinkCard"
 
 /** About 24em of 14sp semibold on a phone (336dp): the whole chip's words. */
 internal const val RaftAppLinkChipMaxChars = 40
