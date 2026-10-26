@@ -343,7 +343,8 @@ private fun RaftFilePreviewPdfStatusCard(
                     variant = if (state.canRetry) RaftButtonVariant.Default else RaftButtonVariant.Primary,
                     size = RaftButtonSize.Lg,
                     enabled = openInOtherAppEnabled,
-                    leadingIcon = { RaftDownloadIcon(RaftLucideIconName.ExternalLink) }
+                    // raft-ui 0.26 (#758): another app leaves Raft: ↗ in the trailing icon's place.
+                    trailingIcon = { RaftDownloadIcon(RaftLucideIconName.ArrowUpRight) }
                 )
             }
         }

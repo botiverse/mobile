@@ -37,6 +37,7 @@ import build.raft.app.data.appLinkPreviewsApply
 import build.raft.app.data.messageView
 import build.raft.app.markdown.LocalRaftAppLinkChips
 import build.raft.app.markdown.RaftAppLinkChipHost
+import build.raft.app.markdown.raftAppLinkAsciiHost
 import build.raft.app.markdown.raftAppLinkKeepEnd
 import build.raft.app.resources.MR
 import build.raft.designsystem.components.RaftButton
@@ -231,7 +232,8 @@ internal fun ThreadAppLinkConsentPrompt(
 @Composable
 private fun ThreadAppLinkConsentDestination(app: AppLinkPromptApp, url: String, onOpenLink: () -> Unit) {
     val colors = RaftTheme.colors
-    val domain = appLinkDomain(url).orEmpty()
+    // raft-design #755: the host in ASCII (punycode), never a look-alike Unicode name.
+    val domain = appLinkDomain(url)?.let(::raftAppLinkAsciiHost).orEmpty()
     Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),

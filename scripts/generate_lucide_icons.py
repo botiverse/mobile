@@ -63,6 +63,7 @@ LUCIDE_ICONS = [
     "archive",
     "arrow-left",
     "arrow-up-down",
+    "arrow-up-right",
     "at-sign",
     "ban",
     "badge-info",

@@ -103,7 +103,8 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
     var cursor = 0
     chips.forEach { (range, result) ->
         if (range.start < cursor || range.end <= range.start) return@forEach
-        val domain = appLinkDomain(result.url) ?: return@forEach
+        // raft-design #755: the host in ASCII (punycode), never a look-alike Unicode name.
+        val domain = appLinkDomain(result.url)?.let(::raftAppLinkAsciiHost) ?: return@forEach
         builder.append(this, cursor, range.start)
         val prefix = "raft-app-link-${range.start}-${range.end}"
         val iconId = "$prefix-icon"
@@ -117,7 +118,7 @@ internal fun AnnotatedString.withRaftAppLinkChipContent(
                 suffix = raftAppLinkKeepEnd(domain, RaftAppLinkDomainMaxChars)
                 label = raftAppLinkCap(result.title, (RaftAppLinkChipMaxChars - suffix.length).coerceAtLeast(RaftAppLinkTitleMinChars))
             }
-            else -> label = raftAppLinkCap(appLinkShortAddress(result.url) ?: domain, RaftAppLinkChipMaxChars)
+            else -> label = raftAppLinkCap(appLinkShortAddress(result.url)?.let(::raftAppLinkAsciiHost) ?: domain, RaftAppLinkChipMaxChars)
         }
         val annotation: LinkAnnotation? =
             when (result) {

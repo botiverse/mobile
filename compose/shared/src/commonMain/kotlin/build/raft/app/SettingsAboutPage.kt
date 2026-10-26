@@ -327,7 +327,7 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                     enabled = true
                                 )
                             )
-                            add(RaftSharedSettingsRow("openSlock", RaftLucideIconName.ExternalLink, copy.openRaft, copy.openWebDetail(resolvedWebUrl), value = resolvedWebUrl, status = copy.open, enabled = true))
+                            add(RaftSharedSettingsRow("openSlock", RaftLucideIconName.Globe, copy.openRaft, copy.openWebDetail(resolvedWebUrl), value = resolvedWebUrl, status = copy.open, enabled = true, external = true))
                         }
                 )
             )

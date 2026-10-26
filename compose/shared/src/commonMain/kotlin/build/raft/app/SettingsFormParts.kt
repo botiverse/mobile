@@ -82,7 +82,9 @@ internal data class RaftSharedSettingsRow(
     /** Still loading: a spinner in the icon tile instead of [iconName]. */
     val loading: Boolean = false,
     /** When non-blank and a copy handler is wired, long-pressing the row copies this value. */
-    val copyValue: String = ""
+    val copyValue: String = "",
+    /** The row takes people to another site: it ends in ↗ (raft-ui 0.26, #758). */
+    val external: Boolean = false
 )
 
 /** A settings row's "Beta" (or similar) mark: the raft-ui solid `primary` Badge. */
@@ -453,6 +455,11 @@ private fun SharedSettingsRow(
             }
             row.status.takeIf { it.isNotBlank() }?.let {
                 Text(it, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray, maxLines = 1)
+            }
+            if (row.external) {
+                // raft-ui 0.26 (#758): a row that leaves Raft ends in ↗ in its trailing slot, in the
+                // hint ink; decorative, the row's text says where it goes.
+                RaftLucideIcon(RaftLucideIconName.ArrowUpRight, modifier = Modifier.size(16.dp), color = RaftColor.TextMutedGrayArgb)
             }
             row.toggleValue?.let { enabled ->
                 RaftSwitchButton(checked = enabled, enabled = row.enabled)
