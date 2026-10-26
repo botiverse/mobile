@@ -72,7 +72,9 @@ internal fun ThreadAppLinkPreviewScope(
     content: @Composable () -> Unit,
 ) {
     val host = LocalThreadAppLinkPreviewHost.current
-    if (host == null || !enabled || !appLinkPreviewsApply(body) || !messageId.isAppLinkMessageId()) {
+    // A share image keeps the links the author wrote: no chips, item card, prompt or placeholder.
+    val previewsEnabled = threadAppLinkPreviewsEnabled(enabled, LocalThreadShareCaptureActive.current)
+    if (host == null || !previewsEnabled || !appLinkPreviewsApply(body) || !messageId.isAppLinkMessageId()) {
         content()
         return
     }
