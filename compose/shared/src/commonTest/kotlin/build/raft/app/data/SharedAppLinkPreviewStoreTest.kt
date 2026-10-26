@@ -1,6 +1,10 @@
 package build.raft.app.data
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -8,6 +12,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private const val Viewer = "user-1:server-1"
@@ -25,15 +30,25 @@ private const val CardsBody =
     """{"previews":[{"version":1,"title":"Private PR","url":"https://alpha.example.test/pr/1","appName":"prompt-alpha"},""" +
         """{"version":1,"title":"Other PR","url":"https://alpha.example.test/pr/2","appName":"prompt-alpha"}],"prompts":[],"appIcons":{}}"""
 
+/** The web's `statusCard` (botiverse/slock 3652d3703 `packages/web/tests/appLinkChips.behavior.test.tsx`). */
+private const val StatusCardBody =
+    """{"previews":[{"version":1,"url":"https://alpha.example.test/pr/1","appName":"Sample App","title":"PR 123: Fix sign-in",""" +
+        """"card":{"root":"stack","elements":{"stack":{"type":"Stack","props":{},"children":["state","detail"]},""" +
+        """"state":{"type":"Badge","props":{"text":"Approved"}},"detail":{"type":"Text","props":{"text":"Ready for review","tone":"muted"}}}}}],""" +
+        """"prompts":[],"appIcons":{"https://alpha.example.test/pr/1":null}}"""
+
 private class FakeAppLinkPreviewApi : RaftAppLinkPreviewApi {
     val reads = mutableListOf<String>()
     val readResponses = ArrayDeque<HomeNetworkResponse>()
     var allowResponse = HomeNetworkResponse(200, "{}")
     var declineResponse = HomeNetworkResponse(200, "{}")
     val answers = mutableListOf<String>()
+    /** When set, a read waits for it: the read is on its way meanwhile. */
+    var readGate: CompletableDeferred<Unit>? = null
 
     override suspend fun readPreviews(messageId: String, serverId: String): HomeNetworkResponse {
         reads += messageId
+        readGate?.await()
         return readResponses.removeFirstOrNull() ?: HomeNetworkResponse(200, """{"previews":[],"prompts":[]}""")
     }
 
@@ -192,5 +207,48 @@ class SharedAppLinkPreviewStoreTest {
         assertTrue(store.state.value.messageView("user-1:server-2", MessageA, Content, Conversation).wantsRead)
         // An edited message is another read.
         assertTrue(store.view(content = "$Content edited").wantsRead)
+    }
+
+    @Test
+    fun aMessagesCardReachesItsRowThroughTheSelector() = runTest(StandardTestDispatcher()) {
+        val api = FakeAppLinkPreviewApi().apply { readResponses += HomeNetworkResponse(200, StatusCardBody) }
+        val store = store(api)
+        val seen = mutableListOf<AppLinkMessageView>()
+        backgroundScope.launch { store.messageViewFlow(Viewer, MessageA, Content, Conversation).toList(seen) }
+        runCurrent()
+        store.read(Viewer, Server, MessageA, Content, Conversation)
+        runCurrent()
+        // Another message's answer doesn't reach this row's selector.
+        store.read(Viewer, Server, MessageB, Content, Conversation)
+        runCurrent()
+        assertEquals(listOf(true, false), seen.map { it.wantsRead })
+        val card = seen.last().cards.single()
+        assertEquals("https://alpha.example.test/pr/1", card.url)
+        assertEquals(AppLinkApp("Sample App", null), card.app)
+        assertEquals(RaftAppLinkCardElement.Badge("Approved"), card.card!!.element("state"))
+        assertEquals(RaftAppLinkTextTone.Muted, (card.card!!.element("detail") as RaftAppLinkCardElement.Text).tone)
+    }
+
+    @Test
+    fun signingOutDropsEveryAnswerAndAReadOnItsWayIsNotKept() = runTest(StandardTestDispatcher()) {
+        val api = FakeAppLinkPreviewApi().apply { readResponses += HomeNetworkResponse(200, CardsBody) }
+        val store = store(api)
+        store.read(Viewer, Server, MessageA, Content, Conversation)
+        runCurrent()
+        assertEquals(2, store.view().results.size)
+        store.clearAll()
+        assertTrue(store.state.value.entries.isEmpty())
+        assertTrue(store.view().wantsRead)
+
+        api.readGate = CompletableDeferred()
+        api.readResponses += HomeNetworkResponse(200, CardsBody)
+        store.read(Viewer, Server, MessageB, Content, Conversation)
+        runCurrent()
+        store.clearAll()
+        api.readGate!!.complete(Unit)
+        runCurrent()
+        assertEquals(listOf(MessageA, MessageB), api.reads)
+        assertNull(store.state.value.entries.values.firstOrNull())
+        assertTrue(store.messageViewFlow(Viewer, MessageB, Content, Conversation).first().wantsRead)
     }
 }
