@@ -22,7 +22,8 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Density
+import kotlin.math.abs
 import androidx.compose.ui.geometry.Size
 import com.tencent.kuiklybase.markdown.utils.MARKDOWN_TAG_IMAGE_URL
 import com.tencent.kuiklybase.markdown.annotator.AnnotatorSettings
@@ -217,17 +218,16 @@ internal fun createImageInlineTextContent(
     transformer: ImageTransformer,
 ): InlineTextContent {
     val density = LocalDensity.current
-    val (width, height) = with(density) {
-        placeholderState.size.width.toDp() to placeholderState.size.height.toDp()
-    }
-    var mutableHeight by remember { mutableStateOf(height) }
+    // The image's measured height (px) narrows the placeholder once it loads. Kept in px and
+    // converted with the density's own px -> sp, so sp -> px gives the same px back.
+    var heightPx by remember { mutableStateOf(markdownInlineImagePlaceholderPx(placeholderState.size.height)) }
 
     val imageHandler = LocalImageLinkHandler.current
     return InlineTextContent(
-        Placeholder(
-            width = width.value.sp,
-            height = mutableHeight.value.sp,
-            placeholderVerticalAlign = PlaceholderVerticalAlign.AboveBaseline
+        markdownInlineImagePlaceholder(
+            widthPx = placeholderState.size.width,
+            heightPx = heightPx,
+            density = density,
         )
     ) { link ->
         transformer.transform(link, placeholderState.size)?.let { imageData ->
@@ -238,7 +238,7 @@ internal fun createImageInlineTextContent(
                     .clickable { imageHandler.preview(imageData) }
                     .then(imageData.modifier)
                     .onSizeChanged {
-                        mutableHeight = with(density) { it.height.toDp() }
+                        heightPx = nextMarkdownInlineImagePlaceholderHeightPx(heightPx, it.height)
                     },
                 painter = imageData.painter,
                 contentDescription = imageData.contentDescription,
@@ -250,3 +250,35 @@ internal fun createImageInlineTextContent(
         }
     }
 }
+
+/*
+ * TestFlight crash cluster C (iOS 1.15.5, 2026-10-25): `Can't represent a width of 1216 and
+ * height of 262285 in Constraints`, thrown by TextMeasurePolicy measuring this placeholder.
+ * The height used to go px -> dp -> `dp.value.sp`, and sp -> px multiplies by the font scale, so
+ * under Dynamic Type every frame grew the placeholder by the font scale whenever the Image
+ * filled it (still loading, failed, or taller than wide) until Constraints overflowed; the width
+ * (the container width) stayed put. Now px go through the density's px -> sp, the measured
+ * height only replaces the placeholder's when it differs by more than rounding, and both sides
+ * stay below a size Constraints can always hold.
+ */
+internal fun markdownInlineImagePlaceholder(
+    widthPx: Float,
+    heightPx: Float,
+    density: Density,
+): Placeholder =
+    with(density) {
+        Placeholder(
+            width = markdownInlineImagePlaceholderPx(widthPx).toSp(),
+            height = markdownInlineImagePlaceholderPx(heightPx).toSp(),
+            placeholderVerticalAlign = PlaceholderVerticalAlign.AboveBaseline
+        )
+    }
+
+internal fun nextMarkdownInlineImagePlaceholderHeightPx(currentPx: Float, measuredPx: Int): Float =
+    if (abs(measuredPx - currentPx) > 1f) markdownInlineImagePlaceholderPx(measuredPx.toFloat()) else currentPx
+
+private fun markdownInlineImagePlaceholderPx(px: Float): Float =
+    if (px.isNaN()) 1f else px.coerceIn(1f, MarkdownInlineImagePlaceholderMaxPx)
+
+/** Constraints can hold 32766 px on both sides at once (15 + 16 bits). */
+internal const val MarkdownInlineImagePlaceholderMaxPx = 32_766f
