@@ -48,9 +48,36 @@ class FlushReentryImeModelTest {
         var callbacks = 0
     }
 
-    private class Outcome(val failure: Throwable?, val collectorRuns: Int, val callbacks: Int)
+    private class Outcome(
+        val failure: Throwable?,
+        val collectorRuns: Int,
+        val callbacks: Int,
+        val timedOut: Boolean = false,
+    )
 
+    /**
+     * Runs the scenario on its own daemon thread: once the dispatcher re-runs a batch, the
+     * coroutine machinery can livelock instead of throwing (CI run 40276517572 hung here), and a
+     * hang must not take the whole test JVM down.
+     */
     private fun runTapWhileEditing(uiKit: FakeUiKit): Outcome {
+        var result: Outcome? = null
+        val worker = Thread({ result = runTapWhileEditingOnThisThread(uiKit) }, "flush-reentry-model")
+        worker.isDaemon = true
+        worker.start()
+        worker.join(10_000)
+        return result ?: Outcome(failure = null, collectorRuns = -1, callbacks = uiKit.callbacks, timedOut = true)
+    }
+
+    private fun drain(queue: ArrayDeque<Runnable>) {
+        var budget = 10_000
+        while (queue.isNotEmpty()) {
+            check(budget-- > 0) { "host queue never drained (livelock)" }
+            queue.removeFirst().run()
+        }
+    }
+
+    private fun runTapWhileEditingOnThisThread(uiKit: FakeUiKit): Outcome {
         val state = TextFieldState("helloi")
         var scene: ImageComposeScene? = null
         var failure: Throwable? = null
@@ -98,13 +125,13 @@ class FlushReentryImeModelTest {
         }.use { s ->
             scene = s
             s.render(0)
-            while (hostQueue.isNotEmpty()) hostQueue.removeFirst().run()
+            drain(hostQueue)
             s.render(16_000_000)
-            while (hostQueue.isNotEmpty()) hostQueue.removeFirst().run()
+            drain(hostQueue)
             try {
                 s.sendPointerEvent(PointerEventType.Press, Offset(5f, 5f))
                 s.render(32_000_000)
-                while (hostQueue.isNotEmpty()) hostQueue.removeFirst().run()
+                drain(hostQueue)
             } catch (t: Throwable) {
                 if (failure == null) failure = t
             }
@@ -120,8 +147,9 @@ class FlushReentryImeModelTest {
         // Without re-entry the collector runs twice (initial value, the tap). The nested flush
         // either throws (CME on the JVM) or re-runs the collector's continuation.
         assertTrue(
-            outcome.failure != null || outcome.collectorRuns > 2,
-            "expected the re-entrant flush to fail or double-run; collectorRuns=${outcome.collectorRuns}",
+            outcome.failure != null || outcome.collectorRuns > 2 || outcome.timedOut,
+            "expected the re-entrant flush to fail, double-run or livelock; " +
+                "collectorRuns=${outcome.collectorRuns} timedOut=${outcome.timedOut}",
         )
     }
 
@@ -133,6 +161,7 @@ class FlushReentryImeModelTest {
     fun noPendingCandidateMeansNoReentry() {
         val outcome = runTapWhileEditing(FakeUiKit(hasPendingCandidate = false))
         assertEquals(0, outcome.callbacks)
+        assertEquals(false, outcome.timedOut, "the scenario must finish")
         assertNull(outcome.failure, "no IME callback, so no nested flush")
         assertEquals(2, outcome.collectorRuns)
     }
