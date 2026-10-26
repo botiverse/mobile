@@ -6196,7 +6196,7 @@ private fun ServerSwitcherRow(
                 .heightIn(min = HomeServerSwitcherRowMinHeight)
                 .background(
                     when {
-                        selected -> RaftColor.Brand
+                        selected -> RaftColor.Selected
                         pressed -> RaftColor.FillPressed
                         else -> Color.Transparent
                     },

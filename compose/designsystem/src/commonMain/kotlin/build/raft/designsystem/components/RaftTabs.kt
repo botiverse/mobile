@@ -205,7 +205,7 @@ private val LocalRaftTabStripScroll = staticCompositionLocalOf<RaftTabStripScrol
  * one or two words) with an optional 16dp [icon] 6dp before it.
  *
  * - Default variant: 32dp tall, 12dp padding, hugging its label. [selected] is the active
- *   sticker: `brand`, 1.5dp `sticker-ink` edge, bold `sticker-ink` label, the die-cut edge
+ *   sticker: `selected`, 1.5dp `sticker-ink` edge, bold `sticker-ink` label, the die-cut edge
  *   in dark. Pressed lays `fill-pressed` (`sticker-pressed` on the sticker) over it.
  * - Underline variant: 44dp tall, no padding or fill. [selected] turns the label
  *   `foreground` and draws a 2dp `foreground` line along the tab's bottom.

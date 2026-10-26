@@ -313,7 +313,7 @@ internal data class RaftStickerLook(
 )
 
 /**
- * The active sticker (Color > Stickers, States > Selected: navigation): a `brand` block
+ * The active sticker (Color > Stickers, States > Selected: navigation): a `selected` block
  * with a 1.5dp `sticker-ink` edge, `sticker-ink` type and the die-cut edge, in both
  * modes. At rest the item shows [restingFill] and [restingInk] and keeps a transparent
  * edge of the same width, so turning active changes colours only.
@@ -326,7 +326,9 @@ internal fun raftActiveStickerLook(
 ): RaftStickerLook =
     if (active) {
         RaftStickerLook(
-            fill = RaftUiPalette.brand,
+            // raft-ui 0.33 #791: `bg-selected`, its own value so a theme that grays `brand`
+            // keeps where you are yellow.
+            fill = RaftUiPalette.selected,
             edge = RaftUiPalette.stickerInk,
             ink = RaftUiPalette.stickerInk,
             dieCut = colors.stickerEdge,

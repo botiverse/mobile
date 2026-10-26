@@ -280,7 +280,7 @@ private fun RaftSidebarItemLayout(
     val hintInk = if (selected) RaftUiPalette.stickerInk else colors.foregroundHint
     val subtitleInk = if (selected) RaftUiPalette.stickerInk else colors.foregroundMuted
     val titleWeight = if (selected || tone == RaftRowTone.Unread) FontWeight.Bold else FontWeight.SemiBold
-    val surface = if (selected) RaftUiPalette.brand else RaftTheme.surfaceColor
+    val surface = if (selected) RaftUiPalette.selected else RaftTheme.surfaceColor
     val edge = RaftStroke.Control
     CompositionLocalProvider(
         LocalRaftContentColor provides hintInk,

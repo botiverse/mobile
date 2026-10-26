@@ -2,7 +2,11 @@ package build.raft.designsystem
 
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
+import build.raft.designsystem.components.RaftStepStatus
+import build.raft.designsystem.components.raftActiveStickerLook
 import build.raft.designsystem.components.raftBadgeLook
+import build.raft.designsystem.components.raftStepLook
+import build.raft.designsystem.components.raftSwitchLook
 import build.raft.designsystem.components.raftSpinnerLitCell
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftThemeState
@@ -93,5 +97,17 @@ class RaftBadgeLookTest {
         assertEquals(light.fillMuted, look.fill)
         assertEquals(light.foregroundDisabled, look.ink)
         assertEquals(0.dp, look.edgeWidth)
+    }
+
+    @Test
+    fun selectedStatesPaintSelectedNotBrand() {
+        // raft-ui 0.33 #791: `selected` has its own value (today the same yellow as `brand`).
+        for (colors in listOf(light, RaftUiThemeColors.RaftDark)) {
+            assertEquals(RaftUiPalette.selected, raftActiveStickerLook(active = true, colors = colors).fill)
+            assertEquals(RaftUiPalette.selected, raftSwitchLook(checked = true, enabled = true, colors = colors).track)
+            assertEquals(RaftUiPalette.selected, raftStepLook(RaftStepStatus.Process, colors).fill)
+        }
+        assertEquals(RaftUiPalette.brand, RaftUiPalette.selected)
+        assertEquals(RaftUiPalette.brand, RaftUiPalette.you)
     }
 }
