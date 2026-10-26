@@ -805,43 +805,45 @@ class InteractiveComponentScreenshotTest {
     @Test
     fun dialogSheet() =
         capture("dialog_sheet") {
-            Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.Top) {
-                Column(Modifier.width(358.dp)) {
-                    Caption("Sheet: commit enabled", Modifier.padding(bottom = 12.dp))
-                    RaftDialogSheetSurface(
-                        title = "Pinned",
-                        commitLabel = "Save",
-                        onCommit = {},
-                        onClose = {},
-                        modifier = Modifier.height(320.dp),
-                    ) {
-                        listOf("proj-uiux", "design", "launch-week", "Mahua").forEach { name ->
-                            RaftText(name, Modifier.padding(horizontal = 16.dp, vertical = 10.dp), style = RaftTheme.typography.callout)
+            Column(verticalArrangement = Arrangement.spacedBy(32.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.Top) {
+                    Column(Modifier.width(358.dp)) {
+                        Caption("Sheet: commit enabled", Modifier.padding(bottom = 12.dp))
+                        RaftDialogSheetSurface(
+                            title = "Pinned",
+                            commitLabel = "Save",
+                            onCommit = {},
+                            onClose = {},
+                            modifier = Modifier.height(320.dp),
+                        ) {
+                            listOf("proj-uiux", "design", "launch-week", "Mahua").forEach { name ->
+                                RaftText(name, Modifier.padding(horizontal = 16.dp, vertical = 10.dp), style = RaftTheme.typography.callout)
+                            }
                         }
                     }
-                }
-                Column(Modifier.width(358.dp)) {
-                    Caption("Commit disabled (while a row is held), long title", Modifier.padding(bottom = 12.dp))
-                    RaftDialogSheetSurface(
-                        title = "A long section title that does not fit the head",
-                        commitLabel = "Save",
-                        onCommit = {},
-                        onClose = {},
-                        commitEnabled = false,
-                        modifier = Modifier.height(320.dp),
-                    ) {}
-                }
-                Column(Modifier.width(358.dp)) {
-                    Caption("Committing: × and commit disabled (web closeDisabled)", Modifier.padding(bottom = 12.dp))
-                    RaftDialogSheetSurface(
-                        title = "Install App",
-                        commitLabel = "Install",
-                        onCommit = {},
-                        onClose = {},
-                        commitEnabled = false,
-                        closeEnabled = false,
-                        modifier = Modifier.height(320.dp),
-                    ) {}
+                    Column(Modifier.width(358.dp)) {
+                        Caption("Commit disabled (while a row is held), long title", Modifier.padding(bottom = 12.dp))
+                        RaftDialogSheetSurface(
+                            title = "A long section title that does not fit the head",
+                            commitLabel = "Save",
+                            onCommit = {},
+                            onClose = {},
+                            commitEnabled = false,
+                            modifier = Modifier.height(320.dp),
+                        ) {}
+                    }
+                    Column(Modifier.width(358.dp)) {
+                        Caption("Committing: × and commit disabled (web closeDisabled)", Modifier.padding(bottom = 12.dp))
+                        RaftDialogSheetSurface(
+                            title = "Install App",
+                            commitLabel = "Install",
+                            onCommit = {},
+                            onClose = {},
+                            commitEnabled = false,
+                            closeEnabled = false,
+                            modifier = Modifier.height(320.dp),
+                        ) {}
+                    }
                 }
                 Column(Modifier.width(358.dp)) {
                     Caption("Commit running (loading), × disabled", Modifier.padding(bottom = 12.dp))
