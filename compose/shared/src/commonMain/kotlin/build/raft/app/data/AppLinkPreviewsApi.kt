@@ -485,10 +485,17 @@ data class RaftAppLinkCard(
     fun element(id: String): RaftAppLinkCardElement? = elements[id]
 }
 
-/** One element of a [RaftAppLinkCard] (the catalog's discriminated `type`). */
-sealed interface RaftAppLinkCardElement {
+/**
+ * One element of a [RaftAppLinkCard] (the catalog's discriminated `type`). A [CardElement], so the
+ * bounded-tree check is the one action cards use ([checkCardBoundedTree], `cardElements.ts`).
+ * Catalog version 2 takes its Stack, RelativeTime and Duration from the shared [CardStack],
+ * [CardRelativeTime] and [CardDuration], as `action-card.v1` does.
+ */
+sealed interface RaftAppLinkCardElement : CardElement {
     /** `Stack`: its [children] (element ids, at most 12) top to bottom; no props in v1. */
-    data class Stack(val children: List<String>) : RaftAppLinkCardElement
+    data class Stack(val children: List<String>) : RaftAppLinkCardElement {
+        override val childIds: List<String> get() = children
+    }
 
     /** `Text`: 1-500 characters of plain text. */
     data class Text(val text: String, val tone: RaftAppLinkTextTone = RaftAppLinkTextTone.Default) : RaftAppLinkCardElement
@@ -502,9 +509,6 @@ enum class RaftAppLinkTextTone { Default, Muted }
 
 const val RAFT_APP_LINK_CARD_MAX_ELEMENTS = 16
 const val RAFT_APP_LINK_CARD_MAX_DEPTH = 4
-private const val RAFT_APP_LINK_CARD_MAX_CHILDREN = 12
-private val RAFT_APP_LINK_CARD_KEY = Regex("^[a-zA-Z][a-zA-Z0-9_-]{0,63}$")
-private val RAFT_APP_LINK_CARD_RESERVED_IDS = setOf("constructor", "prototype", "__proto__")
 
 /**
  * Reads a v1 `card` exactly as `appPreviewCardSchema` does, or null when it would refuse it:
@@ -515,21 +519,14 @@ private val RAFT_APP_LINK_CARD_RESERVED_IDS = setOf("constructor", "prototype", 
 fun parseRaftAppLinkCard(element: JsonElement): RaftAppLinkCard? {
     val obj = element as? JsonObject ?: return null
     if (!setOf("root", "elements").containsAll(obj.keys)) return null
-    val root = obj["root"].jsonStringOrNull()?.takeIf(RAFT_APP_LINK_CARD_KEY::matches) ?: return null
+    val root = obj["root"].jsonStringOrNull()?.takeIf(CARD_ELEMENT_ID::matches) ?: return null
     val rawElements = obj["elements"] as? JsonObject ?: return null
     val elements = LinkedHashMap<String, RaftAppLinkCardElement>()
     for ((id, raw) in rawElements) {
-        if (!RAFT_APP_LINK_CARD_KEY.matches(id)) return null
+        if (!CARD_ELEMENT_ID.matches(id)) return null
         elements[id] = readRaftAppLinkCardElement(raw) ?: return null
     }
-    if (elements.size > RAFT_APP_LINK_CARD_MAX_ELEMENTS || elements.keys.any { it in RAFT_APP_LINK_CARD_RESERVED_IDS }) return null
-    val visited = mutableSetOf<String>()
-    fun visit(id: String, depth: Int): Boolean {
-        val node = elements[id] ?: return false
-        if (!visited.add(id) || depth > RAFT_APP_LINK_CARD_MAX_DEPTH) return false
-        return node !is RaftAppLinkCardElement.Stack || node.children.all { visit(it, depth + 1) }
-    }
-    if (!visit(root, 0) || visited.size != elements.size) return null
+    if (checkCardBoundedTree(root, elements, RAFT_APP_LINK_CARD_MAX_ELEMENTS, RAFT_APP_LINK_CARD_MAX_DEPTH) != null) return null
     return RaftAppLinkCard(root = root, elements = elements)
 }
 
@@ -542,8 +539,8 @@ private fun readRaftAppLinkCardElement(raw: JsonElement): RaftAppLinkCardElement
             val children =
                 if ("children" in obj) {
                     val list = obj["children"] as? JsonArray ?: return null
-                    if (list.size > RAFT_APP_LINK_CARD_MAX_CHILDREN) return null
-                    list.map { child -> child.jsonStringOrNull()?.takeIf(RAFT_APP_LINK_CARD_KEY::matches) ?: return null }
+                    if (list.size > CARD_STACK_MAX_CHILDREN) return null
+                    list.map { child -> child.jsonStringOrNull()?.takeIf(CARD_ELEMENT_ID::matches) ?: return null }
                 } else {
                     emptyList()
                 }

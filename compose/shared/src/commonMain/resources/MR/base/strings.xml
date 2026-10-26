@@ -3234,4 +3234,9 @@
     <string name="thread_link_preview_prompt_decline_failed">Couldn’t save your choice for %1$s. Check your connection and try again.</string>
     <string name="thread_link_preview_prompt_unavailable">%1$s can’t show link previews on this server.</string>
     <string name="thread_link_preview_open_link">Open Link</string>
+    <string name="thread_action_card_scope_group_server">Server · read</string>
+    <string name="thread_action_card_scope_group_agent">Agent · read</string>
+    <string name="thread_action_card_scope_group_channel">Channel · read</string>
+    <string name="thread_action_card_scope_group_computer">Computer · read</string>
+    <string name="thread_action_card_scope_group_agent_reminder_write">Agent reminders</string>
 </resources>
