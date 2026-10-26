@@ -297,6 +297,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.model.isInternalJointStorageIdentity
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MonotonicFrameClock
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -436,6 +437,7 @@ import build.raft.app.compat.pager.IPagerEventObserver
 import build.raft.app.compat.pager.Pager
 import org.jetbrains.compose.resources.StringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -15347,6 +15349,11 @@ private fun ThreadPageContentContent(
     suspend fun captureSelectedShareFragments(): ThreadShareCaptureRect? {
         val fragments = mutableListOf<String>()
         var completedMessages = 0
+        // The click set shareCaptureMode, which drops the rows' viewer-only previews
+        // (LocalThreadShareCaptureActive). This screenshot is of the live list, so let that
+        // recomposition and the relayout it causes land before any bounds are read or pixels
+        // taken: one frame recomposes, the next lays out and reports the rows' new bounds.
+        awaitThreadShareCaptureFrames()
         diagnosticsLogger(
             "thread_share_capture_start selected=${selectedShareMessages.size} " +
                 "ids=${selectedShareMessages.joinToString(separator = ",") { it.id }}"
@@ -15685,6 +15692,8 @@ private fun ThreadPageContentContent(
                 ThreadLoadingState()
             } else when (tab) {
                 RaftThreadTab.Chat ->
+                    // Rows drop viewer-only previews while "Generate image" rasterizes them.
+                    CompositionLocalProvider(LocalThreadShareCaptureActive provides shareCaptureMode) {
                     ThreadChatTab(
                         threadInstanceKey = threadInstanceKey,
                         routeActive = routeActive && tabActive,
@@ -15810,6 +15819,7 @@ private fun ThreadPageContentContent(
                         adaptiveStoreScope = adaptiveStoreScope,
                         adaptiveEventBus = adaptiveEventBus
                     )
+                    }
                 RaftThreadTab.Tasks ->
                     ThreadTasksTab(
                         tasksViewModel = tasksViewModel,
@@ -24651,6 +24661,12 @@ private const val ThreadKeyboardBottomAnchorAttempts = 8
 private const val ThreadOlderAutoLoadVisibleItemThreshold = 8
 private const val ThreadShareCaptureTopScrollOffsetPx = -12
 private const val ThreadShareCaptureScrollSettleMs = 96L
+
+/** Awaits two frames where the caller's context has a frame clock (a composition's scope does). */
+internal suspend fun awaitThreadShareCaptureFrames(frames: Int = 2) {
+    if (currentCoroutineContext()[MonotonicFrameClock] == null) return
+    repeat(frames) { withFrameNanos { } }
+}
 private const val ThreadShareCaptureMaxSegmentsPerMessage = 24
 private const val ThreadShareCaptureGeometryTolerancePx = 2f
 private val ThreadSystemMessageTimeColor: Color get() = RaftColor.TextBlack.copy(alpha = 0.4f)
@@ -25378,6 +25394,7 @@ private fun ThreadMessageCardContent(
         } else {
             null
         }
+    val shareCaptureActive = LocalThreadShareCaptureActive.current
     val quotedPermalinkState = remember(message.id, message.body) { mutableStateOf<ThreadQuotedPermalinkUiState?>(null) }
     var quotedPermalinkTarget by remember(message.id, message.body) { mutableStateOf<RaftMessagePermalinkTarget?>(null) }
     LaunchedEffect(message.id, message.body, currentServerSlug, quotedPermalinkLoader) {
@@ -26054,7 +26071,12 @@ private fun ThreadMessageCardContent(
                                         messageBodyBlock()
                                     }
                                 }
-                                quotedPermalinkState.value?.let { state ->
+                                // A share image is public: the quoted message is viewer-only, so
+                                // capture mode drops the whole preview (and its margin); the link
+                                // stays in the body above.
+                                quotedPermalinkState.value
+                                    ?.takeIf { threadQuotedPermalinkPreviewVisible(it, shareCaptureActive) }
+                                    ?.let { state ->
                                     ThreadQuotedPermalinkCard(
                                         state = state,
                                         target = quotedPermalinkTarget,
