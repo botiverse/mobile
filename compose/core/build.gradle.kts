@@ -39,6 +39,9 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
 
+    // Desktop (JVM) for :desktopApp; plain-JVM actuals are shared with Android via jvmCommonMain.
+    jvm("desktop")
+
     sourceSets {
         val commonMain by getting {
             dependencies {
@@ -52,6 +55,15 @@ kotlin {
                 implementation(kotlin("test"))
                 implementation(libs.kotlinx.coroutines.test)
             }
+        }
+        val jvmCommonMain by creating {
+            dependsOn(commonMain)
+        }
+        val androidMain by getting {
+            dependsOn(jvmCommonMain)
+        }
+        val desktopMain by getting {
+            dependsOn(jvmCommonMain)
         }
         val iosArm64Main by getting
         val iosSimulatorArm64Main by getting
@@ -72,3 +84,8 @@ kotlin {
 
 // Fails the build if :core sources or its (transitive) Android/iOS dependency graph reference Kuikly.
 registerNoKuiklyGuard("verifyCoreHasNoKuikly")
+
+// TODO(desktop): commonTest runs on Android host tests; not yet on the desktop JVM.
+tasks.matching { it.name == "desktopTest" || it.name == "compileTestKotlinDesktop" }.configureEach {
+    enabled = false
+}

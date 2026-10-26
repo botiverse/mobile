@@ -1,0 +1,71 @@
+name: Desktop macOS dmg
+
+# Builds the Raft desktop app (compose/desktopApp) for macOS and uploads the unsigned .dmg.
+# Signing and notarization are DevOps' follow-up: compose/desktopApp/README.md lists the
+# Gradle properties (compose.desktop.mac.sign / signing.identity / notarization.*) a signed
+# lane would pass; this workflow adds no secrets.
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: "Optional exact product commit to build"
+        required: false
+        default: ""
+      version:
+        description: "Bundle version MAJOR.MINOR.PATCH (MAJOR > 0)"
+        required: false
+        default: "1.0.0"
+  # workflow_dispatch only registers once this file reaches the default branch; until then,
+  # pushing an edit of THIS FILE on a branch is the trigger (scoped so ordinary source pushes
+  # never burn a macOS runner).
+  push:
+    paths:
+      - ".github/workflows/desktop-macos-dmg.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-macos-dmg-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package-dmg:
+    name: Package unsigned macOS dmg
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Package dmg
+        working-directory: compose
+        env:
+          RAFT_DESKTOP_VERSION: ${{ inputs.version || '1.0.0' }}
+        run: |
+          set -euo pipefail
+          ./gradlew :desktopApp:packageDmg \
+            -Praft.desktop.version="$RAFT_DESKTOP_VERSION" \
+            --no-daemon --console=plain --stacktrace
+
+      - name: Upload dmg
+        uses: actions/upload-artifact@v6
+        with:
+          name: raft-desktop-macos-dmg
+          path: compose/desktopApp/build/compose/binaries/main/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 14

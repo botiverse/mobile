@@ -43,6 +43,9 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
 
+    // Desktop (JVM) for :desktopApp.
+    jvm("desktop")
+
     sourceSets {
         commonMain.dependencies {
             // HostCapabilities is part of this module's public API (RaftCmpHost).
