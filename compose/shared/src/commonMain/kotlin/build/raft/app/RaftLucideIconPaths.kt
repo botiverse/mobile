@@ -1343,6 +1343,15 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M 8.0 12.0 L 16.0 12.0"),
                     ),
                 )
+            RaftLucideIconName.ListFilter ->
+                RaftLucideIconSpec(
+                    "list-filter",
+                    listOf(
+                        RaftLucidePathSpec("M2 5h20"),
+                        RaftLucidePathSpec("M6 12h12"),
+                        RaftLucidePathSpec("M9 19h6"),
+                    ),
+                )
             RaftLucideIconName.ListTree ->
                 RaftLucideIconSpec(
                     "list-tree",

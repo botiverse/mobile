@@ -69,6 +69,7 @@ import build.raft.designsystem.components.RaftMenuLabel
 import build.raft.designsystem.components.RaftMenuSearchField
 import build.raft.designsystem.components.RaftMenuSeparator
 import build.raft.designsystem.components.RaftMenuSurface
+import build.raft.designsystem.components.RaftFilterChip
 import build.raft.designsystem.components.RaftPickerTriggerButton
 import build.raft.designsystem.components.RaftPopoverSurface
 import build.raft.designsystem.components.RaftRadio
@@ -675,6 +676,22 @@ class InteractiveComponentScreenshotTest {
                         RaftPickerTriggerButton("Mine", {}, hasValue = true, showIndicator = false, leadingIcon = { RaftGlyphIcon(RaftGlyph.AtSign, size = 14.dp) })
                     }
                 }
+            }
+        }
+
+    /** slock ThreadsInbox: the applied filter beside its Filter trigger, its × back to All. */
+    @Test
+    fun filterChip() =
+        capture("filter_chip") {
+            Column(Modifier.width(320.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Caption("Filter trigger with its applied-filter chip, icon and no icon")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RaftPickerTriggerButton("Filter", {})
+                    RaftFilterChip("Mentions", {}, removeLabel = "Clear filter", leadingIcon = { RaftGlyphIcon(RaftGlyph.AtSign, size = 14.dp) })
+                }
+                RaftFilterChip("Unread", {}, removeLabel = "Clear filter")
+                Caption("A long label truncates before the ×")
+                RaftFilterChip("Assignee: Wug the extremely long name", {}, removeLabel = "Clear filter", modifier = Modifier.width(200.dp))
             }
         }
 

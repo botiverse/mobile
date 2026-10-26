@@ -38,6 +38,8 @@ import kotlin.test.assertTrue
  * filter page instead. Runs the real filter [TabPager] and [ActivitySwipeActionsBox] on the simulator,
  * on a host with a full-page back swipe as RaftIosPage provides it, and drags with small finger steps.
  * raft-design #793 adds the swipe toward the end (Read / Unread): the pager must not take that one either.
+ * Activity itself no longer pages its filters (slock #11383: a Filter menu); this keeps guarding
+ * [TabPager] against swipe rows for the pagers that remain.
  */
 @OptIn(ExperimentalTestApi::class)
 class ActivitySwipeTabPagerIosTest {

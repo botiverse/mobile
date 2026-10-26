@@ -4,8 +4,6 @@ import build.raft.app.resources.*
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.RaftBrutalBadge
 import build.raft.app.components.RaftBrutalTone
-import build.raft.app.components.TabPager
-import build.raft.app.components.TabPagerGesturePolicy
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.DEFAULT_ACTIVITY_TASK_STATUS_BADGES_ENABLED
 import build.raft.app.data.ActivityReplyThreadPrewarmKey
@@ -134,8 +132,11 @@ import build.raft.designsystem.components.RaftConversationKindIcon
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftIconButton
-import build.raft.designsystem.components.RaftSegment
-import build.raft.designsystem.components.RaftSegmentedControl
+import build.raft.designsystem.components.RaftDropdownMenu
+import build.raft.designsystem.components.RaftFilterChip
+import build.raft.designsystem.components.RaftMenuItem
+import build.raft.designsystem.components.RaftMenuSeparator
+import build.raft.designsystem.components.RaftPickerTriggerButton
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -895,20 +896,6 @@ internal fun SharedHomeActivityPanel(
     }
 }
 
-internal fun projectActivityStateForFilterPage(
-    state: SharedActivityState,
-    pageFilter: InboxFilter
-): SharedActivityState {
-    if (state.selectedFilter == pageFilter) return state
-    val cachedSnapshot = state.filterSnapshots[pageFilter]
-    return state.copy(
-        selectedFilter = pageFilter,
-        snapshot = cachedSnapshot,
-        loaded = cachedSnapshot != null,
-        loading = cachedSnapshot == null
-    )
-}
-
 @Composable
 private fun SharedActivityPanelContent(
     state: SharedActivityState,
@@ -940,17 +927,16 @@ private fun SharedActivityPanelContent(
     scrollToTopRequest: Int = 0
 ) {
     val refreshPresentation = activityRefreshPresentation(state.refreshing, state.pullRefreshing)
-    // task #232 (#2224 review blocker 1): the panel owns per-page scroll
+    // task #232 (#2224 review blocker 1): the panel owns per-filter scroll
     // states, so it must also own title-tap scroll-to-top — a caller-held
     // LazyListState attaches to no list here and dies silently (the parameter
     // was removed so that wiring cannot come back). The title tap targets the
-    // SAME state object the selected filter's page renders with, via
+    // SAME state object the selected filter's list renders with, via
     // [activityScrollToTopTarget] (mapping unit-tested).
-    val filters = InboxFilter.entries
-    // One retained scroll state per filter page. Explicit calls (not a
+    // One retained scroll state per filter. Explicit calls (not a
     // loop over the experimental LazyListState constructor): the filter
     // set is a closed enum of four, and this list is index-aligned with
-    // `filters` (All/Unread/Mentions/Pinned entry order).
+    // InboxFilter.entries (All/Unread/Mentions/Pinned entry order).
     val pageListStates = listOf(
         rememberLazyListState(),
         rememberLazyListState(),
@@ -989,67 +975,55 @@ private fun SharedActivityPanelContent(
         if (state.stale) {
             RaftReadWarehouseStaleNotice(stringResource(Res.string.activity_stale_notice))
         }
-        // task #232: filter tabs are a TabPager — the filter bar stays the tap
-        // surface (its SetFilter flows back in as selectedIndex and animates
-        // the pager); a horizontal swipe settling on a page dispatches the
-        // same SetFilter. The store keeps ONE snapshot (the selected
-        // filter's), so only the active page renders real content; a
-        // neighbor glimpsed mid-drag shows that filter's loading skeleton
-        // until the settle re-targets the store. keepItemAlive keeps hidden
-        // pages composed, so the page body gates its shared-state effects on
-        // the pager's `active` flag.
-        TabPager(
-            selectedIndex = filters.indexOf(state.selectedFilter).coerceAtLeast(0),
-            onSelectedIndexChange = { index -> onIntent(SharedActivityIntent.SetFilter(filters[index])) },
-            pageCount = filters.size,
-            gesturePolicy = TabPagerGesturePolicy(
-                startEdgeInset = raftPlatformTabPagerStartEdgeInsetDp().dp,
-            ),
-            keepItemAlive = true,
-            tabBar = {
-                SharedActivityFilterBar(
-                    selectedFilter = state.selectedFilter,
-                    totalUnreadCount = state.totalUnreadCount,
-                    onFilterSelected = { onIntent(SharedActivityIntent.SetFilter(it)) },
-                    onMarkAllRead = {
-                        RaftProductEvents.activityMark(RaftActivityMarkAction.ReadAll)
-                        onIntent(SharedActivityIntent.MarkAllRead)
-                    }
-                )
+        // slock #11383 (stdrc option A): the filter is a menu now, so the swipe-between-filters
+        // pager (task #232) went with the segmented control it paged: a horizontal swipe is the
+        // rows' own (Done / Read), and one filter's list is composed at a time. Each filter
+        // keeps its own scroll state, keyed below so a switch starts that filter's list afresh
+        // as its pager page did.
+        var filterMenuExpanded by remember { mutableStateOf(false) }
+        SharedActivityFilterBar(
+            selectedFilter = state.selectedFilter,
+            totalUnreadCount = state.totalUnreadCount,
+            onFilterSelected = { onIntent(SharedActivityIntent.SetFilter(it)) },
+            onMarkAllRead = {
+                RaftProductEvents.activityMark(RaftActivityMarkAction.ReadAll)
+                onIntent(SharedActivityIntent.MarkAllRead)
             },
-            modifier = Modifier.weight(1f).fillMaxWidth()
-        ) { page, active ->
-            val pageFilter = filters[page]
-            val pageState = projectActivityStateForFilterPage(state, pageFilter)
-            if (pageState.snapshot != null && !conversationListPending) {
-                SharedActivityBodyContent(
-                    active = active,
-                    state = pageState,
-                    onOpenItem = onOpenItem,
-                    onIntent = onIntent,
-                    bottomContentPadding = bottomContentPadding,
-                    timeContext = timeContext,
-                    listState = pageListStates[page],
-                    activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
-                    draftProjection = draftProjection,
-                    presentationAccountId = state.ownerUserId.orEmpty(),
-                    stableOrderEnabled = stableOrderEnabled,
-                    stableOrderDecisionRevision = stableOrderDecisionRevision,
-                    presentationStore = presentationStore,
-                    foregroundEpoch = foregroundEpoch,
-                    externalSelectedThreadId = externalSelectedThreadId,
-                    externalSelectionOwned = externalSelectionOwned,
-                    conversationList = conversationList,
-                    channelMute = channelMute,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                SharedActivityStateBody(
-                    title = stringResource(Res.string.common_loading),
-                    detail = "",
-                    loading = true,
-                    bottomContentPadding = bottomContentPadding
-                )
+            menuExpanded = filterMenuExpanded,
+            onMenuExpandedChange = { filterMenuExpanded = it },
+        )
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            key(state.selectedFilter) {
+                if (state.snapshot != null && !conversationListPending) {
+                    SharedActivityBodyContent(
+                        active = true,
+                        state = state,
+                        onOpenItem = onOpenItem,
+                        onIntent = onIntent,
+                        bottomContentPadding = bottomContentPadding,
+                        timeContext = timeContext,
+                        listState = activityScrollToTopTarget(state.selectedFilter, pageListStates),
+                        activityTaskStatusBadgesEnabled = activityTaskStatusBadgesEnabled,
+                        draftProjection = draftProjection,
+                        presentationAccountId = state.ownerUserId.orEmpty(),
+                        stableOrderEnabled = stableOrderEnabled,
+                        stableOrderDecisionRevision = stableOrderDecisionRevision,
+                        presentationStore = presentationStore,
+                        foregroundEpoch = foregroundEpoch,
+                        externalSelectedThreadId = externalSelectedThreadId,
+                        externalSelectionOwned = externalSelectionOwned,
+                        conversationList = conversationList,
+                        channelMute = channelMute,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    SharedActivityStateBody(
+                        title = stringResource(Res.string.common_loading),
+                        detail = "",
+                        loading = true,
+                        bottomContentPadding = bottomContentPadding
+                    )
+                }
             }
         }
     }
@@ -1057,8 +1031,8 @@ private fun SharedActivityPanelContent(
 
 /**
  * The list the Activity title tap must scroll: the one the selected filter's
- * page renders with. Index-aligned with [InboxFilter.entries] exactly like the
- * pager's `selectedIndex` and its per-page `pageListStates` list — this seam
+ * list renders with. Index-aligned with [InboxFilter.entries] exactly like the
+ * per-filter `pageListStates` list — this seam
  * exists so a unit test ([ActivityScrollToTopTargetTest]) pins the mapping;
  * the tap→scroll wiring itself lives ten lines from the states it targets and
  * cannot be re-cut from a call site (#2224 review blocker 1: the previous
@@ -1219,7 +1193,7 @@ private fun SharedActivityHeader(
 
 /**
  * web Mark all read: a ghost button; when the toolbar is narrower than 30rem (480dp) it keeps
- * only its CheckCheck icon (`@max-[30rem]:size-8`), so the four filters keep their room.
+ * only its CheckCheck icon (`@max-[30rem]:size-8`), so the Filter button and its chip keep their room.
  */
 @Composable
 private fun SharedActivityMarkAllReadButton(iconOnly: Boolean, onClick: () -> Unit) {
@@ -1249,41 +1223,65 @@ private fun activityHeaderSubtitle(totalCount: Int, totalUnreadCount: Int): Stri
     // Web `thread.header.subtitle`: both counts, always.
     stringResource(Res.string.activity_header_active_unread_count, totalCount, totalUnreadCount)
 
+/**
+ * The Activity toolbar (slock #11383, stdrc option A on 10-26): one Filter button whose menu
+ * offers All / Unread / Mentions / Pinned, the current one checked; when the filter isn't
+ * All a chip beside the button names it and its × goes back to All. Mark all read keeps the
+ * row's end. [menuExpanded] / [onMenuExpandedChange] let a screenshot hold the menu open.
+ */
 @Composable
-private fun SharedActivityFilterBar(
+internal fun SharedActivityFilterBar(
     selectedFilter: InboxFilter,
     totalUnreadCount: Int,
     onFilterSelected: (InboxFilter) -> Unit,
-    onMarkAllRead: () -> Unit
+    onMarkAllRead: () -> Unit,
+    menuExpanded: Boolean = false,
+    onMenuExpandedChange: (Boolean) -> Unit = {},
 ) {
-    // web inbox toolbar: 54dp with a 1dp seam inside it, 16dp edges, the 38dp tray 8dp down.
+    // web inbox toolbar: 54dp with a 1dp seam inside it, 16dp edges, its controls centred.
     BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(54.dp).background(RaftColor.SurfaceWhite)) {
         val markAllReadIconOnly = activityMarkAllReadIconOnly(maxWidth)
         Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, top = 8.dp)
-                    .height(38.dp),
+                    .height(54.dp - RaftAppStroke.Thin)
+                    .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
-            // raft-ui SegmentedControl: the tray hugs its segments; Mark all read sits at the
-            // row's end (xxchan: the tray must not stretch into an empty grey band).
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Design-system RaftSegmentedControl: the picked filter is the yellow sticker. Like
-            // web `iconsOnlyBelow="auto"`, whenever the four labels don't fit the room left beside
-            // Mark all read, every filter shows only its icon; its label stays the accessible name.
-            RaftSegmentedControl(
-                // Wrap content, but never push Mark all read off the row; 12dp keeps the gap.
+            Row(
+                // Never push Mark all read off the row; 12dp keeps the gap (web gap-3).
                 modifier = Modifier.weight(1f, fill = false).padding(end = 12.dp),
-                iconsOnlyWhenLabelsDontFit = true,
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                InboxFilter.entries.forEach { filter ->
-                    RaftSegment(
-                        text = filter.localizedLabel(),
-                        selected = filter == selectedFilter,
-                        onClick = { onFilterSelected(filter) },
-                        iconsOnlyIcon = { RaftContentLucideIcon(filter.iconName(), size = 16.dp) },
+                Box {
+                    RaftPickerTriggerButton(
+                        text = stringResource(Res.string.activity_filter_button),
+                        onClick = { onMenuExpandedChange(!menuExpanded) },
+                        leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.ListFilter, size = 14.dp) },
+                    )
+                    RaftDropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { onMenuExpandedChange(false) },
+                    ) {
+                        ActivityFilterMenuRows(
+                            selectedFilter = selectedFilter,
+                            onPick = { filter ->
+                                onMenuExpandedChange(false)
+                                onFilterSelected(filter)
+                            }
+                        )
+                    }
+                }
+                if (selectedFilter != InboxFilter.All) {
+                    RaftFilterChip(
+                        text = selectedFilter.localizedLabel(),
+                        onRemove = { onFilterSelected(InboxFilter.All) },
+                        removeLabel = stringResource(Res.string.activity_filter_clear),
+                        modifier = Modifier.weight(1f, fill = false),
+                        leadingIcon = { RaftContentLucideIcon(selectedFilter.iconName(), size = 14.dp) },
                     )
                 }
             }
@@ -1298,6 +1296,20 @@ private fun SharedActivityFilterBar(
                     .height(RaftAppStroke.Thin)
                     .background(RaftColor.BorderSeam)
                     .align(Alignment.BottomCenter)
+        )
+    }
+}
+
+/** The Filter menu's rows: the read filters, then Pinned (a scope over All) after a separator. */
+@Composable
+internal fun ActivityFilterMenuRows(selectedFilter: InboxFilter, onPick: (InboxFilter) -> Unit) {
+    InboxFilter.entries.forEach { filter ->
+        if (filter == InboxFilter.Pinned) RaftMenuSeparator()
+        RaftMenuItem(
+            text = filter.localizedLabel(),
+            onClick = { onPick(filter) },
+            checked = filter == selectedFilter,
+            leadingIcon = { RaftContentLucideIcon(filter.iconName(), size = 16.dp) },
         )
     }
 }

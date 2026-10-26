@@ -985,6 +985,8 @@
     <string name="activity_filter_unread">未读</string>
     <string name="activity_filter_mentions">提及</string>
     <string name="activity_filter_pinned">已置顶</string>
+    <string name="activity_filter_button">筛选</string>
+    <string name="activity_filter_clear">清除筛选</string>
     <string name="activity_updates_one">↑ %1$d 条新更新</string>
     <string name="activity_updates_many">↑ %1$d 条新更新</string>
     <string name="activity_list_system_sender">系统</string>

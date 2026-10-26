@@ -36,6 +36,7 @@ new product concept gets a Japanese rendering.
 | Quote | 引用 | |
 | Draft | 下書き | |
 | Unread | 未読 | Mark as read = 既読にする |
+| Filter (a list control) | 絞り込み | Clear = 絞り込みを解除; copied from the web ja catalog (botiverse/slock #11383). 「フィルター」 stays in body copy that names a filter combination |
 | Read (receipt: someone else has read it) | 既読 | Not read yet = 未読 (web read_receipts_v0) |
 | Notification | 通知 | |
 | Join / Leave (channel, server) | 参加 / 退出 | |

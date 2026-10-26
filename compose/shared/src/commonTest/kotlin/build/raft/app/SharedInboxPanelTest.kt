@@ -2219,50 +2219,6 @@ class SharedInboxPanelTest {
         assertEquals(null, noneButParent.resolveInboxAnchorMessageId())
     }
 
-    @Test
-    fun projectActivityStateForFilterPageReturnsActiveStateWhenFilterMatches() {
-        val snapshot = InboxSnapshot(ServerSummary(ServerId("srv-1"), "Raft"), items = listOf(replyActivityItem("1")))
-        val state = SharedActivityState(selectedFilter = InboxFilter.All, snapshot = snapshot, loaded = true)
-        val result = projectActivityStateForFilterPage(state, InboxFilter.All)
-        assertEquals(state, result)
-        assertEquals(snapshot, result.snapshot)
-        assertEquals(true, result.loaded)
-    }
-
-    @Test
-    fun projectActivityStateForFilterPageProjectsCachedSnapshotWhenDifferentFilter() {
-        val allSnapshot = InboxSnapshot(ServerSummary(ServerId("srv-1"), "Raft"), items = listOf(replyActivityItem("1")))
-        val unreadSnapshot = InboxSnapshot(ServerSummary(ServerId("srv-1"), "Raft"), items = listOf(replyActivityItem("2")))
-        val state = SharedActivityState(
-            selectedFilter = InboxFilter.All,
-            snapshot = allSnapshot,
-            filterSnapshots = mapOf(
-                InboxFilter.All to allSnapshot,
-                InboxFilter.Unread to unreadSnapshot
-            )
-        )
-        val result = projectActivityStateForFilterPage(state, InboxFilter.Unread)
-        assertEquals(InboxFilter.Unread, result.selectedFilter)
-        assertEquals(unreadSnapshot, result.snapshot)
-        assertEquals(true, result.loaded)
-        assertEquals(false, result.loading)
-    }
-
-    @Test
-    fun projectActivityStateForFilterPageReturnsLoadingStateWhenNoCachedSnapshot() {
-        val allSnapshot = InboxSnapshot(ServerSummary(ServerId("srv-1"), "Raft"), items = listOf(replyActivityItem("1")))
-        val state = SharedActivityState(
-            selectedFilter = InboxFilter.All,
-            snapshot = allSnapshot,
-            filterSnapshots = mapOf(InboxFilter.All to allSnapshot)
-        )
-        val result = projectActivityStateForFilterPage(state, InboxFilter.Mentions)
-        assertEquals(InboxFilter.Mentions, result.selectedFilter)
-        assertEquals(null, result.snapshot)
-        assertEquals(false, result.loaded)
-        assertEquals(true, result.loading)
-    }
-
     internal fun activityItem(
         key: String = "activity-1",
         latestActivityAt: String? = null,
