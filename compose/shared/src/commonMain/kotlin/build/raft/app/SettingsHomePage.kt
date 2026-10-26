@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.format.RaftFormat
 import build.raft.app.markdown.markdownToPreviewText
+import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftPickerTriggerButton
 import build.raft.designsystem.components.rememberRaftMobileNavServerPopoverState
 import build.raft.designsystem.components.RaftFieldLabel
@@ -8751,6 +8752,7 @@ internal fun AppShellServerGateContent(
                 )
                 AuthTextField(
                     value = createName,
+                    keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
                     onValueChange = { nextValue ->
                         createName = nextValue
                         // Web parity (ServerSelector.tsx): the slug mirrors the
@@ -8766,6 +8768,7 @@ internal fun AppShellServerGateContent(
                 )
                 AuthTextField(
                     value = createSlug,
+                    keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
                     onValueChange = { nextValue ->
                         createSlugTouched = true
                         createSlug = authCreateServerSlugFieldValue(nextValue)
@@ -10641,6 +10644,7 @@ private fun SharedCreateChannelDialog(
                     label = stringResource(MR.strings.channel_create_label_name),
                     required = true,
                     value = name,
+                    keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions,
                     onValueChange = { name = it },
                     placeholder = stringResource(MR.strings.channel_create_placeholder_name),
                     enabled = !submitting,

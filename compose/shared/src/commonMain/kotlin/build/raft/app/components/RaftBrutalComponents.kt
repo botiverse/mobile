@@ -482,6 +482,7 @@ internal fun RaftBrutalTextField(
     fieldMinHeight: Dp = 42.dp,
     containerTapRequestsFocus: Boolean = false,
     labelAccessory: (@Composable () -> Unit)? = null,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     onFocusChanged: (Boolean) -> Unit = {}
 ) {
     val hasError = !error.isNullOrBlank()
@@ -509,6 +510,7 @@ internal fun RaftBrutalTextField(
             containerTapRequestsFocus = containerTapRequestsFocus,
             borderColor = if (hasError) RaftColor.AccentRed else RaftColor.BorderBlack,
             enabledBackgroundColor = if (hasError) RaftFieldErrorTint else RaftColor.SurfaceWhite,
+            keyboardOptions = keyboardOptions,
             onFocusChanged = onFocusChanged
         )
     }
@@ -546,6 +548,7 @@ internal fun RaftBrutalTextField(
     containerTapRequestsFocus: Boolean = false,
     password: Boolean = false,
     labelAccessory: (@Composable () -> Unit)? = null,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     onFocusChanged: (Boolean) -> Unit = {}
 ) {
     val hasError = !error.isNullOrBlank()
@@ -576,9 +579,9 @@ internal fun RaftBrutalTextField(
             visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
             keyboardOptions =
                 if (password) {
-                    KeyboardOptions(keyboardType = KeyboardType.Password)
+                    keyboardOptions.copy(keyboardType = KeyboardType.Password)
                 } else {
-                    KeyboardOptions.Default
+                    keyboardOptions
                 },
             onFocusChanged = onFocusChanged
         )

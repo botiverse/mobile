@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.components.RaftIconSpinner
+import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftTopBarDefaults
 import build.raft.designsystem.components.raftCopyable
@@ -3915,7 +3916,8 @@ private fun RaftHomeSectionDialog(
             value = name,
             onValueChange = { name = it.coerceTextLength(80) },
             placeholder = namePlaceholder,
-            autoFocus = true
+            autoFocus = true,
+            keyboardOptions = RaftTextFieldDefaults.NoAutoCorrectKeyboardOptions
         )
         Text(text = emojiLabel, style = RaftType.Caption, color = RaftColor.TextMutedGray)
         RaftBrutalInputField(
