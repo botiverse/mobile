@@ -209,6 +209,8 @@ LUCIDE_ICONS = [
     "message-circle-off",
     "message-circle-plus",
     "message-square",
+    "message-square-check",
+    "message-square-dot",
     "message-square-plus",
     "monitor",
     "monitor-x",

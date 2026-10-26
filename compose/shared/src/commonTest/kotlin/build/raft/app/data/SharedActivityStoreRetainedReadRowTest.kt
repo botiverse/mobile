@@ -1,5 +1,6 @@
 package build.raft.app.data
 
+import build.raft.app.activityReadToggleIntent
 import build.raft.app.model.ChannelId
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MessageId
@@ -24,6 +25,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 /**
  * "Being read" and "staying in the list" are separate (stdrc 10-23, via Remy; Gmail / Apple Mail
@@ -118,6 +120,105 @@ class SharedActivityStoreRetainedReadRowTest {
             runCurrent()
             assertUnreadList(store, listOf(rowC.key to 1), "after reload, $name")
         }
+    }
+
+    /**
+     * raft-design #793 (Kirby): the right swipe's Read / Unread toggle, which writes what the menu's Mark
+     * as read / unread does ([activityReadToggleIntent]), keeps the row in place in Unread both ways, so
+     * it can be swiped back; it leaves only when the user moves on. Mentions keeps read rows anyway.
+     */
+    @Test
+    fun theSwipeReadToggleKeepsTheRowInUnreadBothWaysUntilTheUserMovesOn() = runTest {
+        // The server stops listing A while it is read, and lists it again once it is unread.
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(snapshot(listOf(rowA, rowB)), snapshot(listOf(rowB)), snapshot(listOf(rowA, rowB)), snapshot(listOf(rowB)))
+            )
+        val store = unreadStore(inbox)
+        fun toggleA() = store.dispatch(activityReadToggleIntent(store.state.value.items.first { it.key == rowA.key }))
+        fun listed() = store.state.value.items.map { it.key to (it.unreadCount > 0) }
+
+        toggleA()
+        runCurrent()
+        assertEquals(listOf(rowA.key to false, rowB.key to true), listed(), "marked read, A stays in place")
+        store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(listOf(rowA.key to false, rowB.key to true), listed(), "a reload that no longer lists A keeps it")
+
+        toggleA()
+        runCurrent()
+        assertEquals(listOf(rowA.key to true, rowB.key to true), listed(), "swiped back: unread again, same place")
+        store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(listOf(rowA.key to true, rowB.key to true), listed(), "after a reload")
+
+        toggleA()
+        runCurrent()
+        store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        assertEquals(listOf(rowA.key to false, rowB.key to true), listed(), "read a second time, still listed")
+
+        // Moving on (another filter and back) drops it.
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.All))
+        runCurrent()
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Unread))
+        runCurrent()
+        assertUnreadList(store, listOf(rowB.key to 1), "after switching filters")
+    }
+
+    @Test
+    fun aRowSwipedBackToUnreadThatTheServerStopsListingDrops() = runTest {
+        // Swiped Read then Unread here, then read elsewhere: the reconcile page no longer lists A.
+        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(rowA, rowB)), snapshot(listOf(rowB))))
+        val store = unreadStore(inbox)
+        fun toggleA() = store.dispatch(activityReadToggleIntent(store.state.value.items.first { it.key == rowA.key }))
+        toggleA()
+        runCurrent()
+        toggleA()
+        runCurrent()
+        assertEquals(listOf(rowA.key to true, rowB.key to true), store.state.value.items.map { it.key to (it.unreadCount > 0) })
+        store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        // Only rows read here are kept; the stale unread copy of A is not put back.
+        assertUnreadList(store, listOf(rowB.key to 1), "a locally unread row the server stopped listing drops")
+    }
+
+    @Test
+    fun markUnreadInAllClearsTheCachedUnreadPage() = runTest {
+        // Unread is visited (cached without A, which was read), then A is marked unread from All.
+        val readA = rowA.copy(unreadCount = 0)
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots = listOf(snapshot(listOf(rowB)), snapshot(listOf(readA, rowB)), snapshot(listOf(rowA, rowB)))
+            )
+        val store = unreadStore(inbox)
+        assertEquals(listOf(rowB.key), store.state.value.filterSnapshots[InboxFilter.Unread]?.items?.map { it.key })
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.All))
+        runCurrent()
+        assertEquals(listOf(rowB.key), store.state.value.filterSnapshots[InboxFilter.Unread]?.items?.map { it.key }, "Unread is cached")
+        store.dispatch(activityReadToggleIntent(store.state.value.items.first { it.key == rowA.key }))
+        runCurrent()
+        assertEquals(null, store.state.value.filterSnapshots[InboxFilter.Unread], "the Unread cache without A is dropped")
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Unread))
+        runCurrent()
+        assertUnreadList(store, listOf(rowA.key to 2, rowB.key to 1), "Unread lists A from a fresh page")
+    }
+
+    @Test
+    fun theSwipeReadToggleKeepsTheRowInMentions() = runTest {
+        val mention = rowA.copy(hasMention = true)
+        val store =
+            activityStore(backgroundScope, FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(mention, rowB)))), nowMillis = { testScheduler.currentTime })
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Mentions))
+        runCurrent()
+        store.dispatch(activityReadToggleIntent(store.state.value.items.first()))
+        runCurrent()
+        assertEquals(listOf(rowA.key to 0, rowB.key to 1), store.state.value.items.map { it.key to it.unreadCount })
+        store.dispatch(activityReadToggleIntent(store.state.value.items.first()))
+        runCurrent()
+        assertEquals(listOf(rowA.key, rowB.key), store.state.value.items.map { it.key })
+        assertTrue(store.state.value.items.first().unreadCount > 0, "swiped back to unread")
     }
 
     @Test

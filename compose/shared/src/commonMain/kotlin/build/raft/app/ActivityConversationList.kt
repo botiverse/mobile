@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -33,9 +34,11 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -88,7 +91,7 @@ import com.tencent.tmm.kmmresource.compose.stringResource
  *
  * This file is presentation only. Opening, Done, read/unread and the press-and-hold menu stay the
  * Activity list's own intents (SharedActivityList); this layout never changes how Done is applied. The
- * touch rules (raft-design #785: no Done button on the row; a left swipe uncovers Done / Unfollow / Mute buttons, and the press-and-hold menu has the same actions, with undo)
+ * touch rules (raft-design #785: no Done button on the row; a left swipe uncovers Done / Unfollow / Mute buttons, a right swipe Read / Unread (#793), and the press-and-hold menu has the same actions, with undo)
  * are in ActivityConversationSwipe.kt.
  */
 
@@ -578,14 +581,27 @@ internal fun ActivityConversationListRow(
     /** The swipe's Unfollow / Mute button ([activitySwipeEndAction]); null action or callback: none. */
     swipeEndAction: ActivitySwipeEndAction? = null,
     onSwipeEnd: (() -> Unit)? = null,
-    /** Whether the list has this row's swipe buttons open ([ActivitySwipeOpenRow]). */
-    swipeOpen: Boolean = false,
-    /** The row claimed a swipe or settled open (true), or closed (false). */
-    onSwipeOpenChange: (Boolean) -> Unit = {},
+    /**
+     * The swipe toward the end's Read / Unread button (raft-design #793, [activitySwipeStartButton]): the
+     * menu's Mark as read / unread. Null: no start button.
+     */
+    onSwipeToggleRead: (() -> Unit)? = null,
+    /** The side the list has this row's swipe open on ([ActivitySwipeOpenRow]); null: closed. */
+    swipeOpenSide: ActivitySwipeSide? = null,
+    /** The row claimed a swipe or settled open on a side, or closed (null). */
+    onSwipeOpenChange: (ActivitySwipeSide?) -> Unit = {},
     /** Where the open row is, so a tap outside it closes it ([ActivitySwipeOpenRowGeometry]). */
     onSwipeOpenRowPlaced: ((LayoutCoordinates) -> Unit)? = null,
-    /** Screenshots only: the row slid by this share of its width on top of [swipeOpen]. */
+    /** Screenshots only: the row slid by this share of its width on top of [swipeOpenSide] (negative: toward the end). */
     swipePreviewRevealFraction: Float = 0f,
+    /**
+     * The row's screen-reader actions (raft-design #776 / #777): the row menu's items
+     * ([activityContextMenuActionIds]), named as in the menu, run through [onAccessibilityAction] with
+     * their id. A screen reader can't swipe or press and hold, so this is how it reaches Done, Unfollow,
+     * Mute and Mark as read / unread.
+     */
+    accessibilityActionIds: List<String> = emptyList(),
+    onAccessibilityAction: (actionId: String) -> Unit = {},
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -604,6 +620,14 @@ internal fun ActivityConversationListRow(
     val systemLabel = stringResource(MR.strings.activity_list_system_sender)
     val selfLabel = stringResource(MR.strings.activity_list_self_sender)
     val openLabel = stringResource(MR.strings.common_open)
+    val latestOnAccessibilityAction by rememberUpdatedState(onAccessibilityAction)
+    val accessibilityActions =
+        accessibilityActionIds.map { actionId ->
+            CustomAccessibilityAction(activityRowActionLabel(item, actionId)) {
+                latestOnAccessibilityAction(actionId)
+                true
+            }
+        }
     val threadChannelText = model.threadChannelLabel?.let { stringResource(MR.strings.activity_list_thread_channel, it) }
     // A DM thread's face says the peer, so its line drops "@peer ·"; screen readers still hear it.
     val visibleThreadChannelText = threadChannelText?.takeIf { model.threadChannelLabelVisible }
@@ -622,10 +646,12 @@ internal fun ActivityConversationListRow(
     ActivitySwipeActionsBox(
         gestureKey = openGestureKey,
         buttons = swipeButtons,
-        open = swipeOpen,
+        openSide = swipeOpenSide,
         onOpenChange = onSwipeOpenChange,
         onDone = { onSwipeDone?.invoke() },
         onAction = { onSwipeEnd?.invoke() },
+        startButton = item.activitySwipeStartButton().takeIf { onSwipeToggleRead != null },
+        onToggleRead = { onSwipeToggleRead?.invoke() },
         modifier = modifier.fillMaxWidth(),
         onOpenRowPlaced = onSwipeOpenRowPlaced,
         previewRevealFraction = swipePreviewRevealFraction,
@@ -668,6 +694,7 @@ internal fun ActivityConversationListRow(
                                 onOpen()
                                 true
                             }
+                            if (accessibilityActions.isNotEmpty()) customActions = accessibilityActions
                         }
                         .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),

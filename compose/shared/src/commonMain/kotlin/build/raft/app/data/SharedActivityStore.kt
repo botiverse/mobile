@@ -3106,6 +3106,8 @@ class SharedActivityStore internal constructor(
                 val updatedMap = nextState.filterSnapshots.toMutableMap()
                 updatedMap[nextState.selectedFilter] = nextState.snapshot
                 if (intent is SharedActivityIntent.MarkRead ||
+                    // The swipe's / menu's Unread (#793): an Unread page cached before it lacks the row.
+                    intent is SharedActivityIntent.MarkUnread ||
                     intent is SharedActivityIntent.MarkDone ||
                     intent is SharedActivityIntent.MarkAllRead ||
                     intent is SharedActivityIntent.ApplyReadReceiptPrediction
@@ -3584,12 +3586,16 @@ internal fun SharedActivityState.withRetainedRowsDropped(matching: (InboxItem) -
  * A canonical page in a filter that drops read rows no longer lists the retained rows once they
  * are read; each is put back, read, where it stood (before the first row that followed it and is
  * still on the page). Background loads and reconciles never drop a row read this visit.
+ *
+ * Only rows read here are put back: a retained row that is unread locally (the user marked it unread
+ * again, #793) and that the page no longer lists was read elsewhere or is gone, so it drops; putting
+ * back its stale unread copy would show an unread row the server no longer has.
  */
 private fun List<InboxItem>.withRetainedReadRows(current: SharedActivityState): List<InboxItem> {
     val keys = current.retainedReadRowKeys
     if (keys.isEmpty()) return this
     val pageKeys = mapTo(mutableSetOf(), InboxItem::key)
-    if (current.items.none { item -> item.key in keys && item.key !in pageKeys }) return this
+    if (current.items.none { item -> item.key in keys && item.key !in pageKeys && item.unreadCount <= 0 }) return this
     // Anchor each missing retained row to the next row after it that the page still lists (null:
     // the end), walking the previous list backwards so rows sharing an anchor keep their order.
     val anchored = linkedMapOf<String?, MutableList<InboxItem>>()
@@ -3597,7 +3603,7 @@ private fun List<InboxItem>.withRetainedReadRows(current: SharedActivityState): 
     for (item in current.items.asReversed()) {
         if (item.key in pageKeys) {
             anchor = item.key
-        } else if (item.key in keys) {
+        } else if (item.key in keys && item.unreadCount <= 0) {
             anchored.getOrPut(anchor) { mutableListOf() }
                 .add(0, item.copy(unreadCount = 0, firstUnreadMessageId = null, hasMention = false))
         }

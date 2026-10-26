@@ -1470,6 +1470,22 @@ internal object RaftLucideIconPaths {
                         RaftLucidePathSpec("M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"),
                     ),
                 )
+            RaftLucideIconName.MessageSquareCheck ->
+                RaftLucideIconSpec(
+                    "message-square-check",
+                    listOf(
+                        RaftLucidePathSpec("M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.7.7 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"),
+                        RaftLucidePathSpec("m9 11 2 2 4-4"),
+                    ),
+                )
+            RaftLucideIconName.MessageSquareDot ->
+                RaftLucideIconSpec(
+                    "message-square-dot",
+                    listOf(
+                        RaftLucidePathSpec("M12.7 3H4a2 2 0 0 0-2 2v16.286a.71.71 0 0 0 1.212.502l2.202-2.202A2 2 0 0 1 6.828 19H20a2 2 0 0 0 2-2v-4.7"),
+                        RaftLucidePathSpec("M 16.0 6.0 A 3.0 3.0 0 1 0 22.0 6.0 A 3.0 3.0 0 1 0 16.0 6.0 Z"),
+                    ),
+                )
             RaftLucideIconName.MessageSquarePlus ->
                 RaftLucideIconSpec(
                     "message-square-plus",
