@@ -94,7 +94,8 @@ class SharedThreadStoreInstallActionCardTest {
                     HomeNetworkResponse(
                         code = 409,
                         bodyText = null,
-                        errorBodyText = """{"error":"Linear changed its permissions; prepare a fresh card.","code":"APP_PERMISSIONS_CHANGED"}"""
+                        // botiverse/slock routes/actions.ts handleError for actionCardsService's ActionCardError(409, APP_PERMISSIONS_CHANGED).
+                        errorBodyText = """{"error":"The app's permissions changed after this card was prepared; prepare a fresh login request","errorCode":"APP_PERMISSIONS_CHANGED"}"""
                     )
             )
         val dataSource =
@@ -148,6 +149,44 @@ class SharedThreadStoreInstallActionCardTest {
     }
 
     @Test
+    fun theServersStaleCardRefusalsBlockInstallWithTheirOwnCopy() = runTest {
+        // botiverse/slock actionCardsService install refusals, as routes/actions.ts handleError sends
+        // them (`{ error, errorCode }`). Read as `code`, they all fell to the generic failure with
+        // Install still enabled.
+        val refusals =
+            mapOf(
+                "APP_PERMISSIONS_CHANGED" to ThreadInstallAppStaleCode.PermissionsChanged,
+                "MARKETPLACE_APP_CHANGED" to ThreadInstallAppStaleCode.AppChanged,
+                "SCOPE_BINDING_CHANGED" to ThreadInstallAppStaleCode.ScopesChanged,
+                "AGENT_BINDING_CHANGED" to ThreadInstallAppStaleCode.AgentChanged,
+            )
+        for ((errorCode, expected) in refusals) {
+            val store =
+                threadInstallAppActionDialogStore(
+                    scope = backgroundScope,
+                    dataSource =
+                        dataSourceAnswering(
+                            backgroundScope,
+                            HomeNetworkResponse(
+                                code = 409,
+                                bodyText = null,
+                                errorBodyText = """{"error":"Marketplace app identity changed; prepare a fresh login request","errorCode":"$errorCode"}"""
+                            )
+                        ),
+                    applyCard = { _, _ -> },
+                    toastInstalled = {},
+                    routeAuthRequired = { false },
+                )
+            store.dispatch(ThreadInstallAppActionIntent.Open("m-install", installCard()))
+            store.dispatch(ThreadInstallAppActionIntent.Confirm)
+            val state = store.state.first { it == null || !it.submitting }
+
+            assertEquals(expected, state?.staleCode, errorCode)
+            assertEquals(true to false, state?.blocked to state?.canInstall, errorCode)
+        }
+    }
+
+    @Test
     fun aNewerTextRevisionRefusalReachesTheDialogAsTextChanged() = runTest {
         val store =
             threadInstallAppActionDialogStore(
@@ -158,7 +197,9 @@ class SharedThreadStoreInstallActionCardTest {
                         HomeNetworkResponse(
                             code = 409,
                             bodyText = null,
-                            errorBodyText = """{"error":"stale","code":"APP_PERMISSIONS_CHANGED","current_text_revision_id":"rev-2"}"""
+                            // routes/actions.ts sends no current_text_revision_id today (routes/integrations.ts does);
+                            // the dialog reads it if it ever comes.
+                            errorBodyText = """{"error":"stale","errorCode":"APP_PERMISSIONS_CHANGED","current_text_revision_id":"rev-2"}"""
                         )
                     ),
                 applyCard = { _, _ -> },
