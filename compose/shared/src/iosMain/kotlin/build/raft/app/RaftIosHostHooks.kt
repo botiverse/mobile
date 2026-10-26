@@ -80,6 +80,8 @@ object RaftIosHostHooks {
         if (installed) return
         installed = true
         if (unhandledExceptions != null) installUnhandledExceptionHook(unhandledExceptions)
+        // DIAGNOSTIC ONLY (ios-flush-reentry-diag): logs what re-enters FlushCoroutineDispatcher.
+        RaftFlushReentryDiagnostics.install()
         RaftPageRegistry.install()
         installRaftIosProductEventsLifecycle()
         // iPhone vs iPad in the User-Agent: the server's product-event `$device_type` comes from it.
@@ -122,6 +124,8 @@ private fun installUnhandledExceptionHook(sink: RaftIosUnhandledExceptionSink) {
     var previous: ReportUnhandledExceptionHook? = null
     previous =
         setUnhandledExceptionHook { throwable ->
+            // DIAGNOSTIC ONLY (ios-flush-reentry-diag): tagged full stack in the device log.
+            RaftFlushReentryDiagnostics.onUnhandledException(throwable)
             try {
                 val reason = throwable::class.qualifiedName.orEmpty().ifEmpty { "Throwable" } +
                     (throwable.message?.let { ": $it" } ?: "")
