@@ -168,8 +168,8 @@ class SharedActivityStoreRetainedReadRowTest {
     }
 
     @Test
-    fun aRowSwipedBackToUnreadStaysUnreadWhenAReloadRacesTheWrite() = runTest {
-        // The reload after the Unread write was answered before the server listed A again.
+    fun aRowSwipedBackToUnreadThatTheServerStopsListingDrops() = runTest {
+        // Swiped Read then Unread here, then read elsewhere: the reconcile page no longer lists A.
         val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(rowA, rowB)), snapshot(listOf(rowB))))
         val store = unreadStore(inbox)
         fun toggleA() = store.dispatch(activityReadToggleIntent(store.state.value.items.first { it.key == rowA.key }))
@@ -177,13 +177,32 @@ class SharedActivityStoreRetainedReadRowTest {
         runCurrent()
         toggleA()
         runCurrent()
+        assertEquals(listOf(rowA.key to true, rowB.key to true), store.state.value.items.map { it.key to (it.unreadCount > 0) })
         store.dispatch(SharedActivityIntent.Refresh)
         runCurrent()
-        assertEquals(
-            listOf(rowA.key to true, rowB.key to true),
-            store.state.value.items.map { it.key to (it.unreadCount > 0) },
-            "the row the user marked unread keeps its place and stays unread",
-        )
+        // Only rows read here are kept; the stale unread copy of A is not put back.
+        assertUnreadList(store, listOf(rowB.key to 1), "a locally unread row the server stopped listing drops")
+    }
+
+    @Test
+    fun markUnreadInAllClearsTheCachedUnreadPage() = runTest {
+        // Unread is visited (cached without A, which was read), then A is marked unread from All.
+        val readA = rowA.copy(unreadCount = 0)
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots = listOf(snapshot(listOf(rowB)), snapshot(listOf(readA, rowB)), snapshot(listOf(rowA, rowB)))
+            )
+        val store = unreadStore(inbox)
+        assertEquals(listOf(rowB.key), store.state.value.filterSnapshots[InboxFilter.Unread]?.items?.map { it.key })
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.All))
+        runCurrent()
+        assertEquals(listOf(rowB.key), store.state.value.filterSnapshots[InboxFilter.Unread]?.items?.map { it.key }, "Unread is cached")
+        store.dispatch(activityReadToggleIntent(store.state.value.items.first { it.key == rowA.key }))
+        runCurrent()
+        assertEquals(null, store.state.value.filterSnapshots[InboxFilter.Unread], "the Unread cache without A is dropped")
+        store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Unread))
+        runCurrent()
+        assertUnreadList(store, listOf(rowA.key to 2, rowB.key to 1), "Unread lists A from a fresh page")
     }
 
     @Test
