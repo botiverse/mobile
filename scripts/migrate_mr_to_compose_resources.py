@@ -135,8 +135,15 @@ def move_assets() -> None:
 IMPORT_RE = re.compile(r"^import [\w.]+(\.\*)?$")
 
 
+OLD_PATTERN = re.compile(r"^import com\.tencent\.tmm\.kmmresource\.|^import build\.raft\.app\.resources\.MR$|com\.tencent\.tmm\.kmmresource\.[\w.]+[(\s]|\bMR\.strings\.", re.M)
+
+
 def rewrite_kotlin(path: Path) -> bool:
     original = path.read_text(encoding="utf-8")
+    # Only files that still use kmmresource: a re-run (e.g. after a rebase brings in new
+    # MR.strings call sites) must not touch already migrated files or `Res.string` in comments.
+    if not OLD_PATTERN.search(original):
+        return False
     text = original
     for old, new in FQ_MAP:
         text = text.replace(old, new)
